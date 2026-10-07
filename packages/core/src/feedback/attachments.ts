@@ -6,9 +6,9 @@
 import { randomUUID } from 'node:crypto';
 import { FEEDBACK_LIMITS, feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { feedbackAttachments } from '../db/schema-feedback.js';
+import { feedback, feedbackAttachments } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { getStorage } from '../integrations/index.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
@@ -156,13 +156,18 @@ export async function attachmentBytes(input: {
 }) {
   await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
   const row = await rowIn(db, input.projectId, input.ref);
+  // the item's own, or evidence of a duplicate merged into it, which the item shows
+  const merged = db
+    .select({ id: feedback.id })
+    .from(feedback)
+    .where(eq(feedback.duplicateOf, row.id));
   const [a] = await db
     .select()
     .from(feedbackAttachments)
     .where(
       and(
         eq(feedbackAttachments.id, input.attachmentId),
-        eq(feedbackAttachments.feedbackId, row.id),
+        inArray(feedbackAttachments.feedbackId, [row.id, ...(await merged).map((m) => m.id)]),
       ),
     );
   if (!a) return null;

@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
+import { formatStamp } from "@/lib/utils/format";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useFeedbackAction } from "../hooks";
 import { RetargetForm } from "./feedback-retarget";
+import { TriageVerbs } from "./feedback-verbs";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
 type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
@@ -63,7 +65,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   };
   return (
     <section className="grid gap-3" data-testid="feedback-triage">
-      <h3 className="text-12 font-semibold text-muted">Your triage</h3>
+      <h3 className="text-12 font-semibold text-muted">{f.can.accept ? "Or route it to work" : "Your triage"}</h3>
       <RadioGroup name={`triage-${f.key}`} value={choice} onChange={(v) => setChoice(v as Choice)} className="grid gap-2 sm:grid-cols-2">
         {CHOICES.map((c) => (
           <Radio
@@ -107,7 +109,10 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   return (
     <section className="grid gap-2" data-testid="feedback-verify">
       <h3 className="text-12 font-semibold text-muted">Confirm the fix</h3>
-      <p className="text-12 text-muted">Feedback is never verified automatically: the reporter, or a BA on their behalf, confirms it.</p>
+      <p className="text-12 text-muted" data-testid="verify-copy">
+        Anyone on the project, or the reporter, may confirm the fix, and the record keeps who and when.
+        {f.autoVerify ? ` If nobody does by ${formatStamp(f.autoVerify.at)}, Forge verifies it after ${f.autoVerify.windowDays} days with no reply.` : " If nobody does within the project’s verify window, Forge verifies it."}
+      </p>
       {f.can.askVerify ? <p className="text-12 text-muted">Asking sends the item to the reporter, where it stays until it is verified or reopened.</p> : null}
       {reopening ? (
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="What the fix does not answer" />
@@ -170,6 +175,7 @@ function RedactBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
 export function FeedbackActions({ projectId, f }: { projectId: string; f: FeedbackView }) {
   return (
     <div className="grid gap-4">
+      <TriageVerbs projectId={projectId} f={f} />
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.retarget ? <RetargetForm projectId={projectId} f={f} /> : null}

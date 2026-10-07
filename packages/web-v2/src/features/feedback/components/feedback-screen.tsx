@@ -117,7 +117,7 @@ const rowOf =
     key: r.key,
     href: feedbackHref(slug, r.key),
     title: r.title,
-    facts: [enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
+    facts: [...(r.snoozed ? [`Snoozed until ${formatStamp(r.snoozed.until)}`] : []), enumLabel("feedbackKind", r.kind), `About ${aboutLine(r)}`, r.reporter.name ?? "Unknown reporter", `Severity ${statusReading("severity", r.severity).label}`],
     eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
     state: <StatusBadge family="feedbackPhase" value={r.phase} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,

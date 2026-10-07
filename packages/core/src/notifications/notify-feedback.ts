@@ -1,5 +1,6 @@
 // feedback-triage `verify-ask`: an ask to verify a resolved item reaches its reporter's bell, and the
-// verify or reopen of that item settles it. The release that ships the work of an item tells its
+// verify or reopen of that item settles it. A decline, a merge into an original and a triager's
+// message each reach their reporters as one notice, the text the event carries. The release that ships the work of an item tells its
 // reporter, naming the release and what it changed for them, once per item and release.
 
 import { feedbackKey } from '@forge/contracts/feedback';
@@ -30,6 +31,17 @@ async function asked(p: Payload<'feedback.verifyAsked'>, eventId: string): Promi
 
 async function settled(p: Payload<'feedback.verifySettled'>): Promise<void> {
   await resolveNotifications(verifyKey(p.feedbackId), `${p.key} ${p.decision}`);
+}
+
+async function told(p: Payload<'feedback.reporterTold'>, eventId: string): Promise<void> {
+  await emitNotification({
+    recipients: p.recipients,
+    projectId: p.projectId,
+    type: 'feedback_message',
+    title: p.title,
+    body: p.body,
+    dedupeKey: `feedback-told:${eventId}`,
+  });
 }
 
 async function shipped(p: Payload<'release.shipped'>): Promise<void> {
@@ -101,5 +113,6 @@ export function registerFeedbackNotifications(): void {
   const name = 'notify-feedback';
   consume('feedback.verifyAsked', { name, handle: (p, d) => asked(p, d.eventId) });
   consume('feedback.verifySettled', { name, handle: settled });
+  consume('feedback.reporterTold', { name, handle: (p, d) => told(p, d.eventId) });
   consume('release.shipped', { name, handle: shipped });
 }

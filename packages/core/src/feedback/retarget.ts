@@ -64,7 +64,7 @@ async function revisionFacts(tx: Tx, row: Row, next: Row) {
   return { revises: revised?.key ?? null, nextRequirement: nextRequirement?.key ?? null };
 }
 
-async function retargetIn(
+export async function retargetIn(
   tx: Tx,
   row: Row,
   actor: FeedbackActor,

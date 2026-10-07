@@ -45,12 +45,12 @@ export interface FeedbackFigures {
   aging: number;
 }
 
-export function feedbackFigures(list: readonly Pick<FeedbackSummary, "phase" | "createdAt">[] | undefined, now: number): FeedbackFigures {
+export function feedbackFigures(list: readonly Pick<FeedbackSummary, "phase" | "createdAt" | "snoozed">[] | undefined, now: number): FeedbackFigures {
   const open = (list ?? []).filter((f) => !CLOSED_PHASES.has(f.phase));
   const cutoff = now - FEEDBACK_AGING_DAYS * 86_400_000;
   return {
     open: open.length,
-    untriaged: open.filter((f) => (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase)).length,
+    untriaged: open.filter((f) => (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase) && !f.snoozed).length,
     aging: open.filter((f) => Date.parse(f.createdAt) < cutoff).length,
   };
 }

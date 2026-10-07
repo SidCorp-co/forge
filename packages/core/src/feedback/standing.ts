@@ -132,6 +132,10 @@ export interface StandingFacts {
   carrierRelease: CarrierRelease | null;
   /** The version of the release a carrier issue is already cut into, when one is; else null. */
   carrierVersion?: string | null;
+  /** Set while a snooze has not run out: the item is parked out of New until then. */
+  snoozedUntil?: string | null;
+  /** While it reads resolved and a sweep has dated it: when Forge verifies it if nobody has. */
+  autoVerifyAt?: string | null;
 }
 
 const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null };
@@ -160,6 +164,17 @@ function waitingOf(
   switch (phase) {
     case 'new':
     case 'reopened':
+      if (facts.snoozedUntil) {
+        return theirs(
+          wait(
+            'person',
+            TRIAGER,
+            `triage it once the snooze ends, ${facts.snoozedUntil.slice(0, 10)}`,
+            `${phase}: snoozed until ${facts.snoozedUntil}, when it returns to New for a holder of feedback.approve`,
+            { dueAt: facts.snoozedUntil },
+          ),
+        );
+      }
       if (facts.masterOwesTriage)
         return theirs(
           wait(
@@ -179,6 +194,17 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'triaged':
+      if (route === null) {
+        return {
+          wait: wait(
+            'person',
+            TRIAGER,
+            'route it to work',
+            'triaged: it was accepted with no route yet, so a holder of feedback.approve routes it',
+          ),
+          yours: viewer.canTriage,
+        };
+      }
       return {
         wait: wait(
           'person',
@@ -211,10 +237,11 @@ function waitingOf(
           facts.carrierVersion
             ? `verify the fix shipped in ${facts.carrierVersion}`
             : 'verify the fix',
-          'resolved: the reporter verifies the fix',
-          { ref: facts.carrierVersion ?? null },
+          'resolved: anyone on the project, or the reporter, may confirm the fix, and Forge verifies it when nobody has within the project’s verify window',
+          { ref: facts.carrierVersion ?? null, dueAt: facts.autoVerifyAt ?? null },
         ),
-        yours: viewer.isReporter,
+        // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it
+        yours: false,
       };
     default:
       return theirs(wait('none', 'Nothing', '', `${phase}: nothing is owed`));

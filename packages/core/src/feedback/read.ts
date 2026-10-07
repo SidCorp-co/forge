@@ -1,5 +1,8 @@
 import {
   type FeedbackDecisionView,
+  type FeedbackMessageView,
+  type FeedbackPhase,
+  type FeedbackVerifiedView,
   type FeedbackView,
   feedbackKey,
 } from '@forge/contracts/feedback';
@@ -7,7 +10,12 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
+import {
+  feedback,
+  feedbackAttachments,
+  feedbackDecisions,
+  feedbackMessages,
+} from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
@@ -17,9 +25,10 @@ import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, holds, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn as requirementRowIn } from '../requirements/index.js';
-import { feedbackEgress, type ReadDoor } from './egress.js';
-import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
+import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
+import { autoVerifyOf, linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
+import { reportersOf } from './reporters.js';
 import { shipNoticeOf } from './ship-notice.js';
 
 export interface FeedbackActor {
@@ -88,6 +97,73 @@ async function acceptReasonsOf(
   return new Map(rows.map((r) => [r.id, r.reason]));
 }
 
+type Facts = Parameters<typeof holds>[0];
+
+/** What the viewer may do to the item now, read off their permissions and its phase. */
+function canOf(i: {
+  facts: Facts;
+  row: Row;
+  phase: FeedbackPhase;
+  userId: string;
+  canSeeNotes: boolean;
+}): FeedbackView['can'] {
+  const { facts, row, phase } = i;
+  const approver = holds(facts, 'feedback.approve');
+  const untriaged = phase === 'new' || phase === 'reopened';
+  return {
+    triage: approver && (untriaged || phase === 'triaged'),
+    // owner, 2026-10-07: anyone on the project may confirm a fix, not only a BA
+    verify: phase === 'resolved',
+    reopen: (approver || i.userId === row.reportedBy) && phase === 'resolved',
+    askVerify: approver && i.userId !== row.reportedBy && phase === 'resolved',
+    redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
+    retarget: approver && row.contractVersion === null,
+    accept: approver && untriaged,
+    snooze: approver && untriaged,
+    message: approver,
+    note: i.canSeeNotes,
+  };
+}
+
+type MessageRow = typeof feedbackMessages.$inferSelect;
+
+function messageViewsOf(
+  rows: readonly MessageRow[],
+  names: Map<string, string>,
+  withhold: boolean,
+): FeedbackMessageView[] {
+  return rows.map((m) => ({
+    id: m.id,
+    audience: m.audience,
+    text: withhold ? WITHHELD : m.body,
+    sentBy: m.sentBy,
+    sentByName: names.get(m.sentBy) ?? null,
+    sentAgency: m.sentAgency,
+    sentAt: m.createdAt.toISOString(),
+    recipients: m.recipients.map((id) => ({ id, name: names.get(id) ?? null })),
+  }));
+}
+
+/** The confirmation of the fix, read off the item's last verified decision: who and when, or Forge's own. */
+function verifiedViewOf(
+  row: Row,
+  decisions: readonly (typeof feedbackDecisions.$inferSelect)[],
+  names: Map<string, string>,
+  withhold: boolean,
+): FeedbackVerifiedView | null {
+  if (row.status !== 'verified') return null;
+  const d = [...decisions].reverse().find((x) => x.decision === 'verified');
+  if (!d) return null;
+  return {
+    at: d.decidedAt.toISOString(),
+    how: d.decidedAgency === 'system' ? 'automatic' : 'person',
+    by: d.decidedBy,
+    byName: d.decidedBy ? (names.get(d.decidedBy) ?? null) : null,
+    byReporter: d.decidedBy === row.reportedBy,
+    reason: withhold ? null : d.reason,
+  };
+}
+
 export async function detailAs(
   viewer: FeedbackActor,
   projectId: string,
@@ -96,42 +172,77 @@ export async function detailAs(
 ): Promise<FeedbackView> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const row = await rowIn(db, projectId, ref);
-  const [level, access, linked, decisions, attachments, questions, pointing, [open], source] =
-    await Promise.all([
-      dataPolicyOf(projectId),
-      effectiveProjectRole(viewer.userId, projectId),
-      linkedOf(projectId, [row]),
-      db
-        .select()
-        .from(feedbackDecisions)
-        .where(eq(feedbackDecisions.feedbackId, row.id))
-        .orderBy(asc(feedbackDecisions.decidedAt)),
-      db
-        .select()
-        .from(feedbackAttachments)
-        .where(eq(feedbackAttachments.feedbackId, row.id))
-        .orderBy(asc(feedbackAttachments.createdAt)),
-      db
-        .select({
-          id: agentQuestions.id,
-          status: agentQuestions.status,
-          steps: agentQuestions.steps,
-        })
-        .from(agentQuestions)
-        .where(eq(agentQuestions.feedbackId, row.id))
-        .orderBy(desc(agentQuestions.createdAt))
-        .limit(1),
-      duplicateKeysOf(db, row.id),
-      db
-        .select({ n: count() })
-        .from(suggestions)
-        .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
-      sourceOf(row.id),
-    ]);
+  const [
+    level,
+    access,
+    linked,
+    decisions,
+    attachments,
+    questions,
+    pointing,
+    [open],
+    source,
+    reporters,
+    messages,
+    mergedAttachments,
+  ] = await Promise.all([
+    dataPolicyOf(projectId),
+    effectiveProjectRole(viewer.userId, projectId),
+    linkedOf(projectId, [row]),
+    db
+      .select()
+      .from(feedbackDecisions)
+      .where(eq(feedbackDecisions.feedbackId, row.id))
+      .orderBy(asc(feedbackDecisions.decidedAt)),
+    db
+      .select()
+      .from(feedbackAttachments)
+      .where(eq(feedbackAttachments.feedbackId, row.id))
+      .orderBy(asc(feedbackAttachments.createdAt)),
+    db
+      .select({
+        id: agentQuestions.id,
+        status: agentQuestions.status,
+        steps: agentQuestions.steps,
+      })
+      .from(agentQuestions)
+      .where(eq(agentQuestions.feedbackId, row.id))
+      .orderBy(desc(agentQuestions.createdAt))
+      .limit(1),
+    duplicateKeysOf(db, row.id),
+    db
+      .select({ n: count() })
+      .from(suggestions)
+      .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
+    sourceOf(row.id),
+    reportersOf(db, row),
+    db
+      .select()
+      .from(feedbackMessages)
+      .where(eq(feedbackMessages.feedbackId, row.id))
+      .orderBy(asc(feedbackMessages.createdAt)),
+    // the evidence of the duplicates merged into this item, read through: each stays on its own record
+    db
+      .select({ a: feedbackAttachments, seq: feedback.fbSeq })
+      .from(feedbackAttachments)
+      .innerJoin(feedback, eq(feedback.id, feedbackAttachments.feedbackId))
+      .where(eq(feedback.duplicateOf, row.id))
+      .orderBy(asc(feedbackAttachments.createdAt)),
+  ]);
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const facts = { projectId, role: access?.role ?? null, grants: access?.grants ?? [] };
   const summary = summaryOf(row, linked, viewer, withhold, viewerCanOf(facts));
-  const deciders = await userNames(decisions.map((d) => d.decidedBy));
+  const phase = summary.phase;
+  const approver = holds(facts, 'feedback.approve');
+  // an internal note is for project members, and not for the reporter it may be about unless they triage
+  const canSeeNotes =
+    holds(facts, 'project.write') && (approver || !reporters.some((r) => r.id === viewer.userId));
+  const shownMessages = messages.filter((m) => m.audience !== 'internal' || canSeeNotes);
+  const deciders = await userNames([
+    ...decisions.map((d) => d.decidedBy),
+    ...reporters.map((r) => r.id),
+    ...shownMessages.flatMap((m) => [m.sentBy, ...m.recipients]),
+  ]);
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
   const q = questions[0];
   const step = q?.steps.at(-1);
@@ -139,6 +250,11 @@ export async function detailAs(
   return shown<FeedbackView>(
     {
       ...summary,
+      verified: verifiedViewOf(row, decisions, deciders, withhold),
+      autoVerify: (() => {
+        const at = autoVerifyOf(row, phase, linked);
+        return at ? { at: at.toISOString(), windowDays: linked.verifyWindowDays } : null;
+      })(),
       body: withhold ? null : row.body,
       whereSeen: withhold ? null : row.whereSeen,
       duplicateOf: root ? feedbackKey(root.fbSeq) : null,
@@ -152,7 +268,7 @@ export async function detailAs(
           carrier: d.carrier,
           reason: withhold ? null : d.reason,
           decidedBy: d.decidedBy,
-          decidedByName: deciders.get(d.decidedBy) ?? null,
+          decidedByName: d.decidedBy ? (deciders.get(d.decidedBy) ?? null) : null,
           decidedAgency: d.decidedAgency,
           decidedAt: d.decidedAt.toISOString(),
           fromSuggestionId: d.fromSuggestionId,
@@ -162,14 +278,25 @@ export async function detailAs(
               : (acceptReasons.get(d.fromSuggestionId) ?? null),
         }),
       ),
-      attachments: attachments.map((a) => ({
+      attachments: [
+        ...attachments.map((a) => ({ a, from: null as string | null })),
+        ...mergedAttachments.map((m) => ({ a: m.a, from: feedbackKey(m.seq) as string | null })),
+      ].map(({ a, from }) => ({
         id: a.id,
+        from,
         name: withhold ? 'withheld' : a.name,
         mime: a.mime,
         size: a.size,
         flagged: a.flagged,
         createdAt: a.createdAt.toISOString(),
       })),
+      reporters: reporters.map((r) => ({
+        id: r.id,
+        name: deciders.get(r.id) ?? null,
+        agency: r.agency,
+        from: r.from,
+      })),
+      messages: messageViewsOf(shownMessages, deciders, withhold),
       clarification: q
         ? {
             id: q.id,
@@ -188,23 +315,7 @@ export async function detailAs(
         phase: summary.phase,
         reporterAgency: row.reporterAgency,
       }),
-      can: {
-        triage:
-          holds(facts, 'feedback.approve') &&
-          ['new', 'triaged', 'reopened'].includes(summary.phase),
-        verify:
-          (holds(facts, 'feedback.approve') || viewer.userId === row.reportedBy) &&
-          summary.phase === 'resolved',
-        reopen:
-          (holds(facts, 'feedback.approve') || viewer.userId === row.reportedBy) &&
-          summary.phase === 'resolved',
-        askVerify:
-          holds(facts, 'feedback.approve') &&
-          viewer.userId !== row.reportedBy &&
-          summary.phase === 'resolved',
-        redact: holds(facts, 'feedback.redact') && row.redactedAt === null,
-        retarget: holds(facts, 'feedback.approve') && row.contractVersion === null,
-      },
+      can: canOf({ facts, row, phase, userId: viewer.userId, canSeeNotes }),
       sensitive: level !== 'off',
     },
     feedbackKey(row.fbSeq),

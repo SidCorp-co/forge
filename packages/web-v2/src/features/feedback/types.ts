@@ -8,12 +8,17 @@ export type {
   FeedbackEndpointView,
   FeedbackKind,
   FeedbackListResponse,
+  FeedbackMessageAudience,
+  FeedbackMessagePreview,
+  FeedbackMessagePreviewResponse,
+  FeedbackMessageView,
   FeedbackPhase,
   FeedbackPromoteEffect,
   FeedbackResponse,
   FeedbackRetargetRequest,
   FeedbackRoute,
   FeedbackSeverity,
+  FeedbackReporterView,
   FeedbackSummary,
   FeedbackTargetType,
   FeedbackTriage,
@@ -25,6 +30,8 @@ export type {
 export type FeedbackAction =
   | { kind: "triage"; triage: FeedbackTriage }
   | { kind: "retarget"; request: FeedbackRetargetRequest }
+  | { kind: "accept"; requirement?: string }
+  | { kind: "snooze"; until: string; reason: string }
   | { kind: "verify"; note?: string }
   | { kind: "verify-ask" }
   | { kind: "reopen"; reason: string }

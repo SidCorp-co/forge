@@ -2,6 +2,7 @@
 
 import {
   FEEDBACK_ATTENTION_GROUPS,
+  FEEDBACK_VERIFY_WINDOW,
   type FeedbackAttentionGroup,
   type FeedbackCarrierView,
   type FeedbackListResponse,
@@ -42,6 +43,7 @@ import {
   type StandingViewer,
 } from './standing.js';
 import { targetView } from './target-view.js';
+import { autoVerifyAt, verifyWindowDays } from './verify-window.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked {
@@ -73,6 +75,8 @@ export interface Linked {
   masterOwed: Set<string>;
   /** How this project's release is made, read only where a routed issue waits at the gate. */
   release: CarrierRelease | null;
+  /** The project's verify window in days, read only where a triaged item could read resolved. */
+  verifyWindowDays: number;
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -198,13 +202,15 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   );
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, release] = await Promise.all([
+  const [owed, release, windowDays] = await Promise.all([
     rows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
     atGate ? readReleaseMode(projectId) : null,
+    rows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
   ]);
   return {
+    verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
     release,
     prefix,
@@ -347,14 +353,31 @@ function owedCarriers(route: FeedbackRouteView | null): FeedbackCarrierView[] {
   return route.carriers.filter((c) => !finished.includes(c.status));
 }
 
+/** When Forge verifies an item that reads resolved and has been dated by a sweep; else null. */
+export function autoVerifyOf(r: Row, phase: FeedbackPhase, l: Linked): Date | null {
+  if (phase !== 'resolved' || !r.resolvedSeenAt) return null;
+  return autoVerifyAt(r.resolvedSeenAt, l.verifyWindowDays);
+}
+
+/** The snooze an item is still parked under: one that has run out reads as no snooze, so it is New again with nothing to clear. */
+export function snoozeOf(
+  r: Pick<Row, 'snoozedUntil' | 'snoozeReason'>,
+  now: Date,
+): { until: string; reason: string | null } | null {
+  if (!r.snoozedUntil || r.snoozedUntil.getTime() <= now.getTime()) return null;
+  return { until: r.snoozedUntil.toISOString(), reason: r.snoozeReason };
+}
+
 export function summaryOf(
   r: Row,
   l: Linked,
   viewer: FeedbackActor,
   withhold: boolean,
   can: ViewerCan,
+  now: Date = new Date(),
 ): FeedbackSummary {
   const phase = phaseIn(r, l);
+  const snoozed = snoozeOf(r, now);
   const route = routeView(r, l);
   const reporterName = l.names.get(r.reportedBy) ?? null;
   const reporter = reporterName ?? 'The reporter';
@@ -370,6 +393,8 @@ export function summaryOf(
       : null,
     {
       masterOwesTriage: l.masterOwed.has(r.id),
+      snoozedUntil: snoozed?.until ?? null,
+      autoVerifyAt: autoVerifyOf(r, phase, l)?.toISOString() ?? null,
       carrierRelease:
         phase === 'planned' &&
         r.route === 'issue' &&
@@ -396,6 +421,7 @@ export function summaryOf(
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
     dueAt: r.dueAt?.toISOString() ?? null,
+    snoozed: withhold && snoozed ? { ...snoozed, reason: null } : snoozed,
     redacted: r.redactedAt !== null,
     redactedAt: r.redactedAt?.toISOString() ?? null,
     createdAt: r.createdAt.toISOString(),

@@ -16,9 +16,12 @@ import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
 import type { Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, type Row, rowIn, targetRequirementOf } from './read.js';
+import { duplicateNotice } from './reporter-notices.js';
+import { reportersOf, withBell } from './reporters.js';
 import { NO_ROUTE, writeRouteIn } from './route-write.js';
 import {
   carriersNamed,
@@ -37,6 +40,7 @@ import {
   feedbackKernelActor,
   inTx,
   lockFeedback,
+  NOT_SNOOZED,
   roleFacts,
 } from './service.js';
 
@@ -107,6 +111,8 @@ export async function triageIn(
       severity: row.severity,
       route: null,
       ...NO_ROUTE,
+      ...NOT_SNOOZED,
+      resolvedSeenAt: null,
       updatedAt: new Date(),
     })
     .where(eq(feedback.id, row.id));
@@ -136,6 +142,7 @@ export async function triageIn(
   });
   if ('refusals' in written) return { refusals: written.refusals };
   const carriers = written.carriers;
+  if (t.route === 'duplicate') await tellDuplicateReporters(tx, row, carriers[0] ?? '');
   await decide(tx, row, actor, {
     decision: 'triaged',
     route: t.route,
@@ -145,6 +152,21 @@ export async function triageIn(
   });
   await closeClarification(tx, row.id, `routed as ${t.route}`);
   return { refusals: null, effect: { feedback: feedbackKey(row.fbSeq), route: t.route, carriers } };
+}
+
+/** An item merged into its original tells its own reporter, once, which item carries their report. */
+async function tellDuplicateReporters(tx: Tx, row: Row, original: string) {
+  const told = withBell((await reportersOf(tx, row)).filter((r) => r.from === null)).map(
+    (r) => r.id,
+  );
+  if (told.length === 0) return;
+  await emitEvent(tx, 'feedback.reporterTold', {
+    projectId: row.projectId,
+    feedbackId: row.id,
+    kind: 'duplicate',
+    recipients: told,
+    ...duplicateNotice(feedbackKey(row.fbSeq), row.title, original),
+  });
 }
 
 /** A holder of feedback.approve acts on one item under the feedback lock, then reads it back. */

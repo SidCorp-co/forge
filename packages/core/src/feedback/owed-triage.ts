@@ -10,7 +10,7 @@
  */
 
 import { FEEDBACK_SEVERITIES, type FeedbackSeverity, feedbackKey } from '@forge/contracts/feedback';
-import { and, asc, eq, inArray, notExists } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lte, notExists, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
@@ -39,6 +39,8 @@ export async function owedTriages(projectId: string, exec: Tx = db): Promise<Owe
       and(
         eq(feedback.projectId, projectId),
         inArray(feedback.status, ['new', 'reopened']),
+        // a snoozed item is owed to nobody until its date; the read returns it, no timer does
+        or(isNull(feedback.snoozedUntil), lte(feedback.snoozedUntil, new Date())),
         notExists(
           exec
             .select({ id: agentQuestions.id })

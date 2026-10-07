@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
 import { feedbackApi } from "./api";
-import type { CreateFeedbackRequest, FeedbackAction, FeedbackResponse, PromoteAgentReportRequest } from "./types";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackResponse, PromoteAgentReportRequest } from "./types";
 
 export function useFeedbackList(projectId: string | undefined) {
   return useQuery({
@@ -78,6 +78,24 @@ export function useFeedbackAction(projectId: string, key: string) {
   const invalidate = useInvalidate(projectId);
   return useMutation({
     mutationFn: (a: FeedbackAction) => feedbackApi.act(projectId, key, a),
+    onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
+    onSettled: invalidate,
+  });
+}
+
+/** What a message to reporters would say and to whom, read before it is sent. */
+export function usePreviewMessage(projectId: string, key: string) {
+  return useMutation({
+    mutationFn: (body: { audience: Exclude<FeedbackMessageAudience, "internal">; text: string }) => feedbackApi.previewMessage(projectId, key, body),
+  });
+}
+
+/** A message to reporters, or an internal note; the answer is the item with its thread. */
+export function useSendMessage(projectId: string, key: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: (body: { audience: FeedbackMessageAudience; text: string }) => feedbackApi.sendMessage(projectId, key, body),
     onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
     onSettled: invalidate,
   });

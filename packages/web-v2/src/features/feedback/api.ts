@@ -4,6 +4,8 @@ import type {
   FeedbackAction,
   FeedbackEndpointsResponse,
   FeedbackListResponse,
+  FeedbackMessageAudience,
+  FeedbackMessagePreviewResponse,
   FeedbackPromoteEffect,
   FeedbackResponse,
   PromoteAgentReportRequest,
@@ -17,6 +19,8 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
   if (a.kind === "redact") return [`${one(projectId, key)}/reporter-data`, { method: "DELETE" }];
   if (a.kind === "triage") return [`${one(projectId, key)}/triage`, post(a.triage)];
   if (a.kind === "retarget") return [`${one(projectId, key)}/retarget`, post(a.request)];
+  if (a.kind === "accept") return [`${one(projectId, key)}/accept`, post(a.requirement ? { requirement: a.requirement } : {})];
+  if (a.kind === "snooze") return [`${one(projectId, key)}/snooze`, post({ until: a.until, reason: a.reason })];
   if (a.kind === "verify-ask") return [`${one(projectId, key)}/verify-ask`, post({})];
   if (a.kind === "verify") return [`${one(projectId, key)}/verify`, post(a.note ? { note: a.note } : {})];
   return [`${one(projectId, key)}/${a.kind}`, post({ reason: a.reason })];
@@ -48,6 +52,11 @@ export const feedbackApi = {
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
   promote: (projectId: string, body: PromoteAgentReportRequest) =>
     apiClient<FeedbackResponse & { effect: FeedbackPromoteEffect }>(`${base(projectId)}/promote`, post(body)),
+  /** The exact notice a send would deliver, and to whom; nothing is written. */
+  previewMessage: (projectId: string, key: string, body: { audience: Exclude<FeedbackMessageAudience, "internal">; text: string }) =>
+    apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),
+  sendMessage: (projectId: string, key: string, body: { audience: FeedbackMessageAudience; text: string }) =>
+    apiClient<FeedbackResponse>(`${one(projectId, key)}/messages`, post(body)),
   act: (projectId: string, key: string, a: FeedbackAction) => {
     const [path, init] = actionRequest(projectId, key, a);
     return apiClient<FeedbackResponse>(path, init);

@@ -38,13 +38,9 @@ import {
   type TargetRequirement,
 } from './read.js';
 import { isRefusal, issueRefIn, requirementRefIn } from './refs.js';
-import {
-  duplicateRefusal,
-  type RouteFacts,
-  routeRuleRefusal,
-  upgradeTargetRefusal,
-} from './rules.js';
+import { type RouteFacts, routeRuleRefusal, upgradeTargetRefusal } from './rules.js';
 import type { FeedbackChannel } from './service.js';
+import { duplicateRefusal } from './verb-rules.js';
 
 export type CarriedRoute = Exclude<FeedbackTriageRoute, 'decline'>;
 
@@ -182,6 +178,7 @@ async function namedCarrierIn(tx: Tx, input: RouteInput): Promise<{ refusal: Ref
       {
         id: root.id,
         key: feedbackKey(root.fbSeq),
+        status: root.status,
         duplicateOfKey: rootOf ? feedbackKey(rootOf.fbSeq) : null,
       },
       await duplicateKeysOf(tx, row.id),

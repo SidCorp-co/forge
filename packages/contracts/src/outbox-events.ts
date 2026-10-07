@@ -44,6 +44,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.filed",
 	"feedback.verifyAsked",
 	"feedback.verifySettled",
+	"feedback.reporterTold",
 	"release.shipped",
 	"credential.tokenChanged",
 	"runner.changed",
@@ -443,6 +444,17 @@ export interface OutboxEventPayloads {
 		key: string;
 		title: string;
 		reporter: string;
+	};
+	/** Reporters are told something about their item: its decline and the reason, the original it merged into, or a message a triager sent. */
+	"feedback.reporterTold": {
+		projectId: string;
+		feedbackId: string;
+		/** What the notice is about; the only kinds that reach a reporter. */
+		kind: "declined" | "duplicate" | "message" | "verified";
+		/** Reporters with a bell to tell, one notice for all. */
+		recipients: string[];
+		title: string;
+		body: string;
 	};
 	/** A resolved item was verified or reopened, which settles any ask to verify it. */
 	"feedback.verifySettled": {

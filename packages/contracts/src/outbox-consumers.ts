@@ -61,6 +61,7 @@ export const OUTBOX_CONSUMERS = {
 	"feedback.filed": ["master-wake"],
 	"feedback.verifyAsked": ["notify-feedback"],
 	"feedback.verifySettled": ["notify-feedback"],
+	"feedback.reporterTold": ["notify-feedback"],
 	"release.shipped": ["notify-feedback"],
 	"credential.tokenChanged": ["ws-broadcast"],
 	"runner.changed": ["ws-broadcast"],

@@ -15,6 +15,7 @@ export const NOTIFICATION_TYPES = [
 	"requirement_delivered",
 	"feedback_verify_asked",
 	"feedback_shipped",
+	"feedback_message",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -36,6 +37,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	requirement_delivered: "Delivered",
 	feedback_verify_asked: "Verify the fix",
 	feedback_shipped: "Shipped",
+	feedback_message: "Feedback update",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -177,6 +179,12 @@ const NOTIFICATION_CONTRACT: Record<
 	},
 	feedback_shipped: {
 		severity: "success",
+		channels: ["bell", "toast"],
+		kind: "signal",
+		tier: "log",
+	},
+	feedback_message: {
+		severity: "info",
 		channels: ["bell", "toast"],
 		kind: "signal",
 		tier: "log",
