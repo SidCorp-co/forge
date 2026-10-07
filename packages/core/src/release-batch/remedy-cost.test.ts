@@ -63,6 +63,7 @@ const BLOCKER_CODES = [
   'RELEASE_ROSTER_OVERSIZE',
   'RELEASE_RECORD_MISSING',
   'RELEASE_WORK_UNMERGED',
+  'RELEASE_ISSUES_UNCLOSABLE',
   'RELEASE_RUNNER_AMBIGUOUS',
   'RELEASE_PROBES_UNREADABLE',
   'RELEASE_POOL_EMPTY',
@@ -142,6 +143,22 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
     {
       code: 'RELEASE_CRITERIA_UNEARNED' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held: HELD }),
+    },
+    {
+      code: 'RELEASE_ISSUES_UNCLOSABLE' as ReasonCode,
+      message: releaseBlockerSentence('RELEASE_ISSUES_UNCLOSABLE', {
+        issueIds: ['u-4'],
+        displayIds: ['ISS-4'],
+        refused: [
+          {
+            issueId: 'u-4',
+            displayId: 'ISS-4',
+            shortfalls: [
+              { code: 'OPEN_QUESTIONS', reason: 'holds 1 open question', clears: 'Answer it.' },
+            ],
+          },
+        ],
+      }),
     },
     {
       code: 'RELEASE_RUNNER_AMBIGUOUS' as ReasonCode,

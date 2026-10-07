@@ -29,7 +29,17 @@ export function AwaitingReleaseBanner({
 		: "Merged";
 
 	if (entry.claimedByRunId) {
-		return <Banner tone="info">{`${merged} — a release is shipping it now`}</Banner>;
+		return <Banner tone="info">{`${merged} — it is in a release, whose run says whether a box has started it`}</Banner>;
+	}
+
+	// A release would hand this issue straight back, so it offers none and says what clears it (ISS-1337).
+	if (entry.closeRefusals.length > 0) {
+		return (
+			<Banner tone="attention">
+				<span className="font-medium">A release could not close this issue yet:</span>{" "}
+				{entry.closeRefusals.map((r) => `${r.reason}. ${r.clears}`).join(" ")}
+			</Banner>
+		);
 	}
 
 	return (

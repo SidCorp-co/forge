@@ -20,7 +20,11 @@ vi.mock("../hooks", () => ({
 
 const NOW = new Date("2026-08-26T12:00:00.000Z");
 
-function state(over: Partial<ReleaseRoster>, claimed: string | null = null) {
+function state(
+  over: Partial<ReleaseRoster>,
+  claimed: string | null = null,
+  closeRefusals: ReleaseRoster["issues"][number]["closeRefusals"] = [],
+) {
   roster.mockReturnValue({
     data: {
       gateStatus: "tested",
@@ -36,6 +40,7 @@ function state(over: Partial<ReleaseRoster>, claimed: string | null = null) {
           mergedAt: "2026-08-26T09:00:00.000Z",
           waitingDays: 0,
           claimedByRunId: claimed,
+          closeRefusals,
         },
       ],
       ...over,
@@ -78,7 +83,8 @@ describe("AwaitingReleaseBanner", () => {
   it("says a batch already owns the issue instead of offering to release it again", () => {
     state({}, "run-9");
     renderBanner();
-    expect(screen.getByText(/a release is shipping it now/)).toBeInTheDocument();
+    expect(screen.getByText(/it is in a release, whose run says whether a box has started it/)).toBeInTheDocument();
+    expect(screen.queryByText(/shipping/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
   });
 
@@ -86,5 +92,28 @@ describe("AwaitingReleaseBanner", () => {
     state({});
     renderBanner(false);
     expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+  });
+});
+
+// ISS-1337: a release would hand this issue straight back, so the banner offers none.
+describe("AwaitingReleaseBanner — an issue a release could not close", () => {
+  const REFUSAL = {
+    code: "OPEN_QUESTIONS",
+    reason: "holds 1 open question",
+    clears: "Answer it, or void it with the reason it died with the work.",
+  };
+
+  it("offers no Release now and says what the close is refused for and what clears it", () => {
+    state({}, null, [REFUSAL]);
+    renderBanner();
+    expect(screen.queryByRole("button", { name: /release now/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/A release could not close this issue yet/)).toBeInTheDocument();
+    expect(screen.getByText(/holds 1 open question\. Answer it, or void it/)).toBeInTheDocument();
+  });
+
+  it("still offers Release now on an issue whose close stands", () => {
+    state({}, null, []);
+    renderBanner();
+    expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
   });
 });

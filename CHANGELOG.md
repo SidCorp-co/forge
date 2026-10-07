@@ -3144,6 +3144,10 @@
 ### Fixed
 
 - **`top`'s keys behave.** A page `n` or `p` shows is not turned straight away, `--help` lists every key, and on unix Ctrl-\\ and Ctrl-Z work as in any terminal program; on Windows the view says they do nothing.
+- **A release says, before you press it, which issues it could not close.** Each shows why and
+  what clears it, cannot be selected, and is left off automatic and scheduled releases instead of
+  being shipped and handed back (ISS-1337).
+
 - **Refusals on the landing route name a route that works.** A git project's close names a
   commit or declaring the issue outside git, never a landing; re-sending an issue's own landing
   declaration no longer counts as an edit (ISS-1384).

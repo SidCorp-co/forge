@@ -248,6 +248,14 @@ export class ReleaseVersionExhaustedError extends Error {
   }
 }
 
+/** One or more issues a release names would be refused their close at its finish (ISS-1337). */
+export class ReleaseIssuesUnclosableError extends Error {
+  constructor(public readonly issueIds: string[]) {
+    super(`RELEASE_ISSUES_UNCLOSABLE: ${issueIds.length} issue(s) would be refused their close`);
+    this.name = 'ReleaseIssuesUnclosableError';
+  }
+}
+
 /**
  * One or more issues named by a release record have no `merged_at`, so Forge
  * never watched their work land.

@@ -12,6 +12,7 @@ import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
 import { releaseBlockerSentence } from '../release-batch/blocker-sentences.js';
+import { type CloseShortfalls, rosterCloseShortfalls } from '../release-batch/close-shortfall.js';
 import {
   RELEASE_GATE_STATUS,
   ReleaseTargetUndeclaredError,
@@ -30,6 +31,8 @@ import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
+  closeRefusedHold,
+  closeUnreadableHold,
   criteriaHold,
   criteriaUnreadableHold,
   cutFailedHold,
@@ -315,6 +318,22 @@ async function readCriteria(
   }
 }
 
+/** What the finish's close would refuse each row for, or a hold naming why that could not be read. */
+async function readCloseShortfalls(
+  projectId: string,
+  issueIds: string[],
+): Promise<{ ok: true; value: CloseShortfalls } | { ok: false; hold: ReleaseHold }> {
+  try {
+    return { ok: true, value: await rosterCloseShortfalls(projectId, issueIds) };
+  } catch (err) {
+    logger.error({ err, projectId }, 'release-sweep: the close check could not be read');
+    return {
+      ok: false,
+      hold: closeUnreadableHold(err instanceof Error ? err.message : String(err)),
+    };
+  }
+}
+
 async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
@@ -344,18 +363,36 @@ async function sweepProject(
   reportUncorroborated(projectId, reports.value);
   const held = reports.value.filter((r) => r.unearned.length > 0);
   const heldById = new Map(held.map((r) => [r.issueId, r]));
-  const eligible = waiting.filter((id) => !heldById.has(id));
+  const judged = waiting.filter((id) => !heldById.has(id));
   result.issuesExcluded += held.length;
   if (held.length > 0) {
     reportHeldBack(projectId, held);
     await holdOnCriteria({ ...base, issueIds: held.map((r) => r.issueId) }, waiting, heldById);
   }
 
+  // A row the finish could not close would be released and handed straight back, so it is left
+  // off and told why, and the rest still ship (ISS-1337).
+  const closable = await readCloseShortfalls(projectId, judged);
+  if (!closable.ok) {
+    await holdAlike({ ...base, issueIds: judged }, waiting, closable.hold);
+    return;
+  }
+  const refusedById = closable.value;
+  if (refusedById.size > 0) {
+    result.issuesExcluded += refusedById.size;
+    await hold({
+      ...base,
+      issueIds: [...refusedById.keys()],
+      holdFor: (id) => closeRefusedHold(refusedById.get(id) ?? []),
+    });
+  }
+  const eligible = judged.filter((id) => !refusedById.has(id));
+
   if (eligible.length === 0) {
     logger.info(
-      { projectId, excluded: held.length },
-      'release-sweep: nothing eligible this tick — every waiting issue still owes a judging run ' +
-        'on a criterion named above',
+      { projectId, excluded: held.length + refusedById.size },
+      'release-sweep: nothing eligible this tick — every waiting issue is held on the reason ' +
+        'written on it',
     );
     return;
   }

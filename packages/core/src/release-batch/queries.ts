@@ -18,6 +18,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
+import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
 import { currentReleaseVersion } from './version-store.js';
@@ -31,6 +32,12 @@ export interface ReleaseRosterEntry {
   /** Whole days since the merge, so "oldest 6 days" is a read, not a sum. */
   waitingDays: number | null;
   claimedByRunId: string | null;
+  /**
+   * What this release's finish would refuse the row's close for, as it stands now (ISS-1337). Empty
+   * where the close stands. A row carrying one is refused by the create door, so a screen offers it
+   * for no press.
+   */
+  closeRefusals: Array<Pick<CloseShortfall, 'code' | 'reason' | 'clears'>>;
 }
 
 export interface ReleaseRoster {
@@ -111,6 +118,10 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
 
   const now = Date.now();
   const prefix = await activeIssuePrefix(projectId);
+  const shortfalls = await rosterCloseShortfalls(
+    projectId,
+    rows.filter((r) => r.releaseBatchRunId === null).map((r) => r.id),
+  );
   return {
     gateStatus,
     channels: channels.map((c) => c.provider),
@@ -127,6 +138,11 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
         ? Math.floor((now - r.mergedAt.getTime()) / (24 * 60 * 60 * 1000))
         : null,
       claimedByRunId: r.releaseBatchRunId,
+      closeRefusals: (shortfalls.get(r.id) ?? []).map(({ code, reason, clears }) => ({
+        code,
+        reason,
+        clears,
+      })),
     })),
   };
 }

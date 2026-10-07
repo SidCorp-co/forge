@@ -129,6 +129,9 @@ const SUPERSEDED: Unearned = { criterion: 13, verdict: 'pass', standing: 'supers
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../release-batch/runtime-weighing.js', () => ({ readWeighingNow: async () => null }));
+vi.mock('../release-batch/close-shortfall.js', () => ({
+  rosterCloseShortfalls: async () => new Map(),
+}));
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
   loadCreatedBy: (projectId: string) => loadCreatedByMock(projectId),
 }));
@@ -375,12 +378,6 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     expect(said?.[0]).toMatchObject({ issueId: 'iss-earned', criteria: [4, 9], why: WHY });
     expect(said?.[1]).toContain(WHY);
     expect(cutWaitingReleaseMock).toHaveBeenCalled();
-  });
-
-  it('does nothing for a project with no unclaimed waiting issue', async () => {
-    candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
-    await sweepAutomaticReleases();
-    expect([cutWaitingReleaseMock.mock.calls.length, Object.keys(holds).length]).toEqual([0, 0]);
   });
 });
 

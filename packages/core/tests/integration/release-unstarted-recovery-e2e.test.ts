@@ -23,7 +23,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -108,13 +108,15 @@ describe('a release batch whose job no box ever took', () => {
     // One roster issue carries the claim and one does not, so "neither writes a
     // stamp nor clears one" is proved in both directions rather than only where
     // there was already something to preserve.
-    const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
+    const b = await insertIssue();
+    const { runId, jobId } = await claim([a, b]);
+    // A release refuses to claim an unmarked issue (ISS-1337), so the mark goes after the claim.
+    await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
     const before = new Map([
       [a, (await stored(a)).mergedAt],
       [b, (await stored(b)).mergedAt],
     ]);
     expect(before.get(b)).toBeNull();
-    const { runId, jobId } = await claim([a, b]);
     expect((await stored(a)).status).toBe('releasing');
     await ageJob(jobId, overdue());
 

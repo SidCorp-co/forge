@@ -12,6 +12,7 @@ import {
   ClaimConflictError,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleaseIssuesUnclosableError,
   ReleaseMultiChannelUnsupportedError,
   ReleasePoolEmptyError,
   ReleaseProbesUnreadableError,
@@ -109,6 +110,8 @@ function errorFor(
       return new ReleaseRecordMissingError(ids);
     case 'RELEASE_WORK_UNMERGED':
       return new ReleaseWorkUnmergedError(ids);
+    case 'RELEASE_ISSUES_UNCLOSABLE':
+      return new ReleaseIssuesUnclosableError(ids);
     case 'RELEASE_RUNNER_AMBIGUOUS':
       return new ReleaseRunnerAmbiguousError(
         report.projectId,
