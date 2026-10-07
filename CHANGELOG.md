@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.127] - 2026-10-07
+
+Stable issue ordering and one progress vocabulary across every screen
+
+### Changed
+
+- **Progress reads the same everywhere.** Requirements and Releases print shipped · landed, awaiting release · to do from one count; you are "You"; a draft behind a running release is queued; unproven criteria name their judge.
+
+### Fixed
+
+- **Issues filed in one batch no longer go missing from paged reads.** Every list that pages ends on a unique key, so `forge issue ISS-110` finds issues that share a creation time.
+
 ## [0.4.0-dev.126] - 2026-10-07
 
 Agents, sessions, runs, schedules, skills and conversations screens read in Vietnamese

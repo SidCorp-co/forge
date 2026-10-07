@@ -1,1 +1,0 @@
-**Progress reads the same everywhere.** Requirements and Releases print shipped · landed, awaiting release · to do from one count; you are "You"; a draft behind a running release is queued; unproven criteria name their judge.
