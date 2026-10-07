@@ -83,7 +83,7 @@ a test file that was clean and untouched.
 
 `.forge/conformance.json` declares each axis's level — `0` no checker · `1` measures, does not
 block · `2` baseline the old, block the new · `3` zero violations. Today: form 3 · knowledge 3 ·
-relations 2 · behaviour 2 · language 3 · record 3. `conformance-status.mjs` prints
+relations 2 · behaviour 3 · language 3 · record 3. `conformance-status.mjs` prints
 them beside what it measured, so this line is a convenience and that command is the answer.
 
 Level 2 is the claim *"old debt frozen, new debt blocked"*, so each such axis must also name where
@@ -967,28 +967,23 @@ Flags a test FILE that is mostly
 declaration-shape assertions (`.columnType` / `.notNull` / `.hasDefault` / `.primary` /
 `.isUnique` / `.dataType`) — assertions that restate what the declaration already says and
 so can only fail on an intended change. FK `.onDelete` is deliberately not flagged.
-Baseline-frozen in `.forge/test-signal-baseline.json`, same contract as the other frozen
-baselines.
+Zero tolerance since the baseline was deleted empty (`{ files: {} }`: nothing was frozen, so the axis
+claimed level 2 over no old debt); an exemption would be a priced entry in `.forge/conformance.json`.
 
-The freeze comparison, the registry read, the baseline I/O and the staged-file collection are
-`lib/debt-ratchet.mjs`; what lives in this script is the
+The registry read and the staged-file collection are
+`lib/checker-config.mjs`; what lives in this script is the
 analyzer — which files to read and what to count in them. Thresholds and regexes are
 `checkers.test-signal` in `.forge/conformance.json`, and deleting that block degrades to the
 built-in defaults rather than to an empty scope.
 
-## lib/debt-ratchet.mjs — the per-file ratchet
+## lib/checker-config.mjs — the manifest reader
 
-`check-test-signal` freezes `{path: {metric: n}}` and fails when a metric rises. It and the retired
-size budget each carried their own copy of that until ISS-848. The copies did not agree, which is the
-point: `check-test-signal` fell back to
-built-in defaults on an absent registry and read a failed `git diff --cached` as an empty stage —
-a hook reporting clean because git broke.
-
-What it holds is `freezeFaults` (a metric absent from the baseline reads as 0, so a new offender
-fails), `readManifest` / `scopeConfig` / `tunedConfig`, `loadBaseline` / `writeBaseline`
-(`null` for unreadable, `{}` for absent — a caller must be able to refuse rather than report
-clean), `parseMode`, `stagedFiles` and `sortDeep`. What stays in the checker is the analyzer:
-regex scoring for test-signal.
+The checkers' shared read of `.forge/conformance.json`. It was `debt-ratchet.mjs` while it also held
+the per-file freeze (ISS-848); the last frozen baseline of that shape was deleted empty, and the
+freeze with it. What it holds is `readManifest` / `checkerConfig` / `scopeConfig` / `tunedConfig`,
+`parseMode` and `stagedFiles` (an unreadable manifest or a failed `git diff --cached` is an error the
+caller exits 2 on, never an empty answer a hook would report clean). What stays in each checker is
+its analyzer.
 
 `scopeConfig` refuses an absent manifest and `tunedConfig` degrades to defaults, which is not an
 inconsistency: a scope list has no meaningful default, so inventing one measures directories the

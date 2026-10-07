@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkerConfig } from './lib/debt-ratchet.mjs';
+import { checkerConfig } from './lib/checker-config.mjs';
 import { dieAs, ROOT, stripComments, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('check-status-tuples');

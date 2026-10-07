@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
-import { checkerConfig } from './lib/debt-ratchet.mjs';
+import { checkerConfig } from './lib/checker-config.mjs';
 import { dieAs, globToRegExp, ROOT } from './lib/gate.mjs';
 
 const die = dieAs('check-doc-citations');
