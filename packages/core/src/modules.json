@@ -1165,6 +1165,13 @@
     "integrations": {
       "serves": ["github-merge-sequence#p-integrations"]
     },
+    "issue-picker": {
+      "serves": [
+        "feedback-triage#file",
+        "feedback-triage#decide",
+        "agent-run-standing#waiting_person"
+      ]
+    },
     "issues": {
       "serves": ["REQ-11", "REQ-2"]
     },
