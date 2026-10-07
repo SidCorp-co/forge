@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.89] - 2026-10-07
+
+A release hold for a commit-less mark names what settles it, not a box
+
+### Fixed
+
+- **A hold no longer offers a connected box as the way out for a row whose mark names no commit.** It is `SHIPPED_EARLIER_NO_COMMIT` and names what can settle it: a source host binding, or a mark naming the landing commit.
+
 ## [0.4.0-dev.88] - 2026-10-07
 
 Forecasts reach Feedback, Requirements and Releases; shipped-earlier closes without a source host
