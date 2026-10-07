@@ -93,8 +93,9 @@ function readChain(err: unknown): ChainReading {
     if (seen.has(cur)) break;
     seen.add(cur);
     const link = cur as Record<string, unknown>;
-    if (sealedErrors.has(link) && typeof link.message === 'string' && link.message !== REDACTED) {
-      reading.sealed.push(link.message);
+    const own = link.message;
+    if (sealedErrors.has(link) && typeof own === 'string' && own !== '' && own !== REDACTED) {
+      reading.sealed.push(own);
     }
     reading.values.push(...(sealedValues.get(link) ?? []));
     const bound = boundValuesOf(link);
@@ -154,12 +155,22 @@ function mergeSpans(spans: Span[]): Span[] {
 /** `text` with each sealed message swapped for a token, and the swap back. */
 function keepSealed(text: string, sealed: string[]): [string, (t: string) => string] {
   if (sealed.length === 0) return [text, (t) => t];
-  const keep = markerAbsentFrom(text, KEPT_USE);
   const kept = [...new Set(sealed)].sort((a, b) => b.length - a.length);
-  let out = text;
+  const taken: [from: number, to: number, index: number][] = [];
   kept.forEach((m, i) => {
-    out = out.split(m).join(`${keep}${i}${keep}`);
+    for (const [from, to] of occurrences(text, m, 0, 0)) {
+      if (!taken.some(([f, t]) => from < t && f < to)) taken.push([from, to, i]);
+    }
   });
+  taken.sort((a, b) => a[0] - b[0]);
+  const keep = markerAbsentFrom(text, KEPT_USE);
+  let out = '';
+  let at = 0;
+  for (const [from, to, i] of taken) {
+    out += `${text.slice(at, from)}${keep}${i}${keep}`;
+    at = to;
+  }
+  out += text.slice(at);
   const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
   return [out, (t) => t.replace(token, (_, i) => kept[Number(i)] ?? '')];
 }

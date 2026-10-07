@@ -1,4 +1,4 @@
-import { REDACTED, redactQueryParams, sealQueryError } from '@forge/observability';
+import { REDACTED, redactedMessage, redactQueryParams, sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { PgPreparedQuery } from 'drizzle-orm/pg-core';
 import { PostgresJsSession, PostgresJsTransaction } from 'drizzle-orm/postgres-js';
@@ -126,6 +126,17 @@ describe('sealQueryError', () => {
     expect((pg as unknown as Record<string, unknown>).code).toBe('22P02');
     expect(JSON.stringify(pg)).not.toContain('zq9');
     expect(redactQueryParams({ copied: `saw ${value}` }, pg).copied).toBe(`saw ${REDACTED}`);
+  });
+
+  it('keeps a sealed message whole beside a shorter one that a token of its own could hold', () => {
+    const err = sealQueryError(
+      new DrizzleQueryError('select $1', ['x'], pgRefusal('0', { code: 'P0001' }, [])),
+    );
+    expect(redactedMessage(err)).toBe(err.message);
+    const stack = redactQueryParams(stdSerializers.err(err), err).stack;
+    expect(stack).toContain('select $1');
+    expect(stack).toContain('    at ');
+    expect(stack).not.toMatch(/[\ue000-\ue001]/);
   });
 
   it('reads no redaction it made as a value, however often a transaction seals it', () => {
