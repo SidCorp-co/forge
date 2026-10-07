@@ -1,6 +1,8 @@
 import {
   asSerialized,
   errorsWithin,
+  type FieldReads,
+  readOnce,
   mayCarryBoundValues,
   redactQueryParams,
 } from '@forge/observability';
@@ -44,33 +46,42 @@ const censoredPaths = redactPaths.map((path) => path.split('.'));
 /**
  * `render` run with every redact path in `root` censored in place, and each put back after, as
  * pino censors them while it writes a line: a value's own `toJSON` rendered here, before pino
- * runs, reads them censored as it would under pino.
+ * runs, reads them censored as it would under pino. A field is censored by its descriptor, so no
+ * setter of the caller's runs and its own value is untouched; a getter on the way is read once,
+ * into `reads`, which the rendering answers from. A field that cannot be redefined is left as it
+ * is.
  */
-function withPathsCensored<T>(root: unknown, render: () => T): T {
+function withPathsCensored<T>(root: unknown, render: (reads: FieldReads) => T): T {
+  const reads: FieldReads = new WeakMap();
   const undo: (() => void)[] = [];
+  const censor = (record: object, key: string): void => {
+    const own = Object.getOwnPropertyDescriptor(record, key);
+    if (own && !own.configurable) return;
+    Object.defineProperty(record, key, {
+      value: '[Redacted]',
+      enumerable: own?.enumerable ?? true,
+      writable: true,
+      configurable: true,
+    });
+    undo.push(() => {
+      if (own) Object.defineProperty(record, key, own);
+      else delete (record as Record<string, unknown>)[key];
+    });
+  };
   const visit = (at: unknown, path: string[]): void => {
     const [head, ...tail] = path;
     if (typeof at !== 'object' || at === null || head === undefined) return;
-    const record = at as Record<string, unknown>;
-    for (const key of head === '*' ? Object.keys(record) : [head]) {
+    for (const key of head === '*' ? Object.keys(at) : [head]) {
       try {
-        if (!(key in record)) continue;
-        if (tail.length > 0) {
-          visit(record[key], tail);
-          continue;
-        }
-        const own = Object.getOwnPropertyDescriptor(record, key);
-        record[key] = '[Redacted]';
-        undo.push(() => {
-          if (own) Object.defineProperty(record, key, own);
-          else delete record[key];
-        });
+        if (!(key in at)) continue;
+        if (tail.length > 0) visit(readOnce(at, key, reads).value, tail);
+        else censor(at, key);
       } catch {}
     }
   };
   try {
     for (const path of censoredPaths) visit(root, path);
-    return render();
+    return render(reads);
   } finally {
     for (const put of undo.reverse()) {
       try {
@@ -189,7 +200,7 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
     const how = { fields: i === 0, errorsAsThemselves: true };
     const written =
       i === 0 && !(v instanceof Error)
-        ? withPathsCensored(v, () => asSerialized(v, how))
+        ? withPathsCensored(v, (reads) => asSerialized(v, { ...how, reads }))
         : asSerialized(v, how);
     found.push(...written.errors);
     return written.value;
@@ -237,7 +248,7 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
 /** A child's bindings, or `setBindings`', rendered once, with every error met on the way. */
 function writtenBindings(given: Bindings): { bindings: Bindings; errors: Error[] } {
   const how = { fields: true, errorsAsThemselves: true };
-  const written = withPathsCensored(given, () => asSerialized(given, how));
+  const written = withPathsCensored(given, (reads) => asSerialized(given, { ...how, reads }));
   const bindings = written.value as Bindings;
   return {
     bindings,

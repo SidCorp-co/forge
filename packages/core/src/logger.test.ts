@@ -592,6 +592,63 @@ describe('the core logger, given a value whose text only a serializer renders', 
     expect(headers.authorization).toBe('ordinary-secret');
   });
 
+  it('reads a getter on a censored path once, sharing that read with what it writes', () => {
+    const { lines, log } = capture();
+    let reads = 0;
+    const fields = () => {
+      let mine = 0;
+      return Object.defineProperty({}, 'reading', {
+        get: () => {
+          reads++;
+          if (++mine > 1) throw new Error('read twice');
+          return { note: 'ordinary' };
+        },
+        enumerable: true,
+      });
+    };
+    log.warn(fields(), 'read');
+    expect(reads).toBe(1);
+    log.child(fields()).warn('bound');
+    expect(reads).toBe(2);
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings(fields());
+    rebound.warn('rebound');
+    expect(reads).toBe(3);
+    expect(lines.map((line) => JSON.parse(line).reading)).toEqual([
+      { note: 'ordinary' },
+      { note: 'ordinary' },
+      { note: 'ordinary' },
+    ]);
+  });
+
+  it("censors a field held by an accessor without calling the caller's setter", () => {
+    const { lines, log } = capture();
+    let stored = 'ordinary-password';
+    let sets = 0;
+    const held = () => ({
+      get password() {
+        return stored;
+      },
+      set password(value: string) {
+        sets++;
+        stored = value;
+      },
+      toJSON() {
+        return { said: this.password };
+      },
+    });
+    log.warn(held(), 'top');
+    log.warn({ reading: held() }, 'nested');
+    log.child({ reading: held() }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ reading: held() });
+    rebound.warn('rebound');
+    expect([sets, stored]).toEqual([0, 'ordinary-password']);
+    expect(lines).toHaveLength(4);
+    for (const line of lines) expect(line).not.toContain('ordinary-password');
+    expect(JSON.parse(lines[1] ?? '').reading).toEqual({ said: '[Redacted]' });
+  });
+
   it('asks a field toJSON with the empty key, as pino stringifies each field alone', () => {
     const { lines, log } = capture();
     const reading = () => ({ toJSON: (key: string) => (key === '' ? 'kept' : undefined) });

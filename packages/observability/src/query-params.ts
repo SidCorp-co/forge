@@ -286,6 +286,32 @@ export interface Rendering {
   fields?: boolean;
   /** An `Error` is handed back as it is, for a serializer of errors to read. */
   errorsAsThemselves?: boolean;
+  /** Getters the caller already read (`readOnce`), answered from here rather than asked again. */
+  reads?: FieldReads;
+}
+
+/** What each getter read by `readOnce` answered, by the object holding it and its key. */
+export type FieldReads = WeakMap<object, Map<string, unknown>>;
+
+/**
+ * `holder[key]` as JSON reads it, a getter called at most once across every call sharing `reads`:
+ * a data field as it stands, a getter's answer remembered, one that throws `[Redacted]`.
+ */
+export function readOnce(
+  holder: object,
+  key: string,
+  reads?: FieldReads,
+): { value: unknown; called: boolean } {
+  const known = reads?.get(holder);
+  if (known?.has(key)) return { value: known.get(key), called: true };
+  const own = attempt(() => Object.getOwnPropertyDescriptor(holder, key));
+  if (own !== UNREADABLE && (own === undefined || 'value' in own)) {
+    return { value: own?.value, called: false };
+  }
+  const read = attempt(() => (holder as Record<string, unknown>)[key]);
+  const value = read === UNREADABLE ? REDACTED : read;
+  if (reads) reads.set(holder, (known ?? new Map()).set(key, value));
+  return { value, called: true };
 }
 
 interface Walk extends Rendering {
@@ -377,16 +403,6 @@ function renderResult(rendered: unknown, depth: number, walk: Walk): unknown {
   return out;
 }
 
-/** One field of `value` as JSON reads it: a data value as it stands, a getter called once. */
-function readField(value: object, key: string): { value: unknown; called: boolean } {
-  const own = attempt(() => Object.getOwnPropertyDescriptor(value, key));
-  if (own !== UNREADABLE && (own === undefined || 'value' in own)) {
-    return { value: own?.value, called: false };
-  }
-  const read = attempt(() => (value as Record<string, unknown>)[key]);
-  return { value: read === UNREADABLE ? REDACTED : read, called: true };
-}
-
 /**
  * `value`'s own enumerable fields rendered, as JSON reads them: a copy where any changed. Where
  * `value` is a set of fields its owner serializes one by one (pino's merging object), each is
@@ -409,7 +425,7 @@ function renderFields(
   const next: Record<string, unknown> = {};
   const items: unknown[] = [];
   for (const key of keys) {
-    const field = readField(value, key);
+    const field = readOnce(value, key, walk.reads);
     if (field.called) changed = true;
     const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;
