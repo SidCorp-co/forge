@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.137] - 2026-10-07
+
+A question waiting on a merge is answered when the merge mark is stamped
+
+### Added
+
+- **A park can wait on a merge mark, and the mark answers it.** `needs_info` takes `awaitsMerge: { issueId }`; whatever stamps that mark answers the question and resumes the issue. A mark already standing is refused `QUESTION_MERGE_ALREADY_MARKED`.
+
 ## [0.4.0-dev.136] - 2026-10-07
 
 Storefront releases verify pages, routes, themes and settings, not only workflows
