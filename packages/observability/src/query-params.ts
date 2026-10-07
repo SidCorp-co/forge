@@ -6,16 +6,20 @@ const MAX_CHAIN = 8;
 /** Searched for bare from this length; a shorter value would rewrite ordinary words. */
 const BARE_VALUE_MIN = 6;
 const PRIVATE_USE = String.fromCharCode(0xe000);
+const KEPT_USE = String.fromCharCode(0xe001);
 
 /**
  * A marker the text does not contain, holding a redaction's place while the pattern runs so the
  * pattern does not take it again. Built per text: one fixed character could be a bound value's own.
  */
-function markerAbsentFrom(text: string): string {
-  let marker = PRIVATE_USE;
-  while (text.includes(marker)) marker += PRIVATE_USE;
+function markerAbsentFrom(text: string, unit = PRIVATE_USE): string {
+  let marker = unit;
+  while (text.includes(marker)) marker += unit;
   return marker;
 }
+
+/** Errors `sealQueryError` has sealed: their own text holds no bound value and is kept as it is. */
+const sealedErrors = new WeakSet<object>();
 
 /** Drizzle's `Failed query: <sql>\nparams: <values>`, the values running to the end of the text. */
 function failedQueryParams(held: string): RegExp {
@@ -35,19 +39,42 @@ const QUOTED_VALUE_ANCHORS = [
   'date/time field value out of range: (?=")',
   'value (?="[\\s\\S]*" is out of range for type )',
   'Token (?="[\\s\\S]*" is invalid)',
+  'in tsquery: (?=")',
+  'JSON data, line \\d+: ',
+  'parameter \\$\\d+ = ',
 ];
 const QUOTED_VALUE = new RegExp(`(${QUOTED_VALUE_ANCHORS.join('|')})[\\s\\S]*$`);
 /** Every anchor holds one of these, so text holding none skips the pattern. */
-const QUOTED_VALUE_HINTS = ['Key (', 'Failing row contains (', ': "', '" is '];
+const QUOTED_VALUE_HINTS = [
+  'Key (',
+  'Failing row contains (',
+  ': "',
+  '" is ',
+  'JSON data, line ',
+  'parameter $',
+];
+/** The hints as a JSON line spells them, where a quote is escaped. */
+const LINE_HINTS = [
+  'params',
+  'Failed query: ',
+  ...QUOTED_VALUE_HINTS.flatMap((hint) => [hint, JSON.stringify(hint).slice(1, -1)]),
+];
 
 function quotesAValue(text: string): boolean {
   return QUOTED_VALUE_HINTS.some((hint) => text.includes(hint)) && QUOTED_VALUE.test(text);
+}
+
+/** Whether a finished JSON log line may hold a value worth parsing it for. */
+export function mayCarryBoundValues(line: string): boolean {
+  return LINE_HINTS.some((hint) => line.includes(hint));
 }
 
 interface ChainReading {
   renderings: string[];
   values: string[];
   driverMessages: string[];
+  /** A sealed link's message, which no pattern may read as an unredacted failed query. */
+  sealed: string[];
 }
 
 function boundValuesOf(link: Record<string, unknown>): unknown[] | null {
@@ -57,13 +84,16 @@ function boundValuesOf(link: Record<string, unknown>): unknown[] | null {
 }
 
 function readChain(err: unknown): ChainReading {
-  const reading: ChainReading = { renderings: [], values: [], driverMessages: [] };
+  const reading: ChainReading = { renderings: [], values: [], driverMessages: [], sealed: [] };
   const seen = new Set<unknown>();
   const drivers: string[] = [];
   for (let cur = err, i = 0; cur && typeof cur === 'object' && i < MAX_CHAIN; i++) {
     if (seen.has(cur)) break;
     seen.add(cur);
     const link = cur as Record<string, unknown>;
+    if (sealedErrors.has(link) && typeof link.message === 'string' && link.message !== REDACTED) {
+      reading.sealed.push(link.message);
+    }
     const bound = boundValuesOf(link);
     if (bound) {
       reading.renderings.push(`${bound}`);
@@ -114,8 +144,22 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
   return merged;
 }
 
-function redactText(text: string, chain: ChainReading | null): string {
-  if (!chain && !text.includes('Failed query: ') && !quotesAValue(text)) return text;
+/** `text` with each sealed message swapped for a token, and the swap back. */
+function keepSealed(text: string, sealed: string[]): [string, (t: string) => string] {
+  if (sealed.length === 0) return [text, (t) => t];
+  const keep = markerAbsentFrom(text, KEPT_USE);
+  const kept = [...new Set(sealed)].sort((a, b) => b.length - a.length);
+  let out = text;
+  kept.forEach((m, i) => {
+    out = out.split(m).join(`${keep}${i}${keep}`);
+  });
+  const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
+  return [out, (t) => t.replace(token, (_, i) => kept[Number(i)] ?? '')];
+}
+
+function redactText(original: string, chain: ChainReading | null): string {
+  if (!chain && !original.includes('Failed query: ') && !quotesAValue(original)) return original;
+  const [text, restore] = keepSealed(original, chain?.sealed ?? []);
   const held = markerAbsentFrom(text);
   let out = text;
   if (chain) {
@@ -130,7 +174,7 @@ function redactText(text: string, chain: ChainReading | null): string {
   }
   out = out.replace(failedQueryParams(held), `$1${held}`);
   if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
-  return out.split(held).join(REDACTED);
+  return restore(out.split(held).join(REDACTED));
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -143,7 +187,47 @@ function mergeChains(a: ChainReading | null, b: ChainReading): ChainReading {
     renderings: [...a.renderings, ...b.renderings],
     values: [...a.values, ...b.values],
     driverMessages: [...a.driverMessages, ...b.driverMessages],
+    sealed: [...a.sealed, ...b.sealed],
   };
+}
+
+/**
+ * Of a driver error, the fields that name where it failed. Every other field (`detail`, `where`,
+ * `hint`, `internal_query`, and whatever a driver adds) may be filled from the input, so it goes
+ * whole; the message, stack, statement and cause are walked as any value is.
+ */
+const DRIVER_FIELDS_KEPT = new Set([
+  'code',
+  'severity',
+  'severity_local',
+  'name',
+  'position',
+  'internal_position',
+  'internalPosition',
+  'schema_name',
+  'schema',
+  'table_name',
+  'table',
+  'column_name',
+  'column',
+  'data_type_name',
+  'dataType',
+  'constraint_name',
+  'constraint',
+  'sqlstate',
+  'file',
+  'line',
+  'routine',
+]);
+const DRIVER_WALKED = new Set(['message', 'stack', 'query', 'type', 'cause', 'aggregateErrors']);
+
+function isDriverError(value: Record<string, unknown>): boolean {
+  const { code, severity } = value;
+  return typeof code === 'string' && SQLSTATE.test(code) && typeof severity === 'string';
+}
+
+function driverFieldWithheld(key: string, v: unknown): boolean {
+  return !DRIVER_FIELDS_KEPT.has(key) && !DRIVER_WALKED.has(key) && v !== null && v !== undefined;
 }
 
 function redactRecord(
@@ -152,17 +236,14 @@ function redactRecord(
   depth: number,
 ): Record<string, unknown> | null {
   const failedQuery = typeof value.query === 'string';
-  const driverError =
-    typeof value.code === 'string' &&
-    SQLSTATE.test(value.code) &&
-    typeof value.severity === 'string';
+  const driverError = isDriverError(value);
   let changed = false;
   const next: Record<string, unknown> = {};
   for (const [key, v] of Object.entries(value)) {
     let out: unknown;
     if (failedQuery && (key === 'params' || key === 'parameters') && Array.isArray(v))
       out = REDACTED;
-    else if (driverError && key === 'detail' && typeof v === 'string') out = REDACTED;
+    else if (driverError && driverFieldWithheld(key, v)) out = REDACTED;
     else out = redactValue(v, chain, depth + 1);
     if (out !== v) changed = true;
     next[key] = out;
@@ -223,4 +304,67 @@ export function redactQueryParams<T>(value: T, err?: unknown): T {
  */
 export function redactedMessage(err: unknown): string {
   return redactQueryParams(err instanceof Error ? err.message : String(err), err);
+}
+
+function rewrite(target: object, key: string, value: unknown, enumerable?: boolean): void {
+  const own = Object.getOwnPropertyDescriptor(target, key);
+  Object.defineProperty(target, key, {
+    value,
+    writable: true,
+    configurable: true,
+    enumerable: enumerable ?? own?.enumerable ?? false,
+  });
+}
+
+/** An error's message and its stack, which opens with the message, so it is swapped there too. */
+function rewriteMessage(link: Error, message: string): void {
+  const before = link.message;
+  const stack = link.stack;
+  rewrite(link, 'message', message);
+  if (typeof stack === 'string') rewrite(link, 'stack', stack.split(before).join(message));
+}
+
+/**
+ * A driver's message with every value it quotes removed: an anchor's, a bound value quoted whole,
+ * a long one anywhere. One that still holds a bound value at any length goes whole.
+ */
+function sealedDriverMessage(text: string, values: string[]): string {
+  let out = quotesAValue(text) ? text.replace(QUOTED_VALUE, `$1${REDACTED}`) : text;
+  for (const v of values) {
+    out = out.split(`"${v}"`).join(REDACTED).split(`'${v}'`).join(REDACTED);
+    if (v.length >= BARE_VALUE_MIN) out = out.split(v).join(REDACTED);
+  }
+  const stripped = out.split(REDACTED).join('');
+  return values.some((v) => stripped.includes(v)) ? REDACTED : out;
+}
+
+/**
+ * `err` with no bound value of a failed statement left in its message, its stack or any
+ * enumerable field of it or of a driver error on its chain, mutated in place and handed back so a
+ * caller that copies it later copies nothing. The values stay readable on the non-enumerable
+ * `params` and `parameters`, where `redactQueryParams` finds what a caller repeats beside it.
+ * Anything that is not an error is handed back untouched.
+ */
+export function sealQueryError<T>(err: T): T {
+  if (!(err instanceof Error)) return err;
+  const chain = readChain(err);
+  const seen = new Set<unknown>();
+  for (let cur: unknown = err, i = 0; cur instanceof Error && i < MAX_CHAIN; i++) {
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    const link = cur as Error & Record<string, unknown>;
+    if (typeof link.query === 'string' && Array.isArray(link.params)) {
+      rewriteMessage(link, redactText(link.message, chain));
+      rewrite(link, 'params', link.params, false);
+      sealedErrors.add(link);
+    } else if (isDriverError(link)) {
+      for (const [key, v] of Object.entries(link)) {
+        if (driverFieldWithheld(key, v)) rewrite(link, key, REDACTED);
+      }
+      rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
+      sealedErrors.add(link);
+    }
+    cur = link.cause;
+  }
+  return err;
 }

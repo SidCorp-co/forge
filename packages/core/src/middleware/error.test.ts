@@ -133,7 +133,7 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
     });
   });
   app.get('/driver-where-plain-cause', () => {
-    const where = (jsonRefusal().cause as { where: string }).where;
+    const where = (jsonRefusal().cause as unknown as { where: string }).where;
     throw new HTTPException(400, { message: `bad: ${where}`, cause: new Error('parse failed') });
   });
   app.get('/driver-message-plain-cause', () => {

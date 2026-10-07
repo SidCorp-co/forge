@@ -1,7 +1,7 @@
 import { DrizzleQueryError } from 'drizzle-orm/errors';
-import { type Logger, pino } from 'pino';
+import type { Logger } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { loggerOptions } from './logger.js';
+import { createLogger } from './logger.js';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c3ludGhldGlj$bG9nZ2VyLWhhc2g';
 const EMAIL = 'dup@example.test';
@@ -25,7 +25,7 @@ function failedInsert(): DrizzleQueryError {
 
 function capture(): { lines: string[]; log: Logger } {
   const lines: string[] = [];
-  const log = pino({ ...loggerOptions, level: 'debug' }, { write: (s: string) => lines.push(s) });
+  const log = createLogger({ level: 'debug' }, { write: (s: string) => lines.push(s) });
   return { lines, log };
 }
 
@@ -250,7 +250,11 @@ const DOCUMENT = '{"note":"zq9-secret-document"}';
 function jsonRefusal(): DrizzleQueryError {
   const pg = refusal(
     'invalid input syntax for type json',
-    { code: '22P02', detail: 'Token "zq9" is invalid.', where: `JSON data, line 1: ${DOCUMENT.slice(0, 20)}` },
+    {
+      code: '22P02',
+      detail: 'Token "zq9" is invalid.',
+      where: `JSON data, line 1: ${DOCUMENT.slice(0, 20)}`,
+    },
     [DOCUMENT],
   );
   return new DrizzleQueryError('insert into "notes" ("body") values ($1)', [DOCUMENT], pg);
@@ -260,9 +264,18 @@ describe('the core logger, given a driver error that quotes its input in its own
   it.each([
     ['under err', (log: Logger, err: DrizzleQueryError) => log.error({ err }, 'failed')],
     ['as the first argument', (log: Logger, err: DrizzleQueryError) => log.error(err)],
-    ['its driver error under err', (log: Logger, err: DrizzleQueryError) => log.error({ err: err.cause })],
-    ['under another key', (log: Logger, err: DrizzleQueryError) => log.error({ error: err.cause }, 'x')],
-    ['bound on a child', (log: Logger, err: DrizzleQueryError) => log.child({ error: err }).error('x')],
+    [
+      'its driver error under err',
+      (log: Logger, err: DrizzleQueryError) => log.error({ err: err.cause }),
+    ],
+    [
+      'under another key',
+      (log: Logger, err: DrizzleQueryError) => log.error({ error: err.cause }, 'x'),
+    ],
+    [
+      'bound on a child',
+      (log: Logger, err: DrizzleQueryError) => log.child({ error: err }).error('x'),
+    ],
   ])('writes none of the value it refused when the error is logged %s', (_, write) => {
     const { lines, log } = capture();
     write(log, jsonRefusal());
@@ -292,7 +305,7 @@ describe("the core logger's child bindings", () => {
     }
   });
 
-  it("withhold a driver message bound beside the error that names its value, which no catalog names", () => {
+  it('withhold a driver message bound beside the error that names its value, which no catalog names', () => {
     const pg = refusal('relation "zq" does not exist', { code: '42P01' }, ['zq']);
     const { lines, log } = capture();
     log.child({ error: pg, reason: pg.message }).warn('bound');

@@ -204,7 +204,9 @@ describe("redactQueryParams over a driver error's own fields", () => {
     [
       'as the cause of a failed query',
       (pg: Error) =>
-        redactQueryParams({ details: { error: new DrizzleQueryError('select $1', [DOCUMENT], pg) } }),
+        redactQueryParams({
+          details: { error: new DrizzleQueryError('select $1', [DOCUMENT], pg) },
+        }),
     ],
   ])('keeps only the fields that name where it failed, %s', (_, redact) => {
     const text = JSON.stringify(redact(jsonRefusal()));
@@ -221,9 +223,21 @@ describe("redactQueryParams over a driver error's own fields", () => {
 
   it.each([
     ['a JSON refusal', `JSON data, line 1: ${DOCUMENT}`, `JSON data, line 1: ${REDACTED}`],
-    ['a bound parameter', "unnamed portal parameter $1 = 'zq9'", `unnamed portal parameter $1 = ${REDACTED}`],
-    ['a tsquery with no operand', 'no operand in tsquery: "zq9"', `no operand in tsquery: ${REDACTED}`],
-    ['a tsquery it cannot parse', 'syntax error in tsquery: "zq9 &"', `syntax error in tsquery: ${REDACTED}`],
+    [
+      'a bound parameter',
+      "unnamed portal parameter $1 = 'zq9'",
+      `unnamed portal parameter $1 = ${REDACTED}`,
+    ],
+    [
+      'a tsquery with no operand',
+      'no operand in tsquery: "zq9"',
+      `no operand in tsquery: ${REDACTED}`,
+    ],
+    [
+      'a tsquery it cannot parse',
+      'syntax error in tsquery: "zq9 &"',
+      `syntax error in tsquery: ${REDACTED}`,
+    ],
   ])("redacts the value %s's text quotes, with no error to read", (_, text, kept) => {
     expect(redactQueryParams({ reason: `refused: ${text}` }).reason).toBe(`refused: ${kept}`);
   });

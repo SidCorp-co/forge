@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { env } from '../config/env.js';
 import { logger } from '../logger.js';
+import { installQueryErrorSeal } from './query-error-seal.js';
 import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as adminThresholdsSchema from './schema-admin-thresholds.js';
@@ -54,6 +55,7 @@ let queryCount = 0;
 let queryClient: ReturnType<typeof postgres> | undefined;
 
 function buildDb() {
+  installQueryErrorSeal();
   queryClient = postgres(env.DATABASE_URL, {
     max: 10,
     connection: {

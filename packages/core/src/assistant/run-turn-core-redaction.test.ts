@@ -78,7 +78,10 @@ describe("the assistant's error text", () => {
     };
     const tools = {
       tools: [
-        { type: 'function' as const, function: { name: 'lookup', description: '', parameters: {} } },
+        {
+          type: 'function' as const,
+          function: { name: 'lookup', description: '', parameters: {} },
+        },
       ],
       execute: async () => expect.unreachable('a call whose gate failed ran'),
     };
