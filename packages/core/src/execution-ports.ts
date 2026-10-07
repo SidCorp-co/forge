@@ -206,6 +206,7 @@ export function provideExecutionPorts(): void {
     triagesOwed: (projectId) => owedTriages(projectId),
     designsOwed: owedDesignRevisions,
     releaseNotesOwed: owedReleaseNotes,
+    contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
   });
 
   registerConversationAgentBridge();

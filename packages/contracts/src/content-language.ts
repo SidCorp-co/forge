@@ -224,3 +224,28 @@ export function contentLanguageRecord(
 		revision,
 	};
 }
+
+/** Words a release note needs before its script is judged: a one-word or two-word line says too little to tell. */
+export const SCRIPT_CHECK_MIN_WORDS = 6;
+
+// the letters Vietnamese spells with and English never does: đ, the vowel marks, and the five tone marks
+const VIETNAMESE_LETTER =
+	/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
+
+/**
+ * The one test of whether prose plainly disagrees with a project's content language, or null.
+ * It runs for `vi` only: a note of at least `SCRIPT_CHECK_MIN_WORDS` words with no Vietnamese
+ * letter in it is not Vietnamese. No other language is guessed, and a note that passes is not
+ * thereby judged to be in the language. `what` names the prose, so the sentence says which text it read.
+ */
+export function contentLanguageScriptWarning(
+	tag: string,
+	text: string,
+	what: string,
+): string | null {
+	if (tag !== "vi") return null;
+	const words = text.split(/\s+/).filter((w) => /\p{L}/u.test(w));
+	if (words.length < SCRIPT_CHECK_MIN_WORDS) return null;
+	if (VIETNAMESE_LETTER.test(text)) return null;
+	return `${what} is ${words.length} words with no Vietnamese letter (no đ, no vowel or tone mark) in it, but this project's content language is ${contentLanguageName(tag)} (\`${tag}\`); it was stored as sent. Rewrite it in ${contentLanguageName(tag)}.`;
+}

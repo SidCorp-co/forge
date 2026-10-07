@@ -124,7 +124,9 @@ naming its own rule before the green counts.
    cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
 3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, userFacing } }\`: what a user will now
-   see, in their words — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
+   see, in their words and in the project's content language (its \`## Content language\` block
+   names it; the answer carries a \`warnings\` entry when a Vietnamese project's note has no
+   Vietnamese letter in it) — no paths, hashes or refactors; \`section: 'Skip'\` where they will see
    nothing. A release refuses to claim an issue without one.
 4. \`POST /api/issues/:id/transition\` \`{ toStatus: 'awaiting_release' }\`. It is refused
    \`MERGE_NOT_RECORDED\`, \`NO_WORK_EVIDENCE\` or \`VERDICT_IDENTITY_REQUIRED\` while what it names is

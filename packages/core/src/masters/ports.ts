@@ -19,6 +19,8 @@ interface MastersPorts {
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
   /** Issues waiting at the release gate with no release note, which the draft release refuses. */
   releaseNotesOwed(projectId: string): Promise<{ issueId: string; key: string }[]>;
+  /** The language the project writes the prose it stores in Forge in (a BCP-47 tag), `en` where its document declares none. */
+  contentLanguageOf(projectId: string): Promise<string>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');

@@ -111,6 +111,11 @@ reading the tracker both find it. What you decided is countable; what you asked 
 
 **The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
 
+**A release note is written in the project's content language.** `releaseNotes.userFacing` is read by the
+project's users, so it is in the language the project writes in (`forge-runner api projects/<projectId>/content-language`
+names it), whatever language the issue body or its commits are in. The nudge that says a note is owed names it too, and a
+write that plainly disagrees comes back with a `warnings` entry: rewrite the note, do not leave it.
+
 **A mark names what landed.** On an outside-git project, the mark (`forge-runner api issues/<id>/merge`)
 carries `landing` and `artifacts` `[{surface, ref, change}]` — Autoflow workflows are `logic`, routes `api`,
 tables `data`, storefront pages and themes `ui`, a `forge-workflow:` revision `design` — so its release says what

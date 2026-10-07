@@ -1,3 +1,4 @@
+import { contentLanguageOf } from '@forge/contracts/content-language';
 import { ALWAYS_INJECT_MAX_CHARS } from '@forge/contracts/knowledge';
 import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -67,6 +68,8 @@ interface ProjectFactInputs {
   /** The project's `kind='module'` labels (ISS-595). Empty for a project with
    *  no taxonomy, which is what keeps `module-attribution` out of its prompt. */
   modules: ProjectModuleFact[];
+  /** The project's content language tag, `en` where its document declares none. */
+  contentLanguage: string;
 }
 
 function makeProjectResolver(src: {
@@ -186,6 +189,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     factsUnavailable,
     missingObligations,
     modules,
+    contentLanguage: contentLanguageOf(document).contentLanguage,
   };
 }
 
@@ -206,6 +210,7 @@ export function renderStageFactsText(
     stage,
     ladder: inputs.ladder,
     modules: inputs.modules,
+    contentLanguage: inputs.contentLanguage,
   };
 
   const forgeText = FORGE_FACTS.filter(
