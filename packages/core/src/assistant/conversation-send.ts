@@ -177,6 +177,7 @@ export async function routeWebWindow(
   if (!subject) return null;
 
   const progress = new ConversationProgress(window.conversationId, randomUUID());
+  progress.begin();
 
   const stop = registerTurnStop(window.conversationId);
   let outcome: Awaited<ReturnType<typeof routeWindow>>;
@@ -216,6 +217,7 @@ export async function routeWebWindow(
       conversationId: window.conversationId,
       windowId: window.id,
       decision: outcome.decision,
+      ...(continuingOf(outcome.detail) ? { continuing: true } : {}),
     },
   }).catch((err: unknown) =>
     logger.warn(
@@ -228,6 +230,15 @@ export async function routeWebWindow(
     'web conversations: window routed',
   );
   return outcome.decision;
+}
+
+/** Whether the window closed on a partial reply whose turn is still working in the thread. */
+function continuingOf(detail: unknown): boolean {
+  return (
+    typeof detail === 'object' &&
+    detail !== null &&
+    (detail as { continuing?: unknown }).continuing === true
+  );
 }
 
 /**

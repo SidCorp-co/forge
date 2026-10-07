@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { AgentMessage, ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../lib/logger.js';
@@ -46,6 +47,30 @@ export class ConversationProgress {
     readonly entryId: string,
   ) {
     this.#acc = new TranscriptAccumulator(entryId);
+  }
+
+  /**
+   * Tell the room's readers a turn is under way before it has produced anything, so a reader sees
+   * it working within moments of sending rather than after the model's first round.
+   */
+  begin(): void {
+    if (this.#acc.entry()) return;
+    this.#send({
+      entry: {
+        id: this.entryId,
+        type: 'assistant',
+        timestamp: Date.now(),
+        content: '',
+        blocks: [],
+      },
+    });
+  }
+
+  /** A watcher for the rest of this turn, under its own entry, already shown as working. */
+  next(): ConversationProgress {
+    const rest = new ConversationProgress(this.conversationId, randomUUID());
+    rest.begin();
+    return rest;
   }
 
   /** Fold one turn event in, and publish if the window or a tool boundary says to. */
