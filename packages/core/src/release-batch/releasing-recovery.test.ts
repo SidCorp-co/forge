@@ -1,3 +1,4 @@
+import { sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
 import { TransitionError } from '../issues/apply-transition.js';
@@ -203,6 +204,31 @@ describe('what a failed write says, never its statement or a bound value (ISS-13
     ]) {
       expect(text).not.toMatch(/tenant.?7/);
       expect(text).toContain('a database function or trigger raised an error');
+    }
+  });
+
+  it('names the SQLSTATE’s class where the query-error seal withheld the whole reason', () => {
+    const failed = sealQueryError(
+      new DrizzleQueryError(
+        'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+        [7, 'bad'],
+        Object.assign(new Error('tenant-7: invalid input syntax for type uuid: "bad"'), {
+          code: 'P0001',
+          severity: 'ERROR',
+        }),
+      ),
+    );
+    const refusal = closeRefusalOf(failed);
+    const said = refusedCloseComment({
+      refusal,
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    for (const text of [said, closeFailureText(refusal)]) {
+      expect(text).toContain('a database function or trigger raised an error');
+      expect(text).not.toMatch(/tenant.?7|"bad"/);
     }
   });
 

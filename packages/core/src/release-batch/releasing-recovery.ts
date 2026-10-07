@@ -1,4 +1,4 @@
-import { redactedMessage, redactQueryParams } from '@forge/observability';
+import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
@@ -100,7 +100,9 @@ function failureMessage(err: unknown): string {
     // the text, however short, sends it to the SQLSTATE's description instead.
     const unquoted = redactQueryParams(driver.message);
     const leaks = pgBoundValues(err).some((v) => unquoted.includes(v));
-    const reason = leaks ? pgErrorClassDescription(driver.code) : unquoted;
+    // A message the query-error seal withheld whole says nothing; its class still does.
+    const withheld = unquoted.trim() === REDACTED;
+    const reason = leaks || withheld ? pgErrorClassDescription(driver.code) : unquoted;
     return `the database refused the write (${driver.code}): ${reason}`;
   }
   const message = err instanceof Error ? err.message : String(err);
