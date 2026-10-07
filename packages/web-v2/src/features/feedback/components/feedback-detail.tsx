@@ -13,7 +13,6 @@ import {
   DetailTabs,
   enumLabel,
   FactsRail,
-  LEGEND,
   StatusBadge,
   useUrlTab,
 } from "@/design";
@@ -26,6 +25,7 @@ import { useEtaClock, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
+import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
 
@@ -48,7 +48,7 @@ function Heading({ children }: { children: ReactNode }) {
   return <h2 className="mb-3 text-15 font-semibold leading-snug text-fg">{children}</h2>;
 }
 
-function Body({ f }: { f: FeedbackView }) {
+function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   return (
     <section>
@@ -60,26 +60,7 @@ function Body({ f }: { f: FeedbackView }) {
           {f.body?.trim() ? f.body : <span className="text-subtle">{t("feedback.body.none")}</span>}
         </p>
       )}
-      {f.attachments.length > 0 ? (
-        <ul className="mt-3 grid gap-1 text-13">
-          {f.attachments.map((a) => (
-            <li key={a.id} className="flex items-center gap-2">
-              <span className="font-mono">{a.name}</span>
-              {a.from ? <span className="text-12 text-muted">{t("feedback.body.from", { from: a.from })}</span> : null}
-              <span className="text-subtle">{t("feedback.body.size", { n: Math.ceil(a.size / 1024) })}</span>
-              {a.flagged ? (
-                <span
-                  className="text-11 font-semibold"
-                  style={{ color: LEGEND.you.fg }}
-                  title={t("feedback.body.flaggedHint")}
-                >
-                  {t("feedback.body.flagged")}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <FeedbackAttachments projectId={projectId} f={f} />
     </section>
   );
 }
@@ -161,7 +142,7 @@ export function FeedbackPage({
                       <FeedbackActions projectId={projectId} f={f} />
                     </section>
                   ) : null}
-                  <Body f={f} />
+                  <Body projectId={projectId} f={f} />
                   <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}

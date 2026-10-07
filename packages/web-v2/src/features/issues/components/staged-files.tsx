@@ -60,15 +60,23 @@ function uniqueStagedName(name: string, used: Set<string>): string {
   }
 }
 
-/** An issue holds one file per name, so `uniqueNames` renames a clash; a comment does not. */
+/**
+ * An issue holds one file per name, so `uniqueNames` renames a clash; a comment does not. A feedback
+ * item keeps smaller files and a fixed number in all, so it names its own `maxBytes` and the room
+ * it has left as `maxFiles` — the limits core's feedback attachment route enforces.
+ */
 export function useStagedFiles({
   unit,
   video,
   uniqueNames,
+  maxBytes = MAX_BYTES,
+  maxFiles,
 }: {
-  unit: "comment" | "issue";
+  unit: "comment" | "issue" | "feedback";
   video: boolean;
   uniqueNames: boolean;
+  maxBytes?: number;
+  maxFiles?: number;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -83,8 +91,8 @@ export function useStagedFiles({
     for (const f of Array.from(picked)) {
       if (f.size <= 0) {
         errs.push(`Empty file skipped: ${f.name || "(unnamed)"}`);
-      } else if (f.size > MAX_BYTES) {
-        errs.push(`Too large (max 10 MB): ${f.name || "(unnamed)"}`);
+      } else if (f.size > maxBytes) {
+        errs.push(`Too large (max ${+(maxBytes / 1024 / 1024).toFixed(1)} MB): ${f.name || "(unnamed)"}`);
       } else if (!(allowed.has(f.type) || f.type === "" || f.type.startsWith("text/"))) {
         errs.push(`File type not allowed: ${f.name || f.type}`);
       } else {
@@ -96,6 +104,11 @@ export function useStagedFiles({
       errs.push(
         `An issue takes at most ${ISSUE_CREATE_ATTACHMENTS_MAX} files; ${chosen} chosen. Remove some, or attach the rest to a comment once it is filed.`,
       );
+      setWarnings(errs);
+      return;
+    }
+    if (maxFiles !== undefined && chosen > maxFiles) {
+      errs.push(`This item takes ${Math.max(maxFiles, 0)} more file${maxFiles === 1 ? "" : "s"}; ${chosen} chosen. Remove some.`);
       setWarnings(errs);
       return;
     }
