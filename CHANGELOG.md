@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.77] - 2026-10-07
+
+Migration 0344 no longer converts history at boot; a background backfill does
+
+### Fixed
+
+- **Migration 0344 no longer rewrites activity history at deploy.** A boot backfill converts one issue chain per transaction after the server is healthy and resumes after a kill; until it finishes, the activity feed converts unconverted rows on read.
+
 ## [0.4.0-dev.76] - 2026-10-07
 
 Design approvals leave shipped marks intact; refused run stops give working hints
