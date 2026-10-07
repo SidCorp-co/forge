@@ -151,7 +151,7 @@ async function traceIssue(
 }
 
 describe('a draft release reads its gate as words', () => {
-  it('is stuck on a missing release note, with the sentence on the face and the code behind it', async () => {
+  it('waits on the master for a missing release note, with the sentence on the face and the code behind it', async () => {
     await fx.insertIssue('awaiting_release', null);
     const list = await call('owner', 'GET', '/releases');
     expect(list.body).toMatchObject({
@@ -159,11 +159,11 @@ describe('a draft release reads its gate as words', () => {
         {
           key: '0.1.0',
           state: 'draft',
-          attentionGroup: 'stuck',
-          waitingOn: { kind: 'system', who: 'Release gate', act: 'release note missing' },
+          attentionGroup: 'waiting',
+          waitingOn: { kind: 'agent', who: 'Master', act: 'write the release note on ISS-1' },
         },
       ],
-      counts: { stuck: 1, needs_you: 0 },
+      counts: { stuck: 0, waiting: 1, needs_you: 0 },
     });
     const draft = await detail('owner', '0.1.0');
     expect(draft.can).toEqual({ cut: false, decide: false });

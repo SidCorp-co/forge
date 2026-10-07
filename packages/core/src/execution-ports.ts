@@ -80,6 +80,7 @@ import {
   abortBlockedIssues,
   createReleaseBatch,
   loadReleaseRoster,
+  owedReleaseNotes,
 } from './release-batch/index.js';
 import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
 import { provideRunnersPorts } from './runners/index.js';
@@ -204,6 +205,7 @@ export function provideExecutionPorts(): void {
     revisionsOwed: owedRequirementRevisions,
     triagesOwed: (projectId) => owedTriages(projectId),
     designsOwed: owedDesignRevisions,
+    releaseNotesOwed: owedReleaseNotes,
   });
 
   registerConversationAgentBridge();

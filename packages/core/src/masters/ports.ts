@@ -17,6 +17,8 @@ interface MastersPorts {
   triagesOwed(projectId: string): Promise<{ key: string }[]>;
   /** Returned workflow designs no live issue carries, owed a revision. */
   designsOwed(projectId: string): Promise<{ workflowId: string; flow: string; revision: number }[]>;
+  /** Issues waiting at the release gate with no release note, which the draft release refuses. */
+  releaseNotesOwed(projectId: string): Promise<{ issueId: string; key: string }[]>;
 }
 
 const slot = portSlot<MastersPorts>('masters', 'provideMastersPorts');

@@ -59,7 +59,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
                 {tab === "overview" ? <OverviewPane r={r} slug={slug} all={list.data?.releases ?? [r]} /> : null}
                 {tab === "criteria" ? <CriteriaPane r={r} /> : null}
                 {tab === "checks" ? <ChecksPane r={r} /> : null}
-                {tab === "notes" ? <NotesPane r={r} /> : null}
+                {tab === "notes" ? <NotesPane r={r} slug={slug} /> : null}
               </DetailPane>
             )}
           </DetailLayout>

@@ -12,6 +12,7 @@ const none = {
   comments: [],
   documents: [],
   builderRuns: [],
+  releaseNotes: [],
 };
 
 function issue(issueId: string, status = 'open', blocker: string | null = null) {
@@ -82,6 +83,23 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('A person is owed a reply on 1 issue (ISS-7 comment c1)');
   });
 
+  it('names an issue at the release gate with no note by key and id, and the write that clears it', () => {
+    const one = owedLine({ ...none, releaseNotes: [{ issueId: 'u6', key: 'ISS-6' }] });
+    expect(one).toContain('1 issue waits at the release gate with no release note (ISS-6 u6)');
+    expect(one).toContain('RELEASE_RECORD_MISSING');
+    expect(one).toContain('issues/<id> -X PATCH');
+    const two = owedLine({
+      ...none,
+      releaseNotes: [
+        { issueId: 'u6', key: 'ISS-6' },
+        { issueId: 'u11', key: 'ISS-11' },
+      ],
+    });
+    expect(two).toContain(
+      '2 issues wait at the release gate with no release note (ISS-6 u6, ISS-11 u11)',
+    );
+  });
+
   it('says nothing when nothing is owed', () => {
     expect(owedLine(none)).toBe('');
   });
@@ -99,6 +117,15 @@ describe('workDigest: the same work digests the same, and changed work does not'
     expect(workDigest([issue('a', 'in_progress')], none)).not.toBe(base);
     expect(workDigest([issue('a', 'open', 'open')], none)).not.toBe(base);
     expect(workDigest([issue('a')], { ...none, triages: [{ key: 'FB-1' }] })).not.toBe(base);
+  });
+
+  it('keys an owed release note on its issue, so the same gate digests the same on every sweep', () => {
+    const owed = { ...none, releaseNotes: [{ issueId: 'u6', key: 'ISS-6' }] };
+    expect(workDigest([], owed)).toBe(workDigest([], { ...owed }));
+    expect(workDigest([], owed)).not.toBe(workDigest([], none));
+    expect(workDigest([], owed)).not.toBe(
+      workDigest([], { ...none, releaseNotes: [{ issueId: 'u7', key: 'ISS-7' }] }),
+    );
   });
 });
 

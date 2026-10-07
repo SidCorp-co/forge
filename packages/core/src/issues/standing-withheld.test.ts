@@ -29,6 +29,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   owner: null,
   touchedAt: now,
   releaseApproval: false,
+  releaseNoted: true,
   viewer: null,
   withheld,
   now,

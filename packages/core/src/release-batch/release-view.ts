@@ -3,6 +3,7 @@ import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
   ReleaseCriteriaTotals,
+  ReleaseGateOwner,
   ReleasePerson,
   ReleaseProof,
   ReleaseRequirementView,
@@ -31,7 +32,8 @@ interface TurnFacts {
   } | null;
   approvers: readonly ReleasePerson[];
   viewer: ViewerFacts | null;
-  gates: readonly { title: string }[];
+  /** The blockers, in the order the door refuses in, each with whoever owes its act. */
+  gates: readonly { owner: ReleaseGateOwner }[];
   inFlight: ReleaseAttemptStage | null;
 }
 
@@ -44,23 +46,42 @@ const IN_FLIGHT_ACT: Record<ReleaseAttemptStage, string> = {
   verify: 'verifying',
 };
 
-const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-
-function draftTurn(f: TurnFacts): Turn {
-  if (f.gates.length > 0) {
-    const more = f.gates.length > 1 ? ` and ${f.gates.length - 1} more` : '';
+/**
+ * A draft a gate holds waits on whoever owes the first act someone can take: the master for an act
+ * on its issues, an admin for the project's own setup. Only where every reason is the gate's own —
+ * a release running, a check to retry — does it read as waiting on the system (F72).
+ */
+function gatedTurn(f: TurnFacts): Turn {
+  const owed = f.gates.find((g) => g.owner.kind !== 'system') ?? f.gates[0];
+  const owner = (owed as { owner: ReleaseGateOwner }).owner;
+  const more = f.gates.length > 1 ? ` and ${f.gates.length - 1} more` : '';
+  const rule = `${counted(f.gates.length, 'reason')} ${agrees(f.gates.length, 'stands', 'stand')} against cutting ${f.version}`;
+  const act = `${owner.act}${more}`;
+  if (owner.kind === 'agent') {
     return {
-      attentionGroup: 'stuck',
-      waitingOn: {
-        kind: 'system',
-        who: 'Release gate',
-        act: `${lower((f.gates[0] as { title: string }).title)}${more}`,
-        rule: `${counted(f.gates.length, 'reason')} ${agrees(f.gates.length, 'stands', 'stand')} against cutting ${f.version}`,
-        ref: null,
-        dueAt: null,
-      },
+      attentionGroup: 'waiting',
+      waitingOn: { kind: 'agent', who: owner.who, act, rule, ref: null, dueAt: null },
     };
   }
+  if (owner.kind === 'person') {
+    return f.viewer?.isAdmin
+      ? {
+          attentionGroup: 'needs_you',
+          waitingOn: { kind: 'you', who: 'You', act, rule, ref: null, dueAt: null },
+        }
+      : {
+          attentionGroup: 'waiting',
+          waitingOn: { kind: 'person', who: owner.who, act, rule, ref: null, dueAt: null },
+        };
+  }
+  return {
+    attentionGroup: 'stuck',
+    waitingOn: { kind: 'system', who: owner.who, act, rule, ref: null, dueAt: null },
+  };
+}
+
+function draftTurn(f: TurnFacts): Turn {
+  if (f.gates.length > 0) return gatedTurn(f);
   const rule =
     'merged issues wait at the release gate, no gate holds them, and an admin cuts the version';
   if (f.viewer?.isAdmin) {

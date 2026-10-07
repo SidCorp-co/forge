@@ -333,6 +333,32 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
 }
 
 /** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
+/**
+ * The issues waiting at the gate that the draft release refuses `RELEASE_RECORD_MISSING` for, the
+ * same test `issues/release-record-required.ts` applies. Writing each note is the project master's
+ * act, so its owed read names them (F72); the oldest merge first, as the draft orders them.
+ */
+export async function owedReleaseNotes(
+  projectId: string,
+): Promise<{ issueId: string; key: string }[]> {
+  const [rows, prefix] = await Promise.all([
+    db
+      .select({ id: issues.id, seq: issues.issSeq })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.projectId, projectId),
+          eq(issues.status, RELEASE_GATE_STATUS),
+          isNull(issues.releaseBatchRunId),
+          sql`(${issues.releaseNotes} IS NULL OR ${issues.releaseNotes} = 'null'::jsonb)`,
+        ),
+      )
+      .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id)),
+    activeIssuePrefix(projectId),
+  ]);
+  return rows.map((r) => ({ issueId: r.id, key: formatIssueRef(prefix, r.seq) }));
+}
+
 export async function waitingIssueIds(projectId: string): Promise<string[]> {
   const rows = await db
     .select({ id: issues.id })

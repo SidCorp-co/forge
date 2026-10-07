@@ -76,6 +76,7 @@ interface IssueRowRaw {
   status: IssueStatus;
   waiting_kind: string | null;
   merged_at: string | null;
+  release_noted: boolean;
   priority: string;
   category: string | null;
   complexity: string | null;
@@ -124,7 +125,9 @@ function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
 async function issueRows(projectId: string, where: SQL, limit: number): Promise<IssueRowRaw[]> {
   return rowsOf<IssueRowRaw>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at, i.priority, i.category, i.complexity,
+      SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at,
+             (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
+             i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
              CASE WHEN btrim(coalesce(i.plan, '')) <> '' THEN 'written' END AS plan,
              i.created_at, i.updated_at,
@@ -298,6 +301,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
       : null,
     touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
     releaseApproval: f.releaseApproval,
+    releaseNoted: r.release_noted,
     viewer: f.viewer,
     withheld: f.withheld.get(r.id) ?? null,
     now: f.now,

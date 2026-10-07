@@ -262,6 +262,20 @@ export interface ReleaseNoteSection {
 	entries: ReleaseNoteEntry[];
 }
 
+/** Who owes the act that clears a gate: the project's master where the remedy is an act on the
+ *  issues it names, a project admin where it is the project's own configuration or boxes, and the
+ *  release gate itself where nothing but time or a retry clears it. */
+export const RELEASE_GATE_OWNERS = ["agent", "person", "system"] as const;
+export type ReleaseGateOwnerKind = (typeof RELEASE_GATE_OWNERS)[number];
+
+export interface ReleaseGateOwner {
+	kind: ReleaseGateOwnerKind;
+	/** Sentence-case: "Master", "A project admin", "Release gate". */
+	who: string;
+	/** Lower-case after the name: "write the release note on ISS-6, ISS-11". */
+	act: string;
+}
+
 export interface ReleaseGateView {
 	code: string;
 	kind: "blocker" | "warning";
@@ -269,6 +283,7 @@ export interface ReleaseGateView {
 	sentence: string;
 	detail: string;
 	issues: string[];
+	owner: ReleaseGateOwner;
 }
 
 export interface ReleaseApprovalView {

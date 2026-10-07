@@ -31,6 +31,7 @@ const input = (
   owner: null,
   touchedAt: now,
   releaseApproval: false,
+  releaseNoted: true,
   viewer: { userId: 'u1', canWrite: true },
   withheld: null,
   now,
@@ -60,5 +61,18 @@ describe('a merged issue on a project that approves its releases', () => {
     expect(needsViewer(s)).toBe(false);
     expect(s.waitingOn.kind).toBe('release');
     expect(s.waitingOn.act).toContain('Approve release');
+  });
+});
+
+// F72: an issue at the gate with no release note waits on the master that writes it, never on a release it cannot join
+describe('a merged issue at the gate with no release note', () => {
+  it('waits on the master to write the note, before any approval or release', () => {
+    for (const releaseApproval of [true, false]) {
+      const s = deriveIssueStanding(
+        input('awaiting_release', { merged: true, releaseApproval, releaseNoted: false }),
+      );
+      expect(s.waitingOn).toMatchObject({ kind: 'master', act: 'write the release note' });
+      expect(s.waitingOn.rule).toContain('RELEASE_RECORD_MISSING');
+    }
   });
 });

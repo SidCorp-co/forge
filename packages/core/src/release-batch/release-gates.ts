@@ -1,4 +1,4 @@
-import type { ReleaseGateView } from '@forge/contracts/releases';
+import type { ReleaseGateOwner, ReleaseGateView } from '@forge/contracts/releases';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { agrees, counted } from '../lib/plural.js';
 import type { ReleaseBlocker, ReleaseReasonCode, ReleaseWarning } from './blocker-sentences.js';
@@ -8,6 +8,13 @@ type Details = Record<string, unknown> | undefined;
 interface Reading {
   title: string;
   plain: (details: Details) => string;
+}
+
+type Owing = 'master' | 'admin' | 'system';
+
+interface Owed {
+  by: Owing;
+  act: (details: Details) => string;
 }
 
 interface Held {
@@ -146,6 +153,49 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
 };
 
+const onThem = (verb: string) => (d: Details) => {
+  const s = subjectOf(d);
+  return s.n === 0 ? verb : `${verb} on ${s.text}`;
+};
+
+/**
+ * Who clears each reason, read off what its remedy asks for. An act on the issues a reason names —
+ * a release note, a merge mark, a judging run — is the project's master's, as every other act on an
+ * issue at the gate is (`issues/standing.ts:releaseTurn`); the project's configuration, its boxes and
+ * which issues a cut names are an admin's; a release already running and a check to retry are the
+ * gate's own (F72).
+ */
+const OWED: Record<ReleaseReasonCode, Owed> = {
+  NO_RELEASE_GATE: { by: 'admin', act: () => 'declare a production environment' },
+  RELEASE_TARGET_UNDECLARED: { by: 'admin', act: () => 'declare where releases land' },
+  CLAIM_CONFLICT: { by: 'admin', act: () => 'cut the issues that are waiting' },
+  RELEASE_ROSTER_EMPTY: { by: 'master', act: () => 'bring an issue to the release gate' },
+  RELEASE_ROSTER_OVERSIZE: { by: 'admin', act: () => 'cut the roster in parts' },
+  RELEASE_RECORD_MISSING: { by: 'master', act: onThem('write the release note') },
+  RELEASE_WORK_UNMERGED: { by: 'master', act: onThem('mark the merge') },
+  RELEASE_PROBES_UNREADABLE: { by: 'admin', act: () => 'declare a source probe on production' },
+  RELEASE_POOL_EMPTY: { by: 'admin', act: () => 'pair a runner' },
+  NO_RUNNER_ONLINE: { by: 'admin', act: () => 'bring a runner online' },
+  BATCH_IN_FLIGHT: { by: 'system', act: () => 'a release is running' },
+  RELEASE_CRITERIA_UNEARNED: { by: 'master', act: () => 'judge the criteria still owed' },
+  RELEASE_RUNTIME_UNROUTED: { by: 'admin', act: () => 'give production a way to be read' },
+  RELEASE_CHECK_UNEVALUATED: { by: 'system', act: () => 'a check could not run' },
+  RELEASE_RUNNER_PREFERENCE_UNMET: { by: 'admin', act: () => 'label a runner for releases' },
+  RELEASE_CRITERIA_HELD_BACK: { by: 'master', act: () => 'judge the criteria still owed' },
+  RELEASE_CRITERIA_UNCORROBORATED: { by: 'system', act: () => 'verdicts not re-read' },
+};
+
+const OWNER_OF: Record<Owing, Pick<ReleaseGateOwner, 'kind' | 'who'>> = {
+  master: { kind: 'agent', who: 'Master' },
+  admin: { kind: 'person', who: 'A project admin' },
+  system: { kind: 'system', who: 'Release gate' },
+};
+
+function ownerOf(code: ReleaseReasonCode, details: Details): ReleaseGateOwner {
+  const owed = OWED[code];
+  return { ...OWNER_OF[owed.by], act: owed.act(details) };
+}
+
 function gateView(
   entry: ReleaseBlocker | ReleaseWarning,
   kind: ReleaseGateView['kind'],
@@ -158,6 +208,7 @@ function gateView(
     sentence: reading.plain(entry.details),
     detail: entry.message,
     issues: issuesNamed(entry.details),
+    owner: ownerOf(entry.code, entry.details),
   };
 }
 
