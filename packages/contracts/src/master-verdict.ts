@@ -253,7 +253,7 @@ export const masterLimitRecordSchema = z.discriminatedUnion("kind", [
 export type MasterLimitRecord = z.infer<typeof masterLimitRecordSchema>;
 
 /** What core did with a record: `reported` and `cleared` changed the runner rows, the rest left them. */
-export const MASTER_LIMIT_OUTCOMES = [
+const MASTER_LIMIT_OUTCOMES = [
 	"reported",
 	"held",
 	"stale",

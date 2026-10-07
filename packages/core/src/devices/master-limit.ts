@@ -88,7 +88,7 @@ export async function clearMasterLimit(deviceId: string): Promise<{ runnerId: st
   return { runnerId: runner.id };
 }
 
-export type MasterLimitAction =
+type MasterLimitAction =
   | { act: 'report'; report: MasterLimitReport }
   | { act: 'clear' }
   | { act: 'none'; outcome: 'held' | 'stale' | 'nothing' | 'unreadable' };

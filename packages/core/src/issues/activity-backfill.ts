@@ -5,7 +5,7 @@ import { type Db, db } from '../db/client.js';
 /** The `backfill_markers` key set once no `issue.updated` row holds the pre-0344 snapshot shape. */
 export const ACTIVITY_FIELD_CHANGES_KEY = 'activity-field-changes';
 
-export interface ActivityBackfillReport {
+interface ActivityBackfillReport {
   /** Issues whose chain this run converted. */
   chains: number;
   /** `issue.updated` rows those chains held. */

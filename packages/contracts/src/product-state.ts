@@ -12,7 +12,7 @@ export const WHATS_NEW_SEEN_KEY = "whats_new_seen_at" as const;
 /** A tour's key is this prefix and the tour's id: `tour:release-what-changes`. */
 export const TOUR_KEY_PREFIX = "tour:" as const;
 
-export const TOUR_ID_MAX = 64;
+const TOUR_ID_MAX = 64;
 const TOUR_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type ProductStateKey = typeof WHATS_NEW_SEEN_KEY | `${typeof TOUR_KEY_PREFIX}${string}`;
@@ -43,8 +43,7 @@ export const whatsNewSeenValueSchema = z.strictObject({
 });
 export type WhatsNewSeenValue = z.infer<typeof whatsNewSeenValueSchema>;
 
-export const TOUR_OUTCOMES = ["completed", "dismissed"] as const;
-export type TourOutcome = (typeof TOUR_OUTCOMES)[number];
+const TOUR_OUTCOMES = ["completed", "dismissed"] as const;
 
 /** `tour:<id>`: how the person last left the tour, at which revision, and the step a dismissal left at. */
 export const tourStateValueSchema = z.strictObject({

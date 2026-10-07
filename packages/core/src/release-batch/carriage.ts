@@ -67,7 +67,7 @@ export async function carriageOf(
 }
 
 /** The files a landing changed and what became of each, or why they were not read. */
-export type ChangedFiles =
+type ChangedFiles =
   | {
       readonly kind: 'read';
       readonly paths: readonly string[];

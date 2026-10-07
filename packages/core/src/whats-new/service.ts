@@ -18,7 +18,7 @@ import type { Refusal } from '../lib/refusal.js';
 import { digestOf, releasedEntries } from './read.js';
 import { digestRefusals } from './rules.js';
 
-export type DigestOutcome =
+type DigestOutcome =
   | { ok: true; act: 'written' | 'replaced'; digest: WhatsNewDigestView }
   | { ok: false; refusals: Refusal[] };
 

@@ -23,7 +23,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { detailOf, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 
-export interface DraftCandidate {
+interface DraftCandidate {
   id: string;
   displayId: string;
   status: string;

@@ -4,7 +4,7 @@
 // route; never stored here. Ancestry between two commits a checkout holds never changes, so the box
 // fetches only where a commit asked about is missing, and says whether it did.
 
-import { randomUUID } from 'node:crypto';
+import { boxAsks } from './box-ask.js';
 import {
   type BoundCheckout,
   boundCheckouts,
@@ -27,7 +27,7 @@ export interface AncestryPair {
 }
 
 /** A pair's answer: yes or no, or why the checkout could not answer it. */
-export type PairAnswer = { ancestor: boolean } | { unreadable: string };
+type PairAnswer = { ancestor: boolean } | { unreadable: string };
 
 /** The evidence a box's read is: which box, which checkout, which origin, when, and whether it fetched. */
 export interface BoxAncestry {
@@ -94,10 +94,9 @@ interface Asked {
   repository: string | null;
   pairs: AncestryPair[];
   settle(read: AncestryRead): void;
-  timer: ReturnType<typeof setTimeout>;
 }
 
-const asked = new Map<string, Asked>();
+const asks = boxAsks<Asked>();
 const silentUntil = new Map<string, number>();
 
 export const pairKey = (p: AncestryPair) => `${p.commit}@${p.release}`;
@@ -173,32 +172,30 @@ function ask(
   deps: CheckoutAncestryDeps,
   settle: (read: AncestryRead) => void,
 ): void {
-  const requestId = randomUUID();
-  const timer = setTimeout(() => {
-    asked.delete(requestId);
-    silentUntil.set(box.deviceId, deps.now() + SILENT_FOR_MS);
-    settle(
-      refused(
-        'unanswered',
-        `the box holding ${box.repoPath} was asked whether ${pairs.length} commit pair(s) are ancestors and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read ancestry) — ${WAYS_OUT}`,
-      ),
-    );
-  }, deps.timeoutMs);
-  asked.set(requestId, { box, projectId, repository, pairs, settle, timer });
-  const took = deps.send(box.deviceId, {
-    event: 'checkout.ancestry.read',
-    data: { requestId, projectId, runnerId: box.runnerId, repoPath: box.repoPath, pairs },
-  });
-  if (took === 0) {
-    clearTimeout(timer);
-    asked.delete(requestId);
-    settle(
-      refused(
-        'no_runner_online',
-        `the box holding ${box.repoPath} disconnected before it could be asked — ${WAYS_OUT}`,
-      ),
-    );
-  }
+  asks.ask(
+    { box, projectId, repository, pairs, settle },
+    {
+      deviceId: box.deviceId,
+      projectId,
+      event: 'checkout.ancestry.read',
+      data: { projectId, runnerId: box.runnerId, repoPath: box.repoPath, pairs },
+      timeoutMs: deps.timeoutMs,
+      send: deps.send,
+      settle,
+      unanswered: () => {
+        silentUntil.set(box.deviceId, deps.now() + SILENT_FOR_MS);
+        return refused(
+          'unanswered',
+          `the box holding ${box.repoPath} was asked whether ${pairs.length} commit pair(s) are ancestors and did not answer within ${deps.timeoutMs / 1000}s (a forge-runner older than this core does not read ancestry) — ${WAYS_OUT}`,
+        );
+      },
+      disconnected: () =>
+        refused(
+          'no_runner_online',
+          `the box holding ${box.repoPath} disconnected before it could be asked — ${WAYS_OUT}`,
+        ),
+    },
+  );
 }
 
 /** The answers keyed by pair, or why they do not answer exactly the pairs asked. */
@@ -232,12 +229,8 @@ export function answerCheckoutAncestry(
   requestId: string,
   answer: CheckoutAncestryAnswer,
 ): AnswerOutcome {
-  const entry = asked.get(requestId);
-  if (!entry || entry.box.deviceId !== deviceId || entry.projectId !== answer.projectId) {
-    return { ok: false, code: 'CHECKOUT_ANCESTRY_NOT_ASKED' };
-  }
-  asked.delete(requestId);
-  clearTimeout(entry.timer);
+  const entry = asks.take(requestId, deviceId, answer.projectId);
+  if (!entry) return { ok: false, code: 'CHECKOUT_ANCESTRY_NOT_ASKED' };
   silentUntil.delete(deviceId);
   const where = `the box holding ${entry.box.repoPath}`;
   const refuse = (why: string): AnswerOutcome => {

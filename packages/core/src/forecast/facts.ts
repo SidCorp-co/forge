@@ -86,7 +86,7 @@ interface SpellRow {
  * seven issues in progress at once, never more than four runs). A declaration core refused never
  * started and is not counted. Null where no run was live in the window.
  */
-export async function readPeakLiveRuns(projectId: string, now: Date): Promise<number | null> {
+async function readPeakLiveRuns(projectId: string, now: Date): Promise<number | null> {
   const at = now.toISOString();
   const from = new Date(now.getTime() - FORECAST_PEAK_DAYS * DAY_MS).toISOString();
   const spells = rowsOf<SpellRow>(
