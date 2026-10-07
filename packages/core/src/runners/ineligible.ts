@@ -10,7 +10,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { RunnerStatus } from '../db/schema.js';
-import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from './device-cap.js';
+import { atLeastVersion, CLAIM_MIN_RUNNER } from './device-cap.js';
 import { livenessSeconds } from './liveness-sql.js';
 
 export type RunnerHoldReason =
@@ -88,7 +88,7 @@ function reasonFor(
   if (row.provisionStatus !== null && row.provisionStatus !== 'ready') {
     return { reason: 'provisioning', detail: row.provisionStatus };
   }
-  if (!atLeastVersion(row.deviceAgentVersion, AGENT_NAMING_MIN_RUNNER)) {
+  if (!atLeastVersion(row.deviceAgentVersion, CLAIM_MIN_RUNNER)) {
     return { reason: 'below-floor', detail: row.deviceAgentVersion ?? 'unreported' };
   }
   return null;

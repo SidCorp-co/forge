@@ -20,7 +20,7 @@ import { db } from '../db/client.js';
 import { devices, issues, jobs, runners } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/index.js';
+import { atLeastVersion, CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { loadDispatchHeader } from './dispatch-header.js';
 import { buildJobSystemPrompt } from './job-system-prompt.js';
@@ -94,7 +94,7 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
     .from(devices)
     .where(eq(devices.id, deviceId))
     .limit(1);
-  return atLeastVersion(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
+  return atLeastVersion(device?.v ?? null, CLAIM_MIN_RUNNER);
 }
 
 type JobRow = typeof jobs.$inferSelect;

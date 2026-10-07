@@ -125,15 +125,6 @@ describe('one residency clock: a whole loop-monitor pass over a resident chat se
     expect(await statusOf(turn)).toBe('running');
     expect(await closesTold(turn)).toBe(0);
   });
-
-  it('still fails a job-linked park an older runner left 20 min past its last beat', async () => {
-    const { runLoopMonitor } = await import('../../src/jobs/loop-monitor.js');
-    const now = new Date();
-    const park = await chat(20 * MIN, 'awaiting_input', now, 'running', 'pipeline');
-    await runLoopMonitor(now, { projectId });
-    expect(await statusOf(park)).toBe('failed/residency_expired');
-    expect(await closesTold(park)).toBe(0);
-  });
 });
 
 describe('a chat turn in flight is alive while its box beats it', () => {

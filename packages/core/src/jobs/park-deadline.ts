@@ -1,5 +1,5 @@
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { and, eq, notInArray, type SQL, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import {
   closeResidentOnBox,
   endLapsedResidency,
@@ -22,9 +22,6 @@ const RESIDENCY_SECONDS = 10 * 60;
 /** How long core keeps telling a box to close a resident chat session before it reads the box as gone. */
 const RESIDENCY_ANSWER_SECONDS = 60 * 60;
 
-/** How long past the residency a job-linked park is kept before its process is presumed gone. */
-const PARK_GRACE_SECONDS = 5 * 60;
-
 /** A session's beat, the clock both residency verdicts measure from. */
 const BEAT = sql`COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.createdAt})`;
 
@@ -38,43 +35,6 @@ export const parkedOnAHuman = (sessionId: SQL): SQL => sql`
        AND q.status = 'open'
        AND q.blocker_kind = 'human'
   )`;
-
-const NOT_A_PROCESSLESS_PARK = sql`NOT ${parkedOnAHuman(sql`agent_sessions.id`)}`;
-
-/**
- * Hop 3b — the residency deadline on a job-linked park: a session parked in its process past the
- * residency plus a grace is failed, its process presumed gone. Only a runner older than 0.13.0 parks
- * a job-linked session (the job pool that did went in ddabc1f2b); a chat session is
- * `closeIdleResidents`'s alone, so one session has one residency clock. Priced in
- * `.forge/conformance.json` `$amnesties` as `job-linked-park-clock`.
- */
-export async function reapExpiredParks(
-  now: Date = new Date(),
-  scope: LoopScope = {},
-): Promise<number> {
-  const reaped = (
-    await transitionSessions(db, {
-      to: 'failed',
-      set: { failureReason: 'residency_expired', updatedAt: now },
-      where: and(
-        eq(agentSessions.status, 'running'),
-        eq(agentSessions.runtimeState, 'awaiting_input'),
-        notInArray(agentSessions.kind, [...CLIENT_SESSION_KINDS]),
-        sql`${BEAT} < ${now.toISOString()}::timestamptz - make_interval(secs => ${RESIDENCY_SECONDS + PARK_GRACE_SECONDS})`,
-        NOT_A_PROCESSLESS_PARK,
-        ...(scope.projectId ? [eq(agentSessions.projectId, scope.projectId)] : []),
-      ),
-      reason: 'residency_expired',
-      actor: { type: 'sweeper' },
-      source: 'loop-monitor',
-    })
-  ).rows;
-
-  if (reaped.length > 0) {
-    logger.info({ reaped: reaped.length }, 'loop-monitor: parks past their residency deadline');
-  }
-  return reaped.length;
-}
 
 /** One park past the deadline its asker set, and how long it went unanswered. */
 type UnansweredPark = { sessionId: string; questionId: string; days: number };
@@ -110,7 +70,7 @@ async function unansweredParks(now: Date, scope: LoopScope): Promise<UnansweredP
 /**
  * The clock that replaces residency for a park with no process.
  *
- * `reapExpiredParks` above exempts the human branch, so this is what keeps it
+ * a park on a person has no residency clock, so this is what keeps it
  * from being a park under no clock at all: the asker's own deadline, expiring
  * loudly and leaving the question in the bucket flagged `expired` rather than
  * removed (ISS-964 criterion 34).
