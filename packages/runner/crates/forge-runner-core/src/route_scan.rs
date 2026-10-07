@@ -519,7 +519,8 @@ impl Scan<'_> {
         let Some((at, defs)) = found else {
             // An imported name resolves through the name it was imported as, `KEY` in
             // `use keys::HOME_KEY as KEY` through `HOME_KEY`.
-            return if let Some(original) = self.b.aliases.get(n).and_then(|p| p.last()) {
+            let original = self.b.aliases.get(n).and_then(|p| p.last());
+            return if let (false, Some(original)) = (qualified, original) {
                 resolve(self.consts, original, chain)
             } else if qualified || self.b.imported.contains(n) {
                 resolve(self.consts, n, chain)
@@ -1142,6 +1143,24 @@ mod tests {
         counts(src, 2);
         counts(
             &src.replace("var_os(KEY); }", "var_os(KEY); std::env::var_os(KEY); }"),
+            3,
+        );
+    }
+
+    /// The seventh whole-set read's F1: an alias stands for a bare name only, never for the
+    /// last segment of a qualified one.
+    #[test]
+    fn a_qualified_name_is_not_read_through_an_alias_of_its_last_segment() {
+        let src = r#"mod keys { pub const KEY: &str = concat!("HO", "ME"); }
+            mod other { pub const TOKEN: &str = "FORGE_TOKEN"; }
+            use other::TOKEN as KEY;
+            fn f() { std::env::var_os(KEY); std::env::var_os(keys::KEY); }"#;
+        counts(src, 2);
+        counts(
+            &src.replace(
+                "var_os(keys::KEY); }",
+                "var_os(keys::KEY); std::env::var_os(keys::KEY); }",
+            ),
             3,
         );
     }
