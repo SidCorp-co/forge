@@ -24,14 +24,7 @@ import {
 import { lockXact } from '../lib/advisory-lock.js';
 import { readMasterWork } from './owed.js';
 import { passEnd } from './pass-end.js';
-import {
-  closedPassOf,
-  openPassOf,
-  PASS_COLUMNS,
-  readClosedPass,
-  readOpenPass,
-  storedOutdated,
-} from './read.js';
+import { openPassOf, PASS_COLUMNS, readClosedPass, readOpenPass, storedOutdated } from './read.js';
 import {
   passAlreadyOpenRefusal,
   passNotOpenRefusal,
@@ -159,7 +152,7 @@ export async function settleMasterPass(args: {
       };
     }
     const { dispatched } = args.facts;
-    const [row] = rowsOf<Parameters<typeof closedPassOf>[0]>(
+    const [row] = rowsOf<{ id: string }>(
       await tx.execute(sql`
         UPDATE master_passes
            SET ended_at = GREATEST(now(), started_at),
@@ -172,11 +165,13 @@ export async function settleMasterPass(args: {
                refusal = ${end.refused ? JSON.stringify(scrubSecretsDeep(end.refused)) : null}::jsonb,
                close_reason = ${end.reason}
          WHERE id = ${args.passId} AND master_session_id = ${master.id} AND ended_at IS NULL
-        RETURNING ${PASS_COLUMNS}`),
+        RETURNING id`),
     );
-    if (!row)
+    // read back through the pass read, so a settle answers the recovery mark the board reads
+    const closed = row && (await readClosedPass(tx, { sessionId: master.id, passId: row.id }));
+    if (!closed)
       throw new Error(`settleMasterPass: pass ${args.passId} was read open and closed nothing`);
-    return { ok: true, settled: { pass: closedPassOf(row), because: end.because } };
+    return { ok: true, settled: { pass: closed, because: end.because } };
   });
 }
 

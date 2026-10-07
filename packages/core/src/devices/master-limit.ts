@@ -8,11 +8,13 @@ import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type RunnerLimitReason, runners } from '../db/schema.js';
-import { clearRunnerLimit, DEFAULT_LIMIT_COOLDOWN_MS, stampRunnerLimit } from '../runners/index.js';
+import { clearRunnerLimit, type RunnerLimit, stampRunnerLimit } from '../runners/index.js';
 
 interface MasterLimitReport {
   reason: RunnerLimitReason;
-  /** Seconds until the account is expected back; null when unknown or `auth`. */
+  /** When the account refused, by the record's own age. */
+  refusedAt: Date;
+  /** Seconds until the reset the account printed; null when it printed none, or for `auth`. */
   resetsInSeconds: number | null;
   detail: string;
 }
@@ -21,8 +23,7 @@ interface DeviceRunner {
   id: string;
   projectId: string;
   limitReason: RunnerLimitReason | null;
-  limitDetail: string | null;
-  rateLimitedUntil: Date | null;
+  limitRefusedAt: Date | null;
 }
 
 async function anyRunnerOfDevice(deviceId: string): Promise<DeviceRunner | null> {
@@ -31,13 +32,34 @@ async function anyRunnerOfDevice(deviceId: string): Promise<DeviceRunner | null>
       id: runners.id,
       projectId: runners.projectId,
       limitReason: runners.limitReason,
-      limitDetail: runners.limitDetail,
-      rateLimitedUntil: runners.rateLimitedUntil,
+      limitRefusedAt: runners.limitRefusedAt,
     })
     .from(runners)
     .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')))
     .limit(1);
   return row ?? null;
+}
+
+const REFRESH_MS = MASTER_NUDGE_REFRESH_SECONDS * 1000;
+
+/**
+ * What a master's refusal holds (ISS-276, FB-87: the account printed 19:30Z and answered at 16:42Z).
+ * The next try is the next nudge, which a limited master is asked again on; the reset the account
+ * printed is kept as its claim. A refusal the box's clock dates ahead is dated now.
+ */
+export function masterRefusalLimit(report: MasterLimitReport, now: Date): RunnerLimit {
+  const refusedAt = report.refusedAt > now ? now : report.refusedAt;
+  const auth = report.reason === 'auth';
+  return {
+    reason: report.reason,
+    refusedAt,
+    nextTryAt: auth ? null : new Date(refusedAt.getTime() + REFRESH_MS),
+    printedResetAt:
+      auth || report.resetsInSeconds === null
+        ? null
+        : new Date(now.getTime() + report.resetsInSeconds * 1000),
+    detail: scrubSecretsDeep(report.detail),
+  };
 }
 
 /**
@@ -51,20 +73,7 @@ export async function recordMasterLimit(
 ): Promise<{ runnerId: string } | null> {
   const runner = await anyRunnerOfDevice(deviceId);
   if (!runner) return null;
-  const until =
-    report.reason === 'auth'
-      ? null
-      : new Date(
-          Date.now() +
-            (report.resetsInSeconds === null
-              ? DEFAULT_LIMIT_COOLDOWN_MS
-              : report.resetsInSeconds * 1000),
-        );
-  await stampRunnerLimit(runner.id, runner.projectId, {
-    reason: report.reason,
-    until,
-    detail: scrubSecretsDeep(report.detail),
-  });
+  await stampRunnerLimit(runner.id, runner.projectId, masterRefusalLimit(report, new Date()));
   return { runnerId: runner.id };
 }
 
@@ -84,15 +93,19 @@ export type MasterLimitAction =
   | { act: 'clear' }
   | { act: 'none'; outcome: 'held' | 'stale' | 'nothing' | 'unreadable' };
 
+/** Two refusals this close are the same one, read twice off the box's clock. */
+const SAME_REFUSAL_MS = 60_000;
+
 /**
  * What a box's newest decisive record means for its account, given what core already holds for the
- * device. A refusal speaks for the account only while it is fresh either way, and once: one core
- * already holds is left as it is rather than stamped again. A turn the account answered lifts a limit
- * only within one nudge refresh of that turn, since it is the only proof a window ended.
+ * device. A refusal speaks for the account until its next try has come, and once: one core already
+ * holds (or a newer one) is left as it is rather than stamped again, so an old record neither
+ * restarts nor extends a hold. A turn the account answered lifts a limit only within one nudge
+ * refresh of that turn, since it is the only proof a window ended.
  */
 export function masterLimitAction(
   record: MasterLimitRecord,
-  held: Pick<DeviceRunner, 'limitReason' | 'limitDetail' | 'rateLimitedUntil'>,
+  held: Pick<DeviceRunner, 'limitReason' | 'limitRefusedAt'>,
   now: Date,
 ): MasterLimitAction {
   switch (record.kind) {
@@ -102,16 +115,20 @@ export function masterLimitAction(
       if (Math.abs(record.agoSeconds) > MASTER_LIMIT_FRESH_SECONDS) {
         return { act: 'none', outcome: 'stale' };
       }
+      const refusedAt = new Date(now.getTime() - record.agoSeconds * 1000);
       const stillHeld =
         held.limitReason === record.reason &&
-        held.limitDetail === scrubSecretsDeep(record.detail) &&
-        (record.reason === 'auth' ||
-          (held.rateLimitedUntil !== null && held.rateLimitedUntil > now));
+        held.limitRefusedAt !== null &&
+        held.limitRefusedAt.getTime() >= refusedAt.getTime() - SAME_REFUSAL_MS;
       if (stillHeld) return { act: 'none', outcome: 'held' };
+      if (record.reason !== 'auth' && record.agoSeconds * 1000 >= REFRESH_MS) {
+        return { act: 'none', outcome: 'stale' };
+      }
       return {
         act: 'report',
         report: {
           reason: record.reason,
+          refusedAt,
           resetsInSeconds: record.reason === 'auth' ? null : record.resetsInSeconds,
           detail: record.detail,
         },

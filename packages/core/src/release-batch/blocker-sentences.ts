@@ -178,7 +178,7 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
   auth: () =>
     `had its agent credential rejected, so it is taking nothing. Re-authenticate the agent on that box; ${RUNNERS_TAB} shows the detail it reported.`,
   'rate-limited': (h) =>
-    `is rate limited until ${h.detail ?? 'it clears'}. Nothing here clears it sooner — wait it out, or bring another box up.`,
+    `was refused by its account and is held until its next try at ${h.detail ?? 'the next nudge'}. A turn the account answers clears it sooner; the reset the account printed is its claim, not when work resumes. Wait for the next try, or bring another box up.`,
   quarantined: (h) =>
     `is quarantined until ${h.detail ?? 'it clears'} after repeated failures. Wait it out, or clear the quarantine under ${RUNNERS_TAB}.`,
   provisioning: (h) =>

@@ -1,4 +1,5 @@
 import type { HealthKey } from "@/design";
+import { formatElapsed as formatSpan, formatStamp } from "@/lib/utils/format";
 
 export type RunnerBuildState = "current" | "behind" | "unknown";
 
@@ -129,10 +130,14 @@ export interface ProjectRunner {
 	lastError: string | null;
 	/** Why the runner is currently limited (rate/usage/auth), or null. */
 	limitReason: RunnerLimitReason | null;
-	/** ISO reset time for a time-based limit; null for `auth` / no limit. */
+	/** ISO next try: when core next lets work at this account; null for `auth` / no limit. Never the reset the account printed. */
 	rateLimitedUntil: string | null;
 	/** Short human-readable limit detail. */
 	limitDetail: string | null;
+	/** ISO time the account refused; null with no limit. `undefined` on a core that does not serve it. */
+	limitRefusedAt?: string | null;
+	/** ISO reset the account printed: its claim, never when work resumes; null where it printed none. */
+	limitPrintedResetAt?: string | null;
 	repoPath: string | null;
 	branch: string | null;
 	/** Pool tags; a production binding's `releaseRunnerLabel` names one to prefer. */
@@ -510,38 +515,42 @@ export interface RunnerLimitDisplay {
 	label: string;
 	/** Health tone — auth (needs a fix) is `down`; timed throttles are `attention`. */
 	health: HealthKey;
-	/** Whether the limit's reset time is still in the future. */
+	/** Whether the runner is held now: its next try is still ahead, or it is an auth failure. */
 	active: boolean;
-	/** e.g. "resets in 42m" / "reset passed" / null when no reset time. */
-	resetText: string | null;
+	/** e.g. "refused 12m ago"; null where core kept no refusal time. */
+	refusedText: string | null;
+	/** e.g. "next try in 3m" / "next try due"; null for auth, which a person fixes. */
+	nextTryText: string | null;
+	/** The reset the account printed, named as its claim; null where it printed none. */
+	printedText: string | null;
 	detail: string | null;
 }
 
+// ISS-276 / FB-87: the account printed 19:30Z and answered at 16:42Z. What the account printed is
+// its claim and is said as one; the time shown as when work is tried again is core's next try.
 export function runnerLimitDisplay(
-	runner: Pick<ProjectRunner, "limitReason" | "rateLimitedUntil" | "limitDetail">,
+	runner: Pick<ProjectRunner, "limitReason" | "rateLimitedUntil" | "limitDetail" | "limitRefusedAt" | "limitPrintedResetAt">,
 	now: number = Date.now(),
 ): RunnerLimitDisplay | null {
 	if (!runner.limitReason) return null;
 	const reason = runner.limitReason;
-	const resetMs = runner.rateLimitedUntil ? Date.parse(runner.rateLimitedUntil) : null;
-	const active = resetMs !== null ? resetMs > now : reason === "auth";
+	const nextTryMs = runner.rateLimitedUntil ? Date.parse(runner.rateLimitedUntil) : null;
+	const refusedMs = runner.limitRefusedAt ? Date.parse(runner.limitRefusedAt) : null;
 	return {
 		reason,
 		label: LIMIT_LABEL[reason],
 		health: reason === "auth" ? "down" : "attention",
-		active,
-		resetText: formatReset(resetMs, now),
+		active: nextTryMs !== null ? nextTryMs > now : reason === "auth",
+		refusedText: refusedMs === null ? null : `refused ${formatSpan(now - refusedMs)} ago`,
+		nextTryText: nextTryMs === null ? null : nextTryMs > now ? `next try in ${formatSpan(nextTryMs - now)}` : "next try due",
+		printedText: runner.limitPrintedResetAt
+			? `The account said it resets at ${formatStamp(runner.limitPrintedResetAt)}: its claim, not when work resumes.`
+			: null,
 		detail: runner.limitDetail,
 	};
 }
 
-function formatReset(resetMs: number | null, now: number): string | null {
-	if (resetMs === null) return null;
-	const diff = resetMs - now;
-	if (diff <= 0) return "reset passed";
-	const mins = Math.round(diff / 60000);
-	if (mins < 60) return `resets in ${mins}m`;
-	const hours = Math.floor(mins / 60);
-	const rem = mins % 60;
-	return rem === 0 ? `resets in ${hours}h` : `resets in ${hours}h ${rem}m`;
+/** The badge's words: the label, then when it was refused and when it is tried again. */
+export function runnerLimitLine(limit: RunnerLimitDisplay): string {
+	return [limit.label, limit.refusedText, limit.nextTryText].filter((x): x is string => !!x).join(" · ");
 }

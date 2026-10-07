@@ -43,7 +43,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
   const NEXT_MINUTE = '2099-01-01T12:35:10.000Z';
 
   it.each([
-    ['rate_limited_until', 'is rate limited until'],
+    ['rate_limited_until', 'is held until its next try at'],
     ['quarantined_until', 'is quarantined until'],
   ] as const)(
     'writes once while %s moves inside the minute, and again once it leaves it',

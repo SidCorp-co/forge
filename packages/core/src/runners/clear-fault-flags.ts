@@ -13,6 +13,8 @@ export async function clearRunnerFaultFlags(runnerId: string, projectId: string)
       limitReason: null,
       rateLimitedUntil: null,
       limitDetail: null,
+      limitRefusedAt: null,
+      limitPrintedResetAt: null,
       quarantinedUntil: null,
       quarantineReason: null,
       updatedAt: new Date(),

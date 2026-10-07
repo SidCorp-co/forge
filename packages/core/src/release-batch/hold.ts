@@ -35,11 +35,11 @@ function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
 
-/** A runner's reset time to the minute: its milliseconds move each heartbeat while the limit stands. */
+/** A runner's next try or quarantine end to the minute: its milliseconds move each heartbeat while the hold stands. */
 function withoutResetDrift(text: string): string {
   return text.replace(
-    /(is rate limited|is quarantined) until (\d{4}-\d{2}-\d{2}T\d{2}:\d{2})[\d:.]*Z/g,
-    '$1 until $2Z',
+    /(is held until its next try at|is quarantined until) (\d{4}-\d{2}-\d{2}T\d{2}:\d{2})[\d:.]*Z/g,
+    '$1 $2Z',
   );
 }
 

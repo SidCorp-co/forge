@@ -45,8 +45,10 @@ export async function stampRunnerLimit(
       .update(runners)
       .set({
         limitReason: limit.reason,
-        rateLimitedUntil: limit.until,
+        rateLimitedUntil: limit.nextTryAt,
         limitDetail: limit.detail,
+        limitRefusedAt: limit.refusedAt,
+        limitPrintedResetAt: limit.printedResetAt,
         updatedAt: new Date(),
       })
       .where(deviceScope(runnerId))
@@ -60,7 +62,9 @@ export async function stampRunnerLimit(
         runnerId,
         bindings: stamped.length,
         reason: limit.reason,
-        until: limit.until?.toISOString() ?? null,
+        refusedAt: limit.refusedAt.toISOString(),
+        nextTryAt: limit.nextTryAt?.toISOString() ?? null,
+        printedResetAt: limit.printedResetAt?.toISOString() ?? null,
       },
       'runner limit stamped',
     );
@@ -114,6 +118,8 @@ export async function clearRunnerLimit(
         limitReason: null,
         rateLimitedUntil: null,
         limitDetail: null,
+        limitRefusedAt: null,
+        limitPrintedResetAt: null,
         lastError: sql`CASE WHEN ${runners.id} = ${runnerId} THEN NULL ELSE ${runners.lastError} END`,
         updatedAt: new Date(),
       })

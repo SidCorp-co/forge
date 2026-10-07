@@ -42,6 +42,8 @@ function rowToRunner(r: RunnerRow): Runner {
     limitReason: r.limitReason,
     rateLimitedUntil: r.rateLimitedUntil,
     limitDetail: r.limitDetail,
+    limitRefusedAt: r.limitRefusedAt,
+    limitPrintedResetAt: r.limitPrintedResetAt,
     quarantinedUntil: r.quarantinedUntil,
     quarantineReason: r.quarantineReason,
   };

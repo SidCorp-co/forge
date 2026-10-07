@@ -3,8 +3,12 @@ import type { RunnerLimitReason } from '../db/schema.js';
 
 export interface RunnerLimit {
   reason: RunnerLimitReason;
-  /** Absolute reset time for time-based limits; null for `auth`. */
-  until: Date | null;
+  /** When the account refused. */
+  refusedAt: Date;
+  /** The next try: when core next lets work at this account; null for `auth`, which a person fixes. */
+  nextTryAt: Date | null;
+  /** The reset the account printed, kept as its claim and never as the next try; null where none. */
+  printedResetAt: Date | null;
   /** Short human-readable detail for the UI / `runners.limitDetail`. */
   detail: string;
 }
@@ -151,6 +155,9 @@ export function parseUsageLimitReset(text: string): Date | null {
   }
 }
 
+const earliest = (...at: (Date | null | undefined)[]): Date =>
+  new Date(Math.min(...at.filter((d): d is Date => d instanceof Date).map((d) => d.getTime())));
+
 /**
  * Inspect failure text (and an optional already-extracted provider Retry-After)
  * and return the runner-limit verdict, or null if the failure is not a
@@ -158,29 +165,41 @@ export function parseUsageLimitReset(text: string): Date | null {
  * (most specific account window) → auth (operator must fix) → generic
  * rate-limit/429.
  *
+ * A usage limit's printed reset is the account's claim (ISS-276: printed 19:30Z, answered 16:42Z):
+ * it may bring the next try forward, and never holds work past the default cooldown.
+ *
  * @param retryAfter pre-parsed `Retry-After` timestamp from the classifier, if any.
  */
-export function detectRunnerLimit(text: string, retryAfter?: Date | null): RunnerLimit | null {
+export function detectRunnerLimit(
+  text: string,
+  retryAfter?: Date | null,
+  now: Date = new Date(),
+): RunnerLimit | null {
   const t = text ?? '';
+  const after = (ms: number) => new Date(now.getTime() + ms);
+  const limit = (
+    reason: RunnerLimitReason,
+    nextTryAt: Date | null,
+    printedResetAt: Date | null = null,
+  ): RunnerLimit => ({ reason, refusedAt: now, nextTryAt, printedResetAt, detail: summarize(t) });
 
   if (isSpendLimitError(t)) {
-    const until = retryAfter ?? new Date(Date.now() + SPEND_LIMIT_COOLDOWN_MS);
-    return { reason: 'usage_limit', until, detail: summarize(t) };
+    return limit('usage_limit', retryAfter ?? after(SPEND_LIMIT_COOLDOWN_MS));
   }
 
   if (isUsageLimitError(t)) {
-    const until =
-      parseUsageLimitReset(t) ?? retryAfter ?? new Date(Date.now() + DEFAULT_LIMIT_COOLDOWN_MS);
-    return { reason: 'usage_limit', until, detail: summarize(t) };
+    const printed = parseUsageLimitReset(t);
+    return limit(
+      'usage_limit',
+      earliest(retryAfter, printed, after(DEFAULT_LIMIT_COOLDOWN_MS)),
+      printed,
+    );
   }
 
-  if (isAuthError(t)) {
-    return { reason: 'auth', until: null, detail: summarize(t) };
-  }
+  if (isAuthError(t)) return limit('auth', null);
 
   if (isRateLimitError(t)) {
-    const until = retryAfter ?? new Date(Date.now() + DEFAULT_LIMIT_COOLDOWN_MS);
-    return { reason: 'rate_limit', until, detail: summarize(t) };
+    return limit('rate_limit', retryAfter ?? after(DEFAULT_LIMIT_COOLDOWN_MS));
   }
 
   return null;

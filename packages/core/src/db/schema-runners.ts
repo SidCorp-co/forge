@@ -59,8 +59,12 @@ export const runners = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     lastError: text('last_error'),
     limitReason: text('limit_reason', { enum: runnerLimitReasons }),
+    // The next try: when core next lets work at this account. Never the reset the account printed.
     rateLimitedUntil: timestamp('rate_limited_until', { withTimezone: true }),
     limitDetail: text('limit_detail'),
+    // When the account refused, and the reset it printed: the account's claim, never the next try.
+    limitRefusedAt: timestamp('limit_refused_at', { withTimezone: true }),
+    limitPrintedResetAt: timestamp('limit_printed_reset_at', { withTimezone: true }),
     quarantinedUntil: timestamp('quarantined_until', { withTimezone: true }),
     quarantineReason: text('quarantine_reason'),
     // Per (device × project) workspace provisioning state. NULL = not yet
