@@ -322,29 +322,27 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
   });
 
   it('puts back a name only where the message quotes it as that object, never a look-alike', () => {
-    const failed = sealedClose('constraint "x_closed_rule" rejected label "x_releasing_rule"', {
+    const failed = sealedClose('label "x_releasing_rule" is not allowed', {
       code: 'P0001',
       constraint_name: 'x_closed_rule',
     });
 
     const text = closeFailureText(closeRefusalOf(failed));
 
-    expect(text).toContain('constraint "x_closed_rule" rejected label');
-    expect(text).toContain('label "x_(a value of this write, withheld)_rule"');
-    expect(text).not.toContain('x_releasing_rule');
-    expect(text.match(/x_closed_rule/g)).toHaveLength(1);
+    expect(text).toContain('label "x_(a value of this write, withheld)_rule" is not allowed');
+    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
   });
 
-  it('puts back no name where the message quotes two objects of its kind cut alike', () => {
-    const failed = sealedClose(
-      'constraint "x_closed_rule" conflicts with constraint "x_releasing_rule"',
-      { code: 'P0001', constraint_name: 'x_closed_rule' },
-    );
+  it.each([
+    ['constraint "x_closed_rule" conflicts with constraint "x_releasing_rule"', 'constraint_name'],
+    ['relation "x_closed_rule" conflicts with table "x_releasing_rule"', 'table_name'],
+  ])('puts back no name where the message quotes two names cut alike: %s', (message, field) => {
+    const failed = sealedClose(message, { code: 'P0001', [field]: 'x_closed_rule' });
 
     const text = closeFailureText(closeRefusalOf(failed));
 
     expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
-    expect(text.match(/constraint "x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(2);
+    expect(text.match(/"x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(2);
   });
 
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {

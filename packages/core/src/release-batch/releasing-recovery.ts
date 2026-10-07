@@ -126,11 +126,9 @@ function databaseReason(err: unknown, driver: { code: string; message: string })
     const form = cut.get(name) ?? '';
     const alike = [...cut.values()].filter((other) => other === form).length;
     if (form === `"${name}"` || alike > 1) continue;
-    for (const w of words) {
-      const at = reason.split(`${w} ${form}`);
-      // Two quotes cut alike cannot be told apart, so a second one leaves both withheld.
-      if (at.length === 2) reason = at.join(`${w} "${name}"`);
-    }
+    // A second quote cut alike, after any word, cannot be told from this one: both stay withheld.
+    if (reason.split(form).length !== 2) continue;
+    for (const w of words) reason = reason.split(`${w} ${form}`).join(`${w} "${name}"`);
   }
   const outsideNames = objects
     .flatMap(({ words, name }) => quoted(words, name))
