@@ -22,6 +22,7 @@ import {
   type WhatsNewDigestView,
   type WhatsNewEntry,
   type WhatsNewFeed,
+  type WhatsNewSummary,
   weekRange,
 } from '@forge/contracts/whats-new';
 import { readProductState } from '../preferences/index.js';
@@ -161,6 +162,25 @@ function awayOf(
       .sort(byPresentation)
       .slice(0, WHATS_NEW_HIGHLIGHTS)
       .map((e) => e.key),
+  };
+}
+
+/** Whether one reader has anything unread, counted over the entries {@link readWhatsNew} would list. */
+export async function readWhatsNewSummary(args: {
+  userId: string;
+  now: Date;
+  releases?: readonly ChangelogRelease[];
+}): Promise<WhatsNewSummary> {
+  const releases = args.releases ?? loadChangelog();
+  const seenAt = await seenAtOf(args.userId);
+  const start = feedStart(undefined, seenAt, args.now);
+  const end = new Date(args.now.getTime() + 1);
+  const unread = releasedEntries(releases, start, end, seenAt).filter((e) => e.unread);
+  return {
+    version: releases[0]?.version ?? null,
+    seenAt: seenAt?.toISOString() ?? null,
+    unread: unread.length,
+    counts: countsOf(unread),
   };
 }
 

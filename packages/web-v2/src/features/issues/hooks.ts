@@ -10,6 +10,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
+import { issueKeySegment } from "./derive";
 import type {
   IssueLabel,
   IssuePriority,
@@ -66,7 +67,7 @@ export function useIssueStandingOf(projectId: string | undefined, key: string | 
 
 export function useIssueCost(id: string | undefined, enabled = true, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", id, "cost"],
+    queryKey: ["issue", issueKeySegment(id, projectId), "cost"],
     queryFn: () => issuesApi.costSummary(id as string, projectId),
     enabled: !!id && enabled,
     staleTime: 60_000,
@@ -76,7 +77,7 @@ export function useIssueCost(id: string | undefined, enabled = true, projectId?:
 /** Per-issue dependency edges. Keyed `['issue', id, 'dependencies']` — lazy, same ISS-1160 scoping. */
 export function useIssueDeps(id: string | undefined, enabled = true, projectId?: string) {
   return useQuery({
-    queryKey: ["issue", id, "dependencies"],
+    queryKey: ["issue", issueKeySegment(id, projectId), "dependencies"],
     queryFn: () => issuesApi.dependencies(id as string, projectId),
     enabled: !!id && enabled,
     staleTime: 30_000,

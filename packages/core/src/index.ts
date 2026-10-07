@@ -47,7 +47,9 @@ import {
   heldIssuePrefixes,
   issueDisplayIds,
   issueHead,
+  issueIdOfKey,
   loadIssueRelationsForIssues,
+  refuseUnresolvedIssueKey,
   releasedIssueOf,
   resolveIssueForHeadRef,
   statusChangesSince,
@@ -77,6 +79,11 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { readMemo } from './middleware/read-memo.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
+import {
+  provideRouteRefSources,
+  refuseUnresolvedRefs,
+  resolvingRouteRefs,
+} from './middleware/route-refs.js';
 import { SERVER_TIMING_HEADER, serverTiming } from './middleware/server-timing.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
@@ -96,6 +103,7 @@ import {
   readProjectDocument,
 } from './project-config/index.js';
 import {
+  findProjectIdBySlug,
   findProjectOrgId,
   findProjectOrgIds,
   findVisibleProjectIds,
@@ -131,6 +139,11 @@ import { workflowDesign } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
+provideRouteRefSources({
+  projectIdOfSlug: findProjectIdBySlug,
+  issueIdOfKey,
+  refuseIssueKey: refuseUnresolvedIssueKey,
+});
 provideVisibleProjects(findVisibleProjectIds);
 provideEphemeralPublisher(publishEphemeralFrame);
 provideCredentialsPorts({
@@ -243,6 +256,7 @@ const corsMiddleware = cors({
 });
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
+app.use('/api/*', refuseUnresolvedRefs());
 
 app.notFound(notFoundHandler);
 app.onError(errorHandler);
@@ -283,6 +297,7 @@ export async function runShutdown(
 }
 
 mountRoutes(app);
+app.fetch = resolvingRouteRefs(app as unknown as Hono<never>, app.fetch);
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 
