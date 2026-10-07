@@ -227,7 +227,8 @@ export interface ReleaseSummary
 /**
  * How a release's close is proved: `probed` by production's source probes, `deployment` by the
  * commit production's deployment record names, `provider` by what a storefront provider reports it
- * publishes against each issue's landed draft (core `release-batch/provider-verify.ts`).
+ * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
+ * a design approval's record (core `release-batch/provider-verify.ts`).
  * `unverified` is a close from before the deployment check, kept as it was recorded.
  */
 export const RELEASE_VERIFICATIONS = [

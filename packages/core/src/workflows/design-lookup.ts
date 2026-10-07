@@ -1,6 +1,10 @@
-import { and, asc, eq } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
-import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
+import {
+  projectWorkflowDesigns,
+  projectWorkflows,
+  workflowBuilds,
+} from '../db/schema-workflows.js';
 
 /** How many of a project's flows are listed when the one named is not among them. */
 const FLOWS_LISTED = 10;
@@ -55,4 +59,43 @@ export async function workflowDesign(projectId: string, workflow: string, tx: Tx
     kind: 'found' as const,
     design: { id: found.id, flow: found.flow, projectId: found.projectId, revisions },
   };
+}
+
+/** Which of these issues are linked as the build of a workflow: an approval on one is evidence on
+ *  it, never its landing (how migration 0450 tells a design issue from one carrying code work). */
+export async function buildIssuesAmong(issueIds: readonly string[]): Promise<Set<string>> {
+  if (issueIds.length === 0) return new Set();
+  const rows = await db
+    .select({ issueId: workflowBuilds.issueId })
+    .from(workflowBuilds)
+    .where(inArray(workflowBuilds.issueId, [...issueIds]));
+  return new Set(rows.map((r) => r.issueId));
+}
+
+/** When each approved revision of these flows was approved, keyed `<flow>@rev<n>`. */
+export async function approvedDesignRevisions(
+  projectId: string,
+  flows: readonly string[],
+): Promise<Map<string, Date>> {
+  if (flows.length === 0) return new Map();
+  const rows = await db
+    .select({
+      flow: projectWorkflows.flow,
+      revision: projectWorkflowDesigns.revision,
+      decidedAt: projectWorkflowDesigns.decidedAt,
+    })
+    .from(projectWorkflowDesigns)
+    .innerJoin(projectWorkflows, eq(projectWorkflows.id, projectWorkflowDesigns.workflowId))
+    .where(
+      and(
+        eq(projectWorkflows.projectId, projectId),
+        inArray(projectWorkflows.flow, [...new Set(flows)]),
+        eq(projectWorkflowDesigns.decision, 'approve'),
+      ),
+    );
+  return new Map(
+    rows.flatMap((r) =>
+      r.decidedAt ? [[`${r.flow}@rev${r.revision}`, r.decidedAt] as const] : [],
+    ),
+  );
 }

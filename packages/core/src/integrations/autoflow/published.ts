@@ -1,12 +1,19 @@
-import type { StorefrontPublishedReading, StorefrontTargetArgs } from '../index.js';
+import type {
+  StorefrontPublishedReading,
+  StorefrontServed,
+  StorefrontServedAsk,
+  StorefrontTargetArgs,
+} from '../index.js';
 import { autoflowDraftVersion } from './draft.js';
 import { autoflowLiveRead } from './live-read.js';
+import { servedPages, servedRoutes, servedSettings, servedTheme } from './served.js';
 import type { AutoflowConfig } from './types.js';
 
 // Autoflow keeps `published` beside `draft` on each workflow and archives every graph a publish
 // replaced, with when it went live (`backendbuilder.graphql:BackendWorkflowVersion`); both are
 // marshalled from the one graph type a draft is, so a published graph reads in the draft's identity.
-// It keeps no deployment and no commit, which is why a storefront release is proved here.
+// Routes, pages, the served theme and store settings are read beside them (`served.ts`). A store
+// keeps no deployment and no commit, which is why a storefront release is proved here.
 
 const PUBLISHED_QUERY =
   'query ForgeAutoflowPublished { backendWorkflows { id code version published_at published } }';
@@ -39,19 +46,21 @@ const earliest = (times: readonly string[]) =>
  * What Autoflow publishes now of each workflow named: the live graph's identity, its version, and
  * the first time that graph went live, from one read of the workflows and one of their archives.
  */
-export async function autoflowStorefrontPublished(
-  args: StorefrontTargetArgs & { workflowIds: readonly string[] },
+async function publishedWorkflows(
+  args: StorefrontTargetArgs,
+  config: AutoflowConfig,
+  site: string,
+  workflowIds: readonly string[],
 ): Promise<Map<string, StorefrontPublishedReading>> {
-  const config = args.config as AutoflowConfig;
-  const site = `Autoflow site \`${config.shop ?? 'unnamed'}\``;
   const every = (detail: string) =>
     new Map<string, StorefrontPublishedReading>(
-      args.workflowIds.map((id) => [id, { kind: 'unreadable', detail }]),
+      workflowIds.map((id) => [id, { kind: 'unreadable', detail }]),
     );
+  if (workflowIds.length === 0) return new Map();
   const read = await autoflowLiveRead(args, config, PUBLISHED_QUERY);
   if (!read.ok) return every(`${site} answered no published workflow: ${read.reason}`);
   const rows = (read.data.backendWorkflows as PublishedRow[] | null) ?? [];
-  const named = args.workflowIds.map((id) => ({ id, row: rows.find((w) => w.id === id) }));
+  const named = workflowIds.map((id) => ({ id, row: rows.find((w) => w.id === id) }));
   const live = named.filter(
     (n): n is { id: string; row: PublishedRow } => n.row?.published != null && !!n.row.code,
   );
@@ -108,4 +117,26 @@ export async function autoflowStorefrontPublished(
       ];
     }),
   );
+}
+
+/**
+ * What Autoflow serves now of everything a release verification asks — workflows, routes, pages, the
+ * served theme and store settings — each kind read once, a kind that cannot be read answered as
+ * unreadable with why, never dropped.
+ */
+export async function autoflowStorefrontPublished(
+  args: StorefrontTargetArgs & { ask: StorefrontServedAsk },
+): Promise<StorefrontServed> {
+  const config = args.config as AutoflowConfig;
+  const site = `Autoflow site \`${config.shop ?? 'unnamed'}\``;
+  const { ask } = args;
+  const ids = (list: readonly string[]) => [...new Set(list)];
+  const [workflows, routes, pages, theme, settings] = await Promise.all([
+    publishedWorkflows(args, config, site, ids(ask.workflowIds)),
+    servedRoutes(args, config, site, ids(ask.routeIds)),
+    servedPages(args, config, site, ids(ask.pageIds)),
+    ask.theme ? servedTheme(args, config, site) : Promise.resolve(null),
+    servedSettings(args, config, site, ids(ask.settingKeys)),
+  ]);
+  return { workflows, routes, pages, theme, settings };
 }
