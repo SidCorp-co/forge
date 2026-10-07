@@ -63,13 +63,22 @@ describe("the issue picker", () => {
   });
 
   it("finds issues by words of their title and hands back the key and title picked", async () => {
-    fakeCore((c) => issueSearch(c.path));
+    const calls = fakeCore((c) => issueSearch(c.path));
     const seen = vi.fn();
     renderWithQuery(<Harness seen={seen} />);
-    await userEvent.type(screen.getByRole("combobox", { name: "Issues" }), "queue");
-    await userEvent.click(await screen.findByRole("option", { name: /ISS-49/ }));
-    await userEvent.type(screen.getByRole("combobox", { name: "Issues" }), "screen");
-    await userEvent.click(await screen.findByRole("option", { name: /ISS-74/ }));
+    // The list a typed word shows is the debounced search's, and the previous word's list stays up
+    // until it lands, so a click taken from whatever option appears first can hit a list about to be
+    // replaced. Each pick waits until the search for the word typed has been asked and answered.
+    const typedAndSearched = async (word: string, keys: string[]) => {
+      await userEvent.type(screen.getByRole("combobox", { name: "Issues" }), word);
+      await waitFor(() => expect(calls.some((c) => c.path.includes(`q=${word}`))).toBe(true));
+      await waitFor(() => expect(screen.queryByText(/searching/i)).toBeNull());
+      await waitFor(() => expect(screen.getAllByRole("option").map((o) => o.textContent?.slice(0, 6))).toEqual(keys));
+    };
+    await typedAndSearched("queue", ["ISS-74", "ISS-49"]);
+    await userEvent.click(screen.getByRole("option", { name: /ISS-49/ }));
+    await typedAndSearched("screen", ["ISS-74", "ISS-49"]);
+    await userEvent.click(screen.getByRole("option", { name: /ISS-74/ }));
     expect(seen).toHaveBeenLastCalledWith([
       { key: "ISS-49", title: "Attention Queue design" },
       { key: "ISS-74", title: "Attention Queue screen" },

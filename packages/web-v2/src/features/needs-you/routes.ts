@@ -1,3 +1,4 @@
+import { questionHref } from "@/lib/routes/agents";
 import { reportHref, scheduleHref } from "@/lib/routes/automation";
 import { contractHref } from "@/lib/routes/contracts";
 import { feedbackHref } from "@/lib/routes/feedback";
@@ -24,6 +25,8 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
       return scheduleHref(slug, n.key);
     case "report":
       return reportHref(slug, n.key);
+    case "question":
+      return questionHref(slug, n.key);
     case "workflow":
       // core words a revision waiting on the viewer as `you`, and a health marker owed as a person: the first is decided on the revisions tab
       return n.waitingOn?.kind === "you" ? `${workflowHref(slug, n.key)}?tab=revisions` : workflowHref(slug, n.key);

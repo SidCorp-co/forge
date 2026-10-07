@@ -70,6 +70,7 @@ describe('readNeedsYou with a proposed design revision', () => {
       agency: 'human',
       isAdmin: true,
       mayApprove: true,
+      mayWrite: true,
     });
     const rows = owner.items.filter((i) => i.area === 'designs');
     expect(rows).toHaveLength(1);
@@ -90,6 +91,7 @@ describe('readNeedsYou with a proposed design revision', () => {
       agency: 'human',
       isAdmin: false,
       mayApprove: false,
+      mayWrite: true,
     });
     expect(member.items.filter((i) => i.area === 'designs')).toHaveLength(0);
   });

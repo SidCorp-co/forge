@@ -18,7 +18,7 @@ const rowView =
   (slug: string, label: ReturnType<typeof useLabel>, t: Copy, lang: string) =>
   (n: NeedsYouItem): ListRowView => ({
     key: `${n.entity}:${n.key}`,
-    keyLabel: n.entity === "schedule" || n.entity === "report" ? label("needsYouArea", n.area) : n.key,
+    keyLabel: n.entity === "schedule" || n.entity === "report" || n.entity === "question" ? label("needsYouArea", n.area) : n.key,
     href: needsYouHref(slug, n),
     title: n.title,
     facts: [label("needsYouArea", n.area)],

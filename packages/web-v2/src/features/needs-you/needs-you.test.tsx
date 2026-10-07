@@ -63,6 +63,28 @@ describe("the needs-you inbox", () => {
 });
 
 describe("where a needs-you row leads", () => {
+  it("opens a question attached to nothing on the Questions tab, focused on that question", () => {
+    const q = { entity: "question", key: "b2dccb6a-1111-4222-8333-444455556666" } as const;
+    expect(needsYouHref("hop", q)).toBe("/projects/hop/agents?tab=questions&q=b2dccb6a-1111-4222-8333-444455556666");
+    expect(needsYouPeekHref("hop", q)).toBe(needsYouHref("hop", q));
+  });
+
+  it("draws a question row under Questions, keyed by the area and not by its id", () => {
+    render(
+      <NeedsYouList
+        slug="hop"
+        foldKey="t2"
+        empty="Nothing waits on you."
+        items={[item({ area: "questions", entity: "question", key: "b2dccb6a-1111-4222-8333-444455556666", title: "Which roles does the catalogue hold?" })]}
+      />,
+    );
+    const row = screen.getByTestId("list-row");
+    expect(within(row).getByText("Which roles does the catalogue hold?")).toBeTruthy();
+    expect(within(row).queryByText("b2dccb6a-1111-4222-8333-444455556666")).toBeNull();
+    fireEvent.click(row);
+    expect(push).toHaveBeenLastCalledWith("/projects/hop/agents?tab=questions&q=b2dccb6a-1111-4222-8333-444455556666");
+  });
+
   it("opens its own page for everything but an issue", () => {
     expect(needsYouHref("hop", { entity: "requirement", key: "REQ-2" })).toBe("/projects/hop/requirements/REQ-2");
     expect(needsYouPeekHref("hop", { entity: "feedback", key: "FB-9" })).toBe(needsYouHref("hop", { entity: "feedback", key: "FB-9" }));
