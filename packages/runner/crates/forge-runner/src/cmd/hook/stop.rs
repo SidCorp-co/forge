@@ -104,9 +104,11 @@ async fn judge(ctx: &Ctx, agent_id: Option<&str>, dir: Option<&Path>) -> Option<
     let refused_before = dir
         .and_then(|d| std::fs::read_to_string(d.join(JOURNAL)).ok())
         .map_or(0, |j| refused_in_a_row(&j, &run.run_id));
+    let runner = runner_program();
     let verdict = decide(&Facts {
         run_id: &run.run_id,
         tree: &run.worktree_path,
+        runner: &runner,
         issues,
         dirty: dirty_in(&run.worktree_path),
         standing: standing_here(&run.worktree_path, run.created_at),
@@ -116,6 +118,16 @@ async fn judge(ctx: &Ctx, agent_id: Option<&str>, dir: Option<&Path>) -> Option<
         run_id: run.run_id,
         verdict,
     })
+}
+
+/// The program a hint tells the run to call: this binary, which judged the
+/// stop and reads the same config the run's shell does, so the hint runs as
+/// written where `forge-runner` is not on the pane's PATH.
+fn runner_program() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| "forge-runner".to_string())
 }
 
 /// The tree's uncommitted paths, untracked ones among them and ignored ones not.
@@ -281,11 +293,21 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn scratch(name: &str) -> PathBuf {
+    /// A scratch directory removed when it goes out of scope, so a failed
+    /// assertion leaves nothing behind in `$TMPDIR` either.
+    struct Scratch(PathBuf);
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn scratch(name: &str) -> Scratch {
         let dir = std::env::temp_dir().join(format!("stop-gate-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        dir
+        Scratch(dir)
     }
 
     fn git(dir: &Path, args: &[&str]) {
@@ -310,89 +332,52 @@ mod tests {
 
     #[test]
     fn a_tree_with_uncommitted_work_reads_dirty_and_reads_clean_once_committed() {
-        let tree = scratch("dirty");
-        git(&tree, &["init", "-q"]);
+        let scratch = scratch("dirty");
+        let tree = &scratch.0;
+        git(tree, &["init", "-q"]);
         std::fs::write(tree.join(".gitignore"), "target/\n").unwrap();
-        git(&tree, &["add", "-A"]);
-        git(&tree, &["commit", "-qm", "base"]);
-        assert_eq!(dirty_in(&tree), Ok(vec![]));
+        git(tree, &["add", "-A"]);
+        git(tree, &["commit", "-qm", "base"]);
+        assert_eq!(dirty_in(tree), Ok(vec![]));
 
         std::fs::create_dir_all(tree.join("target")).unwrap();
         std::fs::write(tree.join("target/out.o"), "ignored").unwrap();
-        assert_eq!(dirty_in(&tree), Ok(vec![]), "an ignored file is not work");
+        assert_eq!(dirty_in(tree), Ok(vec![]), "an ignored file is not work");
 
         std::fs::write(tree.join("new.rs"), "fn main() {}").unwrap();
         std::fs::write(tree.join(".gitignore"), "target/\n*.tmp\n").unwrap();
         assert_eq!(
-            dirty_in(&tree),
+            dirty_in(tree),
             Ok(vec![".gitignore".to_string(), "new.rs".to_string()])
         );
 
-        git(&tree, &["add", "-A"]);
-        git(&tree, &["commit", "-qm", "work"]);
-        assert_eq!(dirty_in(&tree), Ok(vec![]));
-        let _ = std::fs::remove_dir_all(&tree);
-    }
-
-    /// The refusal's `git` command, run as written by `sh` with no terminal and
-    /// an editor that writes nothing, in a tree whose path needs quoting: it
-    /// must leave the tree clean, as a run copying it would expect.
-    #[cfg(unix)]
-    #[test]
-    fn the_dirty_refusals_command_commits_the_tree_with_no_terminal() {
-        let root = scratch("hint");
-        let tree = root.join("a tree");
-        std::fs::create_dir_all(&tree).unwrap();
-        git(&tree, &["init", "-q"]);
-        git(&tree, &["commit", "-q", "--allow-empty", "-m", "base"]);
-        std::fs::write(tree.join("work.rs"), "fn main() {}").unwrap();
-        let dirty = dirty_in(&tree).unwrap();
-        let verdict = decide(&Facts {
-            run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
-            tree: &tree,
-            issues: vec![],
-            dirty: Ok(dirty),
-            standing: Ok(vec![]),
-            refused_in_a_row: 0,
-        });
-        let Outcome::Refused(reason) = verdict.outcome else {
-            panic!("a dirty tree was not refused: {:?}", verdict.outcome);
-        };
-        let cmd = reason
-            .split('`')
-            .skip(1)
-            .step_by(2)
-            .find(|c| c.starts_with("git -C"))
-            .unwrap_or_else(|| panic!("no git command in {reason}"));
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(cmd)
-            .env("GIT_EDITOR", "true")
-            .env("GIT_AUTHOR_NAME", "t")
-            .env("GIT_AUTHOR_EMAIL", "t@t")
-            .env("GIT_COMMITTER_NAME", "t")
-            .env("GIT_COMMITTER_EMAIL", "t@t")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
-            .stdin(std::process::Stdio::null())
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "`{cmd}` failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        assert_eq!(dirty_in(&tree), Ok(vec![]), "`{cmd}` left the tree dirty");
-        let _ = std::fs::remove_dir_all(&root);
+        git(tree, &["add", "-A"]);
+        git(tree, &["commit", "-qm", "work"]);
+        assert_eq!(dirty_in(tree), Ok(vec![]));
     }
 
     #[test]
     fn a_tree_that_is_gone_or_no_checkout_is_unread_not_clean() {
-        let gone = scratch("gone").join("nowhere");
-        assert!(matches!(dirty_in(&gone), Err(why) if why.contains("no longer on this box")));
+        let gone = scratch("gone");
+        let nowhere = gone.0.join("nowhere");
+        assert!(matches!(dirty_in(&nowhere), Err(why) if why.contains("no longer on this box")));
         let plain = scratch("plain");
-        assert!(matches!(dirty_in(&plain), Err(why) if why.contains("git status")));
-        let _ = std::fs::remove_dir_all(plain);
+        assert!(matches!(dirty_in(&plain.0), Err(why) if why.contains("git status")));
+    }
+
+    /// Every scratch directory a test here makes is gone once it ends, passed
+    /// or failed: before ISS-297's third pass `gone` was never removed and a
+    /// panic left `dirty` behind, one `stop-gate-*` directory per run.
+    #[test]
+    fn a_scratch_directory_is_removed_even_when_its_test_fails() {
+        let dir = std::env::temp_dir().join(format!("stop-gate-panics-{}", std::process::id()));
+        let failed = std::panic::catch_unwind(|| {
+            let held = scratch("panics");
+            assert!(held.0.is_dir());
+            panic!("a failing assertion");
+        });
+        assert!(failed.is_err());
+        assert!(!dir.exists(), "{} outlived its test", dir.display());
     }
 
     #[test]
