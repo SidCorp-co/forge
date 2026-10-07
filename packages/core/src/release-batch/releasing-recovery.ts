@@ -120,10 +120,12 @@ const WITHHELD_VALUE = '(a value of this write, withheld)';
 function databaseReason(err: unknown, driver: { code: string; message: string }): string {
   const values = pgBoundValues(err);
   const names = pgObjectNames(err).filter((name) => !values.includes(name));
+  const cutForms = names.map((name) => [name, redactQueryParams(`"${name}"`, err)] as const);
   let reason = redactQueryParams(driver.message);
-  for (const name of names) {
-    const cut = redactQueryParams(`"${name}"`, err);
-    if (cut !== `"${name}"`) reason = reason.split(cut).join(`"${name}"`);
+  for (const [name, cut] of cutForms) {
+    // Two names the seal cut alike cannot be told apart, so neither is put back.
+    const alike = cutForms.filter(([, other]) => other === cut).length;
+    if (cut !== `"${name}"` && alike === 1) reason = reason.split(cut).join(`"${name}"`);
   }
   const outsideNames = names.reduce((text, name) => text.split(`"${name}"`).join('""'), reason);
   const leaks = values.some((v) => outsideNames.includes(v));

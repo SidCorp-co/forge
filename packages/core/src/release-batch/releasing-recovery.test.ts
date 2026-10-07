@@ -309,6 +309,18 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).not.toContain('releasing');
   });
 
+  it('puts back no name where two names the error carries were cut alike', () => {
+    const failed = sealedClose(
+      'new row for relation "x_releasing_rule" violates check constraint "x_closed_rule"',
+      { code: '23514', constraint_name: 'x_closed_rule', table_name: 'x_releasing_rule' },
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
+    expect(text).toContain('"x_(a value of this write, withheld)_rule"');
+  });
+
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {
     const failed = sealedClose('refund hook is still releasing funds', { code: 'P0001' });
 
