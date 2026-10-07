@@ -6,6 +6,7 @@ import { criteriaRestText, deliveryText, feedbackForecastText, forecastText, sco
 process.env.TZ = "UTC";
 
 const NOW = Date.parse("2026-10-07T12:00:00Z");
+const CLOCK = { lang: "en" as const, now: NOW };
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const basis: ForecastBasis = {
   n: 45,
@@ -23,7 +24,7 @@ const stamp = { label: "forecast" as const, asOf: at(0) };
 describe("forecast text", () => {
   it("reads a range as two clock times, labelled a forecast, its durations and as-of only in the tooltip", () => {
     const f: Forecast = { ...stamp, kind: "forecast", p50At: at(150), p85At: at(420), p50Minutes: 150, p85Minutes: 420, ahead: 3, aheadKeys: ["ISS-1", "ISS-2", "ISS-3"], waitsOn: [], basis, late: null };
-    const { line, detail } = forecastText(f, NOW);
+    const { line, detail } = forecastText(f, CLOCK);
     expect(line).toBe("Forecast 14:30 – 19:00 today");
     expect(line).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
     expect(detail).toMatch(/^Within 2\.5 h – 7\.0 h · as of /);
@@ -33,18 +34,18 @@ describe("forecast text", () => {
 
   it("says each day once where the range crosses midnight", () => {
     const f: Forecast = { ...stamp, kind: "forecast", p50At: at(600), p85At: at(1500), p50Minutes: 600, p85Minutes: 1500, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
-    expect(forecastText(f, NOW).line).toBe("Forecast 22:00 today – tomorrow 13:00");
+    expect(forecastText(f, CLOCK).line).toBe("Forecast 22:00 today – tomorrow 13:00");
   });
 
   it("names who owes the move instead of a date when paused", () => {
     const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked", ref: null, since: null, late: null };
-    expect(forecastText(f, NOW).line).toBe("Paused — waiting on A project writer to answer a question");
+    expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on A project writer to answer a question");
   });
 
   it("gives no number below the floor", () => {
     const f: Forecast = { ...stamp, kind: "not_enough_history", n: 4, floor: 10 };
-    expect(forecastText(f, NOW).line).toBe("Not enough history to forecast · 4 of 10 landings");
-    expect(forecastText(f, NOW).line).not.toMatch(/\d+ (min|h|d)\b/);
+    expect(forecastText(f, CLOCK).line).toBe("Not enough history to forecast · 4 of 10 landings");
+    expect(forecastText(f, CLOCK).line).not.toMatch(/\d+ (min|h|d)\b/);
   });
 
   it("names the release cut a person still owes once a draft has landed", () => {
@@ -60,7 +61,7 @@ describe("forecast text", () => {
         title: null,
         delivery: null,
       },
-      NOW,
+      CLOCK,
     ).line;
     expect(line).toMatch(/^All 2 landed by .+ · then waiting on A release approver to cut the version/);
   });
@@ -78,54 +79,54 @@ const manual = { kind: "person" as const, mode: "manual" as const, who: "A proje
 
 describe("delivery text: in people's hands, not merged", () => {
   it("ranges to people's hands where production releases on its own, labelled a forecast", () => {
-    const { line, detail } = deliveryText(delivery({}), NOW);
+    const { line, detail } = deliveryText(delivery({}), CLOCK);
     expect(line).toBe("Forecast live 14:30 – 18:30 today");
     expect(detail).toMatch(/^In people's hands within 2\.5 h – 6\.5 h · as of /);
     expect(detail).toContain("sampled from 14 releases");
   });
 
   it("names the person and the act, with no date for it, where a person cuts the release", () => {
-    const { line } = deliveryText(delivery({ release: manual, inHands: null }), NOW);
+    const { line } = deliveryText(delivery({ release: manual, inHands: null }), CLOCK);
     expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on A project admin to cut 0.2.0");
   });
 
   it("reads a fixed change still unreleased as waiting on the release", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-30) };
-    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), NOW).line).toBe("Fixed · waits on A project admin to cut 0.2.0");
-    expect(deliveryText(delivery({ landing: landed, inHands: span(10, 60) }), NOW).line).toBe("Fixed · forecast live 12:10 – 13:00 today");
+    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on A project admin to cut 0.2.0");
+    expect(deliveryText(delivery({ landing: landed, inHands: span(10, 60) }), CLOCK).line).toBe("Fixed · forecast live 12:10 – 13:00 today");
   });
 
   it("says shipped in its version and when, with no range", () => {
-    const line = deliveryText(delivery({ shipped: { version: "0.3.1", at: at(-1440) }, release: null, inHands: null }), NOW).line;
+    const line = deliveryText(delivery({ shipped: { version: "0.3.1", at: at(-1440) }, release: null, inHands: null }), CLOCK).line;
     expect(line).toMatch(/^Shipped in 0\.3\.1 · /);
     expect(line).not.toMatch(/Forecast/);
   });
 
   it("gives no in-hands number below the release floor", () => {
-    const line = deliveryText(delivery({ release: { kind: "not_enough_history", n: 4, floor: 10 }, inHands: null }), NOW).line;
+    const line = deliveryText(delivery({ release: { kind: "not_enough_history", n: 4, floor: 10 }, inHands: null }), CLOCK).line;
     expect(line).toBe("Forecast lands 14:00 – 17:00 today · release time not known yet");
   });
 });
 
 describe("feedback and requirement lines", () => {
   it("says an untriaged item waits on triage and who, with no date", () => {
-    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, NOW)?.line;
+    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, CLOCK)?.line;
     expect(line).toBe("Waiting on triage — A holder of feedback.approve to triage it");
   });
 
   it("draws nothing for an item that carries no work that ships", () => {
-    expect(feedbackForecastText({ key: "FB-2", triage: null, delivery: null }, NOW)).toBeNull();
+    expect(feedbackForecastText({ key: "FB-2", triage: null, delivery: null }, CLOCK)).toBeNull();
   });
 
   it("reads the proof so far, then when the rest is in people's hands", () => {
     const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-3", title: "t", total: 3, landed: 1, forecast: range, next: null, delivery: delivery({}) };
-    expect(criteriaRestText(2, 5, scope, NOW)?.line).toBe("2 of 5 criteria proven · rest forecast live 14:30 – 18:30 today");
-    expect(criteriaRestText(5, 5, scope, NOW)?.line).toBe("All 5 criteria proven");
+    expect(criteriaRestText(2, 5, scope, CLOCK)?.line).toBe("2 of 5 criteria proven · rest forecast live 14:30 – 18:30 today");
+    expect(criteriaRestText(5, 5, scope, CLOCK)?.line).toBe("All 5 criteria proven");
   });
 
   it("adds the release lag to a draft that has landed where nobody cuts it", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-60) };
     const draft: ScopeForecast = { ...stamp, scope: "release", key: "draft", title: null, total: 2, landed: 2, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
-    expect(scopeText(draft, NOW).line).toMatch(/^All 2 landed by .+ · forecast live 12:20 – 13:20 today$/);
+    expect(scopeText(draft, CLOCK).line).toMatch(/^All 2 landed by .+ · forecast live 12:20 – 13:20 today$/);
   });
 });

@@ -1,7 +1,9 @@
 import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import { formatDateTime } from "@/lib/i18n/format";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { type EtaClock, doneDayText, partsOf, whenText } from "./clock";
 import { ETA_COPY } from "./eta-copy";
-import { deliveryText, forecastText, spanText } from "./text";
+import { deliveryText, forecastText, spanText, statusWord } from "./text";
 
 export type { EtaClock } from "./clock";
 export { doneDayText, whenText } from "./clock";
@@ -23,8 +25,8 @@ export type Eta =
   | { kind: "none"; detail: string };
 
 /** "project writer" from "A project writer", the box from "Whoever can reach box-1": who, short. */
-function shortWho(who: string): string {
-  const w = who.replace(/^Whoever can reach /, "").replace(/^(A|An|The) /, "");
+function shortWho(who: string, lang: EtaClock["lang"]): string {
+  const w = lang === "en" ? who.replace(/^Whoever can reach /, "").replace(/^(A|An|The) /, "") : standingWho(who, lang);
   return w.length > 24 ? `${w.slice(0, 23)}…` : w;
 }
 
@@ -38,7 +40,7 @@ const clockOf = (iso: string, c: EtaClock) => {
 function rangeHead(span: Pick<ForecastSpan, "p50At" | "p85At">, asOf: string, c: EtaClock): string {
   const low = minutesUntil(span.p50At, c.now);
   const high = Math.max(low, minutesUntil(span.p85At, c.now));
-  return ETA_COPY[c.lang].within(spanText(low), spanText(high), clockOf(asOf, c));
+  return ETA_COPY[c.lang].within(spanText(low, c.lang), spanText(high, c.lang), clockOf(asOf, c));
 }
 
 const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (leg?.kind === "person" ? { who: leg.who, act: leg.act } : null);
@@ -46,27 +48,27 @@ const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (leg?.kind === "perso
 /** An issue's own landing. */
 export function etaOfForecast(f: Forecast, c: EtaClock): Eta {
   const copy = ETA_COPY[c.lang];
-  const said = forecastText(f, c.now, { within: false }).detail;
+  const said = forecastText(f, c, { within: false }).detail;
   switch (f.kind) {
     case "forecast":
       return { kind: "range", p50At: f.p50At, p85At: f.p85At, tail: null, detail: `${rangeHead(f, f.asOf, c)} ${said}` };
     case "paused":
-      return { kind: "waits", who: f.who, act: f.act, detail: `${f.who}${f.act ? ` — ${f.act}` : ""}. ${f.reason}` };
+      return { kind: "waits", who: f.who, act: f.act, detail: `${standingWho(f.who, c.lang)}${f.act ? ` — ${standingAct(f.act, c.lang)}` : ""}. ${f.reason}` };
     case "not_enough_history":
       return { kind: "none", detail: copy.notEnoughHistory(f.n, f.floor) };
     case "landed":
-      return { kind: "done", at: f.landedAt, tail: null, detail: f.landedAt ? copy.landed(new Date(f.landedAt).toLocaleString(copy.locale)) : said };
+      return { kind: "done", at: f.landedAt, tail: null, detail: f.landedAt ? copy.landed(formatDateTime(f.landedAt, c.lang, c.timeZone)) : said };
     case "ended":
-      return { kind: "none", detail: copy.notForecast(f.status) };
+      return { kind: "none", detail: copy.notForecast(statusWord(f.status, c.lang)) };
   }
 }
 
 /** When it is in people's hands: shipped, a range to hands, or the landing and the person who cuts it after. */
 export function etaOfDelivery(d: DeliveryForecast, c: EtaClock): Eta {
   const copy = ETA_COPY[c.lang];
-  const said = deliveryText(d, c.now, { within: false }).detail;
+  const said = deliveryText(d, c, { within: false }).detail;
   if (d.shipped) {
-    const when = d.shipped.at ? new Date(d.shipped.at).toLocaleString(copy.locale) : "";
+    const when = d.shipped.at ? formatDateTime(d.shipped.at, c.lang, c.timeZone) : "";
     return { kind: "done", at: d.shipped.at, tail: null, detail: copy.shipped(d.shipped.version, when) };
   }
   const tail = tailOf(d.release);
@@ -87,7 +89,7 @@ export function etaOfScope(s: ScopeForecast | undefined, c: EtaClock): Eta | nul
 /** A feedback row: who triages it while untriaged, else its linked work's delivery; null where nothing ships. */
 export function etaOfFeedback(f: FeedbackForecast | undefined, c: EtaClock): Eta | null {
   if (!f) return null;
-  if (f.triage) return { kind: "waits", who: f.triage.who, act: f.triage.act, detail: `${f.triage.who} — ${f.triage.act}. ${f.triage.reason}` };
+  if (f.triage) return { kind: "waits", who: f.triage.who, act: f.triage.act, detail: `${standingWho(f.triage.who, c.lang)} — ${standingAct(f.triage.act, c.lang)}. ${f.triage.reason}` };
   return f.delivery ? etaOfDelivery(f.delivery, c) : null;
 }
 
@@ -103,12 +105,12 @@ export function etaSortValue(e: Eta | null): number | null {
 export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null } {
   const copy = ETA_COPY[c.lang];
   const tail = e.kind === "range" || e.kind === "done" ? e.tail : null;
-  const sub = tail ? copy.thenCuts(shortWho(tail.who)) : null;
+  const sub = tail ? copy.thenCuts(shortWho(tail.who, c.lang)) : null;
   switch (e.kind) {
     case "range":
       return { line: whenText(e.p50At, c), sub: sub ?? copy.latest(whenText(e.p85At, c)) };
     case "waits":
-      return { line: copy.waitsOn(shortWho(e.who)), sub: null };
+      return { line: copy.waitsOn(shortWho(e.who, c.lang)), sub: null };
     case "done":
       return { line: e.at ? doneDayText(e.at, c) : "", sub };
     case "none":
@@ -121,7 +123,7 @@ export function etaInline(e: Eta, c: EtaClock): string {
   const copy = ETA_COPY[c.lang];
   if (e.kind === "range") {
     const head = `${whenText(e.p50At, c, true)} · ${copy.latestInline(whenText(e.p85At, c, true))}`;
-    return e.tail ? `${head} · ${copy.thenCuts(shortWho(e.tail.who))}` : head;
+    return e.tail ? `${head} · ${copy.thenCuts(shortWho(e.tail.who, c.lang))}` : head;
   }
   const { line, sub } = etaLines(e, c);
   const head = e.kind === "done" ? `✓ ${line}`.trim() : line;

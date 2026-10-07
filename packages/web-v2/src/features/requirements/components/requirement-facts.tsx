@@ -17,7 +17,7 @@ import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import { ReleaseLine } from "@/features/forecast/components/release-line";
 import { criteriaRestText } from "@/features/forecast/text";
-import { useRequirementForecast } from "@/features/forecast/hooks";
+import { useEtaClock, useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementState } from "@forge/contracts/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { PromoteDraftRow } from "./promote-drafts";
@@ -25,7 +25,7 @@ import { CoverageSummary, Stepper } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
 export function CriteriaRest({ passing, criteria, scope, slug, className = "pb-1.5" }: { passing: number; criteria: number; scope: ScopeForecast; slug: string; className?: string }) {
-  const read = criteriaRestText(passing, criteria, scope);
+  const read = criteriaRestText(passing, criteria, scope, useEtaClock());
   if (!read) return null;
   return (
     <p className={className} data-testid="facts-forecast">

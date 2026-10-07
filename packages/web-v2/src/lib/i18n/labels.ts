@@ -1,28 +1,41 @@
 import { ARTIFACT_CHANGE_LABELS, LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
-import { DESIGN_REVISION_STATE_LABELS, DESIGN_STATUS_LABELS } from "@forge/contracts/design-status";
+import {
+  DESIGN_REVISION_STATE_HINTS,
+  DESIGN_REVISION_STATE_LABELS,
+  DESIGN_STATUS_HINTS,
+  DESIGN_STATUS_LABELS,
+} from "@forge/contracts/design-status";
 import {
   FEEDBACK_ATTENTION_LABELS,
   FEEDBACK_DECISION_LABELS,
   FEEDBACK_KIND_LABELS,
+  FEEDBACK_PHASE_HINTS,
   FEEDBACK_PHASE_LABELS,
   FEEDBACK_ROUTE_LABELS,
   FEEDBACK_SEVERITY_LABELS,
   FEEDBACK_TARGET_LABELS,
 } from "@forge/contracts/feedback";
 import {
+  CRITERION_STANDING_HINTS,
   CRITERION_STANDING_LABELS,
+  ISSUE_CATEGORY_LABELS,
   ISSUE_PRIORITY_LABELS,
+  ISSUE_STATUS_HINTS,
   ISSUE_STATUS_LABELS,
   WORK_STEP_LABELS,
 } from "@forge/contracts/issue-vocabulary";
 import { NEEDS_YOU_AREA_LABELS } from "@forge/contracts/needs-you";
-import { RELEASE_ATTENTION_LABELS, RELEASE_PROOF_LABELS, RELEASE_STATE_LABELS } from "@forge/contracts/releases";
+import { RELEASE_ATTENTION_LABELS, RELEASE_PROOF_LABELS, RELEASE_STATE_HINTS, RELEASE_STATE_LABELS } from "@forge/contracts/releases";
 import {
+  BC_VERDICT_HINTS,
   BC_VERDICT_LABELS,
   REQUIREMENT_ATTENTION_LABELS,
+  REQUIREMENT_STATE_HINTS,
   REQUIREMENT_STATE_LABELS,
+  REVISION_STATE_HINTS,
   REVISION_STATE_LABELS,
 } from "@forge/contracts/requirements";
+import { SUGGESTION_STATUS_LABELS } from "@forge/contracts/suggestions";
 import { HEALTH_MARKER_LABELS } from "@forge/contracts/workflow-health";
 import { copyOr } from "./product-copy";
 
@@ -35,6 +48,9 @@ const labelsOf = <V extends { label: string }>(m: Record<string, V>): Record<str
   Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.label]));
 const hintsOf = <V extends { hint: string | null }>(m: Record<string, V>): Record<string, string> =>
   Object.fromEntries(Object.entries(m).flatMap(([k, v]) => (v.hint ? [[k, v.hint]] : [])));
+
+const sentencesOf = (m: Record<string, string>): Record<string, string> =>
+  Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.replace(/^[a-z_-]+: /, "")]));
 
 export const LABEL_GROUPS = {
   requirementState: REQUIREMENT_STATE_LABELS,
@@ -64,6 +80,18 @@ export const LABEL_GROUPS = {
   issuePriority: ISSUE_PRIORITY_LABELS,
   issueStatus: ISSUE_STATUS_LABELS,
   workStep: WORK_STEP_LABELS,
+  issueCategory: ISSUE_CATEGORY_LABELS,
+  suggestionStatus: SUGGESTION_STATUS_LABELS,
+  // what a state means, for the tooltip: the contracts write `value: sentence` and the badge shows the sentence
+  hintRequirementState: sentencesOf(REQUIREMENT_STATE_HINTS),
+  hintBcVerdict: sentencesOf(BC_VERDICT_HINTS),
+  hintRevisionState: sentencesOf(REVISION_STATE_HINTS),
+  hintFeedbackPhase: sentencesOf(FEEDBACK_PHASE_HINTS),
+  hintReleaseState: sentencesOf(RELEASE_STATE_HINTS),
+  hintIssueStatus: sentencesOf(ISSUE_STATUS_HINTS),
+  hintCriterionStanding: sentencesOf(CRITERION_STANDING_HINTS),
+  hintDesignStatus: sentencesOf(DESIGN_STATUS_HINTS),
+  hintDesignRevisionState: sentencesOf(DESIGN_REVISION_STATE_HINTS),
 } as const satisfies Record<string, Record<string, string>>;
 
 export type LabelGroup = keyof typeof LABEL_GROUPS;

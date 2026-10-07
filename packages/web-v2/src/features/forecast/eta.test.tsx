@@ -79,8 +79,8 @@ describe("the ETA cell reads a clock, not a duration", () => {
     const eta = etaOfForecast(TODAY, vi);
     const { line, sub } = etaLines(eta, vi);
     expect(`${line} ${sub}`).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
-    expect(eta.detail).toMatch(/^Trong 2\.2 h – 31 h · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
-    expect(eta.detail).toContain("not a promise");
+    expect(eta.detail).toMatch(/^Trong 2,2 giờ – 31 giờ · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
+    expect(eta.detail).toContain("không phải cam kết"); // i18n-allow: asserts the vi ETA copy
     expect(eta.detail).toContain("held to 2");
   });
 });
@@ -90,9 +90,9 @@ describe("the ETA cell where there is no date", () => {
     const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked at needs_info", ref: null, since: null, late: null };
     const eta = etaOfForecast(f, vi);
     expect(eta.kind).toBe("waits");
-    expect(etaLines(eta, vi)).toEqual({ line: "Chờ project writer", sub: null }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(eta, vi)).toEqual({ line: "Chờ Người ghi project", sub: null }); // i18n-allow: asserts the vi ETA copy
     expect(etaLines(eta, en).line).toBe("Waits on project writer");
-    expect(eta.detail).toBe("A project writer — answer a question. parked at needs_info");
+    expect(eta.detail).toBe("Người ghi project — answer a question. parked at needs_info"); // i18n-allow: asserts the vi ETA copy
   });
 
   it("not enough history: a dash, the sample size in the tooltip", () => {
@@ -121,13 +121,13 @@ describe("a release a person still cuts", () => {
 
   it("reads the landing, then who cuts it as the second line", () => {
     const d: DeliveryForecast = { ...stamp, landing: TODAY, release: manual, inHands: null, shipped: null };
-    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "14:10", sub: "rồi chờ project admin cắt" }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "14:10", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
     expect(etaLines(etaOfDelivery(d, en), en).sub).toBe("then project admin cuts it");
   });
 
   it("reads a landed change waiting on the cut as landed, then who cuts it", () => {
     const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-30) }, release: manual, inHands: null, shipped: null };
-    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "Hôm nay", sub: "rồi chờ project admin cắt" }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "Hôm nay", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
   });
 
   it("reads the time in people's hands where production releases on its own", () => {
@@ -138,8 +138,8 @@ describe("a release a person still cuts", () => {
 
   it("names who triages an untriaged feedback item, with no date", () => {
     const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, vi);
-    expect(eta && etaLines(eta, vi).line).toBe("Chờ holder of feedback.appr…"); // i18n-allow: asserts the vi ETA copy
-    expect(eta?.detail).toBe("A holder of feedback.approve — triage it. new");
+    expect(eta && etaLines(eta, vi).line).toBe("Chờ Người có quyền feedback…"); // i18n-allow: asserts the vi ETA copy
+    expect(eta?.detail).toBe("Người có quyền feedback.approve — phân loại. new"); // i18n-allow: asserts the vi ETA copy
   });
 });
 
@@ -153,7 +153,7 @@ describe("the rail reads the same clock in one line", () => {
     render(<EtaInline eta={etaOfForecast(TODAY, vi)} clock={vi} />);
     const el = screen.getByTestId("eta-inline");
     expect(el.textContent).toBe("14:10 hôm nay · muộn nhất mai 18:50"); // i18n-allow: asserts the vi ETA copy
-    expect(el.getAttribute("title")).toMatch(/^Trong 2\.2 h – 31 h · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
+    expect(el.getAttribute("title")).toMatch(/^Trong 2,2 giờ – 31 giờ · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
   });
 });
 

@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon } from "../icons/icon";
 import { LEGEND, type LegendTone } from "../vocabulary";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /** A read model's groups in the order its contract declares them, each holding the rows core put there. */
 export function standingGroups<R extends { attentionGroup: G }, G extends StandingGroup>(
@@ -219,6 +220,7 @@ export interface GroupedListProps<R> {
 }
 
 export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta }: GroupedListProps<R>) {
+  const t = useCopy();
   const shown = groups.filter((g) => g.rows.length > 0);
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
@@ -226,10 +228,10 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
         className={cn(eta ? COLS_ETA : COLS, "sticky top-0 z-[6] h-8 items-center border-b border-line-subtle bg-sunken text-11-5 font-semibold text-subtle max-md:hidden")}
         data-testid="list-header"
       >
-        <span aria-hidden>{columns?.key ?? "Key"}</span>
-        <span aria-hidden>{columns?.title ?? "Title"}</span>
-        <span aria-hidden>{columns?.state ?? "State"}</span>
-        <span aria-hidden>{columns?.waitingOn ?? "Waiting on"}</span>
+        <span aria-hidden>{columns?.key ?? t("list.col.key")}</span>
+        <span aria-hidden>{columns?.title ?? t("list.col.title")}</span>
+        <span aria-hidden>{columns?.state ?? t("list.col.state")}</span>
+        <span aria-hidden>{columns?.waitingOn ?? t("list.col.waitingOn")}</span>
         {eta ? (
           <button
             type="button"
@@ -243,9 +245,9 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
             <Icon name={eta.sorted ? "arrowUp" : "chevronUpDown"} size={11} />
           </button>
         ) : null}
-        <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? "Owner · age"}</span>
+        <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? t("list.col.meta")}</span>
       </div>
-      {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? "Nothing to show."}</p> : null}
+      {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? t("list.empty")}</p> : null}
       {shown.map((g) => {
         const open = fold.isOpen(g.id, g.collapsed);
         return (

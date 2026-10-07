@@ -59,8 +59,8 @@ describe("Coming next on Releases", () => {
     expect(row.textContent).toContain("1/3 landed");
     const cell = within(row).getByTestId("eta-cell");
     expect(within(cell).getByTestId("eta-line").textContent).toBe("13:00");
-    expect(within(cell).getByTestId("eta-sub").textContent).toBe("rồi chờ project admin cắt"); // i18n-allow: asserts the vi ETA copy
-    expect(cell.getAttribute("title")).toMatch(/^Trong 1\.0 h – 4\.0 h · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
+    expect(within(cell).getByTestId("eta-sub").textContent).toBe("rồi chờ Admin project cắt"); // i18n-allow: asserts the vi ETA copy
+    expect(cell.getAttribute("title")).toMatch(/^Trong 1,0 giờ – 4,0 giờ · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
     expect(row.textContent).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
   });
 
