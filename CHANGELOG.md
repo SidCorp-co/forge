@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.138] - 2026-10-07
+
+Standing sentences become registry keys, so Vietnamese pages read Vietnamese
+
+### Changed
+
+- **Vietnamese screens now read every standing sentence in Vietnamese.** Core sends each wait, act, rule, blocker and run outcome as a registry key with typed values beside its English; the web renders the key, marking one it lacks.
+
 ## [0.4.0-dev.137] - 2026-10-07
 
 A question waiting on a merge is answered when the merge mark is stamped
