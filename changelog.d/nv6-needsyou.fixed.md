@@ -1,0 +1,1 @@
+**Needs you answers far faster on a large project.** Design health, storefront drafts and dispatch-gate reasons are read once per project, not once per row: one request on HOP drops from 919 queries to 238.

@@ -64,7 +64,7 @@ vi.mock('./ports.js', async (importOriginal) => {
     ...(await importOriginal<typeof import('./ports.js')>()),
     policyGapsOf: async () => () => null,
     designUnapprovedSql: () => sql`false`,
-    assertDesignApprovedForIssue: async () => undefined,
+    designHoldsOf: async () => new Map(),
   };
 });
 // the gate predicate and the gate itself answer from `state.waiting`, as the wait table would
@@ -82,13 +82,20 @@ vi.mock('./contract-waits.js', async (importOriginal) => {
   const real = await importOriginal<typeof import('./contract-waits.js')>();
   return {
     ...real,
-    assertContractWaitsSettledForIssue: async (_p: string, issueId: string) => {
-      if (state.waiting.has(issueId)) {
-        throw real.contractWaitUnsettled([
-          { issue: 'ISS-3', contract: 'catalog-api/admin-rest-v1', minVersion: '3.1.0' },
-        ]);
-      }
-    },
+    contractHoldsOf: async (_p: string, issueIds: readonly string[]) =>
+      new Map(
+        issueIds
+          .filter((id) => state.waiting.has(id))
+          .map((id) => [
+            id,
+            real
+              .contractWaitUnsettled([
+                { issue: 'ISS-3', contract: 'catalog-api/admin-rest-v1', minVersion: '3.1.0' },
+              ])
+              .refusals.map((r) => r.detail)
+              .join(' '),
+          ]),
+      ),
   };
 });
 

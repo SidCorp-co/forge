@@ -105,6 +105,24 @@ async function admitPat(
   return runWithPatScope(scope, () => next());
 }
 
+const USER_TOKEN_VAR = 'userTokenResolution';
+
+type UserClaims = Awaited<ReturnType<typeof verifyUserToken>>;
+
+/**
+ * The session token's claims, verified once per request: a request under `/api/projects` passes
+ * every router mounted there, each gating with its own `requireAuth()`, and the revocation read
+ * each verify makes answers the same for all of them. A PAT is memoised the same way
+ * (`pat-rest-surface.ts:beginPatRequest`).
+ */
+async function userClaimsOf(c: Context, token: string): Promise<UserClaims> {
+  const cached = c.get(USER_TOKEN_VAR) as { token: string; claims: UserClaims } | undefined;
+  if (cached && cached.token === token) return cached.claims;
+  const claims = await verifyUserToken(token);
+  c.set(USER_TOKEN_VAR, { token, claims });
+  return claims;
+}
+
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   return declareGate('requireAuth', async (c, next) => {
     const token = readBearerToken(c);
@@ -112,7 +130,7 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
     if (isPatLike(token)) return admitPat(c, token, next);
 
     try {
-      const claims = await verifyUserToken(token);
+      const claims = await userClaimsOf(c, token);
       c.set('userId', claims.sub);
       c.set('principal', 'user');
       c.set('agency', 'human');
@@ -133,7 +151,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
 
     if (!isPatLike(token)) {
       try {
-        const claims = await verifyUserToken(token);
+        const claims = await userClaimsOf(c, token);
         c.set('userId', claims.sub);
         c.set('principal', 'user');
         c.set('agency', 'human');

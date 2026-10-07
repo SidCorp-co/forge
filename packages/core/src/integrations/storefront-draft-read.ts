@@ -6,35 +6,56 @@ import {
 } from './store.js';
 import type { StorefrontDraftReading } from './types.js';
 
-/** The draft a storefront binding's provider holds of one workflow now, or why it cannot be read. */
-export async function readStorefrontDraft(args: {
+/**
+ * The draft a storefront binding's provider holds now of each workflow named, or why it cannot be
+ * read: one binding lookup and one provider read for all of them, so a reader holding verdicts on
+ * thirty drafts asks the provider once, not thirty times.
+ */
+export async function readStorefrontDrafts(args: {
   provider: string;
   binding: string;
-  workflowId: string;
-}): Promise<StorefrontDraftReading> {
-  const { provider, binding, workflowId } = args;
+  workflowIds: readonly string[];
+}): Promise<Map<string, StorefrontDraftReading>> {
+  const { provider, binding } = args;
+  const workflowIds = [...new Set(args.workflowIds)];
+  const every = (reading: StorefrontDraftReading) =>
+    new Map(workflowIds.map((id) => [id, reading]));
+  if (workflowIds.length === 0) return new Map();
   const pair = await findBindingWithConnectionById(binding);
   if (!pair) {
-    return {
+    return every({
       kind: 'unreadable',
       detail: `the storefront source names binding \`${binding}\`, which core does not hold`,
-    };
+    });
   }
-  const read = getIntegration(provider)?.storefrontDraft;
+  const read = getIntegration(provider)?.storefrontDrafts;
   if (!read) {
-    return {
+    return every({
       kind: 'unreadable',
       detail: `core has no draft reader for provider \`${provider}\`, so a ${provider} draft cannot be read back`,
-    };
+    });
   }
+  let readings: Map<string, StorefrontDraftReading>;
   try {
-    return await read({
+    readings = await read({
       connectionId: pair.connection.id,
       config: effectiveConfig<Record<string, unknown>>(pair),
       readSecrets: () => decryptConnectionSecrets(pair.connection),
-      workflowId,
+      workflowIds,
     });
   } catch (err) {
-    return { kind: 'unreadable', detail: `the ${provider} read failed: ${(err as Error).message}` };
+    return every({
+      kind: 'unreadable',
+      detail: `the ${provider} read failed: ${(err as Error).message}`,
+    });
   }
+  return new Map(
+    workflowIds.map((id): [string, StorefrontDraftReading] => [
+      id,
+      readings.get(id) ?? {
+        kind: 'unreadable',
+        detail: `the ${provider} draft reader answered no reading of workflow \`${id}\``,
+      },
+    ]),
+  );
 }

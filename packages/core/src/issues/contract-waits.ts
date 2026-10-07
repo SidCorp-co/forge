@@ -12,6 +12,7 @@
 import { CONTRACT_WAIT_UNSETTLED } from '@forge/contracts/contract-waits';
 import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { contractWaitUnsettledSql, issueContractWaits } from '../db/schema-contract-waits.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { contractLockKey } from '../lib/contract-versions.js';
@@ -49,9 +50,10 @@ async function heldWhere(
   projectId: string,
   filter: SQL,
   executor: GateReader = db,
-): Promise<UnsettledWait[]> {
+): Promise<(UnsettledWait & { issueId: string })[]> {
   const rows = (await executor.execute(sql`
-    SELECT i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version, cw.due_at
+    SELECT i.id AS issue_id, i.iss_seq, p.slug AS provider_slug, cw.contract_slug, cw.min_version,
+           cw.due_at
     FROM issue_contract_waits cw
     JOIN issues i ON i.id = cw.issue_id
     JOIN projects p ON p.id = cw.provider_project_id
@@ -64,11 +66,34 @@ async function heldWhere(
   if (rows.length === 0) return [];
   const prefix = await activeIssuePrefix(projectId, executor);
   return rows.map((r) => ({
+    issueId: String(r.issue_id),
     issue: formatIssueRef(prefix, Number(r.iss_seq)),
     contract: `${String(r.provider_slug)}/${String(r.contract_slug)}`,
     minVersion: String(r.min_version),
     dueAt: r.due_at ? new Date(r.due_at as string | Date) : null,
   }));
+}
+
+/**
+ * Why the gate holds each of these issues, by issue id: the detail of the refusal a dispatch door
+ * would give it, every issue read in one query. An issue the gate does not hold is absent.
+ */
+export async function contractHoldsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (issueIds.length === 0) return new Map();
+  const held = await heldWhere(projectId, sql`i.id IN (${idList(issueIds)})`);
+  const byIssue = new Map<string, UnsettledWait[]>();
+  for (const w of held) byIssue.set(w.issueId, [...(byIssue.get(w.issueId) ?? []), w]);
+  return new Map(
+    [...byIssue].map(([id, waits]) => [
+      id,
+      contractWaitUnsettled(waits)
+        .refusals.map((r) => r.detail)
+        .join(' '),
+    ]),
+  );
 }
 
 function refuseHeld(held: UnsettledWait[]): void {

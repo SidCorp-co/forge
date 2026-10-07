@@ -9,7 +9,7 @@ import {
   updateConnection,
 } from '../index.js';
 import { type AutoflowGqlResult, autoflowGql } from './client.js';
-import { autoflowStorefrontDraft } from './draft.js';
+import { autoflowStorefrontDrafts } from './draft.js';
 import { autoflowBaseUrl, autoflowGraphqlUrl, autoflowMcpUrl } from './endpoints.js';
 import {
   AUTOFLOW_INJECTION_MIN_LIFETIME_MS,
@@ -269,5 +269,5 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
   },
   adapter: autoflowAdapterMethods,
   storefrontTarget: autoflowStorefrontTarget,
-  storefrontDraft: autoflowStorefrontDraft,
+  storefrontDrafts: autoflowStorefrontDrafts,
 });

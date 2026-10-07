@@ -496,9 +496,10 @@ export interface IntegrationDeclaration<
    * every provider declaring it and names the rest when asked for one.
    */
   readonly storefrontTarget?: (args: StorefrontTargetArgs) => Promise<Record<string, unknown>>;
-  readonly storefrontDraft?: (
-    args: StorefrontTargetArgs & { workflowId: string },
-  ) => Promise<StorefrontDraftReading>;
+  /** The draft the provider holds now of each workflow named, read once for all of them. */
+  readonly storefrontDrafts?: (
+    args: StorefrontTargetArgs & { workflowIds: readonly string[] },
+  ) => Promise<Map<string, StorefrontDraftReading>>;
   /** Present where a binding of this provider is the host a project's repository lives on. */
   readonly sourceHost?: SourceHostFactory;
   /** Present where this provider can mint a short-lived HTTPS git credential for a runner. */

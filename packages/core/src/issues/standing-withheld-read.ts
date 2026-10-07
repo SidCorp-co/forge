@@ -10,9 +10,8 @@ import type { IssueWithheld } from '@forge/contracts/issue-standing';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
-import { isRefusal } from '../lib/refusal.js';
-import { assertContractWaitsSettledForIssue, contractWaitUnsettledSql } from './contract-waits.js';
-import { assertDesignApprovedForIssue, designUnapprovedSql, policyGapsOf } from './ports.js';
+import { contractHoldsOf, contractWaitUnsettledSql } from './contract-waits.js';
+import { designHoldsOf, designUnapprovedSql, policyGapsOf } from './ports.js';
 
 /** A row with the two gate predicates already read. */
 export interface GatedRow {
@@ -22,20 +21,11 @@ export interface GatedRow {
   contract_unsettled: boolean;
 }
 
-const gateDetail = async (ask: () => Promise<void>): Promise<string | null> => {
-  try {
-    await ask();
-    return null;
-  } catch (err) {
-    if (isRefusal(err)) return err.refusals.map((r) => r.detail).join(' ');
-    throw err;
-  }
-};
-
 /**
  * Why the admissible list withholds each takeable row, asked of the gates that withhold it (the
  * policy, the design gate, the contract-wait gate), first that holds; a row that is not withheld is
- * absent. A gate is asked again only for the rows its predicate already held, so a page asks none.
+ * absent. A gate is asked again only for the rows its predicate already held, all of them in one
+ * read, so a page asks none and a page of held rows asks each gate once.
  */
 export async function withheldOf(
   projectId: string,
@@ -45,24 +35,22 @@ export async function withheldOf(
   const takeable = raws.filter((r) => TAKEABLE_STATUSES.includes(r.status));
   if (takeable.length === 0) return out;
   const gapOf = await policyGapsOf(projectId);
+  const ungapped: GatedRow[] = [];
   for (const r of takeable) {
     const gap = gapOf(r.status);
-    if (gap) {
-      out.set(r.id, gap);
-      continue;
-    }
-    if (r.design_unapproved) {
-      const detail = await gateDetail(() => assertDesignApprovedForIssue(projectId, r.id));
-      if (detail !== null) {
-        out.set(r.id, { code: 'WORKFLOW_DESIGN_NOT_APPROVED', detail });
-        continue;
-      }
-    }
-    if (r.contract_unsettled) {
-      const detail = await gateDetail(() => assertContractWaitsSettledForIssue(projectId, r.id));
-      if (detail !== null) out.set(r.id, { code: 'CONTRACT_WAIT_UNSETTLED', detail });
-    }
+    if (gap) out.set(r.id, gap);
+    else ungapped.push(r);
   }
+  const designs = await designHoldsOf(
+    projectId,
+    ungapped.filter((r) => r.design_unapproved).map((r) => r.id),
+  );
+  for (const [id, detail] of designs) out.set(id, { code: 'WORKFLOW_DESIGN_NOT_APPROVED', detail });
+  const contracts = await contractHoldsOf(
+    projectId,
+    ungapped.filter((r) => r.contract_unsettled && !designs.has(r.id)).map((r) => r.id),
+  );
+  for (const [id, detail] of contracts) out.set(id, { code: 'CONTRACT_WAIT_UNSETTLED', detail });
   return out;
 }
 
