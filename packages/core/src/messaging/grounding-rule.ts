@@ -18,7 +18,9 @@ import type { MessageFacts } from './facts.js';
 export const GROUNDING_TOOLS = {
   status: 'forge_project_status',
   requirements: 'forge_requirements',
+  requirement: 'forge_requirement',
   releases: 'forge_releases',
+  release: 'forge_release',
   decisions: 'forge_decisions',
 } as const;
 
@@ -29,7 +31,7 @@ interface ClaimFamily {
   readonly groundedBy: readonly string[];
 }
 
-const { status, requirements, releases, decisions } = GROUNDING_TOOLS;
+const { status, requirements, requirement, releases, release, decisions } = GROUNDING_TOOLS;
 
 const FAMILIES: readonly ClaimFamily[] = [
   {
@@ -40,7 +42,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:awaiting|waits? (?:on|for)|waiting (?:on|for)) (?:release )?approval\b/i,
       /đã\s+phát\s+hành|(?:tới|đến)\s+(?:tay\s+)?người\s+dùng|bản\s+phát\s+hành|đã\s+ra\s+mắt|chờ\s+(?:phê\s+)?duyệt/i, // i18n-allow: the Vietnamese phrasing of a shipped claim this rule reads
     ],
-    groundedBy: [status, releases],
+    groundedBy: [status, releases, release],
   },
   {
     name: "a requirement's progress",
@@ -50,7 +52,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b\d+\s*(?:\/|of)\s*\d+\s+(?:criteria|BCs?)\b/i,
       /yêu\s+cầu[^.\n]{0,60}(?:đang\s+(?:làm|giao|triển\s+khai)|đã\s+xong|hoàn\s+thành|đã\s+giao|in[_ ]progress|in[_ ]delivery)|\d+\s*\/\s*\d+\s+tiêu\s+chí/i, // i18n-allow: the Vietnamese phrasing of a requirement-progress claim this rule reads
     ],
-    groundedBy: [status, requirements],
+    groundedBy: [status, requirements, requirement],
   },
   {
     name: 'what comes next and when',
@@ -58,7 +60,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:roadmap|next release|forecast|ETA|expected (?:on|by|to (?:land|ship|reach))|will (?:ship|reach users|land) (?:on|by|in))\b/i,
       /lộ\s+trình|release\s+kế\s+tiếp|bản\s+kế\s+tiếp|dự\s+kiến/i, // i18n-allow: the Vietnamese phrasing of a roadmap claim this rule reads
     ],
-    groundedBy: [status, releases, requirements],
+    groundedBy: [status, releases, release, requirements, requirement],
   },
   {
     name: 'what is late or blocked',
@@ -74,7 +76,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\bdecisions? (?:were|was|made|taken)\b|\b(?:was|were) decided\b|\bdecided (?:to|that|on)\b/i,
       /(?:các|những)\s+quyết\s+định|đã\s+chốt|đã\s+quyết\s+định|quyết\s+định\s+ngày/i, // i18n-allow: the Vietnamese phrasing of a decision claim this rule reads
     ],
-    groundedBy: [decisions, requirements],
+    groundedBy: [decisions, requirement],
   },
 ];
 
@@ -97,7 +99,7 @@ function readThisTurn(f: MessageFacts): Set<string> {
 export const STATUS_CLAIMS_GROUNDED: MessageRule = {
   id: 'status-claims-grounded',
   shape:
-    'state what shipped, how far a requirement is, what comes next, what is late or what was decided only from forge_project_status, forge_requirements, forge_releases or forge_decisions called this turn',
+    'state what shipped, how far a requirement is, what comes next, what is late or what was decided only from forge_project_status, forge_requirement(s), forge_release(s) or forge_decisions called this turn',
   example: 'I filed it as a draft; tell me if the title needs a change.',
   needs: [],
   check: (text, f) => {

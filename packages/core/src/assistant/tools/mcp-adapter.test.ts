@@ -9,6 +9,9 @@ import { buildToolset } from './mcp-adapter.js';
 // session's onto every call, reading the schema's top-level properties. forge_requirements and
 // forge_releases first shipped as zod unions (top-level oneOf, no properties), so the model was shown
 // a uuid to guess, omitted or guessed it, and 6 of the 9 forge_requirements calls in the journey-understand replay were refused.
+// Made one object with an `action`, the model then filled the field the other act takes
+// (`version: "x"` on a list, `requirement: "REQ-1"` on a list) and was refused 4 times in 18 asks,
+// so each read is its own tool and takes only its own fields.
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const ctx = {
@@ -37,17 +40,30 @@ describe('the chat adapter over a project-bound turn', () => {
     }
   });
 
-  it('pins the project and refuses a field the action does not take by name', async () => {
-    const { execute } = buildToolset(ctx, [...CHAT_READ_MODEL_TOOLS]);
-    const get = await execute('forge_requirements', JSON.stringify({ action: 'get' }));
-    expect(get.isError).toBe(true);
-    expect(JSON.stringify(get.content)).toContain('reads one requirement: name it, e.g. REQ-12');
-    expect(JSON.stringify(get.content)).not.toContain('projectId');
-    const list = await execute(
-      'forge_releases',
-      JSON.stringify({ action: 'list', version: '0.3.0' }),
+  it('offers each read as its own tool, taking only its own fields, never an action', () => {
+    const { tools } = buildToolset(ctx, [...CHAT_READ_MODEL_TOOLS]);
+    const fields = Object.fromEntries(
+      tools.map((t) => [
+        t.function.name,
+        Object.keys((t.function.parameters as { properties?: object }).properties ?? {}).sort(),
+      ]),
     );
-    expect(JSON.stringify(list.content)).toContain('takes no `version`; use action');
+    for (const [name, keys] of Object.entries(fields)) expect(keys, name).not.toContain('action');
+    expect(fields.forge_requirements).toEqual([]);
+    expect(fields.forge_requirement).toEqual(['requirement']);
+    expect(fields.forge_releases).toEqual(['limit', 'state']);
+    expect(fields.forge_release).toEqual(['version']);
+  });
+
+  it('pins the project and refuses a read missing what it reads, by name', async () => {
+    const { execute } = buildToolset(ctx, [...CHAT_READ_MODEL_TOOLS]);
+    const get = await execute('forge_requirement', JSON.stringify({ requirement: 'twelve' }));
+    expect(get.isError).toBe(true);
+    expect(JSON.stringify(get.content)).toContain('a requirement is named by its key, REQ-n');
+    expect(JSON.stringify(get.content)).not.toContain('projectId');
+    const release = await execute('forge_release', '{}');
+    expect(release.isError).toBe(true);
+    expect(JSON.stringify(release.content)).toContain('version');
   });
 
   it('refuses a tool whose input is a union, naming it, instead of offering a projectId to guess', () => {
