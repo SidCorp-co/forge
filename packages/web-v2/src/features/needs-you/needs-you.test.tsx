@@ -50,6 +50,12 @@ describe("the needs-you inbox", () => {
     expect(push).toHaveBeenCalledWith("/projects/hop/issues?peek=ISS-7");
   });
 
+  it("says under a row what doing its act changes, where core gave one", () => {
+    const w = { kind: "you" as const, who: "You", act: "split this release into smaller releases", rule: "r", effect: "Cuts the oldest 50 merged issues as this release.", ref: null, dueAt: null };
+    render(<NeedsYouList slug="hop" foldKey="t2b" empty="" items={[item({ area: "releases", entity: "release", key: "0.1.0", waitingOn: w })]} />);
+    expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues as this release.");
+  });
+
   it("says so when nothing waits on the viewer", () => {
     render(<NeedsYouList slug="hop" foldKey="t3" empty="Nothing waits on you." items={[]} />);
     expect(screen.getByText("Nothing waits on you.")).toBeInTheDocument();

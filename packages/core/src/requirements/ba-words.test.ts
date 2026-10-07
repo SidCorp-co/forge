@@ -5,6 +5,7 @@ import { RELEASE_BLOCKER_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf, type StandingViewer } from '../feedback/standing.js';
 import { gateViews } from '../release-batch/release-gates.js';
+import { turnOf } from '../release-batch/release-view.js';
 import { deriveStanding, type StandingIssue } from './standing.js';
 
 const at = (iso: string) => new Date(iso);
@@ -48,8 +49,20 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
     });
     expect(s.waitingOn.act).toBe('Update to the approved design: Order handling (revision 4)');
     expect(s.waitingOn.act).not.toContain('order-flow');
-    expect(s.waitingOn.rule).toMatch(/newer approved revision.*re-checks its criteria/s);
+    expect(s.waitingOn.rule).toMatch(/newer approved revision/);
     expect(s.waitingOn.act).not.toMatch(KERNEL);
+  });
+
+  it('says what pressing it changes: it records the follow, the criteria stay, delivery waits', () => {
+    const s = deriveStanding({
+      ...base,
+      stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: 2, approved: 4 }],
+    });
+    expect(s.waitingOn.effect).toBe(
+      'Records that this requirement follows Order handling revision 4 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.',
+    );
+    expect(s.waitingOn.effect).not.toMatch(KERNEL);
+    expect(s.waitingOn.rule).not.toMatch(/re-checks/);
   });
 
   it('says the same for a person who cannot sign it off', () => {
@@ -135,5 +148,41 @@ describe('the release gate speaks in plain words', () => {
     }
     const oversize = views.find((v) => v.code === 'RELEASE_ROSTER_OVERSIZE');
     expect(oversize?.owner.act).toBe('split this release into smaller releases');
+  });
+
+  it('says why a release must be split and what splitting does, from the counts', () => {
+    const [v] = gateViews(
+      [
+        { code: 'RELEASE_ROSTER_OVERSIZE', message: 'k', details: { waiting: 63, limit: 50 } },
+      ] as never,
+      [],
+    );
+    expect(v?.sentence).toContain('63 issues are waiting');
+    expect(v?.sentence).toContain('at most 50');
+    expect(v?.owner.effect).toBe(
+      'Cuts the oldest 50 merged issues as this release and leaves the other 13 at the release gate for the next one.',
+    );
+  });
+
+  it('carries that effect onto the line a release waits on', () => {
+    const turn = turnOf({
+      state: 'draft',
+      version: '0.1.0',
+      approval: null,
+      approvers: [],
+      viewer: { userId: 'u', agency: 'human', isAdmin: true, mayApprove: true },
+      gates: [
+        {
+          owner: {
+            kind: 'person',
+            who: 'A project admin',
+            act: 'split this release into smaller releases',
+            effect: 'Cuts the oldest 50.',
+          },
+        },
+      ],
+      inFlight: null,
+    } as never);
+    expect(turn.waitingOn.effect).toBe('Cuts the oldest 50.');
   });
 });

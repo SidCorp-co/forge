@@ -65,6 +65,8 @@ export interface WaitingOn<K extends WaitingKind = WaitingKind> {
 	act: string;
 	/** Why, for the tooltip: the rule of the read model that put it there. */
 	rule: string;
+	/** What doing the act changes, in one sentence a person reads before pressing it; absent where the act says it all. */
+	effect?: string;
 	/** The key `who` names when it is an entity (an issue, feedback, a contract); else null. */
 	ref: string | null;
 	/** When what they owe has a deadline (an SLA, a gate that resumes by itself); else null. */

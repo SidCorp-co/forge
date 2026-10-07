@@ -29,7 +29,7 @@ import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { useRequirement } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
-import { RequirementFacts } from "./requirement-facts";
+import { RequirementFacts, RequirementPhoneProgressOf } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementBanner } from "./standing-bits";
 
@@ -219,6 +219,7 @@ export function RequirementPage({
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
             {banner ? <RequirementBanner standing={s} className="px-8 py-2.5 max-md:px-4" /> : null}
+            <RequirementPhoneProgressOf d={d} slug={slug} projectId={projectId} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
               {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}

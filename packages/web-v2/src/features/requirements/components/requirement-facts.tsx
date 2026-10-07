@@ -18,16 +18,17 @@ import type { ScopeForecast } from "@forge/contracts/forecast";
 import { ReleaseLine } from "@/features/forecast/components/release-line";
 import { criteriaRestText } from "@/features/forecast/text";
 import { useRequirementForecast } from "@/features/forecast/hooks";
+import type { RequirementState } from "@forge/contracts/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { PromoteDraftRow } from "./promote-drafts";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
-export function CriteriaRest({ passing, criteria, scope, slug }: { passing: number; criteria: number; scope: ScopeForecast; slug: string }) {
+export function CriteriaRest({ passing, criteria, scope, slug, className = "pb-1.5" }: { passing: number; criteria: number; scope: ScopeForecast; slug: string; className?: string }) {
   const read = criteriaRestText(passing, criteria, scope);
   if (!read) return null;
   return (
-    <p className="pb-1.5" data-testid="facts-forecast">
+    <p className={className} data-testid="facts-forecast">
       <ReleaseLine said={read} slug={slug} className="fg-body-sm text-muted" testId="criteria-rest-line" />
     </p>
   );
@@ -104,6 +105,23 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
   );
 }
 
+/** On a phone the rail falls below the whole page, so progress and the forecast ride the top of the main column too; the rail hides its own copies there. */
+export function RequirementPhoneProgress({ state, passing, criteria, scope, slug }: { state: RequirementState; passing: number; criteria: number; scope: ScopeForecast | undefined; slug: string }) {
+  return (
+    <div className="hidden border-b border-line-subtle bg-surface px-4 py-3 max-sm:block" data-testid="phone-progress">
+      <Stepper state={state} />
+      {scope?.forecast ? <CriteriaRest passing={passing} criteria={criteria} scope={scope} slug={slug} className="pt-2" /> : null}
+    </div>
+  );
+}
+
+/** The phone progress block of one requirement, reading its own forecast. */
+export function RequirementPhoneProgressOf({ d, slug, projectId }: { d: RequirementDetail; slug: string; projectId: string }) {
+  const forecast = useRequirementForecast(projectId, d.key).data;
+  const { passing, criteria } = d.standing.facts;
+  return <RequirementPhoneProgress state={d.standing.state} passing={passing} criteria={criteria} scope={d.issues.length > 0 ? forecast : undefined} slug={slug} />;
+}
+
 export function RequirementFacts({
   d,
   slug,
@@ -134,6 +152,7 @@ export function RequirementFacts({
             <WaitingOn w={s.waitingOn} />
           </Fact>
         ) : null}
+        {s.attentionGroup !== "done" && s.waitingOn.effect ? <p className="pb-1 pl-[96px] text-12 text-muted max-sm:pl-0" data-testid="facts-effect">{s.waitingOn.effect}</p> : null}
         <Fact label="Owner">
           {s.owner ? <ActorChip name={s.owner.name ?? "Unknown"} kind={s.owner.kind} /> : <span className="text-subtle">No owner</span>}
         </Fact>
@@ -156,7 +175,7 @@ export function RequirementFacts({
             )}
           </Fact>
         ) : null}
-        <div className="pt-2.5">
+        <div className="pt-2.5 max-sm:hidden">
           <Stepper state={s.state} />
         </div>
       </FactsGroup>
@@ -166,7 +185,7 @@ export function RequirementFacts({
       </FactsGroup>
 
       <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
-        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} /> : null}
+        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} className="pb-1.5 max-sm:hidden" /> : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
         ) : (

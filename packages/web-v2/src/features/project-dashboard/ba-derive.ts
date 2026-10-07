@@ -66,6 +66,8 @@ export interface PlanRow {
   href: string;
   eta: Eta | null;
   late: ForecastLate | null;
+  /** The release cut this row's delivery waits on, and who cuts it; null where no cut is owed. */
+  release: { version: string; who: string } | null;
 }
 
 export interface PlanInputs {
@@ -79,6 +81,9 @@ export interface PlanInputs {
 
 const lateOfForecast = (f: Forecast | null | undefined): ForecastLate | null => (f && (f.kind === "forecast" || f.kind === "paused") ? f.late : null);
 
+const releaseOf = (d: DeliveryForecast | null | undefined): PlanRow["release"] =>
+  d?.release?.kind === "person" && d.release.version ? { version: d.release.version, who: d.release.who } : null;
+
 const lateOfDelivery = (d: DeliveryForecast | null | undefined): ForecastLate | null => lateOfForecast(d?.landing);
 
 function worst(...lates: (ForecastLate | null)[]): ForecastLate | null {
@@ -88,7 +93,7 @@ function worst(...lates: (ForecastLate | null)[]): ForecastLate | null {
 export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
   const rows: PlanRow[] = [];
   for (const s of i.requirements?.requirements ?? []) {
-    rows.push({ kind: "requirement", key: s.key, title: s.title ?? s.key, href: requirementHref(i.slug, s.key), eta: etaOfScope(s, clock), late: lateOfDelivery(s.delivery) });
+    rows.push({ kind: "requirement", key: s.key, title: s.title ?? s.key, href: requirementHref(i.slug, s.key), eta: etaOfScope(s, clock), late: lateOfDelivery(s.delivery), release: releaseOf(s.delivery) });
   }
   for (const f of i.feedback?.items ?? []) {
     rows.push({
@@ -98,6 +103,7 @@ export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
       href: feedbackHref(i.slug, f.key),
       eta: etaOfFeedback(f, clock),
       late: worst(f.triage?.late ?? null, lateOfDelivery(f.delivery)),
+      release: f.triage ? null : releaseOf(f.delivery),
     });
   }
   const { summary, scope } = i.release;
@@ -109,6 +115,7 @@ export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
       href: releaseHref(i.slug, summary.version),
       eta: etaOfScope(scope, clock),
       late: worst(lateOfDelivery(scope.delivery), scope.next?.late ?? null),
+      release: null,
     });
   }
   return rows;

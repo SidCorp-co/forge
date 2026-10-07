@@ -30,7 +30,7 @@ function Decision({ a }: { a: ReleaseApprovalView }) {
   );
 }
 
-function ApprovalFacts({ r }: { r: ReleaseDetail }) {
+export function ApprovalFacts({ r }: { r: ReleaseDetail }) {
   const a = r.approval;
   return (
     <FactsGroup title="Approval" testId="facts-approval">
@@ -71,6 +71,25 @@ function ApprovalFacts({ r }: { r: ReleaseDetail }) {
   );
 }
 
+/** On a phone the rail falls below the whole page, so the forecast and the approval ride the top of the main column too; the rail hides its own copies there. */
+export function ReleasePhoneStanding({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
+  const showForecast = r.state === "draft" && forecast?.forecast;
+  const showApproval = r.approvalRequired || r.approval;
+  if (!showForecast && !showApproval) return null;
+  return (
+    <div className="hidden border-b border-line-subtle bg-surface px-4 py-3 max-sm:block" data-testid="phone-standing">
+      {showForecast && forecast ? (
+        <FactsGroup title="Forecast" testId="phone-forecast">
+          <Fact label="Forecast" testId="phone-release-forecast">
+            <ScopeForecastLine scope={forecast} />
+          </Fact>
+        </FactsGroup>
+      ) : null}
+      {showApproval ? <ApprovalFacts r={r} /> : null}
+    </div>
+  );
+}
+
 export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
   const c = r.criteria;
   const a = r.approval;
@@ -98,7 +117,11 @@ export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: Sco
         </Fact>
       </FactsGroup>
 
-      {r.approvalRequired || a ? <ApprovalFacts r={r} /> : null}
+      {r.approvalRequired || a ? (
+        <div className="max-sm:hidden">
+          <ApprovalFacts r={r} />
+        </div>
+      ) : null}
 
       <FactsGroup title="Run" testId="facts-run">
         {r.owner && r.ownerAct === "Cut" ? (
@@ -126,9 +149,11 @@ export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: Sco
           )}
         </Fact>
         {r.state === "draft" && forecast?.forecast ? (
-          <Fact label="Forecast" testId="facts-release-forecast">
-            <ScopeForecastLine scope={forecast} />
-          </Fact>
+          <div className="max-sm:hidden">
+            <Fact label="Forecast" testId="facts-release-forecast">
+              <ScopeForecastLine scope={forecast} />
+            </Fact>
+          </div>
         ) : null}
         {r.state === "draft" ? <FactsEmpty>Not cut yet: no run holds these issues.</FactsEmpty> : null}
       </FactsGroup>

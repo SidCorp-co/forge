@@ -40,6 +40,17 @@ describe("the BA dashboard", () => {
     expect(rows.find((r) => r.key === "REQ-3")?.eta).toMatchObject({ kind: "waits", who: "A project writer" });
   });
 
+  it("reads the release an item waits on, and who cuts it, from its delivery forecast", () => {
+    const f = range("2026-10-08T10:00:00Z");
+    const leg = { kind: "person" as const, mode: "approval" as never, who: "A release approver", act: "cut 0.1.0, then approve it", reason: "r", version: "0.1.0", holders: [] };
+    const base = scope("REQ-1", f);
+    const waits: ScopeForecast = { ...base, delivery: base.delivery && { ...base.delivery, release: leg } };
+    const free = scope("REQ-2", f);
+    const rows = planRows(inputs(reqs(waits, free)), clock);
+    expect(rows.find((r) => r.key === "REQ-1")?.release).toEqual({ version: "0.1.0", who: "A release approver" });
+    expect(rows.find((r) => r.key === "REQ-2")?.release).toBeNull();
+  });
+
   it("calls nothing late that core did not", () => {
     expect(lateRows(planRows(inputs(reqs(scope("REQ-1", range("2026-10-08T10:00:00Z")))), clock))).toEqual([]);
   });

@@ -21,7 +21,7 @@ export const uxFlow: WorkflowTemplate = {
   nodeTypes: [
     {
       id: 'ENTRY',
-      label: 'Entry',
+      label: 'Start',
       tooltip: 'Where the person comes in: a link, a notification, a menu.',
       icon: 'play',
       colour: 'green',
@@ -98,7 +98,7 @@ export const uxFlow: WorkflowTemplate = {
     },
     {
       id: 'EXIT',
-      label: 'Exit',
+      label: 'End',
       tooltip: 'Where the flow ends for the person.',
       icon: 'log-out',
       colour: 'emerald',

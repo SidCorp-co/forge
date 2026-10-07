@@ -40,6 +40,9 @@ export const BASELINE_ACTS = ["agree", "repin"] as const;
 
 /** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
  *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
+/** The words a requirement's act opens with when a design it follows has a newer approved revision; the dashboard groups identical acts by them. */
+export const FOLLOW_NEWER_DESIGN_ACT = "Update to the approved design";
+
 export const REQUIREMENT_LIFECYCLE = [
 	"draft",
 	"agreed",

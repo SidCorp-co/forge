@@ -15,7 +15,12 @@ type Owing = 'master' | 'admin' | 'system';
 interface Owed {
   by: Owing;
   act: (details: Details) => string;
+  /** What doing the act changes, where its words leave that open. */
+  effect?: (details: Details) => string;
 }
+
+const numberOf = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isFinite(v) ? v : null;
 
 interface Held {
   displayId: string;
@@ -90,8 +95,15 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   },
   RELEASE_ROSTER_OVERSIZE: {
     title: 'Too many issues',
-    plain: () =>
-      `More issues are waiting than one release carries (${RELEASE_ROSTER_LIMIT}). Split them into smaller releases, oldest merge first.`,
+    plain: (d) => {
+      const waiting = numberOf(d?.waiting);
+      const limit = numberOf(d?.limit) ?? RELEASE_ROSTER_LIMIT;
+      const head =
+        waiting === null
+          ? 'More issues are waiting'
+          : `${counted(waiting, 'issue')} ${agrees(waiting, 'is', 'are')} waiting`;
+      return `${head}, and one release carries at most ${limit}. Split them into smaller releases, oldest merge first.`;
+    },
   },
   RELEASE_RECORD_MISSING: {
     title: 'Release note missing',
@@ -170,7 +182,17 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_TARGET_UNDECLARED: { by: 'admin', act: () => 'declare where releases land' },
   CLAIM_CONFLICT: { by: 'admin', act: () => 'cut the issues that are waiting' },
   RELEASE_ROSTER_EMPTY: { by: 'master', act: () => 'bring an issue to the release gate' },
-  RELEASE_ROSTER_OVERSIZE: { by: 'admin', act: () => 'split this release into smaller releases' },
+  RELEASE_ROSTER_OVERSIZE: {
+    by: 'admin',
+    act: () => 'split this release into smaller releases',
+    effect: (d) => {
+      const waiting = numberOf(d?.waiting);
+      const limit = numberOf(d?.limit) ?? RELEASE_ROSTER_LIMIT;
+      const rest = waiting === null ? null : Math.max(0, waiting - limit);
+      const left = rest === null ? 'the others' : `the other ${rest}`;
+      return `Cuts the oldest ${limit} merged issues as this release and leaves ${left} at the release gate for the next one.`;
+    },
+  },
   RELEASE_RECORD_MISSING: { by: 'master', act: onThem('write the release note') },
   RELEASE_WORK_UNMERGED: { by: 'master', act: onThem('mark the merge') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: () => 'declare a source probe on production' },
@@ -193,7 +215,11 @@ const OWNER_OF: Record<Owing, Pick<ReleaseGateOwner, 'kind' | 'who'>> = {
 
 function ownerOf(code: ReleaseReasonCode, details: Details): ReleaseGateOwner {
   const owed = OWED[code];
-  return { ...OWNER_OF[owed.by], act: owed.act(details) };
+  return {
+    ...OWNER_OF[owed.by],
+    act: owed.act(details),
+    ...(owed.effect ? { effect: owed.effect(details) } : {}),
+  };
 }
 
 function gateView(

@@ -18,6 +18,7 @@ const rowView =
     href: needsYouHref(slug, n),
     title: n.title,
     facts: [NEEDS_YOU_AREA_LABELS[n.area]],
+    note: n.waitingOn.effect ?? null,
     state: null,
     waitingOn: <WaitingOn w={n.waitingOn} />,
     owner: null,

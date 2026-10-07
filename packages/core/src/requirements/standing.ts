@@ -26,6 +26,7 @@ import type { RequirementStatus } from '../db/schema-requirements.js';
 import { addWorkingDays } from '../lib/working-days.js';
 import { liveAt } from './rules.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
+import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -162,18 +163,6 @@ interface Turn {
   waitingOn: RequirementWaitingOn;
 }
 
-/** What a signer does about a pin that fell behind, in the words a BA reads: the design's own name and revision. */
-function updateToApprovedAct(
-  designs: StandingInput['stalePins'],
-  contracts: StandingInput['staleContractPins'],
-): string {
-  const parts = [
-    ...designs.map((p) => `Update to the approved design: ${p.title} (revision ${p.approved})`),
-    ...contracts.map((p) => `Update to the current version of ${p.contract} (${p.current})`),
-  ];
-  return parts.join('; ');
-}
-
 function feedbackTurn(input: StandingInput): Turn | null {
   const untriaged = input.feedback.untriaged;
   if (untriaged.length === 0) return null;
@@ -238,10 +227,16 @@ function turnOf(
   if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
     const act = updateToApprovedAct(input.stalePins, input.staleContractPins);
     const rule =
-      'The design this requirement follows has a newer approved revision, or a contract it relies on has a newer version. Updating re-checks its criteria against it.';
-    if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
+      'The design this requirement follows has a newer approved revision, or a contract it relies on has a newer version. Updating records that it follows the newer one.';
+    const effect = updateToApprovedEffect(input.stalePins, input.staleContractPins);
+    if (viewer?.canSignOff) {
+      return { group: 'needs_you', waitingOn: { ...wait('you', 'You', act, rule), effect } };
+    }
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
-    return { group: 'waiting', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
+    return {
+      group: 'waiting',
+      waitingOn: { ...wait('person', owner ?? SIGNER, act, rule), effect },
+    };
   }
   const check = checkTaskOf(input, live);
   if (check) {

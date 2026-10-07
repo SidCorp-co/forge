@@ -57,26 +57,35 @@ function gatedTurn(f: TurnFacts): Turn {
   const more = f.gates.length > 1 ? ` and ${f.gates.length - 1} more` : '';
   const rule = `${counted(f.gates.length, 'reason')} ${agrees(f.gates.length, 'stands', 'stand')} against cutting ${f.version}`;
   const act = `${owner.act}${more}`;
+  const effect = owner.effect ? { effect: owner.effect } : {};
   if (owner.kind === 'agent') {
     return {
       attentionGroup: 'waiting',
-      waitingOn: { kind: 'agent', who: owner.who, act, rule, ref: null, dueAt: null },
+      waitingOn: { kind: 'agent', who: owner.who, act, rule, ...effect, ref: null, dueAt: null },
     };
   }
   if (owner.kind === 'person') {
     return f.viewer?.isAdmin
       ? {
           attentionGroup: 'needs_you',
-          waitingOn: { kind: 'you', who: 'You', act, rule, ref: null, dueAt: null },
+          waitingOn: { kind: 'you', who: 'You', act, rule, ...effect, ref: null, dueAt: null },
         }
       : {
           attentionGroup: 'waiting',
-          waitingOn: { kind: 'person', who: owner.who, act, rule, ref: null, dueAt: null },
+          waitingOn: {
+            kind: 'person',
+            who: owner.who,
+            act,
+            rule,
+            ...effect,
+            ref: null,
+            dueAt: null,
+          },
         };
   }
   return {
     attentionGroup: 'stuck',
-    waitingOn: { kind: 'system', who: owner.who, act, rule, ref: null, dueAt: null },
+    waitingOn: { kind: 'system', who: owner.who, act, rule, ...effect, ref: null, dueAt: null },
   };
 }
 
