@@ -32,18 +32,13 @@ export interface GitFailure {
   code?: number | string | null;
 }
 
-/** git's own lines after any refused SSH read, which say nothing the host's line does not. */
 const GIT_TRAILER =
   /^(fatal: could not read from remote repository\.?|please make sure you have the correct access rights|and the repository exists\.?)$/i;
 
-/** A rule a host draws round its message, which carries no words. */
 const RULE = /^[=\-*#_~]{3,}$/;
 
-/**
- * What a git host said, as one line: the first with words once git's `remote:` prefix, the rules a
- * host draws round its message and git's own trailer are set aside, since GitLab opens a refusal
- * with bare `remote:` lines; git's trailer only where nothing else was said.
- */
+/** The first line a git host said with words in it, past git's `remote:` prefix, banner rules
+ *  (GitLab opens a refusal with them) and git's own trailer, which is kept only where alone. */
 export function hostSaid(stderr: string): string {
   const lines = stderr
     .split(/\r?\n/)
@@ -52,7 +47,6 @@ export function hostSaid(stderr: string): string {
   return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '').slice(0, 300);
 }
 
-/** ssh's own refusal: the host does not accept the key at all. */
 const KEY_REFUSED =
   /permission denied \(|no supported authentication methods|too many authentication failures/i;
 
@@ -63,7 +57,6 @@ const NO_ACCESS =
 const UNREACHABLE =
   /could not resolve hostname|connection timed out|connection refused|no route to host|network is unreachable|operation timed out|name or service not known|temporary failure in name resolution/i;
 
-/** Which of the causes an operator acts on a failed SSH read is, and the host's words for it. */
 export type HostRefusal =
   | { kind: 'no_branch'; branch: string; said: string }
   | { kind: 'key_refused' | 'no_access' | 'unreachable' | 'other'; said: string };

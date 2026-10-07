@@ -10,12 +10,12 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GITLAB_NO_ACCESS, keyUnknown } from '../../src/git/host-answers.fixture.js';
 import {
   fakeCoolify,
   recordForgeDeployment,
   type CoolifyTarget as Target,
 } from '../helpers/coolify-deployments.js';
-import { GITLAB_NO_ACCESS, keyUnknown } from '../../src/git/host-answers.fixture.js';
 import {
   attachDeployKey,
   GITLAB_URL,

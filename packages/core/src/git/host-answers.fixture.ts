@@ -1,11 +1,6 @@
-/**
- * What git hosts write to stderr when they refuse a read over SSH, word for word as each host
- * sends it, for the suites that plant a refusal (ISS-1398 r2). Each is only the part the host and
- * ssh write: git appends its own `fatal: Could not read from remote repository.` trailer after them,
- * which the fake `ssh` in `tests/helpers/git-host-fixture.ts` leaves to the real git.
- */
+/** What git hosts write to stderr refusing a read over SSH, word for word, before the trailer git
+ *  itself adds (`GIT_TRAILER`); the fake ssh in `tests/helpers/git-host-fixture.ts` plants them. */
 
-/** The trailer git itself adds after any refused SSH read. */
 export const GIT_TRAILER =
   'fatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n';
 
@@ -13,11 +8,8 @@ export const GITLAB_NO_ACCESS_SENTENCE =
   "The project you were looking for could not be found or you don't have permission to view it.";
 
 export interface HostAnswer {
-  /** What it is, for a test's name. */
   name: string;
-  /** What the host and ssh write before git's trailer. */
   stderr: string;
-  /** The exit status the fake ssh leaves, as the real one does. */
   exit: number;
   /** The words of it a refusal must carry. */
   said: string;
