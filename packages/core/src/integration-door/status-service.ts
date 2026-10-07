@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects, runners } from '../db/schema.js';
+import { projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
+  bindingNames,
   connectionHealthStatus,
   effectiveConfig,
   getIntegration,
@@ -63,6 +64,8 @@ interface ProviderRow {
   role: string;
   /** The project-document environment a deploy binding serves; null where none names it. */
   environment: string | null;
+  /** What tells this binding apart from the others of its provider and role (`bindingNames`). */
+  name: string;
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -104,7 +107,7 @@ function buildProviderCards(opts: {
   const collides = new Set(opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i));
   return opts.rows.map((row) => ({
     key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
-    label: envKeyed ? `${opts.label} (${stageKey(row)})` : opts.label,
+    label: envKeyed ? `${opts.label} (${row.name})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
       ? 'integration disabled'
@@ -117,6 +120,7 @@ function buildProviderCards(opts: {
       bindingId: row.id,
       role: row.role,
       environment: row.environment,
+      name: row.name,
       breakerOpen: row.breakerOpenedAt !== null,
       lastHealthStatus: row.lastHealthStatus,
       capabilities: caps,
@@ -125,20 +129,17 @@ function buildProviderCards(opts: {
   }));
 }
 
-/**
- * The provider whose binding serves the declared repository's host, oldest active binding first,
- * or null where no source host binding reaches it.
- */
-function repositoryProvider(
+/** The binding serving the declared repository's host, a live one before a switched-off one, oldest first. */
+function repositoryBinding(
   pairs: readonly BindingWithConnection[],
-  repository: string | null,
-): { provider: string; label: string } | null {
-  const host = hostOfRepository(repository);
-  if (!host) return null;
+  host: string,
+): { pair: BindingWithConnection; label: string } | null {
   const onHost = pairs
     .flatMap((pair) => {
       const factory = getIntegration(pair.binding.provider)?.sourceHost;
-      return factory && factory.hostOf(effectiveConfig(pair)) === host ? [{ pair, factory }] : [];
+      return factory && factory.hostOf(effectiveConfig(pair)) === host
+        ? [{ pair, label: factory.label }]
+        : [];
     })
     .sort(
       (a, b) =>
@@ -146,36 +147,94 @@ function repositoryProvider(
           Number(a.pair.binding.active && a.pair.connection.active) ||
         a.pair.binding.createdAt.getTime() - b.pair.binding.createdAt.getTime(),
     );
-  const first = onHost[0];
-  return first ? { provider: first.pair.binding.provider, label: first.factory.label } : null;
+  return onHost[0] ?? null;
 }
 
-/** The declared repository, keyed and labelled by the provider its host is. */
+/** The source-host provider that serves `host` with no host of its own configured, if any does. */
+function providerServing(host: string): { provider: string; label: string } | null {
+  for (const decl of listIntegrations()) {
+    if (decl.sourceHost && decl.sourceHost.hostOf({}) === host) {
+      return { provider: decl.provider, label: decl.sourceHost.label };
+    }
+  }
+  return null;
+}
+
+const UNREACHED_COST =
+  'Forge cannot read its commits, merge into it or compare branches, so a release cannot tell what already shipped';
+
+/**
+ * The declared repository, connected only where a source host binding reaches it: a repository no
+ * host serves is not connected, whatever the document says, and the card names what that costs and
+ * the act that fixes it (`meta.connectProvider`).
+ */
 function repositoryCard(
   pairs: readonly BindingWithConnection[],
-  source: Awaited<ReturnType<typeof readDeclaredSource>>,
+  source: Pick<Awaited<ReturnType<typeof readDeclaredSource>>, 'repository' | 'defaultBranch'>,
 ): StatusCard {
   const { repository } = source;
-  const host = repositoryProvider(pairs, repository);
+  const host = hostOfRepository(repository);
+  const reached = host ? repositoryBinding(pairs, host) : null;
+  const serving = host && !reached ? providerServing(host) : null;
+  const meta = {
+    repository,
+    remoteUrl: repository ? webUrlOf(repository) : null,
+    baseBranch: source.defaultBranch,
+    host,
+    provider: reached?.pair.binding.provider ?? null,
+    connectProvider: serving?.provider ?? null,
+  };
+  if (!repository) {
+    return {
+      key: 'repository',
+      label: 'Repository',
+      status: 'not_configured',
+      detail: 'the project document declares no repository',
+      lastSyncAt: null,
+      configured: false,
+      meta,
+    };
+  }
+  if (!host) {
+    return {
+      key: 'repository',
+      label: 'Repository',
+      status: 'not_configured',
+      detail: `a local path no host serves: ${UNREACHED_COST}. Its head is read from a runner's bound checkout; declare the hosted repository to read the rest`,
+      lastSyncAt: null,
+      configured: true,
+      meta,
+    };
+  }
+  if (!reached) {
+    return {
+      key: 'repository',
+      label: 'Repository',
+      status: 'not_configured',
+      detail: `no source host binding reaches ${host}: ${UNREACHED_COST}. ${
+        serving
+          ? `Connect ${serving.label} to fix it`
+          : `Bind a source host connection serving ${host} to fix it`
+      }`,
+      lastSyncAt: null,
+      configured: true,
+      meta,
+    };
+  }
+  const { binding, connection } = reached.pair;
+  const active = binding.active && connection.active;
   return {
-    key: host ? `${host.provider}:repository` : 'repository',
-    label: host ? `${host.label} repository` : 'Repository',
-    status: repository ? 'connected' : 'not_configured',
-    detail: repository
-      ? host
-        ? repository
-        : hostOfRepository(repository)
-          ? `${repository} — no source host binding reaches ${hostOfRepository(repository)}`
-          : `${repository} — a local path no host serves; its head is read from a runner's bound checkout`
-      : 'the project document declares no repository',
-    lastSyncAt: null,
-    configured: repository !== null,
-    meta: {
-      repository,
-      remoteUrl: repository ? webUrlOf(repository) : null,
-      baseBranch: source.defaultBranch,
-      provider: host?.provider ?? null,
-    },
+    key: `${binding.provider}:repository`,
+    label: `${reached.label} repository`,
+    status: healthToStatus(connection.lastHealthStatus, active),
+    detail: !active
+      ? `the ${reached.label} binding that reaches it is switched off: ${UNREACHED_COST}`
+      : connection.lastHealthStatus
+        ? `read through ${reached.label} — last health: ${connection.lastHealthStatus}`
+        : `read through ${reached.label} — never health-checked`,
+    lastSyncAt: toIso(connection.lastHealthAt),
+    configured: true,
+    meta,
   };
 }
 
@@ -187,12 +246,18 @@ function providerCards(
   pairs: readonly BindingWithConnection[],
   deployMap: Awaited<ReturnType<typeof readDeployMap>>,
 ): StatusCard[] {
-  const rows: ProviderRow[] = pairs.map((pair) => ({
+  const named = pairs.map((pair) => ({
     id: pair.binding.id,
     provider: pair.binding.provider,
     role: pair.binding.role,
     environment: deployMap.environments.get(pair.binding.id)?.name ?? null,
+    label: pair.binding.label ?? '',
     config: effectiveConfig(pair),
+  }));
+  const names = bindingNames(named);
+  const rows: ProviderRow[] = pairs.map((pair, i) => ({
+    ...(named[i] as (typeof named)[number]),
+    name: names.get(pair.binding.id) ?? '',
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,
     lastHealthDetail: pair.connection.lastHealthDetail,
@@ -215,53 +280,12 @@ function providerCards(
   });
 }
 
-async function runnersCard(projectId: string): Promise<StatusCard> {
-  const rows = await db
-    .select({ status: runners.status })
-    .from(runners)
-    .where(eq(runners.projectId, projectId));
-  const total = rows.length;
-  const online = rows.filter((r) => r.status === 'online').length;
-  return {
-    key: 'runners',
-    label: 'Runners',
-    status: total === 0 ? 'not_configured' : online > 0 ? 'connected' : 'attention',
-    detail: total === 0 ? 'no runners bound to this project' : `${online}/${total} online`,
-    lastSyncAt: null,
-    configured: total > 0,
-    meta: { online, total },
-  };
-}
-
-/** Cards with no backing data to read: the queries above succeeding is the Postgres signal. */
-const FIXED_CARDS: readonly StatusCard[] = [
-  {
-    key: 'postgres',
-    label: 'Postgres',
-    status: 'connected',
-    detail: 'core database reachable',
-    lastSyncAt: null,
-    configured: true,
-  },
-  {
-    key: 'mcp',
-    label: 'MCP server',
-    status: 'connected',
-    detail: 'Forge MCP server mounted at /mcp',
-    lastSyncAt: null,
-    configured: true,
-  },
-  {
-    key: 'claude',
-    label: 'Claude',
-    status: 'not_configured',
-    detail: 'auth + quota managed per-runner (no core-side metric)',
-    lastSyncAt: null,
-    configured: false,
-  },
-];
-
-/** Build the full status-card set for a project (caller has already authz'd). */
+/**
+ * The project's integration cards: the declared repository, then one card per binding of every
+ * provider that declares a presentation (caller has already authz'd). Core health — the runner pool,
+ * the database, the MCP mount, the agent — is not an integration a person connects, and is read on
+ * the screens that own it.
+ */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
     .select({ id: projects.id })
@@ -274,10 +298,5 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     readDeployMap(projectId),
     readDeclaredSource(projectId),
   ]);
-  return [
-    repositoryCard(pairs, source),
-    ...providerCards(pairs, deployMap),
-    await runnersCard(projectId),
-    ...FIXED_CARDS.map((card) => ({ ...card })),
-  ];
+  return [repositoryCard(pairs, source), ...providerCards(pairs, deployMap)];
 }

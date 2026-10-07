@@ -2,6 +2,7 @@ import type { ConnectionDirectoryStatus } from '@forge/contracts/integrations';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole } from '../db/schema.js';
 import type { AgentAccess } from './agent-access.js';
+import { bindingNames } from './binding-name.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -70,7 +71,6 @@ export function summarizeBinding(pair: BindingWithConnection) {
     lastHealthDetail: connection.lastHealthDetail,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
-    directoryStatus: connectionHealthStatus(connection),
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecretEnc !== null,
     agentAccess: binding.agentAccess as AgentAccess,
@@ -115,6 +115,7 @@ export function summarizeConnection(connection: IntegrationConnectionRow) {
     lastHealthDetail: connection.lastHealthDetail,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
+    directoryStatus: connectionHealthStatus(connection),
     hasSecrets: connection.secretsEnc !== null,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
@@ -130,7 +131,25 @@ export function summarizeConnection(connection: IntegrationConnectionRow) {
 export function summarizeConnectionWithUsage(
   connection: IntegrationConnectionRow,
   bindings: IntegrationBindingRow[],
+  /** Binding id → the project-document environment that deploys through it, where one does. */
+  environmentOf: (binding: IntegrationBindingRow) => string | null,
 ) {
+  const names = new Map<string, string>();
+  const byProject = new Map<string, IntegrationBindingRow[]>();
+  for (const b of bindings) byProject.set(b.projectId, [...(byProject.get(b.projectId) ?? []), b]);
+  for (const rows of byProject.values()) {
+    const named = bindingNames(
+      rows.map((binding) => ({
+        id: binding.id,
+        provider: binding.provider,
+        role: binding.role,
+        environment: environmentOf(binding),
+        label: binding.label ?? '',
+        config: effectiveConfig({ binding, connection }),
+      })),
+    );
+    for (const [id, name] of named) names.set(id, name);
+  }
   return {
     ...summarizeConnection(connection),
     usage: {
@@ -139,6 +158,7 @@ export function summarizeConnectionWithUsage(
         projectId: b.projectId,
         role: b.role as BindingRole,
         label: b.label,
+        name: names.get(b.id) ?? b.role,
         active: b.active,
       })),
     },

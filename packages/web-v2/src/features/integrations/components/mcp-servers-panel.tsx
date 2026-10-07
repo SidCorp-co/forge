@@ -10,9 +10,9 @@ import {
   Button,
   PageSection,
   PageSectionBody,
+  PageSectionTitle,
   ErrorState,
   Icon,
-  SectionTitle,
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -86,12 +86,15 @@ function McpServerRow({
   projectId,
   binding,
   canEdit,
+  onConnect,
 }: {
   entry: McpServerPreviewEntry;
   projectId: string;
   /** The binding this row previews, absent for the synthetic not-configured row. */
   binding: IntegrationSummary | undefined;
   canEdit: boolean;
+  /** Opens the provider's connect drawer — the act a not-configured row points at. */
+  onConnect?: (provider: string) => void;
 }) {
   const test = useTestIntegration(projectId);
   const [result, setResult] = useState<IntegrationTestResult | { errorMessage: string } | null>(
@@ -129,8 +132,13 @@ function McpServerRow({
           {entry.url}
         </p>
       ) : (
-        <p className="fg-body-sm text-subtle">
-          Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
+        <p className="fg-body-sm flex flex-wrap items-center gap-x-2 text-subtle">
+          <span>{providerLabel(entry.provider)} is not connected, so no MCP server is injected.</span>
+          {onConnect && canEdit && (
+            <Button variant="ghost" size="sm" onClick={() => onConnect(entry.provider)}>
+              Connect {providerLabel(entry.provider)}
+            </Button>
+          )}
         </p>
       )}
 
@@ -170,9 +178,11 @@ function McpServerRow({
 export function McpServersPanel({
   projectId,
   canEdit = true,
+  onConnect,
 }: {
   projectId: string;
   canEdit?: boolean;
+  onConnect?: (provider: string) => void;
 }) {
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
@@ -180,9 +190,9 @@ export function McpServersPanel({
 
   return (
     <PageSection>
-      <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
-        <p className="fg-body-sm mb-3 text-muted">
+      <PageSectionBody style={{ paddingTop: 0 }}>
+        <PageSectionTitle className="mb-1">Agent MCP servers</PageSectionTitle>
+        <p className="fg-body-sm mb-3 max-w-[72ch] text-muted">
           Every MCP server injected into a Claude agent dispatched for this project: its granted
           integrations. The list comes from the same resolver that performs the injection;
           credentials are attached at dispatch time and never shown here. A connected integration
@@ -204,6 +214,7 @@ export function McpServersPanel({
                 projectId={projectId}
                 binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
                 canEdit={canEdit}
+                onConnect={onConnect}
               />
             ))}
           </ul>
