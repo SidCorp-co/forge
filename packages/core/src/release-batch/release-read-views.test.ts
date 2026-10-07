@@ -125,3 +125,97 @@ describe('the commit a shipped release names (FB-105)', () => {
     expect(detailOf(part(1, []), shared(1), null, new Map(), [], null).head).toBeNull();
   });
 });
+
+// JU-11: dev.120 read "Proof · No criteria recorded" while its Checks held a deploy probe, and
+// nothing said in words that only the deploy was verified; hop 0.2.0 listed design reviews
+// (a design for the owner to approve) among what users get
+describe('what a release says it verified', () => {
+  const criterion = (standing: 'pass' | 'fail' | 'unjudged') => ({
+    n: 1,
+    statement: 'the board keeps its cards',
+    standing,
+    bc: null,
+    identity: null,
+    reason: null,
+    judgedAt: null,
+    judgedBy: null,
+  });
+  const withCriteria = (standings: ('pass' | 'fail' | 'unjudged')[]): Shared => {
+    const s = shared(standings.length);
+    standings.forEach((standing, k) => {
+      const fact = s.facts.issues.get(`i${k + 1}`);
+      if (fact) fact.criteria = [criterion(standing)];
+    });
+    return s;
+  };
+  const shippedPart = (n: number, verification: Part['verification']): Part => ({
+    ...part(n, [], 'shipped'),
+    runId: 'r1',
+    verification,
+  });
+
+  it('says the deploy check only where no criterion is recorded and the run probed production', () => {
+    expect(summaryOf(shippedPart(2, 'probed'), shared(2)).verified).toEqual({
+      level: 'deploy_only',
+      proven: 0,
+      total: 0,
+      check: 'probed',
+    });
+  });
+
+  it('says nothing was verified with no criterion and no recorded check, or an unverified close', () => {
+    expect(summaryOf(shippedPart(1, null), shared(1)).verified.level).toBe('none');
+    expect(summaryOf(shippedPart(1, 'unverified'), shared(1)).verified.level).toBe('none');
+  });
+
+  it('counts proven criteria: every one proven, or some of them', () => {
+    expect(
+      summaryOf(shippedPart(2, 'probed'), withCriteria(['pass', 'pass'])).verified,
+    ).toMatchObject({
+      level: 'criteria',
+      proven: 2,
+      total: 2,
+    });
+    expect(
+      summaryOf(shippedPart(3, 'probed'), withCriteria(['pass', 'fail', 'unjudged'])).verified,
+    ).toMatchObject({ level: 'some_criteria', proven: 1, total: 3 });
+  });
+
+  it('lists an issue whose landing only touched a design under approved designs, not what users get', () => {
+    const s = shared(2);
+    for (const id of ['i1', 'i2']) {
+      const fact = s.facts.issues.get(id);
+      if (fact) fact.releaseNotes = { section: 'Added', userFacing: `note ${id}`, technical: null };
+    }
+    const landings = new Map([
+      [
+        'i1',
+        {
+          kind: 'named' as const,
+          artifacts: [
+            { surface: 'design' as const, ref: 'referral-flow', change: 'changed' as const },
+          ],
+          unmappedPaths: [],
+          unread: null,
+          source: 'mark' as const,
+        },
+      ],
+      [
+        'i2',
+        {
+          kind: 'named' as const,
+          artifacts: [
+            { surface: 'design' as const, ref: 'referral-flow', change: 'changed' as const },
+            { surface: 'ui' as const, ref: '/referrals', change: 'added' as const },
+          ],
+          unmappedPaths: [],
+          unread: null,
+          source: 'mark' as const,
+        },
+      ],
+    ]);
+    const d = detailOf(shippedPart(2, 'probed'), s, null, landings, [], null);
+    expect(d.notes.designs.map((e) => e.key)).toEqual(['ISS-1']);
+    expect(d.notes.sections.flatMap((x) => x.entries.map((e) => e.key))).toEqual(['ISS-2']);
+  });
+});

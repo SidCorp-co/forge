@@ -12,7 +12,10 @@ interface ReplyScreenInput {
   readonly toolCalls: readonly {
     name: string;
     arguments: string;
+    isError?: boolean;
   }[];
+  /** The tools the writer's turn was offered; a rule holding a claim to a read judges only where one was. */
+  readonly offeredTools?: readonly string[];
   /**
    * The snapshot the writer's own turn was shown.
    */
@@ -32,6 +35,7 @@ export async function screenReplyAtDoor(
     intent,
     segments: input.segments,
     toolCalls: input.toolCalls,
+    ...(input.offeredTools ? { offeredTools: input.offeredTools } : {}),
     progress: input.progress,
     ...(input.executor ? { executor: input.executor } : {}),
   });

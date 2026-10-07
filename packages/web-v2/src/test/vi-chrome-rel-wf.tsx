@@ -45,6 +45,7 @@ const summary = (over: Record<string, unknown>) => ({
   issueCount: 2,
   requirements: [],
   criteria: { total: 2, proven: 1, failing: 0, open: 1 },
+  verified: { level: "some_criteria", proven: 1, total: 2, check: null },
   contents,
   owner: null,
   ownerAct: null,
@@ -90,6 +91,7 @@ const detail = {
     shipsNothing: false,
   },
   notes: {
+    designs: [],
     sections: [{ section: "Muc moi", entries: [{ key: "ISS-1", title: "Muc", userFacing: "Noi dung", technical: "ky thuat" }] }],
     withoutNotes: [{ key: "ISS-2", title: "Muc" }, { key: "ISS-3", title: "Muc" }],
     language: "vi",

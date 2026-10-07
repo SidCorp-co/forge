@@ -6,6 +6,7 @@
 
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import { forgeAgentReportTool } from '../agent-reports/tool.js';
+import { forgeDecisionsTool } from '../comments/tool.js';
 import { forgeChannelTool, forgeEcosystemTool } from '../ecosystem/tool.js';
 import {
   forgeCoolifyDeployTool,
@@ -18,6 +19,9 @@ import {
   forgeMetricsProjectStepDurationsTool,
   forgeMetricsProjectTimeseriesTool,
 } from '../metrics/tool.js';
+import { forgeProjectStatusTool } from '../project-status/tool.js';
+import { forgeReleasesTool } from '../release-batch/tool.js';
+import { forgeRequirementsTool } from '../requirements/tool.js';
 import { forgeUploadsTool } from '../uploads/tool.js';
 
 // Each entry defers to its factory, so reading this table never touches a module still loading.
@@ -46,9 +50,15 @@ export const MCP_TOOLS = {
 
 /**
  * The chat assistant's tools over read models it may not import (ADR 0008); not served on /mcp.
- * The process entry hands them to the assistant's allowlist at boot.
+ * The process entry hands them to the assistant's allowlist at boot. Status, requirement, release
+ * and decision questions are answered from the first four, and the reply screen refuses such an
+ * answer that none of them grounded (`messaging/grounding-rule.ts`, JU-1).
  */
 export const CHAT_READ_MODEL_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [
+  { factory: forgeProjectStatusTool },
+  { factory: forgeRequirementsTool },
+  { factory: forgeReleasesTool },
+  { factory: forgeDecisionsTool },
   { factory: forgeMetricsProjectStepDurationsTool },
   { factory: forgeMetricsProjectTimeseriesTool },
 ];

@@ -16,7 +16,7 @@ const input = z.discriminatedUnion('action', [
 export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirements',
   reach: 'project',
-  route: '/api/projects/:id/requirements',
+  route: '/api/projects',
   grant: 'projects:read',
   description:
     'This project\'s requirements (REQ-n), as the Requirements screen reads them. action "list": each with its state (draft, agreed, in_delivery, delivered, accepted, deferred, dropped), whom it waits on and the act, its BCs proven of total, and its shipped/started/live issues. action "get" with `requirement` (REQ-12): its current revision (goal, scope, BCs), each BC\'s proof and the issues tracing it, its issues with the release that shipped each, the releases it shipped in, its open tasks, a deferral\'s reason, and whom it waits on.',

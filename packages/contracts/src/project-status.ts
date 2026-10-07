@@ -38,6 +38,8 @@ export interface StatusShippedRelease {
 /** What reached people inside the window: shipped releases, newest first. */
 export interface StatusShipped extends Stamped {
 	since: string;
+	/** The newest shipped release, inside the window or not; null where nothing has ever shipped. */
+	latest: StatusShippedRelease | null;
 	releases: StatusShippedRelease[];
 	/** Every shipped release in the window; `releases` carries at most PROJECT_STATUS_ROWS. */
 	releaseCount: number;

@@ -41,6 +41,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
 			scheduleInvalidation(qc, ["needs-you"]);
+			scheduleInvalidation(qc, ["project-status"]);
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["attention"]);
@@ -57,6 +58,7 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "search"]);
 			scheduleInvalidation(qc, ["issues", "standing"]);
 			scheduleInvalidation(qc, ["needs-you"]);
+			scheduleInvalidation(qc, ["project-status"]);
 			scheduleInvalidation(qc, ["attention"]);
 			if (data?.issueId) scheduleInvalidation(qc, ["issue", data.issueId]);
 			return;

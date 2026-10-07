@@ -25,7 +25,11 @@ export interface MessageFacts {
   readonly toolCalls: readonly {
     name: string;
     arguments: string;
+    /** The call was refused or threw; a refused read grounds nothing. */
+    isError?: boolean | undefined;
   }[];
+  /** The tools the writer's turn was offered, by the names it calls them; empty where none is known. */
+  readonly offeredTools: readonly string[];
   readonly progress: ProgressFacts | null;
   readonly issueLookupFailed: boolean;
 }
@@ -37,6 +41,7 @@ export const NO_FACTS: MessageFacts = {
   knownIssueSeqs: new Set(),
   issueRows: new Map(),
   toolCalls: [],
+  offeredTools: [],
   progress: null,
   issueLookupFailed: false,
 };

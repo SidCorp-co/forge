@@ -1,11 +1,11 @@
 export { dropAsDuplicateIn } from './acceptance.js';
-export { deferralOf } from './deferral-read.js';
 export { latestBaselineIn } from './baselines.js';
 export {
   provideInterfaceContracts,
   type StaleContractPin,
   staleOnContract,
 } from './contract-links.js';
+export { deferralOf } from './deferral-read.js';
 export { registerRequirementDelivery } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
@@ -23,5 +23,5 @@ export {
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';
 export { deliveredAmong, standingsOf } from './standing-read.js';
-export { lockRequirements } from './write-tx.js';
 export { forgeRequirementsTool } from './tool.js';
+export { lockRequirements } from './write-tx.js';

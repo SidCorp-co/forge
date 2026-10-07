@@ -22,7 +22,7 @@ import {
   type StatusWait,
   type StatusWaits,
 } from '@forge/contracts/project-status';
-import type { ReleaseListResponse } from '@forge/contracts/releases';
+import type { ReleaseListResponse, ReleaseSummary } from '@forge/contracts/releases';
 import {
   REQUIREMENT_STATES,
   type RequirementState,
@@ -65,27 +65,31 @@ function shippedOf(
   since: Date,
   asOf: string,
 ): StatusShipped {
-  const inWindow = releases.releases
+  const shipped = releases.releases
     .filter((r) => r.state === 'shipped' && r.releasedAt !== null)
-    .filter((r) => Date.parse(r.releasedAt as string) >= since.getTime())
     .sort((a, b) => (b.releasedAt ?? '').localeCompare(a.releasedAt ?? ''));
+  const inWindow = shipped.filter((r) => Date.parse(r.releasedAt as string) >= since.getTime());
+  const view = (r: ReleaseSummary) => ({
+    version: r.version,
+    releasedAt: r.releasedAt as string,
+    headline: r.headline,
+    issueCount: r.issueCount,
+    requirements: r.requirements,
+    contents: r.contents,
+    verified: r.verified,
+  });
   const requirementsShipped = scopes.flatMap((s) => {
     const at = s.delivery?.shipped?.at ?? null;
-    return at && Date.parse(at) >= since.getTime() ? [{ key: s.key, title: s.title ?? s.key, at }] : [];
+    return at && Date.parse(at) >= since.getTime()
+      ? [{ key: s.key, title: s.title ?? s.key, at }]
+      : [];
   });
   requirementsShipped.sort((a, b) => b.at.localeCompare(a.at));
   return {
     asOf,
     since: since.toISOString(),
-    releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map((r) => ({
-      version: r.version,
-      releasedAt: r.releasedAt as string,
-      headline: r.headline,
-      issueCount: r.issueCount,
-      requirements: r.requirements,
-      contents: r.contents,
-      verified: r.verified,
-    })),
+    latest: shipped[0] ? view(shipped[0]) : null,
+    releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map(view),
     releaseCount: inWindow.length,
     issueCount: inWindow.reduce((n, r) => n + r.issueCount, 0),
     requirementsShipped,
@@ -118,9 +122,7 @@ function inFlightOf(
 }
 
 function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWaits {
-  const all = Object.entries(rows).flatMap(([area, list]) =>
-    list.map((r) => ({ area, row: r })),
-  );
+  const all = Object.entries(rows).flatMap(([area, list]) => list.map((r) => ({ area, row: r })));
   const people = all
     .filter(({ row }) => PERSON_KINDS.has(row.standing.waitingOn.kind))
     .sort((a, b) => (a.row.touchedAt ?? '').localeCompare(b.row.touchedAt ?? ''))
@@ -204,7 +206,10 @@ const lateOfDelivery = (d: DeliveryForecast | null | undefined): ForecastLate | 
 };
 
 const worst = (...lates: (ForecastLate | null)[]): ForecastLate | null =>
-  lates.reduce<ForecastLate | null>((a, l) => (l && (!a || l.byMinutes > a.byMinutes) ? l : a), null);
+  lates.reduce<ForecastLate | null>(
+    (a, l) => (l && (!a || l.byMinutes > a.byMinutes) ? l : a),
+    null,
+  );
 
 function lateOf(
   coming: Awaited<ReturnType<typeof readForecastLine>>['coming'],
@@ -219,7 +224,12 @@ function lateOf(
   for (const f of feedback.items) {
     const late = worst(f.triage?.late ?? null, lateOfDelivery(f.delivery));
     if (late)
-      items.push({ kind: 'feedback', key: f.key, title: titles.feedback.get(f.key) ?? f.key, late });
+      items.push({
+        kind: 'feedback',
+        key: f.key,
+        title: titles.feedback.get(f.key) ?? f.key,
+        late,
+      });
   }
   if (titles.draft !== null) {
     const late = worst(lateOfDelivery(coming.draft.delivery), coming.draft.next?.late ?? null);
@@ -260,9 +270,18 @@ async function roadmapOf(
   );
   return {
     asOf: new Date().toISOString(),
-    now: inState('in_delivery').sort(soonest).map((r) => item(r)),
-    next: inState('agreed').sort(soonest).map((r) => item(r)),
-    later: [...deferred, ...inState('draft').sort(byKey).map((r) => item(r))],
+    now: inState('in_delivery')
+      .sort(soonest)
+      .map((r) => item(r)),
+    next: inState('agreed')
+      .sort(soonest)
+      .map((r) => item(r)),
+    later: [
+      ...deferred,
+      ...inState('draft')
+        .sort(byKey)
+        .map((r) => item(r)),
+    ],
   };
 }
 

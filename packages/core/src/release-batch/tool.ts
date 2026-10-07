@@ -21,7 +21,7 @@ const input = z.discriminatedUnion('action', [
 export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_releases',
   reach: 'project',
-  route: '/api/projects/:id/releases',
+  route: '/api/projects',
   grant: 'projects:read',
   description: `This project's releases, as the Releases screen reads them. action "list": newest first (optionally one \`state\`: ${RELEASE_STATES.join(' | ')}), each with version, state, releasedAt, headline, issue count, requirements, what was verified (criteria proven of total, and how the deploy was checked) and whom it waits on. action "get" with \`version\`: one release — what users get (the user-facing notes by section; approved designs apart), the requirements it completes or advances, its issues with their proof, what stands in the way, the approval, and what was verified.`,
   inputSchema: zodToMcpSchema(input),
@@ -57,7 +57,12 @@ export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
           proof: i.proof,
         })),
         feedbackAnswered: r.feedbackAnswered,
-        gates: r.gates.map((g) => ({ code: g.code, kind: g.kind, sentence: g.sentence, owner: g.owner })),
+        gates: r.gates.map((g) => ({
+          code: g.code,
+          kind: g.kind,
+          sentence: g.sentence,
+          owner: g.owner,
+        })),
         approval: r.approval,
         waitingOn: r.waitingOn,
       };

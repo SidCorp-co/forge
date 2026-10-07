@@ -17,6 +17,7 @@ const release = {
   key: "0.1.0",
   version: "0.1.0",
   state: "draft",
+  verified: { level: "none", proven: 0, total: 0, check: null },
   issues: [],
   gates: [],
   requirementsCompleted: [],
@@ -26,6 +27,7 @@ const release = {
       { section: "Added", entries: [{ key: "ISS-94", title: "Saved boards keep every card", userFacing: "A saved board shows every card it had.", technical: null }] },
       { section: "Fixed", entries: [{ key: "ISS-98", title: "Export no longer fails", userFacing: "Exporting a board works again.", technical: null }] },
     ],
+    designs: [],
     withoutNotes: [{ key: "ISS-101", title: "Rename a helper" }],
     language: "vi",
     attention: [
@@ -44,6 +46,8 @@ describe("a release leads with what users get", () => {
     const sections = within(body).getAllByTestId("release-users-section");
     expect(sections.map((s) => s.getAttribute("data-section"))).toEqual(["Added", "Fixed"]);
     expect(within(sections[0] as HTMLElement).getByText("Saved boards keep every card")).toBeTruthy();
+    // the user's sentence leads each entry; the issue title stands behind it (JU-11)
+    expect(within(sections[0] as HTMLElement).getByTestId("release-users-sentence").textContent).toBe("A saved board shows every card it had.");
     const order = [...body.querySelectorAll("[data-testid='release-users-get'],[data-testid='release-technical']")].map((n) => n.getAttribute("data-testid"));
     expect(order).toEqual(["release-users-get", "release-technical"]);
   });
@@ -91,5 +95,34 @@ describe("the release tour on the overview with Technical detail closed", () => 
     const { present, missing } = presentSteps(tour);
     expect(missing).toEqual([]);
     expect(present).toHaveLength(tour.steps.length);
+  });
+});
+
+// JU-11: dev.120 read "Proof · No criteria recorded" with a deploy probe in Checks and nothing said in
+// words; hop 0.2.0 listed design reviews among what users get
+describe("a release says what it verified and keeps approved designs apart", () => {
+  it("says the deploy check only, in words, where no criterion is recorded", () => {
+    const r = { ...release, state: "shipped", verified: { level: "deploy_only", proven: 0, total: 0, check: "probed" } } as unknown as ReleaseDetail;
+    renderWithQuery(<OverviewPane r={r} slug="forge" all={[]} />);
+    const line = screen.getByTestId("release-verified");
+    expect(line.getAttribute("data-level")).toBe("deploy_only");
+    expect(line.textContent).toBe("Deploy check only: no criteria recorded");
+  });
+
+  it("counts proven criteria and names how the deploy was checked", () => {
+    const r = { ...release, state: "shipped", verified: { level: "criteria", proven: 4, total: 4, check: "probed" } } as unknown as ReleaseDetail;
+    renderWithQuery(<OverviewPane r={r} slug="forge" all={[]} />);
+    expect(screen.getByTestId("release-verified").textContent).toBe("Verified: 4 criteria proven, and the deploy checked by the production probes");
+  });
+
+  it("lists a design-only issue under approved designs, outside what users get", () => {
+    const design = { key: "ISS-18", title: "Referral screens design for the owner to approve", userFacing: "Referral design", technical: null };
+    const r = { ...release, notes: { ...release.notes, attention: [], designs: [design] } } as unknown as ReleaseDetail;
+    renderWithQuery(<OverviewPane r={r} slug="hop" all={[]} />);
+    const designs = screen.getByTestId("release-designs-approved");
+    expect(within(designs).getByText(design.title)).toBeTruthy();
+    for (const section of screen.getAllByTestId("release-users-section")) {
+      expect(within(section).queryByText(design.title)).toBeNull();
+    }
   });
 });

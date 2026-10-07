@@ -18,7 +18,7 @@ const input = z.strictObject({
 export const forgeDecisionsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_decisions',
   reach: 'project',
-  route: '/api/projects/:id/decisions',
+  route: '/api/projects',
   grant: 'projects:read',
   description: `The decisions recorded in this project, newest first: each on an issue, requirement, workflow design or feedback item, with what was decided, the reason, who decided and when. Optional \`scope\` (${COMMENT_SCOPES.join(' | ')}), \`days\` (only decisions made in the last n days) and \`limit\` (1..${DECISIONS_TOOL_MAX}, default 30). A settled point written only in a requirement's prose is not a decision record and is not here.`,
   inputSchema: zodToMcpSchema(input),

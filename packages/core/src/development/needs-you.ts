@@ -65,7 +65,8 @@ async function automationOf(projectId: string, userId: string, now: Date) {
   return readAutomationStanding(projectId, viewer, { firesLimit: AUTOMATION_FIRES_DEFAULT }, now);
 }
 
-const newestFirst = (a: AttentionRow, b: AttentionRow) => (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
+const newestFirst = (a: AttentionRow, b: AttentionRow) =>
+  (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
 
 /**
  * Every area's rows with their standing, and the lists they were read from: the one derivation

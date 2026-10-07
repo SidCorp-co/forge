@@ -1,0 +1,139 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the status report as Markdown > reads every section in order, dated, in English 1`] = `
+"# HOP — Status report
+
+As of 07/10/2026, 10:00 · the last 7 days
+
+## Shipped
+
+- **0.2.0** · 06/10/2026, 09:30 · 2 issues · Partly verified: 1 of 2 criteria proven, and the deploy checked by the production probes
+  - ISS-11 Saved boards keep every card (REQ-3)
+  - ISS-12 Export keeps the order (REQ-3)
+
+Requirements now fully shipped: REQ-3 The board keeps its cards
+
+_read 07/10/2026, 10:00_
+
+## In progress
+
+4 open issues: Open 3, In progress 1
+
+A run is on these:
+- **ISS-20** Referral screens · In progress
+
+_read 07/10/2026, 10:00_
+
+## Waiting on people
+
+- **0.3.0** Release 0.3.0 — Lan — approve the release
+
+_read 07/10/2026, 10:00_
+
+## Requirements — 3 of 8 criteria proven
+
+- **REQ-4** Referrals · In delivery · 3 of 8 criteria proven · 1 of 4 issues shipped
+
+_read 07/10/2026, 10:00_
+
+## Next release
+
+**0.3.0** · 3 issues · A project admin — cut 0.3.0
+
+_read 07/10/2026, 10:00_
+
+## Late
+
+- **REQ-4** Referrals — running 2.0 h past the usual time
+
+_read 07/10/2026, 10:00_
+
+## Roadmap
+
+### Now
+
+- **REQ-4** Referrals · In delivery
+
+### Next
+
+Nothing here.
+
+### Later
+
+- **REQ-7** Printing · Deferred · Deferred to phase 2: waits for the new layout
+- **REQ-9** Export to a sheet · Draft · Not agreed yet
+
+_read 07/10/2026, 10:00_
+
+_Times are forecasts read from the project's own history, never promises._
+"
+`;
+
+exports[`the status report as Markdown > reads the same report in Vietnamese 1`] = `
+"# HOP — Báo cáo tình trạng
+
+Tính đến 10:00 07/10/2026 · 7 ngày qua
+
+## Đã tới người dùng
+
+- **0.2.0** · 09:30 06/10/2026 · 2 issue · Kiểm chứng một phần: 1/2 tiêu chí đạt, và deploy được kiểm tra bằng đầu dò production
+  - ISS-11 Saved boards keep every card (REQ-3)
+  - ISS-12 Export keeps the order (REQ-3)
+
+Yêu cầu đã tới người dùng trọn vẹn: REQ-3 The board keeps its cards
+
+_đọc lúc 10:00 07/10/2026_
+
+## Đang làm
+
+4 issue đang mở: Mở 3, Đang làm 1
+
+Đang có lượt chạy:
+- **ISS-20** Referral screens · Đang làm
+
+_đọc lúc 10:00 07/10/2026_
+
+## Đang chờ người
+
+- **0.3.0** Release 0.3.0 — Lan — approve the release
+
+_đọc lúc 10:00 07/10/2026_
+
+## Yêu cầu — 3/8 tiêu chí đã chứng minh
+
+- **REQ-4** Referrals · Đang thực hiện · 3/8 tiêu chí đã chứng minh · 1/4 issue đã tới người dùng
+
+_đọc lúc 10:00 07/10/2026_
+
+## Release kế tiếp
+
+**0.3.0** · 3 issue · Admin project — cắt 0.3.0
+
+_đọc lúc 10:00 07/10/2026_
+
+## Trễ
+
+- **REQ-4** Referrals — chạy quá thời gian thường lệ 2,0 giờ
+
+_đọc lúc 10:00 07/10/2026_
+
+## Lộ trình
+
+### Hiện tại
+
+- **REQ-4** Referrals · Đang thực hiện
+
+### Tiếp theo
+
+Chưa có.
+
+### Để sau
+
+- **REQ-7** Printing · Hoãn lại · Hoãn đến phase 2: waits for the new layout
+- **REQ-9** Export to a sheet · Bản nháp · Chưa thống nhất
+
+_đọc lúc 10:00 07/10/2026_
+
+_Thời gian là dự báo từ lịch sử của chính dự án, không phải cam kết._
+"
+`;
