@@ -78,7 +78,7 @@ export async function readCommitLanding(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
-  if (!row) return unreadable(commit, 'the issue was not found', readableThrough('github'));
+  if (!row) return unreadable(commit, 'the issue was not found', readableThrough('binding'));
   const { projectId, issSeq } = row;
   const baseBranch = row.baseBranch?.trim() || null;
   if (!baseBranch) {

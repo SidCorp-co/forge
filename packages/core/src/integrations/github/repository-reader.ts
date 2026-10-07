@@ -150,7 +150,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
 
   return {
     name: repository,
-    route: 'github',
+    route: 'binding',
 
     async commit(ref: string): Promise<CommitLookup> {
       let read: CommitRead;

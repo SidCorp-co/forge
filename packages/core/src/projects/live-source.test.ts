@@ -61,7 +61,7 @@ describe('resolveLiveSource', () => {
       kind: 'refused',
       reason: 'the GitHub App is not installed on SidCorp-co',
       unbound: false,
-      route: 'github',
+      route: 'binding',
     });
     expect(deployKey).not.toHaveBeenCalled();
   });

@@ -25,7 +25,6 @@ export const REMOTE_FETCH_LIMITS: FetchLimits = { timeoutMs: 60_000, maxBytes: 2
 /** The pack, its index and its reverse index share the budget; each file may take this fraction. */
 const PER_FILE_SHARE = 5;
 
-/** A reading refused, in words an operator can act on. */
 export class GitRefusal extends Error {}
 
 export interface GitFailure {
@@ -41,8 +40,7 @@ export function firstLine(s: string): string {
   return (line ?? '').slice(0, 300);
 }
 
-/** The environment every reading runs git under: no user or system config, no prompt, and no
- *  object fetched behind the reading's back. */
+/** No user or system config, no prompt, and no object fetched behind the reading's back. */
 export function readingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...env,
@@ -64,10 +62,7 @@ export function fetchRefusal(err: GitFailure): string {
   return `the git host answered the fetch with: ${firstLine(stderr) || `git exited ${String(err.code ?? 'abnormally')}`}`;
 }
 
-/**
- * ssh writes `user@<HostName>`, and the connection is pinned to an address, so git's own words name
- * that address; an operator knows the repository by the host its URL names.
- */
+/** git names the address ssh was pinned to; an operator knows the repository by its URL's host. */
 export function namingTheHost(reason: string, pin: PinnedSshHost): string {
   return pin.address === pin.host ? reason : reason.replaceAll(pin.address, pin.host);
 }
@@ -96,11 +91,7 @@ export interface BoundedFetch {
   refusal?: (err: GitFailure) => string;
 }
 
-/**
- * Run `git <args>` in a process group of its own under a file-size limit, so the ssh it starts is
- * stopped with it and no file it writes passes the byte budget, and kill the group the moment it
- * outlives the time budget.
- */
+/** `git <args>` in a process group of its own under `ulimit -f`, killed whole past the time budget. */
 export function boundedFetch(
   args: string[],
   env: NodeJS.ProcessEnv,

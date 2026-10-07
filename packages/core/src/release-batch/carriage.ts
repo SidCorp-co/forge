@@ -1,11 +1,6 @@
 /**
- * Whether a served commit carries a judged one, and which paths a landing changed, read from the
- * project's own repository (ISS-1368) through whichever reader answers for it (ISS-1398). A served
- * commit that equals the judged one is decided without asking anything.
- *
- * A successful answer about two named commits, or one commit's own diff, is content-addressed and
- * never changes, so it is kept for the process, bounded, oldest out first; a failure is a reading
- * about the moment and is never kept.
+ * What a served commit carries of a judged one, and what a landing changed (ISS-1368, ISS-1398).
+ * An answer about named commits never changes, so it is kept, bounded; a failure is never kept.
  */
 
 import type { Carriage, ChangedPaths, RepositoryReader } from '../projects/repository-reader.js';

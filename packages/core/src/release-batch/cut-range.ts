@@ -1,8 +1,6 @@
 /**
- * What a release batch carries to production, read from the project's repository (ISS-1386). On
- * a chain that promotes by `merge-branch`, the release merges the start branch into the live one,
- * so everything in `live...start` reaches production whether or not the batch names it. Read by
- * the caller and passed to the enumerator, which reaches no network of its own.
+ * What a `merge-branch` release carries to production (ISS-1386): everything in `live...start`,
+ * named or not. Read by the caller and passed to the enumerator, which reaches no network.
  */
 
 import {
@@ -30,7 +28,6 @@ export type CutRange =
   | { kind: 'not-read'; why: string }
   /** No route to read it was declared: no GitHub binding, and no deploy key beside an SSH URL. */
   | { kind: 'unbound'; why: string }
-  /** A declared route failed to answer. */
   | { kind: 'unread'; why: string };
 
 export type CutRangeDeps = Partial<RepositoryAccessDeps>;

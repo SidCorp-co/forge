@@ -337,10 +337,7 @@ async function rangeIn(g: GitReading, base: string, headRef: string): Promise<Ra
   return { commits };
 }
 
-/**
- * The reader for `remote`, fetched as `env` allows (the deploy key's ssh command), into
- * repositories under `dir`. `pin` is the address ssh was pinned to, so a reason names the host.
- */
+/** The reader for `remote`, fetched as `env` (the deploy key's ssh command) allows, under `dir`. */
 export function gitRepositoryReader(
   remote: string,
   env: NodeJS.ProcessEnv,

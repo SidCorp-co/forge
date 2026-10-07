@@ -161,7 +161,6 @@ export function useCommitLandingWorld() {
   });
 
   return {
-    /** The database and the project the current test holds, for a suite seeding more of it. */
     current(): { db: TestDatabase['db']; projectId: string } {
       return { db: harness.db, projectId };
     },

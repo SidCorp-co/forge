@@ -35,7 +35,7 @@ describe('withRepository', () => {
     });
     expect(got[0]).toMatchObject({
       kind: 'reader',
-      reader: { name: 'SidCorp-co/forge', route: 'github' },
+      reader: { name: 'SidCorp-co/forge', route: 'binding' },
     });
     expect(deployKey).not.toHaveBeenCalled();
   });
@@ -94,7 +94,7 @@ describe('withRepository', () => {
 
 describe('readableThrough', () => {
   it('names the route that clears a read, and only a GitHub route names GitHub', () => {
-    expect(readableThrough('github')).toContain('through a GitHub binding');
+    expect(readableThrough('binding')).toContain('through a GitHub binding');
     expect(readableThrough('deploy_key')).toContain(
       "with the deploy key attached under the project's Settings → Runners → Git access",
     );

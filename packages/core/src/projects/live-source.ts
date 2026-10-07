@@ -86,7 +86,7 @@ export async function resolveLiveSource(
   } catch (err) {
     if (!(err instanceof GitHubClientError)) throw err;
     if (err.reason !== 'no_binding') {
-      return { kind: 'refused', reason: err.message, unbound: false, route: 'github' };
+      return { kind: 'refused', reason: err.message, unbound: false, route: 'binding' };
     }
   }
   const row = await deps.deployKey(projectId);
@@ -128,7 +128,7 @@ export interface ProjectDivergenceDeps {
 }
 
 const divergenceDeps: ProjectDivergenceDeps = {
-  source: (projectId) => resolveLiveSource(projectId),
+  source: resolveLiveSource,
   github: readLiveDivergence,
   deployKey: readRemoteDivergence,
 };

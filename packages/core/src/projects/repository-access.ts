@@ -19,21 +19,18 @@ export interface RepositoryAccessDeps {
 }
 
 const defaultDeps: RepositoryAccessDeps = {
-  source: (projectId) => resolveLiveSource(projectId),
+  source: resolveLiveSource,
   deployKey: withDeployKey,
 };
 
 /** How "mark again once …" ends for a repository read through `route`. */
 export function readableThrough(route: RepositoryRoute): string {
-  return route === 'github'
+  return route === 'binding'
     ? "once the tracker can read the project's repository, through a GitHub binding whose installation can read it"
     : `once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}, over the SSH clone URL set there`;
 }
 
-/**
- * `fn` with the project's repository: a reader, or why there is none. A deploy-key reading lives
- * only as long as `fn`, its key and fetched repositories removed when `fn` returns.
- */
+/** `fn` with a reader, or why there is none; a deploy-key reading is removed when `fn` returns. */
 export async function withRepository<T>(
   projectId: string,
   fn: (access: RepositoryAccess) => Promise<T>,
