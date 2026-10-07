@@ -105,7 +105,9 @@ describe('a release finish that cannot close an issue', () => {
     );
 
     expect((await fx.stored(held)).status).toBe('closed');
-    const [q] = await harness.db.execute(sql`SELECT status FROM agent_questions WHERE id = ${question}`);
+    const [q] = await harness.db.execute(
+      sql`SELECT status FROM agent_questions WHERE id = ${question}`,
+    );
     expect(q?.status).not.toBe('open');
   });
 
@@ -114,7 +116,8 @@ describe('a release finish that cannot close an issue', () => {
     const broken = await fx.insertIssue();
     const free = await fx.insertIssue();
     const { runId } = await fx.claim([broken, free]);
-    await harness.db.execute(sql.raw(`
+    await harness.db.execute(
+      sql.raw(`
       CREATE OR REPLACE FUNCTION planted_close_failure() RETURNS trigger AS $$
       BEGIN
         IF NEW.status = 'closed' AND NEW.id = '${broken}' THEN
@@ -124,7 +127,8 @@ describe('a release finish that cannot close an issue', () => {
       END $$ LANGUAGE plpgsql;
       CREATE TRIGGER planted_close_failure BEFORE UPDATE ON issues
         FOR EACH ROW EXECUTE FUNCTION planted_close_failure();
-    `));
+    `),
+    );
     try {
       const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
 
@@ -164,7 +168,7 @@ describe('a release finish that cannot close an issue', () => {
     const said = await lastComment(held);
     expect(said).toContain('`OPEN_QUESTIONS`');
     expect(said).toContain(`open question ${question}`);
-    expect(said).toContain('What clears it: this issue holds 1 open question');
+    expect(said).toContain('What clears it: answer each open question in the Decisions panel');
     expect(said).toContain(`shipped as version ${version}`);
     expect(said).toContain('stay at `releasing`');
     expect(said).toContain(`/release-batches/${runId}/abort`);

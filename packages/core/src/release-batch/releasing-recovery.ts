@@ -1,9 +1,11 @@
+import { redactedMessage, redactQueryParams } from '@forge/observability';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, type IssueStatus, issues, projects } from '../db/schema.js';
 import { releaseAttempts } from '../db/schema-release-ledger.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { pgDriverError, pgErrorClassDescription } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
 import { resolveReleaseGate } from './gate.js';
@@ -83,7 +85,46 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
       blocking: blockingObjects(err.details),
     };
   }
-  return { kind: 'failed', message: err instanceof Error ? err.message : String(err) };
+  return { kind: 'failed', message: failureMessage(err) };
+}
+
+/**
+ * A close that failed short of a decision, in words that never carry the statement or a value bound
+ * to it (ISS-1381 r2). The database's own reason is kept where it can be read without a bound value
+ * in it; where it cannot, its SQLSTATE and what that class means stand in for it.
+ */
+function failureMessage(err: unknown): string {
+  const driver = pgDriverError(err);
+  if (driver) {
+    const unquoted = redactQueryParams(driver.message);
+    const safe = redactQueryParams(unquoted, err) === unquoted;
+    const reason = safe ? unquoted : pgErrorClassDescription(driver.code);
+    return `the database refused the write (${driver.code}): ${reason}`;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  if (message.startsWith('Failed query:')) return 'a database query failed without saying why';
+  return redactedMessage(err);
+}
+
+/** What a finish reports for one issue it could not close, on its answer and its record. */
+export function closeFailureText(refusal: CloseRefusal): string {
+  return refusal.kind === 'refused' ? `${refusal.code}: ${refusal.detail}` : refusal.message;
+}
+
+/** What clears a refusal, as an act a person takes in the product; a code with none keeps its own detail. */
+function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>, held: boolean): string {
+  switch (refusal.code) {
+    case 'OPEN_QUESTIONS':
+      // A held issue stays claimed at `releasing`, so no move of it is the person's to make.
+      if (held) return 'answer each open question in the Decisions panel on this issue.';
+      return 'answer each open question in the Decisions panel on this issue, or withdraw them with a reason when you move it to Closed — the move asks for one.';
+    case 'CLOSE_REQUIRES_SHIPPED':
+      return 'mark the issue merged on its Properties rail, naming where its work landed.';
+    case 'STALE_TRANSITION':
+      return 'nothing; the issue changed while the release was closing it. Read where it stands now.';
+    default:
+      return refusal.detail;
+  }
 }
 
 /** What a finish that shipped tells an issue it could not close, and how that issue closes later. */
@@ -95,7 +136,7 @@ export function refusedCloseComment(args: {
   /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
   held?: string | undefined;
 }): string {
-  const { refusal, projectId, version, destination, held } = args;
+  const { refusal, version, destination, held } = args;
   const shipped = version ? `as version ${version}` : 'with this batch';
   const why =
     refusal.kind === 'refused'
@@ -103,16 +144,15 @@ export function refusedCloseComment(args: {
           refusal.blocking.length > 0
             ? `Blocking it: ${refusal.blocking.join(', ')}.`
             : 'The refusal named no blocking object.'
-        } What clears it: ${refusal.detail}`
-      : `The close failed before it reached a decision, with: ${refusal.message}. Nothing refused it and no object blocks it; send the close again once that error is gone.`;
+        } What clears it: ${personClears(refusal, held !== undefined)}`
+      : `The close failed before it reached a decision: ${refusal.message}. Nothing refused it and no object blocks it; the close can be made again once that is gone.`;
   const opening = `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n`;
   if (held)
     return `${opening}${held} Clear the reason above first, or that close is refused again.`;
   return (
     opening +
     `The issue is at \`${destination}\` and its code is live with that release. Once the reason above ` +
-    `is cleared, close it against what production serves with POST /api/projects/${projectId}/release-records, ` +
-    'naming the commit production is serving, or put it in the next batch.'
+    'is cleared, move it to Closed from its status menu, or leave it at the release gate for the next release.'
   );
 }
 
@@ -303,7 +343,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
+    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
 /**

@@ -1,6 +1,12 @@
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { describe, expect, it } from 'vitest';
-import { isUniqueViolation, pgConstraintName, pgErrorCode } from './db-errors.js';
+import {
+  isUniqueViolation,
+  pgConstraintName,
+  pgDriverError,
+  pgErrorClassDescription,
+  pgErrorCode,
+} from './db-errors.js';
 
 describe('isUniqueViolation', () => {
   it('returns true for a top-level pg error with code 23505', () => {
@@ -104,5 +110,29 @@ describe('pgErrorCode', () => {
 
   it('returns undefined where nothing on the chain is a SQLSTATE', () => {
     expect(pgErrorCode(Object.assign(new Error('fs'), { code: 'ENOENT' }))).toBeUndefined();
+  });
+});
+
+describe('pgDriverError', () => {
+  it('reads the driver error under drizzle’s wrapper, never the wrapper', () => {
+    const wrapped = new DrizzleQueryError(
+      'update "issues" set "status" = $1',
+      ['closed'],
+      Object.assign(new Error('row refused'), { code: 'P0001' }),
+    );
+    expect(pgDriverError(wrapped)).toEqual({ code: 'P0001', message: 'row refused' });
+  });
+
+  it('finds nothing on an error that carries no SQLSTATE', () => {
+    expect(pgDriverError(Object.assign(new Error('gone'), { code: 'ECONNRESET' }))).toBeUndefined();
+    expect(pgDriverError('plain')).toBeUndefined();
+  });
+});
+
+describe('pgErrorClassDescription', () => {
+  it('names a class by its first two characters, and a class it does not know generically', () => {
+    expect(pgErrorClassDescription('22P02')).toBe('a value it was given was invalid');
+    expect(pgErrorClassDescription('P0001')).toBe('a database function or trigger raised an error');
+    expect(pgErrorClassDescription('XX000')).toBe('the database refused the statement');
   });
 });

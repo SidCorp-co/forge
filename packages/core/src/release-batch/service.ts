@@ -54,6 +54,7 @@ import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import {
   type CloseRefusal,
+  closeFailureText,
   closeRefusalOf,
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -385,8 +386,9 @@ export async function finishReleaseBatch(
         closed.push(issue.id);
       } else {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: failed to close issue');
-        failed.push({ id: issue.id, reason: err instanceof Error ? err.message : String(err) });
-        refusals.set(issue.id, closeRefusalOf(err));
+        const refusal = closeRefusalOf(err);
+        failed.push({ id: issue.id, reason: closeFailureText(refusal) });
+        refusals.set(issue.id, refusal);
       }
     }
   }

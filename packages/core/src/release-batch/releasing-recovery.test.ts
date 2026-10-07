@@ -60,8 +60,8 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       version: null,
       destination: 'awaiting_release',
     });
-    expect(said).toContain('failed before it reached a decision, with: connection reset');
-    expect(said).toContain('send the close again once that error is gone');
+    expect(said).toContain('failed before it reached a decision: connection reset');
+    expect(said).toContain('the close can be made again once that is gone');
     expect(said).toContain('shipped with this batch');
   });
 
@@ -128,7 +128,11 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
   });
 
   it('says a database query failed without a reason when drizzle’s wrapper carries no driver error', () => {
-    const failed = new DrizzleQueryError('update "issues" set "status" = $1', ['closed'], new Error('x'));
+    const failed = new DrizzleQueryError(
+      'update "issues" set "status" = $1',
+      ['closed'],
+      new Error('x'),
+    );
     (failed as { cause?: unknown }).cause = undefined;
 
     const text = closeFailureText(closeRefusalOf(failed));
@@ -144,7 +148,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       destination: 'awaiting_release',
     });
     expect(said).toContain('The refusal named no blocking object.');
-    expect(said).toContain('What clears it: mark it merged');
+    expect(said).toContain('What clears it: mark the issue merged on its Properties rail');
   });
 
   it('gives a promoted roster its settlement in place of the gate, and claims no move', () => {

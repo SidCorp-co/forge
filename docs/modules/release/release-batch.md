@@ -123,17 +123,25 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
 - that the release it was in has shipped, with its version;
 - the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
   each id under a `*Ids` key of its details, labelled (`open question <id>`);
-- what clears it, which is the refusal's own detail;
-- how it closes once cleared: a release record naming the commit production serves, or the next
-  batch.
+- what clears it, as the act a person takes in the product — for `OPEN_QUESTIONS`, answer them in the
+  issue's Decisions panel or withdraw them with a reason when moving it to Closed; for
+  `CLOSE_REQUIRES_SHIPPED`, mark it merged on its Properties rail; a code with no such act keeps the
+  refusal's own detail (`packages/core/src/release-batch/releasing-recovery.ts:personClears`);
+- how it closes once cleared: move it to Closed from its status menu, or leave it at the release
+  gate for the next release. It names no API route.
 
 Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
 `releasing`, still claimed, because the code may be on production. Its comment names the same
-refusal, and in place of the last point it says how to settle a promoted roster: abort the batch
-with `promotedRoster: return-to-gate`, or settle the issue by hand.
+refusal, and in place of the last point it says that settling a promoted roster is an operator's
+act no screen offers yet — abort the batch with `promotedRoster: return-to-gate`, or settle the
+issue by hand (`docs/proposals/a-promoted-roster-is-settled-only-through-the-api.md`).
 
-A close that failed without a refusal names the error and says the close is sent again once that
-error is gone. The comment is written as the finishing person or, for a finish a box reported, as
+A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
+the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
+passed through `@forge/observability`'s redaction; where a bound value would survive in it, the
+SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
+The SQL statement and its bound values reach neither the comment nor the finish answer's
+`failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.
 
 ## 4. Which route reads the repository (ISS-1398)
