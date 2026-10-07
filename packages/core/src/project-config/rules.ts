@@ -4,7 +4,7 @@ import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import type { PolicyDocument } from './policy-schema.js';
-import { MAX_PERFORMED_CROSSINGS, releaseCrossingsOf } from './promotion-path.js';
+import { MAX_PERFORMED_CROSSINGS, releaseLandingOf } from './promotion-path.js';
 import {
   type BindingRole,
   type DeploymentTrigger,
@@ -159,7 +159,7 @@ function checkBranches(doc: ProjectDocument): ConfigRefusal[] {
       detail: `promotions form a cycle: ${cycle.join(' -> ')}.`,
     });
   }
-  const crossings = cycle ? null : releaseCrossingsOf(doc);
+  const crossings = cycle ? null : releaseLandingOf(doc).crossings;
   if (crossings && crossings.length > MAX_PERFORMED_CROSSINGS) {
     out.push({
       code: 'PROMOTION_CHAIN_UNSUPPORTED',

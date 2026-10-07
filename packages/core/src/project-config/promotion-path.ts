@@ -1,4 +1,4 @@
-import type { ProjectDocument } from './schema.js';
+import type { EnvironmentDeclaration, ProjectDocument } from './schema.js';
 
 export type Promotion = ProjectDocument['promotions'][number];
 
@@ -10,7 +10,7 @@ export type Promotion = ProjectDocument['promotions'][number];
  */
 export const MAX_PERFORMED_CROSSINGS = 1;
 
-export function crossingsTo(
+function crossingsTo(
   promotions: readonly Promotion[],
   from: string,
   to: string,
@@ -28,10 +28,44 @@ export function crossingsTo(
   return null;
 }
 
-/** The crossings from where work lands to where production deploys from; null where either is undeclared or unreached. */
-export function releaseCrossingsOf(document: ProjectDocument): Promotion[] | null {
-  const defaultBranch = document.source.type === 'git' ? document.source.git.defaultBranch : null;
-  const production = Object.values(document.environments).find((e) => e.tier === 'production');
-  if (defaultBranch === null || production?.deploysFrom === undefined) return null;
-  return crossingsTo(document.promotions, defaultBranch, production.deploysFrom);
+export interface NamedEnvironment {
+  name: string;
+  declaration: EnvironmentDeclaration;
+}
+
+export function environmentsOf(document: ProjectDocument): NamedEnvironment[] {
+  return Object.entries(document.environments).map(([name, declaration]) => ({
+    name,
+    declaration,
+  }));
+}
+
+export function productionOf(document: ProjectDocument): NamedEnvironment | null {
+  return environmentsOf(document).find((e) => e.declaration.tier === 'production') ?? null;
+}
+
+export function defaultBranchOf(document: ProjectDocument | null | undefined): string | null {
+  return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
+}
+
+/** Where work lands and where production deploys from, and the promotions between them. */
+export interface ReleaseLanding {
+  /** `source.git.defaultBranch`, where work lands; null on a project with no git source. */
+  defaultBranch: string | null;
+  production: NamedEnvironment | null;
+  /** The branch production deploys from; undefined where it declares none. */
+  target: string | undefined;
+  /** The promotions from the landing branch to `target`: empty where either end is undeclared, null where `target` is unreached. */
+  crossings: Promotion[] | null;
+}
+
+export function releaseLandingOf(document: ProjectDocument): ReleaseLanding {
+  const defaultBranch = defaultBranchOf(document);
+  const production = productionOf(document);
+  const target = production?.declaration.deploysFrom;
+  const crossings =
+    defaultBranch === null || target === undefined
+      ? []
+      : crossingsTo(document.promotions, defaultBranch, target);
+  return { defaultBranch, production, target, crossings };
 }

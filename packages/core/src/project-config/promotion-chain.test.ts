@@ -1,5 +1,6 @@
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { describe, expect, it } from 'vitest';
+import { releasePathOf } from './release-path.js';
 import { checkProjectConfig } from './rules.js';
 import { type ProjectDocument, projectDocumentSchema } from './schema.js';
 
@@ -72,5 +73,40 @@ describe('a release path the release cannot perform is refused at write', () => 
       'live',
     );
     expect(codes(doc)).not.toContain('PROMOTION_CHAIN_UNSUPPORTED');
+  });
+});
+
+describe('the release path names the one promotion a landed change crosses', () => {
+  it('reads no crossing where production deploys from the landing branch', () => {
+    const read = releasePathOf(1, document([], 'main'));
+    expect(read.ok && read.path.crossing).toBeNull();
+  });
+
+  it('reads the one promotion into the production branch', () => {
+    const read = releasePathOf(
+      1,
+      document([{ from: 'main', to: 'live', via: 'cherry-pick' }], 'live'),
+    );
+    expect(read.ok && read.path.crossing).toEqual({ from: 'main', to: 'live', via: 'cherry-pick' });
+  });
+
+  it('refuses a chain of two by name instead of reading its last crossing', () => {
+    const read = releasePathOf(
+      3,
+      document(
+        [
+          { from: 'main', to: 'staging', via: 'merge' },
+          { from: 'staging', to: 'live', via: 'merge' },
+        ],
+        'live',
+      ),
+    );
+    expect(read.ok).toBe(false);
+    expect(!read.ok && read.reason).toContain('crosses 2 promotions to reach `live`');
+  });
+
+  it('refuses a production branch no promotion reaches', () => {
+    const read = releasePathOf(3, document([], 'live'));
+    expect(!read.ok && read.reason).toContain('no promotion reaches `live` from `main`');
   });
 });

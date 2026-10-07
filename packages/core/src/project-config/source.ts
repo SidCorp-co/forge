@@ -1,4 +1,5 @@
 import { parseRepository } from '@forge/contracts/git-repository';
+import { defaultBranchOf } from './promotion-path.js';
 import type { ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
 
@@ -11,10 +12,6 @@ export {
 
 export function repositoryOf(document: ProjectDocument | null | undefined): string | null {
   return document?.source.type === 'git' ? document.source.git.repository : null;
-}
-
-export function defaultBranchOf(document: ProjectDocument | null | undefined): string | null {
-  return document?.source.type === 'git' ? document.source.git.defaultBranch : null;
 }
 
 function setupOf(document: ProjectDocument | null | undefined): string | null {
