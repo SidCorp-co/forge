@@ -319,8 +319,10 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
       collectHeld(value, walk, depth);
-      const self = walk.censor ? censored(value, walk.censor) : value;
-      const out = attempt(() => toJSON.call(self, key) as unknown);
+      const names = walk.censor;
+      const self = names ? attempt(() => censored(value, names)) : value;
+      const out =
+        self === UNREADABLE ? UNREADABLE : attempt(() => toJSON.call(self, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
@@ -331,13 +333,21 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   if (walk.open.has(value)) return CIRCULAR;
   if (asError) return value;
   walk.open.add(value);
-  const out = renderFields(value, depth, walk, copy);
+  // A set of fields is read as pino reads it: none of its functions, toJSON among them, is written.
+  const out = renderFields(value, depth, walk, copy || (top && walk.fields === true));
   walk.open.delete(value);
   return out;
 }
 
 /** Whether a field named in `names` stands anywhere in `value`'s own fields, at any depth. */
-function holdsName(value: object, names: ReadonlySet<string>, seen: Set<object>): boolean {
+function holdsName(
+  value: object,
+  names: ReadonlySet<string>,
+  seen: Set<object>,
+  depth = 0,
+): boolean {
+  // Past the bound nothing was read, so nothing is vouched for: the copy cuts it there.
+  if (depth > MAX_DEPTH) return true;
   if (seen.has(value)) return false;
   seen.add(value);
   const fields = attempt(() => Object.getOwnPropertyDescriptors(value));
@@ -348,7 +358,7 @@ function holdsName(value: object, names: ReadonlySet<string>, seen: Set<object>)
       ('value' in own &&
         typeof own.value === 'object' &&
         own.value !== null &&
-        holdsName(own.value, names, seen)),
+        holdsName(own.value, names, seen, depth + 1)),
   );
 }
 

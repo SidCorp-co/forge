@@ -556,6 +556,30 @@ describe('the core logger, given a value whose text only a serializer renders', 
     }
   });
 
+  it('never asks the merging object or bindings for a toJSON, which pino does not', () => {
+    const { lines, log } = capture();
+    let asked = 0;
+    const fields = () => ({
+      password: 'ordinary-password',
+      note: 'kept',
+      toJSON() {
+        asked++;
+        return { leaked: this.password };
+      },
+    });
+    log.warn(fields(), 'read');
+    log.child(fields()).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings(fields());
+    rebound.warn('rebound');
+    expect(asked).toBe(0);
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).not.toContain('ordinary-password');
+      expect(JSON.parse(line).note).toBe('kept');
+    }
+  });
+
   it('keeps what a format argument renders when it carries nothing to redact', () => {
     const { lines, log } = capture();
     log.warn('read %s and %s', { toString: () => 'a reading' }, new URL('https://example.test/x'));

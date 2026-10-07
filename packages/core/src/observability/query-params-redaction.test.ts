@@ -1,4 +1,4 @@
-import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
+import { asSerialized, REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -405,6 +405,14 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
       expect(out ?? '').not.toContain(HASH);
       expect(out ?? '').not.toContain('Failed query');
     }
+  });
+
+  it('asks a toJSON over a very deep receiver without throwing', () => {
+    let chain: Record<string, unknown> = { password: 'ordinary-password' };
+    for (let i = 0; i < 20_000; i++) chain = { inner: chain };
+    const value = { reading: { chain, toJSON: () => 'ordinary' } };
+    const out = asSerialized(value, { censor: new Set(['password']) });
+    expect(JSON.stringify(out.value)).toBe('{"reading":"ordinary"}');
   });
 
   it('reads an array as JSON does: each index once, one that throws written redacted', () => {
