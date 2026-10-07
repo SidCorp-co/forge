@@ -17,15 +17,14 @@ import {
   TR,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { useTokens } from "../hooks";
 import type { PatToken } from "../types";
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+/** A token's date in the reader's words, or a dash where it has none. */
+function useFmtDate(): (iso: string | null) => string {
+  const time = useTimeFormat();
+  return (iso) => (!iso || Number.isNaN(new Date(iso).getTime()) ? "—" : time.date(iso));
 }
 
 interface RowProps {
@@ -48,6 +47,7 @@ export function TokenList({
   pending: boolean;
 }) {
   const tokens = tokensQ.data?.tokens ?? [];
+  const t = useCopy();
   if (tokensQ.isLoading)
     return (
       <div className="space-y-2.5">
@@ -59,42 +59,51 @@ export function TokenList({
   if (tokensQ.isError)
     return (
       <ErrorState
-        title="Couldn't load tokens"
+        title={t("settings.tokens.loadFailed")}
         message={formatApiError(tokensQ.error)}
         onRetry={() => tokensQ.refetch()}
       />
     );
   if (tokens.length === 0)
-    return <EmptyState title="No tokens" message="Create a personal access token above to use the API." />;
+    return <EmptyState title={t("settings.tokens.none")} message={t("settings.tokens.noneBody")} />;
 
-  const props = (t: PatToken): RowProps => ({
-    token: t,
-    level: levelOf(t),
-    onRevoke: () => onRevoke(t.id),
+  const props = (token: PatToken): RowProps => ({
+    token,
+    level: levelOf(token),
+    onRevoke: () => onRevoke(token.id),
     pending,
   });
+  const HEADS = [
+    t("settings.agents.name"),
+    t("settings.tokens.level"),
+    t("settings.tokens.prefix"),
+    t("settings.tokens.scopes"),
+    t("settings.tokens.grant"),
+    t("settings.tokens.expires"),
+    t("settings.tokens.lastUsed"),
+  ];
   return (
     <>
       <div className="hidden md:block">
         <Table>
           <THead>
             <TR>
-              {["Name", "Level", "Prefix", "Scopes", "Grant", "Expires", "Last used"].map((h) => (
+              {HEADS.map((h) => (
                 <TH key={h}>{h}</TH>
               ))}
-              <TH className="text-right">Actions</TH>
+              <TH className="text-right">{t("settings.agents.actions")}</TH>
             </TR>
           </THead>
           <TBody>
-            {tokens.map((t) => (
-              <TokenRow key={t.id} {...props(t)} />
+            {tokens.map((token) => (
+              <TokenRow key={token.id} {...props(token)} />
             ))}
           </TBody>
         </Table>
       </div>
       <div className="space-y-2.5 md:hidden">
-        {tokens.map((t) => (
-          <TokenMobileCard key={t.id} {...props(t)} />
+        {tokens.map((token) => (
+          <TokenMobileCard key={token.id} {...props(token)} />
         ))}
       </div>
     </>
@@ -108,12 +117,13 @@ export function TokenList({
  * everything too, and says so rather than reading as an absence.
  */
 function GrantBadge({ token }: { token: PatToken }) {
-  if (token.grant === "full") return <Badge tone="red">Full access</Badge>;
-  if (token.grant === "legacy") return <Badge tone="amber">Legacy — full access, never stated</Badge>;
+  const t = useCopy();
+  if (token.grant === "full") return <Badge tone="red">{t("settings.tokens.full")}</Badge>;
+  if (token.grant === "legacy") return <Badge tone="amber">{t("settings.tokens.legacy")}</Badge>;
   const count = token.permissions?.length ?? 0;
   return (
     <Badge tone="neutral">
-      {count} permission{count === 1 ? "" : "s"}
+      {count === 1 ? t("settings.tokens.permissionOne") : t("settings.tokens.permissions", { n: count })}
     </Badge>
   );
 }
@@ -123,7 +133,7 @@ function ScopeBadges({ scopes }: { scopes: PatToken["scopes"] }) {
     <div className="flex flex-wrap gap-1">
       {scopes.map((s) => (
         <Badge key={s} tone={s === "write" ? "amber" : "neutral"}>
-          {s}
+          <span translate="no">{s}</span>
         </Badge>
       ))}
     </div>
@@ -131,6 +141,7 @@ function ScopeBadges({ scopes }: { scopes: PatToken["scopes"] }) {
 }
 
 function RevokeButton({ token, onRevoke, pending }: RowProps) {
+  const t = useCopy();
   return (
     <Button
       variant="danger"
@@ -139,18 +150,20 @@ function RevokeButton({ token, onRevoke, pending }: RowProps) {
       onClick={onRevoke}
       className="min-h-11"
     >
-      Revoke
+      {t("settings.agents.revoke")}
     </Button>
   );
 }
 
 function TokenRow(props: RowProps) {
   const { token, level } = props;
+  const t = useCopy();
+  const fmtDate = useFmtDate();
   return (
     <TR>
       <TD className="font-medium text-fg">
         {token.name}
-        {token.revokedAt && <span className="fg-caption ml-2">(revoked)</span>}
+        {token.revokedAt && <span className="fg-caption ml-2">{t("settings.tokens.revoked")}</span>}
       </TD>
       <TD>
         <Badge tone={token.boundProjectId ? "cobalt" : "neutral"}>{level}</Badge>
@@ -175,6 +188,8 @@ function TokenRow(props: RowProps) {
 
 function TokenMobileCard(props: RowProps) {
   const { token, level } = props;
+  const t = useCopy();
+  const fmtDate = useFmtDate();
   return (
     <PageSection>
       <PageSectionBody>
@@ -182,7 +197,7 @@ function TokenMobileCard(props: RowProps) {
           <div className="min-w-0">
             <p className="fg-body-sm font-medium text-fg">
               {token.name}
-        {token.revokedAt && <span className="fg-caption ml-2">(revoked)</span>}
+        {token.revokedAt && <span className="fg-caption ml-2">{t("settings.tokens.revoked")}</span>}
             </p>
             <div className="mt-1.5 flex items-center gap-1.5">
               <MonoTag>{token.prefix}…</MonoTag>
@@ -196,7 +211,7 @@ function TokenMobileCard(props: RowProps) {
           <GrantBadge token={token} />
         </div>
         <p className="fg-caption mt-2 font-mono">
-          Expires {fmtDate(token.expiresAt)} · Last used {fmtDate(token.lastUsedAt)}
+          {t("settings.tokens.expiresUsed", { expires: fmtDate(token.expiresAt), used: fmtDate(token.lastUsedAt) })}
         </p>
       </PageSectionBody>
     </PageSection>

@@ -19,6 +19,7 @@ import {
 import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -41,9 +42,10 @@ import {
 } from "../types";
 
 /** The error toast every org write raises on failure. */
-export function useFailToast(title = "Request failed") {
+export function useFailToast(title?: string) {
   const { toast } = useToast();
-  return (err: unknown) => toast({ title, description: formatApiError(err), tone: "error" });
+  const t = useCopy();
+  return (err: unknown) => toast({ title: title ?? t("settings.requestFailed"), description: formatApiError(err), tone: "error" });
 }
 
 const ROW = "flex items-center justify-between gap-3 py-2";
@@ -83,20 +85,21 @@ function LensControl({
   busy: boolean;
   onToggle: (lens: MemberLens) => void;
 }) {
+  const t = useCopy();
   if (!canManage) {
     if (lenses.length === 0) return null;
     return (
       <span className="flex items-center gap-1">
         {MEMBER_LENS_OPTIONS.filter((o) => lenses.includes(o.value)).map((o) => (
           <Badge key={o.value} tone="neutral">
-            {o.label}
+            {t(o.label)}
           </Badge>
         ))}
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1" title="Working lens — shapes how chat answers this member">
+    <span className="flex items-center gap-1" title={t("settings.orgs.lensTitle")}>
       {MEMBER_LENS_OPTIONS.map((o) => {
         const on = lenses.includes(o.value);
         return (
@@ -113,7 +116,7 @@ function LensControl({
                 : "border-line text-subtle hover:bg-hover hover:text-fg",
             )}
           >
-            {o.label}
+            {t(o.label)}
           </button>
         );
       })}
@@ -136,8 +139,9 @@ export function MemberList({
   const removeMember = useRemoveOrgMember(org.id);
   const { user } = useAuth();
   const { toast } = useToast();
+  const t = useCopy();
   const fail = useFailToast();
-  const failLens = useFailToast("Couldn't update lens");
+  const failLens = useFailToast(t("settings.orgs.lensFailed"));
   const [memberToRemove, setMemberToRemove] = useState<OrgMemberRow | null>(null);
 
   function toggleLens(m: OrgMemberRow, lens: MemberLens) {
@@ -149,7 +153,7 @@ export function MemberList({
   function confirmRemove() {
     if (!memberToRemove) return;
     removeMember.mutate(memberToRemove.userId, {
-      onSuccess: () => toast({ title: "Member removed", tone: "success" }),
+      onSuccess: () => toast({ title: t("settings.orgs.memberRemoved"), tone: "success" }),
       onError: fail,
       onSettled: () => setMemberToRemove(null),
     });
@@ -163,7 +167,7 @@ export function MemberList({
           <li key={m.userId} className={ROW}>
             <span className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 truncate text-fg">{m.email}</span>
-              {user?.id === m.userId && <Badge tone="accent">You</Badge>}
+              {user?.id === m.userId && <Badge tone="accent">{t("common.nav.you")}</Badge>}
             </span>
             <span className="flex shrink-0 items-center gap-2">
               <LensControl
@@ -179,7 +183,7 @@ export function MemberList({
                   onChange={(v) =>
                     updateRole.mutate(
                       { userId: m.userId, role: v as OrgRole },
-                      { onSuccess: () => toast({ title: "Role updated", tone: "success" }), onError: fail },
+                      { onSuccess: () => toast({ title: t("settings.orgs.roleUpdated"), tone: "success" }), onError: fail },
                     )
                   }
                   disabled={updateRole.isPending && updateRole.variables?.userId === m.userId}
@@ -190,7 +194,7 @@ export function MemberList({
               {canManage && (
                 <IconButton
                   icon="trash"
-                  aria-label={`Remove ${m.email}`}
+                  aria-label={t("settings.orgs.removeNamed", { email: m.email })}
                   onClick={() => setMemberToRemove(m)}
                   disabled={removeMember.isPending && removeMember.variables === m.userId}
                 />
@@ -201,14 +205,14 @@ export function MemberList({
       />
       <ConfirmDialog
         open={!!memberToRemove}
-        title="Remove member"
+        title={t("settings.orgs.removeMember")}
         message={
           <>
-            Remove <strong>{memberToRemove?.email}</strong> from {org.name}?
-            They lose access to all of its projects.
+            {t("settings.orgs.removeLead")} <strong>{memberToRemove?.email}</strong>{" "}
+            {t("settings.orgs.removeTail", { org: org.name })}
           </>
         }
-        confirmLabel="Remove member"
+        confirmLabel={t("settings.orgs.removeMember")}
         tone="danger"
         loading={removeMember.isPending}
         onConfirm={confirmRemove}
@@ -220,17 +224,18 @@ export function MemberList({
 
 export function ProjectList({ orgId }: { orgId: string }) {
   const projectsQ = useOrgProjects(orgId);
+  const t = useCopy();
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <PageSectionTitle className="fg-label text-fg">Projects</PageSectionTitle>
+      <PageSectionTitle className="fg-label text-fg">{t("settings.orgs.projects")}</PageSectionTitle>
       <RowList
         query={projectsQ}
-        empty="No projects yet."
+        empty={t("settings.orgs.noProjects")}
         row={(p) => (
           <li key={p.id} className={ROW}>
             <span className="min-w-0 truncate text-fg">{p.name}</span>
             <span className="flex shrink-0 items-center gap-2">
-              {p.archivedAt && <Badge tone="amber">archived</Badge>}
+              {p.archivedAt && <Badge tone="amber">{t("integrations.edit.archived")}</Badge>}
               <span className="fg-body-sm text-subtle">{p.slug}</span>
             </span>
           </li>
@@ -246,11 +251,12 @@ export function InvitationList({ orgId }: { orgId: string }) {
   const { toast } = useToast();
   const fail = useFailToast();
   const [inviteToRevoke, setInviteToRevoke] = useState<OrgInvitationRow | null>(null);
+  const t = useCopy();
 
   function confirmRevoke() {
     if (!inviteToRevoke) return;
     revokeInvitation.mutate(inviteToRevoke.email, {
-      onSuccess: () => toast({ title: "Invitation revoked", tone: "success" }),
+      onSuccess: () => toast({ title: t("settings.orgs.invitationRevoked"), tone: "success" }),
       onError: fail,
       onSettled: () => setInviteToRevoke(null),
     });
@@ -258,19 +264,19 @@ export function InvitationList({ orgId }: { orgId: string }) {
 
   return (
     <div className="mt-4 space-y-3 border-t border-line pt-4">
-      <PageSectionTitle className="fg-label text-fg">Pending invitations</PageSectionTitle>
+      <PageSectionTitle className="fg-label text-fg">{t("settings.orgs.pending")}</PageSectionTitle>
       <RowList
         query={invitationsQ}
-        empty="No pending invitations."
+        empty={t("settings.orgs.noPending")}
         row={(inv) => (
           <li key={inv.email} className={ROW}>
             <span className="min-w-0 truncate text-fg">{inv.email}</span>
             <span className="flex shrink-0 items-center gap-2">
-              {inv.expired && <Badge tone="amber">Expired</Badge>}
+              {inv.expired && <Badge tone="amber">{t("settings.orgs.expired")}</Badge>}
               <EnumBadge family="role" value={inv.role} />
               <IconButton
                 icon="trash"
-                aria-label={`Revoke invitation for ${inv.email}`}
+                aria-label={t("settings.orgs.revokeFor", { email: inv.email })}
                 onClick={() => setInviteToRevoke(inv)}
                 disabled={revokeInvitation.isPending && revokeInvitation.variables === inv.email}
               />
@@ -280,14 +286,13 @@ export function InvitationList({ orgId }: { orgId: string }) {
       />
       <ConfirmDialog
         open={!!inviteToRevoke}
-        title="Revoke invitation"
+        title={t("settings.orgs.revoke")}
         message={
           <>
-            Revoke the pending invitation for <strong>{inviteToRevoke?.email}</strong>? They will no
-            longer be able to join with it.
+            {t("settings.orgs.revokeLead")} <strong>{inviteToRevoke?.email}</strong>? {t("settings.orgs.revokeTail")}
           </>
         }
-        confirmLabel="Revoke invitation"
+        confirmLabel={t("settings.orgs.revoke")}
         tone="danger"
         loading={revokeInvitation.isPending}
         onConfirm={confirmRevoke}
@@ -303,6 +308,7 @@ export function AddMemberForm({ orgId, roleOptions }: { orgId: string; roleOptio
   const fail = useFailToast();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("member");
+  const t = useCopy();
 
   return (
     <form
@@ -317,9 +323,9 @@ export function AddMemberForm({ orgId, roleOptions }: { orgId: string; roleOptio
               setEmail("");
               // 202 = no account yet → an email invitation was sent.
               if ("invited" in data && data.invited) {
-                toast({ title: "Invitation sent", description: trimmed, tone: "success" });
+                toast({ title: t("settings.orgs.invitationSent"), description: trimmed, tone: "success" });
               } else {
-                toast({ title: "Member added", tone: "success" });
+                toast({ title: t("settings.orgs.memberAdded"), tone: "success" });
               }
             },
             onError: fail,
@@ -328,7 +334,7 @@ export function AddMemberForm({ orgId, roleOptions }: { orgId: string; roleOptio
       }}
     >
       <div className="min-w-56 flex-1">
-        <Field label="Add member by email">
+        <Field label={t("settings.orgs.addByEmail")}>
           <Input
             type="email"
             value={email}
@@ -338,12 +344,12 @@ export function AddMemberForm({ orgId, roleOptions }: { orgId: string; roleOptio
         </Field>
       </div>
       <div className="min-w-32">
-        <Field label="Role">
+        <Field label={t("settings.orgs.role")}>
           <Select options={roleOptions} value={role} onChange={(v) => setRole(v as OrgRole)} />
         </Field>
       </div>
       <Button type="submit" disabled={!email.trim() || addMember.isPending}>
-        Add
+        {t("settings.orgs.add")}
       </Button>
     </form>
   );

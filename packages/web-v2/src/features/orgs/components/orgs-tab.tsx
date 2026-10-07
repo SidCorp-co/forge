@@ -5,6 +5,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { SLUG_RE, slugify } from "@/lib/slug";
 import { useToast } from "@/providers/toast-provider";
+import { useCopy } from "@/lib/i18n/interface-language";
 // Settings → Organizations. List the caller's orgs (personal pinned first),
 // create a team org, and manage members of the selected org. Org owner/admin
 // get implicit project-admin on every project of the org; plain org members
@@ -16,6 +17,7 @@ import { OrgMembersCard } from "./org-members-card";
 export function OrgsTab() {
   const orgsQ = useOrgs();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const t = useCopy();
 
   if (orgsQ.isLoading) {
     return (
@@ -45,11 +47,8 @@ export function OrgsTab() {
     <div className="space-y-6">
       <PageSection>
         <PageSectionBody>
-          <SectionTitle className="fg-h3 mb-1">Organizations</SectionTitle>
-          <p className="fg-body-sm mb-4 text-muted">
-            Every project lives in exactly one org. Org owners/admins manage all
-            of its projects; org members still need a per-project invite.
-          </p>
+          <SectionTitle className="fg-h3 mb-1">{t("settings.orgs.title")}</SectionTitle>
+          <p className="fg-body-sm mb-4 text-muted">{t("settings.orgs.intro")}</p>
           <ul className="divide-y divide-line-subtle">
             {orgs.map((o) => (
               <li
@@ -60,7 +59,7 @@ export function OrgsTab() {
                   {o.name}
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
-                  {o.isPersonal && <Badge tone="neutral">Personal</Badge>}
+                  {o.isPersonal && <Badge tone="neutral">{t("overview.personal")}</Badge>}
                   <EnumBadge family="role" value={o.role} />
                   {!o.isPersonal && (
                     <Button
@@ -70,7 +69,7 @@ export function OrgsTab() {
                         setSelectedId(o.id === selectedId ? null : o.id)
                       }
                     >
-                      {o.id === selectedId ? "Close" : "Members"}
+                      {o.id === selectedId ? t("settings.orgs.close") : t("settings.orgs.members")}
                     </Button>
                   )}
                 </span>
@@ -99,6 +98,7 @@ function CreateOrgForm() {
   const [slug, setSlug] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [slugError, setSlugError] = useState<string | undefined>(undefined);
+  const t = useCopy();
 
   // Mirror the name into the slug until the user takes manual control.
   const onNameChange = (value: string) => {
@@ -112,10 +112,9 @@ function CreateOrgForm() {
   };
 
   function validateSlug(value: string): string | undefined {
-    if (value.length < 3) return "Slug must be at least 3 characters.";
-    if (value.length > 64) return "Slug must be 64 characters or fewer.";
-    if (!SLUG_RE.test(value))
-      return "Slug may use lowercase letters, digits, and hyphens only.";
+    if (value.length < 3) return t("settings.orgs.slugShort");
+    if (value.length > 64) return t("settings.orgs.slugLong");
+    if (!SLUG_RE.test(value)) return t("settings.orgs.slugChars");
     return undefined;
   }
 
@@ -140,11 +139,11 @@ function CreateOrgForm() {
               setName("");
               setSlug("");
               setSlugEdited(false);
-              toast({ title: "Organization created", tone: "success" });
+              toast({ title: t("settings.orgs.created"), tone: "success" });
             },
             onError: (err) =>
               toast({
-                title: "Request failed",
+                title: t("settings.requestFailed"),
                 description: formatApiError(err),
                 tone: "error",
               }),
@@ -154,7 +153,7 @@ function CreateOrgForm() {
       }}
     >
       <div className="min-w-48 flex-1">
-        <Field label="New org name">
+        <Field label={t("settings.orgs.newName")}>
           <Input
             value={name}
             onChange={(e) => onNameChange(e.target.value)}
@@ -163,7 +162,7 @@ function CreateOrgForm() {
         </Field>
       </div>
       <div className="min-w-40">
-        <Field label="Slug" error={slugError}>
+        <Field label={t("settings.orgs.slug")} error={slugError}>
           <Input
             value={slug}
             onChange={(e) => onSlugChange(e.target.value)}
@@ -176,7 +175,7 @@ function CreateOrgForm() {
         type="submit"
         disabled={!name.trim() || !slug.trim() || create.isPending}
       >
-        Create org
+        {t("settings.orgs.create")}
       </Button>
     </form>
   );

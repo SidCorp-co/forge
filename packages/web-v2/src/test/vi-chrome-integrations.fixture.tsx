@@ -88,7 +88,7 @@ const BINDINGS = [
   binding("coolify", { role: "deploy", agentPathKind: "none", config: { baseUrl: "https://coolify.example.com", targets: [{ id: "t1", label: "Backend", resourceUuid: "y8w4c4ks", healthUrl: "https://api.example.com/health" }], releaseRunnerLabel: "release" }, bindingConfig: { releaseRunnerLabel: "release" } }),
   binding("epodsystem", { lastHealthStatus: "error", config: { storeName: "Hop", domain: "hop.example.com", scopes: ["products:write"], commerceEnabled: true } }),
   binding("epodsystem", { id: "b-epod-2", label: "partner-a", active: false, connectionActive: false }),
-  binding("autoflow", { lastHealthStatus: "needs_reauth", lastHealthDetail: "token expired", config: { shop: "hop" } }),
+  binding("autoflow", { lastHealthStatus: "needs_reauth", lastHealthDetail: "HTTP 401", config: { shop: "hop" } }),
   binding("rocketchat", { config: { serverUrl: "https://chat.example.com", rids: ["r1", "r9"] }, agentPathKind: "core-mediated", agentAccess: "all" }),
   binding("sentry", { connectionId: "c2", config: { host: "logs.example.com", organizationSlug: "sid", targets: [{ label: "Backend prod", organizationSlug: "sid" }] } }),
   binding("gitlab", { agentPathKind: "core-mediated", config: { baseUrl: "https://gitlab.com", projectPath: "it/hop" } }),

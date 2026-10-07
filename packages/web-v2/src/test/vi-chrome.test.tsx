@@ -52,6 +52,8 @@ const ENGLISH_CHROME = [
   "targets", "deliveries", "payload", "response", "enabled", "disabled", "inherited", "danger zone", "test connection", "store", "themes",
   "commerce", "scopes", "access token", "refresh token", "api key", "server url", "base url", "project path", "secret token",
   "trigger", "share", "will inject", "shadowed", "untested", "breaker", "application", "deploy target", "delivered", "inbound", "outbound",
+  "organizations", "members", "member", "slug", "expired", "role", "agents", "handle", "soul", "greeting", "glyph", "standing instructions",
+  "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

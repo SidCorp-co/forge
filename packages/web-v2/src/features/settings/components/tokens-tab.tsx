@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Button, SectionTitle, SlideOver } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useRevokeToken, useTokens } from "../hooks";
 import type { PatToken, PatTokenCreated } from "../types";
@@ -15,12 +16,13 @@ export function TokensTab() {
   const projectsQ = useProjects();
   const revoke = useRevokeToken();
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
+  const t = useCopy();
 
   const projectsById = new Map((projectsQ.data ?? []).map((p) => [p.id, p]));
-  const levelOf = (t: PatToken) =>
-    t.boundProjectId
-      ? `Project: ${projectsById.get(t.boundProjectId)?.slug ?? t.boundProjectId.slice(0, 8)}`
-      : "User-level";
+  const levelOf = (token: PatToken) =>
+    token.boundProjectId
+      ? t("settings.tokens.levelProject", { slug: projectsById.get(token.boundProjectId)?.slug ?? token.boundProjectId.slice(0, 8) })
+      : t("settings.tokens.levelUser");
 
   return (
     <div className="space-y-6">
@@ -32,7 +34,7 @@ export function TokensTab() {
         onCreated={setRevealed}
       />
       <div>
-        <SectionTitle className="fg-h3 mb-3">Your tokens</SectionTitle>
+        <SectionTitle className="fg-h3 mb-3">{t("settings.tokens.yours")}</SectionTitle>
         <TokenList
           tokensQ={tokensQ}
           levelOf={levelOf}
@@ -40,7 +42,7 @@ export function TokensTab() {
           pending={revoke.isPending}
         />
       </div>
-      <SlideOver open={!!revealed} onClose={() => setRevealed(null)} title="Token created">
+      <SlideOver open={!!revealed} onClose={() => setRevealed(null)} title={t("settings.tokens.created")}>
         {revealed && (
           <TokenReveal
             token={revealed}
@@ -63,25 +65,26 @@ function TokenReveal({
   onDone: () => void;
 }) {
   const { toast } = useToast();
+  const t = useCopy();
 
   async function copyPlaintext() {
     try {
       await navigator.clipboard.writeText(token.plaintext);
-      toast({ title: "Copied to clipboard", tone: "success" });
+      toast({ title: t("settings.agents.copied"), tone: "success" });
     } catch {
-      toast({ title: "Copy failed", description: "Select and copy the token manually.", tone: "error" });
+      toast({ title: t("settings.agents.copyFailed"), description: t("settings.tokens.copyByHand"), tone: "error" });
     }
   }
 
   return (
     <div className="space-y-4">
-      <p className="fg-body-sm text-muted">Copy this token now — it won&apos;t be shown again.</p>
+      <p className="fg-body-sm text-muted">{t("settings.tokens.copyNow")}</p>
       {token.boundProjectId && (
         <p className="fg-body-sm text-muted">
-          This is a project-level token bound to{" "}
-          <span className="font-medium text-fg">{boundSlug ?? "the selected project"}</span>. MCP
-          clients can omit the <code className="font-mono">X-Forge-Project-Slug</code> header — calls
-          resolve to this project automatically.
+          {t("settings.tokens.boundLead")}{" "}
+          <span className="font-medium text-fg">{boundSlug ?? t("settings.tokens.selectedProject")}</span>.{" "}
+          {t("settings.tokens.boundHeaderLead")} <code className="font-mono">X-Forge-Project-Slug</code>{" "}
+          {t("settings.tokens.boundHeaderTail")}
         </p>
       )}
       <div className="rounded-md border border-line bg-sunken p-3">
@@ -89,10 +92,10 @@ function TokenReveal({
       </div>
       <div className="flex gap-3">
         <Button variant="primary" icon="check" onClick={copyPlaintext} className="min-h-11">
-          Copy to clipboard
+          {t("settings.tokens.copyToClipboard")}
         </Button>
         <Button variant="secondary" onClick={onDone} className="min-h-11">
-          Done
+          {t("settings.tokens.done")}
         </Button>
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
   SlideOver,
 } from "@/design";
 import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useDeleteOrg, useRenameOrg } from "../hooks";
 import type { OrgListItem } from "../types";
@@ -27,13 +28,12 @@ import {
   useFailToast,
 } from "./org-member-sections";
 
-const ORG_ROLE_OPTIONS: SelectOption[] = [
-  { value: "member", label: "Member" },
-  { value: "admin", label: "Admin" },
-  { value: "owner", label: "Owner" },
-];
+const ORG_ROLES = ["member", "admin", "owner"] as const;
 
 export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted: () => void }) {
+  const t = useCopy();
+  const L = useLabel();
+  const ORG_ROLE_OPTIONS: SelectOption[] = ORG_ROLES.map((value) => ({ value, label: L("role", value) }));
   const held = ORG_ROLE_PERMISSIONS[org.role];
   const canManage = held.includes("org.admin");
   const isOwner = held.includes("org.own");
@@ -48,7 +48,7 @@ export function OrgMembersCard({ org, onDeleted }: { org: OrgListItem; onDeleted
     <PageSection>
       <PageSectionBody>
         <div className="mb-4 flex items-center justify-between gap-3">
-          <SectionTitle className="fg-h3">{org.name} — members</SectionTitle>
+          <SectionTitle className="fg-h3">{t("settings.orgs.membersOf", { org: org.name })}</SectionTitle>
           {isOwner && <OwnerActions org={org} onDeleted={onDeleted} />}
         </div>
         <MemberList org={org} canManage={canManage} roleOptions={roleOptions} />
@@ -69,11 +69,12 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(org.name);
+  const t = useCopy();
 
   function confirmDelete() {
     deleteOrg.mutate(org.id, {
       onSuccess: () => {
-        toast({ title: "Organization deleted", tone: "success" });
+        toast({ title: t("settings.orgs.deleted"), tone: "success" });
         setDeleteOpen(false);
         onDeleted();
       },
@@ -90,7 +91,7 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
     }
     renameOrg.mutate(trimmed, {
       onSuccess: () => {
-        toast({ title: "Organization renamed", tone: "success" });
+        toast({ title: t("settings.orgs.renamed"), tone: "success" });
         setRenameOpen(false);
       },
       onError: fail,
@@ -107,30 +108,30 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
           setRenameOpen(true);
         }}
       >
-        Rename
+        {t("integrations.edit.rename")}
       </Button>
       <Button variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
-        Delete
+        {t("integrations.row.delete")}
       </Button>
 
       <ConfirmDialog
         open={deleteOpen}
-        title="Delete organization"
+        title={t("settings.orgs.delete")}
         message={
           <>
-            Delete <strong>{org.name}</strong>? This cannot be undone.
+            {t("settings.orgs.deleteLead")} <strong>{org.name}</strong>? {t("settings.orgs.deleteTail")}
           </>
         }
-        confirmLabel="Delete organization"
+        confirmLabel={t("settings.orgs.delete")}
         tone="danger"
         loading={deleteOrg.isPending}
         onConfirm={confirmDelete}
         onClose={() => setDeleteOpen(false)}
       />
 
-      <SlideOver open={renameOpen} onClose={() => setRenameOpen(false)} title="Rename organization" width={420}>
+      <SlideOver open={renameOpen} onClose={() => setRenameOpen(false)} title={t("settings.orgs.rename")} width={420}>
         <form onSubmit={submitRename} className="flex h-full flex-col gap-4">
-          <Field label="Organization name">
+          <Field label={t("settings.orgs.name")}>
             <Input
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
@@ -145,10 +146,10 @@ function OwnerActions({ org, onDeleted }: { org: OrgListItem; onDeleted: () => v
               onClick={() => setRenameOpen(false)}
               disabled={renameOrg.isPending}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button type="submit" variant="primary" loading={renameOrg.isPending} disabled={!renameValue.trim()}>
-              Save
+              {t("integrations.edit.save")}
             </Button>
           </div>
         </form>

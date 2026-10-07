@@ -5,6 +5,8 @@
 // full-page redirect, and the callback returns with `?reauth=ok` /
 // `?reauth_error=<code>`, which `useSsoReauthReturn` consumes on mount.
 import { useEffect } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import type { CreatePatInput, PatMenu, PatScope, PatToken } from "./types";
 
@@ -20,7 +22,8 @@ export interface TokenDraft {
   boundProjectId: string;
 }
 
-export type DraftErrors = { name?: string; scopes?: string; permissions?: string };
+/** What is wrong with each field, as a copy key the form reads in the interface language. */
+export type DraftErrors = { name?: ProductCopyKey; scopes?: ProductCopyKey; permissions?: ProductCopyKey };
 
 export const EMPTY_DRAFT: TokenDraft = {
   name: "",
@@ -33,9 +36,9 @@ export const EMPTY_DRAFT: TokenDraft = {
 
 const DRAFT_KEY = "forge.settings.token-draft";
 
-const REAUTH_ERROR_MESSAGES: Record<string, string> = {
-  oauth_not_linked: "Your account isn't linked to that provider.",
-  identity_mismatch: "The provider account doesn't match the one linked to your Forge account.",
+const REAUTH_ERROR_MESSAGES: Record<string, ProductCopyKey> = {
+  oauth_not_linked: "settings.tokens.reauth.notLinked",
+  identity_mismatch: "settings.tokens.reauth.mismatch",
 };
 
 export function toggled<T>(list: T[], item: T): T[] {
@@ -49,14 +52,12 @@ export function validateDraft(
 ): { errors: DraftErrors; input: CreatePatInput | null } {
   const errors: DraftErrors = {};
   const name = draft.name.trim();
-  if (!name) errors.name = "Name is required.";
-  else if (tokens.some((t) => t.name === name && !t.revokedAt))
-    errors.name = "An active token already uses this name.";
-  if (draft.scopes.length === 0) errors.scopes = "Select at least one scope.";
-  if (!draft.grantMode) errors.permissions = "Choose what this token may reach.";
-  else if (draft.grantMode === "named" && draft.permissions.length === 0)
-    errors.permissions = "Pick at least one permission, or choose full access.";
-  else if (!menu) errors.permissions = "The permission menu hasn't loaded yet.";
+  if (!name) errors.name = "settings.tokens.err.name";
+  else if (tokens.some((t) => t.name === name && !t.revokedAt)) errors.name = "settings.tokens.err.nameTaken";
+  if (draft.scopes.length === 0) errors.scopes = "settings.tokens.err.scopes";
+  if (!draft.grantMode) errors.permissions = "settings.tokens.err.grant";
+  else if (draft.grantMode === "named" && draft.permissions.length === 0) errors.permissions = "settings.tokens.err.permissions";
+  else if (!menu) errors.permissions = "settings.tokens.err.menu";
   if (Object.keys(errors).length > 0 || !menu) return { errors, input: null };
   return {
     errors,
@@ -79,6 +80,7 @@ export function stashDraft(draft: TokenDraft) {
 /** `restore` must be stable (a state setter): the effect runs once per return. */
 export function useSsoReauthReturn(restore: (draft: TokenDraft) => void) {
   const { toast } = useToast();
+  const t = useCopy();
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const ok = sp.get("reauth") === "ok";
@@ -99,8 +101,8 @@ export function useSsoReauthReturn(restore: (draft: TokenDraft) => void) {
 
     if (errCode && !ok) {
       toast({
-        title: "Re-authentication failed",
-        description: REAUTH_ERROR_MESSAGES[errCode] ?? errCode,
+        title: t("settings.tokens.reauth.failed"),
+        description: REAUTH_ERROR_MESSAGES[errCode] ? t(REAUTH_ERROR_MESSAGES[errCode]) : errCode,
         tone: "error",
       });
       return;
@@ -118,9 +120,9 @@ export function useSsoReauthReturn(restore: (draft: TokenDraft) => void) {
       }
     }
     toast({
-      title: "Re-authenticated",
-      description: "You're verified for the next few minutes — create your token now.",
+      title: t("settings.tokens.reauth.done"),
+      description: t("settings.tokens.reauth.doneBody"),
       tone: "success",
     });
-  }, [toast, restore]);
+  }, [toast, restore, t]);
 }
