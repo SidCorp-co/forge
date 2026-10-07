@@ -17,6 +17,7 @@ import { IssuesListView } from "@/features/issues/components/issues-list-view";
 import { IssuesEmptyState } from "@/features/issues/components/list/issues-empty-state";
 import { LiveAgentPanel } from "@/features/issues/components/live-agent-panel";
 import { MergeMarkerControl } from "@/features/issues/components/merge-marker-control";
+import { NewIssueDialog } from "@/features/issues/components/new-issue-dialog";
 import { ModulePicker } from "@/features/issues/components/module-picker";
 import { PropertiesRail } from "@/features/issues/components/properties-rail";
 import { StagedFileList } from "@/features/issues/components/staged-files";
@@ -350,5 +351,20 @@ export const ISSUE_SCREENS = [
         [[["project", P, "labels"], [{ id: "m1", name: "Don", kind: "module" }, { id: "m2", name: "Kho", kind: "module" }]]],
         <ModulePicker open onClose={noop} issueId="i1" projectId={P} slug="hop" labels={[]} />,
       ),
+  },
+  { name: "New issue", render: () => wrap([], <NewIssueDialog open onClose={noop} scope={{ projectId: P, slug: "hop" }} />) },
+  {
+    name: "New issue · quick capture and a refused title",
+    render: () => wrap([], <NewIssueDialog open onClose={noop} scope={{ projectId: P, slug: "hop" }} />),
+    act: () => {
+      const quick = [...document.querySelectorAll('[role="tab"], button')].find((b) =>
+        [productCopy("vi")("issues.newIssue.mode.quick"), productCopy("en")("issues.newIssue.mode.quick")].includes(b.textContent?.trim() ?? ""),
+      );
+      if (!quick) throw new Error("no quick-capture tab");
+      fireEvent.click(quick);
+      const form = document.querySelector("form");
+      if (!form) throw new Error("no form");
+      fireEvent.submit(form);
+    },
   },
 ];

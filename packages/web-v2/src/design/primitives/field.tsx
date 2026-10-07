@@ -6,7 +6,8 @@ export interface FieldProps {
   label: string;
   /** Explicit id; otherwise auto-generated and wired to the control. */
   htmlFor?: string;
-  hint?: string;
+  /** Helper text; a node when part of it is an identifier the reader types as written. */
+  hint?: ReactNode;
   /** When set, the field renders in an error state (red helper + aria). */
   error?: string;
   required?: boolean;

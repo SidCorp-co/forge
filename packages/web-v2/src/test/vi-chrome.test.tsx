@@ -54,6 +54,7 @@ const ENGLISH_CHROME = [
   "trigger", "share", "will inject", "shadowed", "untested", "breaker", "application", "deploy target", "delivered", "inbound", "outbound",
   "organizations", "members", "member", "slug", "expired", "role", "agents", "handle", "soul", "greeting", "glyph", "standing instructions",
   "dormant", "permissions", "expires", "last used", "prefix", "full access", "endpoint", "snippet", "client", "done", "revoked", "you",
+  "required", "quick capture", "capture", "attach", "context", "description", "optional", "choose files", "summary",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -62,6 +63,7 @@ const wordsIn = (root: HTMLElement): string[] => {
   // text the page marks `translate="no"` (a scope, an event name, another product's menu path) is an identifier, not chrome
   for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest('[translate="no"]')) out.push(n.textContent ?? "");
   for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
+    if (el.closest('[translate="no"]')) continue;
     for (const a of ["aria-label", "title", "placeholder"]) {
       const v = el.getAttribute(a);
       // a state badge's tooltip leads with its raw value (`shipped · ...`) and an enum badge's ends with
