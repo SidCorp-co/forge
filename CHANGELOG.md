@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.94] - 2026-10-07
+
+The project Dashboard becomes a BA's page; development figures move to Development
+
+### Changed
+
+- **The project Dashboard is now a BA's page.** Needs you holds requirement, workflow, feedback and release acts; it adds what lands this week and what is late, flagged by core. Run and spend figures moved to Development; revisions list changes.
+
 ## [0.4.0-dev.93] - 2026-10-07
 
 What's new reads the running build's own changelog, no setup needed
