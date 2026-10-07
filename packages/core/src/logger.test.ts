@@ -822,6 +822,26 @@ describe('the core logger, given a value whose text only a serializer renders', 
     }
   });
 
+  it('keeps what a getter on a censored path threw, reading it once', () => {
+    const { lines, log } = capture();
+    let reads = 0;
+    log.warn(
+      Object.defineProperty({ reason: HASH }, 'reading', {
+        get: () => {
+          if (++reads === 1) throw failedInsert();
+          return { note: 'ordinary' };
+        },
+        enumerable: true,
+      }),
+      'read',
+    );
+    expect(reads).toBe(1);
+    expect(lines).toHaveLength(1);
+    const line = lines[0] ?? '';
+    expect(line).not.toContain(HASH);
+    expect(JSON.parse(line).reading).toBe('[Redacted]');
+  });
+
   it('writes a text whose coercion throws as redacted, throwing nothing itself', () => {
     const { lines, log } = capture();
     const throwing = () => ({
