@@ -1,1 +1,0 @@
-**Project settings are grouped and edited in words.** Six sections replace ten tabs; repository, branches, environments, release path and language are fields saved by one bar, release state reads as sentences, and owed knowledge is written in place.

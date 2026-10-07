@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.121] - 2026-10-07
+
+Project settings grouped into six sections, every value an editable field in words
+
+### Changed
+
+- **Project settings are grouped and edited in words.** Six sections replace ten tabs; repository, branches, environments, release path and language are fields saved by one bar, release state reads as sentences, and owed knowledge is written in place.
+
 ## [0.4.0-dev.120] - 2026-10-07
 
 Writers named on waiting issues, honest release pages, attachments on feedback
