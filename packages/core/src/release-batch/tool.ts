@@ -15,17 +15,33 @@ const input = z
   .strictObject({
     action: z.enum(['list', 'get']),
     projectId: z.uuid(),
-    version: z.string().min(1).optional().describe('action "get" only: the release version, e.g. 0.3.0'),
+    version: z
+      .string()
+      .min(1)
+      .optional()
+      .describe('action "get" only: the release version, e.g. 0.3.0'),
     state: z.enum(RELEASE_STATES).optional().describe('action "list" only'),
     limit: z.number().int().min(1).max(RELEASES_LIST_MAX).optional().describe('action "list" only'),
   })
   .superRefine((v, ctx) => {
     if (v.action === 'get' && v.version === undefined)
-      ctx.addIssue({ code: 'custom', path: ['version'], message: 'action "get" reads one release: name its `version`, e.g. 0.3.0' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['version'],
+        message: 'action "get" reads one release: name its `version`, e.g. 0.3.0',
+      });
     if (v.action === 'list' && v.version !== undefined)
-      ctx.addIssue({ code: 'custom', path: ['version'], message: 'action "list" takes no `version`; use action "get" to read one release' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['version'],
+        message: 'action "list" takes no `version`; use action "get" to read one release',
+      });
     if (v.action === 'get' && (v.state !== undefined || v.limit !== undefined))
-      ctx.addIssue({ code: 'custom', path: [v.state !== undefined ? 'state' : 'limit'], message: 'action "get" takes only `version`; `state` and `limit` filter action "list"' });
+      ctx.addIssue({
+        code: 'custom',
+        path: [v.state !== undefined ? 'state' : 'limit'],
+        message: 'action "get" takes only `version`; `state` and `limit` filter action "list"',
+      });
   });
 
 export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({

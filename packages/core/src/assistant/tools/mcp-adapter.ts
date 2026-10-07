@@ -110,7 +110,10 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     assertToolDeclaresAccess(tool);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue;
-    const schema = tool.inputSchema as { properties?: Record<string, unknown> } & Record<string, unknown>;
+    const schema = tool.inputSchema as { properties?: Record<string, unknown> } & Record<
+      string,
+      unknown
+    >;
     const props = schema.properties;
     const union = ['oneOf', 'anyOf', 'allOf'].find((k) => k in schema);
     if (!props && union)

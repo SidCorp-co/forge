@@ -13,6 +13,7 @@ import type {
   ScopeForecast,
 } from '@forge/contracts/forecast';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
+import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   PROJECT_STATUS_ROWS,
   type ProjectStatus,
@@ -42,7 +43,6 @@ import {
 } from '../development/index.js';
 import { readFeedbackForecasts, readForecastLine } from '../forecast/index.js';
 import type { ProjectAccess } from '../lib/authz.js';
-import type { ActorAgency } from '@forge/contracts/permissions';
 import { peopleOf } from '../lib/people.js';
 import { holds } from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';

@@ -12,7 +12,19 @@ import { buildToolset } from './mcp-adapter.js';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const ctx = {
-  principal: { kind: 'pat', agency: 'human', userId: 'u1', tokenId: 't1', scopes: [], projectIds: [PROJECT], boundProjectId: PROJECT, permissions: ['*'], grantEpoch: 1, deviceId: null, agentUserId: null },
+  principal: {
+    kind: 'pat',
+    agency: 'human',
+    userId: 'u1',
+    tokenId: 't1',
+    scopes: [],
+    projectIds: [PROJECT],
+    boundProjectId: PROJECT,
+    permissions: ['*'],
+    grantEpoch: 1,
+    deviceId: null,
+    agentUserId: null,
+  },
   boundProjectId: PROJECT,
 } as unknown as McpContext;
 
@@ -31,7 +43,10 @@ describe('the chat adapter over a project-bound turn', () => {
     expect(get.isError).toBe(true);
     expect(JSON.stringify(get.content)).toContain('reads one requirement: name it, e.g. REQ-12');
     expect(JSON.stringify(get.content)).not.toContain('projectId');
-    const list = await execute('forge_releases', JSON.stringify({ action: 'list', version: '0.3.0' }));
+    const list = await execute(
+      'forge_releases',
+      JSON.stringify({ action: 'list', version: '0.3.0' }),
+    );
     expect(JSON.stringify(list.content)).toContain('takes no `version`; use action');
   });
 
@@ -50,6 +65,8 @@ describe('the chat adapter over a project-bound turn', () => {
       ),
       handler: async () => ({}),
     });
-    expect(() => buildToolset(ctx, [{ factory: union }])).toThrow(/chat tool "forge_union_probe" declares its input as a union \(oneOf/);
+    expect(() => buildToolset(ctx, [{ factory: union }])).toThrow(
+      /chat tool "forge_union_probe" declares its input as a union \(oneOf/,
+    );
   });
 });
