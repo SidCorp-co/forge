@@ -43,23 +43,40 @@ const redactPaths = [
 
 const censoredPaths = redactPaths.map((path) => path.split('.'));
 
+/** What the censor pass read and could not censor, handed to the rendering that follows it. */
+interface Censored {
+  reads: FieldReads;
+  withheld: Set<object>;
+}
+
 /**
  * `render` run with every redact path in `root` censored in place, and each put back after, as
  * pino censors them while it writes a line: a value's own `toJSON` rendered here, before pino
  * runs, reads them censored as it would under pino. A field is censored by its descriptor, so no
- * setter of the caller's runs and its own value is untouched; a getter on the way is read once,
- * into `reads`, which the rendering answers from. A field that cannot be redefined is left as it
- * is.
+ * setter of the caller's runs and its own value is untouched. What data alone reaches is censored
+ * first, so no getter runs before it; a getter a path then passes through is read once, and the
+ * object it answered stands in its place while `render` runs, so a hook reaches the object that
+ * was censored. Where a field cannot be censored or a getter cannot be held, every object on its
+ * path is `withheld`: no more of their code runs, here or in the rendering.
  */
-function withPathsCensored<T>(root: unknown, render: (reads: FieldReads) => T): T {
-  const reads: FieldReads = new WeakMap();
+function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T): T {
+  const censored: Censored = { reads: new WeakMap(), withheld: new Set() };
   const undo: (() => void)[] = [];
-  const censor = (record: object, key: string): void => {
+  // `value` standing at `record[key]` as data until the line is written; false where it cannot.
+  const hold = (record: object, key: string, value: unknown): boolean => {
     const own = Object.getOwnPropertyDescriptor(record, key);
-    if (own && !own.configurable) return;
+    if (own ? !own.configurable : !Object.isExtensible(record)) {
+      if (!own || !('value' in own) || !own.writable) return false;
+      (record as Record<string, unknown>)[key] = value;
+      undo.push(() => {
+        (record as Record<string, unknown>)[key] = own.value;
+      });
+      return true;
+    }
+    // An inherited getter held as an own field is not one: it stays out of the fields rendered.
     Object.defineProperty(record, key, {
-      value: '[Redacted]',
-      enumerable: own?.enumerable ?? true,
+      value,
+      enumerable: own?.enumerable ?? false,
       writable: true,
       configurable: true,
     });
@@ -67,21 +84,49 @@ function withPathsCensored<T>(root: unknown, render: (reads: FieldReads) => T): 
       if (own) Object.defineProperty(record, key, own);
       else delete (record as Record<string, unknown>)[key];
     });
+    return true;
   };
-  const visit = (at: unknown, path: string[]): void => {
+  const withhold = (on: object[]) => {
+    for (const o of on) censored.withheld.add(o);
+  };
+  // The first pass follows data only; the second also each getter, and censors what lies past one.
+  const visit = (at: unknown, path: string[], trail: object[], getters: boolean, past: boolean) => {
     const [head, ...tail] = path;
     if (typeof at !== 'object' || at === null || head === undefined) return;
+    const on = [...trail, at];
     for (const key of head === '*' ? Object.keys(at) : [head]) {
       try {
         if (!(key in at)) continue;
-        if (tail.length > 0) visit(readOnce(at, key, reads).value, tail);
-        else censor(at, key);
-      } catch {}
+        if (tail.length === 0) {
+          if (past === getters && !hold(at, key, '[Redacted]')) withhold(on);
+          continue;
+        }
+        // A getter an earlier path held stands as data now, and is still one this path passed.
+        const held = censored.reads.get(at)?.has(key) === true;
+        const own = Object.getOwnPropertyDescriptor(at, key);
+        if (own && 'value' in own) {
+          visit(own.value, tail, on, getters, past || held);
+          continue;
+        }
+        if (!getters || censored.withheld.has(at)) continue;
+        const read = readOnce(at, key, censored.reads);
+        if (read.threw || typeof read.value !== 'object' || read.value === null) {
+          // Nothing lies past it: the rendering reads it once more, after every censor landed.
+          censored.reads.get(at)?.delete(key);
+          continue;
+        }
+        if (!hold(at, key, read.value)) withhold(on);
+        visit(read.value, tail, on, getters, true);
+      } catch {
+        withhold(on);
+      }
     }
   };
   try {
-    for (const path of censoredPaths) visit(root, path);
-    return render(reads);
+    for (const getters of [false, true]) {
+      for (const path of censoredPaths) visit(root, path, [], getters, false);
+    }
+    return render(censored);
   } finally {
     for (const put of undo.reverse()) {
       try {
@@ -200,7 +245,7 @@ function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
     const how = { fields: i === 0, errorsAsThemselves: true };
     const written =
       i === 0 && !(v instanceof Error)
-        ? withPathsCensored(v, (reads) => asSerialized(v, { ...how, reads }))
+        ? withPathsCensored(v, (censored) => asSerialized(v, { ...how, ...censored }))
         : asSerialized(v, how);
     found.push(...written.errors);
     return written.value;
@@ -248,7 +293,9 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
 /** A child's bindings, or `setBindings`', rendered once, with every error met on the way. */
 function writtenBindings(given: Bindings): { bindings: Bindings; errors: Error[] } {
   const how = { fields: true, errorsAsThemselves: true };
-  const written = withPathsCensored(given, (reads) => asSerialized(given, { ...how, reads }));
+  const written = withPathsCensored(given, (censored) =>
+    asSerialized(given, { ...how, ...censored }),
+  );
   const bindings = written.value as Bindings;
   return {
     bindings,

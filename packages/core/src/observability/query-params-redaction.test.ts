@@ -1,4 +1,10 @@
-import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
+import {
+  type FieldReads,
+  REDACTED,
+  readOnce,
+  redactedMessage,
+  redactQueryParams,
+} from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -407,6 +413,21 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     }
   });
 
+  it('reads an enumerable toJSON getter once, for the hook and for the fields alike', () => {
+    let reads = 0;
+    const reading = Object.defineProperty({ note: 'kept' }, 'toJSON', {
+      get: () => {
+        if (++reads > 1) throw new Error(duplicate().message);
+        return undefined;
+      },
+      enumerable: true,
+    });
+    const out = redactQueryParams({ reading });
+    expect(reads).toBe(1);
+    expect(JSON.stringify(out)).toBe('{"reading":{"note":"kept"}}');
+    expect(reads).toBe(1);
+  });
+
   it('reads an array as JSON does: each index once, one that throws written redacted', () => {
     let reads = 0;
     const items: unknown[] = ['kept'];
@@ -480,5 +501,52 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
   it('still hands back the same data where there is nothing to redact', () => {
     const value = { reason: 'ordinary', nested: [{ id: 1 }] };
     expect(redactQueryParams(value)).toBe(value);
+  });
+});
+
+describe('readOnce', () => {
+  class Held {
+    note = 'own';
+    get computed(): { at: number } {
+      reads++;
+      return { at: reads };
+    }
+  }
+  Object.defineProperty(Held.prototype, 'shared', { value: 'inherited', enumerable: false });
+  let reads = 0;
+
+  it('reads an inherited field and an inherited getter, the getter once across one set of reads', () => {
+    reads = 0;
+    const held = new Held();
+    const seen: FieldReads = new WeakMap();
+    expect(readOnce(held, 'note', seen)).toEqual({ value: 'own', called: false, threw: false });
+    expect(readOnce(held, 'shared', seen).value).toBe('inherited');
+    const first = readOnce(held, 'computed', seen);
+    expect(first).toEqual({ value: { at: 1 }, called: true, threw: false });
+    expect(readOnce(held, 'computed', seen).value).toBe(first.value);
+    expect(reads).toBe(1);
+    expect(readOnce(held, 'missing', seen).value).toBeUndefined();
+  });
+
+  it('writes a getter that throws redacted, says it threw, and remembers that too', () => {
+    let asked = 0;
+    const broken = Object.defineProperty({}, 'reason', {
+      get: () => {
+        asked++;
+        throw new Error(duplicate().message);
+      },
+    });
+    const seen: FieldReads = new WeakMap();
+    expect(readOnce(broken, 'reason', seen)).toEqual({ value: REDACTED, called: true, threw: true });
+    expect(readOnce(broken, 'reason', seen).threw).toBe(true);
+    expect(asked).toBe(1);
+  });
+
+  it('runs nothing where it is told not to, answering what it has not read as redacted', () => {
+    reads = 0;
+    const held = new Held();
+    expect(readOnce(held, 'computed', new WeakMap(), false).value).toBe(REDACTED);
+    expect(readOnce(held, 'note', new WeakMap(), false).value).toBe('own');
+    expect(reads).toBe(0);
   });
 });

@@ -649,6 +649,134 @@ describe('the core logger, given a value whose text only a serializer renders', 
     expect(JSON.parse(lines[1] ?? '').reading).toEqual({ said: '[Redacted]' });
   });
 
+  it('censors a field that cannot be redefined by assigning it, and puts it back', () => {
+    const { lines, log } = capture();
+    const fixed = (): { password: string } => {
+      const reading = {
+        toJSON() {
+          return { said: (this as unknown as { password: string }).password };
+        },
+      };
+      return Object.defineProperty(reading, 'password', {
+        value: 'ordinary-password',
+        writable: true,
+        enumerable: true,
+        configurable: false,
+      }) as unknown as { password: string };
+    };
+    const held = [fixed(), fixed(), fixed()];
+    log.warn({ reading: held[0] }, 'read');
+    log.child({ reading: held[1] }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ reading: held[2] });
+    rebound.warn('rebound');
+    expect(lines.map((line) => JSON.parse(line).reading)).toEqual([
+      { said: '[Redacted]' },
+      { said: '[Redacted]' },
+      { said: '[Redacted]' },
+    ]);
+    expect(held.map((h) => h.password)).toEqual(Array(3).fill('ordinary-password'));
+  });
+
+  it('runs no code of an object holding a field it cannot censor, keeping its data fields', () => {
+    const { lines, log } = capture();
+    let ran = 0;
+    const frozen = () =>
+      Object.freeze({
+        password: 'ordinary-password',
+        note: 'kept',
+        get shown() {
+          ran++;
+          return this.password;
+        },
+      });
+    const hooked = () =>
+      Object.freeze({
+        password: 'ordinary-password',
+        toJSON() {
+          ran++;
+          return { said: this.password };
+        },
+      });
+    log.warn({ reading: hooked(), plain: frozen() }, 'read');
+    log.child({ reading: hooked(), plain: frozen() }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ reading: hooked(), plain: frozen() });
+    rebound.warn('rebound');
+    log.warn(frozen(), 'top');
+    expect(ran).toBe(0);
+    expect(lines).toHaveLength(4);
+    for (const line of lines) expect(line).not.toContain('ordinary-password');
+    for (const line of lines.slice(0, 3)) {
+      expect(JSON.parse(line)).toMatchObject({
+        reading: '[Redacted]',
+        plain: { password: '[Redacted]', note: 'kept', shown: '[Redacted]' },
+      });
+    }
+    expect(JSON.parse(lines[3] ?? '')).toMatchObject({ note: 'kept', shown: '[Redacted]' });
+  });
+
+  it('censors a redact path reached through an inherited getter, or one that answers anew', () => {
+    const { lines, log } = capture();
+    let made = 0;
+    class Request {
+      get headers(): { authorization: string } {
+        made++;
+        return { authorization: 'ordinary-secret' };
+      }
+      toJSON() {
+        return this.headers.authorization;
+      }
+    }
+    const reqs = [new Request(), new Request(), new Request()];
+    log.warn({ req: reqs[0] }, 'read');
+    log.child({ req: reqs[1] }).warn('bound');
+    const rebound = log.child({ requestId: 'r1' });
+    rebound.setBindings({ req: reqs[2] });
+    rebound.warn('rebound');
+    expect(lines).toHaveLength(3);
+    for (const line of lines) expect(JSON.parse(line).req).toBe('[Redacted]');
+    expect(made).toBe(3);
+    for (const req of reqs) expect(Object.getOwnPropertyNames(req)).toEqual([]);
+  });
+
+  it("reads a getter's answer only once every field censored by name is censored", () => {
+    const { lines, log } = capture();
+    const byData = () => ({
+      headers: { authorization: 'ordinary-secret' },
+      get echo() {
+        return this.headers.authorization;
+      },
+      get auth() {
+        return { said: this.headers.authorization };
+      },
+    });
+    const byGetter = () => {
+      const headers = { authorization: 'ordinary-secret' };
+      return {
+        get echo() {
+          return this.headers.authorization;
+        },
+        get headers() {
+          return headers;
+        },
+      };
+    };
+    for (const fields of [byData, byGetter]) {
+      log.warn(fields(), 'read');
+      log.child(fields()).warn('bound');
+      const rebound = log.child({ requestId: 'r1' });
+      rebound.setBindings(fields());
+      rebound.warn('rebound');
+    }
+    expect(lines).toHaveLength(6);
+    for (const line of lines) {
+      expect(line).not.toContain('ordinary-secret');
+      expect(JSON.parse(line).echo).toBe('[Redacted]');
+    }
+    expect(JSON.parse(lines[0] ?? '').auth).toEqual({ said: '[Redacted]' });
+  });
+
   it('asks a field toJSON with the empty key, as pino stringifies each field alone', () => {
     const { lines, log } = capture();
     const reading = () => ({ toJSON: (key: string) => (key === '' ? 'kept' : undefined) });

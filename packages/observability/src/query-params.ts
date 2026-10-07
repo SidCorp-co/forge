@@ -266,17 +266,27 @@ function attempt<T>(read: () => T): T | typeof UNREADABLE {
   }
 }
 
-/** A boxed primitive's value as `JSON.stringify` unboxes it, through its toPrimitive; else none. */
-function unboxed(value: object): { value: unknown } | null {
-  const proto = Object.getPrototypeOf(value);
+/** Which primitive `value` boxes, read by its brand alone, so none of its own code runs. */
+function boxed(value: object): 'string' | 'number' | 'boolean' | null {
+  const proto = attempt(() => Object.getPrototypeOf(value));
   if (proto === Object.prototype || proto === null || Array.isArray(value)) return null;
   const is = (unbox: () => unknown) => attempt(unbox) !== UNREADABLE;
-  let out: unknown = UNREADABLE;
-  if (is(() => String.prototype.valueOf.call(value))) out = attempt(() => String(value));
-  else if (is(() => Number.prototype.valueOf.call(value))) out = attempt(() => Number(value));
-  else if (is(() => Boolean.prototype.valueOf.call(value))) {
-    out = Boolean.prototype.valueOf.call(value);
-  } else return null;
+  if (is(() => String.prototype.valueOf.call(value))) return 'string';
+  if (is(() => Number.prototype.valueOf.call(value))) return 'number';
+  if (is(() => Boolean.prototype.valueOf.call(value))) return 'boolean';
+  return null;
+}
+
+/** A boxed primitive's value as `JSON.stringify` unboxes it, through its toPrimitive; else none. */
+function unboxed(value: object): { value: unknown } | null {
+  const brand = boxed(value);
+  if (brand === null) return null;
+  const out =
+    brand === 'string'
+      ? attempt(() => String(value))
+      : brand === 'number'
+        ? attempt(() => Number(value))
+        : Boolean.prototype.valueOf.call(value);
   return { value: out === UNREADABLE ? REDACTED : out };
 }
 
@@ -288,6 +298,12 @@ export interface Rendering {
   errorsAsThemselves?: boolean;
   /** Getters the caller already read (`readOnce`), answered from here rather than asked again. */
   reads?: FieldReads;
+  /**
+   * Objects holding a field the caller censors by name that it could not censor: none of their
+   * code runs, so a hook cannot copy that field elsewhere. A `toJSON` or boxed primitive is
+   * written `[Redacted]`, a getter the caller did not already read too; data fields stand.
+   */
+  withheld?: ReadonlySet<object>;
 }
 
 /** What each getter read by `readOnce` answered, by the object holding it and its key. */
@@ -295,26 +311,34 @@ export type FieldReads = WeakMap<object, Map<string, unknown>>;
 
 /**
  * `holder[key]` as JSON reads it, a getter called at most once across every call sharing `reads`:
- * a data field as it stands, a getter's answer remembered, one that throws `[Redacted]`.
+ * an own data field as it stands, anything else (a getter, own or inherited, or an inherited
+ * field) read once and remembered, one that throws `[Redacted]` and `threw`. Where `run` is
+ * false nothing is read that would run code: what has no answer yet is `[Redacted]`.
  */
 export function readOnce(
   holder: object,
   key: string,
   reads?: FieldReads,
-): { value: unknown; called: boolean } {
+  run = true,
+): { value: unknown; called: boolean; threw: boolean } {
   const known = reads?.get(holder);
-  if (known?.has(key)) return { value: known.get(key), called: true };
+  const answer = (read: unknown) =>
+    read === UNREADABLE
+      ? { value: REDACTED, called: true, threw: true }
+      : { value: read, called: true, threw: false };
+  if (known?.has(key)) return answer(known.get(key));
   const own = attempt(() => Object.getOwnPropertyDescriptor(holder, key));
-  if (own !== UNREADABLE && (own === undefined || 'value' in own)) {
-    return { value: own?.value, called: false };
+  if (own !== UNREADABLE && own !== undefined && 'value' in own) {
+    return { value: own.value, called: false, threw: false };
   }
+  if (!run) return { value: REDACTED, called: true, threw: false };
   const read = attempt(() => (holder as Record<string, unknown>)[key]);
-  const value = read === UNREADABLE ? REDACTED : read;
-  if (reads) reads.set(holder, (known ?? new Map()).set(key, value));
-  return { value, called: true };
+  if (reads) reads.set(holder, (known ?? new Map()).set(key, read));
+  return answer(read);
 }
 
 interface Walk extends Rendering {
+  reads: FieldReads;
   errors: Error[];
   /** The objects the walk is inside, so one that holds itself is told from one met twice. */
   open: Set<object>;
@@ -334,13 +358,18 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   const asError = value instanceof Error && walk.errorsAsThemselves;
   // A toJSON read through a getter may answer otherwise when the serializer reads it again.
   let copy = false;
+  const held = walk.withheld?.has(value) === true;
   if (!(top && walk.fields) && !asError) {
-    copy = toJSONByGetter(value);
-    const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
-    if (toJSON === UNREADABLE) return REDACTED;
-    if (typeof toJSON === 'function') {
+    const own = toJSONHeld(value);
+    const field = own !== UNREADABLE && own !== undefined && 'value' in own ? own : undefined;
+    copy = own !== undefined && field === undefined;
+    if (held && (copy || typeof field?.value === 'function' || boxed(value))) return REDACTED;
+    const toJSON = readOnce(value, 'toJSON', walk.reads, !held);
+    if (toJSON.threw) return REDACTED;
+    if (typeof toJSON.value === 'function') {
+      const call = toJSON.value;
       collectHeld(value, walk, depth);
-      const out = attempt(() => toJSON.call(value, key) as unknown);
+      const out = attempt(() => call.call(value, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
@@ -358,18 +387,18 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   return out;
 }
 
-/** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */
-function toJSONByGetter(value: object): boolean {
+/** `value`'s `toJSON` descriptor, own or inherited, read without running it; none where none. */
+function toJSONHeld(value: object): PropertyDescriptor | undefined | typeof UNREADABLE {
   let at: object | null = value;
   while (at) {
     const here: object = at;
     const own = attempt(() => Object.getOwnPropertyDescriptor(here, 'toJSON'));
-    if (own === UNREADABLE) return true;
-    if (own) return !('value' in own);
+    if (own !== undefined) return own;
     const next = attempt((): object | null => Object.getPrototypeOf(here));
-    at = next === UNREADABLE ? null : next;
+    if (next === UNREADABLE) return UNREADABLE;
+    at = next;
   }
-  return false;
+  return undefined;
 }
 
 /**
@@ -422,10 +451,11 @@ function renderFields(
     : attempt(() => Object.keys(value));
   if (keys === UNREADABLE || length === UNREADABLE) return REDACTED;
   let changed = copy;
+  const held = walk.withheld?.has(value) === true;
   const next: Record<string, unknown> = {};
   const items: unknown[] = [];
   for (const key of keys) {
-    const field = readOnce(value, key, walk.reads);
+    const field = readOnce(value, key, walk.reads, !held);
     if (field.called) changed = true;
     const out = render(field.value, separately ? '' : key, depth + 1, walk);
     if (out !== field.value) changed = true;
@@ -445,7 +475,7 @@ export function asSerialized(
   value: unknown,
   how: Rendering = {},
 ): { value: unknown; errors: Error[] } {
-  const walk: Walk = { ...how, errors: [], open: new Set() };
+  const walk: Walk = { ...how, reads: how.reads ?? new WeakMap(), errors: [], open: new Set() };
   return { value: render(value, '', 0, walk, true), errors: walk.errors };
 }
 
