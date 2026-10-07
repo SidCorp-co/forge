@@ -251,6 +251,34 @@ describe('waiting on an autonomous project', () => {
     );
   });
 
+  it('answers what the driver stored and the kind the row read back holds (ISS-1365)', async () => {
+    projectRow('yes');
+    updateReturning.mockResolvedValueOnce([
+      {
+        id: ISSUE_ID,
+        status: 'needs_info',
+        reopenCount: 0,
+        updatedAt: new Date(),
+        waitingKind: 'needs_resource',
+      },
+    ]);
+
+    const result = await transitionIssueStatus(
+      { id: ISSUE_ID, projectId: PROJECT_ID, status: 'in_progress', reopenCount: 0 },
+      'waiting',
+      { type: 'device', id: DEVICE_ID, ownerId: ACTOR_ID },
+      WAITING_OPTS,
+    );
+
+    expect(result.rewritten).toEqual({
+      requested: 'waiting',
+      stored: 'needs_info',
+      rule: 'autonomous_driver',
+      waitingKind: { sent: 'needs_resource', stored: 'needs_resource' },
+      detail: expect.stringContaining('autonomous driver'),
+    });
+  });
+
   it('refuses an agent `waiting` with no kind, exactly as it does on a staged project', async () => {
     projectRow('yes');
 
@@ -281,6 +309,7 @@ describe('waiting on an autonomous project', () => {
       waitingKind: 'needs_resource',
     });
     expect(result.status).toBe('waiting');
+    expect(result.rewritten).toBeNull();
   });
 
   it('leaves an agent `waiting` alone when the project row cannot be read', async () => {

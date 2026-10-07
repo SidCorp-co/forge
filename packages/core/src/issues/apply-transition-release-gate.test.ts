@@ -150,6 +150,21 @@ describe('an agent closing on a project that declared a release gate', () => {
     expect(result.status).toBe('awaiting_release');
   });
 
+  it('answers what the gate stored beside the close it was asked for (ISS-1365)', async () => {
+    gated();
+    queueUpdate('awaiting_release');
+
+    const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
+
+    expect(result.rewritten).toMatchObject({
+      requested: 'closed',
+      stored: 'awaiting_release',
+      rule: 'release_gate',
+      waitingKind: { sent: null, stored: null },
+    });
+    expect(result.rewritten?.detail).toContain('release gate');
+  });
+
   it('is judged on where it lands, so the shipped-work rule never fires (ISS-1108)', async () => {
     gated();
     queueUpdate('awaiting_release');
@@ -200,6 +215,7 @@ describe('who may still write `closed`', () => {
     const result = await transitionIssueStatus(AT_WORK, 'closed', HUMAN);
 
     expect(result.status).toBe('closed');
+    expect(result.rewritten).toBeNull();
     expect(listBindings).not.toHaveBeenCalled();
     expect(dbSelect).toHaveBeenCalledTimes(1);
   });

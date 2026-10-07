@@ -1,14 +1,7 @@
 import { and, count, eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import { stampKernelTxn } from '../db/kernel-marker.js';
-import {
-  comments,
-  type IssueStatus,
-  issues,
-  jobs,
-  pipelineRuns,
-  type WaitingKind,
-} from '../db/schema.js';
+import { type IssueStatus, issues, jobs, pipelineRuns, type WaitingKind } from '../db/schema.js';
 import { type KernelActor, recordKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
@@ -20,7 +13,7 @@ import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { resolveAutonomousParkTarget, storedWaitingKind } from './autonomous-park.js';
-import { noOpSentence } from './close-substitution.js';
+import { describeRewrite, noOpSentence, type TransitionRewrite } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
@@ -28,7 +21,7 @@ import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
-import { resolveAgentCloseTarget } from './release-gate-hold.js';
+import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-gate-hold.js';
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
@@ -147,6 +140,8 @@ export interface StatusTransitionResult {
    * dependent query filters expired edges out.
    */
   unblockedDependents: UnblockedDependent[];
+  /** Where a rule stored another status than the one asked for, what it stored and why; else null. */
+  rewritten: TransitionRewrite | null;
 }
 
 /** WS `issue.statusChanged` publish. The bus subscriber for `transition` deliberately does NOT
@@ -369,19 +364,7 @@ export async function transitionIssueStatus(
   });
 
   if (held) {
-    try {
-      await db.insert(comments).values({
-        issueId: issue.id,
-        authorId: actor.type === 'user' ? actor.id : actor.ownerId,
-        body: `Held at the release gate — merged, not shipped. Every \`blocks\`-dependent can dispatch now, because a dependent is held by this issue's STATUS and \`awaiting_release\` is one that releases it; nothing here writes \`merged_at\`. The issue closes when a release ships it, and that close is refused until the shipped-work claim is on the row — \`forge_issues\` \`mark_merged\` naming where it landed.`,
-        parentId: null,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, issueId: issue.id },
-        'transition: release-gate hold comment failed (transition already committed)',
-      );
-    }
+    await postReleaseGateHoldComment(issue.id, actor.type === 'user' ? actor.id : actor.ownerId);
   }
 
   if (txResult && txResult.unblockedDependents.length > 0) {
@@ -403,6 +386,13 @@ export async function transitionIssueStatus(
     updatedAt: updated.updatedAt,
     terminal,
     unblockedDependents: txResult?.unblockedDependents ?? [],
+    rewritten: describeRewrite({
+      requested: requestedStatus,
+      parked: parkTarget,
+      final: updated.status,
+      sentKind: options.waitingKind ?? null,
+      storedKind: updated.waitingKind ?? null,
+    }),
   };
 }
 
@@ -418,7 +408,13 @@ type TransitionWriteInput = {
 };
 
 type TransitionWriteResult = {
-  row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
+  row: {
+    id: string;
+    status: IssueStatus;
+    reopenCount: number;
+    updatedAt: Date;
+    waitingKind: WaitingKind | null;
+  };
   unblockedDependents: UnblockedDependent[];
 };
 
@@ -509,6 +505,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               status: issues.status,
               reopenCount: issues.reopenCount,
               updatedAt: issues.updatedAt,
+              waitingKind: issues.waitingKind,
             });
           if (!row) return null;
           await recordKernelTransition(t, [

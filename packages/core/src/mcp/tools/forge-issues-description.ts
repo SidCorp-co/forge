@@ -55,7 +55,11 @@ export function forgeIssuesDescription(refClause: string): string {
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On an ' +
     'issue whose landingShape is outside_git the close also needs the mark to name where it ' +
-    'landed, and a bare merged_at is refused the same way.\n' +
+    'landed, and a bare merged_at is refused the same way. A transition answers rewritten: null, ' +
+    "or, where a rule stored another status than the one asked (an agent's waiting stored as " +
+    "needs_info on an autonomous project, an agent's closed held at awaiting_release by the " +
+    'release gate), rewritten { requested, stored, rule: autonomous_driver | release_gate, ' +
+    'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status.\n' +
     "LANDING SHAPE. get and every write's answer carry landingShape (git | outside_git), the one " +
     "field saying where THIS issue's work lands and so what its mark and close accept, and " +
     "declaredLandingShape, the issue's own declaration, null where its project's kind answers " +

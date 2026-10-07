@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { noOpSentence } from './close-substitution.js';
+import { describeRewrite, noOpSentence } from './close-substitution.js';
 
 const PROJECT = '11111111-2222-3333-4444-555555555555';
 
@@ -76,5 +76,59 @@ describe('noOpSentence', () => {
     expect(sentence).toContain('`waiting`');
     expect(sentence).toContain('`awaiting_release`');
     expect(sentence).toContain('release gate');
+  });
+});
+
+describe('describeRewrite (ISS-1365)', () => {
+  it('answers null where the status stored is the one asked for', () => {
+    expect(
+      describeRewrite({
+        requested: 'developed',
+        parked: 'developed',
+        final: 'developed',
+        sentKind: null,
+        storedKind: null,
+      }),
+    ).toBeNull();
+  });
+
+  it('names the driver and says the kind it kept', () => {
+    const said = describeRewrite({
+      requested: 'waiting',
+      parked: 'needs_info',
+      final: 'needs_info',
+      sentKind: 'needs_decision',
+      storedKind: 'needs_decision',
+    });
+
+    expect(said).toMatchObject({ rule: 'autonomous_driver', stored: 'needs_info' });
+    expect(said?.detail).toContain('`waiting` was stored as `needs_info`');
+    expect(said?.detail).toContain('`needs_decision` is kept');
+  });
+
+  it('names the release gate where it moved the target after the driver', () => {
+    const said = describeRewrite({
+      requested: 'closed',
+      parked: 'closed',
+      final: 'awaiting_release',
+      sentKind: null,
+      storedKind: null,
+    });
+
+    expect(said).toMatchObject({ rule: 'release_gate', requested: 'closed' });
+    expect(said?.detail).not.toContain('waitingKind');
+  });
+
+  it('says a kind the row did not keep was not kept, naming what it stores', () => {
+    const said = describeRewrite({
+      requested: 'waiting',
+      parked: 'needs_info',
+      final: 'needs_info',
+      sentKind: 'needs_decision',
+      storedKind: null,
+    });
+
+    expect(said?.waitingKind).toEqual({ sent: 'needs_decision', stored: null });
+    expect(said?.detail).toContain('`needs_decision` was not kept; the row stores none');
   });
 });
