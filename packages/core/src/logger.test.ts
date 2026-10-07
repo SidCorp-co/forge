@@ -415,12 +415,13 @@ describe('the core logger, given a value whose text only a serializer renders', 
     const pg = relationRefusal();
     log.warn({ error: pg }, 'read %s', hook(pg.message));
     log.child({ requestId: 'r1' }).warn({ error: pg }, 'child %s', hook(pg.message));
+    log.warn({ error: pg }, '100%% read: %s', hook(pg.message));
     log.warn(
       { err: hook('invalid input syntax for type uuid: "zq9"') as never },
       'blind %s',
       hook('invalid input syntax for type uuid: "zq9"'),
     );
-    expect(lines).toHaveLength(3);
+    expect(lines).toHaveLength(4);
     for (const line of lines) {
       expect(line).not.toContain('zq');
       expect(line).not.toContain('[object Object]');

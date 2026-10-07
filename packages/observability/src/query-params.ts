@@ -42,6 +42,7 @@ const QUOTED_VALUE_ANCHORS = [
   'value (?="[\\s\\S]*" is out of range for type )',
   'Token (?="[\\s\\S]*" is invalid)',
   'in tsquery: (?=")',
+  'invalid value (?=")',
   'JSON data, line \\d+: ',
   'parameter \\$\\d+ = ',
 ];
@@ -54,6 +55,7 @@ const QUOTED_VALUE_HINTS = [
   '" is ',
   'JSON data, line ',
   'parameter $',
+  'invalid value "',
 ];
 /** The hints as a JSON line spells them, where a quote is escaped. */
 const LINE_HINTS = [
@@ -203,10 +205,6 @@ function redactText(text: string, chain: ChainReading | null): string {
   return out.split(held).join(REDACTED).replace(token, (_, i) => kept[Number(i)] ?? '');
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return Object.prototype.toString.call(v) === '[object Object]';
-}
-
 function mergeChains(a: ChainReading | null, b: ChainReading): ChainReading {
   if (!a) return b;
   return {
@@ -256,43 +254,104 @@ function driverFieldWithheld(key: string, v: unknown): boolean {
   return !DRIVER_FIELDS_KEPT.has(key) && !DRIVER_WALKED.has(key) && v !== null && v !== undefined;
 }
 
+/**
+ * `value`'s own fields redacted, as a serializer reads them: each enumerable string key once, a
+ * getter called once. A copy where anything changed, a getter was read or `copy` asks for one,
+ * holding no function a serializer would call (it writes none in an object); otherwise null.
+ */
 function redactRecord(
   value: Record<string, unknown>,
   chain: ChainReading | null,
   depth: number,
+  copy: boolean,
 ): Record<string, unknown> | null {
   const failedQuery = typeof value.query === 'string';
   const driverError = isDriverError(value);
-  let changed = false;
+  let changed = copy;
   const next: Record<string, unknown> = {};
-  for (const [key, v] of Object.entries(value)) {
+  for (const key of Object.keys(value)) {
+    if (!changed && Object.getOwnPropertyDescriptor(value, key)?.get) changed = true;
+    const v = value[key];
     let out: unknown;
     if (failedQuery && (key === 'params' || key === 'parameters') && Array.isArray(v))
       out = REDACTED;
     else if (driverError && driverFieldWithheld(key, v)) out = REDACTED;
-    else out = redactValue(v, chain, depth + 1);
+    else out = redactValue(v, chain, depth + 1, key);
     if (out !== v) changed = true;
-    next[key] = out;
+    if (typeof out !== 'function') next[key] = out;
   }
   return changed ? next : null;
 }
 
-function redactValue(value: unknown, chain: ChainReading | null, depth: number): unknown {
-  if (typeof value === 'string') return redactText(value, chain);
-  // Past the bound nothing was read, so nothing is vouched for: the subtree goes, not through.
-  if (depth > MAX_DEPTH) return typeof value === 'object' && value !== null ? REDACTED : value;
-  if (Array.isArray(value)) {
-    const next = value.map((v) => redactValue(v, chain, depth + 1));
-    return next.some((v, i) => v !== value[i]) ? next : value;
+/** A `toJSON` the platform defines, which renders the same text every time it is asked. */
+const PLATFORM_TO_JSON = new Set<unknown>([Date.prototype.toJSON, globalThis.URL?.prototype.toJSON]);
+
+/** A boxed primitive's value as `JSON.stringify` unboxes it, its own toPrimitive called; else none. */
+function unboxed(value: object): { value: unknown } | null {
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Object.prototype || proto === null || Array.isArray(value)) return null;
+  const is = (unbox: () => unknown) => {
+    try {
+      unbox();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (is(() => String.prototype.valueOf.call(value))) return { value: String(value) };
+  if (is(() => Number.prototype.valueOf.call(value))) return { value: Number(value) };
+  if (is(() => Boolean.prototype.valueOf.call(value))) {
+    return { value: Boolean.prototype.valueOf.call(value) };
   }
+  return null;
+}
+
+/**
+ * `value` as a serializer would write it at `key`, redacted, and inert: a `toJSON` is asked once,
+ * with the key, and a boxed primitive unboxed once, so what is redacted is what is written, and
+ * nothing handed back calls the caller's code again. A value with neither, and nothing to redact,
+ * comes back as the same reference.
+ */
+function redactValue(
+  value: unknown,
+  chain: ChainReading | null,
+  depth: number,
+  key = '',
+): unknown {
+  if (typeof value === 'string') return redactText(value, chain);
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
+  // Past the bound nothing was read, so nothing is vouched for: the subtree goes, not through.
+  if (depth > MAX_DEPTH) return REDACTED;
   // An Error left in a payload serializes as its enumerable properties, which for a failed query
   // are `query`, `params` and `cause`: it is walked as that, against its own chain as well.
-  if (value instanceof Error) {
-    const own = value as unknown as Record<string, unknown>;
-    return redactRecord(own, mergeChains(chain, readChain(value)), depth) ?? value;
+  const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
+  const toJSON = (value as { toJSON?: unknown }).toJSON;
+  if (typeof toJSON === 'function') {
+    const rendered: unknown = toJSON.call(value, key);
+    const out = redactRendered(rendered, own, depth);
+    return PLATFORM_TO_JSON.has(toJSON) && out === rendered ? value : out;
   }
-  if (!isRecord(value)) return value;
-  return redactRecord(value, chain, depth) ?? value;
+  if (typeof value === 'function') return value;
+  const box = unboxed(value);
+  if (box) return redactRendered(box.value, own, depth);
+  if (Array.isArray(value)) {
+    const next = value.map((v, i) => redactValue(v, own, depth + 1, String(i)));
+    return next.some((v, i) => v !== value[i]) ? next : value;
+  }
+  return redactRecord(value as Record<string, unknown>, own, depth, false) ?? value;
+}
+
+/**
+ * What a `toJSON` or an unboxing rendered, redacted. A serializer asks it nothing more at this
+ * level, so an object comes back as a copy holding none of its functions, its own `toJSON` among them.
+ */
+function redactRendered(rendered: unknown, chain: ChainReading | null, depth: number): unknown {
+  if (typeof rendered === 'function') return undefined;
+  if (rendered === null || typeof rendered !== 'object') return redactValue(rendered, chain, depth);
+  if (Array.isArray(rendered)) {
+    return rendered.map((v, i) => redactValue(v, chain, depth + 1, String(i)));
+  }
+  return redactRecord(rendered as Record<string, unknown>, chain, depth, true);
 }
 
 /** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */

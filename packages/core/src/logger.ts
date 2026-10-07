@@ -91,15 +91,49 @@ function withErrorsSerialized(value: unknown, depth = 0): unknown {
 }
 
 /**
+ * The indexes of the arguments pino's formatter renders with `String()`: each one a `%s` in
+ * `template` consumes. Every other `%` pair consumes one too, and `%%` none, as its formatter counts.
+ */
+function stringifiedArgs(template: string): Set<number> {
+  const at = new Set<number>();
+  let arg = 0;
+  for (let i = 0; i < template.length - 1; i++) {
+    if (template[i] !== '%') continue;
+    if (template[i + 1] === '%') {
+      i++;
+      continue;
+    }
+    if (template[i + 1] === 's') at.add(arg);
+    arg++;
+  }
+  return at;
+}
+
+function rendersItself(v: unknown): v is object {
+  return (typeof v === 'object' && v !== null) || typeof v === 'function';
+}
+
+/**
  * The call's arguments with every error in them serialized, and all of its text redacted against
  * every error it carries, which only this hook still holds: a value the call repeats beside its
  * error, or a driver message repeating a short one, is told only by the values the errors carry.
+ * Text pino would render from a value's own code after this hook (a `%s` argument's `String()`,
+ * a message joined to a child's `msgPrefix`) is rendered here, once, and redacted as text.
  */
-function redactCall(args: unknown[], err: Error | null): unknown[] {
+function redactCall(args: unknown[], err: Error | null, msgPrefix: unknown): unknown[] {
   const errors = errorsWithin(args);
   const clean = (v: unknown) =>
     redactQueryParams(withErrorsSerialized(v), errors.length > 0 ? errors : undefined);
-  let [first, ...rest] = args;
+  const templateAt = typeof args[0] === 'string' ? 0 : 1;
+  const template = args[templateAt];
+  const stringified = typeof template === 'string' ? stringifiedArgs(template) : new Set<number>();
+  let [first, ...rest] = args.map((v, i) => {
+    if (i === templateAt && typeof msgPrefix === 'string' && rendersItself(v)) {
+      return (msgPrefix + (v as unknown as string)).slice(msgPrefix.length);
+    }
+    if (i > templateAt && stringified.has(i - templateAt - 1) && rendersItself(v)) return String(v);
+    return v;
+  });
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
   if (typeof first === 'string') first = clean(first);
@@ -177,7 +211,8 @@ const loggerOptions: LoggerOptions = {
   hooks: {
     logMethod(args, method) {
       const err = loggedError(args[0]);
-      return method.apply(this, redactCall(args, err) as Parameters<typeof method>);
+      const redacted = redactCall(args, err, this.msgPrefix);
+      return method.apply(this, redacted as Parameters<typeof method>);
     },
     streamWrite: redactLine,
   },

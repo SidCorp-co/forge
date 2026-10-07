@@ -66,6 +66,8 @@ export function RegisterForm() {
           value={email}
           onChange={(e) => {
             setEmail(e.target.value);
+            // The banner describes the address that was submitted, which this edit replaces.
+            setTopError('');
             if (fieldErrors.email) setFieldErrors((p) => ({ ...p, email: undefined }));
           }}
         />

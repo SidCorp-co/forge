@@ -167,8 +167,9 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
 }
 
 /**
- * Scrub a Sentry event: request headers, URL, body and breadcrumbs in place, then a failed
- * query's bound params anywhere in it, the hint's exception naming them (a copy where it changed).
+ * Scrub a Sentry event: a failed query's bound params anywhere in it first, the hint's exception
+ * naming them, which also renders whatever a serializer would call into plain fields (a copy where
+ * anything changed); then request headers, URL, body and breadcrumbs in place on what that left.
  * Generic over the event shape so this works across @sentry/react,
  * @sentry/node, and @sentry/nextjs.
  */
@@ -176,7 +177,8 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E {
-  const req = event.request;
+  const out = redactQueryParams(event, hint?.originalException);
+  const req = out.request;
   if (req?.headers) scrubHeaders(req.headers);
   if (req?.url) req.url = scrubPatInString(scrubUrl(req.url));
   if (req?.data !== undefined && req.data !== null) {
@@ -196,8 +198,8 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
       scrubStringValues(req.data);
     }
   }
-  if (event.breadcrumbs) {
-    for (const b of event.breadcrumbs) {
+  if (out.breadcrumbs) {
+    for (const b of out.breadcrumbs) {
       if (typeof b.message === 'string') b.message = scrubPatInString(b.message);
       if (b.data && typeof b.data === 'object') {
         const d = b.data as Record<string, unknown>;
@@ -207,7 +209,7 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
       }
     }
   }
-  return redactQueryParams(event, hint?.originalException);
+  return out;
 }
 
 interface SentryLikeEvent {

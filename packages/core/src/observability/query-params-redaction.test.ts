@@ -275,7 +275,7 @@ const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
 function boxed(value: object): boolean {
   for (const unbox of [String, Number, Boolean, BigInt, Symbol]) {
     try {
-      unbox.prototype.valueOf.call(value);
+      (unbox.prototype.valueOf as (this: unknown) => unknown).call(value);
       return true;
     } catch {}
   }
@@ -327,9 +327,19 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     });
     let calls = 0;
     const later = { toJSON: () => (++calls === 1 ? 'ordinary' : text) };
-    const rendered = JSON.stringify(redactQueryParams({ getter, later }));
+    const out = redactQueryParams({ getter, later });
+    const asked = [reads, calls];
+    const rendered = JSON.stringify(out);
+    expect([reads, calls]).toEqual(asked);
     expect(rendered).not.toContain(HASH);
-    expect(rendered).toBe('{"getter":{"reason":"ordinary"},"later":"ordinary"}');
+    expect(rendered).not.toContain(EMAIL);
+  });
+
+  it('hands back none of the functions a toJSON rendered, which no serializer calls there', () => {
+    const text = duplicate().message;
+    const value = { reading: { toJSON: () => ({ toJSON: () => text, note: 'kept' }) } };
+    expect(JSON.stringify(value)).toBe('{"reading":{"note":"kept"}}');
+    expect(JSON.stringify(redactQueryParams(value))).toBe('{"reading":{"note":"kept"}}');
   });
 
   it('asks toJSON for the key a serializer passes it', () => {
