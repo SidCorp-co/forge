@@ -5,7 +5,7 @@ import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
-import { activeIssuePrefix, setWorkStep } from '../issues/index.js';
+import { activeIssuePrefix, heldByEndedReleaseIds, setWorkStep } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -158,7 +158,9 @@ function runnerPreferenceMet(
 
 /**
  * The named ids less those an earlier release already shipped, which are closed against it here.
- * A call whose every id was one of them has nothing to release: refused by name with the versions.
+ * The project's rows a release that ended unshipped still claims are closed here too where a
+ * shipped release holds their commit; they are never this cut's to carry. A call whose every
+ * named id was already shipped has nothing to release: refused by name with the versions.
  */
 async function withoutShippedEarlier(
   projectId: string,
@@ -166,12 +168,17 @@ async function withoutShippedEarlier(
   userId: string,
   deps: ShippedEarlierDeps,
 ): Promise<string[]> {
-  const earlier = await closeShippedEarlier({ projectId, issueIds: named, userId }, deps);
-  if (earlier.closed.length === 0) return named;
+  const held = await heldByEndedReleaseIds(projectId, RELEASE_GATE_STATUS);
+  const earlier = await closeShippedEarlier(
+    { projectId, issueIds: [...named, ...held.filter((id) => !named.includes(id))], userId },
+    deps,
+  );
   const shipped = new Set(earlier.closed.map((c) => c.issueId));
+  const ofNamed = earlier.closed.filter((c) => named.includes(c.issueId));
+  if (ofNamed.length === 0) return named;
   const rest = named.filter((id) => !shipped.has(id));
   if (rest.length === 0) {
-    const where = earlier.closed.map((c) => `${c.issueId} in ${c.version}`).join(', ');
+    const where = ofNamed.map((c) => `${c.issueId} in ${c.version}`).join(', ');
     throw refuseRelease(
       'RELEASE_ALL_SHIPPED_EARLIER',
       `Every issue this call names was already shipped by an earlier release, so there is nothing to release: ${where}. Each is now closed against that release; no new release was cut.`,

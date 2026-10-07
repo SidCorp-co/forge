@@ -125,7 +125,14 @@ export { mintCommentQuestion } from './record-events/question-record.js';
 export type { RecordEvent } from './record-events/store.js';
 export { mirroredEventsFor, recordOfEvent, writeRecordEvent } from './record-events/store.js';
 export { writeIssueRelations } from './relations-service.js';
-export { claimIssuesForRelease, releaseEndedRunClaims, releaseRunClaims } from './release-claim.js';
+export {
+  claimIssuesForRelease,
+  heldByEndedRelease,
+  heldByEndedReleaseIds,
+  releaseEndedRunClaims,
+  releaseRunClaims,
+  returnTakenClaims,
+} from './release-claim.js';
 export { reopenedAtOf } from './release-evidence.js';
 export { issuesMissingReleaseRecord } from './release-record-required.js';
 export {

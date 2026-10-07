@@ -9,12 +9,17 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/index.js';
+import {
+  heldByEndedRelease,
+  heldByEndedReleaseIds,
+  type IssueCriteriaReport,
+  unearnedCriteriaReports,
+} from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from '../pipeline/index.js';
 import { cutWaitingRelease, loadCreatedBy } from '../schedules/index.js';
-import { resolveReleaseGate } from './gate.js';
+import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import {
   abortBlockedIssues,
   clearProjectReleaseHolds,
@@ -68,8 +73,9 @@ interface CandidateRow {
   cursor_ts: string;
 }
 
-// Projects with an unclaimed `awaiting_release` issue, via a bounded, resumable keyset page
-// (`sweep-cursor.ts`) so a project stuck behind 200 others is reached within a few ticks.
+// Projects with an `awaiting_release` issue that is unclaimed or still claimed by a release that
+// ended unshipped (`heldByEndedRelease`), via a bounded, resumable keyset page (`sweep-cursor.ts`)
+// so a project stuck behind 200 others is reached within a few ticks.
 async function candidateProjectIds(now: Date): Promise<string[]> {
   const window = sweepWindow(CANDIDATE_CURSOR_KEY, now.toISOString());
   const after = window.after;
@@ -81,7 +87,7 @@ async function candidateProjectIds(now: Date): Promise<string[]> {
     SELECT i.id, i.project_id, i.updated_at::text AS cursor_ts
       FROM issues i
      WHERE i.status = 'awaiting_release'
-       AND i.release_batch_run_id IS NULL
+       AND (i.release_batch_run_id IS NULL OR ${heldByEndedRelease(sql`i.release_batch_run_id`)})
        AND i.updated_at <= ${window.until}::timestamptz
        ${resume}
      ORDER BY i.updated_at ASC, i.id ASC
@@ -210,9 +216,14 @@ async function sweepProject(
   const owner = (await loadCreatedBy(projectId)) ?? null;
   // First of all, before a row an aborted release held for a person is set aside: a commit an
   // earlier release already shipped is closed against that release, whatever held it, so no cut
-  // is opened to find nothing new in its range.
+  // is opened to find nothing new in its range. A row a release that ended unshipped still claims
+  // is asked the same, and only that: it is not this sweep's to weigh or cut.
   const gate = await waitingIssueIds(projectId);
-  const earlier = await closeShippedEarlier({ projectId, issueIds: gate, userId: owner }, deps);
+  const endedHolds = await heldByEndedReleaseIds(projectId, RELEASE_GATE_STATUS);
+  const earlier = await closeShippedEarlier(
+    { projectId, issueIds: [...gate, ...endedHolds], userId: owner },
+    deps,
+  );
   result.shippedEarlier += earlier.closed.length;
   const shipped = new Set(earlier.closed.map((c) => c.issueId));
   const unsettled = new Map(earlier.unresolved.map((u) => [u.issueId, u]));

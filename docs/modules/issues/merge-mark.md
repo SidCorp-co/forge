@@ -217,6 +217,18 @@ hold, as a clause beside whatever holds it — an abort hold keeps its code and 
 back on the sweep that can settle it.
 A work older than twelve releases is not placed, and takes the normal path.
 
+A row still claimed by a release that ended without shipping is read the same way
+(`packages/core/src/issues/release-claim.ts:heldByEndedRelease`: the claiming run is not live and
+carries no ship stamp). A run that failed after it recorded a deploy keeps its roster claimed at the
+release step for a person, since its code may be live; a later shipped release whose commit holds the
+row's is that answer. The sweep (it also visits a project for such a row alone) and the top of every
+cut ask it, the close takes the claim over from the ended run (`claimIssuesForRelease`
+`fromEndedRelease`), and the notice names the release that held it. A row no shipped release holds,
+or one the close refuses, goes back to the ended run's claim at its release step
+(`returnTakenClaims`); a row a live run holds is never read. The ended release's page still lists the
+row, now `closed` and waiting on nobody; the shipped release's page lists it too, from its
+`rosterClosed` (`packages/core/src/release-batch/versions.ts:issueIdsOf`).
+
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
