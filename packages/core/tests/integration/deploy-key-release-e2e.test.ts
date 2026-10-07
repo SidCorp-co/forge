@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GITLAB_NO_ACCESS, keyUnknown } from '../../src/git/host-answers.fixture.js';
 import {
   fakeCoolify,
   recordForgeDeployment,
@@ -126,7 +127,7 @@ async function sweep() {
 beforeEach(async () => {
   await truncateAll(harness.db);
   coolify.deployments.clear();
-  host.refusing(false);
+  host.answering(null);
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (
@@ -180,7 +181,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
   }, 60_000);
 
   it('holds by equality alone, naming the refused key, where the host refuses it (criteria 12, 16)', async () => {
-    host.refusing(true);
+    host.answering(keyUnknown('gitlab.com'));
     await serveCore(at.descendant as string);
     const id = await fx.judgedRow(at.judged as string, '2026-10-01T09:00:00Z');
 
@@ -190,6 +191,24 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain('the git host refused the deploy key attached to this project');
+    expect(reason).not.toMatch(/GitHub binding|Integrations/);
+  }, 60_000);
+
+  it("holds by equality alone, in GitLab's words, where the key may not read the project (criteria 12, 16)", async () => {
+    host.answering(GITLAB_NO_ACCESS);
+    await serveCore(at.descendant as string);
+    const id = await fx.judgedRow(at.judged as string, '2026-10-01T09:00:00Z');
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(0);
+    const reason = String((await fx.holdOf(id))?.reason);
+    expect(reason).toContain('whether what it serves carries it could not be read');
+    expect(reason).toContain(GITLAB_NO_ACCESS.said);
+    expect(reason).toContain(
+      `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
+    );
+    expect(reason).not.toMatch(/remote:\s*(\.|\))/);
     expect(reason).not.toMatch(/GitHub binding|Integrations/);
   }, 60_000);
 
@@ -233,6 +252,20 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
       at.offRoster,
     ]);
     expect(read.landed.map((l) => l.issueId)).toContain(other);
+  }, 60_000);
+
+  it("leaves the carried range unread in GitLab's words where the key may not read the project (criteria 12, 16)", async () => {
+    host.answering(GITLAB_NO_ACCESS);
+    await fx.declareProduction({ verify: null, baseUrl: coolify.url(), targets: [APP] });
+    const { readCarried } = await import('../../src/release-batch/carried.js');
+
+    const read = await readCarried(projectId, []);
+
+    expect(read.kind).toBe('unread');
+    if (read.kind === 'read') return;
+    expect(read.why).toContain(GITLAB_NO_ACCESS.said);
+    expect(read.why).toContain(`will not let it read ${GITLAB_URL}`);
+    expect(read.why).not.toMatch(/remote:\s*(\.|\))/);
   }, 60_000);
 
   it('warns RELEASE_CARRIED_UNREAD naming the deploy key, never GitHub, where there is no route (criteria 15, 16)', async () => {

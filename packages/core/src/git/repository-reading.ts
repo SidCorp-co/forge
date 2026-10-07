@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
+  type BranchRead,
   type Carriage,
   type ChangedPaths,
   type CommitLookup,
@@ -29,9 +30,9 @@ import {
   boundedFetch,
   type FetchLimits,
   fetchRefusal,
-  firstLine,
   type GitFailure,
   GitRefusal,
+  hostSaid,
   namingTheHost,
   REMOTE_FETCH_LIMITS,
   readingEnv,
@@ -111,7 +112,7 @@ class GitReading {
     return boundedFetch(
       ['-c', 'fetch.unpackLimit=1', '-C', repo, 'fetch', '--quiet', '--no-tags', ...args],
       this.env,
-      { what, repo, filter },
+      { what, remote: this.remote, repo, filter },
       this.limits,
     );
   }
@@ -146,10 +147,13 @@ class GitReading {
         this.env,
         {
           what: `fetching commit ${sha} from the git host`,
+          remote: this.remote,
           repo: this.history,
           filter: 'commits-only',
           refusal: (err) =>
-            UNREACHABLE.test((err.stderr ?? '').toString()) ? ABSENT : fetchRefusal(err),
+            UNREACHABLE.test((err.stderr ?? '').toString())
+              ? ABSENT
+              : fetchRefusal(err, this.remote),
         },
         this.limits,
       );
@@ -218,7 +222,7 @@ class GitReading {
     };
   }
 
-  async head(branch: string): Promise<{ sha: string } | { why: string }> {
+  async head(branch: string): Promise<BranchRead> {
     try {
       await this.git(['check-ref-format', `refs/heads/${branch}`]);
     } catch {
@@ -226,7 +230,7 @@ class GitReading {
     }
     await this.ensureHistory();
     const sha = await this.verified(`refs/forge/heads/${branch}`);
-    return sha ? { sha } : { why: `${this.remote} has no branch ${branch}` };
+    return sha ? { sha } : { why: `${this.remote} has no branch ${branch}`, missingBranch: branch };
   }
 
   /** The trees of `shas`, fetched one pass at a time into the shallow repository. */
@@ -270,7 +274,7 @@ class GitReading {
   failed(err: unknown): string {
     const say = (reason: string) => (this.opts.pin ? namingTheHost(reason, this.opts.pin) : reason);
     if (err instanceof GitRefusal) return say(err.message);
-    const stderr = firstLine(((err as GitFailure).stderr ?? '').toString());
+    const stderr = hostSaid(((err as GitFailure).stderr ?? '').toString());
     const cause = stderr || (err instanceof Error ? err.message : String(err));
     return say(`reading ${this.remote} failed: ${cause}`);
   }
@@ -307,7 +311,7 @@ async function changedIn(g: GitReading, landing: string): Promise<ChangedPaths> 
 
 async function rangeIn(g: GitReading, base: string, headRef: string): Promise<RangeRead> {
   const tip = await g.head(base);
-  if ('why' in tip) return tip;
+  if ('why' in tip) return { why: tip.why };
   const to = await g.resolve(headRef);
   if (!to.ok) return { why: to.why };
   const span = `${tip.sha}..${to.commit.sha}`;

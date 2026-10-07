@@ -32,12 +32,43 @@ export interface GitFailure {
   code?: number | string | null;
 }
 
-export function firstLine(s: string): string {
-  const line = s
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return (line ?? '').slice(0, 300);
+const GIT_TRAILER =
+  /^(fatal: could not read from remote repository\.?|please make sure you have the correct access rights|and the repository exists\.?)$/i;
+
+const RULE = /^[=\-*#_~]{3,}$/;
+
+/** The first line a git host said with words in it, past git's `remote:` prefix, banner rules
+ *  (GitLab opens a refusal with them) and git's own trailer, which is kept only where alone. */
+export function hostSaid(stderr: string): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^remote:/i, '').trim())
+    .filter((l) => l !== '' && !RULE.test(l));
+  return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '').slice(0, 300);
+}
+
+const KEY_REFUSED =
+  /permission denied \(|no supported authentication methods|too many authentication failures/i;
+
+/** The host took the key and will not serve this path: GitLab, GitHub, a plain server, in turn. */
+const NO_ACCESS =
+  /you don't have permission to view it|repository not found|does not appear to be a git repository|\bdoes not exist\b|access denied|not authori[sz]ed|forbidden|permission denied/i;
+
+const UNREACHABLE =
+  /could not resolve hostname|connection timed out|connection refused|no route to host|network is unreachable|operation timed out|name or service not known|temporary failure in name resolution/i;
+
+export type HostRefusal =
+  | { kind: 'no_branch'; branch: string; said: string }
+  | { kind: 'key_refused' | 'no_access' | 'unreachable' | 'other'; said: string };
+
+export function readHostRefusal(stderr: string): HostRefusal {
+  const said = hostSaid(stderr);
+  const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
+  if (missing?.[1]) return { kind: 'no_branch', branch: missing[1], said };
+  if (KEY_REFUSED.test(stderr)) return { kind: 'key_refused', said };
+  if (NO_ACCESS.test(stderr)) return { kind: 'no_access', said };
+  if (UNREACHABLE.test(stderr)) return { kind: 'unreachable', said };
+  return { kind: 'other', said };
 }
 
 /** No user or system config, no prompt, and no object fetched behind the reading's back. */
@@ -51,15 +82,22 @@ export function readingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   };
 }
 
-/** What a failed fetch means to an operator, in the words of the thing that failed. */
-export function fetchRefusal(err: GitFailure): string {
-  const stderr = (err.stderr ?? '').toString();
-  const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
-  if (missing?.[1]) return `the repository has no branch ${missing[1]}, so it cannot be compared`;
-  if (/permission denied|access denied|not authori[sz]ed/i.test(stderr)) {
-    return `the git host refused the deploy key attached to this project (${firstLine(stderr)}) — give its public key read access to the repository; the key is the one attached under ${GIT_ACCESS}`;
+/** What a failed fetch of `remote` means to an operator: its cause, in the host's words, and the fix. */
+export function fetchRefusal(err: GitFailure, remote: string): string {
+  const answer = readHostRefusal((err.stderr ?? '').toString());
+  const { said } = answer;
+  switch (answer.kind) {
+    case 'no_branch':
+      return `the repository has no branch ${answer.branch}, so it cannot be compared`;
+    case 'key_refused':
+      return `the git host refused the deploy key attached to this project (${said}) — give its public key read access to ${remote}; the key is the one attached under ${GIT_ACCESS}`;
+    case 'no_access':
+      return `the git host took the deploy key attached to this project but will not let it read ${remote} (${said}) — on the git host, give the deploy key attached under ${GIT_ACCESS} read access to that repository; if no repository lives at that URL, correct the SSH clone URL set there`;
+    case 'unreachable':
+      return `the git host ${remote} names could not be reached (${said}), so the deploy key was never offered — check that the SSH clone URL under ${GIT_ACCESS} names the right host and that it is up, then read again`;
+    default:
+      return `the git host answered the fetch with: ${said || `git exited ${String(err.code ?? 'abnormally')}`}`;
   }
-  return `the git host answered the fetch with: ${firstLine(stderr) || `git exited ${String(err.code ?? 'abnormally')}`}`;
 }
 
 /** git names the address ssh was pinned to; an operator knows the repository by its URL's host. */
@@ -84,6 +122,8 @@ async function largestFile(dir: string): Promise<number> {
 export interface BoundedFetch {
   /** What the fetch was doing, as a sentence opens: "fetching main from the git host". */
   what: string;
+  /** The URL fetched from, as a refusal names the repository to give the key access to. */
+  remote: string;
   /** The repository the fetch writes into, measured when it fails. */
   repo: string;
   /** The filter the host was asked for, as an operator reads it: "commits-only". */
@@ -137,7 +177,9 @@ export function boundedFetch(
       void largestFile(repo).then((n) =>
         reject(
           new GitRefusal(
-            n >= blocks * 512 ? overBudget : (fetch.refusal ?? fetchRefusal)({ stderr, code }),
+            n >= blocks * 512
+              ? overBudget
+              : (fetch.refusal ?? ((e) => fetchRefusal(e, fetch.remote)))({ stderr, code }),
           ),
         ),
       );

@@ -171,7 +171,7 @@ describe('fetchDivergence', () => {
     expect(() => git(join(dir, 'live-reading.git'), 'rev-parse', '--git-dir')).toThrow();
   });
 
-  it('carries the git host answer when the fetch fails for another reason', async () => {
+  it('names a URL that holds no repository, in the words git answered it with', async () => {
     const d = await fetchDivergence(
       `file://${join(root, 'nowhere.git')}`,
       env,
@@ -179,7 +179,9 @@ describe('fetchDivergence', () => {
       scratch(),
     );
     expect(d.ok).toBe(false);
-    expect(!d.ok && d.reason).toMatch(/^the git host answered the fetch with: /);
+    expect(!d.ok && d.reason).toMatch(
+      /^the git host took the deploy key attached to this project but will not let it read file:\/\/\S+nowhere\.git \(fatal: '\S+nowhere\.git' does not appear to be a git repository\)/,
+    );
   });
 
   it('says the list was cut short when more commits wait than a reading lists', async () => {
@@ -327,7 +329,7 @@ describe('readRemoteDivergence', () => {
       expect(d).toEqual({
         ok: false,
         reason:
-          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key read access to the repository; the key is the one attached under the project's Settings → Runners → Git access",
+          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key read access to git@gitlab.com:sid/desk.git; the key is the one attached under the project's Settings → Runners → Git access",
       });
     } finally {
       process.env.PATH = path;

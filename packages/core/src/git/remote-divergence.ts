@@ -6,9 +6,9 @@ import type { LiveDivergence, WaitingCommit } from '../integrations/github/live-
 import {
   boundedFetch,
   type FetchLimits,
-  firstLine,
   type GitFailure,
   GitRefusal,
+  hostSaid,
   namingTheHost,
   REMOTE_FETCH_LIMITS,
   readingEnv,
@@ -71,6 +71,7 @@ export async function fetchDivergence(
       gitEnv,
       {
         what: `fetching ${refs.baseRef} and ${refs.liveRef} from the git host`,
+        remote,
         repo,
         filter: 'commits-only',
       },
@@ -110,7 +111,7 @@ export async function fetchDivergence(
     const e = err as GitFailure;
     return {
       ok: false,
-      reason: `reading the fetched branches failed: ${firstLine((e.stderr ?? '').toString()) || (err instanceof Error ? err.message : String(err))}`,
+      reason: `reading the fetched branches failed: ${hostSaid((e.stderr ?? '').toString()) || (err instanceof Error ? err.message : String(err))}`,
     };
   }
 }

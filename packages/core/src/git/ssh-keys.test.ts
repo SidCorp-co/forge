@@ -1,4 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+// @gate-input whole-tree — the host-answer cases run a fake ssh from PATH, which the root-walk guard cannot see into.
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  GITHUB_NOT_FOUND,
+  GITLAB_NO_ACCESS,
+  type HostAnswer,
+  keyUnknown,
+  NO_REPOSITORY,
+  unreachable,
+} from './host-answers.fixture.js';
 
 const lookup = vi.fn();
 vi.mock('node:dns', () => ({ promises: { lookup: (...a: unknown[]) => lookup(...a) } }));
@@ -51,5 +63,42 @@ describe('testSshConnection', () => {
       code: 'host_unreachable',
       message: 'the repository host nowhere.example could not be resolved',
     });
+  });
+});
+
+describe('testSshConnection, in the words each host refuses with', () => {
+  const bin = mkdtempSync(join(tmpdir(), 'forge-ssh-answer-'));
+  const path = process.env.PATH;
+  process.env.PATH = `${bin}${delimiter}${path ?? ''}`;
+  afterAll(() => {
+    process.env.PATH = path;
+    rmSync(bin, { recursive: true, force: true });
+  });
+
+  /** A fake `ssh` that answers every connection as `answer`'s host does. */
+  function answering(answer: HostAnswer) {
+    writeFileSync(join(bin, 'said'), answer.stderr);
+    writeFileSync(
+      join(bin, 'ssh'),
+      `#!/bin/sh\ncat "${join(bin, 'said')}" >&2\nexit ${answer.exit}\n`,
+    );
+    chmodSync(join(bin, 'ssh'), 0o755);
+  }
+
+  it.each([
+    [GITLAB_NO_ACCESS.name, 'not_found', GITLAB_NO_ACCESS],
+    [GITHUB_NOT_FOUND.name, 'not_found', GITHUB_NOT_FOUND],
+    [NO_REPOSITORY.name, 'not_found', NO_REPOSITORY],
+    ['a key the host does not know', 'auth_denied', keyUnknown('gitlab.com')],
+    ['an unreachable host', 'host_unreachable', unreachable('172.65.251.78')],
+  ] as const)('reads %s as %s, quoting what it said', async (_name, code, answer) => {
+    lookup.mockResolvedValue([{ address: '172.65.251.78', family: 4 }]);
+    answering(answer);
+
+    const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
+
+    expect(test).toMatchObject({ ok: false, code });
+    expect(test.message).toContain(answer.said.replace('172.65.251.78', 'gitlab.com'));
+    expect(test.message).not.toMatch(/^remote:|remote:\s*(\.|\))/);
   });
 });

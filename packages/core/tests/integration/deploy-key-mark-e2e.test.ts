@@ -12,6 +12,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
+import {
+  GITHUB_NOT_FOUND,
+  GITLAB_NO_ACCESS,
+  type HostAnswer,
+  keyUnknown,
+  NO_REPOSITORY,
+  unreachable,
+} from '../../src/git/host-answers.fixture.js';
 import { refusal, SEQ, useCommitLandingWorld } from '../helpers/commit-landing-fixture.js';
 import {
   attachDeployKey,
@@ -45,7 +53,7 @@ beforeAll(() => {
 afterAll(() => host.close());
 
 beforeEach(async () => {
-  host.refusing(false);
+  host.answering(null);
   const { db, projectId } = current();
   await attachDeployKey(db, projectId, GITLAB_URL);
 });
@@ -121,21 +129,53 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
   }, 60_000);
 
-  it('refuses COMMIT_UNVERIFIED naming the cause where the host refuses the key (criteria 11, 16)', async () => {
-    host.refusing(true);
-    const issue = await seed();
+  const GIT_ACCESS = "the project's Settings → Runners → Git access";
+  const HOST_ANSWERS: Array<[HostAnswer, string[]]> = [
+    [
+      GITLAB_NO_ACCESS,
+      [
+        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
+        `give the deploy key attached under ${GIT_ACCESS} read access to that repository`,
+      ],
+    ],
+    [
+      GITHUB_NOT_FOUND,
+      [
+        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
+      ],
+    ],
+    [NO_REPOSITORY, ['correct the SSH clone URL set there']],
+    [
+      keyUnknown('gitlab.com'),
+      [
+        'the git host refused the deploy key attached to this project',
+        `give its public key read access to ${GITLAB_URL}`,
+      ],
+    ],
+    [
+      unreachable('172.65.251.78'),
+      [`the git host ${GITLAB_URL} names could not be reached`, 'ssh: connect to host gitlab.com'],
+    ],
+  ];
 
-    const refused = await refusal(() => mark(issue, own()));
+  it.each(HOST_ANSWERS.map(([answer, says]) => [answer.name, answer, says] as const))(
+    'refuses COMMIT_UNVERIFIED naming the cause in the words of %s, and writes nothing (criteria 11, 16)',
+    async (_name, answer, says) => {
+      host.answering(answer);
+      const issue = await seed();
 
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain(
-      'the git host refused the deploy key attached to this project',
-    );
-    expect(refused.message).toContain('git@gitlab.com: Permission denied (publickey).');
-    expect(refused.message).toContain('Settings → Runners → Git access');
-    expect(refused.message).not.toMatch(/GitHub binding|Integrations/);
-    expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
-  }, 60_000);
+      const refused = await refusal(() => mark(issue, own()));
+
+      expect(refused.code).toBe('COMMIT_UNVERIFIED');
+      expect(refused.message).toContain(answer.said);
+      for (const s of says) expect(refused.message).toContain(s);
+      expect(refused.message).not.toMatch(/remote:\s*(\.|\))/);
+      expect(refused.message).not.toContain('172.65.251.78');
+      expect(refused.message).not.toMatch(/GitHub binding|Integrations/);
+      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+    },
+    60_000,
+  );
 
   it('refuses COMMIT_UNVERIFIED, never landed, where the live branch is not in the repository (criterion 11)', async () => {
     const { db, projectId } = current();
@@ -149,6 +189,10 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const refused = await refusal(() => mark(issue, at.offBase as string));
     expect(refused.code).toBe('COMMIT_UNVERIFIED');
     expect(refused.message).toContain(`${GITLAB_URL} has no branch staging`);
+    expect(refused.message).toContain(
+      `Two routes clear it: mark again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has;`,
+    );
+    expect(refused.message).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
   }, 60_000);
 
