@@ -26,6 +26,12 @@ const release = {
       { section: "Fixed", entries: [{ key: "ISS-98", title: "Export no longer fails", userFacing: "Exporting a board works again.", technical: null }] },
     ],
     withoutNotes: [{ key: "ISS-101", title: "Rename a helper" }],
+    language: "vi",
+    attention: [
+      { key: "ISS-94", title: "Saved boards keep every card", notInLanguage: true, references: [] },
+      { key: "ISS-98", title: "Export no longer fails", notInLanguage: true, references: ["commit sha 9db12a21a"] },
+      { key: "ISS-99", title: "Rules", notInLanguage: false, references: ["code SOD-RULE-MAKER-CHECKER"] },
+    ],
   },
   changes: { surfaces: [], risks: [], unclassified, boxRead: [], shipsNothing: false },
 } as unknown as ReleaseDetail;
@@ -39,6 +45,20 @@ describe("a release leads with what users get", () => {
     expect(within(sections[0] as HTMLElement).getByText("Saved boards keep every card")).toBeTruthy();
     const order = [...body.querySelectorAll("[data-testid='release-users-get'],[data-testid='release-technical']")].map((n) => n.getAttribute("data-testid"));
     expect(order).toEqual(["release-users-get", "release-technical"]);
+  });
+
+  it("says above the notes how many need attention, by cause, and links each", () => {
+    renderWithQuery(<OverviewPane r={release} slug="hop" all={[]} />);
+    const line = screen.getByTestId("release-notes-attention");
+    expect(line.textContent).toContain("3 notes need attention before release: 2 not in Vietnamese, 2 carry technical references");
+    expect(within(line).getAllByRole("link").map((a) => a.textContent)).toEqual(["ISS-94", "ISS-98", "ISS-99"]);
+    const order = [...screen.getByTestId("view-overview").querySelectorAll("[data-testid='release-notes-attention'],[data-testid='release-users-section']")].map((n) => n.getAttribute("data-testid"));
+    expect(order[0]).toBe("release-notes-attention");
+  });
+
+  it("shows no line when no note needs attention", () => {
+    renderWithQuery(<OverviewPane r={{ ...release, notes: { ...release.notes, attention: [] } }} slug="hop" all={[]} />);
+    expect(screen.queryByTestId("release-notes-attention")).toBeNull();
   });
 
   it("keeps the engineering detail collapsed and says each unclassified reason once with a count", () => {

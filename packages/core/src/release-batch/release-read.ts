@@ -8,7 +8,7 @@ import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { notFound } from '../middleware/route-errors.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
-import { approvalRequired, readReleasePath } from '../project-config/index.js';
+import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { readLandingReadings } from './landing-surfaces.js';
@@ -94,15 +94,23 @@ async function sharedFor(
   current: string | null,
   required: boolean,
 ): Promise<Shared> {
-  const [facts, approvers] = await Promise.all([
+  const [facts, approvers, language] = await Promise.all([
     loadReleaseFacts(
       projectId,
       parts.flatMap((p) => p.issueIds),
       parts.flatMap((p) => (p.runId ? [p.runId] : [])),
     ),
     approversOf(projectId),
+    readContentLanguage(projectId),
   ]);
-  return { current, required, viewer, approvers, facts };
+  return {
+    current,
+    required,
+    viewer,
+    approvers,
+    facts,
+    contentLanguage: language.contentLanguage,
+  };
 }
 
 async function runParts(projectId: string, version: string | undefined, required: boolean) {

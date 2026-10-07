@@ -249,3 +249,59 @@ export function contentLanguageScriptWarning(
 	if (VIETNAMESE_LETTER.test(text)) return null;
 	return `${what} is ${words.length} words with no Vietnamese letter (no đ, no vowel or tone mark) in it, but this project's content language is ${contentLanguageName(tag)} (\`${tag}\`); it was stored as sent. Rewrite it in ${contentLanguageName(tag)}.`;
 }
+
+// A release note is read by the people who use the product, so it carries none of the engineer's
+// handles for the change. These are the handles a reader cannot follow; a hit is a warning on the
+// write and a line on the draft, never a refusal (policy input).
+const NOTE_KEY = /\b(?:ISS|REQ|FB)-\d+\b/g;
+// a commit sha: 7 to 40 hex digits holding a digit and a letter, so "defaced" and "2026100" are not read as one
+const NOTE_SHA = /\b[0-9a-f]{7,40}\b/gi;
+// a rule or error code of two parts or more: SOD-RULE-MAKER-CHECKER, RELEASE_RECORD_MISSING
+const NOTE_CODE = /\b[A-Z][A-Z0-9]+(?:[_-][A-Z][A-Z0-9]+)+\b/g;
+const NOTE_TECHNICAL_LABEL = /\btechnical note\b/i;
+
+/** The engineer's references inside `text`, each named as it reads, in order of first appearance and once. */
+export function releaseNoteReferences(text: string): string[] {
+	const keys: string[] = text.match(NOTE_KEY) ?? [];
+	const shas = (text.match(NOTE_SHA) ?? []).filter(
+		(s) => /\d/.test(s) && /[a-f]/i.test(s),
+	);
+	const codes = (text.match(NOTE_CODE) ?? []).filter((c) => !keys.includes(c));
+	const label = NOTE_TECHNICAL_LABEL.exec(text);
+	return [
+		...new Set([
+			...shas.map((s) => `commit sha ${s}`),
+			...keys.map((k) => `issue key ${k}`),
+			...codes.map((c) => `code ${c}`),
+			...(label ? [`label "${label[0]}"`] : []),
+		]),
+	];
+}
+
+/** What a release note's user-facing line needs attention for, in a project writing in `tag`. */
+export interface ReleaseNoteAttention {
+	notInLanguage: boolean;
+	references: string[];
+}
+
+export function releaseNoteAttention(
+	tag: string,
+	userFacing: string,
+): ReleaseNoteAttention {
+	return {
+		notInLanguage:
+			contentLanguageScriptWarning(tag, userFacing, "releaseNotes.userFacing") !==
+			null,
+		references: releaseNoteReferences(userFacing),
+	};
+}
+
+/** The one warning line for the references a note carries, or null; the note was stored as sent. */
+export function releaseNoteReferenceWarning(
+	text: string,
+	what: string,
+): string | null {
+	const found = releaseNoteReferences(text);
+	if (found.length === 0) return null;
+	return `${what} carries ${found.join(", ")}: people who use the product cannot follow these; it was stored as sent. Rewrite it as the one plain line a user would read, and keep the engineering detail in \`technical\`.`;
+}

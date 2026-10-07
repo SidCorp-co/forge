@@ -29,6 +29,7 @@ export {
   loadReleaseRoster,
   owedReleaseNotes,
   waitingIssueIds as draftReleaseIssueIds,
+  warnedReleaseNotes,
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { approversOf } from './release-facts.js';
