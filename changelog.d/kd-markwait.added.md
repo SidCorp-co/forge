@@ -1,0 +1,1 @@
+**A park can wait on a merge mark, and the mark answers it.** `needs_info` takes `awaitsMerge: { issueId }`; whatever stamps that mark answers the question and resumes the issue. A mark already standing is refused `QUESTION_MERGE_ALREADY_MARKED`.

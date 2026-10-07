@@ -167,6 +167,10 @@ export const agentQuestions = pgTable(
     /** The workflow design revision a park waits on: its approver's decision answers this question (ISS-254). */
     awaitsWorkflowId: uuid('awaits_workflow_id'),
     awaitsRevision: integer('awaits_revision'),
+    /** The issue whose merge mark a park waits on: the stamp writing it answers this question. */
+    awaitsMergeIssueId: uuid('awaits_merge_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -184,6 +188,14 @@ export const agentQuestions = pgTable(
     index('agent_questions_awaits_design_open_idx')
       .on(t.awaitsWorkflowId, t.awaitsRevision)
       .where(sql`${t.status} = 'open' and ${t.awaitsWorkflowId} is not null`),
+    // a question waits on one fact: a design decision or a merge mark, never both
+    check(
+      'agent_questions_awaits_one_chk',
+      sql`${t.awaitsWorkflowId} IS NULL OR ${t.awaitsMergeIssueId} IS NULL`,
+    ),
+    index('agent_questions_awaits_merge_open_idx')
+      .on(t.awaitsMergeIssueId)
+      .where(sql`${t.status} = 'open' and ${t.awaitsMergeIssueId} is not null`),
     index('agent_questions_session_idx').on(t.agentSessionId),
     index('agent_questions_issue_idx').on(t.issueId),
     index('agent_questions_batch_idx').on(t.batchId),

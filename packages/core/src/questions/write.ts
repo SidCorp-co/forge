@@ -35,6 +35,7 @@ import {
   type PendingDesign,
   voidSupersededDesignQuestions,
 } from './design-wait.js';
+import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wait.js';
 import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
@@ -66,6 +67,8 @@ export type AskInput = {
   origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
   /** The design revision whose decision answers this question; only a park names one. */
   awaitsDesign?: AwaitedDesign;
+  /** The issue whose merge mark answers this question; only a park names one. */
+  awaitsMerge?: AwaitedMerge;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -212,8 +215,14 @@ export async function askParkQuestion(
     awaitsDesign?: AwaitedDesign | undefined;
     /** Core linked `awaitsDesign` itself, as the one revision proposed under this issue: the question says so. */
     linkedUnderIssue?: boolean | undefined;
+    awaitsMerge?: AwaitedMerge | undefined;
   },
 ) {
+  if (input.awaitsDesign && input.awaitsMerge) {
+    throw new Error(
+      'questions: a park question waits on one fact, a design decision or a merge mark, and this one names both',
+    );
+  }
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {
@@ -227,6 +236,11 @@ export async function askParkQuestion(
         : `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
     }
   }
+  if (input.awaitsMerge) {
+    const awaited = await awaitedMergeFault(executor, input.projectId, input.awaitsMerge);
+    if ('fault' in awaited) throw refuseQuestion(awaited.fault.code, awaited.fault.detail);
+    needed ||= neededForMerge(awaited.key);
+  }
   const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
   return insertQuestion(executor, {
@@ -237,6 +251,7 @@ export async function askParkQuestion(
     blockerKind: 'human',
     answer,
     ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
+    ...(input.awaitsMerge ? { awaitsMerge: input.awaitsMerge } : {}),
   });
 }
 
@@ -319,6 +334,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       parkDeadlineAt: input.parkDeadlineAt,
       awaitsWorkflowId: input.awaitsDesign?.workflowId,
       awaitsRevision: input.awaitsDesign?.revision,
+      awaitsMergeIssueId: input.awaitsMerge?.issueId,
     })
     .returning();
   if (!row) throw new Error('the question was not written');
