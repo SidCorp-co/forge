@@ -4,6 +4,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { showToast } from "@/design/primitives/toast";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { TOUR_STATES_KEY } from "../hooks";
 import { TourHint } from "./tour-hint";
@@ -16,6 +17,7 @@ vi.mock("@forge/contracts/tours", async (actual) => {
     PRODUCT_TOURS: real.PRODUCT_TOURS.map((t) => (t.id === "integrations" ? { ...t, revision: 2 } : t)),
   };
 });
+vi.mock("@/design/primitives/toast", () => ({ showToast: vi.fn(), Toaster: () => null }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/settings",
@@ -78,5 +80,35 @@ describe("the inline first-visit hint", () => {
     serve([{ key: "tour:integrations", value: { revision: 1, outcome: "completed", at }, updatedAt: at }]);
     renderWithQuery(<TourHint tourId="integrations" projectRole="admin" />);
     expect(await screen.findByTestId("tour-hint-integrations")).toHaveTextContent("This screen just changed");
+  });
+
+  it("goes at once on Later, and stays gone on the next read, since core keeps the dismissal", async () => {
+    const stored: unknown[] = [];
+    fakeCore((call) => {
+      if (call.method === "GET" && call.path === "/me/product-state") return { body: { items: stored } };
+      if (call.method === "PUT") {
+        stored.push({ key: "tour:integrations", value: (call.body as { value: unknown }).value, updatedAt: at });
+        return { body: stored[0] };
+      }
+      return undefined;
+    });
+    const first = renderWithQuery(<TourHint tourId="integrations" projectRole="admin" />);
+    await userEvent.click(within(await screen.findByTestId("tour-hint-integrations")).getByRole("button", { name: "Later" }));
+    expect(screen.queryByTestId("tour-hint-integrations")).toBeNull();
+    first.unmount();
+    const revisit = renderWithQuery(<TourHint tourId="integrations" projectRole="admin" />);
+    await waitFor(() => expect(revisit.client.getQueryState(TOUR_STATES_KEY)?.status).toBe("success"));
+    expect(screen.queryByTestId("tour-hint-integrations")).toBeNull();
+  });
+
+  it("goes on Later even where core refuses to keep it, and says it could not remember", async () => {
+    fakeCore((call) => {
+      if (call.method === "GET") return { body: { items: [] } };
+      return { status: 422, body: { error: { code: "PRODUCT_STATE_REFUSED", message: "at is later than now" } } };
+    });
+    renderWithQuery(<TourHint tourId="integrations" projectRole="admin" />);
+    await userEvent.click(within(await screen.findByTestId("tour-hint-integrations")).getByRole("button", { name: "Later" }));
+    expect(screen.queryByTestId("tour-hint-integrations")).toBeNull();
+    expect(showToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Could not remember that", tone: "error" }));
   });
 });

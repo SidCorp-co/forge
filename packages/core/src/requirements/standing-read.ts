@@ -235,8 +235,9 @@ export async function standingsOf(
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
-        unapprovedDesigns: by(unapproved, row.id).map(({ flow, designStatus }) => ({
+        unapprovedDesigns: by(unapproved, row.id).map(({ flow, title, designStatus }) => ({
           flow,
+          title,
           designStatus,
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },

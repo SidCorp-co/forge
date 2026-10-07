@@ -46,7 +46,10 @@ import { targetView } from './target-view.js';
 /** Everything the rows point at, loaded once for a page of rows. */
 export interface Linked {
   prefix: string | null;
-  issues: Map<string, { key: string; title: string; status: string }>;
+  issues: Map<
+    string,
+    { key: string; title: string; status: string; releaseVersion: string | null }
+  >;
   /** The issues each issue-routed item names as its carriers, by item id, oldest issue first. */
   routeIssues: Map<string, string[]>;
   requirements: Map<string, { key: string; title: string; status: string; delivered: boolean }>;
@@ -128,8 +131,10 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
               seq: issues.issSeq,
               title: issues.title,
               status: issues.status,
+              releaseVersion: pipelineRuns.releaseVersion,
             })
             .from(issues)
+            .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
             .where(inArray(issues.id, issueIds))
         : [],
       reqIds.length
@@ -207,7 +212,12 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     issues: new Map(
       issueRows.map((i) => [
         i.id,
-        { key: formatIssueRef(prefix, i.seq), title: i.title, status: i.status },
+        {
+          key: formatIssueRef(prefix, i.seq),
+          title: i.title,
+          status: i.status,
+          releaseVersion: i.releaseVersion ?? null,
+        },
       ]),
     ),
     routeIssues,
@@ -251,7 +261,10 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
 }
 
 /** Every issue an issue-routed item names, by key with its own status; none for another route. */
-function routeIssueViews(r: Row, l: Linked): { key: string; status: string }[] {
+function routeIssueViews(
+  r: Row,
+  l: Linked,
+): (FeedbackCarrierView & { key: string; status: string })[] {
   return (l.routeIssues.get(r.id) ?? []).map((id) => {
     const issue = l.issues.get(id);
     if (!issue) {
@@ -259,7 +272,11 @@ function routeIssueViews(r: Row, l: Linked): { key: string; status: string }[] {
         `${feedbackKey(r.fbSeq)} is carried by issue ${id}, which the carriers' read did not load`,
       );
     }
-    return { key: issue.key, status: issue.status };
+    return {
+      key: issue.key,
+      status: issue.status,
+      ...(issue.releaseVersion ? { release: issue.releaseVersion } : {}),
+    };
   });
 }
 
@@ -360,6 +377,7 @@ export function summaryOf(
         owed.every((c) => c.status === AT_RELEASE_GATE)
           ? l.release
           : null,
+      carrierVersion: owed.find((c) => c.release)?.release ?? null,
     },
   );
   return {

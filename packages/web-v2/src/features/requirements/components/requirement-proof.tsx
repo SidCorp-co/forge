@@ -153,12 +153,10 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
-                      <Link href={issueHref(slug, i.displayId)} className="font-mono text-12 font-semibold text-link hover:underline">
-                        {i.displayId}
-                      </Link>
-                      <span className="max-w-[36ch] truncate text-muted" title={i.title}>
+                      <Link href={issueHref(slug, i.displayId)} className="max-w-[36ch] truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
                         {i.title}
-                      </span>
+                      </Link>
+                      <span className="font-mono text-12 text-subtle">{i.displayId}</span>
                       <StatusBadge family="issue" value={i.status} tone={i.tone} />
                       {stale ? <span className="text-subtle">Earlier wording</span> : null}
                     </span>
@@ -167,14 +165,17 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
               </div>
               {c.issues.length > 0 ? (
                 <details className="mt-1.5 text-12-5" data-testid="criterion-evidence">
-                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">Evidence · {c.issues.length}</summary>
+                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">What the evidence says · {c.issues.length}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
                       links.map((l) => (
-                        <li key={`${i.issueId}-${l.criterion}`} className="text-muted">
-                          <span className="font-mono text-12">{i.displayId}</span> criterion {l.criterion} ·{" "}
-                          {l.verdict ? `latest verdict ${VERDICT_WORD[l.verdict]}` : "no verdict yet"}
-                          {l.stale ? " · traces to an earlier wording" : ""}
+                        <li key={`${i.issueId}-${l.criterion}`} className="text-muted" data-testid="criterion-evidence-row">
+                          <span className="font-medium text-fg">{l.verdict ? VERDICT_WORD[l.verdict] : "Not judged yet"}</span>
+                          {l.verdictAt ? <span title={stamp(l.verdictAt)}> · {formatRelativeTime(l.verdictAt)}</span> : null} · {i.title}
+                          {l.stale ? " · traces to an earlier wording" : ""}{" "}
+                          <Link href={issueHref(slug, i.displayId)} className="font-mono text-12 text-subtle hover:underline">
+                            {i.displayId}
+                          </Link>
                         </li>
                       )),
                     )}
@@ -194,17 +195,23 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
 
 type Check = { check?: unknown; passed?: unknown; detail?: unknown };
 
-/** The newest readiness check the BA assistant proposed, as one line: met of total, one mark per check. */
+/**
+ * The newest readiness check the BA assistant proposed, as one line: met of total, one mark per check,
+ * led by its own separator. Nothing schedules a check, so a requirement it was never run on says
+ * nothing rather than a line that reads as work somebody owes.
+ */
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
   const r = suggestions.find((s) => s.kind === "readiness");
   const raw = (r?.payload as { checks?: unknown } | null | undefined)?.checks;
   const checks = (Array.isArray(raw) ? raw : []) as Check[];
-  if (!r || checks.length === 0) return <span className="text-muted">Readiness not checked yet</span>;
+  if (!r || checks.length === 0) return null;
   const met = checks.filter((c) => c.passed === true).length;
   return (
+    <>
+    <span aria-hidden>·</span>
     <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
-      <span title={checks.map((c) => `${c.passed === true ? "Met" : "Not met"} · ${String(c.check ?? "")}`).join("\n")}>
-        Readiness <b className="font-semibold text-fg">{met} of {checks.length}</b> met
+      <span title={`Checked by the BA assistant before the requirement was agreed\n${checks.map((c) => `${c.passed === true ? "Met" : "Not met"} · ${String(c.check ?? "")}`).join("\n")}`}>
+        Readiness <b className="font-semibold text-fg">{met} of {checks.length}</b> checks met
       </span>
       <span className="inline-flex gap-0.5">
         {checks.map((c) => (
@@ -218,6 +225,7 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
       </span>
       {r.baseRevision !== null ? <span className="text-subtle">on r{r.baseRevision}</span> : null}
     </span>
+    </>
   );
 }
 

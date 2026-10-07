@@ -130,6 +130,8 @@ export interface StandingFacts {
   masterOwesTriage: boolean;
   /** Set only where the item is planned on issues every one still owed of which stands at `awaiting_release`. */
   carrierRelease: CarrierRelease | null;
+  /** The version of the release a carrier issue is already cut into, when one is; else null. */
+  carrierVersion?: string | null;
 }
 
 const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null };
@@ -187,9 +189,21 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'planned':
-      if (route === 'issue') return issueWait(carriers, viewer, facts.carrierRelease);
+      if (route === 'issue')
+        return issueWait(carriers, viewer, facts.carrierRelease, facts.carrierVersion ?? null);
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
+      if (route === 'answer') {
+        return {
+          wait: wait(
+            'person',
+            reporter,
+            'Confirm the answer',
+            'resolved: the question was answered, and the reporter confirms the answer settled it',
+          ),
+          yours: viewer.isReporter,
+        };
+      }
       return {
         wait: wait('person', reporter, 'verify the fix', 'resolved: the reporter verifies the fix'),
         yours: viewer.isReporter,
@@ -206,6 +220,7 @@ function issueWait(
   carriers: readonly string[],
   viewer: StandingViewer,
   release: CarrierRelease | null,
+  version: string | null,
 ): Owed {
   const carrier = carriersPhrase(carriers);
   const issue = carrier ?? 'the linked issue';
@@ -228,9 +243,9 @@ function issueWait(
         wait: wait(
           'person',
           'A release approver',
-          `approve the release of ${issue}`,
+          version ? `Approve release ${version}` : 'Approve the release that carries it',
           `planned: ${issue} ${waits} at awaiting_release and this project requires a holder of releases.approve to approve its release`,
-          ref,
+          { ref: version },
         ),
         yours: viewer.canApproveRelease,
       };

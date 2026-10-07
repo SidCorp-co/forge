@@ -26,6 +26,16 @@ export const WHATS_NEW_KIND_OF_SECTION: Readonly<Record<WhatsNewSection, WhatsNe
 export const WHATS_NEW_AWAY_DAYS = 7;
 /** How far back the feed reads when the reader's mark is recent or absent. */
 export const WHATS_NEW_WINDOW_DAYS = 30;
+/** How far back a reader's first look reads, when no seen mark says where they stopped. */
+export const WHATS_NEW_FIRST_LOOK_DAYS = 7;
+
+/**
+ * Orders two entries of one day, newest version first: `0.4.0-dev.96` before `0.4.0-dev.9`, where a
+ * plain string compare puts them the other way. Equal versions keep the order the changelog lists.
+ */
+export function newestVersionFirst(a: { version: string }, b: { version: string }): number {
+	return b.version.localeCompare(a.version, "en", { numeric: true });
+}
 /** How far back the feed reads at most, however long the reader was away. */
 export const WHATS_NEW_MAX_WINDOW_DAYS = 90;
 /** How many unread entries an away summary lifts out as highlights. */

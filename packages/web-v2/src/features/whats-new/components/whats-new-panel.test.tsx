@@ -24,6 +24,12 @@ describe("the What's new panel", () => {
     expect(screen.getByText("A blocked release names its owner.")).toBeInTheDocument();
   });
 
+  it("counts a first look over the window core read, 7 days, not a fixed 30", () => {
+    const feed = feedOf(entries.slice(0, 3), { seenAt: null, since: "2026-09-30T10:00:00Z", counts: { new: 1, improved: 1, fixed: 1 } });
+    renderWithQuery(<WhatsNewPanel open onClose={() => {}} failure={null} now={NOW} feed={feed} />);
+    expect(screen.getByTestId("whats-new-since")).toHaveTextContent("The last 7 days: 3 changes");
+  });
+
   it("summarises for a reader away seven days, three highlights, the rest behind one button", async () => {
     const feed = feedOf(entries, {
       seenAt: "2026-09-28T08:00:00Z",

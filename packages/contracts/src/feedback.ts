@@ -475,6 +475,8 @@ export interface FeedbackEndpointsResponse {
 export interface FeedbackCarrierView {
 	key: string | null;
 	status: string | null;
+	/** The version of the release an issue carrier is cut into; absent on any other carrier and until cut. */
+	release?: string | null;
 }
 
 export interface FeedbackRouteView {

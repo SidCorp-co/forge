@@ -57,6 +57,7 @@ export async function issueCriteriaOf(
 type PinRow = {
   requirement_id: string;
   flow: string;
+  title: string | null;
   pinned: number | null;
   approved: number | null;
 };
@@ -64,7 +65,7 @@ type PinRow = {
 export async function latestPinsOf(ids: readonly string[]) {
   if (ids.length === 0) return [];
   const rows = (await db.execute(sql`
-    SELECT rw.requirement_id, w.flow, p.design_revision AS pinned, w.approved_revision AS approved
+    SELECT rw.requirement_id, w.flow, w.document->>'title' AS title, p.design_revision AS pinned, w.approved_revision AS approved
       FROM requirement_workflows rw
       JOIN project_workflows w ON w.id = rw.workflow_id
       JOIN LATERAL (
@@ -81,6 +82,7 @@ export async function latestPinsOf(ids: readonly string[]) {
   return [...rows].map((r) => ({
     requirementId: r.requirement_id,
     flow: r.flow,
+    title: r.title,
     pinned: r.pinned,
     approved: r.approved,
   }));
@@ -136,7 +138,7 @@ export async function closedAtOf(issueIds: readonly string[]): Promise<Map<strin
 export async function unapprovedDesignsOf(ids: readonly string[]) {
   if (ids.length === 0) return [];
   const rows = (await db.execute(sql`
-    SELECT rw.requirement_id, w.flow, w.design_status
+    SELECT rw.requirement_id, w.flow, w.document->>'title' AS title, w.design_status
       FROM requirement_workflows rw
       JOIN project_workflows w ON w.id = rw.workflow_id
      WHERE w.approved_revision IS NULL
@@ -147,11 +149,13 @@ export async function unapprovedDesignsOf(ids: readonly string[]) {
      ORDER BY w.flow`)) as unknown as {
     requirement_id: string;
     flow: string;
+    title: string | null;
     design_status: string | null;
   }[];
   return [...rows].map((r) => ({
     requirementId: r.requirement_id,
     flow: r.flow,
+    title: r.title ?? r.flow,
     designStatus: r.design_status,
   }));
 }
