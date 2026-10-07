@@ -285,7 +285,13 @@ export interface RequirementFacts {
 	/** The open revision still being written, else null. */
 	draftRevision: number | null;
 	/** Linked designs the latest baseline leaves unpinned (pinned null) or pins below their approved revision. */
-	stalePins: { flow: string; pinned: number | null; approved: number }[];
+	stalePins: {
+		flow: string;
+		/** The design's own title, the name a person reads. */
+		title: string;
+		pinned: number | null;
+		approved: number;
+	}[];
 	/** Linked contracts whose current version is not the one the latest baseline pins. */
 	staleContractPins: {
 		contract: string;
@@ -293,7 +299,7 @@ export interface RequirementFacts {
 		current: string;
 	}[];
 	/** Linked designs holding no approved revision; an agree is refused while any is listed. */
-	unapprovedDesigns: { flow: string; designStatus: string | null }[];
+	unapprovedDesigns: { flow: string; title: string; designStatus: string | null }[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }
@@ -330,6 +336,8 @@ export interface CoverageIssue {
 	 *  earlier wording of the business criterion. */
 	criterion: number;
 	verdict: "pass" | "short" | "fail" | "skipped" | null;
+	/** When that verdict was recorded (ISO); null while there is none. */
+	verdictAt: string | null;
 	stale: boolean;
 }
 

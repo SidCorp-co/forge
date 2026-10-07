@@ -3,7 +3,9 @@
 import { HEALTH_MARKER_KINDS, HEALTH_MARKER_LABELS, type WorkflowHealth } from "@forge/contracts/workflow-health";
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
+import { useState } from "react";
 import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { DisclosureToggle } from "@/features/releases/components/release-bits";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
@@ -184,6 +186,71 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   );
 }
 
+/** What the design's health says, in a BA's words; the kernel's terms sit behind Technical detail. */
+export function healthSentences(health: WorkflowHealth): string[] {
+  const out: string[] = [];
+  if (!health.rooted.rooted) {
+    const why = health.rooted.missing.map((m) => (m === "approved_revision" ? "it has no approved revision yet" : "no requirement follows it"));
+    out.push(`The code is not being compared with this design: ${why.join(" and ")}.`);
+  } else if (health.observation === null) {
+    out.push("The code has not been compared with this design yet.");
+  } else {
+    const n = health.markers.length;
+    out.push(
+      n === 0
+        ? "The code agrees with this design."
+        : `The code differs from this design in ${n} ${n === 1 ? "place" : "places"}.`,
+    );
+  }
+  if (health.needsYou > 0) {
+    out.push(`${health.needsYou} ${health.needsYou === 1 ? "difference needs" : "differences need"} a person to decide.`);
+  }
+  return out;
+}
+
+/** Whether the code and the approved design are confirmed to match, as one sentence. */
+export function reconciliationSentence(health: WorkflowHealth): string {
+  const r = health.reconciliation;
+  if (r.state === "reconciled") return r.version ? `The released code matches the approved design (version ${r.version.version}).` : "The code matches the approved design.";
+  return "The code and the approved design are not yet confirmed to match.";
+}
+
+/** Whether work may start from the design, as one sentence. */
+export function buildGateSentence(d: WorkflowDesign): string {
+  return d.gate.open ? "Work can start from this design." : "Work on this design is on hold until it is approved.";
+}
+
+function PlainStatus({ d, health }: { d: WorkflowDesign; health: WorkflowHealth | undefined }) {
+  return (
+    <FactsGroup title="Where it stands" testId="facts-plain-status">
+      <ul className="grid gap-1 text-13 leading-relaxed-1-6" data-testid="plain-status">
+        {health ? healthSentences(health).map((t) => <li key={t}>{t}</li>) : null}
+        {health ? <li>{reconciliationSentence(health)}</li> : null}
+        <li>{buildGateSentence(d)}</li>
+      </ul>
+    </FactsGroup>
+  );
+}
+
+/** The kernel's own terms for the same facts (markers, reconciliation state, build gate), collapsed. */
+function TechnicalDetail({ d, slug, health }: { d: WorkflowDesign; slug: string; health: WorkflowHealth | undefined }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-label="Technical detail" data-testid="design-technical">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="px-0 py-2 text-13" testId="design-technical-toggle">
+        Technical detail
+      </DisclosureToggle>
+      {open ? (
+        <div>
+          {health ? <HealthGroup health={health} slug={slug} /> : null}
+          {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
+          <BuildGate d={d} slug={slug} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 interface DesignFactsProps {
   d: WorkflowDesign;
   record: WorkflowRecord;
@@ -210,10 +277,8 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           </p>
         </FactsGroup>
       ) : null}
-      {health ? <HealthGroup health={health} slug={slug} /> : null}
-      {health ? <ReconciliationGroup health={health} slug={slug} /> : null}
+      <PlainStatus d={d} health={health} />
       <Requirements d={d} slug={slug} />
-      <BuildGate d={d} slug={slug} />
       <FactsGroup title="Properties" testId="facts-properties">
         <Fact label="Revision" testId="fact-revision">
           <span className="font-mono text-12-5">r{shownRevision}</span>
@@ -240,7 +305,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
         </Fact>
         <Fact label="Approver">
           <span title={`Whoever holds ${d.approver} on the project: a project admin, or an org owner or admin, person or agent`}>
-            Holders of <span className="font-mono">{d.approver}</span>
+            Anyone allowed to approve designs
           </span>
         </Fact>
         <Fact label="Template">
@@ -262,6 +327,7 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
           <span title={formatStamp(record.document.updatedAt)}>{formatRelativeTime(record.document.updatedAt)}</span>
         </Fact>
       </FactsGroup>
+      <TechnicalDetail d={d} slug={slug} health={health} />
     </div>
   );
 }

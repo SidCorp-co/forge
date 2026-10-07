@@ -402,6 +402,8 @@ interface BaselinePin {
 
 interface PinPosition {
   flow: string;
+  /** The design's own title, the name a person reads; absent, the flow slug stands in. */
+  title?: string | null;
   pinned: number | null;
   approved: number | null;
 }
@@ -410,10 +412,10 @@ interface PinPosition {
 // say "re-pin" and the re-pin act reads it to refuse when nothing moved, so the two cannot disagree
 export function stalePinsOf(
   positions: readonly PinPosition[],
-): { flow: string; pinned: number | null; approved: number }[] {
+): { flow: string; title: string; pinned: number | null; approved: number }[] {
   return positions.flatMap((p) =>
     p.approved !== null && (p.pinned === null || p.approved > p.pinned)
-      ? [{ flow: p.flow, pinned: p.pinned, approved: p.approved }]
+      ? [{ flow: p.flow, title: p.title ?? p.flow, pinned: p.pinned, approved: p.approved }]
       : [],
   );
 }

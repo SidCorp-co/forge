@@ -107,21 +107,21 @@ export function PrimaryActions({
     );
   } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
     const moved = [
-      ...s.facts.stalePins.map((p) => `${p.flow} r${p.approved} (${p.pinned === null ? "not pinned" : `was r${p.pinned}`})`),
-      ...s.facts.staleContractPins.map((p) => `${p.contract}@${p.current} (was ${p.pinned ?? "unpinned"})`),
+      ...s.facts.stalePins.map((p) => `${p.title} revision ${p.approved} (${p.pinned === null ? "not followed yet" : `was revision ${p.pinned}`})`),
+      ...s.facts.staleContractPins.map((p) => `${p.contract} ${p.current} (was ${p.pinned ?? "not followed yet"})`),
     ];
     primary = (
       <SignOff
         projectId={projectId}
         reqKey={d.key}
-        label={`Re-pin r${head.revision}`}
-        tip={`Pins ${moved.join(", ")} in a new baseline of r${head.revision}`}
-        consequence={`Re-pinning writes a new baseline of r${head.revision} pinning ${moved.join(", ")}.`}
+        label="Update to the approved design"
+        tip={`Follows ${moved.join(", ")} from now on; its criteria are re-checked against it`}
+        consequence={`The requirement will follow ${moved.join(", ")}, and its criteria are re-checked against it.`}
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
   } else if (d.canSignOff && d.status === "draft" && head && !draft && s.facts.unapprovedDesigns.length > 0) {
-    const designs = s.facts.unapprovedDesigns.map((x) => `${x.flow} (${x.designStatus ?? "no design yet"})`).join(", ");
+    const designs = s.facts.unapprovedDesigns.map((x) => `${x.title} (${x.designStatus ?? "no design yet"})`).join(", ");
     primary = (
       <Tooltip label={`Every linked design is approved before the agree pins it; not approved: ${designs}`} multiline>
         <Button type="button" size="sm" variant="primary" disabled data-testid="agree-held">

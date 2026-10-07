@@ -109,7 +109,6 @@ function Criteria({ d, projectId, slug }: { d: RequirementDetail; projectId: str
         <span>
           Passing <b className="font-semibold text-fg">{f.passing} of {f.criteria}</b>
         </span>
-        <span aria-hidden>·</span>
         <Readiness suggestions={sug.data?.suggestions ?? []} />
         {d.standing.shownRevision !== null ? (
           <>

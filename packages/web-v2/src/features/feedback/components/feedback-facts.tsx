@@ -39,19 +39,49 @@ function PhaseSteps({ f }: { f: FeedbackView }) {
   );
 }
 
+/** The answer a question item was closed with, and who gave it: what the reporter is asked to confirm. */
+function answerOf(f: FeedbackView): { text: string; by: string | null } | null {
+  const text = f.route?.route === "answer" ? f.route.answer : null;
+  if (!text) return null;
+  const given = f.decisions.find((d) => d.route === "answer");
+  return { text, by: given?.decidedByName ?? null };
+}
+
 /** One line at the top of the page and the peek: whom it waits on, from core's read model. */
-export function FeedbackBanner({ f, className }: { f: FeedbackView; className?: string }) {
+export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?: string; className?: string }) {
   const w = f.waitingOn;
   const g = f.attentionGroup;
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
+  const version = f.route?.carriers.find((c) => c.release)?.release ?? null;
+  const approving = g !== "done" && version !== null && w.ref === version && slug;
+  const answer = g !== "done" && w.act === "Confirm the answer" ? answerOf(f) : null;
   return (
     <WaitBanner
       tone={g === "waiting" || g === "done" ? "calm" : tone}
       head={g === "done" ? `${FEEDBACK_PHASE_LABELS[f.phase]}.` : `Waiting on ${w.kind === "you" ? "you" : w.who}:`}
-      body={g === "done" ? "Nothing is owed on it." : w.act || w.who}
+      body={
+        g === "done" ? (
+          "Nothing is owed on it."
+        ) : approving ? (
+          <>
+            Approve release{" "}
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+              {version}
+            </Link>
+          </>
+        ) : (
+          w.act || w.who
+        )
+      }
       rule={w.rule}
       className={className}
-    />
+    >
+      {answer ? (
+        <span data-testid="feedback-answer">
+          {answer.by ? `${answer.by} answered: ` : "Answered: "}“{answer.text}”
+        </span>
+      ) : null}
+    </WaitBanner>
   );
 }
 

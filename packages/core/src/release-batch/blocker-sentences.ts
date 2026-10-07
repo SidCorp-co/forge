@@ -81,7 +81,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{named} {are} not at the release gate, {are} not on this project, or {are} already claimed by a batch. Read the roster and send the issues it lists.',
   RELEASE_ROSTER_EMPTY:
     'Nothing is waiting at the release gate, so there is no release to cut. An issue reaches it by moving to `awaiting_release`, which is an act of its own.',
-  RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so cut this roster in parts, oldest merge first.`,
+  RELEASE_ROSTER_OVERSIZE: `More issues are waiting than one release may carry. A release names at most ${RELEASE_ROSTER_LIMIT} issues, so split this into smaller releases, oldest merge first.`,
   RELEASE_RECORD_MISSING:
     '{named} {have} no release note, and closing {them} would claim a ship ' +
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,

@@ -9,7 +9,7 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import type { RequirementDetail } from "../types";
 import { PrimaryActions, ProposalDecision } from "./requirement-actions";
 
-function detail(unapprovedDesigns: { flow: string; designStatus: string | null }[]): RequirementDetail {
+function detail(unapprovedDesigns: { flow: string; title: string; designStatus: string | null }[]): RequirementDetail {
   return {
     key: "REQ-2",
     status: "draft",
@@ -31,13 +31,13 @@ describe("Agree on a draft requirement", () => {
     const calls = fakeCore(() => undefined);
     const user = userEvent.setup();
     renderWithQuery(
-      <PrimaryActions projectId="p1" slug="epod" d={detail([{ flow: "checkout", designStatus: "proposed" }, { flow: "refund", designStatus: null }])} />,
+      <PrimaryActions projectId="p1" slug="epod" d={detail([{ flow: "checkout", title: "Checkout", designStatus: "proposed" }, { flow: "refund", title: "Refund", designStatus: null }])} />,
     );
     expect(agree()).toBeDisabled();
     await user.hover(agree().closest('[data-slot="tooltip-trigger"]') as HTMLElement);
     await waitFor(() =>
       expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(
-        "not approved: checkout (proposed), refund (no design yet)",
+        "not approved: Checkout (proposed), Refund (no design yet)",
       ),
     );
     await user.click(agree());
@@ -129,23 +129,23 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     );
   });
 
-  it("re-pins the head with the typed reason", async () => {
+  it("updates to the approved design with the typed reason", async () => {
     const stale = {
       ...detail([]),
       status: "agreed",
       standing: {
         state: "agreed",
         waitingOn: { kind: "you" },
-        facts: { stalePins: [{ flow: "checkout", approved: 3, pinned: 2 }], staleContractPins: [], unapprovedDesigns: [] },
+        facts: { stalePins: [{ flow: "checkout", title: "Checkout", approved: 3, pinned: 2 }], staleContractPins: [], unapprovedDesigns: [] },
       },
     } as unknown as RequirementDetail;
     const calls = fakeCore(() => ({ body: stale }));
     const user = userEvent.setup();
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={stale} />);
-    await user.click(screen.getByRole("button", { name: "Re-pin r1" }));
+    await user.click(screen.getByRole("button", { name: "Update to the approved design" }));
     expect(calls).toEqual([]);
     await typeReason(user, "checkout r3 approved");
-    await user.click(within(step()).getByRole("button", { name: "Re-pin r1" }));
+    await user.click(within(step()).getByRole("button", { name: "Update to the approved design" }));
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/repin", body: { revision: 1, reason: "checkout r3 approved" } }]),
     );

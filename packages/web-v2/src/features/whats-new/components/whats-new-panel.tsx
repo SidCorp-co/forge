@@ -8,7 +8,7 @@ import { entriesByKey, sectionsOf, type WhatsNewSection } from "../group";
 import type { WhatsNewDigestView, WhatsNewEntry, WhatsNewFeed, WhatsNewKind } from "../types";
 
 const KINDS: WhatsNewKind[] = ["new", "improved", "fixed"];
-const WINDOW_DAYS = 30;
+const DAY_MS = 86_400_000;
 
 function shortDate(at: string | Date, locale: string): string {
   return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "2-digit" }).format(new Date(at));
@@ -91,10 +91,10 @@ function Section({ section, t, locale, collapseFixes }: { section: WhatsNewSecti
   );
 }
 
-function SinceLine({ feed, t, locale }: { feed: WhatsNewFeed; t: Copy; locale: string }) {
+function SinceLine({ feed, t, locale, now }: { feed: WhatsNewFeed; t: Copy; locale: string; now: Date }) {
   const lead = feed.seenAt
     ? t("whatsNew.sinceLast", { date: shortDate(feed.seenAt, locale), count: feed.unread })
-    : t("whatsNew.sinceWindow", { days: WINDOW_DAYS, count: feed.unread });
+    : t("whatsNew.sinceWindow", { days: Math.max(1, Math.round((now.getTime() - Date.parse(feed.since)) / DAY_MS)), count: feed.unread });
   return (
     <p className="pb-1.5 pt-3 text-13 text-muted" data-testid="whats-new-since">
       <span className="font-semibold text-fg">{lead}</span>
@@ -161,7 +161,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now =
         {failure && <p className="pt-3 text-13 text-muted">{t("whatsNew.failed")}</p>}
         {feed && (
           <>
-            {away ? <AwaySummary feed={feed} t={t} locale={locale} /> : <SinceLine feed={feed} t={t} locale={locale} />}
+            {away ? <AwaySummary feed={feed} t={t} locale={locale} /> : <SinceLine feed={feed} t={t} locale={locale} now={now} />}
             <div className="flex flex-wrap gap-1 pb-1.5 pt-2">
               <FilterChip on={kind === null} onToggle={() => setKind(null)} count={total} testId="whats-new-filter-all">
                 {t("whatsNew.filter.all")}

@@ -65,7 +65,7 @@ describe('an item planned on an issue at the release gate names who releases it'
     expect(planned('approval').waitingOn).toMatchObject({
       kind: 'person',
       who: 'A release approver',
-      act: 'approve the release of ISS-9',
+      act: 'Approve the release that carries it',
     });
     expect(planned('approval', viewer({ canApproveRelease: true })).waitingOn.who).toBe('You');
   });

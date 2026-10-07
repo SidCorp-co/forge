@@ -140,7 +140,7 @@ export function FeedbackPage({
             }
           >
             <DetailMobileTitle itemKey={f.key} title={f.title} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
-            <FeedbackBanner f={f} className="px-8 py-2.5 max-md:px-4" />
+            <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}

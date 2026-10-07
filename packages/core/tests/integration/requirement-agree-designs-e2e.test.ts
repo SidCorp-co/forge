@@ -74,10 +74,10 @@ describe('a draft requirement linked to a design that is only proposed', () => {
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
       who: 'A holder of workflow-designs.approve',
-      act: 'approve design checkout',
+      act: 'approve design Post-discharge follow-up',
     });
     expect((s.facts as Body).unapprovedDesigns).toEqual([
-      { flow: 'checkout', designStatus: 'proposed' },
+      { flow: 'checkout', title: 'Post-discharge follow-up', designStatus: 'proposed' },
     ]);
   });
 

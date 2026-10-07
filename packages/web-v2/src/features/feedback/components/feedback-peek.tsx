@@ -40,7 +40,7 @@ export function FeedbackPeek({
                 title={f.title}
                 action={<FeedbackPrimary f={f} onAct={onOpenFull} />}
               />
-              <FeedbackBanner f={f} className="px-[18px]" />
+              <FeedbackBanner f={f} slug={slug} className="px-[18px]" />
               <div className="px-[18px] pb-4 pt-4">
                 <FeedbackFacts f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} />
               </div>

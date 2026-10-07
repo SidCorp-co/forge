@@ -91,7 +91,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
   RELEASE_ROSTER_OVERSIZE: {
     title: 'Too many issues',
     plain: () =>
-      `More issues are waiting than one release carries (${RELEASE_ROSTER_LIMIT}). Cut them in parts, oldest merge first.`,
+      `More issues are waiting than one release carries (${RELEASE_ROSTER_LIMIT}). Split them into smaller releases, oldest merge first.`,
   },
   RELEASE_RECORD_MISSING: {
     title: 'Release note missing',
@@ -170,7 +170,7 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_TARGET_UNDECLARED: { by: 'admin', act: () => 'declare where releases land' },
   CLAIM_CONFLICT: { by: 'admin', act: () => 'cut the issues that are waiting' },
   RELEASE_ROSTER_EMPTY: { by: 'master', act: () => 'bring an issue to the release gate' },
-  RELEASE_ROSTER_OVERSIZE: { by: 'admin', act: () => 'cut the roster in parts' },
+  RELEASE_ROSTER_OVERSIZE: { by: 'admin', act: () => 'split this release into smaller releases' },
   RELEASE_RECORD_MISSING: { by: 'master', act: onThem('write the release note') },
   RELEASE_WORK_UNMERGED: { by: 'master', act: onThem('mark the merge') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: () => 'declare a source probe on production' },

@@ -74,10 +74,10 @@ interface StandingInput {
   /** Kinds of the suggestions still `proposed` on this requirement. */
   openSuggestionKinds: readonly string[];
   /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
-  stalePins: readonly { flow: string; pinned: number | null; approved: number }[];
+  stalePins: readonly { flow: string; title: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
-  unapprovedDesigns: readonly { flow: string; designStatus: string | null }[];
+  unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
@@ -125,6 +125,7 @@ function coverageOf(input: ProofInput, shownRevision: number | null): Requiremen
           tone: issue.tone,
           criterion: ic.n,
           verdict: ic.verdict,
+          verdictAt: ic.verdictAt?.toISOString() ?? null,
           stale: wording.id !== bc.id,
         } satisfies CoverageIssue,
       ];
@@ -159,6 +160,18 @@ const signerWait = (viewer: StandingInput['viewer'], act: string, rule: string) 
 interface Turn {
   group: RequirementAttentionGroup;
   waitingOn: RequirementWaitingOn;
+}
+
+/** What a signer does about a pin that fell behind, in the words a BA reads: the design's own name and revision. */
+function updateToApprovedAct(
+  designs: StandingInput['stalePins'],
+  contracts: StandingInput['staleContractPins'],
+): string {
+  const parts = [
+    ...designs.map((p) => `Update to the approved design: ${p.title} (revision ${p.approved})`),
+    ...contracts.map((p) => `Update to the current version of ${p.contract} (${p.current})`),
+  ];
+  return parts.join('; ');
 }
 
 function feedbackTurn(input: StandingInput): Turn | null {
@@ -223,12 +236,9 @@ function turnOf(
   const triage = feedbackTurn(input);
   if (triage) return triage;
   if (input.stalePins.length > 0 || input.staleContractPins.length > 0) {
-    const act = `re-pin ${[
-      ...input.stalePins.map((p) => `${p.flow} r${p.approved}`),
-      ...input.staleContractPins.map((p) => `${p.contract}@${p.current}`),
-    ].join(', ')}`;
+    const act = updateToApprovedAct(input.stalePins, input.staleContractPins);
     const rule =
-      'a linked design is unpinned or approved past the revision the agreed baseline pins, or a linked contract has a current version it does not pin';
+      'The design this requirement follows has a newer approved revision, or a contract it relies on has a newer version. Updating re-checks its criteria against it.';
     if (viewer?.canSignOff) return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
     const owner = input.owner?.kind === 'human' ? input.owner.name : null;
     return { group: 'waiting', waitingOn: wait('person', owner ?? SIGNER, act, rule) };
@@ -254,7 +264,11 @@ function turnOf(
     };
   }
   if (input.openSuggestionKinds.includes('breakdown')) {
-    return signerWait(viewer, 'approve breakdown', 'a breakdown suggestion waits on a person');
+    return signerWait(
+      viewer,
+      'Review how this requirement is split into work',
+      'a breakdown suggestion waits on a person',
+    );
   }
   const replan = replanTasksOf(input, live);
   if (replan.length > 0) {

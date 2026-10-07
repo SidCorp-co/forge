@@ -8,7 +8,9 @@ import { WHATS_NEW_SEEN_KEY, type WhatsNewSeenValue } from '@forge/contracts/pro
 import { PRODUCT_TOURS } from '@forge/contracts/tours';
 import {
   isoWeekOf,
+  newestVersionFirst,
   WHATS_NEW_AWAY_DAYS,
+  WHATS_NEW_FIRST_LOOK_DAYS,
   WHATS_NEW_HIGHLIGHTS,
   WHATS_NEW_KIND_OF_SECTION,
   WHATS_NEW_KINDS,
@@ -32,11 +34,15 @@ const KIND_ORDER = Object.fromEntries(WHATS_NEW_KINDS.map((k, i) => [k, i])) as 
   number
 >;
 
-/** New first, then improved, fixed; newest first within one rank, then in the order the changelog lists them. */
+/**
+ * Newest day first, and within a day the newest version first; inside one version New comes before
+ * improved and fixed, then the order the changelog lists them.
+ */
 function byPresentation(a: WhatsNewEntry, b: WhatsNewEntry): number {
   return (
-    KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
     b.releasedAt.localeCompare(a.releasedAt) ||
+    newestVersionFirst(a, b) ||
+    KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
     a.key.localeCompare(b.key, 'en', { numeric: true })
   );
 }
@@ -125,11 +131,16 @@ async function seenAtOf(userId: string): Promise<Date | null> {
   return value ? new Date(value.at) : null;
 }
 
-/** Where the feed starts: `since` when asked, else the window, reaching back to the mark when it is older; never before the bound. */
+/**
+ * Where the feed starts: `since` when asked; a first look, with no seen mark, covers the last
+ * `WHATS_NEW_FIRST_LOOK_DAYS`; else the window, reaching back to the mark when it is older. Never
+ * before the bound.
+ */
 function feedStart(since: Date | undefined, seenAt: Date | null, now: Date): Date {
   const bound = new Date(now.getTime() - WHATS_NEW_MAX_WINDOW_DAYS * DAY_MS);
   const window = new Date(now.getTime() - WHATS_NEW_WINDOW_DAYS * DAY_MS);
-  const start = since ?? (seenAt && seenAt < window ? seenAt : window);
+  const firstLook = new Date(now.getTime() - WHATS_NEW_FIRST_LOOK_DAYS * DAY_MS);
+  const start = since ?? (seenAt === null ? firstLook : seenAt < window ? seenAt : window);
   return start < bound ? bound : start;
 }
 
