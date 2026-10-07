@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.99] - 2026-10-07
+
+Actions say what they change; release notes flag engineer references
+
+### Changed
+
+- **A BA reads what each act means.** Rows and banners say what an act changes, repeated design updates fold into one line, a release split says why, Lands this week groups by release, phones show progress first.
+- **A release note carrying a commit sha, issue key, rule code or "Technical note" label is now flagged before release.** The write warns, the draft release counts such notes above "What users get", and masters are nudged; nothing is refused.
+
 ## [0.4.0-dev.98] - 2026-10-07
 
 Release notes asked for and checked in the project's content language

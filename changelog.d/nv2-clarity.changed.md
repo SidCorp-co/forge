@@ -1,1 +1,0 @@
-**A BA reads what each act means.** Rows and banners say what an act changes, repeated design updates fold into one line, a release split says why, Lands this week groups by release, phones show progress first.
