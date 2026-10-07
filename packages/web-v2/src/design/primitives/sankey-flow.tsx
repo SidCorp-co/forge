@@ -1,3 +1,6 @@
+"use client";
+
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface SankeyNode {
@@ -22,6 +25,7 @@ export interface SankeyFlowProps {
  * The pipeline drawn as what flows through each of its job types.
  */
 export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFlowProps) {
+  const t = useCopy();
   if (nodes.length === 0) return null;
 
   const forward = nodes.filter((n) => !n.loop);
@@ -95,9 +99,9 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
         <caption className="sr-only">{label}</caption>
         <thead>
           <tr className="fg-body-sm text-subtle">
-            <th scope="col" className="text-left font-normal">Stage</th>
-            <th scope="col" className="text-right font-normal">Jobs</th>
-            <th scope="col" className="text-right font-normal">Median</th>
+            <th scope="col" className="text-left font-normal">{t("common.sankey.stage")}</th>
+            <th scope="col" className="text-right font-normal">{t("common.sankey.jobs")}</th>
+            <th scope="col" className="text-right font-normal">{t("common.sankey.median")}</th>
           </tr>
         </thead>
         <tbody>
@@ -105,7 +109,7 @@ export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFl
             <tr key={n.key} className="fg-body-sm">
               <td className="py-0.5 text-left">
                 {n.label}
-                {n.loop ? <span className="text-subtle"> · loops back</span> : null}
+                {n.loop ? <span className="text-subtle"> · {t("common.sankey.loops")}</span> : null}
               </td>
               <td className="py-0.5 text-right tabular-nums">{n.count}</td>
               <td className="py-0.5 text-right tabular-nums text-muted">

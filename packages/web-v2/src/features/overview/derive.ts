@@ -1,8 +1,8 @@
 
 import type { PulseActionKey } from "@forge/contracts/needs-you";
 import { TONE_META } from "@/design/status";
+import type { Copy } from "@/lib/i18n/product-copy";
 import {
-  PULSE_BUCKET_LABELS,
   PULSE_BUCKET_STATUSES,
   type PulseQuality,
   type PulseResponse,
@@ -10,21 +10,30 @@ import {
   type PulseWorkBuckets,
 } from "./types";
 
-/** Elapsed seconds as one calm phrase. */
-export function formatElapsed(seconds: number | null): string {
-  if (seconds === null) return "never";
-  if (seconds < 60) return `${seconds}s`;
+/** Elapsed seconds as one calm phrase, in the interface language. */
+export function formatElapsed(seconds: number | null, t: Copy): string {
+  if (seconds === null) return t("overview.never");
+  if (seconds < 60) return t("common.age.seconds", { n: seconds });
   const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m`;
+  if (m < 60) return t("common.age.minutes", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 48) return `${h}h`;
-  return `${Math.floor(h / 24)}d`;
+  if (h < 48) return t("common.age.hours", { n: h });
+  return t("common.age.days", { n: Math.floor(h / 24) });
 }
 
 /** What a queue row or record shows for its age: nothing where it has none to give. */
-export function ageText(seconds: number | null): string | null {
+export function ageText(seconds: number | null, t: Copy): string | null {
   if (seconds === null) return null;
-  return seconds === Number.MAX_SAFE_INTEGER ? "never ran" : formatElapsed(seconds);
+  return seconds === Number.MAX_SAFE_INTEGER ? t("overview.neverRan") : formatElapsed(seconds, t);
+}
+
+/** A record's detail as core words it (`me/pulse-actions.ts`), in the interface language; a title or a slug reads as written. */
+export function recordDetail(detail: string, t: Copy): string {
+  const waiting = /^(\d+) issues? waiting$/.exec(detail);
+  if (waiting) return waiting[1] === "1" ? t("overview.record.waitingOne") : t("overview.record.waiting", { n: Number(waiting[1]) });
+  const notOnLive = /^(.+) · ([0-9a-f]{8}) not on (\S+)$/.exec(detail);
+  if (notOnLive) return t("overview.record.notOnLive", { title: notOnLive[1] ?? "", sha: notOnLive[2] ?? "", branch: notOnLive[3] ?? "" });
+  return detail;
 }
 
 export type SilenceMark = "calm" | "warn" | "alarm";
@@ -78,10 +87,10 @@ export interface WaffleCell {
 }
 
 /** The four buckets as waffle categories, workspace-wide. */
-export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
+export function waffleCells(buckets: PulseWorkBuckets, t: Copy): WaffleCell[] {
   return BUCKET_ORDER.map((key) => ({
     key,
-    label: PULSE_BUCKET_LABELS[key],
+    label: t(`overview.bucket.${key}`),
     count: buckets[key],
     color: TONE_META[BUCKET_TONE[key]].dot,
     destination: { kind: "anchor", anchorId: "pulse-per-project" } as const,

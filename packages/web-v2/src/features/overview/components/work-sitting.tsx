@@ -9,9 +9,9 @@ import {
   SectionTitle,
   Waffle,
 } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../derive";
 import { BUCKET_ORDER } from "../derive";
-import { PULSE_BUCKET_LABELS } from "../types";
 import type { PulseResponse } from "../types";
 
 export interface WorkSittingProps {
@@ -21,14 +21,15 @@ export interface WorkSittingProps {
 
 /** Section 2 — where is the work sitting? */
 export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
-  const cells = waffleCells(pulse.work.buckets);
+  const t = useCopy();
+  const cells = waffleCells(pulse.work.buckets, t);
   const rows = projectSilenceRows(pulse, nowMs);
   const ages = pulse.work.humanBlockedAges;
 
   return (
     <PageSection>
       <PageSectionBody className="flex flex-col gap-4">
-        <SectionTitle className="fg-h3">Where the work is sitting</SectionTitle>
+        <SectionTitle className="fg-h3">{t("overview.sitting.title")}</SectionTitle>
 
         {cells.some((c) => c.count > 0) ? (
           <Waffle
@@ -45,42 +46,41 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
             }))}
           />
         ) : (
-          <p className="fg-body-sm text-muted">No unfinished issues in scope.</p>
+          <p className="fg-body-sm text-muted">{t("overview.sitting.empty")}</p>
         )}
 
         {ages.length > 0 ? (
           <div className="flex flex-col gap-1">
             <PageSectionTitle className="fg-body-sm text-muted">
-              Blocked on a person — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
-              {formatElapsed(Math.max(...ages))}
+              {t(ages.length === 1 ? "overview.sitting.blockedOne" : "overview.sitting.blockedMany", { n: ages.length, age: formatElapsed(Math.max(...ages), t) })}
             </PageSectionTitle>
             <DotStrip
               items={ages.map((age, i) => ({
                 key: `age-${i}`,
                 value: age,
-                label: `An issue waiting ${formatElapsed(age)}`,
+                label: t("overview.sitting.waiting", { age: formatElapsed(age, t) }),
               }))}
-              axisLabels={["just blocked", `${formatElapsed(Math.max(...ages))} waiting`]}
+              axisLabels={[t("overview.sitting.justBlocked"), t("overview.sitting.ageWaiting", { age: formatElapsed(Math.max(...ages), t) })]}
             />
           </div>
         ) : null}
 
         <div id="pulse-per-project" className="flex flex-col gap-2">
-          <PageSectionTitle className="fg-body-sm text-muted">Longest without an issue run</PageSectionTitle>
+          <PageSectionTitle className="fg-body-sm text-muted">{t("overview.sitting.longest")}</PageSectionTitle>
           {rows.length === 0 ? (
-            <p className="fg-body-sm text-muted">No projects in scope.</p>
+            <p className="fg-body-sm text-muted">{t("overview.sitting.noProjects")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[32rem]">
                 <thead>
                   <tr className="fg-body-sm text-subtle">
-                    <th scope="col" className="py-1 text-left font-normal">Project</th>
+                    <th scope="col" className="py-1 text-left font-normal">{t("overview.sitting.project")}</th>
                     {BUCKET_ORDER.map((b) => (
                       <th key={b} scope="col" className="py-1 text-right font-normal">
-                        {PULSE_BUCKET_LABELS[b]}
+                        {t(`overview.bucket.${b}`)}
                       </th>
                     ))}
-                    <th scope="col" className="py-1 text-right font-normal">Last run</th>
+                    <th scope="col" className="py-1 text-right font-normal">{t("overview.sitting.lastRun")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -101,7 +101,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
                           ) : (
                             <Link
                               href={bucketHref(r.slug, b)}
-                              aria-label={`${r.name}: ${r.buckets[b]} ${PULSE_BUCKET_LABELS[b]} — open the list`}
+                              aria-label={t("overview.sitting.cellAria", { name: r.name, n: r.buckets[b], bucket: t(`overview.bucket.${b}`) })}
                               className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                             >
                               {r.buckets[b]}
@@ -110,7 +110,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
                         </td>
                       ))}
                       <td className="py-1 text-right tabular-nums text-muted">
-                        {r.neverRan ? "never ran" : formatElapsed(r.silenceSeconds)}
+                        {r.neverRan ? t("overview.neverRan") : formatElapsed(r.silenceSeconds, t)}
                       </td>
                     </tr>
                   ))}

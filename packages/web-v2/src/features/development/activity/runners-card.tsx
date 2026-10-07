@@ -10,12 +10,16 @@ import {
   Icon,
 } from "@/design";
 import { runnerLimitLine } from "@/features/runners/types";
+import { enumLabel } from "@/design/vocabulary";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { RunnersSummary } from "./derive";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
 
 export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: string }) {
   const router = useRouter();
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const { lines, onlineCount, total } = summary;
 
   return (
@@ -23,19 +27,19 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="server" size={16} className="text-subtle" />
-          <PageSectionTitle>Runners</PageSectionTitle>
+          <PageSectionTitle>{t("overview.runners.title")}</PageSectionTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">
-          {onlineCount}/{total} online
+          {t("overview.runners.online", { online: onlineCount, total })}
         </span>
       </div>
       <p className="fg-caption border-b border-line-subtle py-2 text-subtle">
-        Runners bound to this project
+        {t("overview.runners.bound")}
       </p>
       <PageSectionBody className="flex-1">
         {total === 0 ? (
           <p className="fg-body-sm py-6 text-center text-muted">
-            No runners bound to this project yet.
+            {t("overview.runners.empty")}
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5">
@@ -63,14 +67,14 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
                       style={{ color: "var(--cobalt-700)" }}
                     >
                       {r.activeIssueRef}
-                      {r.activeStage ? ` · ${r.activeStage}` : ""}
+                      {r.activeStage ? ` · ${enumLabel("jobType", r.activeStage, language)}` : ""}
                     </span>
                   ) : (
                     <span
                       className="fg-caption min-w-12 flex-none text-right font-semibold"
                       style={{ color: r.busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
                     >
-                      {r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline"}
+                      {t(`overview.runners.state.${r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline"}`)}
                     </span>
                   )}
                 </div>
@@ -88,7 +92,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
           onClick={() => router.push(`/projects/${slug}/agents`)}
           className="fg-caption inline-flex items-center gap-1 text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          Agents
+          {t("overview.runners.agents")}
           <Icon name="arrowRight" size={13} />
         </button>
         <button
@@ -96,7 +100,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
           onClick={() => router.push(`/projects/${slug}/settings?tab=runners`)}
           className="fg-caption inline-flex items-center gap-1 text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
-          Runners
+          {t("overview.runners.title")}
           <Icon name="arrowRight" size={13} />
         </button>
       </div>

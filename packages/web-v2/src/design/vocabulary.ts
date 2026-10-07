@@ -212,6 +212,9 @@ const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: Lab
   mockup: { label: "mockupStatus", hint: "hintMockupStatus" },
 };
 
+/** A state family with no label group of its own, read from the shared words under `common.state.<family>.*`. */
+export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>(["pipelineRun"]);
+
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,
  *  so a new core value shows as words, never as a raw token. */
 export function statusReading(family: StatusFamily, value: string, language?: string): StatusReading {
@@ -221,7 +224,7 @@ export function statusReading(family: StatusFamily, value: string, language?: st
   const g = STATUS_GROUP[family];
   const hint = hintOf(m.hints?.[value]);
   return {
-    label: g ? copyOr(language, labelKey(g.label, value), label) : label,
+    label: g ? copyOr(language, labelKey(g.label, value), label) : STATUS_COMMON.has(family) ? copyOr(language, `common.state.${family}.${value}`, label) : label,
     tone: m.tones[value] ?? "neutral",
     glyph: m.glyphs?.[value] ?? null,
     hint: g?.hint && hint ? copyOr(language, labelKey(g.hint, value), hint) : hint,

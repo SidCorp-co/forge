@@ -1,1 +1,1 @@
-**Issues read in the interface language you chose.** The table, board, peek, issue page, properties rail, banners and dialogs show Vietnamese, including core's sentences on whom an issue waits, why it is blocked and what holds a step.
+**Issues and the overviews read in the interface language you chose.** Issue table, board, peek, page, rail, banners and dialogs, the Development overview and the workspace Overview show Vietnamese, including core's sentences on whom an issue waits and why.

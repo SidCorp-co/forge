@@ -9,29 +9,31 @@ import {
   Icon,
 } from "@/design";
 import { formatUsd } from "@/features/pipeline/derive";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { SpendByStageData } from "./derive";
 
 export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFlightUsd: number }) {
   const { segments, total } = data;
+  const t = useCopy();
   return (
     <PageSection className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle py-3">
         <div className="flex items-center gap-2">
           <Icon name="dollar" size={16} className="text-subtle" />
-          <PageSectionTitle>7-day spend</PageSectionTitle>
+          <PageSectionTitle>{t("overview.spend.title")}</PageSectionTitle>
         </div>
         <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(total)}</span>
       </div>
       <PageSectionBody className="flex-1">
         {total === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">No spend recorded in the last 7 days.</p>
+          <p className="fg-body-sm py-6 text-center text-muted">{t("overview.spend.empty")}</p>
         ) : (
           <>
             <div className="flex h-2.5 w-full overflow-hidden rounded-pill bg-[var(--paper-200)]">
               {segments.map((s) => (
                 <span
                   key={s.key}
-                  title={`${s.label} · ${formatUsd(s.cost)}`}
+                  title={`${t(`overview.spend.${s.key}`)} · ${formatUsd(s.cost)}`}
                   style={{ width: `${s.pct}%`, background: s.color }}
                 />
               ))}
@@ -40,7 +42,7 @@ export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFli
               {segments.map((s) => (
                 <li key={s.key} className="flex items-center gap-2">
                   <span className="size-2.5 flex-none rounded-sm" style={{ background: s.color }} />
-                  <span className="fg-body-sm min-w-0 flex-1 truncate lowercase text-fg">{s.label}</span>
+                  <span className="fg-body-sm min-w-0 flex-1 truncate lowercase text-fg">{t(`overview.spend.${s.key}`)}</span>
                   <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(s.cost)}</span>
                 </li>
               ))}
@@ -48,8 +50,8 @@ export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFli
           </>
         )}
         <p className="fg-caption mt-3 border-t border-line-subtle pt-2.5 text-subtle">
-          {inFlightUsd > 0 ? `+${formatUsd(inFlightUsd)} in flight · ` : ""}
-          Cost-over-time trend coming soon (ISS-380)
+          {inFlightUsd > 0 ? `${t("overview.kpi.inFlight", { usd: formatUsd(inFlightUsd) })} · ` : ""}
+          {t("overview.spend.trendSoon")}
         </p>
       </PageSectionBody>
     </PageSection>

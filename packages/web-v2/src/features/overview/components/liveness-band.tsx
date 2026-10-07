@@ -9,6 +9,7 @@ import {
   SectionTitle,
   enumLabel,
 } from "@/design";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { formatElapsed, silenceMark } from "../derive";
 import type { PulseLiveness, PulseThresholds } from "../types";
 import { RecordPanel } from "./record-panel";
@@ -29,21 +30,21 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
   const [panel, setPanel] = useState<"liveJobs" | "stuckRuns" | null>(null);
   const mark = silenceMark(liveness.silenceSeconds, thresholds);
   const live = liveness.jobsRunning + liveness.jobsQueued + liveness.jobsHeld;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
 
   const silenceText =
-    liveness.silenceSeconds === null
-      ? "No job has ever run here"
-      : `Silent for ${formatElapsed(liveness.silenceSeconds)}`;
+    liveness.silenceSeconds === null ? t("overview.live2.neverRan") : t("overview.live2.silentFor", { age: formatElapsed(liveness.silenceSeconds, t) });
 
   return (
     <PageSection>
       <PageSectionBody className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <SectionTitle className="fg-h3">Is it alive?</SectionTitle>
+          <SectionTitle className="fg-h3">{t("overview.live2.title")}</SectionTitle>
           <p className={`fg-body-sm ${MARK_TEXT[mark]}`}>
             {silenceText}
-            {mark === "alarm" ? " — past the alarm mark" : null}
-            {mark === "warn" ? " — past the first mark" : null}
+            {mark === "alarm" ? t("overview.live2.pastAlarm") : null}
+            {mark === "warn" ? t("overview.live2.pastWarn") : null}
           </p>
         </div>
 
@@ -51,37 +52,36 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
           <button
             type="button"
             onClick={() => setPanel(panel === "liveJobs" ? null : "liveJobs")}
-            aria-label={`${live} live jobs — open the list`}
+            aria-label={t("overview.live2.liveJobsAria", { n: live })}
             className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="fg-h2 block tabular-nums">{live}</span>
             <span className="fg-body-sm text-muted">
-              live jobs · {liveness.jobsRunning} running · {liveness.jobsQueued} queued ·{" "}
-              {liveness.jobsHeld} held
+              {t("overview.live2.liveJobs", { running: liveness.jobsRunning, queued: liveness.jobsQueued, held: liveness.jobsHeld })}
             </span>
           </button>
 
           <button
             type="button"
             onClick={() => setPanel(panel === "stuckRuns" ? null : "stuckRuns")}
-            aria-label={`${liveness.stuckRuns.total} runs claimed but empty — open the list`}
+            aria-label={t("overview.live2.stuckAria", { n: liveness.stuckRuns.total })}
             className="rounded-sm px-1 py-0.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="fg-h2 block tabular-nums">{liveness.stuckRuns.total}</span>
-            <span className="fg-body-sm text-muted">runs claimed, nothing under them</span>
+            <span className="fg-body-sm text-muted">{t("overview.live2.stuck")}</span>
           </button>
 
           <Link
             href="/runners"
-            aria-label={`${liveness.devices.online} of ${liveness.devices.total} runners online — open Runners`}
+            aria-label={t("overview.live2.runnersAria", { online: liveness.devices.online, total: liveness.devices.total })}
             className="rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <span className="fg-h2 block tabular-nums">
               {liveness.devices.online}/{liveness.devices.total}
             </span>
             <span className="fg-body-sm text-muted">
-              runners online
-              {liveness.devices.draining > 0 ? ` · ${liveness.devices.draining} draining` : ""}
+              {t("overview.live2.runnersOnline")}
+              {liveness.devices.draining > 0 ? ` · ${t("overview.live2.draining", { n: liveness.devices.draining })}` : ""}
             </span>
           </Link>
         </div>
@@ -89,27 +89,26 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
         {liveness.heartbeat.length > 0 ? (
           <Heartbeat
             days={liveness.heartbeat.map((d) => ({ date: d.date, value: d.issueRuns }))}
-            label={`Issue runs started each day for the last ${liveness.heartbeat.length} days. ${
+            label={`${t("overview.live2.heartbeat", { days: liveness.heartbeat.length })} ${
               liveness.heartbeat.every((d) => d.issueRuns === 0)
-                ? "Nothing ran on any of them."
-                : `Busiest day: ${Math.max(...liveness.heartbeat.map((d) => d.issueRuns))} runs.`
+                ? t("overview.live2.heartbeatNone")
+                : t("overview.live2.heartbeatBusiest", { n: Math.max(...liveness.heartbeat.map((d) => d.issueRuns)) })
             }`}
           />
         ) : (
           <p className="fg-body-sm text-muted">
-            No heartbeat series in this response. {live} live jobs, {liveness.stuckRuns.total} runs
-            claimed but empty.
+            {t("overview.live2.noHeartbeat", { live, stuck: liveness.stuckRuns.total })}
           </p>
         )}
 
         {panel === "liveJobs" ? (
           <RecordPanel
-            title="Live jobs"
+            title={t("overview.live2.liveJobsTitle")}
             total={liveness.liveJobs.total}
             records={liveness.liveJobs.shown.map((j) => ({
               key: j.jobId,
-              label: j.issueRef ?? enumLabel("jobType", j.type),
-              detail: `${enumLabel("jobType", j.type)} · ${j.projectSlug}`,
+              label: j.issueRef ?? enumLabel("jobType", j.type, language),
+              detail: `${enumLabel("jobType", j.type, language)} · ${j.projectSlug}`,
               href: j.issueDocId
                 ? `/projects/${j.projectSlug}/issues/${j.issueDocId}`
                 : `/ops?run=${j.runId}`,
@@ -120,11 +119,11 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
         ) : null}
         {panel === "stuckRuns" ? (
           <RecordPanel
-            title="Runs claimed but empty"
+            title={t("overview.action.stuckRuns")}
             total={liveness.stuckRuns.total}
             records={liveness.stuckRuns.shown.map((r) => ({
               key: r.runId,
-              label: r.issueRef ?? "Run",
+              label: r.issueRef ?? t("overview.awaiting.runTitle"),
               detail: r.projectSlug,
               href: r.issueDocId
                 ? `/projects/${r.projectSlug}/issues/${r.issueDocId}`

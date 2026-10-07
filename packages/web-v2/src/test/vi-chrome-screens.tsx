@@ -16,6 +16,7 @@ import { ACCOUNT_SCREENS } from "./vi-chrome-account";
 import { SHARED_SCREENS } from "./vi-chrome-shared";
 import { SHELL_SCREENS } from "./vi-chrome-shell";
 import { ISSUE_SCREENS } from "./vi-chrome-issues";
+import { OVERVIEW_SCREENS } from "./vi-chrome-overview";
 import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
@@ -88,5 +89,5 @@ export const CHROME_SCREENS: ChromeScreen[] = [
   { name: "Feedback facts and history", render: feedbackFacts },
   { name: "Feedback triage and message forms", render: feedbackForms },
   { name: "Feedback filing form", render: feedbackFilingForm },
-  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS,
+  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...OVERVIEW_SCREENS,
 ];

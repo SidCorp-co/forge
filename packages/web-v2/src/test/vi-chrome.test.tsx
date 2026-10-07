@@ -41,6 +41,9 @@ const ENGLISH_CHROME = [
   "comments", "runs", "open", "closed", "on hold", "move", "mark", "labels", "complexity", "category", "cost", "tokens", "dependencies",
   "selected", "clear", "filter", "sort", "newest", "oldest", "previous", "heartbeat", "stale", "attempt", "cooldown", "answer", "question",
   "who", "build", "plan", "estimated", "critical", "high", "medium", "low", "bug", "lease", "nobody", "everyone", "list", "table",
+  "spend", "online", "offline", "busy", "idle", "draining", "modules", "signals", "contracts", "slots", "holder", "since", "backlog",
+  "finished", "silent", "alive", "jobs", "median", "unclassified", "reopened", "dropped", "welcome", "personal", "quiet", "flow",
+  "window", "healthy", "select all", "in flight", "trailing", "chart", "today", "never", "oldest", "machine", "scope", "not on",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
