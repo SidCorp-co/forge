@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import type { DesignStatus } from '@forge/contracts/design-status';
 import {
   bandOfNode,
-  LEGACY_V2_TEMPLATE,
   type WorkflowTemplate,
 } from '@forge/contracts/workflow-templates';
 import type { DesignRefusalCode } from '@forge/contracts/workflows';
@@ -62,8 +61,8 @@ export function designIssueLapsedRefusal(
  * The part of a workflow its approver decides: the template it is drawn in, the steps, their order,
  * their nodes (business labels and bands included) and the edge contracts, return edges included.
  * Written defaults fingerprint as absent — an edge of the kind its endpoint types imply, a node in its
- * type's home band, a design in `operational-flow@1` — so a design stored before kinds, bands or
- * templates keeps the fingerprint it was approved at when its writer spells the default out.
+ * type's home band — so a design stored before kinds or bands keeps the fingerprint it was approved
+ * at when its writer spells the default out.
  * What the code holds is an observation stored apart (observations.ts), so reading the code moves
  * none of this and needs no new approval.
  */
@@ -93,16 +92,13 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
   const edges = [...(doc.edges ?? [])]
     .map(({ kind, ...e }) => (kind === undefined || kind === implied(e) ? e : { kind, ...e }))
     .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
-  const legacy =
-    doc.template.id === LEGACY_V2_TEMPLATE.id &&
-    doc.template.version === LEGACY_V2_TEMPLATE.version;
   const shape = {
     kind: doc.kind,
     title: doc.title,
     summary: doc.summary,
     steps,
     edges,
-    ...(legacy ? {} : { template: doc.template }),
+    template: doc.template,
     ...(doc.lanes ? { lanes: doc.lanes } : {}),
     ...(doc.basedOn ? { basedOn: doc.basedOn } : {}),
   };

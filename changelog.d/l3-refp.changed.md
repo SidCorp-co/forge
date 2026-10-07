@@ -1,0 +1,1 @@
+**A workflow design's fingerprint now includes its template for every template.** A migration re-hashes the operational-flow designs stored without it, so approved ones stay approved; a design naming no template aborts the deploy.

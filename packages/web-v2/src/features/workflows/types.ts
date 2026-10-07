@@ -110,8 +110,8 @@ export interface WorkflowBody {
   title: string;
   summary: string;
   steps: WorkflowStep[];
-  /** Version 2: the diagram template the design is drawn in; a design stored before templates names none. */
-  template?: { id: string; version: number };
+  /** The diagram template the design is drawn in. */
+  template: { id: string; version: number };
   lanes?: WorkflowLane[];
   personas?: WorkflowLane[];
   edges?: WorkflowEdgeContract[];

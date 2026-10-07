@@ -2892,6 +2892,13 @@
       "when": 1821830400000,
       "tag": "0450_an_approval_before_its_landing_rule_is_recorded",
       "breakpoints": true
+    },
+    {
+      "idx": 452,
+      "version": "7",
+      "when": 1822003200000,
+      "tag": "0452_an_operational_flow_design_is_fingerprinted_with_its_template",
+      "breakpoints": true
     }
   ]
 }
