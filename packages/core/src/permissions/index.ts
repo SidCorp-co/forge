@@ -26,7 +26,7 @@ export {
   requireOrgHeld,
   visibleFilter,
 } from './can.js';
-export { holderNames, type NamedHolder, namedHolders, namedHoldersOf } from './holders-named.js';
+export { holderNames, type NamedHolder, namedHolders } from './holders-named.js';
 export {
   addOrgMember,
   addProjectMembers,

@@ -165,7 +165,7 @@ export interface StandingContext {
   now: Date;
   /** canWrite and isAdmin address a person-only wait; mayApprove follows releases.approve, agent tokens included. */
   viewer: { canWrite: boolean; isAdmin: boolean; mayApprove: boolean } | null;
-  /** Who holds each permission a person's wait needs, by name (`permissions:namedHoldersOf`). */
+  /** Who holds each permission a person's wait needs, by name (`permissions:namedHolders`). */
   holders: Readonly<Record<RunPersonNeed, readonly string[]>>;
   slots: { inUse: number; max: number } | null;
   stuckAfterMs: number;

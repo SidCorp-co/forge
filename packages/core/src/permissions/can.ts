@@ -18,6 +18,7 @@ import {
   type OrgResource,
   type Permission,
   type PermissionRefusal,
+  PROJECT_PERMISSIONS,
   PROJECT_ROLES,
   type ProjectPermission,
   type ProjectResource,
@@ -26,7 +27,7 @@ import {
   TOKEN_EXPLICIT_PERMISSIONS,
   TOKEN_GRANT_EXCLUSIONS,
 } from '@forge/contracts/permissions';
-import { and, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { and, eq, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { type OrgMemberRole, organizationMembers, projectMembers } from '../db/schema.js';
@@ -244,6 +245,38 @@ export async function holdersOf(
   ]);
   for (const row of [...members, ...orgAdmins]) out.get(row.projectId)?.add(row.userId);
   return new Map([...out].map(([id, people]) => [id, [...people]]));
+}
+
+/**
+ * Who holds each project permission on one project, read in one pass: its members and its org's
+ * owners and admins once, each permission decided as `holdersOf` decides it.
+ */
+export async function holdersOfEach(
+  projectId: string,
+): Promise<Record<ProjectPermission, string[]>> {
+  const [members, orgAdmins] = await Promise.all([
+    db
+      .select({
+        userId: projectMembers.userId,
+        role: projectMembers.role,
+        grants: projectMembers.grants,
+      })
+      .from(projectMembers)
+      .where(eq(projectMembers.projectId, projectId)),
+    orgAdminsOf([projectId]),
+  ]);
+  return Object.fromEntries(
+    PROJECT_PERMISSIONS.map((permission) => {
+      const roles = rolesHolding(permission);
+      const held = members
+        .filter((m) => roles.includes(m.role) || m.grants.includes(permission))
+        .map((m) => m.userId);
+      const admins = ROLE_PERMISSIONS.admin.includes(permission)
+        ? orgAdmins.map((a) => a.userId)
+        : [];
+      return [permission, [...new Set([...held, ...admins])]];
+    }),
+  ) as Record<ProjectPermission, string[]>;
 }
 
 /** The owners and admins of each project's org, one row per project and person. */

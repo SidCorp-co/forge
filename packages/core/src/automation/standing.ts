@@ -30,7 +30,7 @@ export interface AutomationViewer {
   canWrite: boolean;
   /** admin or above: may change any schedule, taking over one that is not theirs. */
   isAdmin: boolean;
-  /** Who a group's wait names, by name: the project's admins and writers (`permissions:namedHoldersOf`). */
+  /** Who a group's wait names, by name: the project's admins and writers (`permissions:namedHolders`). */
   holders: { admins: readonly string[]; writers: readonly string[] };
 }
 

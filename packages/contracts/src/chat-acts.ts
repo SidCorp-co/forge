@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { ISSUE_STATUSES } from "./issue-machine.js";
+import { REASON_LINE_MAX } from "./reason-text.js";
 
 /** The tool the model calls to offer one. */
 export const CHAT_ACT_TOOL = "offer_act" as const;
@@ -36,7 +37,7 @@ export const chatActParamsSchema = z.strictObject({
 	issue: z
 		.string()
 		.regex(/^[A-Z][A-Z0-9]*-\d+$/, "an issue key such as ISS-47"),
-	reason: z.string().trim().min(1).max(500).optional(),
+	reason: z.string().trim().min(1).max(REASON_LINE_MAX).optional(),
 });
 export type ChatActParams = z.infer<typeof chatActParamsSchema>;
 

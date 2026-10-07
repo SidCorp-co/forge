@@ -16,12 +16,12 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { jobEphemeralTarget } from './job-push.js';
 import { readJobGate } from './job-queries.js';
 import { scrubJobOutput } from './job-secret-scrub.js';
 import { listJobEvents } from './read.js';
-import { CLAIM_MIN_RUNNER } from '../runners/index.js';
 import { refuseJob } from './refusals.js';
 import { appendJobEvents, beatLinkedSession, stampJobAckFromEvents } from './service.js';
 
