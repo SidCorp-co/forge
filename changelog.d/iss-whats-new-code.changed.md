@@ -1,1 +1,0 @@
-**What's new reads the changelog of the build you run.** It needs no setting, groups releases by date, and a changelog `tour:` line offers "Show me". A weekly summary is a changelog file the release folds in.

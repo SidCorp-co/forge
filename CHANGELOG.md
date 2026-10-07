@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.93] - 2026-10-07
+
+What's new reads the running build's own changelog, no setup needed
+
+### Changed
+
+- **What's new reads the changelog of the build you run.** It needs no setting, groups releases by date, and a changelog `tour:` line offers "Show me". A weekly summary is a changelog file the release folds in.
+
+### Removed
+
+- **The platform-project setting and the weekly-digest API are gone.** What's new needs no configuration, and a migration drops the digest table, refusing by name if it holds a row.
+
 ## [0.4.0-dev.92] - 2026-10-07
 
 One box-read frame and one locale reader; ADR 0009 matches the code; web accepts confirm
