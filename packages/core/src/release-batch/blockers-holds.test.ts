@@ -68,6 +68,11 @@ vi.mock('../issues/criteria-verdicts.js', async (importActual) => {
   return { ...actual, unearnedCriteriaReports: () => unearned() };
 });
 
+const closeShortfalls = vi.fn(async (..._a: unknown[]) => new Map() as Map<string, unknown[]>);
+vi.mock('./close-shortfall.js', () => ({
+  rosterCloseShortfalls: (...a: unknown[]) => closeShortfalls(...a),
+}));
+
 const { collectReleaseBlockers } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();

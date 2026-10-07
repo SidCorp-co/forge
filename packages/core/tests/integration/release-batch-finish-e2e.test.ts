@@ -26,7 +26,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture, SKIP_NOTE } from '../helpers/release-batch-fixture.js';
+import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 describe('release batch finish E2E', () => {
   let harness: TestDatabase;
@@ -90,8 +90,11 @@ describe('release batch finish E2E', () => {
 
     it('refuses to close a roster issue that cannot show it shipped, and names it', async () => {
       const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
-      const unshipped = await insertIssue('awaiting_release', SKIP_NOTE, false);
+      const unshipped = await insertIssue();
       const { runId } = await claim([unshipped]);
+      // ISS-1337: a release refuses before its press to claim an issue with no mark, so the mark
+      // is withdrawn after the claim — the one way an issue in a batch can still lack one.
+      await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${unshipped}`);
 
       const result = await finishReleaseBatch(runId, actor());
 
@@ -164,13 +167,14 @@ describe('release batch finish E2E', () => {
       const a = await insertIssue();
       // One carries the claim and one does not: a refused finish must leave both
       // exactly as it found them.
-      const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
+      const b = await insertIssue();
+      const { runId } = await claim([a, b]);
+      await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
       const before = new Map([
         [a, (await stored(a)).mergedAt],
         [b, (await stored(b)).mergedAt],
       ]);
       expect(before.get(b)).toBeNull();
-      const { runId } = await claim([a, b]);
 
       const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
 
@@ -210,13 +214,14 @@ describe('release batch finish E2E', () => {
       const a = await insertIssue();
       // One carries the claim and one does not, so an abort is shown to write no
       // stamp as well as to clear none.
-      const b = await insertIssue('awaiting_release', SKIP_NOTE, false);
+      const b = await insertIssue();
+      const { runId } = await claim([a, b]);
+      await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${b}`);
       const before = new Map([
         [a, (await stored(a)).mergedAt],
         [b, (await stored(b)).mergedAt],
       ]);
       expect(before.get(b)).toBeNull();
-      const { runId } = await claim([a, b]);
 
       const released = await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
 

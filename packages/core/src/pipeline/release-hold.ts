@@ -208,6 +208,34 @@ export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold
   };
 }
 
+/** What the finish's close would refuse this row for, which the sweep reads before it cuts (ISS-1337). */
+export function closeRefusedHold(
+  shortfalls: ReadonlyArray<{ code: string; reason: string; clears: string }>,
+): ReleaseHold {
+  const said = shortfalls.map((s) => `${s.reason} (\`${s.code}\`). ${s.clears}`).join(' ');
+  return {
+    code: 'RELEASE_ISSUES_UNCLOSABLE',
+    reason:
+      'The automatic release leaves this issue off: its close would be refused when the release ' +
+      `finishes, so releasing it would only hand it back here. ${said} The next sweep carries it ` +
+      'once that is cleared.',
+    owes: shortfalls.some((s) => s.code === 'OPEN_QUESTIONS') ? 'human' : 'agent',
+    waitingFor: 'what its close is refused for to be cleared',
+  };
+}
+
+export function closeUnreadableHold(message: string): ReleaseHold {
+  return {
+    code: 'RELEASE_CLOSE_UNREADABLE',
+    reason:
+      'Whether this issue could be closed by a release could not be read, so the automatic ' +
+      `release did not carry it: ${message}. Nothing was claimed or moved, and the next sweep ` +
+      'reads it again.',
+    owes: 'human',
+    waitingFor: 'the close check to be readable',
+  };
+}
+
 export function targetUndeclaredHold(message: string): ReleaseHold {
   return {
     code: 'RELEASE_TARGET_UNDECLARED',

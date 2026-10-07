@@ -9,6 +9,13 @@
  * here instead, by name, where the drift is.
  */
 
+/** What a release's finish would refuse this row's close for, and the act that clears it (ISS-1337). */
+export interface CloseRefusal {
+  code: string;
+  reason: string;
+  clears: string;
+}
+
 export interface ReleaseRosterEntry {
   id: string;
   displayId: string;
@@ -16,6 +23,8 @@ export interface ReleaseRosterEntry {
   mergedAt: string | null;
   waitingDays: number | null;
   claimedByRunId: string | null;
+  /** Empty where the close stands. A row carrying one is refused by the release, so none is offered. */
+  closeRefusals: CloseRefusal[];
 }
 
 /**
@@ -114,6 +123,19 @@ function stringsAt(
   });
 }
 
+function refusalsAt(o: Record<string, unknown>, endpoint: string, where: string): CloseRefusal[] {
+  const v = keyAt(o, "closeRefusals");
+  if (!Array.isArray(v)) throw new RosterShapeError(endpoint, where, "an array", v);
+  return v.map((item, i) => {
+    const r = objectAt(item, endpoint, `${where}[${i}]`);
+    return {
+      code: stringAt(r, "code", endpoint, `${where}[${i}].code`),
+      reason: stringAt(r, "reason", endpoint, `${where}[${i}].reason`),
+      clears: stringAt(r, "clears", endpoint, `${where}[${i}].clears`),
+    };
+  });
+}
+
 function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEntry {
   const o = objectAt(raw, endpoint, where);
   return {
@@ -123,6 +145,7 @@ function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEn
     mergedAt: nullableStringAt(o, "mergedAt", endpoint, `${where}.mergedAt`),
     waitingDays: nullableNumberAt(o, "waitingDays", endpoint, `${where}.waitingDays`),
     claimedByRunId: nullableStringAt(o, "claimedByRunId", endpoint, `${where}.claimedByRunId`),
+    closeRefusals: refusalsAt(o, endpoint, `${where}.closeRefusals`),
   };
 }
 

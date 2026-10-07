@@ -55,9 +55,13 @@ describe('release batch finish on a website project', () => {
     const landed = await fx.insertIssue();
     const bare = await fx.insertIssue();
     await harness.db.execute(sql`
-      UPDATE issues SET merged_landing = 'https://mowmentbrand.com/products/tee' WHERE id = ${landed}
+      UPDATE issues SET merged_landing = 'https://mowmentbrand.com/products/tee'
+       WHERE id IN (${landed}, ${bare})
     `);
     const { runId } = await fx.claim([landed, bare]);
+    // ISS-1337: a release refuses before its press to claim an issue whose mark names no landing,
+    // so the landing is withdrawn after the claim — the one way such an issue is still in a batch.
+    await harness.db.execute(sql`UPDATE issues SET merged_landing = NULL WHERE id = ${bare}`);
 
     const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
 

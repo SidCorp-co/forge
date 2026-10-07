@@ -48,6 +48,11 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
   return { ...actual, issuesMissingReleaseRecord: () => missingNotes() };
 });
 
+const closeShortfalls = vi.fn(async (..._a: unknown[]) => new Map() as Map<string, unknown[]>);
+vi.mock('./close-shortfall.js', () => ({
+  rosterCloseShortfalls: (...a: unknown[]) => closeShortfalls(...a),
+}));
+
 const { collectReleaseBlockers } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();

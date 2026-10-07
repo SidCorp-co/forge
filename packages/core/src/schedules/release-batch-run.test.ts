@@ -7,7 +7,12 @@ interface RosterStub {
   baseBranch: string | null;
   nextCutAt: string | null;
   currentVersion: string | null;
-  issues: Array<{ id: string; claimedByRunId: string | null }>;
+  issues: Array<{
+    id: string;
+    displayId?: string;
+    claimedByRunId: string | null;
+    closeRefusals: Array<{ code: string; reason: string; clears: string }>;
+  }>;
 }
 const loadReleaseRosterMock = vi.fn(
   async (_projectId: string): Promise<RosterStub> => ({
@@ -218,7 +223,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       baseBranch: 'main',
       nextCutAt: null,
       currentVersion: null,
-      issues: [{ id: 'iss-1', claimedByRunId: 'run-already' }],
+      issues: [{ id: 'iss-1', claimedByRunId: 'run-already', closeRefusals: [] }],
     });
     const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
     expect(outcome).toEqual({
@@ -237,9 +242,9 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       nextCutAt: null,
       currentVersion: null,
       issues: [
-        { id: 'iss-1', claimedByRunId: null },
-        { id: 'iss-2', claimedByRunId: 'run-already' },
-        { id: 'iss-3', claimedByRunId: null },
+        { id: 'iss-1', claimedByRunId: null, closeRefusals: [] },
+        { id: 'iss-2', claimedByRunId: 'run-already', closeRefusals: [] },
+        { id: 'iss-3', claimedByRunId: null, closeRefusals: [] },
       ],
     });
     await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
@@ -258,7 +263,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       baseBranch: 'main',
       nextCutAt: null,
       currentVersion: null,
-      issues: [{ id: 'iss-1', claimedByRunId: null }],
+      issues: [{ id: 'iss-1', claimedByRunId: null, closeRefusals: [] }],
     });
     createReleaseBatchMock.mockRejectedValueOnce(new Error('boom'));
     const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
@@ -269,5 +274,58 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       named: ['iss-1'],
       reasons: ['boom'],
     });
+  });
+});
+
+describe('runScheduledReleaseCut — a row the finish could not close (ISS-1337)', () => {
+  const QUESTION = {
+    code: 'OPEN_QUESTIONS',
+    reason: 'holds 1 open question',
+    clears: 'Answer it, or void it with the reason it died with the work.',
+  };
+  function roster(issues: RosterStub['issues']): RosterStub {
+    return {
+      gateStatus: 'awaiting_release',
+      channels: [],
+      releaseRunnerLabel: null,
+      baseBranch: 'main',
+      nextCutAt: null,
+      currentVersion: null,
+      issues,
+    };
+  }
+
+  it('leaves the unclosable row off the cut, cuts the rest, and names the row and its reason', async () => {
+    loadReleaseRosterMock.mockResolvedValueOnce(
+      roster([
+        { id: 'iss-1', displayId: 'ISS-1', claimedByRunId: null, closeRefusals: [] },
+        { id: 'iss-2', displayId: 'ISS-2', claimedByRunId: null, closeRefusals: [QUESTION] },
+      ]),
+    );
+    const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
+    expect(createReleaseBatchMock).toHaveBeenCalledWith({
+      projectId: 'p1',
+      issueIds: ['iss-1'],
+      userId: 'u1',
+    });
+    expect(outcome.status).toBe('success');
+    expect(outcome.leftOff).toEqual([
+      'ISS-2: holds 1 open question. Answer it, or void it with the reason it died with the work.',
+    ]);
+    expect(outcome.output).toContain('left off 1 issue(s)');
+    expect(outcome.output).toContain('ISS-2: holds 1 open question');
+  });
+
+  it('cuts nothing when every waiting row is unclosable, and says so rather than "nothing waiting"', async () => {
+    loadReleaseRosterMock.mockResolvedValueOnce(
+      roster([
+        { id: 'iss-2', displayId: 'ISS-2', claimedByRunId: null, closeRefusals: [QUESTION] },
+      ]),
+    );
+    const outcome = await runScheduledReleaseCut({ projectId: 'p1', userId: 'u1' });
+    expect(createReleaseBatchMock).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.output).toMatch(/^nothing this cut can close: left off 1 issue\(s\)/);
+    expect(outcome.named).toEqual([]);
   });
 });
