@@ -255,15 +255,19 @@ export async function closeShippedEarlier(
   const source = await readerFor(projectId, deps);
   const unavailable = (why: string) =>
     `the project's repository could not be read, so whether these issues shipped in an earlier release was not decided: ${why}`;
-  const hostUnavailable = (rows: readonly Candidate[], detail: string): Unresolved[] => {
+  const refuse = (
+    code: 'SHIPPED_EARLIER_HOST_UNAVAILABLE' | 'SHIPPED_EARLIER_NO_COMMIT',
+    rows: readonly Candidate[],
+    detail: string,
+  ): Unresolved[] => {
     if (rows.length === 0) return [];
     logger.warn({ projectId, issues: rows.length }, `release-shipped-earlier: ${detail}`);
-    return rows.map((w) => ({
-      issueId: w.id,
-      code: 'SHIPPED_EARLIER_HOST_UNAVAILABLE' as const,
-      detail,
-    }));
+    return rows.map((w) => ({ issueId: w.id, code, detail }));
   };
+  const hostUnavailable = (rows: readonly Candidate[], detail: string) =>
+    refuse('SHIPPED_EARLIER_HOST_UNAVAILABLE', rows, detail);
+  const noCommit = (rows: readonly Candidate[], detail: string) =>
+    refuse('SHIPPED_EARLIER_NO_COMMIT', rows, detail);
   if (source.kind === 'none') {
     return { closed: [], unresolved: hostUnavailable(waiting, unavailable(source.why)) };
   }
@@ -282,7 +286,7 @@ export async function closeShippedEarlier(
   const hostOnly = (why: string) =>
     `${unavailable(why)}; a mark that claimed no commit is placed by the commits declaring it, which only a source host reads`;
   if (source.kind === 'box' && leads.size === 0) {
-    return { closed: [], unresolved: hostUnavailable(waiting, hostOnly(source.why)) };
+    return { closed: [], unresolved: noCommit(waiting, hostOnly(source.why)) };
   }
   const commits = await placeCommits(source.reader, [...leads.values()], releases);
   if ('silent' in commits) {
@@ -320,7 +324,7 @@ export async function closeShippedEarlier(
   const keyed = waiting.filter((w) => w.sha === null && !placement.has(w.id));
   if (source.kind === 'box') {
     const unkeyed = keyed.filter((w) => !leads.has(w.id));
-    unresolved.push(...hostUnavailable(unkeyed, hostOnly(source.why)));
+    unresolved.push(...noCommit(unkeyed, hostOnly(source.why)));
   } else {
     try {
       for (const [id, release] of await placeByKey(source.host, projectId, releases, keyed)) {

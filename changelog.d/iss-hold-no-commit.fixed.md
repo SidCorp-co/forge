@@ -1,0 +1,1 @@
+**A hold no longer offers a connected box as the way out for a row whose mark names no commit.** It is `SHIPPED_EARLIER_NO_COMMIT` and names what can settle it: a source host binding, or a mark naming the landing commit.
