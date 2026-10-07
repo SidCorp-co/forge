@@ -10,6 +10,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { PageTitle } from "../primitives/heading";
 import { TopBarActions } from "../primitives/top-bar-slot";
 
@@ -52,6 +53,7 @@ export interface DetailHeaderProps {
 }
 
 export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, trail, views }: DetailHeaderProps) {
+  const t = useCopy();
   return (
     <>
       <PageTitle
@@ -61,7 +63,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
               href={back.href}
               className="inline-flex h-[30px] flex-none items-center gap-1.5 whitespace-nowrap rounded-sm bg-sunken pl-2 pr-2.5 text-13 font-semibold text-fg hover:bg-active"
               data-testid="detail-back"
-              aria-label={`Back to ${back.label}`}
+              aria-label={t("common.backTo", { label: back.label })}
             >
               <span aria-hidden className="text-[15px] leading-none text-muted">
                 ←
@@ -69,7 +71,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
               {back.label}
             </Link>
             {trail?.length ? (
-              <nav aria-label="Ancestors" className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
+              <nav aria-label={t("common.ancestors")} className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
                 {trail.map((t) => (
                   <span key={t.href} className="flex items-center gap-1.5">
                     <span aria-hidden className="text-subtle">

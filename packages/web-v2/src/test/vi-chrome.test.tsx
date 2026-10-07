@@ -13,6 +13,8 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
+  "criteria", "proposal", "owner", "coverage", "summary", "scope", "accept", "reject", "defer", "drop", "created", "updated",
+  "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry", "step", "ago",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -33,7 +35,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      if (new RegExp(`[^\\p{L}]${w.trim()}[^\\p{L}]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`) is an identifier the tooltip names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_]${w.trim()}[^\\p{L}_]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

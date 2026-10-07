@@ -6,6 +6,7 @@
 // appears here once and the main column never repeats it.
 
 import type { ReactNode } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Tooltip } from "../primitives/tooltip";
 import { LEGEND, type LegendTone } from "../vocabulary";
@@ -13,9 +14,10 @@ import { LEGEND, type LegendTone } from "../vocabulary";
 /** The rail itself: a raised white working surface beside the page-toned main column, one hairline
  *  between them; sticky under the top bar,
  *  scrolling on its own when it is taller than the screen; below 1024px it follows the content. */
-export function FactsRail({ children, label = "Facts", testId }: { children: ReactNode; label?: string; testId?: string }) {
+export function FactsRail({ children, label, testId }: { children: ReactNode; label?: string; testId?: string }) {
+  const t = useCopy();
   return (
-    <aside className="min-w-0 border-line-subtle bg-surface max-lg:border-t lg:border-l" aria-label={label} data-testid={testId ?? "facts-rail"}>
+    <aside className="min-w-0 border-line-subtle bg-surface max-lg:border-t lg:border-l" aria-label={label ?? t("common.facts")} data-testid={testId ?? "facts-rail"}>
       <div className="px-5 py-5 max-md:px-4 lg:sticky lg:top-0 lg:max-h-[calc(100dvh-48px)] lg:overflow-y-auto" data-testid="facts-rail-body">
         {children}
       </div>
@@ -121,11 +123,12 @@ export interface StepView {
 
 /** A lifecycle as one segmented bar with its step names under it; the current step is toned. */
 export function StepBar({ steps, caption }: { steps: readonly StepView[]; caption?: ReactNode }) {
+  const t = useCopy();
   return (
     <div data-testid="step-bar">
-      <ol className="flex gap-[3px]" aria-label="Lifecycle">
+      <ol className="flex gap-[3px]" aria-label={t("common.lifecycle")}>
         {steps.map((s) => (
-          <li key={s.key} className="min-w-0 flex-1" aria-current={s.state === "now" ? "step" : undefined} title={`${s.label} · ${s.state === "done" ? "done" : s.state === "now" ? "current step" : "not yet"}`}>
+          <li key={s.key} className="min-w-0 flex-1" aria-current={s.state === "now" ? "step" : undefined} title={t(s.state === "done" ? "common.stepDone" : s.state === "now" ? "common.stepNow" : "common.stepNext", { label: s.label })}>
             <span
               aria-hidden
               className="block h-1.5 rounded-pill"

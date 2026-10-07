@@ -4,7 +4,10 @@
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
+import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { RequirementDetail } from "../types";
 import { PrimaryActions, ProposalDecision } from "./requirement-actions";
@@ -149,5 +152,48 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/repin", body: { revision: 1, reason: "checkout r3 approved" } }]),
     );
+  });
+});
+
+// The acts that only open on a press (drop, defer, the held agree's reason) read in the chosen
+// language too; the walking test sees the closed state only.
+describe("a requirement's acts in Vietnamese", () => {
+  const vi = productCopy("vi");
+  const inVi = (ui: ReactElement) => renderWithQuery(<InterfaceLanguageScope language="vi">{ui}</InterfaceLanguageScope>);
+
+  it("names the held agree and each unapproved design by its label", async () => {
+    fakeCore(() => undefined);
+    const user = userEvent.setup();
+    inVi(<PrimaryActions projectId="p1" slug="epod" d={detail([{ flow: "checkout", title: "Checkout", designStatus: "proposed" }, { flow: "refund", title: "Refund", designStatus: null }])} />);
+    const held = screen.getByRole("button", { name: vi("requirements.act.agreeR", { r: 1 }) });
+    expect(held).toBeDisabled();
+    await user.hover(held.closest('[data-slot="tooltip-trigger"]') as HTMLElement);
+    const designs = `Checkout (${productCopy("vi")("label.designStatus.proposed").toLowerCase()}), Refund (${vi("requirements.act.noDesignYet")})`;
+    await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveTextContent(vi("requirements.act.agreeHeldTip", { designs })));
+  });
+
+  it("opens drop and defer with their reasons asked in Vietnamese", async () => {
+    fakeCore(() => undefined);
+    const user = userEvent.setup();
+    inVi(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
+    await user.click(screen.getByRole("button", { name: vi("requirements.act.drop") }));
+    expect(screen.getByRole("textbox", { name: vi("requirements.act.dropWhyLabel") })).toHaveAttribute("placeholder", vi("requirements.act.dropWhy"));
+    await user.click(screen.getByRole("button", { name: vi("common.cancel") }));
+    await user.click(screen.getByRole("button", { name: vi("requirements.act.defer") }));
+    expect(screen.getByRole("textbox", { name: vi("requirements.act.deferWhyLabel") })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: vi("requirements.act.meantForLabel") })).toHaveAttribute("placeholder", vi("requirements.act.meantFor"));
+  });
+
+  it("asks the signer's reason in Vietnamese and says what accepting does", async () => {
+    fakeCore(() => undefined);
+    const user = userEvent.setup();
+    inVi(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
+    await user.click(screen.getByRole("button", { name: vi("requirements.act.accept") }));
+    const step = screen.getByTestId("accept-step");
+    expect(step).toHaveTextContent(vi("requirements.act.acceptConsequence", { r: 2 }));
+    expect(within(step).getByRole("textbox", { name: vi("common.acceptWhyLabel") })).toBeInTheDocument();
+    expect(within(step).getByRole("button", { name: vi("requirements.act.acceptR", { r: 2 }) })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: vi("requirements.act.reject") }));
+    expect(screen.getByRole("button", { name: vi("requirements.act.returnR", { r: 2 }) })).toBeInTheDocument();
   });
 });

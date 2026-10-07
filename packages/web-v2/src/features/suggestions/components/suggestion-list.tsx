@@ -3,120 +3,119 @@
 import { useState } from "react";
 import { AcceptStep, AGENT_TINT, Button, Input } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { labelCopy } from "@/lib/i18n/labels";
+import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 import { BreakdownSlices } from "./breakdown-slices";
-
-export const KIND_LABEL: Record<SuggestionKind, string> = {
-  requirement_draft: "Requirement draft",
-  revision_diff: "Revision",
-  readiness: "Readiness",
-  breakdown: "Breakdown",
-  triage: "Triage",
-  duplicate: "Duplicate",
-  feedback_triage: "Feedback triage",
-  design_change: "Design change",
-};
-
-const PRODUCER_LABEL: Record<SuggestionProducer, string> = {
-  ba_assistant: "BA assistant",
-  agent: "Agent",
-  person: "Person",
-};
 
 type Payload = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : null);
 const list = (v: unknown) => (Array.isArray(v) ? (v as Payload[]) : []);
 
+const kindLabel = (t: Copy, kind: SuggestionKind) => t(`requirements.suggestion.kind.${kind}` as ProductCopyKey);
+const producerLabel = (t: Copy, p: SuggestionProducer) => t(`requirements.suggestion.producer.${p}` as ProductCopyKey);
+/** A feedback route as core names it, read as its label outside English (`issue` → its word). */
+const routeWord = (route: string, language: string) => (language === "en" ? route : labelCopy(language)("feedbackRoute", route).toLowerCase());
+
 /** One line saying what accepting it would do; the rest sits behind the expander and the tooltip. */
-export function summaryOf(s: Suggestion): string {
+export function summaryOf(s: Suggestion, language: string): string {
+  const t = productCopy(language);
   const p = (s.payload ?? {}) as Payload;
   switch (s.kind) {
     case "revision_diff":
-      return str(p.changeSummary) ?? str(p.reason) ?? "A new revision";
+      return str(p.changeSummary) ?? str(p.reason) ?? t("requirements.suggestion.newRevision");
     case "requirement_draft":
-      return str(p.title) ?? "A new requirement";
+      return str(p.title) ?? t("requirements.suggestion.newRequirement");
     case "readiness": {
       const checks = list(p.checks);
-      return `${checks.filter((c) => c.passed === true).length} of ${checks.length} checks pass`;
+      return t("requirements.suggestion.checksPass", { a: checks.filter((c) => c.passed === true).length, b: checks.length });
     }
     case "breakdown":
-      return `${list(p.issues).length} issues`;
+      return t("requirements.suggestion.issuesN", { n: list(p.issues).length });
     case "duplicate":
-      return `Duplicate of ${str(p.duplicateOf) ?? "?"}`;
+      return t("requirements.suggestion.duplicateOf", { key: str(p.duplicateOf) ?? "?" });
     case "triage":
-      return str(p.note) ?? "Triage";
+      return str(p.note) ?? t("requirements.suggestion.triage");
     case "feedback_triage":
-      return str(p.note) ?? `Route as ${str(p.route) ?? "?"}`;
+      return str(p.note) ?? t("requirements.suggestion.routeAs", { route: routeWord(str(p.route) ?? "?", language) });
     case "design_change":
-      return str(p.reason) ?? `${str(p.change) ?? "Change"} a node`;
+      return str(p.reason) ?? t("requirements.suggestion.changeNode", { change: str(p.change) ?? t("requirements.suggestion.change") });
   }
 }
 
 /** What confirming an accept writes, said in the confirm step before it is pressed. */
-export function acceptConsequence(s: Suggestion): string {
+export function acceptConsequence(s: Suggestion, language: string): string {
+  const t = productCopy(language);
   const p = (s.payload ?? {}) as Payload;
-  const at = s.baseRevision !== null ? ` against r${s.baseRevision}` : "";
+  const r = s.baseRevision;
   switch (s.kind) {
     case "revision_diff":
-      return "Accepting writes it as a proposed revision of this requirement.";
+      return t("requirements.suggestion.acceptRevision");
     case "requirement_draft":
-      return "Accepting writes it as a new draft requirement.";
+      return t("requirements.suggestion.acceptDraft");
     case "readiness":
-      return `Accepting records it as the readiness result${s.baseRevision !== null ? ` of r${s.baseRevision}` : ""}.`;
+      return r !== null ? t("requirements.suggestion.acceptReadinessOf", { r }) : t("requirements.suggestion.acceptReadiness");
     case "breakdown":
-      return `Accepting files ${list(p.issues).length} issues at draft${at}.`;
+      return t(r !== null ? "requirements.suggestion.acceptBreakdownOn" : "requirements.suggestion.acceptBreakdown", { n: list(p.issues).length, r: r ?? "" });
     case "duplicate":
-      return `Accepting drops this as a duplicate of ${str(p.duplicateOf) ?? "the one it names"}.`;
+      return t("requirements.suggestion.acceptDuplicate", { key: str(p.duplicateOf) ?? t("requirements.suggestion.theOneItNames") });
     case "triage":
-      return "Accepting applies this triage to the issue.";
+      return t("requirements.suggestion.acceptTriage");
     case "feedback_triage":
-      return `Accepting routes the item as ${str(p.route) ?? "it names"}.`;
+      return t("requirements.suggestion.acceptRoute", { route: str(p.route) ? routeWord(str(p.route) as string, language) : t("requirements.suggestion.itNames") });
     case "design_change":
-      return "Accepting records it as accepted.";
+      return t("requirements.suggestion.acceptDesign");
   }
 }
 
-function detailLines(s: Suggestion): string[] {
+function detailLines(s: Suggestion, t: Copy): string[] {
   const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
-    return list(p.criteria).map((c) => `${str(c.code) ?? "New"} · ${str(c.body) ?? ""}`);
+    return list(p.criteria).map((c) => `${str(c.code) ?? t("requirements.suggestion.newCode")} · ${str(c.body) ?? ""}`);
   }
   if (s.kind === "readiness") {
-    return list(p.checks).map((c) => `${c.passed === true ? "Pass" : "Fail"} · ${str(c.check) ?? ""}${str(c.detail) ? ` — ${str(c.detail)}` : ""}`);
+    return list(p.checks).map(
+      (c) => `${t(c.passed === true ? "requirements.suggestion.pass" : "requirements.suggestion.fail")} · ${str(c.check) ?? ""}${str(c.detail) ? ` — ${str(c.detail)}` : ""}`,
+    );
   }
   return [];
 }
 
-function tipOf(s: Suggestion): string {
+function tipOf(s: Suggestion, t: Copy, dateTime: (at: string) => string): string {
+  const who = producerLabel(t, s.producerKind);
   return [
     `kind: ${s.kind}`,
-    s.baseRevision !== null ? `Based on r${s.baseRevision}` : "No base revision",
-    `From ${PRODUCER_LABEL[s.producerKind]}${s.model ? ` (${s.model})` : ""}`,
-    `Proposed ${new Date(s.createdAt).toLocaleString()}`,
+    s.baseRevision !== null ? t("requirements.suggestion.basedOn", { r: s.baseRevision }) : t("requirements.suggestion.noBase"),
+    s.model ? t("requirements.suggestion.fromModel", { who, model: s.model }) : t("requirements.suggestion.from", { who }),
+    t("requirements.suggestion.proposedAt", { at: dateTime(s.createdAt) }),
   ].join("\n");
 }
 
 /** "Pending": the suggestion's own state, in the assistant's colour. */
 export function PendingBadge() {
+  const t = useCopy();
   return (
     <span
       className="inline-flex items-center gap-[5px] rounded-pill px-2 py-px text-11-5 font-semibold"
       style={{ color: AGENT_TINT.fg }}
-      title="proposed · Waiting for a person to accept or reject it; never applied on its own"
+      title={t("requirements.suggestion.pendingTitle")}
     >
       <span aria-hidden className="size-1.5 rounded-full" style={{ background: AGENT_TINT.dot }} />
-      Pending
+      {t("requirements.suggestion.pending")}
     </span>
   );
 }
 
 function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKey: string }) {
+  const t = useCopy();
+  const lang = useInterfaceLanguage();
+  const time = useTimeFormat();
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
   const [step, setStep] = useState<"accept" | "reject" | null>(null);
   const [reason, setReason] = useState("");
-  const details = detailLines(s);
+  const details = detailLines(s, t);
   const busy = decide.isPending;
   return (
     <li
@@ -126,19 +125,19 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
       data-kind={s.kind}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold" style={{ color: AGENT_TINT.fg }} title={tipOf(s)}>
-          {PRODUCER_LABEL[s.producerKind]} · {KIND_LABEL[s.kind]}
+        <span className="font-semibold" style={{ color: AGENT_TINT.fg }} title={tipOf(s, t, time.dateTime)}>
+          {producerLabel(t, s.producerKind)} · {kindLabel(t, s.kind)}
         </span>
         <PendingBadge />
-        <span className="text-12 text-subtle" title={new Date(s.createdAt).toLocaleString()}>
-          {formatRelativeTime(s.createdAt)}
+        <span className="text-12 text-subtle" title={time.dateTime(s.createdAt)}>
+          {time.relative(s.createdAt)}
         </span>
       </div>
-      <p className="text-13-5">{summaryOf(s)}</p>
+      <p className="text-13-5">{summaryOf(s, lang)}</p>
       {details.length > 0 || s.kind === "breakdown" ? (
         <details className="text-12 text-muted">
           <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
-            Show details
+            {t("requirements.suggestion.showDetails")}
           </summary>
           {s.kind === "breakdown" ? (
             <BreakdownSlices read={s.breakdown} />
@@ -153,16 +152,16 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
       ) : null}
       <div className="flex flex-wrap items-center gap-2 pt-0.5">
         <Button type="button" size="sm" disabled={busy} onClick={() => setStep((v) => (v === "accept" ? null : "accept"))} aria-expanded={step === "accept"}>
-          Accept
+          {t("requirements.act.accept")}
         </Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep((v) => (v === "reject" ? null : "reject"))} aria-expanded={step === "reject"}>
-          Reject
+          {t("requirements.act.reject")}
         </Button>
       </div>
       {step === "accept" ? (
         <AcceptStep
-          confirmLabel="Accept"
-          consequence={acceptConsequence(s)}
+          confirmLabel={t("requirements.act.accept")}
+          consequence={acceptConsequence(s, lang)}
           loading={busy}
           onCancel={() => setStep(null)}
           onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
@@ -177,15 +176,15 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
           }}
         >
           <Input
-            aria-label="Why it is rejected"
-            placeholder="Why it is rejected"
+            aria-label={t("requirements.suggestion.rejectWhy")}
+            placeholder={t("requirements.suggestion.rejectWhy")}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="min-w-[16rem] flex-1"
             autoFocus
           />
           <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
-            Reject
+            {t("requirements.act.reject")}
           </Button>
         </form>
       ) : null}
