@@ -6,8 +6,9 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import { GIT_ACCESS } from '../git/bounded-fetch.js';
+import { GIT_ACCESS, unresolvedHostRefusal } from '../git/bounded-fetch.js';
 import { gitRepositoryReader } from '../git/repository-reading.js';
+import { isHostUnresolved } from '../git/ssh-host-guard.js';
 import { withDeployKey } from '../git/ssh-keys.js';
 import { githubRepositoryReader } from '../integrations/github/repository-reader.js';
 import { type LiveSource, resolveLiveSource } from './live-source.js';
@@ -56,6 +57,14 @@ export async function withRepository<T>(
   } catch (err) {
     // The host guard refuses the remote before any key is written; past that, `fn`'s own throw.
     if (entered || !(err instanceof HTTPException)) throw err;
+    if (isHostUnresolved(err)) {
+      return fn({
+        kind: 'refused',
+        ...unresolvedHostRefusal(repoUrl),
+        unbound: false,
+        route: 'deploy_key',
+      });
+    }
     return fn({
       kind: 'refused',
       cause: `${repoUrl} cannot be read: ${err.message}`,

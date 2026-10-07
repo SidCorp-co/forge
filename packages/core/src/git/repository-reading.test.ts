@@ -116,12 +116,9 @@ describe('commit', () => {
     expect(read.kind === 'absent' && read.detail).toContain('full 40-character sha');
   });
 
-  // ISS-1398 review F1: a 41-63 digit name was read as a whole sha and answered "holds no commit".
-  it('answers a name between the two whole lengths as a prefix, not as a missing whole sha', async () => {
-    const read = await reader().commit('f'.repeat(41));
+  it('answers a name shorter than a whole sha that no commit starts with as an unresolved prefix', async () => {
+    const read = await reader().commit('f'.repeat(39));
     expect(read.kind === 'absent' && read.detail).toContain('resolves no single commit from');
-    const whole = await reader().commit('f'.repeat(64));
-    expect(whole.kind === 'absent' && whole.detail).toContain(`holds no commit ${'f'.repeat(64)}`);
   });
 
   it('answers absent for a name that is not a sha, without taking it as a ref', async () => {
@@ -137,6 +134,71 @@ describe('commit', () => {
     expect(read.kind === 'unreadable' && read.why).toContain(
       'does not appear to be a git repository',
     );
+  });
+});
+
+// ISS-1398 r4: git resolves a held commit's 40 digits plus any tail once the commit is packed, so a
+// name longer than a whole sha was read as that commit; the length is ruled on before git is asked.
+describe('a name longer than the repository names a commit by', () => {
+  const overlong = (name: string) =>
+    `${remote} holds no commit ${name.toLowerCase()}: it is ${name.length} hex digits, and a commit there is named by its 40-digit sha or a prefix of it. Mark with the full 40-character sha the work landed at`;
+  const tails = [
+    ['41 digits', 'a'],
+    ['63 digits', 'abcdef0123456789abcdef0'],
+    ['64 digits, a SHA-256 length in a SHA-1 repository', 'abcdef0123456789abcdef01'],
+    ['65 digits', 'abcdef0123456789abcdef012'],
+  ];
+
+  it.each(tails)('is refused absent at %s beginning with a held commit', async (_, tail) => {
+    const name = `${sha.judged}${tail}`;
+    expect(await reader().commit(name)).toEqual({
+      kind: 'absent',
+      detail: overlong(name),
+      details: { commit: name, repository: remote },
+    });
+  });
+
+  it('is refused absent in upper case too', async () => {
+    const name = `${sha.judged}ABC`.toUpperCase();
+    const read = await reader().commit(name);
+    expect(read.kind === 'absent' && read.detail).toBe(overlong(name));
+  });
+
+  it('still reads a whole sha in upper case, and a short prefix, as the commit', async () => {
+    const r = reader();
+    const upper = await r.commit((sha.judged as string).toUpperCase());
+    expect(upper.kind === 'found' && upper.sha).toBe(sha.judged);
+    const short = await r.commit((sha.judged as string).slice(0, 7));
+    expect(short.kind === 'found' && short.sha).toBe(sha.judged);
+  });
+
+  it('is never read as carried, as changed paths, as a range head or as contained', async () => {
+    const r = reader();
+    const name = `${sha.judged}a`;
+    expect(await r.carriage(name, sha.merge as string)).toEqual({
+      kind: 'unread',
+      why: overlong(name).replace(/\. Mark with .*$/, ''),
+    });
+    expect(await r.carriage(sha.judged as string, `${sha.merge}a`)).toMatchObject({
+      kind: 'unread',
+    });
+    expect((await r.changedPaths(`${sha.after}a`)).kind).toBe('unread');
+    expect('why' in (await r.range('production', `${sha.merge}a`))).toBe(true);
+    expect(await r.contains(name, 'main')).toEqual({
+      why: overlong(name).replace(/\. Mark with .*$/, ''),
+    });
+  });
+
+  it('is refused by its length before the host is asked, so an unreachable host does not hide it', async () => {
+    const nowhere = `file://${join(root, 'nowhere.git')}`;
+    const r = reader(nowhere);
+    const name = `${sha.merge}a`;
+    const why = overlong(name)
+      .replace(/\. Mark with .*$/, '')
+      .replace(remote, nowhere);
+    expect(await r.carriage(sha.judged as string, name)).toEqual({ kind: 'unread', why });
+    expect(await r.range('production', name)).toEqual({ why });
+    expect(await r.contains(name, 'main')).toEqual({ why });
   });
 });
 

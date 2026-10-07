@@ -100,6 +100,20 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     ],
     ['COMMIT_NOT_THIS_ISSUE', () => at.undeclared as string, [`"chore: tidy, see ISS-${SEQ}"`]],
     ['COMMIT_NOT_LANDED', () => at.offBase as string, ['main does not contain it']],
+    // ISS-1398 r4: git resolves a packed commit's 40 digits plus any tail, so these were accepted.
+    ...[`a`, 'abcdef0123456789abcdef0', 'abcdef0123456789abcdef01'].map(
+      (tail) =>
+        [
+          'COMMIT_NOT_IN_REPOSITORY',
+          () => `${own()}${tail}`,
+          [`it is ${40 + tail.length} hex digits`, 'named by its 40-digit sha or a prefix of it'],
+        ] as const,
+    ),
+    [
+      'COMMIT_NOT_IN_REPOSITORY',
+      () => `${own()}ABC`.toUpperCase(),
+      ['it is 43 hex digits', 'Mark with the full 40-character sha'],
+    ],
   ] as const)(
     'refuses %s by what the repository holds, and writes nothing (criteria 3-5)',
     async (code, commit, says) => {
@@ -127,6 +141,9 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(human.markDetail).toContain(at.foreign);
     const refused = await refusal(() => mark(person, 'e'.repeat(40), 'human'));
     expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+    const overlong = await refusal(() => mark(person, `${at.foreign}a`, 'human'));
+    expect(overlong.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+    expect(overlong.message).toContain('it is 41 hex digits');
   }, 60_000);
 
   const GIT_ACCESS = "the project's Settings → Runners → Git access";

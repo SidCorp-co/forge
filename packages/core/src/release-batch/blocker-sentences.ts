@@ -294,6 +294,15 @@ function runnersHeldSentence(holds: RunnerHold[]): string | null {
   return `${head} ${holds.map(runnerHoldClause).join(' ')}`;
 }
 
+/** The act that makes the repository readable, once, ahead of the verdicts it lets be weighed. */
+function readableFirst(clears: readonly string[], subject: 'this' | 'that'): string {
+  return `A person clears ${subject} by making the repository readable: ${clears.join('; and ')}. The next sweep then weighs every waiting issue again.`;
+}
+
+function criteriaUnreadSentence(clears: readonly string[]): string {
+  return `This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'this')} Otherwise, record a verdict for each criterion named below, or move the issue out of \`awaiting_release\` if it is not to ship.`;
+}
+
 function heldIssuesSentence(remedy: string, held: HeldIssueRef[]): string {
   const each = held
     .map((h) => `\`${h.displayId}\` owes criterion ${h.criteria.join(', ')}`)
@@ -338,7 +347,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
-    return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
+    const clears = (details?.clears as string[] | undefined) ?? [];
+    const said = clears.length === 0 ? remedy : criteriaUnreadSentence(clears);
+    return held.length === 0 ? said : heldIssuesSentence(said, held);
   }
   const carried = carriedSentence(code, details);
   if (carried) return carried;
@@ -488,13 +499,19 @@ export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string)
 
 /** Where nothing can read what the project serves, no judging run earns a criterion, so the remedy
  *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). */
-export function heldBackWarningSentence(held: HeldIssueRef[], serving: ServingReading): string {
+export function heldBackWarningSentence(
+  held: HeldIssueRef[],
+  serving: ServingReading,
+  clears: readonly string[] = [],
+): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
   const lead = `A release will still be cut, without ${issues} the sweep is holding back`;
   const why =
     serving.kind === 'undeclared'
       ? `${lead}: each owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
-      : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
+      : clears.length > 0
+        ? `${lead}: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'that')} Otherwise each stays at the gate until a judging run earns it.`
+        : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
 }
 
