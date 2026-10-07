@@ -13531,6 +13531,74 @@
         ]
       }
     },
+    "/api/me/tour-events": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "started",
+                      "completed",
+                      "dismissed",
+                      "step_skipped"
+                    ],
+                    "type": "string"
+                  },
+                  "revision": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "step": {
+                    "maximum": 4,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tourId": {
+                    "enum": [
+                      "release-what-changes",
+                      "integrations"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "tourId",
+                  "revision",
+                  "kind"
+                ],
+                "type": "object",
+                "x-forge-refinements": [
+                  "step names the step a dismissed or step_skipped event happened at, and only those carry one"
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth"
+        ],
+        "x-forge-validated": [
+          "json"
+        ]
+      }
+    },
     "/api/me/whats-new": {
       "get": {
         "parameters": [

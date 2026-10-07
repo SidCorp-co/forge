@@ -1,0 +1,1 @@
+**Product tours, opened by the person.** What's new entries offer "Show me", a page a tour runs on offers it in one inline line, and Help lists every tour as Seen, Not seen or Updated; finishing is remembered per revision.

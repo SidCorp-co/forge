@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { FilterChip, SlideOver } from "@/design";
 import { type Copy, copyLocale, productCopy } from "@/lib/i18n/product-copy";
+import { tourHref } from "@/features/tours/links";
+import { tourById } from "@/features/tours/registry";
 import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 import { entriesByKey, sectionsOf, type WhatsNewSection } from "../group";
@@ -17,6 +19,8 @@ function shortDate(at: string | Date, locale: string): string {
 }
 
 function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: string | null }) {
+  const tour = tourById(entry.tour?.id);
+  const tourLink = tour ? tourHref(tour, slug, { version: entry.version }) : null;
   return (
     <li className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 gap-y-1 border-b border-line py-2.5" data-testid="whats-new-entry">
       <span
@@ -29,6 +33,11 @@ function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: str
       </span>
       <span className="text-13-5 text-fg">{entry.text}</span>
       <span className="col-start-2 flex items-center gap-2.5 text-12 text-subtle">
+        {tour && tourLink && (
+          <Link href={tourLink} className="text-13 font-semibold text-accent-text hover:underline" data-testid="whats-new-tour-link">
+            {t("tours.showMe", { count: tour.steps.length })}
+          </Link>
+        )}
         {slug ? (
           <Link href={releaseHref(slug, entry.version)} className="font-mono hover:text-fg">
             {entry.version}

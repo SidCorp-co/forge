@@ -13,6 +13,7 @@ import {
 } from '@forge/contracts/landing-artifacts';
 import { WHATS_NEW_SEEN_KEY, type WhatsNewSeenValue } from '@forge/contracts/product-state';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
+import { tourOfIssue } from '@forge/contracts/tours';
 import {
   isoWeekOf,
   WHATS_NEW_AWAY_DAYS,
@@ -123,9 +124,10 @@ export async function releasedEntries(
     const surfaces = [
       ...new Set((r.mergedArtifacts ?? []).map((a) => a.surface)),
     ] as LandingSurface[];
+    const key = r.seq != null ? formatIssueRef(prefix, r.seq) : r.id;
     return [
       {
-        key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
+        key,
         section: note.section,
         kind: WHATS_NEW_KIND_OF_SECTION[note.section],
         text: note.userFacing.trim(),
@@ -135,7 +137,7 @@ export async function releasedEntries(
         releasedAt: at.releasedAt.toISOString(),
         week: isoWeekOf(at.releasedAt),
         unread: seenAt === null || at.releasedAt > seenAt,
-        tour: null,
+        tour: tourOfIssue(key),
       },
     ];
   });

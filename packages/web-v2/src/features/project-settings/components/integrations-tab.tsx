@@ -15,6 +15,7 @@ import {
   mayWriteAgentAccess,
 } from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
+import { TourHint } from "@/features/tours/components/tour-hint";
 import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { bindingRefusalText } from "@/features/integrations/bind-actions";
@@ -70,7 +71,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
     [connectionsQ.data],
   );
   return (
-    <PageSection>
+    <PageSection data-tour="int-share">
       <PageSectionBody style={{ paddingTop: 0 }}>
         <PageSectionTitle className="mb-1">Share an existing connection</PageSectionTitle>
         <p className="fg-body-sm mb-4 max-w-[72ch] text-muted">
@@ -222,7 +223,10 @@ function ShareForm({
 export function IntegrationsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-10">
-      <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
+      <div>
+        <TourHint tourId="integrations" />
+        <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
+      </div>
       <ShareExistingCard projectId={projectId} canEdit={canEdit} />
     </div>
   );

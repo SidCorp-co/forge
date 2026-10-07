@@ -193,7 +193,7 @@ function IntegrationRow({
       </TD>
       <TD className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{target}</TD>
       <TD className="hidden max-w-[52ch] align-top text-muted sm:table-cell">{row.health}</TD>
-      <TD className="text-right align-top whitespace-nowrap">
+      <TD className="text-right align-top whitespace-nowrap" data-tour={isRepositoryCard(card) ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
           <RepositoryAction card={card} canEdit={canEdit} onConnect={onConnect} />
         ) : !isProviderCard(card.key) ? null : card.configured ? (
@@ -262,7 +262,7 @@ export function ProjectIntegrationsPanel({
         ) : status.isError ? (
           <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
         ) : (
-          <Table aria-label="Integrations">
+          <Table aria-label="Integrations" data-tour="int-status">
             <THead>
               <TR>
                 <TH>Integration</TH>

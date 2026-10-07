@@ -4,6 +4,7 @@ import {
   productStateKeySchema,
   putProductStateRequestSchema,
 } from '@forge/contracts/product-state';
+import { TOUR_EVENT_SHAPE, tourEventRequestSchema } from '@forge/contracts/tours';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +16,7 @@ import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { listProductState, readMePreferences, readPreferences, readProductState } from './read.js';
 import {
   listPreferenceChanges,
+  recordTourEvent,
   restorePreferenceChange,
   writeAssistantPreferences,
   writeMePreferences,
@@ -150,4 +152,17 @@ productStateRoutes.put(
     if (!outcome.ok) return refused(c, outcome.refusals, 'PRODUCT_STATE_REFUSED');
     return c.json(outcome.state);
   },
+);
+
+productStateRoutes.use('/tour-events', requireAuth());
+
+/** One event of the person's tour run: started, completed, dismissed at a step, or a step skipped. */
+productStateRoutes.post(
+  '/tour-events',
+  strictBody(tourEventRequestSchema, TOUR_EVENT_SHAPE),
+  async (c) =>
+    c.json(
+      { act: 'recorded', ...(await recordTourEvent(c.get('userId'), c.req.valid('json'))) },
+      201,
+    ),
 );

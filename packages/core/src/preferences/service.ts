@@ -10,6 +10,7 @@
 
 import type { AuthRefusalCode } from '@forge/contracts/auth';
 import type { ProductStateKey, ProductStateView } from '@forge/contracts/product-state';
+import type { TourEventRequest } from '@forge/contracts/tours';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
@@ -18,7 +19,7 @@ import {
   type PreferenceChangeField,
   preferenceChanges,
 } from '../db/schema-agent-selves.js';
-import { userProductState } from '../db/schema-product-state.js';
+import { productTourEvents, userProductState } from '../db/schema-product-state.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
@@ -325,4 +326,23 @@ export async function writeProductState(args: {
     if (!row) throw new Error('user_product_state: upsert returned no row');
     return { ok: true, state: productStateViewOf(row) };
   });
+}
+
+/** Record one event of a person's tour run; insert-only. */
+export async function recordTourEvent(
+  userId: string,
+  event: TourEventRequest,
+): Promise<{ id: string }> {
+  const [row] = await defaultDb
+    .insert(productTourEvents)
+    .values({
+      userId,
+      tourId: event.tourId,
+      revision: event.revision,
+      kind: event.kind,
+      step: event.step ?? null,
+    })
+    .returning({ id: productTourEvents.id });
+  if (!row) throw new Error('product_tour_events: insert returned no row');
+  return row;
 }

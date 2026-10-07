@@ -1,0 +1,64 @@
+/* driver.js themed with Forge's tokens: flat, a hairline border, the type scale, both themes through
+   the semantic variables. Applied through `popoverClass: "forge-tour"` (features/tours/run-tour.ts). */
+.driver-popover.forge-tour {
+  background: var(--bg-surface);
+  color: var(--fg-default);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  font-family: var(--font-sans);
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 16px;
+}
+.driver-popover.forge-tour .driver-popover-title {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-default);
+}
+.driver-popover.forge-tour .driver-popover-description {
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+.driver-popover.forge-tour .driver-popover-progress-text {
+  font-size: 12px;
+  color: var(--fg-subtle);
+}
+.driver-popover.forge-tour .driver-popover-footer button {
+  font-family: inherit;
+  text-shadow: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--fg-default);
+  border-radius: var(--r-sm);
+  padding: 5px 11px;
+  font-size: 13px;
+}
+.driver-popover.forge-tour .driver-popover-footer button:hover {
+  background: var(--bg-hover);
+}
+.driver-popover.forge-tour .driver-popover-footer .driver-popover-next-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--fg-on-accent);
+}
+.driver-popover.forge-tour .driver-popover-close-btn {
+  color: var(--fg-subtle);
+}
+.driver-popover.forge-tour .driver-popover-close-btn:hover {
+  color: var(--fg-default);
+}
+.driver-popover.forge-tour .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: var(--bg-surface);
+}
+.driver-popover.forge-tour .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: var(--bg-surface);
+}
+.driver-popover.forge-tour .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: var(--bg-surface);
+}
+.driver-popover.forge-tour .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: var(--bg-surface);
+}

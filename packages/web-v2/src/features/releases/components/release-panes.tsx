@@ -21,6 +21,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
+import { TourHint } from "@/features/tours/components/tour-hint";
 import { WhatChanges } from "./release-changes";
 import { ReleaseTrain } from "./release-train";
 
@@ -66,8 +67,11 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
 
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   return (
-    <div className="grid gap-8" data-testid="view-overview">
-      <WhatChanges changes={r.changes} slug={slug} />
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-8" data-testid="view-overview">
+      <div>
+        <TourHint tourId="release-what-changes" />
+        <WhatChanges changes={r.changes} slug={slug} />
+      </div>
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">
           <ViewHeading hint={r.state === "draft" ? "Each reason holds the cut until it is answered" : undefined}>

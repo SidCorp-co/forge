@@ -2,6 +2,8 @@
 @import "../styles/tokens.css";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "driver.js/dist/driver.css";
+@import "../styles/tour.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

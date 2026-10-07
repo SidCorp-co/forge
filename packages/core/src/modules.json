@@ -843,7 +843,7 @@
     "preferences": {
       "kind": "domain",
       "context": "project-config",
-      "owns": ["preferenceChanges", "userPreferences", "userProductState"],
+      "owns": ["preferenceChanges", "productTourEvents", "userPreferences", "userProductState"],
       "serves": ["REQ-19"]
     },
     "project-config": {
@@ -1253,6 +1253,9 @@
     },
     "suggestions": {
       "serves": ["REQ-8"]
+    },
+    "tours": {
+      "serves": ["REQ-23", "REQ-14"]
     },
     "version": {
       "serves": ["REQ-12"]

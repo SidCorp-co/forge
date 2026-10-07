@@ -47,9 +47,10 @@ async function issue(
   note: unknown,
   artifacts?: unknown,
   landing?: string,
+  at?: number,
 ): Promise<{ id: string; key: string }> {
   const id = randomUUID();
-  seq += 1;
+  seq = at ?? seq + 1;
   await db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes, merged_at,
                         merged_artifacts, merged_landing)
@@ -95,8 +96,15 @@ beforeEach(async () => {
   screen = await issue(
     { section: 'Added', userFacing: 'A release page starts with what it changes.' },
     UI,
+    undefined,
+    319,
   );
-  improved = await issue({ section: 'Changed', userFacing: 'Integrations reads true.' }, API);
+  improved = await issue(
+    { section: 'Changed', userFacing: 'Integrations reads true.' },
+    API,
+    undefined,
+    320,
+  );
   skipped = await issue({ section: 'Skip', userFacing: 'An internal refactor.' }, API);
   silent = await issue(null, API);
   designed = await issue({ section: 'Changed', userFacing: 'A design text.' }, DESIGN);
@@ -157,14 +165,19 @@ describe("What's new reads released notes by time", () => {
     }
     const first = f.days[0]?.entries[0];
     expect(first).toMatchObject({
-      key: screen.key,
+      key: 'ISS-319',
       kind: 'new',
       ui: true,
       surfaces: ['ui'],
       version: '0.2.0',
+      tour: { id: 'release-what-changes', revision: 1 },
+    });
+    expect(f.days[0]?.entries[1]).toMatchObject({
+      key: improved.key,
+      kind: 'improved',
+      ui: false,
       tour: null,
     });
-    expect(f.days[0]?.entries[1]).toMatchObject({ key: improved.key, kind: 'improved', ui: false });
   });
 
   it('reads only what shipped after `since`', async () => {
@@ -344,5 +357,39 @@ describe("a person's product state holds a closed key namespace", () => {
     const other = await api(someone, 'GET', '/api/me/product-state/tour:release-what-changes');
     expect(other.status).toBe(200);
     expect(other.body.value).toBeNull();
+  });
+});
+
+describe('a tour run leaves its events', () => {
+  const post = (body: unknown) => api(ownerToken, 'POST', '/api/me/tour-events', body);
+
+  it('records started, a step skipped and a dismissal at a step', async () => {
+    for (const body of [
+      { tourId: 'integrations', revision: 1, kind: 'started' },
+      { tourId: 'integrations', revision: 1, kind: 'step_skipped', step: 2 },
+      { tourId: 'integrations', revision: 1, kind: 'dismissed', step: 3 },
+    ]) {
+      const r = await post(body);
+      expect(r.status, JSON.stringify(r.body)).toBe(201);
+    }
+    const stored = (await db.execute(
+      sql`SELECT kind, step FROM product_tour_events WHERE user_id = ${ownerId} ORDER BY created_at, kind`,
+    )) as unknown as Array<{ kind: string; step: number | null }>;
+    expect(stored.map((r) => `${r.kind}:${r.step ?? '-'}`).sort()).toEqual([
+      'dismissed:3',
+      'started:-',
+      'step_skipped:2',
+    ]);
+  });
+
+  it('refuses a tour the catalog does not hold, and a dismissal that names no step', async () => {
+    const unknown = await post({ tourId: 'nowhere', revision: 1, kind: 'started' });
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).toContain(
+      'is not a tour: it is one of release-what-changes, integrations',
+    );
+    const stepless = await post({ tourId: 'integrations', revision: 1, kind: 'dismissed' });
+    expect(stepless.status).toBe(400);
+    expect(JSON.stringify(stepless.body)).toContain('step names the step');
   });
 });

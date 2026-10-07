@@ -51,6 +51,8 @@ import { TopBarSlotProvider } from "@/design";
 import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
 import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
+import { HelpToursButton } from "@/features/tours/components/help-tours-button";
+import { TourLauncher } from "@/features/tours/components/tour-launcher";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -254,6 +256,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         version={
           <>
             <WhatsNewButton />
+            <HelpToursButton />
             <SidebarVersion
               onDocs={() => router.push("/docs")}
               activeKey={activeKey}
@@ -276,7 +279,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
+          <CurrentProjectProvider project={railProject}>
+            {children}
+            <TourLauncher />
+          </CurrentProjectProvider>
         </main>
       </div>
 
