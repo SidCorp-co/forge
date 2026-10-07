@@ -315,14 +315,16 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   let copy = false;
   if (!(top && walk.fields) && !asError) {
     copy = toJSONByGetter(value);
-    const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
+    // Its toJSON, and a getter yielding it, run on a receiver the sink's censored names are out of.
+    const names = walk.censor;
+    const asked = names !== undefined && attempt(() => 'toJSON' in value) === true;
+    const self = asked ? attempt(() => censored(value, names as ReadonlySet<string>)) : value;
+    if (self === UNREADABLE) return REDACTED;
+    const toJSON = attempt(() => (self as { toJSON?: unknown }).toJSON);
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
       collectHeld(value, walk, depth);
-      const names = walk.censor;
-      const self = names ? attempt(() => censored(value, names)) : value;
-      const out =
-        self === UNREADABLE ? UNREADABLE : attempt(() => toJSON.call(self, key) as unknown);
+      const out = attempt(() => toJSON.call(self, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
   }
@@ -364,9 +366,10 @@ function holdsName(
 
 /**
  * `value` for a `toJSON` to be asked with: where a field named in `names` stands anywhere in its
- * own fields, a copy of every object it reaches (each once, so a part it holds twice or that holds
- * itself is the same copy) with each such field censored; otherwise `value` itself. An object that
- * cannot be copied stands as an empty one, so the caller's code finds no field to read there.
+ * own fields, a copy of it and of every part on the way to such a field (each once, so a part it
+ * holds twice or that holds itself is the same copy) with each such field censored; otherwise
+ * `value` itself. An object that cannot be copied stands as an empty one, so the caller's code
+ * finds no field to read there.
  */
 function censored(value: object, names: ReadonlySet<string>): object {
   if (!holdsName(value, names, new Set())) return value;
@@ -375,6 +378,8 @@ function censored(value: object, names: ReadonlySet<string>): object {
     const known = copies.get(from);
     if (known) return known;
     if (depth > MAX_DEPTH) return {};
+    // A part holding no such field stays itself, a Date or a Map with the slots a copy would lose.
+    if (depth > 0 && !holdsName(from, names, new Set())) return from;
     const fields = attempt(() => Object.getOwnPropertyDescriptors(from));
     const out = attempt(
       (): object => (Array.isArray(from) ? [] : Object.create(Object.getPrototypeOf(from))),

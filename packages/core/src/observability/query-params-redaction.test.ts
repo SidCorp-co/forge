@@ -407,6 +407,20 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     }
   });
 
+  it('asks a toJSON with censored fields and every other part as it is, a Date among them', () => {
+    const value = {
+      reading: {
+        password: 'ordinary-password',
+        when: new Date(0),
+        toJSON() {
+          return { said: this.password, when: this.when.toISOString() };
+        },
+      },
+    };
+    const out = asSerialized(value, { censor: new Set(['password']) });
+    expect(out.value).toEqual({ reading: { said: REDACTED, when: '1970-01-01T00:00:00.000Z' } });
+  });
+
   it('asks a toJSON over a very deep receiver without throwing', () => {
     let chain: Record<string, unknown> = { password: 'ordinary-password' };
     for (let i = 0; i < 20_000; i++) chain = { inner: chain };

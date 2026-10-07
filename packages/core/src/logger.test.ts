@@ -542,13 +542,25 @@ describe('the core logger, given a value whose text only a serializer renders', 
       (headers as Record<string, unknown>).back = req;
       return req;
     };
+    let got = 0;
+    const captured = () => ({
+      password: 'ordinary-password',
+      get toJSON() {
+        got++;
+        const saved = this.password;
+        return () => ({ said: saved });
+      },
+    });
+    log.warn({ reading: captured() }, 'captured');
+    log.child({ reading: captured() }).warn('bound captured');
     log.warn({ req: shared() }, 'shared');
     log.child({ req: shared() }).warn('bound shared');
     log.warn({ req: request() }, 'request');
     log.child({ req: request() }).warn('bound request');
     rebound.setBindings({ req: request() });
     rebound.warn('rebound request');
-    expect(lines).toHaveLength(9);
+    expect(lines).toHaveLength(11);
+    expect(got).toBe(2);
     for (const line of lines) {
       expect(line).not.toContain('ordinary-secret');
       expect(line).not.toContain('ordinary-password');
