@@ -260,6 +260,9 @@
     "web-feature-issues": [
       "packages/web-v2/src/features/issues/**"
     ],
+    "web-feature-memory": [
+      "packages/web-v2/src/features/memory/**"
+    ],
     "web-feature-mockups": [
       "packages/web-v2/src/features/mockups/**"
     ],
@@ -504,6 +507,7 @@
         "web-feature-forecast",
         "web-feature-whats-new",
         "web-feature-issue-picker",
+        "web-feature-memory",
         "web-features"
       ],
       "status": "locked",

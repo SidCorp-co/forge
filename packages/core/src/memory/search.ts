@@ -1,3 +1,4 @@
+import type { MemoryStaleRef } from '@forge/contracts/memory';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
@@ -29,6 +30,17 @@ export interface MemoryHit {
   metadata: unknown;
   score: number;
   embeddedAt: Date;
+  /** When the row was first written. */
+  writtenAt: Date;
+  /**
+   * The date this memory speaks as of (MJ-5): its last write or its last confirmation, whichever
+   * is later. A memory is a dated source, never a statement about now; cite it with this date.
+   */
+  asOf: Date;
+  /** When an agent or person last confirmed it against what is live; null when never. */
+  verifiedAt: Date | null;
+  /** Each record the text names that no longer resolves (MJ-3); present only when one does not. */
+  staleRefs?: MemoryStaleRef[];
   /** True when `metadata.staleSince` is set — a later release may have
    *  contradicted this row (see `reconcileForReleasedIssue`). */
   stale: boolean;
@@ -55,6 +67,9 @@ export const MEMORY_HIT_COLUMNS = {
   text: memories.textContent,
   metadata: memories.metadata,
   embeddedAt: memories.embeddedAt,
+  createdAt: memories.createdAt,
+  updatedAt: memories.updatedAt,
+  lastVerifiedAt: memories.lastVerifiedAt,
 };
 
 type MemoryHitRow = {
@@ -64,6 +79,9 @@ type MemoryHitRow = {
   text: string;
   metadata: unknown;
   embeddedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  lastVerifiedAt: Date | null;
 };
 
 /** A selected row as a hit, with the read-side staleness badge derived from its `metadata`. */
@@ -78,6 +96,12 @@ export function toMemoryHit(r: MemoryHitRow, score: number): MemoryHit {
     metadata: r.metadata,
     score,
     embeddedAt: r.embeddedAt,
+    writtenAt: r.createdAt,
+    asOf:
+      r.lastVerifiedAt && r.lastVerifiedAt.getTime() > r.updatedAt.getTime()
+        ? r.lastVerifiedAt
+        : r.updatedAt,
+    verifiedAt: r.lastVerifiedAt,
     ...(typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale }),
   };
 }

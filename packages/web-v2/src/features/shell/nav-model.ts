@@ -45,6 +45,7 @@ const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
   { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
   { key: "proj-feedback", label: "Feedback", icon: "chat", sub: "/feedback" },
+  { key: "proj-memory", label: "Memory", icon: "archive", sub: "/memory" },
   {
     key: DEVELOPMENT_GROUP_KEY,
     label: "Development",

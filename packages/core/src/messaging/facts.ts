@@ -36,6 +36,11 @@ export interface MessageFacts {
    * read, not made up, though no project-wide snapshot holds it (a release's 26 landed issues).
    */
   readonly readCounts: ReadonlySet<number>;
+  /**
+   * The dates (`YYYY-MM-DD`) the memories this turn's reads returned speak as of: a decision the
+   * reply takes from memory is cited with one of them (MJ-5, `status-claims-rule.ts`).
+   */
+  readonly memoryDates: ReadonlySet<string>;
   readonly issueLookupFailed: boolean;
 }
 
@@ -49,6 +54,7 @@ export const NO_FACTS: MessageFacts = {
   offeredTools: [],
   progress: null,
   readCounts: new Set(),
+  memoryDates: new Set(),
   issueLookupFailed: false,
 };
 

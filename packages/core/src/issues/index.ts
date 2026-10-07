@@ -30,7 +30,7 @@ export {
   type IssueCarriage,
   readCarriers,
 } from './carriage.js';
-export { citedIssues } from './cited-issues.js';
+export { citedIssues, issueStandingsBySeq } from './cited-issues.js';
 export {
   assertContractWaitsSettledForIssue,
   type ContractWaitRow,

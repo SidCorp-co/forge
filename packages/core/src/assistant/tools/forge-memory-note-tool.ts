@@ -3,7 +3,7 @@
  *
  * The model brings the text; core stamps everything that says where it came
  * from — the project, the room, the person who spoke and the handle that
- * listened — so a note is always attributable and always deletable by its author.
+ * listened — so a note is always attributable, and the Memory page shows who wrote it.
  * It is written with that person's own authority: the turn's principal IS the
  * speaker (ISS-17), and the role checked is the one `POST /api/memory` takes.
  */
@@ -32,7 +32,7 @@ const DESCRIPTION = [
   'Remember something from this conversation for the project — a fact, a decision, a preference the',
   'person stated — when they ask you to remember it or it is plainly worth keeping.',
   'Give the text and, if useful, a title; where it came from and who said it is stamped for you.',
-  'The person can see and delete their own notes from their account page.',
+  "The note is listed on the project's Memory page, where a person with write access corrects or retires it with a reason.",
 ].join(' ');
 
 export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -58,18 +58,21 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
     await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
     const sourceRef = `conversation:${turn.conversationId}:${randomUUID()}`;
-    const result = await runMemoryWrite({
-      projectId,
-      source: 'note',
-      sourceRef,
-      textContent: args.title ? `${args.title}\n\n${args.text}` : args.text,
-      metadata: {
-        conversationId: turn.conversationId,
-        authorUserId: ctx.principal.userId,
-        handleUserId: turn.handleUserId,
-        ...(args.title ? { title: args.title } : {}),
+    const result = await runMemoryWrite(
+      {
+        projectId,
+        source: 'note',
+        sourceRef,
+        textContent: args.title ? `${args.title}\n\n${args.text}` : args.text,
+        metadata: {
+          conversationId: turn.conversationId,
+          authorUserId: ctx.principal.userId,
+          handleUserId: turn.handleUserId,
+          ...(args.title ? { title: args.title } : {}),
+        },
       },
-    });
+      { writtenBy: ctx.principal.userId },
+    );
     return {
       id: result.id,
       sourceRef,
