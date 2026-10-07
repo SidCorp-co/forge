@@ -2,11 +2,7 @@ import { sealQueryError } from '@forge/observability';
 import { PgPreparedQuery } from 'drizzle-orm/pg-core';
 import { PostgresJsSession, PostgresJsTransaction } from 'drizzle-orm/postgres-js';
 
-/**
- * Where a failed statement's error leaves drizzle: every prepared statement runs through
- * `queryWithCache`, and a transaction's `BEGIN`, `COMMIT` and savepoints go to the driver from
- * `transaction` directly, so a deferred constraint fails there. All three are drizzle-internal.
- */
+/** Every prepared statement fails in `queryWithCache`; a deferred constraint fails at `COMMIT`. */
 const DOORS = [
   [PgPreparedQuery.prototype, 'queryWithCache'],
   [PostgresJsSession.prototype, 'transaction'],
@@ -18,11 +14,7 @@ const SEALED = Symbol.for('forge.queryErrorSeal');
 type Door = Record<string, unknown>;
 type Method = ((...args: unknown[]) => Promise<unknown>) & { [SEALED]?: true };
 
-/**
- * Seal every error a failed statement or transaction throws through drizzle, so its message, its
- * stack and its enumerable fields carry no bound value to whatever copies them (ISS-1383). Once per
- * process; a drizzle that no longer has one of the doors refuses here rather than running unsealed.
- */
+/** Seals what a failed statement or transaction throws; a missing door refuses (ISS-1383). */
 export function installQueryErrorSeal(
   doors: ReadonlyArray<readonly [object, string]> = DOORS,
 ): void {
