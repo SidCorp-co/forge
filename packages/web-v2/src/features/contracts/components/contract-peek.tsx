@@ -19,7 +19,6 @@ export function ContractPeek({
   onOpenFull: () => void;
 }) {
   const q = useContractDetail(projectId, contractRef);
-  const d = q.data;
   return (
     <PeekPanel peek={peek} listLabel="Contracts" noun="Contract" onOpenFull={onOpenFull} testId="contract-peek">
       <QueryBoundary query={q} loadingLabel="loading contract…">

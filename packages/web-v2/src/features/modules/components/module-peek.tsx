@@ -23,7 +23,6 @@ export function ModulePeek({
   onOpenFull: () => void;
 }) {
   const q = useModuleDetail(projectId, moduleSlug);
-  const d = q.data;
   return (
     <PeekPanel peek={peek} listLabel="Modules" noun="Module" onOpenFull={onOpenFull} testId="module-peek">
       <QueryBoundary query={q} loadingLabel="loading module…">

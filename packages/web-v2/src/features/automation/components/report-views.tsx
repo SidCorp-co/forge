@@ -12,7 +12,6 @@ import {
   DetailPane,
   DetailTabs,
   EnumBadge,
-  ErrorState,
   Fact,
   FactsEmpty,
   FactsGroup,
@@ -23,19 +22,19 @@ import {
   PeekHead,
   PeekPanel,
   type PeekState,
-  ProjectLoader,
   StatusBadge,
   useUrlTab,
   ViewHeading,
   WaitBanner,
   WaitingOn,
+  QueryBoundary,
 } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useTriageAgentReport } from "@/features/automation/report-hooks";
 import { FeedbackForm } from "@/features/feedback/components/feedback-form";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
-import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
@@ -432,51 +431,43 @@ function History({ r }: { r: ReportStanding }) {
 export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId: string; slug: string; reportId: string; canWrite: boolean }) {
   const q = useReportDetail(projectId, reportId);
   const [tab, setTab] = useUrlTab(REPORT_TABS);
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading the report…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const r = q.data.report;
-  const tabs = [
-    { value: "report" as const, label: "Report" },
-    { value: "source" as const, label: "Source" },
-    { value: "history" as const, label: "History" },
-  ];
   return (
-    <DetailLayout
-      testId="report-detail"
-      dataKey={r.id}
-      rail={
-        <FactsRail>
-          <ReportFacts r={r} slug={slug} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={shortId(r.id)} title={r.summary} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
-      <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Report"}>
-        {tab === "report" ? (
-          <div className="grid gap-8" data-testid="view-report">
-            <Prose title="Summary">{r.summary}</Prose>
-            <Prose title="Detail">{r.detail}</Prose>
-            <Prose title="Suggestion">{r.suggestion}</Prose>
-            {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
-          </div>
-        ) : null}
-        {tab === "source" ? <Source r={r} slug={slug} /> : null}
-        {tab === "history" ? <History r={r} /> : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading the report…">
+      {(data) => {
+        const r = data.report;
+        const tabs = [
+          { value: "report" as const, label: "Report" },
+          { value: "source" as const, label: "Source" },
+          { value: "history" as const, label: "History" },
+        ];
+        return (
+          <DetailLayout
+            testId="report-detail"
+            dataKey={r.id}
+            rail={
+              <FactsRail>
+                <ReportFacts r={r} slug={slug} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={shortId(r.id)} title={r.summary} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
+            <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Report"}>
+              {tab === "report" ? (
+                <div className="grid gap-8" data-testid="view-report">
+                  <Prose title="Summary">{r.summary}</Prose>
+                  <Prose title="Detail">{r.detail}</Prose>
+                  <Prose title="Suggestion">{r.suggestion}</Prose>
+                  {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
+                </div>
+              ) : null}
+              {tab === "source" ? <Source r={r} slug={slug} /> : null}
+              {tab === "history" ? <History r={r} /> : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

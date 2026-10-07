@@ -31,10 +31,11 @@ import {
   useUrlTab,
   ViewHeading,
   WaitBanner,
+  QueryBoundary,
 } from "@/design";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
@@ -370,44 +371,36 @@ export function MasterPage({ projectId, slug }: { projectId: string; slug: strin
   const q = useMasterStanding(projectId);
   const passes = useMasterPasses(projectId);
   const [tab, setTab] = useUrlTab(MASTER_TABS);
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading the master…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const m = q.data;
-  const tabs = [
-    { value: "passes" as const, label: "Passes", ...(passes.data ? { count: passes.data.items.length } : {}) },
-    { value: "runs" as const, label: "Runs holding a lease" },
-    { value: "charter" as const, label: "Charter" },
-  ];
   return (
-    <DetailLayout
-      testId="master-detail"
-      dataKey={m.sessionId ?? "none"}
-      rail={
-        <FactsRail>
-          <MasterFacts m={m} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey="Master" title={masterName(m)} badge={<StatusBadge family="masterState" value={m.state} />} />
-      <MasterBanner m={m} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="master-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Passes"}>
-        {tab === "passes" ? <Passes projectId={projectId} slug={slug} /> : null}
-        {tab === "runs" ? <Leased m={m} projectId={projectId} slug={slug} /> : null}
-        {tab === "charter" ? <Charter projectId={projectId} /> : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading the master…">
+      {(data) => {
+        const m = data;
+        const tabs = [
+          { value: "passes" as const, label: "Passes", ...(passes.data ? { count: passes.data.items.length } : {}) },
+          { value: "runs" as const, label: "Runs holding a lease" },
+          { value: "charter" as const, label: "Charter" },
+        ];
+        return (
+          <DetailLayout
+            testId="master-detail"
+            dataKey={m.sessionId ?? "none"}
+            rail={
+              <FactsRail>
+                <MasterFacts m={m} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey="Master" title={masterName(m)} badge={<StatusBadge family="masterState" value={m.state} />} />
+            <MasterBanner m={m} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="master-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Passes"}>
+              {tab === "passes" ? <Passes projectId={projectId} slug={slug} /> : null}
+              {tab === "runs" ? <Leased m={m} projectId={projectId} slug={slug} /> : null}
+              {tab === "charter" ? <Charter projectId={projectId} /> : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

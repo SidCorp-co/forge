@@ -14,7 +14,6 @@ import {
   DetailPane,
   DetailTabs,
   EnumBadge,
-  ErrorState,
   Fact,
   FactsEmpty,
   FactsGroup,
@@ -26,17 +25,17 @@ import {
   PeekPanel,
   type PeekState,
   PersonChip,
-  ProjectLoader,
   StatusBadge,
   Toggle,
   useUrlTab,
   ViewHeading,
   WaitBanner,
   WaitingOn,
+  QueryBoundary,
 } from "@/design";
 import { statusReading } from "@/design/vocabulary";
 import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
-import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useScheduleDetail } from "../hooks";
 import { automationListHref, fireHref } from "@/lib/routes/automation";
@@ -337,45 +336,37 @@ function Overview({ d, access }: { d: ScheduleDetailResponse; access: Automation
 export function SchedulePage({ access, scheduleId }: { access: AutomationAccess; scheduleId: string }) {
   const q = useScheduleDetail(access.projectId, scheduleId, true);
   const [tab, setTab] = useScheduleTab();
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading the schedule…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const d = q.data;
-  const s = d.schedule;
-  const tabs = [
-    { value: "overview" as const, label: "Overview" },
-    { value: "fires" as const, label: "Fires", count: d.firesTotal },
-    { value: "reports" as const, label: "Reports", count: d.reports.length },
-  ];
   return (
-    <DetailLayout
-      testId="schedule-detail"
-      dataKey={s.id}
-      rail={
-        <FactsRail>
-          <ScheduleFacts s={s} slug={access.slug} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={s.name} title={whatItRuns(s)} badge={<StatusBadge family="scheduleStanding" value={s.state} />} />
-      <ScheduleBanner s={s} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="schedule-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
-        {tab === "overview" ? <Overview d={d} access={access} /> : null}
-        {tab === "fires" ? <FireLines fires={d.fires} slug={access.slug} /> : null}
-        {tab === "reports" ? <ReportLines reports={d.reports} slug={access.slug} /> : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading the schedule…">
+      {(data) => {
+        const d = data;
+        const s = d.schedule;
+        const tabs = [
+          { value: "overview" as const, label: "Overview" },
+          { value: "fires" as const, label: "Fires", count: d.firesTotal },
+          { value: "reports" as const, label: "Reports", count: d.reports.length },
+        ];
+        return (
+          <DetailLayout
+            testId="schedule-detail"
+            dataKey={s.id}
+            rail={
+              <FactsRail>
+                <ScheduleFacts s={s} slug={access.slug} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={s.name} title={whatItRuns(s)} badge={<StatusBadge family="scheduleStanding" value={s.state} />} />
+            <ScheduleBanner s={s} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="schedule-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+              {tab === "overview" ? <Overview d={d} access={access} /> : null}
+              {tab === "fires" ? <FireLines fires={d.fires} slug={access.slug} /> : null}
+              {tab === "reports" ? <ReportLines reports={d.reports} slug={access.slug} /> : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

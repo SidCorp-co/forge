@@ -18,7 +18,6 @@ export function ReleasePeek({
   onOpenFull: () => void;
 }) {
   const q = useRelease(projectId, version);
-  const r = q.data?.release;
   return (
     <PeekPanel peek={peek} listLabel="Releases" noun="Release" onOpenFull={onOpenFull} testId="release-peek">
       <QueryBoundary query={q} loadingLabel="loading release…">

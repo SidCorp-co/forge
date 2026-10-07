@@ -22,7 +22,6 @@ export function FeedbackPeek({
   onOpenFull: () => void;
 }) {
   const q = useFeedbackItem(projectId, fbKey);
-  const f = q.data?.feedback;
   return (
     <PeekPanel peek={peek} listLabel="Feedback" noun="Feedback" onOpenFull={onOpenFull} testId="feedback-peek">
       <QueryBoundary query={q} loadingLabel="loading feedback…">

@@ -1,7 +1,6 @@
 "use client";
 
-import { EmptyState, ErrorState, PageTitle, ProjectLoader, ViewHeading, WaitBanner } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { EmptyState, PageTitle, ViewHeading, WaitBanner, QueryBoundary } from "@/design";
 import { useDevelopmentOverview } from "../hooks";
 import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";
@@ -36,62 +35,55 @@ function Coverage({ c }: { c: DevelopmentOverview["coverage"] }) {
 export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: string; slug: string } }) {
   const q = useDevelopmentOverview(scope.projectId);
   const needsYou = useNeedsYou(scope.projectId).data?.items ?? [];
-  const d = q.data;
   return (
     <>
       <PageTitle hint="What is running, what is stuck and what waits on you, read from core.">Development overview</PageTitle>
       <div className="flex min-h-full flex-col bg-app pb-8" data-testid="development-overview">
-        {q.isLoading ? (
-          <div className="grid min-h-[50vh] place-items-center">
-            <ProjectLoader label="loading the overview…" />
-          </div>
-        ) : q.isError || !d ? (
-          <div className="grid min-h-[50vh] place-items-center">
-            <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-          </div>
-        ) : (
-          <>
-            <SignalsStrip data={d} />
-            <Coverage c={d.coverage} />
-            <div className="grid gap-x-14 gap-y-9 px-5 py-6 max-md:px-3 lg:grid-cols-2">
-              <div className="min-w-0 space-y-9">
-                <section aria-label="Issue flow">
-                  <ViewHeading right={<Note>{`Last ${d.flow.windowDays} days · ${d.flow.total} issues`}</Note>}>Issue flow</ViewHeading>
-                  <IssueFlow flow={d.flow} />
-                </section>
-                <section aria-label="Moving">
-                  <ViewHeading right={<Note>Runs holding a lease</Note>}>
-                    Moving <Count n={d.moving.count} />
-                  </ViewHeading>
-                  <LeaseLanes moving={d.moving} slug={scope.slug} />
-                </section>
+        <QueryBoundary query={q} loadingLabel="loading the overview…" height="50vh" retry="always">
+          {(d) => (
+            <>
+              <SignalsStrip data={d} />
+              <Coverage c={d.coverage} />
+              <div className="grid gap-x-14 gap-y-9 px-5 py-6 max-md:px-3 lg:grid-cols-2">
+                <div className="min-w-0 space-y-9">
+                  <section aria-label="Issue flow">
+                    <ViewHeading right={<Note>{`Last ${d.flow.windowDays} days · ${d.flow.total} issues`}</Note>}>Issue flow</ViewHeading>
+                    <IssueFlow flow={d.flow} />
+                  </section>
+                  <section aria-label="Moving">
+                    <ViewHeading right={<Note>Runs holding a lease</Note>}>
+                      Moving <Count n={d.moving.count} />
+                    </ViewHeading>
+                    <LeaseLanes moving={d.moving} slug={scope.slug} />
+                  </section>
+                </div>
+                <div className="min-w-0 space-y-9">
+                  <section aria-label="Stuck">
+                    <ViewHeading right={<Note>Read from the root; unblocking it frees the chain</Note>}>
+                      Stuck <Count n={d.stuck.count} />
+                    </ViewHeading>
+                    <StuckChains stuck={d.stuck} slug={scope.slug} />
+                  </section>
+                  <section aria-label="Modules">
+                    <ViewHeading right={<Note>Open issues by state</Note>}>Modules</ViewHeading>
+                    <ModuleBars modules={d.modules} />
+                  </section>
+                </div>
               </div>
-              <div className="min-w-0 space-y-9">
-                <section aria-label="Stuck">
-                  <ViewHeading right={<Note>Read from the root; unblocking it frees the chain</Note>}>
-                    Stuck <Count n={d.stuck.count} />
-                  </ViewHeading>
-                  <StuckChains stuck={d.stuck} slug={scope.slug} />
-                </section>
-                <section aria-label="Modules">
-                  <ViewHeading right={<Note>Open issues by state</Note>}>Modules</ViewHeading>
-                  <ModuleBars modules={d.modules} />
-                </section>
-              </div>
-            </div>
-            {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
-              <EmptyState title="Nothing is moving yet" message="Issues appear here once someone files or works one." />
-            ) : null}
-            <section id="needs-you" aria-label="Needs you" className="scroll-mt-4" data-testid="needs-you">
-              <NeedsYouList
-                items={needsYou}
-                slug={scope.slug}
-                foldKey="web-v2:development-overview:fold"
-                empty="Nothing waits on you. A question, a draft to take on, a release to approve or a contract version to decide shows here."
-              />
-            </section>
-          </>
-        )}
+              {d.flow.total === 0 && needsYou.length === 0 && d.stuck.count === 0 && d.moving.count === 0 ? (
+                <EmptyState title="Nothing is moving yet" message="Issues appear here once someone files or works one." />
+              ) : null}
+              <section id="needs-you" aria-label="Needs you" className="scroll-mt-4" data-testid="needs-you">
+                <NeedsYouList
+                  items={needsYou}
+                  slug={scope.slug}
+                  foldKey="web-v2:development-overview:fold"
+                  empty="Nothing waits on you. A question, a draft to take on, a release to approve or a contract version to decide shows here."
+                />
+              </section>
+            </>
+          )}
+        </QueryBoundary>
       </div>
     </>
   );
