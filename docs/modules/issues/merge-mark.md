@@ -95,8 +95,9 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
 - **On git** the mark refuses `artifacts` (`ARTIFACTS_NOT_THIS_SHAPE`): what a git landing changed is
   read from its observed commit's changed paths (`changedFilesOf`, against its first parent) through
   the project document's `release.surfaces` — ordered `rules` of globs per surface, first match
-  wins, and `ignore` for paths that ship nothing — or the map `landing-surfaces.ts:FORGE_CORE_SURFACES`
-  ships for the forge-core repository. A project declaring no map has its paths shown unclassified,
+  wins, and `ignore` for paths that ship nothing — or, for the forge-core repository, the map
+  `packages/core/src/release-batch/landing-surfaces.ts:FORGE_CORE_SURFACES` ships. A project
+  declaring no map has its paths shown unclassified,
   never sorted by a guess; a mark with no observed commit has no paths to read.
 - **A design approval** writes the revision's `design` artifact on either shape (below).
 
