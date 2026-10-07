@@ -1,4 +1,4 @@
-// The BA door's asks: one clarification question or one questionnaire card, at most one open per requirement.
+// The BA door's asks: a clarification question, or one questionnaire card, of which a requirement holds one open at a time.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -14,7 +14,6 @@ import { db } from '../../db/client.js';
 import { questionnaireBatches } from '../../db/schema-onboarding.js';
 import { agentQuestions } from '../../db/schema-questions.js';
 import { lockXact } from '../../lib/advisory-lock.js';
-import { isUniqueViolation } from '../../lib/db-errors.js';
 import { refuser } from '../../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer } from '../../lib/tool.js';
 import {
@@ -44,13 +43,12 @@ export async function clarificationOf(requirementId: string) {
   };
 }
 
-// the BA door asks through the same questionnaire card and submit as onboarding (BC-10): one
-// batch is the one open ask a requirement holds (Q5), so it is refused over an open single question
-// and a single question is refused over an open batch
+// the BA door asks through the same questionnaire card and submit as onboarding (BC-10): a
+// requirement holds one open batch at a time, and a single question waits for an open batch
 export const sendQuestionnaire = (room: BaRoom): ContextScopedMcpToolFactory =>
   questionnaireTool(
     { projectId: room.projectId, requirementId: room.requirementId, firstRequirementsOf: null },
-    `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. At most one ask is open per requirement: a batch over an open clarification is CLARIFICATION_ALREADY_OPEN, a second batch QUESTIONNAIRE_ALREADY_OPEN; at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
+    `Ask the requirement owner several things at once as ONE questionnaire card they answer inline and send once (partial allowed). Shape: ${POST_QUESTIONNAIRE_SHAPE}. Use group "clarification" for vague criteria, "question" for missing facts, "recommendation" (control accept_reject) for a change you propose. One batch is open per requirement at a time (a second is QUESTIONNAIRE_ALREADY_OPEN); at most ${QUESTIONNAIRE_MAX_ROUNDS} rounds. Their answers arrive as their next message.`,
   );
 
 /** project-onboarding `requirements`: the BA asks in the first-requirements room through the same card. */
@@ -149,7 +147,7 @@ export const askClarification =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Ask the requirement owner ONE clarification question (a repro step, a screenshot, an environment). `needed` says what would settle it. At most one question is open per requirement; a second is refused CLARIFICATION_ALREADY_OPEN.',
+      'Ask the requirement owner one clarification question (a repro step, a screenshot, an environment); each is its own open question on the requirement. `needed` says what would settle it. A business question the next revision must settle goes in that revision as spec.openQuestions instead (ba_suggest), where it can block the agree. Refused CLARIFICATION_ALREADY_OPEN while a questionnaire card is open on the requirement.',
     inputSchema: schema(clarifyInput),
     handler: async (args) => {
       const input = clarifyInput.parse(args);
@@ -157,26 +155,17 @@ export const askClarification =
       if (batch) {
         throw refuseAsk(
           'CLARIFICATION_ALREADY_OPEN',
-          `questionnaire ${batch} is still open on this requirement; at most one ask is open per item — wait for its answers.`,
+          `questionnaire ${batch} is still open on this requirement; a question waits for an open card — wait for its answers.`,
         );
       }
-      try {
-        const q = await askQuestion({
-          id: randomUUID(),
-          projectId: room.projectId,
-          requirementId: room.requirementId,
-          prompt: input.prompt,
-          blockerKind: 'human',
-          answer: { shape: 'free_text', needed: input.needed },
-        });
-        return { question: { id: q.id, status: q.status } };
-      } catch (err) {
-        if (!isUniqueViolation(err)) throw err;
-        const open = await clarificationOf(room.requirementId);
-        throw refuseAsk(
-          'CLARIFICATION_ALREADY_OPEN',
-          `question ${open?.id ?? '(unknown)'} is still open on this requirement; at most one is open per item — wait for its answer.`,
-        );
-      }
+      const q = await askQuestion({
+        id: randomUUID(),
+        projectId: room.projectId,
+        requirementId: room.requirementId,
+        prompt: input.prompt,
+        blockerKind: 'human',
+        answer: { shape: 'free_text', needed: input.needed },
+      });
+      return { question: { id: q.id, status: q.status } };
     },
   });

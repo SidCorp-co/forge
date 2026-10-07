@@ -3,6 +3,7 @@ import {
   type BaselineReadiness,
   REQUIREMENT_READINESS_GATE_DEFAULT,
   type RequirementReadinessGate,
+  type RequirementSpec,
   requirementKey,
 } from '@forge/contracts/requirements';
 import { eq } from 'drizzle-orm';
@@ -18,6 +19,7 @@ import { movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { linkedContracts, writePinsIn } from './baselines.js';
+import { openQuestionsRefusal } from './clarity.js';
 import { requirementDependents } from './dependents.js';
 import { embedRequirementHeadLater } from './embeddings.js';
 import {
@@ -130,6 +132,12 @@ export async function acceptRevision(input: {
         rebaseline: true,
       });
       if (guards.length) return guards;
+      const unclear = await openQuestionsRefusal(
+        tx,
+        target.spec as RequirementSpec,
+        target.revision,
+      );
+      if (unclear) return [unclear];
       // the accept that re-baselines passes every agree guard, the near-duplicate one included
       const { check, near } = await nearDuplicatesOf({
         ...current,
@@ -224,6 +232,10 @@ export async function agreeRequirement(input: {
       rebaseline: false,
     });
     if (guards.length) return guards;
+    const unclear = head
+      ? await openQuestionsRefusal(tx, head.spec as RequirementSpec, head.revision)
+      : null;
+    if (unclear) return [unclear];
     const { check, near } = await nearDuplicatesOf(current);
     const readiness = baselineReadiness(
       gate,

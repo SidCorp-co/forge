@@ -124,23 +124,7 @@ async function postRefusals(tx: TxOnly, input: PostInput): Promise<Refusal[]> {
   const busy = alreadyOpenRefusal(await openBatchOf(tx, input.conversationId));
   if (busy) return [busy];
   const prior = await priorAnswers(tx, input.conversationId, input.seriesSince);
-  const repeats = repeatRefusals(input.items, prior.answered, prior.rejected);
-  if (repeats.length || !input.requirementId) return repeats;
-  const [single] = await tx
-    .select({ id: agentQuestions.id })
-    .from(agentQuestions)
-    .where(
-      and(eq(agentQuestions.requirementId, input.requirementId), eq(agentQuestions.status, 'open')),
-    )
-    .limit(1);
-  if (!single) return [];
-  return [
-    {
-      code: 'CLARIFICATION_ALREADY_OPEN',
-      path: '',
-      detail: `question ${single.id} is still open on this requirement; at most one ask is open per item (Q5), and a batch is one. Wait for its answer.`,
-    },
-  ];
+  return repeatRefusals(input.items, prior.answered, prior.rejected);
 }
 
 /**

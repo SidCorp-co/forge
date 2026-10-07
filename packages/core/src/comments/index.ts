@@ -1,3 +1,5 @@
+export { listDecisionsAs } from './entity-read.js';
+export { recordRequirementDecisionIn } from './entity-service.js';
 export { commentsSince, recentCommentBodies } from './memory-reads.js';
 export { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './notices.js';
 export { provideCommentPorts } from './ports.js';

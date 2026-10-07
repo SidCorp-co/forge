@@ -26,6 +26,12 @@ export {
   registerWaiter,
   waiterFor,
 } from './read.js';
+export {
+  answeredOnIssuesOf,
+  openAmong,
+  questionsOnRequirement,
+  type RequirementQuestionRow,
+} from './requirement-read.js';
 export { agentAuthoredSegments } from './screen.js';
 export {
   type AskInput,

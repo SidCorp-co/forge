@@ -149,7 +149,7 @@ export const questionnaireBatches = pgTable(
     openPerConversationUq: uniqueIndex('questionnaire_batches_open_conversation_uq')
       .on(t.conversationId)
       .where(sql`status IN ('open', 'skipped')`),
-    // the BA assistant holds at most one open ask per requirement (Q5): a batch is that ask
+    // a requirement holds one open questionnaire batch at a time; single questions on it are many
     openPerRequirementUq: uniqueIndex('questionnaire_batches_open_requirement_uq')
       .on(t.requirementId)
       .where(sql`status IN ('open', 'skipped') AND requirement_id IS NOT NULL`),

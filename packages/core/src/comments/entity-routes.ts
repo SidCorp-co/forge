@@ -1,11 +1,11 @@
 import {
-  COMMENT_SCOPES,
   CREATE_ENTITY_COMMENT_SHAPE,
   createEntityCommentRequestSchema,
   EDIT_ENTITY_COMMENT_SHAPE,
   type EntityCommentResponse,
   type EntityCommentScope,
   editEntityCommentRequestSchema,
+  LIST_DECISIONS_QUERY_SHAPE,
   listDecisionsQuerySchema,
 } from '@forge/contracts/comments';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
@@ -199,7 +199,7 @@ entityCommentRoutes.get(
   zValidator(
     'query',
     listDecisionsQuerySchema,
-    invalid(`invalid query: scope? (${COMMENT_SCOPES.join(' | ')}), limit? (1..200)`),
+    invalid(`invalid query: ${LIST_DECISIONS_QUERY_SHAPE}`),
   ),
   async (c) =>
     c.json(await listDecisionsAs(actorOf(c), c.req.valid('param').id, c.req.valid('query'))),
