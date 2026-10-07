@@ -92,8 +92,10 @@ whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via
 | `git` | no mark | stamps `merged_at` (`asserted`: a git mark names no revision; the notice names it) |
 | `git` | any mark | keeps it |
 
-A dropped or archived issue, and a project with no project document, are not marked; the decision's
-answer says which (`designIssue.action` `none` with its `why`). This is the one place a mark standing
+A dropped, closed or archived issue, and a project with no project document, are not marked; the
+decision's answer says which (`designIssue.action` `none` with its `why`). A closed issue has shipped
+and its mark is what the release that closed it read, so an approval after the close leaves it as it
+shipped and posts a notice saying so. This is the one place a mark standing
 on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
 propose names a revision that was not yet approved, and the approval is better evidence than that
 word (ISS-262). Like every mark it moves no status.

@@ -2,8 +2,8 @@
  * The issue a design is drawn under, and what the approver's decision does to it.
  *
  * Its proposer names it (`propose { issue }`, or `issue` on a write that proposes again); absent, a revision
- * inherits it from the one it supersedes while that issue is still work, and is refused where it is
- * not. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
+ * inherits it from the latest revision that named one while that issue is still work, and is refused
+ * where it is not. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
  * an approval records the revision as that issue's landing (its merged mark), a return hands the
  * drawing back to it — reopened where its status allows, the reason posted on it — and every
  * decision wakes the project's master, which is what makes the issue admissible work again.

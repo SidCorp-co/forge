@@ -169,7 +169,7 @@ export async function createWorkflow(input: {
 
 /**
  * The issue a proposing write's revision is drawn under: the one it names, else the one it
- * inherits. Where the superseded revision's issue is closed or dropped, the write is refused by name.
+ * inherits. Where the issue it would inherit is closed or dropped, the write is refused by name.
  */
 export async function drawingIssueOf(
   tx: Tx,
