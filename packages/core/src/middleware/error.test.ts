@@ -40,6 +40,18 @@ function failedInsert(): DrizzleQueryError {
   );
 }
 
+/** A JSON refusal as postgres-js throws it: the start of the bound document in its `where`. */
+function jsonRefusal(): DrizzleQueryError {
+  const document = '{"note":"zq9-secret-document"}';
+  const pg = Object.assign(new Error('invalid input syntax for type json'), {
+    severity: 'ERROR',
+    code: '22P02',
+    where: `JSON data, line 1: ${document.slice(0, 20)}`,
+  });
+  Object.defineProperty(pg, 'parameters', { value: [document], enumerable: false });
+  return new DrizzleQueryError('insert into "notes" ("body") values ($1)', [document], pg);
+}
+
 function makeApp(handler: typeof errorHandler = errorHandler) {
   const app = new Hono<{ Variables: RequestIdVars }>();
   app.use('*', requestId());
@@ -113,6 +125,16 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
         details: { error: failedInsert(), reason: 'duplicate dup@example.test' },
       },
     });
+  });
+  app.get('/driver-where-in-details', () => {
+    throw new HTTPException(422, {
+      message: 'unreadable',
+      cause: { code: 'UNPROCESSABLE_ENTITY', details: { error: jsonRefusal().cause } },
+    });
+  });
+  app.get('/driver-where-plain-cause', () => {
+    const where = (jsonRefusal().cause as { where: string }).where;
+    throw new HTTPException(400, { message: `bad: ${where}`, cause: new Error('parse failed') });
   });
   app.get('/driver-message-plain-cause', () => {
     throw new HTTPException(400, {
@@ -214,9 +236,12 @@ describe('error middleware', () => {
     '/failed-query-error-in-details',
     '/failed-query-deep-in-details',
     '/failed-query-beside-reason',
+    '/driver-where-in-details',
+    '/driver-where-plain-cause',
   ])("answers %s with none of the failed query's bound params outside production", async (path) => {
     const text = await (await makeApp().request(path)).text();
     expect(text).not.toMatch(LEAKS);
+    expect(text).not.toContain('zq9');
     expect(text).toContain('[Redacted]');
   });
 
@@ -255,6 +280,8 @@ describe('error middleware in production', () => {
     '/failed-query-error-in-details',
     '/failed-query-deep-in-details',
     '/failed-query-beside-reason',
+    '/driver-where-in-details',
+    '/driver-where-plain-cause',
   ])("answers %s with none of the failed query's bound params", async (path) => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.resetModules();
@@ -262,5 +289,6 @@ describe('error middleware in production', () => {
     vi.unstubAllEnvs();
     const text = await (await makeApp(prod.errorHandler).request(path)).text();
     expect(text).not.toMatch(LEAKS);
+    expect(text).not.toContain('zq9');
   });
 });

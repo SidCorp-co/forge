@@ -168,3 +168,63 @@ describe('redactQueryParams', () => {
     expect(redactQueryParams('route params: id')).toBe('route params: id');
   });
 });
+
+/** A driver error as postgres-js throws it: its bound values ride non-enumerable, as there. */
+function pgRefusal(message: string, fields: Record<string, unknown>, bound: unknown[]): Error {
+  const pg = Object.assign(new Error(message), { severity: 'ERROR', ...fields });
+  Object.defineProperty(pg, 'parameters', { value: bound, enumerable: false });
+  return pg;
+}
+
+const DOCUMENT = '{"note":"zq9-secret-document"}';
+
+function jsonRefusal(): Error {
+  return pgRefusal(
+    'invalid input syntax for type json',
+    {
+      code: '22P02',
+      detail: 'Token "zq9" is invalid.',
+      where: `JSON data, line 1: ${DOCUMENT.slice(0, 20)}...`,
+      hint: 'Check zq9-secret-document',
+      internal_query: `select '${DOCUMENT}'`,
+      schema_name: 'public',
+      table_name: 'notes',
+      column_name: 'body',
+      constraint_name: 'notes_body_check',
+      routine: 'json_errsave_error',
+    },
+    [DOCUMENT],
+  );
+}
+
+describe("redactQueryParams over a driver error's own fields", () => {
+  it.each([
+    ['logged by itself', (pg: Error) => redactQueryParams(stdSerializers.err(pg), pg)],
+    ['with no error to read', (pg: Error) => redactQueryParams({ ...stdSerializers.err(pg) })],
+    [
+      'as the cause of a failed query',
+      (pg: Error) =>
+        redactQueryParams({ details: { error: new DrizzleQueryError('select $1', [DOCUMENT], pg) } }),
+    ],
+  ])('keeps only the fields that name where it failed, %s', (_, redact) => {
+    const text = JSON.stringify(redact(jsonRefusal()));
+    expect(text).not.toContain('zq9');
+    for (const kept of ['22P02', 'notes_body_check', 'notes', 'body', 'json_errsave_error']) {
+      expect(text).toContain(kept);
+    }
+  });
+
+  it('redacts a detail whatever its text says, as no template catalog can name every one', () => {
+    const pg = pgRefusal('refused', { code: 'XX000', detail: 'The input zq9 was refused.' }, []);
+    expect(JSON.stringify(redactQueryParams({ ...stdSerializers.err(pg) }))).not.toContain('zq9');
+  });
+
+  it.each([
+    ['a JSON refusal', `JSON data, line 1: ${DOCUMENT}`, `JSON data, line 1: ${REDACTED}`],
+    ['a bound parameter', "unnamed portal parameter $1 = 'zq9'", `unnamed portal parameter $1 = ${REDACTED}`],
+    ['a tsquery with no operand', 'no operand in tsquery: "zq9"', `no operand in tsquery: ${REDACTED}`],
+    ['a tsquery it cannot parse', 'syntax error in tsquery: "zq9 &"', `syntax error in tsquery: ${REDACTED}`],
+  ])("redacts the value %s's text quotes, with no error to read", (_, text, kept) => {
+    expect(redactQueryParams({ reason: `refused: ${text}` }).reason).toBe(`refused: ${kept}`);
+  });
+});

@@ -237,3 +237,80 @@ describe('the core logger, given what is not an Error', () => {
     }
   });
 });
+
+/** A driver error as postgres-js throws it, its bound values non-enumerable as there. */
+function refusal(message: string, fields: Record<string, unknown>, bound: unknown[]): Error {
+  const pg = Object.assign(new Error(message), { severity: 'ERROR', ...fields });
+  Object.defineProperty(pg, 'parameters', { value: bound, enumerable: false });
+  return pg;
+}
+
+const DOCUMENT = '{"note":"zq9-secret-document"}';
+
+function jsonRefusal(): DrizzleQueryError {
+  const pg = refusal(
+    'invalid input syntax for type json',
+    { code: '22P02', detail: 'Token "zq9" is invalid.', where: `JSON data, line 1: ${DOCUMENT.slice(0, 20)}` },
+    [DOCUMENT],
+  );
+  return new DrizzleQueryError('insert into "notes" ("body") values ($1)', [DOCUMENT], pg);
+}
+
+describe('the core logger, given a driver error that quotes its input in its own fields', () => {
+  it.each([
+    ['under err', (log: Logger, err: DrizzleQueryError) => log.error({ err }, 'failed')],
+    ['as the first argument', (log: Logger, err: DrizzleQueryError) => log.error(err)],
+    ['its driver error under err', (log: Logger, err: DrizzleQueryError) => log.error({ err: err.cause })],
+    ['under another key', (log: Logger, err: DrizzleQueryError) => log.error({ error: err.cause }, 'x')],
+    ['bound on a child', (log: Logger, err: DrizzleQueryError) => log.child({ error: err }).error('x')],
+  ])('writes none of the value it refused when the error is logged %s', (_, write) => {
+    const { lines, log } = capture();
+    write(log, jsonRefusal());
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain('zq9');
+    expect(lines[0]).toContain('22P02');
+  });
+});
+
+describe("the core logger's child bindings", () => {
+  it.each([
+    ['a unique violation detail', `Key (email)=(${EMAIL}) already exists.`],
+    ['a value refused as a uuid', 'invalid input syntax for type uuid: "zq9"'],
+    ['a JSON refusal', `JSON data, line 1: ${DOCUMENT}`],
+  ])('carry none of the value %s quotes, bound with no error beside it', (_, text) => {
+    const { lines, log } = capture();
+    log.child({ detail: text }).warn('bound');
+    log.child({ requestId: 'r1' }).child({ reason: text }).warn('nested');
+    log.child({}, { msgPrefix: `${text} ` }).warn('prefixed');
+    const rebound = log.child({ requestId: 'r2' });
+    rebound.setBindings({ reason: text });
+    rebound.warn('rebound');
+    expect(lines).toHaveLength(4);
+    for (const line of lines) {
+      expect(line).not.toContain(EMAIL);
+      expect(line).not.toContain('zq9');
+    }
+  });
+
+  it("withhold a driver message bound beside the error that names its value, which no catalog names", () => {
+    const pg = refusal('relation "zq" does not exist', { code: '42P01' }, ['zq']);
+    const { lines, log } = capture();
+    log.child({ error: pg, reason: pg.message }).warn('bound');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toMatch(/"zq"/);
+    expect(lines[0]).toContain('42P01');
+  });
+});
+
+describe('the core logger, at the finished line', () => {
+  it('redacts what a value turns into only when the line is written', () => {
+    const { lines, log } = capture();
+    log.warn({ reading: { toJSON: () => 'invalid input syntax for type uuid: "zq9"' } }, 'read');
+    log.warn({ reading: { toJSON: () => `Key (email)=(${EMAIL}) already exists.` } }, 'read');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).not.toContain('zq9');
+      expect(line).not.toContain(EMAIL);
+    }
+  });
+});

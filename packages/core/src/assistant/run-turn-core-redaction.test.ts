@@ -65,6 +65,40 @@ describe("the assistant's error text", () => {
     expect(JSON.stringify(events)).not.toContain(SECRET);
   });
 
+  it("feeds back a pre-call gate's own failure with none of a failed query's bound params", async () => {
+    let round = 0;
+    const provider: ChatProvider = {
+      id: 'stub',
+      defaultModel: 'stub',
+      async *stream(): AsyncIterable<ChatStreamEvent> {
+        round++;
+        if (round === 1) yield { type: 'tool_call', id: 't1', name: 'lookup', arguments: '{}' };
+        else yield { type: 'chunk', text: 'done' };
+      },
+    };
+    const tools = {
+      tools: [
+        { type: 'function' as const, function: { name: 'lookup', description: '', parameters: {} } },
+      ],
+      execute: async () => expect.unreachable('a call whose gate failed ran'),
+    };
+    const events: ChatStreamEvent[] = [];
+    const turn = runTurnEvents({
+      provider,
+      model: 'stub',
+      messages: [],
+      tools: tools as never,
+      preCall: async () => {
+        throw failedQuery();
+      },
+    });
+    for (let next = await turn.next(); !next.done; next = await turn.next())
+      events.push(next.value);
+    const result = events.find((e) => e.type === 'tool_result');
+    expect(JSON.stringify(result)).toContain('pre-call gate failed: Failed query: select');
+    expect(JSON.stringify(events)).not.toContain(SECRET);
+  });
+
   it("hands the model a tool's failure with none of its bound params, wrapped or not", () => {
     expect(thrownMessage(failedQuery())).not.toContain(SECRET);
     const wrapped = new Error('tool failed', { cause: failedQuery() });
