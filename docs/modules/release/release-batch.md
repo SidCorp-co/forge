@@ -176,7 +176,8 @@ differ in, and the files a landing changed) — goes through one port,
 - **The project's active GitHub binding**, where it has one. A binding that exists and cannot be
   used is refused in GitHub's words; it never falls back to the key.
 - **Otherwise the SSH deploy key attached under Settings → Runners → Git access**, beside an SSH
-  repository URL — the same key a runner clones with. `packages/core/src/git/repository-reading.ts`
+  repository URL — the same key a runner clones and pushes with, which is why every sentence that
+  asks for access for it asks for write access. `packages/core/src/git/repository-reading.ts`
   reads with plain git: every branch's commits once per reading (`--filter=tree:0`), and only the
   trees of the commits a file question compares (`--depth=1 --filter=blob:none`), never a file's
   contents, each fetch held to the byte and time budget of `packages/core/src/git/bounded-fetch.ts`.
@@ -186,4 +187,6 @@ differ in, and the files a landing changed) — goes through one port,
 
 A read that fails on either route is a reason, never an answer: a carriage that could not be read
 leaves the criterion weighed by equality alone, so a failed read can hold a verdict and never earn
-one.
+one. The hold names each failed read by its cause beside the criterion it holds, and says the act
+that makes the repository readable once, at the head of its remedy, ahead of recording a verdict
+(`packages/core/src/pipeline/release-hold.ts:criteriaHold`).

@@ -10,7 +10,7 @@ import {
   type ReleaseChain,
 } from '../projects/release-chain.js';
 import { type RepositoryAccessDeps, withRepository } from '../projects/repository-access.js';
-import type { RangeCommit } from '../projects/repository-reader.js';
+import { type RangeCommit, saying } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
 
 /** One read of `live...head`: every commit the head holds that the live branch does not. */
@@ -57,7 +57,7 @@ export async function readRangeTo(
     projectId,
     async (access): Promise<CutRange> => {
       if (access.kind === 'refused') {
-        return { kind: access.unbound ? 'unbound' : 'unread', why: access.why };
+        return { kind: access.unbound ? 'unbound' : 'unread', why: saying(access) };
       }
       const { reader } = access;
       // Pinned to a sha first, so the range read and the cut the release is told to promote are one.

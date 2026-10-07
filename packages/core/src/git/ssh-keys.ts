@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
-import { namingTheHost, readHostRefusal } from './bounded-fetch.js';
+import { KEY_ACCESS, namingTheHost, readHostRefusal, WHY_KEY_ACCESS } from './bounded-fetch.js';
 import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
@@ -171,13 +171,13 @@ async function lsRemote(
         return {
           ok: false,
           code: 'auth_denied',
-          message: `The git host refused this deploy key (${said}). Add the public key (with write access) to the repo.`,
+          message: `The git host refused this deploy key (${said}). Give its public key ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.`,
         };
       case 'no_access':
         return {
           ok: false,
           code: 'not_found',
-          message: `The git host took this deploy key but will not let it read the repository (${said}). Check the repo URL, and add the public key (with write access) to that repo.`,
+          message: `The git host took this deploy key but will not let it read the repository (${said}). Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL.`,
         };
       case 'unreachable':
         return {

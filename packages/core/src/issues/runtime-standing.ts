@@ -22,19 +22,29 @@ import {
   verdictStanding,
 } from './verdict-standing.js';
 
+/** A read that failed: its cause, and apart from it the act a person takes to clear it. */
+export interface UnreadPaths {
+  readonly why: string;
+  readonly clears?: string;
+}
+
 /** The runtimes one issue's verdicts are weighed against. */
 export interface OwedRuntimes {
   readonly deployment: boolean;
   readonly declared: readonly RuntimeReading[];
   /** Why the landing's paths were not read, which is why every runtime is owed; null where read. */
-  readonly unread: string | null;
+  readonly unread: UnreadPaths | null;
 }
 
 export function owedRuntimes(issueId: string, weighing: Weighing): OwedRuntimes {
   if (weighing.runtimes.length === 0) return { deployment: true, declared: [], unread: null };
   const changed = weighing.changed.get(issueId);
   if (!changed || changed.kind === 'unread') {
-    const unread = changed?.why ?? 'they were not read';
+    const unread: UnreadPaths = !changed
+      ? { why: 'they were not read' }
+      : changed.clears === undefined
+        ? { why: changed.why }
+        : { why: changed.why, clears: changed.clears };
     return { deployment: true, declared: weighing.runtimes, unread };
   }
   const declared = weighing.runtimes.filter((r) =>
@@ -53,6 +63,9 @@ export interface WeighedVerdict {
   readonly serving: ServingReading;
   /** What the weighing read about the served commits, said after the standing where it holds. */
   readonly beside: readonly string[];
+  /** The acts that clear a read `beside` names as failed, each once; said by whoever owns the
+   *  remedy rather than beside every cause it clears. */
+  readonly clears: readonly string[];
 }
 
 const SHOWN_FILES = 3;
@@ -71,13 +84,14 @@ function weighIn(
   runs: (file: string) => boolean,
   weighing: Weighing,
   declared: boolean,
-): { standing: VerdictStanding; beside: string[] } {
+): { standing: VerdictStanding; beside: string[]; clears: string[] } {
+  const none = { beside: [], clears: [] };
   // A declared runtime's reading is missing NOW, which is not ISS-1286's project with no route.
-  if (declared && serving.kind !== 'serving') return { standing: 'superseded', beside: [] };
+  if (declared && serving.kind !== 'serving') return { standing: 'superseded', ...none };
   const standing = verdictStanding(at, serving, identities);
-  if (standing !== 'superseded' || !at || serving.kind !== 'serving')
-    return { standing, beside: [] };
+  if (standing !== 'superseded' || !at || serving.kind !== 'serving') return { standing, ...none };
   const beside: string[] = [];
+  const clears: string[] = [];
   const commits = servedCommits(serving);
   for (const served of commits) {
     // The judge clause names what is served, once (ISS-1346); a commit is named here only where
@@ -88,18 +102,19 @@ function weighIn(
       if (weighing.read) beside.push(`whether ${what} carries it was not read`);
       continue;
     }
-    if (carriage.kind === 'descends') return { standing: 'stands', beside: [] };
+    if (carriage.kind === 'descends') return { standing: 'stands', ...none };
     if (carriage.kind === 'unread') {
       beside.push(`whether ${what} carries it could not be read: ${carriage.why}`);
+      if (carriage.clears !== undefined) clears.push(carriage.clears);
       continue;
     }
     const differing = carriage.paths.filter(runs);
-    if (differing.length === 0) return { standing: 'stands', beside: [] };
+    if (differing.length === 0) return { standing: 'stands', ...none };
     beside.push(
       `${what} does not descend from it and differs from it in ${filesClause(differing)}`,
     );
   }
-  return { standing, beside };
+  return { standing, beside, clears: [...new Set(clears)] };
 }
 
 /**
@@ -126,12 +141,15 @@ export function weighVerdict(
   }
   const failing = results.find((r) => !EARNED_STANDINGS.has(r.standing));
   if (failing) {
-    const unread = owed.unread
-      ? [
-          `what this issue's landing changed could not be read (${owed.unread}), so it is weighed against every runtime`,
-        ]
-      : [];
-    return { ...failing, beside: [...failing.beside, ...unread] };
+    const { unread } = owed;
+    if (!unread) return failing;
+    const beside = `what this issue's landing changed could not be read (${unread.why}), so it is weighed against every runtime`;
+    const clears = unread.clears === undefined ? [] : [unread.clears];
+    return {
+      ...failing,
+      beside: [...failing.beside, beside],
+      clears: [...new Set([...failing.clears, ...clears])],
+    };
   }
   return results.find((r) => r.standing === 'uncorroborated') ?? (results[0] as WeighedVerdict);
 }

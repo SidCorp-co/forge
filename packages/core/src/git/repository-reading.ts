@@ -24,25 +24,27 @@ import {
   RANGE_COMMIT_LIMIT,
   type RangeCommit,
   type RangeRead,
+  type Refused,
   type RepositoryReader,
+  saying,
 } from '../projects/repository-reader.js';
 import {
   boundedFetch,
   type FetchLimits,
-  fetchRefusal,
   type GitFailure,
   GitRefusal,
+  hostRefusal,
   hostSaid,
-  namingTheHost,
   REMOTE_FETCH_LIMITS,
   readingEnv,
+  refusedNamingTheHost,
 } from './bounded-fetch.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
 
-/** Long enough to be a whole sha (SHA-1, or SHA-256 at 64); a shorter name is a prefix. */
-const FULL_SHA_LENGTH = 40;
+/** A whole sha is SHA-1's 40 digits or SHA-256's 64; a name of any other length is a prefix. */
+const isWholeSha = (ref: string) => ref.length === 40 || ref.length === 64;
 
 const COMMIT_NAME = /^[0-9a-f]{4,64}$/i;
 
@@ -153,7 +155,7 @@ class GitReading {
           refusal: (err) =>
             UNREACHABLE.test((err.stderr ?? '').toString())
               ? ABSENT
-              : fetchRefusal(err, this.remote),
+              : hostRefusal(err, this.remote),
         },
         this.limits,
       );
@@ -166,17 +168,16 @@ class GitReading {
 
   /** That the repository holds no commit under `ref`, as a fact. */
   private unheld(ref: string): string {
-    return ref.length >= FULL_SHA_LENGTH
+    return isWholeSha(ref)
       ? `${this.remote} holds no commit ${ref}`
       : `${this.remote} resolves no single commit from ${ref}: no commit on any of its branches ` +
           'starts with it, or more than one does';
   }
 
   private absent(ref: string): Resolved {
-    const ask =
-      ref.length >= FULL_SHA_LENGTH
-        ? 'Mark with the sha the work landed at'
-        : 'Mark with the full 40-character sha the work landed at';
+    const ask = isWholeSha(ref)
+      ? 'Mark with the sha the work landed at'
+      : 'Mark with the full 40-character sha the work landed at';
     return {
       ok: false,
       why: this.unheld(ref),
@@ -194,7 +195,7 @@ class GitReading {
     if (!COMMIT_NAME.test(name)) return this.absent(ref);
     await this.ensureHistory();
     let sha = await this.verified(`${name}^{commit}`);
-    if (!sha && name.length >= FULL_SHA_LENGTH && (await this.fetchSha(name))) {
+    if (!sha && isWholeSha(name) && (await this.fetchSha(name))) {
       sha = await this.verified(`${name}^{commit}`);
     }
     if (!sha) return this.absent(ref);
@@ -270,13 +271,19 @@ class GitReading {
     return out.split('\0').filter((p) => p !== '');
   }
 
-  /** The reason a read failed, in the words of whatever failed, naming the host the URL names. */
-  failed(err: unknown): string {
-    const say = (reason: string) => (this.opts.pin ? namingTheHost(reason, this.opts.pin) : reason);
-    if (err instanceof GitRefusal) return say(err.message);
+  /** Why a read failed, in the words of whatever failed, naming the host the URL names; the act
+   *  that clears it apart, where there is one. */
+  refusedBy(err: unknown): Refused {
+    const named = (r: Refused) => (this.opts.pin ? refusedNamingTheHost(r, this.opts.pin) : r);
+    if (err instanceof GitRefusal) return named(err.refused);
     const stderr = hostSaid(((err as GitFailure).stderr ?? '').toString());
     const cause = stderr || (err instanceof Error ? err.message : String(err));
-    return say(`reading ${this.remote} failed: ${cause}`);
+    return named({ cause: `reading ${this.remote} failed: ${cause}` });
+  }
+
+  /** `refusedBy` as one sentence. */
+  failed(err: unknown): string {
+    return saying(this.refusedBy(err));
   }
 }
 
@@ -385,8 +392,9 @@ export function gitRepositoryReader(
       try {
         return await carriageIn(g, judged, served);
       } catch (err) {
-        const why = `${remote} could not compare ${judged} with ${served}: ${g.failed(err)}`;
-        return { kind: 'unread', why };
+        const { cause, clears } = g.refusedBy(err);
+        const why = `${remote} could not compare ${judged} with ${served}: ${cause}`;
+        return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
 
@@ -394,8 +402,9 @@ export function gitRepositoryReader(
       try {
         return await changedIn(g, landing);
       } catch (err) {
-        const why = `${remote} could not read what ${landing} changed: ${g.failed(err)}`;
-        return { kind: 'unread', why };
+        const { cause, clears } = g.refusedBy(err);
+        const why = `${remote} could not read what ${landing} changed: ${cause}`;
+        return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
 

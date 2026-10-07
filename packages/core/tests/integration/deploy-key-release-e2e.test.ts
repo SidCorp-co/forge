@@ -212,6 +212,30 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     expect(reason).not.toMatch(/GitHub binding|Integrations/);
   }, 60_000);
 
+  // ISS-1398 judge j2 finding 4: the hold advised a verdict, which cannot make the repository
+  // readable, and said the key's fix beside the carriage and again beside the paths.
+  it('leads the remedy with the key fix, once, where the carriage and the paths both could not be read', async () => {
+    host.answering(GITLAB_NO_ACCESS);
+    await declareRunner();
+    await serveCore(at.descendant as string);
+    await runnersRun(at.hotfix as string);
+    const id = await fx.judgedRow(at.runnerOnly as string, '2026-10-01T09:00:00Z');
+
+    await sweep();
+
+    const reason = String((await fx.holdOf(id))?.reason);
+    const fix = `give the deploy key attached under the project's Settings → Runners → Git access write access to that repository`;
+    expect(reason).toContain('whether what it serves carries it could not be read');
+    expect(reason).toContain("what this issue's landing changed could not be read");
+    expect(reason.split('Settings → Runners → Git access')).toHaveLength(2);
+    expect(reason.split(fix)).toHaveLength(2);
+    expect(reason).toContain(
+      `A person clears this by making the repository readable: on the git host, ${fix}`,
+    );
+    expect(reason.indexOf(fix)).toBeLessThan(reason.indexOf('record a verdict'));
+    expect(reason).not.toContain('read access');
+  }, 60_000);
+
   it('names the deploy key to attach, never GitHub, where the project has neither (criteria 14, 16)', async () => {
     await harness.db.execute(
       sql`DELETE FROM project_git_credentials WHERE project_id = ${projectId}`,
@@ -224,7 +248,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain(
-      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(reason).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);
@@ -279,7 +303,7 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
 
     const warned = readiness?.warnings.find((w) => w.code === 'RELEASE_CARRIED_UNREAD');
     expect(warned?.message).toContain(
-      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(warned?.message).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);

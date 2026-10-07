@@ -116,6 +116,14 @@ describe('commit', () => {
     expect(read.kind === 'absent' && read.detail).toContain('full 40-character sha');
   });
 
+  // ISS-1398 review F1: a 41-63 digit name was read as a whole sha and answered "holds no commit".
+  it('answers a name between the two whole lengths as a prefix, not as a missing whole sha', async () => {
+    const read = await reader().commit('f'.repeat(41));
+    expect(read.kind === 'absent' && read.detail).toContain('resolves no single commit from');
+    const whole = await reader().commit('f'.repeat(64));
+    expect(whole.kind === 'absent' && whole.detail).toContain(`holds no commit ${'f'.repeat(64)}`);
+  });
+
   it('answers absent for a name that is not a sha, without taking it as a ref', async () => {
     expect((await reader().commit('main')).kind).toBe('absent');
     expect((await reader().commit('--all')).kind).toBe('absent');

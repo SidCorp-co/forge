@@ -54,13 +54,21 @@ describe('withRepository', () => {
     const got: RepositoryAccess[] = [];
     const refused: LiveSource = {
       kind: 'refused',
-      reason: 'attach a deploy key',
+      reason: 'no deploy key — attach a deploy key',
+      cause: 'no deploy key',
+      clears: 'attach a deploy key',
       unbound: true,
       route: 'deploy_key',
     };
     await withRepository('p', seen(got), { source: async () => refused, deployKey: vi.fn() });
     expect(got).toEqual([
-      { kind: 'refused', why: 'attach a deploy key', unbound: true, route: 'deploy_key' },
+      {
+        kind: 'refused',
+        cause: 'no deploy key',
+        clears: 'attach a deploy key',
+        unbound: true,
+        route: 'deploy_key',
+      },
     ]);
   });
 
@@ -73,7 +81,7 @@ describe('withRepository', () => {
     expect(got).toEqual([
       {
         kind: 'refused',
-        why: `${GITLAB} cannot be read: that host resolves to a private address`,
+        cause: `${GITLAB} cannot be read: that host resolves to a private address`,
         unbound: false,
         route: 'deploy_key',
       },

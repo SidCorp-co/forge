@@ -39,8 +39,9 @@ export async function withRepository<T>(
   const { source: sourceOf, deployKey } = { ...defaultDeps, ...deps };
   const source = await sourceOf(projectId);
   if (source.kind === 'refused') {
-    const { reason, unbound, route } = source;
-    return fn({ kind: 'refused', why: reason, unbound, route });
+    const { cause, clears, unbound, route } = source;
+    const said = clears === undefined ? { cause } : { cause, clears };
+    return fn({ kind: 'refused', ...said, unbound, route });
   }
   if (source.kind === 'binding') {
     return fn({ kind: 'reader', reader: githubRepositoryReader(source.client) });
@@ -57,7 +58,7 @@ export async function withRepository<T>(
     if (entered || !(err instanceof HTTPException)) throw err;
     return fn({
       kind: 'refused',
-      why: `${repoUrl} cannot be read: ${err.message}`,
+      cause: `${repoUrl} cannot be read: ${err.message}`,
       unbound: false,
       route: 'deploy_key',
     });

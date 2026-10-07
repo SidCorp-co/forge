@@ -357,7 +357,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     const { user, token } = await signedIn();
     const desk = await gitlabDesk(user.id, false);
     const row = await issue({ projectId: desk.id, userId: user.id, seq: 419 });
-    const reason = `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key that can read ${GITLAB} under the project's Settings → Runners → Git access`;
+    const reason = `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the repository — attach a deploy key with write access to ${GITLAB} under the project's Settings → Runners → Git access (since Forge reads the repository with it and the project's runner pushes with it)`;
 
     const reach = (await get<{ liveReach: Reach }>(`/api/issues/${row}`, token)).liveReach;
     expect(reach).toMatchObject({ state: 'unmeasured', reason });

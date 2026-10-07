@@ -172,20 +172,25 @@ function deploymentClause(serving: ServingReading, runtimes: readonly RuntimeRea
 /**
  * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
  * would is the one holding it, so every act that moves the row from here is somebody's by hand.
+ * A failed repository read's clearing act leads the remedy, once: a new verdict does not repair it.
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
   const judge = judgeClause(report.serving, report.runtimes);
+  const clears = [...new Set(report.unearned.flatMap((c) => c.clears ?? []))];
+  const others = `${judge}; or, having seen the change running in production, close the issue by hand; or move it out of \`awaiting_release\` if it is not to ship.`;
+  const remedy =
+    clears.length === 0
+      ? `A person clears this: ${others}`
+      : `A person clears this by making the repository readable: ${clears.join('; and ')}. The next sweep then weighs it again. Otherwise: ${others}`;
+  const readable = clears.length === 0 ? '' : 'the repository readable again, ';
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
-      `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasons}. A person clears this: ${judge}; or, having seen ` +
-      'the change running in production, close the issue by hand; or move it out of ' +
-      '`awaiting_release` if it is not to ship.',
+      'The automatic release carries only an issue whose every acceptance criterion is earned, and ' +
+      `this one is not — ${reasons}. ${remedy}`,
     owes: 'human',
-    waitingFor:
-      'a verdict on each criterion named at the running deployment, or the issue closed by hand',
+    waitingFor: `${readable}a verdict on each criterion named at the running deployment, or the issue closed by hand`,
   };
 }
 

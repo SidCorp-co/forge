@@ -135,7 +135,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       GITLAB_NO_ACCESS,
       [
         `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
-        `give the deploy key attached under ${GIT_ACCESS} read access to that repository`,
+        `give the deploy key attached under ${GIT_ACCESS} write access to that repository, since Forge reads the repository with it and the project's runner pushes with it`,
       ],
     ],
     [
@@ -149,12 +149,16 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       keyUnknown('gitlab.com'),
       [
         'the git host refused the deploy key attached to this project',
-        `give its public key read access to ${GITLAB_URL}`,
+        `give its public key write access to ${GITLAB_URL}, since Forge reads the repository with it and the project's runner pushes with it`,
       ],
     ],
     [
       unreachable('172.65.251.78'),
-      [`the git host ${GITLAB_URL} names could not be reached`, 'ssh: connect to host gitlab.com'],
+      [
+        'the git host gitlab.com could not be reached',
+        'ssh: connect to host gitlab.com',
+        `check that the SSH clone URL ${GITLAB_URL}, set under ${GIT_ACCESS}`,
+      ],
     ],
   ];
 
@@ -208,7 +212,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
     );
     expect(refused.message).toContain(
-      `attach a deploy key that can read ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(refused.message).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

@@ -108,7 +108,7 @@ describe('owedRuntimes', () => {
     const owed = owedRuntimes('iss', w);
     expect(owed.deployment).toBe(true);
     expect(owed.declared).toHaveLength(1);
-    expect(owed.unread).toBe('HTTP 502');
+    expect(owed.unread).toEqual({ why: 'HTTP 502' });
   });
 });
 
@@ -232,6 +232,26 @@ describe('weighVerdict — what it leaves as it was', () => {
     expect(weighed.beside).toEqual([
       'whether what it serves carries it could not be read: HTTP 502',
     ]);
+  });
+
+  // ISS-1398 judge j2 finding 4: where the carriage and the paths both failed, the key's fix was
+  // said beside each cause, twice, and not where the remedy is.
+  it('says each failed read by its cause, and the act that clears them once, apart', () => {
+    const KEY_FIX = 'give the deploy key write access to git@gitlab.com:sid/desk.git';
+    const w = weighing({
+      runtimes: [runner(served(BUILD))],
+      changed: { kind: 'unread', why: 'the paths could not be fetched', clears: KEY_FIX },
+      carriage: [
+        [J, CORE, { kind: 'unread', why: 'CORE could not be compared', clears: KEY_FIX }],
+        [J, BUILD, { kind: 'unread', why: 'BUILD could not be compared', clears: KEY_FIX }],
+      ],
+    });
+    const weighed = weighVerdict(source, served(CORE), ids, owedRuntimes('iss', w), w);
+    expect(weighed.standing).toBe('superseded');
+    expect(weighed.beside.join(' ')).toContain('CORE could not be compared');
+    expect(weighed.beside.join(' ')).toContain('the paths could not be fetched');
+    expect(weighed.beside.join(' ')).not.toContain(KEY_FIX);
+    expect(weighed.clears).toEqual([KEY_FIX]);
   });
 
   it('keeps an unreadable deployment reading earning a runtime verdict uncorroborated, as ISS-1286 does', () => {

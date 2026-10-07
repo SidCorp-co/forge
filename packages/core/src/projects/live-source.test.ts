@@ -60,6 +60,7 @@ describe('resolveLiveSource', () => {
     expect(s).toEqual({
       kind: 'refused',
       reason: 'the GitHub App is not installed on SidCorp-co',
+      cause: 'the GitHub App is not installed on SidCorp-co',
       unbound: false,
       route: 'binding',
     });
@@ -80,10 +81,31 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the branches — attach a deploy key that can read ${GITLAB} under the project's Settings → Runners → Git access`,
+      `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the repository — attach a deploy key with write access to ${GITLAB} under the project's Settings → Runners → Git access (since Forge reads the repository with it and the project's runner pushes with it)`,
     );
     expect(reason).not.toMatch(/GitHub repository|Integrations/);
     expect(s).toMatchObject({ unbound: true, route: 'deploy_key' });
+  });
+
+  // ISS-1398 judge j2 finding 3: the sentence said "the branches" where every read is of the repository.
+  it('names the repository, not its branches, as what cannot be read, with the act held apart', async () => {
+    const keyless = await resolveLiveSource(
+      'p',
+      deps({ row: { repoUrl: GITLAB, privateKeyEnc: null } }),
+    );
+    const urlless = await resolveLiveSource(
+      'p',
+      deps({ row: { repoUrl: null, privateKeyEnc: keyEnc } }),
+    );
+    for (const s of [keyless, urlless]) {
+      expect(s.kind === 'refused' && s.reason).not.toMatch(/branches/);
+      expect(s.kind === 'refused' && s.cause).toMatch(
+        /repository to read|cannot read the repository$/,
+      );
+      expect(s.kind === 'refused' && s.clears).toContain(
+        "the project's Settings → Runners → Git access",
+      );
+    }
   });
 
   it('offers a GitHub-hosted project with neither the binding as well as the key', async () => {
@@ -92,7 +114,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repoUrl: 'git@github.com:SidCorp-co/forge.git', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /on github\.com, .*Git access, or bind the repository on its Integrations page$/,
+      /on github\.com, .*Git access \(.*\), or bind the repository on its Integrations page$/,
     );
   });
 
@@ -166,6 +188,7 @@ describe('readProjectDivergence', () => {
       source: async () => ({
         kind: 'refused',
         reason: 'no key',
+        cause: 'no key',
         unbound: true,
         route: 'deploy_key',
       }),
