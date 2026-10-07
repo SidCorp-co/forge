@@ -13,6 +13,7 @@
 //! supervises it here (ISS-1080).
 mod actors;
 mod ancestry_read;
+mod checkout_frame;
 pub mod control;
 pub mod dispatch;
 pub mod drain;

@@ -105,7 +105,7 @@ The choices inside that, and why:
 
 ### What core takes over
 
-Four decisions the box took were each one too-long function under a `too_many_lines` amnesty.
+Three decisions the box took were each one too-long function under a `too_many_lines` amnesty.
 Each was deleted, not split, once core answered it, and no such amnesty remains:
 
 - **Placement and retirement** of a master: `POST /api/devices/me/master-session/verdict`
@@ -145,10 +145,33 @@ saw and judges none of it:
   issue-job arms (its only job spec is chat).
 - **Decisions still made on the box.** Each reads a fact only the box holds, in a hook that must
   answer before the next tool call, or is made while core cannot be asked.
-  - A pool job pane's idle verdicts (`runner-core`'s `job_exit`, `job_unheard` and `turn_evidence`)
-    and the retry of a refused run declaration. Until core takes the first, the runner suppresses
-    core's own job timeouts by acking a pool job as soon as its pane opens and posting progress
-    every tick.
+  - A pool job pane's idle verdicts (`runner-core`'s `job_exit`, `job_unheard` and `turn_evidence`).
+    Until core takes them, the runner suppresses core's own job timeouts by acking a pool job as
+    soon as its pane opens and posting progress every tick.
+  - The retry of a refused run declaration
+    (`packages/runner/crates/runner-daemon/src/run_record.rs:SESSION_RETRY_MS`, five minutes). It is
+    coupled to core's `SESSION_SILENCE_REAP_MS` (ten minutes): the box picks half of core's reap, so
+    a change to core's reap breaks it without a gate saying so. It ends when core answers the
+    refusal with a `retryAfter` and the box obeys it (about 30 lines, no migration).
+  - **When a pass opens for a turn nobody nudged**
+    (`packages/runner/crates/runner-daemon/src/master_pass.rs:unprompted_turn`, read by
+    `open_unprompted`). The box reads its hooks' turn counts, decides that a turn began after the
+    last pass settled with no open pass covering it, and asks core to open one
+    (`runner-transport`'s `master::open_pass`), so core records a pass state the box chose the moment of. Core
+    only closes a pass (`passEnd`) and opens one when asked. The price: a turn boundary the
+    box misreads opens a pass core never judged, and a pass counted twice or not at all is a
+    record that lies (FB-82, dev 2026-10-06). It ends when the box reports the turn boundary on the
+    pass frame beside `settle` and core opens the pass itself (about 120 lines box, no migration
+    if core mirrors on the existing pass row; medium risk, because FB-82 came from this
+    boundary).
+  - The bound on retrying a refused lease release of a finished run
+    (`packages/runner/crates/runner-workspace/src/terminate.rs:decided`, `RELEASE_GRACE_SECS` and
+    `RELEASE_ATTEMPT_BOUND`, ISS-1390). This is **execution**, a retry and timeout of the box's own
+    act on its own worktree, not a verdict on state core holds, so it stays on the box with
+    the process and worktree reapers. A live agent's process in the checkout is never decided; the
+    price of a decided refusal is one `run release` by an operator, written beside the constants.
+  - The slot bound, `cfg.runner.max_job_panes`, is a local resource limit in the box's own config:
+    it is what only the machine knows, and is not a defect.
   - Withdrawing a pane stood down while it was being placed obeys the owner's act in the box ledger
     (`packages/runner/crates/runner-daemon/src/master/obey.rs:withdrawn_if_stood_down`). It ends when
     core is asked at placement for the stand-down it holds instead of the ledger's copy.
@@ -170,6 +193,7 @@ saw and judges none of it:
   (`packages/core/src/devices/master-limit.ts:masterLimitAction`). Neither is whether a pane is
   outdated: the box sends the inputs it placed the pane with and would hand one now, and core
   reads them (`packages/core/src/masters/verdict.ts:outdatedWhy`).
-- **The cost.** The crate split holds the dependency rule; the 23 `Mutex` sites left after ISS-216
-  are per-component memos (a registry, a latch, a sink), kept because an actor per memo would add
+- **The cost.** The crate split holds the dependency rule; the `Mutex` sites left (at `ac9db9b27`,
+  22 production files hold 37 `Mutex<` lines, 14 of them `Arc<Mutex<…>>` types, each file cut at its
+  `#[cfg(test)]`) are per-component memos (a registry, a latch, a sink), kept because an actor per memo would add
   a message type and a handle each, and grow the code the simplify phase exists to shrink.
