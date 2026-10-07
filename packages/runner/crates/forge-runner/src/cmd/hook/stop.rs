@@ -334,6 +334,58 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tree);
     }
 
+    /// The refusal's `git` command, run as written by `sh` with no terminal and
+    /// an editor that writes nothing, in a tree whose path needs quoting: it
+    /// must leave the tree clean, as a run copying it would expect.
+    #[cfg(unix)]
+    #[test]
+    fn the_dirty_refusals_command_commits_the_tree_with_no_terminal() {
+        let root = scratch("hint");
+        let tree = root.join("a tree");
+        std::fs::create_dir_all(&tree).unwrap();
+        git(&tree, &["init", "-q"]);
+        git(&tree, &["commit", "-q", "--allow-empty", "-m", "base"]);
+        std::fs::write(tree.join("work.rs"), "fn main() {}").unwrap();
+        let dirty = dirty_in(&tree).unwrap();
+        let verdict = decide(&Facts {
+            run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+            tree: &tree,
+            issues: vec![],
+            dirty: Ok(dirty),
+            standing: Ok(vec![]),
+            refused_in_a_row: 0,
+        });
+        let Outcome::Refused(reason) = verdict.outcome else {
+            panic!("a dirty tree was not refused: {:?}", verdict.outcome);
+        };
+        let cmd = reason
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .find(|c| c.starts_with("git -C"))
+            .unwrap_or_else(|| panic!("no git command in {reason}"));
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .env("GIT_EDITOR", "true")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "`{cmd}` failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(dirty_in(&tree), Ok(vec![]), "`{cmd}` left the tree dirty");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn a_tree_that_is_gone_or_no_checkout_is_unread_not_clean() {
         let gone = scratch("gone").join("nowhere");
