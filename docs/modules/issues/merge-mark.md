@@ -111,6 +111,22 @@ kernel hands the issue back to the status the run took it from. `awaiting_releas
 written only by a release that claimed the issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too
 (`CLOSE_REQUIRES_SHIPPED`).
 
+## A mark written after the release that shipped it
+
+An issue can reach `awaiting_release` after a release whose range already holds its `observed` commit.
+That release never claimed it, so every later cut finds nothing new in its own range. The release path
+settles it as a kernel fact: `closeShippedEarlier` (`packages/core/src/release-batch/shipped-earlier.ts`)
+runs in the automatic sweep, before a row held `RELEASE_ABORT_BLOCKED` is set aside, and at the top of
+`createReleaseBatch`. It asks the project's repository whether the commit is an ancestor of the commit
+each shipped release was verified serving (`finish.commit` on a run whose finish is `finished`),
+takes the earliest release that holds it, and closes the issue through the release's own close
+(`closeRoster`, after `claimIssuesForRelease` onto that run), so `CLOSE_ONLY_BY_RELEASE` still holds and
+the run's `rosterClosed` names it. The issue gets a notice naming the version, and its hold is cleared.
+It adds no changelog fragment: its notes belong to the release that shipped it. An `asserted` or
+`landed` mark names no commit and is never placed this way, and a repository that cannot be read or
+a commit it will not place is `SHIPPED_EARLIER_HOST_UNAVAILABLE` or `SHIPPED_EARLIER_UNREAD`: nothing
+moves and no version is inferred.
+
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides

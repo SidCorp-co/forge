@@ -41,6 +41,7 @@ import {
 } from './release-sweep-report.js';
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
+import { closeShippedEarlier, type ShippedEarlierDeps } from './shipped-earlier.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;
@@ -54,6 +55,8 @@ export interface AutomaticReleaseSweepResult {
   issuesExcluded: number;
   /** How many waiting issues had a hold written or replaced this tick, for any reason. */
   holdsWritten: number;
+  /** How many waiting issues were closed against an earlier release that already shipped their commit. */
+  shippedEarlier: number;
 }
 
 interface CandidateRow {
@@ -189,23 +192,31 @@ async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
   now: Date,
+  deps: ShippedEarlierDeps,
 ): Promise<void> {
   if (!(await productionDeploysOnLand(projectId))) {
     await clearProjectReleaseHolds(projectId);
     return;
   }
 
-  // First, so no later hold replaces the abort's: a row a person owes is not weighed at all.
-  const atGate = await waitingIssueIds(projectId);
+  const owner = (await loadCreatedBy(projectId)) ?? null;
+  // First of all, before a row an aborted release held for a person is set aside: a commit an
+  // earlier release already shipped is closed against that release, whatever held it, so no cut
+  // is opened to find nothing new in its range.
+  const gate = await waitingIssueIds(projectId);
+  const earlier = await closeShippedEarlier({ projectId, issueIds: gate, userId: owner }, deps);
+  result.shippedEarlier += earlier.closed.length;
+  const shipped = new Set(earlier.closed.map((c) => c.issueId));
+  const atGate = gate.filter((id) => !shipped.has(id));
+  // Next, so no later hold replaces the abort's: a row a person owes is not weighed at all.
   const blocked = await abortBlockedIssues(atGate);
   const waiting = atGate.filter((id) => !blocked.has(id));
   if (waiting.length === 0) return;
-  const owner = (await loadCreatedBy(projectId)) ?? null;
   const base = { projectId, now, result };
 
-  const gate = await readGate(projectId);
-  if (!gate.ok) {
-    await holdAlike({ ...base, issueIds: waiting }, gate.hold);
+  const releaseGate = await readGate(projectId);
+  if (!releaseGate.ok) {
+    await holdAlike({ ...base, issueIds: waiting }, releaseGate.hold);
     return;
   }
 
@@ -273,18 +284,20 @@ async function sweepProject(
 
 export async function sweepAutomaticReleases(
   now: Date = new Date(),
+  deps: ShippedEarlierDeps = {},
 ): Promise<AutomaticReleaseSweepResult> {
   const result: AutomaticReleaseSweepResult = {
     projectsCut: 0,
     issuesCut: 0,
     issuesExcluded: 0,
     holdsWritten: 0,
+    shippedEarlier: 0,
   };
   await clearStaleReleaseHolds();
   const projectIds = await candidateProjectIds(now);
   for (const projectId of projectIds) {
     try {
-      await sweepProject(projectId, result, now);
+      await sweepProject(projectId, result, now, deps);
     } catch (err) {
       logger.error(
         { err, projectId },

@@ -160,7 +160,7 @@ export async function verifyBeforeClose(
 }
 
 /** Each claimed issue closed under the fence; one that will not close is named with its reason. */
-async function closeRoster(
+export async function closeRoster(
   claimed: ClaimedRow[],
   runId: string,
   actor: TransitionActor,

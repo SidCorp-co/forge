@@ -96,7 +96,7 @@ export {
   statusChangesSince,
 } from './memory-reads.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
-export { recordIssueMerge } from './merge-record.js';
+export { mergeMarkKindOf, recordIssueMerge } from './merge-record.js';
 export { publishPipelineHealthChanged } from './pipeline-health.js';
 export {
   assertDesignApprovedForIssue,

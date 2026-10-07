@@ -397,6 +397,7 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RUN_HOLDING",
 	"RELEASE_RUN_NOT_OPEN",
 	"RELEASE_NOTHING_RECORDED",
+	"RELEASE_ALL_SHIPPED_EARLIER",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
