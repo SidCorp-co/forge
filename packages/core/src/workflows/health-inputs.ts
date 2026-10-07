@@ -1,7 +1,9 @@
 /**
- * The records the workflow health read model reads for one design (workflow-step-health `in-*`),
- * each turned into the facts `health-rules.ts:deriveHealth` decides on. Stored rows that no longer
- * parse are refused by name, never guessed at.
+ * The records the workflow health read model reads for the designs it derives (workflow-step-health
+ * `in-*`), each turned into the facts `health-rules.ts:deriveHealth` decides on. Every input is read
+ * once for all the designs asked about and handed back by workflow id, so a project's health costs
+ * the same number of queries at thirty designs as at one. Stored rows that no longer parse are
+ * refused by name, never guessed at.
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
@@ -38,8 +40,23 @@ function traceOf(r: {
 
 const present = <T>(x: T | null): x is T => x !== null;
 
-export async function criteriaOf(workflowId: string): Promise<HealthFacts['criteria']> {
+/** Each row under its workflow, in the order read; every workflow asked about holds a list. */
+function byWorkflow<R extends { workflow_id: string }, T>(
+  workflowIds: readonly string[],
+  rows: readonly R[],
+  toFact: (row: R) => T,
+): Map<string, T[]> {
+  const out = new Map<string, T[]>(workflowIds.map((id) => [id, []]));
+  for (const r of rows) out.get(r.workflow_id)?.push(toFact(r));
+  return out;
+}
+
+export async function criteriaOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['criteria']>> {
+  if (workflowIds.length === 0) return new Map();
   const rows = rowsOf<{
+    workflow_id: string;
     req_seq: number;
     code: string;
     since_revision: number;
@@ -51,7 +68,7 @@ export async function criteriaOf(workflowId: string): Promise<HealthFacts['crite
     proof: string | null;
   }>(
     await db.execute(sql`
-      SELECT r.req_seq, s.code, c.since_revision, rr.decided_at AS accepted_at,
+      SELECT s.workflow_id, r.req_seq, s.code, c.since_revision, rr.decided_at AS accepted_at,
              s.step_id, s.edge_from, s.edge_to, s.edge_label,
              (SELECT v.verdict FROM issue_criteria ic
                 JOIN criterion_verdicts v ON v.criterion_id = ic.id
@@ -64,13 +81,17 @@ export async function criteriaOf(workflowId: string): Promise<HealthFacts['crite
              AND c.retired_revision IS NULL
         LEFT JOIN requirement_revisions rr ON rr.requirement_id = c.requirement_id
              AND rr.revision = c.since_revision
-       WHERE s.workflow_id = ${workflowId}
-       ORDER BY r.req_seq, s.code`),
+       WHERE s.workflow_id IN (${ids(workflowIds)})
+       ORDER BY s.workflow_id, r.req_seq, s.code`),
   );
-  const byCode = new Map<string, HealthFacts['criteria'][number]>();
+  const byCode = new Map<string, Map<string, HealthFacts['criteria'][number]>>(
+    workflowIds.map((id) => [id, new Map()]),
+  );
   for (const r of rows) {
+    const own = byCode.get(r.workflow_id);
+    if (!own) continue;
     const key = `${r.req_seq}:${r.code}`;
-    const entry = byCode.get(key) ?? {
+    const entry = own.get(key) ?? {
       requirementKey: requirementKey(Number(r.req_seq)),
       code: r.code,
       sinceRevision: Number(r.since_revision),
@@ -80,13 +101,17 @@ export async function criteriaOf(workflowId: string): Promise<HealthFacts['crite
     };
     const t = traceOf(r);
     if (t) entry.targets.push(t);
-    byCode.set(key, entry);
+    own.set(key, entry);
   }
-  return [...byCode.values()];
+  return new Map([...byCode].map(([id, own]) => [id, [...own.values()]]));
 }
 
-export async function contractPinsOf(workflowId: string): Promise<HealthFacts['contractPins']> {
+export async function contractPinsOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['contractPins']>> {
+  if (workflowIds.length === 0) return new Map();
   const rows = rowsOf<{
+    workflow_id: string;
     provider: string;
     contract_slug: string;
     contract_version: string;
@@ -95,11 +120,13 @@ export async function contractPinsOf(workflowId: string): Promise<HealthFacts['c
   }>(
     await db.execute(sql`
       WITH latest AS (
-        SELECT DISTINCT ON (b.requirement_id) b.requirement_id, b.revision, b.seq
+        SELECT DISTINCT ON (l.workflow_id, b.requirement_id) l.workflow_id, b.requirement_id,
+               b.revision, b.seq
           FROM requirement_baselines b
-          JOIN requirement_workflows l ON l.requirement_id = b.requirement_id AND l.workflow_id = ${workflowId}
-         ORDER BY b.requirement_id, b.revision DESC, b.seq DESC)
-      SELECT pr.slug AS provider, p.contract_slug, p.contract_version,
+          JOIN requirement_workflows l ON l.requirement_id = b.requirement_id
+               AND l.workflow_id IN (${ids(workflowIds)})
+         ORDER BY l.workflow_id, b.requirement_id, b.revision DESC, b.seq DESC)
+      SELECT latest.workflow_id, pr.slug AS provider, p.contract_slug, p.contract_version,
              nb.version AS breaking_version, nb.recorded_at AS breaking_at
         FROM requirement_baseline_pins p
         JOIN latest ON latest.requirement_id = p.requirement_id AND latest.revision = p.revision
@@ -114,7 +141,7 @@ export async function contractPinsOf(workflowId: string): Promise<HealthFacts['c
            ORDER BY v.recorded_at DESC LIMIT 1) nb ON true
        WHERE p.contract_slug IS NOT NULL`),
   );
-  return rows.map((r) => ({
+  return byWorkflow(workflowIds, rows, (r) => ({
     provider: r.provider,
     slug: r.contract_slug,
     pinnedVersion: r.contract_version,
@@ -125,8 +152,12 @@ export async function contractPinsOf(workflowId: string): Promise<HealthFacts['c
   }));
 }
 
-export async function suggestionsOf(workflowId: string): Promise<HealthFacts['suggestions']> {
+export async function suggestionsOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['suggestions']>> {
+  if (workflowIds.length === 0) return new Map();
   const rows = rowsOf<{
+    workflow_id: string;
     id: string;
     status: string;
     payload: unknown;
@@ -134,48 +165,58 @@ export async function suggestionsOf(workflowId: string): Promise<HealthFacts['su
     decided_at: string | null;
   }>(
     await db.execute(sql`
-      SELECT id, status, payload, created_at, decided_at FROM suggestions
-       WHERE workflow_id = ${workflowId} AND kind = 'design_change' AND status IN ('proposed', 'accepted')
+      SELECT workflow_id, id, status, payload, created_at, decided_at FROM suggestions
+       WHERE workflow_id IN (${ids(workflowIds)}) AND kind = 'design_change'
+         AND status IN ('proposed', 'accepted')
        ORDER BY created_at`),
   );
-  return rows.flatMap((r) => {
-    if (r.payload === null) return [];
-    const parsed = designChangePayloadSchema.safeParse(r.payload);
-    if (!parsed.success) {
-      throw new Error(
-        `suggestion ${r.id} holds a design_change payload that no longer parses (${parsed.error.issues[0]?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
-      );
-    }
-    const p = parsed.data;
-    const targets: PlannedTarget[] = [
-      ...(p.steps ?? []).map((step) => ({ kind: 'step' as const, step })),
-      ...(p.edges ?? []).map((e) => ({
-        kind: 'edge' as const,
-        from: e.from,
-        to: e.to,
-        label: e.label ?? null,
-      })),
-    ];
-    return [
-      {
-        id: r.id,
-        status: r.status,
-        change: p.change,
-        targets,
-        reason: p.reason,
-        createdAt: new Date(r.created_at),
-        decidedAt: date(r.decided_at),
-      },
-    ];
-  });
+  const out = byWorkflow(workflowIds, rows, suggestionOf);
+  return new Map([...out].map(([id, list]) => [id, list.filter(present)]));
+}
+
+function suggestionOf(r: {
+  id: string;
+  status: string;
+  payload: unknown;
+  created_at: string;
+  decided_at: string | null;
+}): HealthFacts['suggestions'][number] | null {
+  if (r.payload === null) return null;
+  const parsed = designChangePayloadSchema.safeParse(r.payload);
+  if (!parsed.success) {
+    throw new Error(
+      `suggestion ${r.id} holds a design_change payload that no longer parses (${parsed.error.issues[0]?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
+    );
+  }
+  const p = parsed.data;
+  const targets: PlannedTarget[] = [
+    ...(p.steps ?? []).map((step) => ({ kind: 'step' as const, step })),
+    ...(p.edges ?? []).map((e) => ({
+      kind: 'edge' as const,
+      from: e.from,
+      to: e.to,
+      label: e.label ?? null,
+    })),
+  ];
+  return {
+    id: r.id,
+    status: r.status,
+    change: p.change,
+    targets,
+    reason: p.reason,
+    createdAt: new Date(r.created_at),
+    decidedAt: date(r.decided_at),
+  };
 }
 
 export async function buildsOf(
   viewer: HealthViewer,
   projectId: string,
-  workflowId: string,
-): Promise<HealthFacts['builds']> {
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['builds']>> {
+  if (workflowIds.length === 0) return new Map();
   const builds = rowsOf<{
+    workflow_id: string;
     issue_id: string;
     iss_seq: number;
     status: string;
@@ -189,21 +230,22 @@ export async function buildsOf(
     release_released_at: string | null;
   }>(
     await db.execute(sql`
-      SELECT i.id AS issue_id, i.iss_seq, i.status, i.reopen_count, i.updated_at, i.merged_at,
-             b.linked_at, b.step_ids, b.observed_step_ids, r.release_version, r.release_released_at
+      SELECT b.workflow_id, i.id AS issue_id, i.iss_seq, i.status, i.reopen_count, i.updated_at,
+             i.merged_at, b.linked_at, b.step_ids, b.observed_step_ids, r.release_version,
+             r.release_released_at
         FROM workflow_builds b JOIN issues i ON i.id = b.issue_id
         LEFT JOIN pipeline_runs r ON r.id = i.release_batch_run_id AND r.release_version IS NOT NULL
-       WHERE b.workflow_id = ${workflowId} AND i.archived_at IS NULL`),
+       WHERE b.workflow_id IN (${ids(workflowIds)}) AND i.archived_at IS NULL`),
   );
-  if (builds.length === 0) return [];
-  const issueIds = builds.map((b) => b.issue_id);
+  if (builds.length === 0) return new Map(workflowIds.map((id) => [id, []]));
+  const issueIds = [...new Set(builds.map((b) => b.issue_id))];
   const [traces, verdicts, runs] = await Promise.all([
     db.execute(sql`
-      SELECT ic.issue_id, s.step_id, s.edge_from, s.edge_to, s.edge_label
+      SELECT ic.issue_id, s.workflow_id, s.step_id, s.edge_from, s.edge_to, s.edge_label
         FROM issue_criteria ic
         JOIN requirement_criteria c ON c.id = ic.requirement_criterion_id
         JOIN requirement_criterion_steps s ON s.requirement_id = c.requirement_id AND s.code = c.code
-             AND s.workflow_id = ${workflowId}
+             AND s.workflow_id IN (${ids(workflowIds)})
        WHERE ic.issue_id::text IN (${ids(issueIds)}) AND ic.retired_at IS NULL`),
     db.execute(sql`
       SELECT DISTINCT ON (v.criterion_id) ic.issue_id, ic.n, v.verdict, v.reason,
@@ -215,6 +257,7 @@ export async function buildsOf(
   ]);
   const traceRows = rowsOf<{
     issue_id: string;
+    workflow_id: string;
     step_id: string | null;
     edge_from: string | null;
     edge_to: string | null;
@@ -230,9 +273,9 @@ export async function buildsOf(
     created_at: string;
   }>(verdicts);
   const runOf = new Map(runs.map((r) => [r.issueId, r.run]));
-  return builds.map((b) => {
+  return byWorkflow(workflowIds, builds, (b) => {
     const traced = traceRows
-      .filter((t) => t.issue_id === b.issue_id)
+      .filter((t) => t.issue_id === b.issue_id && t.workflow_id === b.workflow_id)
       .map(traceOf)
       .filter(present);
     const named = (b.step_ids ?? []).map((step): PlannedTarget => ({ kind: 'step', step }));
@@ -262,15 +305,20 @@ export async function buildsOf(
         .filter((v) => v.verdict === 'fail')
         .map((v) => ({ n: Number(v.n), reason: v.reason, at: new Date(v.created_at) })),
       judgedAgainst: mine
-        .filter((v) => v.design_workflow_id === workflowId && v.design_revision !== null)
+        .filter((v) => v.design_workflow_id === b.workflow_id && v.design_revision !== null)
         .map((v) => ({ revision: Number(v.design_revision), at: new Date(v.created_at) })),
       run: run ? { id: run.id, state: run.state, since: run.since, rule: run.rule } : null,
     };
   });
 }
 
-export async function observationOf(workflowId: string): Promise<HealthFacts['observation']> {
-  const [row] = rowsOf<{
+export async function observationOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['observation']>> {
+  const out = new Map<string, HealthFacts['observation']>(workflowIds.map((id) => [id, null]));
+  if (workflowIds.length === 0) return out;
+  const rows = rowsOf<{
+    workflow_id: string;
     id: string;
     at_sha: string;
     revision: number;
@@ -280,42 +328,49 @@ export async function observationOf(workflowId: string): Promise<HealthFacts['ob
     document: unknown;
   }>(
     await db.execute(sql`
-      SELECT id, at_sha, revision, created_at, written_by, written_by_agency, document
-        FROM project_workflow_observations WHERE workflow_id = ${workflowId}
-       ORDER BY created_at DESC LIMIT 1`),
+      SELECT DISTINCT ON (workflow_id) workflow_id, id, at_sha, revision, created_at, written_by,
+             written_by_agency, document
+        FROM project_workflow_observations WHERE workflow_id IN (${ids(workflowIds)})
+       ORDER BY workflow_id, created_at DESC`),
   );
-  if (!row) return null;
-  const parsed = observationDocumentSchema.safeParse(row.document);
-  if (!parsed.success) {
-    throw new Error(
-      `observation ${row.id} no longer parses as an observation document (${parsed.error.issues[0]?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
-    );
+  for (const row of rows) {
+    const parsed = observationDocumentSchema.safeParse(row.document);
+    if (!parsed.success) {
+      throw new Error(
+        `observation ${row.id} no longer parses as an observation document (${parsed.error.issues[0]?.message ?? 'unknown'}); the stored row is repaired, never guessed at.`,
+      );
+    }
+    out.set(row.workflow_id, {
+      id: row.id,
+      atSha: row.at_sha,
+      revision: Number(row.revision),
+      createdAt: new Date(row.created_at),
+      writtenBy: row.written_by,
+      writtenByAgency: row.written_by_agency,
+      document: parsed.data,
+    });
   }
-  return {
-    id: row.id,
-    atSha: row.at_sha,
-    revision: Number(row.revision),
-    createdAt: new Date(row.created_at),
-    writtenBy: row.written_by,
-    writtenByAgency: row.written_by_agency,
-    document: parsed.data,
-  };
+  return out;
 }
 
-export async function decisionsOf(workflowId: string): Promise<HealthFacts['decisions']> {
+export async function decisionsOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, HealthFacts['decisions']>> {
+  if (workflowIds.length === 0) return new Map();
   const rows = rowsOf<{
+    workflow_id: string;
     id: string;
     decision: { reason?: string; node?: unknown };
     author_id: string | null;
     created_at: string;
   }>(
     await db.execute(sql`
-      SELECT id, decision, author_id, created_at FROM comments
-       WHERE workflow_id = ${workflowId} AND intent = 'decision' AND decision ? 'node'
+      SELECT workflow_id, id, decision, author_id, created_at FROM comments
+       WHERE workflow_id IN (${ids(workflowIds)}) AND intent = 'decision' AND decision ? 'node'
        ORDER BY created_at DESC, id DESC`),
   );
   const names = await peopleOf(rows.map((r) => r.author_id));
-  return rows.map((r) => {
+  return byWorkflow(workflowIds, rows, (r) => {
     const node = nodeDecisionSchema.safeParse(r.decision.node);
     if (!node.success) {
       throw new Error(
@@ -333,16 +388,29 @@ export async function decisionsOf(workflowId: string): Promise<HealthFacts['deci
   });
 }
 
-export async function designRowsOf(workflowId: string) {
-  return rowsOf<{
-    revision: number;
-    document: unknown;
-    decision: string | null;
-    decided_at: string | null;
-    proposed_at: string;
-  }>(
+export interface DesignRow {
+  revision: number;
+  document: unknown;
+  decision: string | null;
+  decided_at: string | null;
+  proposed_at: string;
+}
+
+export async function designRowsOf(
+  workflowIds: readonly string[],
+): Promise<Map<string, DesignRow[]>> {
+  if (workflowIds.length === 0) return new Map();
+  const rows = rowsOf<DesignRow & { workflow_id: string }>(
     await db.execute(sql`
-      SELECT revision, document, decision, decided_at, proposed_at FROM project_workflow_designs
-       WHERE workflow_id = ${workflowId} ORDER BY revision`),
+      SELECT workflow_id, revision, document, decision, decided_at, proposed_at
+        FROM project_workflow_designs
+       WHERE workflow_id IN (${ids(workflowIds)}) ORDER BY workflow_id, revision`),
   );
+  return byWorkflow(workflowIds, rows, (r) => ({
+    revision: r.revision,
+    document: r.document,
+    decision: r.decision,
+    decided_at: r.decided_at,
+    proposed_at: r.proposed_at,
+  }));
 }

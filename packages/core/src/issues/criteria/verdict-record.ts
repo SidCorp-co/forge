@@ -22,7 +22,7 @@ import {
   corroborationOf,
   type DraftReader,
   environmentFault,
-  readSourceDraft,
+  readSourceDrafts,
 } from './storefront-draft.js';
 import {
   type VerdictDraft,
@@ -111,7 +111,11 @@ async function storefrontColumns(
   const unknown = environmentFault(criterion, document, environment);
   if (unknown) throw verdictRefused(unknown);
   const workflowId = identity.workflowId.trim();
-  const found = corroborationOf(identity, await readDraft(document, workflowId));
+  const reading = (await readDraft(document, [workflowId])).get(workflowId) ?? {
+    kind: 'unreadable',
+    detail: `the draft reader answered no reading of workflow \`${workflowId}\``,
+  };
+  const found = corroborationOf(identity, reading);
   return {
     identityKind: 'storefront_draft',
     storefrontWorkflowId: workflowId,
@@ -243,7 +247,7 @@ export async function recordVerdict(
     tx,
     issue.projectId,
     draft,
-    args.readDraft ?? readSourceDraft,
+    args.readDraft ?? readSourceDrafts,
   );
   const [row] = await tx
     .insert(criterionVerdicts)

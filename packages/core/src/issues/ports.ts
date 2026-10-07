@@ -184,6 +184,8 @@ interface IssuePorts {
     issueId: string,
     executor?: GateReader,
   ) => Promise<void>;
+  /** Why the design gate holds each of these issues, by issue id; an issue it does not hold is absent. */
+  designHoldsOf: (projectId: string, issueIds: readonly string[]) => Promise<Map<string, string>>;
   buildsWorkflowOf: (issueId: string) => Promise<unknown>;
   /** The newest approved version of the provider's contract at or above `minVersion` in its own scheme; null while none is. */
   settlingContractVersion: (
@@ -233,11 +235,11 @@ interface IssuePorts {
   isEnoent: (err: unknown) => boolean;
   resolveSourceHost: (projectId: string, as: 'kernel') => Promise<CommitHost>;
   isSourceHostUnavailable: (err: unknown) => err is Error;
-  readStorefrontDraft: (args: {
+  readStorefrontDrafts: (args: {
     provider: string;
     binding: string;
-    workflowId: string;
-  }) => Promise<StorefrontDraftReading>;
+    workflowIds: readonly string[];
+  }) => Promise<Map<string, StorefrontDraftReading>>;
   /** The issue's step handoffs, oldest first. */
   handoffContextsOf: (
     projectId: string,
@@ -304,6 +306,7 @@ export const issueDeleteRefusal = port('issueDeleteRefusal');
 export const designUnapprovedSql = port('designUnapprovedSql');
 export const assertDesignsApprovedForSeqs = port('assertDesignsApprovedForSeqs');
 export const assertDesignApprovedForIssue = port('assertDesignApprovedForIssue');
+export const designHoldsOf = port('designHoldsOf');
 export const buildsWorkflowOf = port('buildsWorkflowOf');
 export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowOf = port('proposesWorkflowOf');
@@ -322,7 +325,7 @@ export const getStorage = port('getStorage');
 export const isEnoent = port('isEnoent');
 export const resolveSourceHost = port('resolveSourceHost');
 export const isSourceHostUnavailable = port('isSourceHostUnavailable');
-export const readStorefrontDraft = port('readStorefrontDraft');
+export const readStorefrontDrafts = port('readStorefrontDrafts');
 export const handoffContextsOf = port('handoffContextsOf');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');
 export const triggerPipelineStepManual = port('triggerPipelineStepManual');

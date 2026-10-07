@@ -112,7 +112,7 @@ export {
   updateConnection,
   writeConnectionSecrets,
 } from './store.js';
-export { readStorefrontDraft } from './storefront-draft-read.js';
+export { readStorefrontDrafts } from './storefront-draft-read.js';
 export type {
   AdapterContext,
   AgentPath,

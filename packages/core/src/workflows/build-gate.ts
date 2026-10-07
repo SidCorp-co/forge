@@ -10,6 +10,7 @@
 import type { DesignStatus } from '@forge/contracts/design-status';
 import { type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { idList } from '../db/raw-sql.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { designNotApproved, designNotApprovedDetail } from './design.js';
@@ -24,6 +25,7 @@ export function designUnapprovedSql(issueId: SQL): SQL {
 }
 
 interface Blocked {
+  issueId: string;
   issSeq: number;
   workflowId: string;
   flow: string;
@@ -39,7 +41,7 @@ async function blockedWhere(
   executor: GateReader = db,
 ): Promise<Blocked[]> {
   const rows = (await executor.execute(sql`
-    SELECT i.iss_seq, w.id AS workflow_id, w.flow, w.design_status
+    SELECT i.id AS issue_id, i.iss_seq, w.id AS workflow_id, w.flow, w.design_status
     FROM workflow_builds wb
     JOIN issues i ON i.id = wb.issue_id
     JOIN project_workflows w ON w.id = wb.workflow_id
@@ -49,6 +51,7 @@ async function blockedWhere(
     ORDER BY i.iss_seq
   `)) as unknown as Array<Record<string, unknown>>;
   return rows.map((r) => ({
+    issueId: String(r.issue_id),
     issSeq: Number(r.iss_seq),
     workflowId: String(r.workflow_id),
     flow: String(r.flow),
@@ -62,14 +65,40 @@ async function refuseBlocked(
   executor: GateReader = db,
 ): Promise<void> {
   if (blocked.length === 0) return;
-  const prefix = await activeIssuePrefix(projectId, executor);
-  throw designNotApproved(
+  throw refusalOf(await activeIssuePrefix(projectId, executor), blocked);
+}
+
+const refusalOf = (prefix: string | null, blocked: readonly Blocked[]) =>
+  designNotApproved(
     blocked.map((b) => ({
       issue: formatIssueRef(prefix, b.issSeq),
       workflowId: b.workflowId,
       flow: b.flow,
       status: b.status,
     })),
+  );
+
+/**
+ * Why the gate holds each of these issues, by issue id: the detail of the refusal a dispatch door
+ * would give it, every issue read in one query. An issue the gate does not hold is absent.
+ */
+export async function designHoldsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, string>> {
+  if (issueIds.length === 0) return new Map();
+  const blocked = await blockedWhere(projectId, sql`i.id IN (${idList(issueIds)})`);
+  if (blocked.length === 0) return new Map();
+  const prefix = await activeIssuePrefix(projectId);
+  const byIssue = new Map<string, Blocked[]>();
+  for (const b of blocked) byIssue.set(b.issueId, [...(byIssue.get(b.issueId) ?? []), b]);
+  return new Map(
+    [...byIssue].map(([id, held]) => [
+      id,
+      refusalOf(prefix, held)
+        .refusals.map((r) => r.detail)
+        .join(' '),
+    ]),
   );
 }
 

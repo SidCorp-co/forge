@@ -17,6 +17,7 @@ import {
   buildsOf,
   contractPinsOf,
   criteriaOf,
+  type DesignRow,
   date,
   decisionsOf,
   designRowsOf,
@@ -26,7 +27,7 @@ import {
 } from './health-inputs.js';
 import { type HealthViewer, openFeedbackOf } from './health-ports.js';
 import { deriveHealth, type HealthFacts, type PlannedTarget } from './health-rules.js';
-import { rootedOf } from './rooted.js';
+import { rootedOfAll } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
 import { workflowsOf } from './store.js';
 import { templateOf } from './template-check.js';
@@ -75,18 +76,65 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
   };
 }
 
-async function healthOfRow(ctx: ProjectHealthContext, w: WorkflowRow): Promise<WorkflowHealth> {
+/** What `healthOfRow` reads for one design, each read once for every design asked about. */
+interface HealthInputs {
+  designs: DesignRow[];
+  criteria: HealthFacts['criteria'];
+  contractPins: HealthFacts['contractPins'];
+  suggestions: HealthFacts['suggestions'];
+  builds: HealthFacts['builds'];
+  observation: HealthFacts['observation'];
+  decisions: HealthFacts['decisions'];
+  rooted: HealthFacts['rooted'];
+}
+
+async function inputsOf(
+  viewer: HealthViewer,
+  projectId: string,
+  rows: readonly WorkflowRow[],
+): Promise<(w: WorkflowRow) => HealthInputs> {
+  const ids = rows.map((w) => w.id);
   const [designs, criteria, contractPins, suggestions, builds, observation, decisions, rooted] =
     await Promise.all([
-      designRowsOf(w.id),
-      criteriaOf(w.id),
-      contractPinsOf(w.id),
-      suggestionsOf(w.id),
-      buildsOf(ctx.viewer, ctx.projectId, w.id),
-      observationOf(w.id),
-      decisionsOf(w.id),
-      rootedOf(db, { id: w.id, approvedRevision: w.approved_revision }),
+      designRowsOf(ids),
+      criteriaOf(ids),
+      contractPinsOf(ids),
+      suggestionsOf(ids),
+      buildsOf(viewer, projectId, ids),
+      observationOf(ids),
+      decisionsOf(ids),
+      rootedOfAll(
+        db,
+        rows.map((w) => ({ id: w.id, approvedRevision: w.approved_revision })),
+      ),
     ]);
+  return (w) => {
+    const of = <T>(read: Map<string, T>): T => {
+      if (!read.has(w.id)) {
+        throw new Error(`workflow health: ${w.id} was read for its design and not answered`);
+      }
+      return read.get(w.id) as T;
+    };
+    return {
+      designs: of(designs),
+      criteria: of(criteria),
+      contractPins: of(contractPins),
+      suggestions: of(suggestions),
+      builds: of(builds),
+      observation: of(observation),
+      decisions: of(decisions),
+      rooted: of(rooted),
+    };
+  };
+}
+
+function healthOfRow(
+  ctx: ProjectHealthContext,
+  w: WorkflowRow,
+  inputs: HealthInputs,
+): WorkflowHealth {
+  const { designs, criteria, contractPins, suggestions, builds, observation, decisions, rooted } =
+    inputs;
   const head = readStoredWorkflow(w.document);
   const open =
     w.design_status === 'proposed'
@@ -180,7 +228,11 @@ export async function readWorkflowHealthAs(
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const [row] = await workflowRowsOf(projectId, workflow);
   if (!row) throw notFound(`project ${projectId} holds no workflow ${workflow}`);
-  return healthOfRow(await contextOf(projectId, viewer), row);
+  const [ctx, inputs] = await Promise.all([
+    contextOf(projectId, viewer),
+    inputsOf(viewer, projectId, [row]),
+  ]);
+  return healthOfRow(ctx, row, inputs(row));
 }
 
 export function summaryOfHealth(h: WorkflowHealth): WorkflowHealthSummary {
@@ -207,7 +259,11 @@ export async function projectHealthAs(
   projectId: string,
 ): Promise<Map<string, WorkflowHealth>> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
-  const [ctx, rows] = await Promise.all([contextOf(projectId, viewer), workflowRowsOf(projectId)]);
-  const all = await Promise.all(rows.map((r) => healthOfRow(ctx, r)));
-  return new Map(all.map((h) => [h.workflowId, h]));
+  const read = workflowRowsOf(projectId);
+  const [ctx, rows, inputs] = await Promise.all([
+    contextOf(projectId, viewer),
+    read,
+    read.then((rows) => inputsOf(viewer, projectId, rows)),
+  ]);
+  return new Map(rows.map((r) => [r.id, healthOfRow(ctx, r, inputs(r))]));
 }
