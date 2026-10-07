@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Icon, type IconName, Popover, ProjectMark } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 
 export interface RailProject {
@@ -41,7 +42,8 @@ export function switcherRows(projects: SwitcherProject[], query: string): Switch
 }
 
 function Trigger({ compact, project, open, onClick }: { compact: boolean; project: RailProject; open: boolean; onClick: () => void }) {
-  const label = `Switch project — current ${project.name}`;
+  const t = useCopy();
+  const label = t("shell.switcher.trigger", { name: project.name });
   if (compact) {
     return (
       <button
@@ -61,7 +63,7 @@ function Trigger({ compact, project, open, onClick }: { compact: boolean; projec
             <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
           </span>
         </span>
-        {project.liveRuns > 0 && <span className="font-mono text-9-5 font-semibold text-accent-text">{project.liveRuns} live</span>}
+        {project.liveRuns > 0 && <span className="font-mono text-9-5 font-semibold text-accent-text">{t("shell.switcher.live", { n: project.liveRuns })}</span>}
       </button>
     );
   }
@@ -76,18 +78,19 @@ function Trigger({ compact, project, open, onClick }: { compact: boolean; projec
     >
       <ProjectMark tint={project.tint} ink={project.ink} initials={project.initials} size={26} radius="var(--r-sm)" />
       <span className="fg-label min-w-0 flex-1 truncate">{project.name}</span>
-      {project.liveRuns > 0 && <span className="font-mono text-11 font-semibold text-accent-text">{project.liveRuns} live</span>}
+      {project.liveRuns > 0 && <span className="font-mono text-11 font-semibold text-accent-text">{t("shell.switcher.live", { n: project.liveRuns })}</span>}
       <Icon name="chevronUpDown" size={15} className="text-subtle" />
     </button>
   );
 }
 
 function AddProject({ compact, onClick }: { compact: boolean; onClick: () => void }) {
+  const t = useCopy();
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label="Add project"
+      aria-label={t("shell.switcher.add")}
       className={cn(
         "flex items-center rounded-md text-subtle transition-colors hover:bg-hover",
         compact ? "w-[76px] flex-col gap-1 pb-1.5 pt-5px" : "w-full gap-2.5 px-2.5 py-2",
@@ -96,7 +99,7 @@ function AddProject({ compact, onClick }: { compact: boolean; onClick: () => voi
       <span className="inline-flex size-7 items-center justify-center rounded-md border border-dashed border-line">
         <Icon name="plus" size={16} />
       </span>
-      <span className={compact ? "text-10 font-semibold text-muted" : "fg-label text-muted"}>Add project</span>
+      <span className={compact ? "text-10 font-semibold text-muted" : "fg-label text-muted"}>{t("shell.switcher.add")}</span>
     </button>
   );
 }
@@ -114,6 +117,7 @@ function SwitcherRow({
   onSettings: () => void;
   onTogglePin: () => void;
 }) {
+  const t = useCopy();
   const quiet = "inline-flex size-7 flex-none items-center justify-center rounded-md transition-colors hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
   return (
     <div className={cn("group flex min-h-[40px] items-center gap-2.5 rounded-md px-2 py-1", active ? "bg-accent-tint" : "hover:bg-hover")}>
@@ -125,15 +129,15 @@ function SwitcherRow({
       >
         <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={22} radius="var(--r-sm)" />
         <span className={cn("min-w-0 flex-1 truncate text-13 font-semibold", active ? "text-accent-text" : "text-fg")}>{p.name}</span>
-        {p.liveRuns > 0 && <span title={`${p.liveRuns} live`} className="size-1.5 flex-none rounded-pill" style={{ background: "var(--accent)" }} />}
+        {p.liveRuns > 0 && <span title={t("shell.switcher.live", { n: p.liveRuns })} className="size-1.5 flex-none rounded-pill" style={{ background: "var(--accent)" }} />}
       </button>
-      <button type="button" onClick={onSettings} aria-label={`${p.name} settings`} className={cn(quiet, "text-subtle opacity-0 group-hover:opacity-100")}>
+      <button type="button" onClick={onSettings} aria-label={t("shell.switcher.settingsOf", { name: p.name })} className={cn(quiet, "text-subtle opacity-0 group-hover:opacity-100")}>
         <Icon name="settings" size={15} />
       </button>
       <button
         type="button"
         onClick={onTogglePin}
-        aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
+        aria-label={p.pinned ? t("shell.switcher.unpin", { name: p.name }) : t("shell.switcher.pin", { name: p.name })}
         aria-pressed={p.pinned}
         className={cn(quiet, p.pinned ? "text-accent-text" : "text-subtle opacity-0 group-hover:opacity-100")}
       >
@@ -164,6 +168,7 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const anchor = useRef<HTMLDivElement>(null);
   const rows = useMemo(() => switcherRows(projects, query), [projects, query]);
+  const t = useCopy();
 
   if (!project) return projects.length === 0 ? <AddProject compact={compact} onClick={props.onNewProject} /> : null;
 
@@ -199,17 +204,17 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
         placement="right-start"
         gap={compact ? 10 : 6}
         role="dialog"
-        aria-label="Switch project"
+        aria-label={t("shell.switcher.label")}
         className="flex w-[300px] flex-col rounded-lg border border-line bg-surface shadow-[var(--shadow-lg)]"
       >
         <div className="flex items-center gap-2 border-b border-line-subtle px-3 py-2">
           <Icon name="search" size={14} className="text-subtle" />
           <input
             ref={(el) => el?.focus()}
-            aria-label="Find a project"
+            aria-label={t("shell.switcher.find")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Find a project…"
+            placeholder={t("shell.switcher.findPlaceholder")}
             className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
           />
         </div>
@@ -224,11 +229,11 @@ export function ProjectSwitcher(props: ProjectSwitcherProps) {
               onTogglePin={() => props.onTogglePin(p.id)}
             />
           ))}
-          {rows.length === 0 && <p className="px-2 py-3 text-13 text-muted">No projects match.</p>}
+          {rows.length === 0 && <p className="px-2 py-3 text-13 text-muted">{t("shell.switcher.noMatch")}</p>}
         </div>
         <div className="flex flex-col border-t border-line-subtle p-1.5">
-          <Action icon="folder" label="View all" onClick={then(props.onAllProjects)} />
-          <Action icon="plus" label="New project" onClick={then(props.onNewProject)} />
+          <Action icon="folder" label={t("shell.projects.viewAll")} onClick={then(props.onAllProjects)} />
+          <Action icon="plus" label={t("shell.switcher.new")} onClick={then(props.onNewProject)} />
         </div>
       </Popover>
     </div>

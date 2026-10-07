@@ -8,6 +8,7 @@ import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
 import { useMyEcosystems } from "@/features/ecosystem/hooks";
+import { useCopy, useInterfaceLanguage, useNavLabel } from "@/lib/i18n/interface-language";
 import {
   ecosystemMenu,
   type ProjectBadges,
@@ -109,6 +110,9 @@ export function MobileNavDrawer({
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
   const ecosystemItems = ecosystemMenu(useMyEcosystems().data);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const navLabel = useNavLabel();
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -129,7 +133,7 @@ export function MobileNavDrawer({
         onClose();
       }}
       leading={<Icon name={it.icon} size={18} />}
-      label={it.label}
+      label={navLabel(it.key, it.label)}
       badge={badge}
     />
   );
@@ -140,14 +144,14 @@ export function MobileNavDrawer({
   const thisProjectSection = railSlug && (
     <>
       <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
-        {railProjectName ?? "This project"}
+        {railProjectName ?? t("shell.drawer.thisProject")}
       </span>
-      {projectMenu(badges).map((e) =>
+      {projectMenu(badges, language).map((e) =>
         isNavGroup(e) ? (
           <div key={e.key} className="flex flex-col">
             <span className="flex items-center gap-2.5 px-2.5 py-2 text-13-5 font-semibold text-muted">
               <Icon name={e.icon} size={18} />
-              {e.label}
+              {navLabel(e.key, e.label)}
             </span>
             <div className="ml-[19px] flex flex-col border-l border-line-subtle pl-2">
               {e.items.map((it) => navRow(it))}
@@ -162,11 +166,11 @@ export function MobileNavDrawer({
 
   const workspaceSection = (
     <>
-      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Workspace</span>
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">{t("common.nav.workspace")}</span>
       {DRAWER_WORKSPACE_ITEMS.map((it) =>
         navRow(it, !slug && it.key === activeKey, it.key === "attention" ? attentionCount : undefined),
       )}
-      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">{navLabel("ecosystem", "Ecosystem")}</span>
       {ecosystemItems.map((it) => navRow(it))}
     </>
   );
@@ -175,7 +179,7 @@ export function MobileNavDrawer({
     <div className="md:hidden">
       <button
         type="button"
-        aria-label="Close navigation"
+        aria-label={t("shell.drawer.close")}
         className="fixed inset-0 z-40 cursor-default"
         style={{ background: "var(--scrim-strong)" }}
         onClick={onClose}
@@ -184,7 +188,7 @@ export function MobileNavDrawer({
         className="forge-slide fixed inset-y-0 left-0 z-50 flex w-[272px] max-w-[82vw] flex-col gap-1 border-r border-line bg-surface p-3 pb-[env(safe-area-inset-bottom)] pt-[max(env(safe-area-inset-top),0.75rem)]"
         role="dialog"
         aria-modal="true"
-        aria-label="Navigation"
+        aria-label={t("shell.drawer.label")}
       >
         {/* Org context + switcher (ISS-469) — the rail is hidden below md,
             so the drawer carries the current-org control on mobile. */}
@@ -230,10 +234,11 @@ function DrawerProjects({
   onCreateProject: () => void;
   onViewAllProjects: () => void;
 }) {
+  const t = useCopy();
   return (
     <>
       <div className="flex items-center justify-between px-1.5 pb-1 pt-2">
-        <span className="fg-label text-fg">Projects</span>
+        <span className="fg-label text-fg">{t("shell.projects.title")}</span>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -241,14 +246,14 @@ function DrawerProjects({
             className="fg-caption inline-flex items-center gap-1 rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <Icon name="plus" size={13} />
-            Create
+            {t("shell.projects.create")}
           </button>
           <button
             type="button"
             onClick={onViewAllProjects}
             className="fg-caption rounded-sm text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
-            View all
+            {t("shell.projects.viewAll")}
           </button>
         </div>
       </div>
@@ -267,7 +272,7 @@ function DrawerProjects({
         );
       })}
       {projects.length === 0 && (
-        <p className="fg-body-sm px-1.5 py-2 text-muted">No projects yet.</p>
+        <p className="fg-body-sm px-1.5 py-2 text-muted">{t("shell.projects.none")}</p>
       )}
     </>
   );

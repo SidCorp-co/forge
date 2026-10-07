@@ -202,6 +202,14 @@ const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: Lab
   feedbackPhase: { label: "feedbackPhase", hint: "hintFeedbackPhase" },
   severity: { label: "feedbackSeverity" },
   suggestion: { label: "suggestionStatus" },
+  release: { label: "releaseApproval" },
+  reconciliation: { label: "reconciliation" },
+  buildGate: { label: "buildGate" },
+  integration: { label: "integration" },
+  dataPolicy: { label: "dataPolicy", hint: "hintDataPolicy" },
+  thread: { label: "threadStatus", hint: "hintThreadStatus" },
+  onboarding: { label: "threadStatus" },
+  mockup: { label: "mockupStatus", hint: "hintMockupStatus" },
 };
 
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,
@@ -250,6 +258,11 @@ const ENUM_GROUP: Partial<Record<EnumFamily, LabelGroup>> = {
   step: "workStep",
   landingSurface: "landingSurface",
   artifactChange: "artifactChange",
+  mockupKind: "mockupKind",
+  notificationType: "notificationType",
+  agentReportKind: "agentReportKind",
+  agentReportTarget: "agentReportTarget",
+  role: "role",
 };
 
 export function enumLabel(family: EnumFamily, value: string, language?: string): string {

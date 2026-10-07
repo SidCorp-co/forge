@@ -3,7 +3,8 @@ import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
 import type { WorkspaceRead } from "@/features/ecosystem/types";
 import { needsYouHint } from "@/features/needs-you/hint";
-import { NEEDS_YOU_AREA_LABELS, type NeedsYouAreaKey, type NeedsYouResponse } from "@/features/needs-you/types";
+import type { NeedsYouAreaKey, NeedsYouResponse } from "@/features/needs-you/types";
+import { labelCopy } from "@/lib/i18n/labels";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // Overview = the all-projects home; the Attention queue is folded in here
@@ -77,17 +78,18 @@ const AREA_OF: Record<string, NeedsYouAreaKey> = {
   "proj-workflows": "designs",
 };
 
-function badgeOf(key: string, badges: ProjectBadges): Pick<NavItem, "badge" | "badgeHint"> {
+function badgeOf(key: string, badges: ProjectBadges, language: string): Pick<NavItem, "badge" | "badgeHint"> {
   const area = AREA_OF[key];
   if (area) {
     const read = badges.needsYou?.areas[area];
-    return read ? { badge: read.you, badgeHint: needsYouHint(NEEDS_YOU_AREA_LABELS[area], read) } : {};
+    return read ? { badge: read.you, badgeHint: needsYouHint(labelCopy(language)("needsYouArea", area), read, language) } : {};
   }
   return {};
 }
 
-export function projectMenu(badges: ProjectBadges): ProjEntry[] {
-  const withBadge = (it: ProjItem): ProjItem => ({ ...it, ...badgeOf(it.key, badges) });
+/** The project tier with each row's waiting-on-you count, its tooltip worded in `language`. */
+export function projectMenu(badges: ProjectBadges, language = "en"): ProjEntry[] {
+  const withBadge = (it: ProjItem): ProjItem => ({ ...it, ...badgeOf(it.key, badges, language) });
   return PROJECT_MENU.map((e) => (isNavGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 

@@ -11,6 +11,7 @@ import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button
 import { SidebarVersion } from "./sidebar-version";
 import { type ProjectBadges, projectMenu, workspaceNavItems } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
+import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 
 interface WorkspaceSidebarProps {
   collapsed: boolean;
@@ -35,7 +36,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const { collapsed, activeKey, attentionCount, rail, onRoute, badges } = props;
   const ecosystems = useMyEcosystems().data;
   const workspaceItems = useMemo(() => workspaceNavItems(attentionCount, ecosystems), [attentionCount, ecosystems]);
-  const projectItems = rail.projectMark ? projectMenu(badges) : undefined;
+  const language = useInterfaceLanguage();
+  const projectItems = rail.projectMark ? projectMenu(badges, language) : undefined;
 
   return (
     <NavRail

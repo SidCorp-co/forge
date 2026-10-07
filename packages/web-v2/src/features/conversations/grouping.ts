@@ -25,7 +25,7 @@ function ordered<Row extends DockRow>(rows: Row[]): Row[] {
 // name, so a room from one project never reads as another's (REQ-11 BC-8)
 export function dockSections<Row extends DockRow>(
   rows: Row[],
-  opts: { projectId: string | null; pageKey: string | null; projectName: (id: string) => string },
+  opts: { projectId: string | null; pageKey: string | null; projectName: (id: string) => string; words?: { project: string; page: string } },
 ): Array<Section<Row>> {
   const order = [...new Set([...(opts.projectId ? [opts.projectId] : []), ...rows.map((r) => r.projectId)])];
   return order.flatMap((pid) => {
@@ -36,8 +36,8 @@ export function dockSections<Row extends DockRow>(
     const page = own.filter((r) => opts.pageKey !== null && r.subjectKey === opts.pageKey);
     const project = own.filter((r) => !page.includes(r));
     return [
-      ...(project.length ? [{ key: "project", label: "Project", rows: ordered(project) }] : []),
-      ...(page.length ? [{ key: "page", label: "This page", rows: ordered(page) }] : []),
+      ...(project.length ? [{ key: "project", label: opts.words?.project ?? "Project", rows: ordered(project) }] : []),
+      ...(page.length ? [{ key: "page", label: opts.words?.page ?? "This page", rows: ordered(page) }] : []),
     ];
   });
 }

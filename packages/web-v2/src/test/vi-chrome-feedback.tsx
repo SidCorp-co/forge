@@ -11,6 +11,7 @@ import { RetargetEditor } from "@/features/feedback/components/feedback-retarget
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { AcceptForm, DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
 import type { FeedbackSummary, FeedbackView } from "@/features/feedback/types";
+import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 
 // The Feedback screens for the vi walking test, filled from a seeded query cache so they draw at once.
@@ -129,8 +130,16 @@ export const feedbackPeek = () => (
   </Seeded>
 );
 
+/** The rail with both of its time rows, ETA and the forecast line, in the language the screen reads in. */
+function FactsWithForecast({ f }: { f: FeedbackView }) {
+  const lang = useInterfaceLanguage();
+  const forecast = { key: f.key, triage: { label: "forecast", asOf: AT, kind: "paused", who: "A project writer", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null };
+  return <FeedbackFacts slug="hop" f={f} forecast={forecast as never} clock={{ lang, now: Date.parse(AT), timeZone: "UTC" }} />;
+}
+
 export const feedbackFacts = () => (
   <Seeded>
+    <FactsWithForecast f={view({ phase: "new", attentionGroup: "needs_you" })} />
     <FeedbackFacts
       slug="hop"
       f={view({

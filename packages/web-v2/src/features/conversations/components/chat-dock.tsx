@@ -16,10 +16,12 @@ import { useConversation } from "../hooks";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationList } from "./conversation-list";
 import { DockOpening, WaitingOffer } from "./dock-opening";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { StartConversation } from "./start-conversation";
 
-/** What a person sees the dock called — the top-bar button, the dock title and its labels. */
-export const DOCK_TITLE = "Ask Agent";
+/** What a person sees the dock called — the top-bar button, the dock title and its labels — in the interface language. */
+export const dockTitle = (t: Copy) => t("nav.chat");
 
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -33,9 +35,9 @@ export function pageSubjectKey(pathname: string | null): string | null {
 }
 
 /** What the chip beside the composer reads: the room is about this page, another record, or the project. */
-export function scopeLabel(subjectKey: string | null, pageKey: string | null): string {
-  if (subjectKey && subjectKey === pageKey) return "This page";
-  return subjectKey ?? "Project";
+export function scopeLabel(subjectKey: string | null, pageKey: string | null, t: Copy): string {
+  if (subjectKey && subjectKey === pageKey) return t("shell.dock.thisPage");
+  return subjectKey ?? t("common.nav.project");
 }
 
 function ScopeChip({ label, title, ecosystem }: { label: string; title: string; ecosystem?: boolean }) {
@@ -63,22 +65,23 @@ function RoomScopeChip({
   pageKey: string | null;
 }) {
   const q = useProjectEcosystems(ecosystemId ? project.id : "");
+  const t = useCopy();
   if (!ecosystemId) {
-    const label = scopeLabel(subjectKey, pageKey);
-    const about = subjectKey ? `about ${subjectKey}` : "about the whole project";
-    return <ScopeChip label={label} title={`${label} · ${project.name}: this conversation is ${about}`} />;
+    const label = scopeLabel(subjectKey, pageKey, t);
+    const about = subjectKey ? t("shell.dock.aboutKey", { key: subjectKey }) : t("shell.dock.aboutProject");
+    return <ScopeChip label={label} title={t("shell.dock.scopeTitle", { label, project: project.name, about })} />;
   }
   const named = q.data?.memberships.find((m) => m.ecosystem?.id === ecosystemId)?.ecosystem?.name;
-  const label = named ?? (q.isError ? "an ecosystem whose name could not be read" : "ecosystem");
-  return <ScopeChip ecosystem label="Ecosystem" title={`${label} · from ${project.name}`} />;
+  const label = named ?? (q.isError ? t("shell.dock.ecosystemUnread") : t("shell.dock.anEcosystem"));
+  return <ScopeChip ecosystem label={t("nav.ecosystem")} title={t("shell.dock.ecosystemTitle", { label, project: project.name })} />;
 }
 
 /** What the full-screen panel's way back is called: the page underneath it. */
-export function pageLabel(pathname: string | null): string {
+export function pageLabel(pathname: string | null, t: Copy): string {
   const parts = (pathname ?? "").split("/").filter(Boolean);
-  if (parts[0] === "projects" && parts.length <= 2) return "Dashboard";
+  if (parts[0] === "projects" && parts.length <= 2) return t("nav.proj-overview");
   const last = decodeURIComponent(parts.at(-1) ?? "");
-  if (!last) return "Back";
+  if (!last) return t("shell.dock.back");
   // a record key (REQ-1, ISS-63) is a name already; only a slug reads better as words
   if (/^[A-Z]+-\d+$/.test(last)) return last;
   return last.replace(/[-_]/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -87,6 +90,8 @@ export function pageLabel(pathname: string | null): string {
 export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScreen?: boolean }) {
   const pathname = usePathname();
   const pageKey = pageSubjectKey(pathname);
+  const t = useCopy();
+  const title = dockTitle(t);
   const [listing, setListing] = useState(false);
   const board = useBoard();
   const projectsQ = useProjects();
@@ -129,7 +134,7 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
     if (!project) {
       return (
         <p className="fg-body-sm p-4 text-muted">
-          {projectsQ.isLoading ? "Reading projects…" : "This chat's project is not one you can open."}
+          {projectsQ.isLoading ? t("shell.dock.readingProjects") : t("shell.dock.projectClosed")}
         </p>
       );
     }
@@ -166,31 +171,31 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
             <button
               type="button"
               onClick={dock.close}
-              aria-label={`Back to ${pageLabel(pathname)}`}
+              aria-label={pageLabel(pathname, t) === t("shell.dock.back") ? t("shell.dock.back") : t("common.backTo", { label: pageLabel(pathname, t) })}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-sunken px-2.5 text-[13px] font-semibold text-fg hover:bg-hover"
             >
               <span aria-hidden>←</span>
-              {pageLabel(pathname)}
+              {pageLabel(pathname, t)}
             </button>
           </div>
         )}
         <header className="flex flex-none items-center gap-1 border-b border-line bg-surface px-3 py-2">
           <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">
-            {listing ? "Conversations" : DOCK_TITLE}
+            {listing ? t("shell.dock.conversations") : title}
           </h2>
           <IconButton
             icon="history"
             size="sm"
-            aria-label={listing ? "Back to the conversation" : "Past conversations"}
-            title={listing ? "Back to the conversation" : "Past conversations"}
+            aria-label={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
+            title={listing ? t("shell.dock.backToConversation") : t("shell.dock.past")}
             aria-pressed={listing}
             onClick={() => setListing((v) => !v)}
           />
           <IconButton
             icon="plus"
             size="sm"
-            aria-label="New conversation"
-            title="New conversation"
+            aria-label={t("shell.dock.newConversation")}
+            title={t("shell.dock.newConversation")}
             onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
           />
           {!fullScreen && (
@@ -198,13 +203,13 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
               icon="pin"
               size="sm"
               aria-pressed={dock.pinned}
-              aria-label={dock.pinned ? "Unpin: close when you change page" : "Pin: keep open across pages"}
-              title={dock.pinned ? "Pinned: stays open across pages" : "Pin to keep it open across pages"}
+              aria-label={dock.pinned ? t("shell.dock.unpinLabel") : t("shell.dock.pinLabel")}
+              title={dock.pinned ? t("shell.dock.pinnedTitle") : t("shell.dock.pinTitle")}
               className={dock.pinned ? "text-accent-text" : undefined}
               onClick={() => dock.setPinned(!dock.pinned)}
             />
           )}
-          <IconButton icon="x" size="sm" aria-label={`Close ${DOCK_TITLE}`} title="Close" onClick={dock.close} />
+          <IconButton icon="x" size="sm" aria-label={t("shell.dock.close", { title })} title={t("shell.dock.closeShort")} onClick={dock.close} />
         </header>
         {!listing && (target?.kind === "room" || target?.kind === "draft") && (
           <WaitingOffer projectId={target.projectId} openId={conversationId} onOpen={pick} />
@@ -230,11 +235,12 @@ function ResizeHandle({
   onCommit: (w: number) => void;
 }) {
   const dragging = useRef(false);
+  const t = useCopy();
   const fromPointer = (e: React.PointerEvent) => clampDockWidth(window.innerWidth - e.clientX);
   return (
     <hr
       aria-orientation="vertical"
-      aria-label={`Resize the ${DOCK_TITLE} panel`}
+      aria-label={t("shell.dock.resize", { title: dockTitle(t) })}
       aria-valuenow={width}
       aria-valuemin={DOCK_MIN_WIDTH}
       aria-valuemax={DOCK_MAX_WIDTH}
@@ -265,7 +271,7 @@ function ResizeHandle({
         dragging.current = false;
         onDrag(null);
       }}
-      title="Drag to resize"
+      title={t("shell.dock.drag")}
       className="absolute left-0 top-0 z-10 m-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize touch-none border-0 bg-transparent transition-colors hover:bg-[color:var(--link)] focus-visible:bg-[color:var(--link)] focus-visible:outline-none"
     />
   );
@@ -275,6 +281,7 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
   const docked = useMediaQuery("(min-width: 48rem)");
   const [live, setLive] = useState<number | null>(null);
   const board = useBoard();
+  const t = useCopy();
   if (!dock.open) return null;
   if (!docked) {
     return (
@@ -286,7 +293,7 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
   const width = live ?? (board.open ? Math.max(dock.width, clampDockWidth(BOARD_DOCK_WIDTH)) : dock.width);
   return (
     <aside
-      aria-label={DOCK_TITLE}
+      aria-label={dockTitle(t)}
       data-testid="chat-dock"
       className="relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       style={{ width }}

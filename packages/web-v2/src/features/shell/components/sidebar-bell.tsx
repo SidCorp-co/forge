@@ -2,16 +2,18 @@
 
 import { forwardRef } from "react";
 import { Icon } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /** The notifications bell at the top of the sidebar, with the open count on it. */
 export const SidebarBell = forwardRef<HTMLButtonElement, { count: number; onToggle: () => void }>(
   function SidebarBell({ count, onToggle }, ref) {
+    const t = useCopy();
     return (
       <button
         ref={ref}
         type="button"
         onClick={onToggle}
-        aria-label={count > 0 ? `Notifications, ${count} open` : "Notifications"}
+        aria-label={count > 0 ? t("shell.bell.labelOpen", { n: count }) : t("shell.bell.label")}
         className="relative inline-flex size-8 flex-none items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:size-11"
       >
         <Icon name="bell" size={17} />

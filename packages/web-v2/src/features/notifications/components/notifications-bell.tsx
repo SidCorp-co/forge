@@ -11,6 +11,8 @@ import { useNotificationDelivery } from "../use-notification-delivery";
 import type { NotificationRow } from "../types";
 import { useOpenIndicator } from "../use-open-indicator";
 import { useInvitationItems } from "./use-invitation-items";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 
 export interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the sidebar bell, or the bell in the mobile More drawer. */
@@ -25,20 +27,24 @@ export interface NotificationsBellProps {
  * actionable item, and still counts toward the badge through the open count. ISS-619: a
  * dependency-stall wedge also offers its blocker, which differs from the wedged issue.
  */
-function bellItems(rows: NotificationRow[], openSubTask: (row: NotificationRow) => void) {
+function bellItems(rows: NotificationRow[], openSubTask: (row: NotificationRow) => void, t: Copy, language: string) {
   return rows
     .filter((r) => r.type !== "invitation_received")
     .map((row) =>
       row.type === "pipeline_wedge" && row.secondaryIssueId
-        ? toNotificationItem(row, [
-            { id: "open-sub-task", label: "Open sub-task", variant: "primary", onClick: () => openSubTask(row) },
-          ])
-        : toNotificationItem(row),
+        ? toNotificationItem(
+            row,
+            [{ id: "open-sub-task", label: t("shell.bell.openSubTask"), variant: "primary", onClick: () => openSubTask(row) }],
+            language,
+          )
+        : toNotificationItem(row, undefined, language),
     );
 }
 
 export function NotificationsBell({ open, onClose, anchor }: NotificationsBellProps) {
   const router = useRouter();
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const { data: projects } = useProjects();
   // ISS-289: the rows the badge counts, every one reachable; history is Settings > Notifications
   const { query: notificationsQuery, rows, remaining } = useOpenNotifications(open);
@@ -60,18 +66,23 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   const more =
     remaining > 0
       ? {
-          label: remaining > nextPage ? `Show ${nextPage} more · ${remaining} not shown` : `Show ${nextPage} more`,
+          label: remaining > nextPage ? t("shell.bell.moreOf", { n: nextPage, rest: remaining }) : t("shell.bell.more", { n: nextPage }),
           loading: notificationsQuery.isFetchingNextPage,
           onLoad: () => notificationsQuery.fetchNextPage(),
         }
       : undefined;
   const items = [
     ...invitations.items,
-    ...bellItems(rows, (row) => {
-      markRead.mutate(row.id);
-      onClose();
-      openIssue(row.projectId, row.secondaryIssueId);
-    }),
+    ...bellItems(
+      rows,
+      (row) => {
+        markRead.mutate(row.id);
+        onClose();
+        openIssue(row.projectId, row.secondaryIssueId);
+      },
+      t,
+      language,
+    ),
   ];
 
   // ISS-510: toasts and browser notifications for live deliveries reuse the bell's mark-read + deep link.
@@ -102,7 +113,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
         gap={8}
         lockScroll
         takesFocus
-        aria-label="Notifications"
+        aria-label={t("shell.bell.label")}
         className="overflow-y-auto"
       >
         <NotificationsMenu
@@ -121,7 +132,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           }}
           onMarkAllRead={() => markAllRead.mutate()}
           expandedId={expandedId}
-          expandedMembers={(membersQuery.data ?? []).map(toMemberItem)}
+          expandedMembers={(membersQuery.data ?? []).map((m) => toMemberItem(m, language))}
           expandedLoading={membersQuery.isLoading}
           onToggleGroup={(id) => setExpandedId((prev) => (prev === id ? null : id))}
           onSelectMember={(memberId) => {

@@ -4,7 +4,8 @@ import type { ReleaseChanges, ReleaseSurfaceChanges } from "@forge/contracts/rel
 import Link from "next/link";
 import { useState } from "react";
 import { EnumBadge, FieldLabel, LEGEND, ViewHeading } from "@/design";
-import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import { riskSentence } from "@/lib/i18n/standing-copy";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { DisclosureToggle } from "./release-bits";
@@ -121,6 +122,7 @@ function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseC
 /** "What changes": per surface what the release's landings name, risks first, design apart. */
 export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?: string }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const label = useLabel();
   const deploys = changes.surfaces.filter((s) => !s.shipsNothing);
   const design = changes.surfaces.filter((s) => s.shipsNothing);
@@ -143,7 +145,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
               <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
-              <span className="min-w-0 flex-1">{k.sentence}</span>
+              <span className="min-w-0 flex-1">{riskSentence(k.sentence, language)}</span>
               <IssueKeys keys={k.issues} slug={slug} />
             </li>
           ))}

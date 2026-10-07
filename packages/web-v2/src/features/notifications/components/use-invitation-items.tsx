@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ConfirmDialog, enumLabel } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useAcceptInvitation, useDeclineInvitation, usePendingInvitations } from "../hooks";
 import { toInvitationItem } from "../map";
@@ -11,6 +12,8 @@ import type { PendingInvitation } from "../types";
 /** Pending invitations as actionable bell items (ISS-597), and the decline confirmation they open. */
 export function useInvitationItems(open: boolean, onClose: () => void) {
   const { toast } = useToast();
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const pending = usePendingInvitations(open);
   const accept = useAcceptInvitation();
   const decline = useDeclineInvitation();
@@ -21,7 +24,7 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
     toInvitationItem(inv, [
       {
         id: "accept",
-        label: "Accept",
+        label: t("shell.bell.accept"),
         variant: "primary",
         loading: accept.isPending && accept.variables?.ref === inv.ref,
         disabled: busy,
@@ -29,14 +32,14 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
           accept.mutate(
             { kind: inv.kind, ref: inv.ref },
             {
-              onSuccess: () => toast({ title: `You joined ${inv.name} as ${enumLabel("role", inv.role)}`, tone: "success" }),
-              onError: (err) => toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
+              onSuccess: () => toast({ title: t("shell.bell.joined", { name: inv.name, role: enumLabel("role", inv.role, language) }), tone: "success" }),
+              onError: (err) => toast({ title: t("shell.bell.acceptFailed"), description: formatApiError(err), tone: "error" }),
             },
           ),
       },
       {
         id: "decline",
-        label: "Decline",
+        label: t("shell.bell.decline"),
         variant: "ghost",
         loading: decline.isPending && decline.variables?.ref === inv.ref,
         disabled: busy,
@@ -46,15 +49,15 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
           onClose();
         },
       },
-    ]),
+    ], language),
   );
 
   const dialog = (
     <ConfirmDialog
       open={declining !== null}
-      title={`Decline invitation to ${declining?.name ?? ""}?`}
-      message="You will no longer see this invitation in your notifications. You can still accept it via the original email link."
-      confirmLabel="Yes, decline"
+      title={t("shell.bell.declineTitle", { name: declining?.name ?? "" })}
+      message={t("shell.bell.declineMessage")}
+      confirmLabel={t("shell.bell.declineConfirm")}
       tone="danger"
       loading={decline.isPending}
       onConfirm={() => {
@@ -62,8 +65,8 @@ export function useInvitationItems(open: boolean, onClose: () => void) {
         decline.mutate(
           { kind: declining.kind, ref: declining.ref },
           {
-            onSuccess: () => toast({ title: "Invitation declined", tone: "success" }),
-            onError: (err) => toast({ title: "Failed to decline invitation", description: formatApiError(err), tone: "error" }),
+            onSuccess: () => toast({ title: t("shell.bell.declined"), tone: "success" }),
+            onError: (err) => toast({ title: t("shell.bell.declineFailed"), description: formatApiError(err), tone: "error" }),
             onSettled: () => setDeclining(null),
           },
         );

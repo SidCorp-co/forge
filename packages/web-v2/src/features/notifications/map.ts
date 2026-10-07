@@ -1,11 +1,12 @@
 import type { NotificationAction, NotificationGroupMember, NotificationItem } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { formatRelative } from "@/lib/i18n/format";
+import { productCopy } from "@/lib/i18n/product-copy";
 import type { NotificationMember, NotificationRow, PendingInvitation } from "./types";
 
 /** One record a grouped delivery carries, as its expanded row reads (ISS-1063). */
-export function toMemberItem(m: NotificationMember): NotificationGroupMember {
-  return { id: m.id, text: m.title, time: formatRelativeTime(m.createdAt), open: m.open };
+export function toMemberItem(m: NotificationMember, language = "en"): NotificationGroupMember {
+  return { id: m.id, text: m.title, time: formatRelative(m.createdAt, language), open: m.open };
 }
 
 /** The bell hue a row's severity reads as. */
@@ -52,6 +53,7 @@ export function liveBody(row: {
 export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
+  language = "en",
 ): NotificationItem {
   const cleared = deliveryResolved(row);
   const resolved = row.resolvedNotice || cleared;
@@ -63,7 +65,7 @@ export function toNotificationItem(
     resolved,
     text: row.line,
     sub: liveBody(row),
-    time: formatRelativeTime(row.createdAt),
+    time: formatRelative(row.createdAt, language),
     unread: row.readAt === null && !resolved,
     hue: cleared ? "green" : hueFor(row),
     group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,
@@ -76,13 +78,14 @@ export function toNotificationItem(
 export function toInvitationItem(
   inv: PendingInvitation,
   actions: NotificationItem["actions"],
+  language = "en",
 ): NotificationItem {
   return {
     id: `invite-${inv.ref}`,
     subjectKey: inv.name,
     type: "invitation_received",
-    text: `${inv.inviterEmail} invited you as ${enumLabel("role", inv.role)}`,
-    time: formatRelativeTime(inv.createdAt),
+    text: productCopy(language)("shell.bell.invited", { who: inv.inviterEmail, role: enumLabel("role", inv.role, language) }),
+    time: formatRelative(inv.createdAt, language),
     unread: true,
     hue: "amber",
     actions,

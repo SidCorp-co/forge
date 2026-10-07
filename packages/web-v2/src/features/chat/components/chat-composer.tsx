@@ -10,6 +10,8 @@ import { Banner, Button, Icon, IconButton } from "@/design";
 import { acceptAttribute, type AttachmentPolicy, formatSize, refusalSentence } from "../attachments";
 import { SketchPad } from "./sketch/sketch-pad";
 import { type StagedFile, useStagedFiles } from "./use-staged-files";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 
 /** How tall the box may grow before it scrolls instead. */
 const MAX_ROWS = 8;
@@ -23,7 +25,7 @@ const MAX_ROWS = 8;
  */
 export const ComposerWidthContext = createContext<number | null>(null);
 
-const KEY_HINT = "Enter sends · Shift+Enter for a new line";
+
 /** Narrower than this, the composer's footer has no room left for a hint line worth reading. */
 const HINT_ROW_MIN_WIDTH = 560;
 
@@ -70,9 +72,10 @@ function bandClass(sticky: boolean, pad: string): string {
 
 /** Rendered in place of the composer for project viewers (read-only role). */
 export function ReadOnlyComposerNote({ sticky = true }: { sticky?: boolean }) {
+  const t = useCopy();
   return (
     <div className={bandClass(sticky, "px-4 py-4 sm:px-6")}>
-      <p className="fg-body-sm text-center text-muted">Read-only access</p>
+      <p className="fg-body-sm text-center text-muted">{t("shell.composer.readOnly")}</p>
     </div>
   );
 }
@@ -82,12 +85,12 @@ const FRAME =
 
 // the hint is a line of its own under the box, never inside the footer row, where it ran over
 // the footer's own controls in a narrow dock (REQ-11 BC-8); a narrow composer keeps it on Send's tooltip
-function hintLine(files: StagedFile[], frameWidth: number | null): string | null {
+function hintLine(files: StagedFile[], frameWidth: number | null, t: Copy): string | null {
   if (files.length > 0) {
     const bytes = files.reduce((n, { file }) => n + file.size, 0);
-    return `${files.length} file${files.length === 1 ? "" : "s"} · ${formatSize(bytes)}`;
+    return t(files.length === 1 ? "shell.composer.file" : "shell.composer.files", { n: files.length, size: formatSize(bytes) });
   }
-  return (frameWidth ?? 0) >= HINT_ROW_MIN_WIDTH ? KEY_HINT : null;
+  return (frameWidth ?? 0) >= HINT_ROW_MIN_WIDTH ? t("shell.composer.keys") : null;
 }
 
 function useWidth(ref: RefObject<HTMLElement | null>): number | null {
@@ -134,7 +137,8 @@ export function ChatComposer(props: ChatComposerProps) {
     // A failed send keeps the text and the files; the caller surfaces the error.
     await onSend(text, picked).then(clear, () => {});
   };
-  const hint = hintLine(files, frameWidth);
+  const t = useCopy();
+  const hint = hintLine(files, frameWidth, t);
 
   return (
     <ComposerWidthContext.Provider value={frameWidth}>
@@ -162,7 +166,7 @@ export function ChatComposer(props: ChatComposerProps) {
               onChange={setValue}
               onEnter={submit}
               disabled={disabled}
-              placeholder={disabled ? "No device online — start a runner to chat." : (props.placeholder ?? "Message the agent…")}
+              placeholder={disabled ? t("shell.composer.offline") : (props.placeholder ?? t("shell.composer.placeholder"))}
             />
 
             <ComposerFooter
@@ -199,6 +203,7 @@ function MessageBox(p: {
   disabled: boolean | undefined;
   placeholder: string;
 }) {
+  const t = useCopy();
   return (
     <TextareaAutosize
       value={p.value}
@@ -212,7 +217,7 @@ function MessageBox(p: {
       minRows={1}
       maxRows={MAX_ROWS}
       placeholder={p.placeholder}
-      aria-label="Message"
+      aria-label={t("shell.composer.message")}
       className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
     />
   );
@@ -232,21 +237,22 @@ function ComposerFooter(p: {
   onSend: () => void;
 }) {
   const ghost = "h-11 w-11 flex-none";
+  const t = useCopy();
   return (
     <div className="flex items-center gap-1 px-2 pb-2">
       {p.attachments && (
-        <IconButton type="button" variant="ghost" icon="plus" aria-label="Attach files" className={ghost} disabled={p.locked} onClick={p.onAttach} />
+        <IconButton type="button" variant="ghost" icon="plus" aria-label={t("shell.composer.attach")} className={ghost} disabled={p.locked} onClick={p.onAttach} />
       )}
       {p.attachments?.mimes.includes("image/png") && (
-        <IconButton type="button" variant="ghost" icon="sketch" aria-label="Sketch" title="Sketch something to send" className={ghost} disabled={p.locked} onClick={p.onSketch} />
+        <IconButton type="button" variant="ghost" icon="sketch" aria-label={t("shell.composer.sketch")} title={t("shell.composer.sketchTitle")} className={ghost} disabled={p.locked} onClick={p.onSketch} />
       )}
       {p.control}
       <div className="ml-auto flex flex-none items-center gap-2.5">
         {/* Stop is offered on the turn, not on this browser's send: `onStop` is given only while there is a turn to end. */}
         {p.onStop ? (
-          <Button variant="secondary" size="md" icon="stop" aria-label="Stop answering" className="h-11 w-11 flex-none rounded-full p-0" loading={p.stopping} onClick={p.onStop} />
+          <Button variant="secondary" size="md" icon="stop" aria-label={t("shell.composer.stop")} className="h-11 w-11 flex-none rounded-full p-0" loading={p.stopping} onClick={p.onStop} />
         ) : (
-          <Button variant="primary" size="md" icon="arrowRight" aria-label="Send message" title={`Send · ${KEY_HINT}`} className="h-11 w-11 flex-none rounded-full p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
+          <Button variant="primary" size="md" icon="arrowRight" aria-label={t("shell.composer.send")} title={t("shell.composer.sendTitle", { keys: t("shell.composer.keys") })} className="h-11 w-11 flex-none rounded-full p-0" loading={p.busy} disabled={!p.canSend} onClick={p.onSend} />
         )}
       </div>
     </div>
@@ -262,6 +268,7 @@ function RefusalBanner({ refusals }: { refusals: ReturnType<typeof useStagedFile
 }
 
 function StagedChips({ files, busy, onRemove }: { files: StagedFile[]; busy: boolean | undefined; onRemove: (id: string) => void }) {
+  const t = useCopy();
   return (
     <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">
       {files.map(({ id, file }) => (
@@ -271,7 +278,7 @@ function StagedChips({ files, busy, onRemove }: { files: StagedFile[]; busy: boo
             {file.name}
           </span>
           <span className="fg-caption flex-none">{formatSize(file.size)}</span>
-          <IconButton type="button" icon="x" size="sm" aria-label={`Remove ${file.name}`} disabled={busy} onClick={() => onRemove(id)} />
+          <IconButton type="button" icon="x" size="sm" aria-label={t("shell.composer.remove", { name: file.name })} disabled={busy} onClick={() => onRemove(id)} />
         </li>
       ))}
     </ul>

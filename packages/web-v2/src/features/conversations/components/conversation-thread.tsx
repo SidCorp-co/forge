@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { isStructured, StructuredMessage } from "@/features/onboarding/components/thread-blocks";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
@@ -80,6 +81,7 @@ function AssistantTurn({
 }
 
 function CorrectionLine({ correction }: { correction: Correction }) {
+  const t = useCopy();
   return (
     <div
       role="alert"
@@ -89,8 +91,8 @@ function CorrectionLine({ correction }: { correction: Correction }) {
     >
       <Icon name="alert" size={15} className="mt-0.5 flex-none text-[color:var(--red-600)]" />
       <p className="fg-body-sm text-fg">
-        <span className="font-semibold">Correction:</span> {correction.what} was refused (
-        <span className="font-mono">{correction.code}</span>); nothing was written.
+        <span className="font-semibold">{t("shell.thread.correction")}</span> {t("shell.thread.refused", { what: correction.what })} (
+        <span className="font-mono">{correction.code}</span>){t("shell.thread.nothingWritten")}
       </p>
     </div>
   );
@@ -100,6 +102,7 @@ function CorrectionLine({ correction }: { correction: Correction }) {
  * A draft the reply screen refused, named and struck through, above the turn that replaced it.
  */
 function WithdrawnDraft({ draft }: { draft: string }) {
+  const t = useCopy();
   return (
     <div
       className="rounded-md border border-line bg-surface px-3 py-2"
@@ -108,7 +111,7 @@ function WithdrawnDraft({ draft }: { draft: string }) {
       <p className="fg-body-sm flex items-start gap-2 text-muted">
         <Icon name="alert" size={13} className="mt-0.5 flex-none" />
         <span>
-          That draft did not pass the reply check, so it was withdrawn and answered again below.
+          {t("shell.thread.withdrawn")}
         </span>
       </p>
       <p className="fg-caption mt-1 whitespace-pre-wrap text-subtle line-through">{draft}</p>
@@ -116,14 +119,11 @@ function WithdrawnDraft({ draft }: { draft: string }) {
   );
 }
 
-/** The clock a reader needs beside a turn: when, in their own locale. */
-function spokenAt(iso: string): { label: string; title: string } {
+/** The clock a reader needs beside a turn: when, in the interface language. */
+function spokenAt(iso: string, time: ReturnType<typeof useTimeFormat>): { label: string; title: string } {
   const at = new Date(iso);
   if (Number.isNaN(at.getTime())) return { label: "", title: iso };
-  return {
-    label: at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
-    title: at.toLocaleString(),
-  };
+  return { label: time.clock(at), title: time.dateTime(at) };
 }
 
 /**
@@ -134,8 +134,9 @@ function spokenAt(iso: string): { label: string; title: string } {
  */
 function MessageActions({ message }: { message: ConversationMessage }) {
   const [copied, setCopied] = useState(false);
-  const when = spokenAt(message.createdAt);
-  const author = message.authorLabel ?? (message.role === "user" ? "You" : "Assistant");
+  const t = useCopy();
+  const when = spokenAt(message.createdAt, useTimeFormat());
+  const author = message.authorLabel ?? (message.role === "user" ? t("common.nav.you") : t("shell.mode.assistant"));
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
       () => {
@@ -160,10 +161,10 @@ function MessageActions({ message }: { message: ConversationMessage }) {
         onClick={copy}
         // A list of controls all named "Copy" does not say which is which; the
         // name leads with the visible word so a voice command still finds it.
-        aria-label={`${copied ? "Copied" : "Copy"} message from ${author}${when.label ? ` at ${when.label}` : ""}`}
+        aria-label={t(when.label ? "shell.thread.copyAt" : "shell.thread.copyFrom", { verb: copied ? t("shell.thread.copied") : t("shell.thread.copy"), author, at: when.label })}
         className="rounded-sm underline-offset-2 hover:text-fg hover:underline"
       >
-        {copied ? "Copied" : "Copy"}
+        {copied ? t("shell.thread.copied") : t("shell.thread.copy")}
       </button>
     </div>
   );
@@ -253,6 +254,7 @@ function Said({
 
 function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string) => void }) {
   const failed = item.state === "failed";
+  const t = useCopy();
   return (
     <div className="flex flex-col items-end" data-testid={`thread-outbox-${item.state}`}>
       {item.content && (
@@ -276,17 +278,17 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
       {failed ? (
         <span className="fg-caption mt-1 flex items-center gap-2 text-danger">
           <Icon name="alert" size={12} className="flex-none" />
-          Couldn&apos;t send. {item.error}
+          {t("shell.thread.sendFailed")} {item.error}
           {onRetry && (
             <button type="button" className="underline" onClick={() => onRetry(item.id)}>
-              Try again
+              {t("shell.thread.tryAgain")}
             </button>
           )}
         </span>
       ) : (
         item.state !== "sent" && (
           <span className="fg-caption mt-1 text-subtle">
-            {item.state === "sending" ? "Sending…" : "Waiting for the answer above…"}
+            {item.state === "sending" ? t("shell.thread.sending") : t("shell.thread.queued")}
           </span>
         )
       )}

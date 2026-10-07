@@ -11,7 +11,8 @@ type Vars = Record<string, string | number>;
 interface Rule {
   re: RegExp;
   key: ProductCopyKey;
-  vars?: (groups: Record<string, string>, language: string) => Vars;
+  /** Null where a part the pattern captured is itself one no pattern names: the sentence then reads as core wrote it. */
+  vars?: (groups: Record<string, string>, language: string) => Vars | null;
 }
 
 const date = (iso: string, language: string): string => {
@@ -111,8 +112,8 @@ const ACT: Rule[] = [
   { re: new RegExp("^cut the issues that are waiting$"), key: "standing.act.cutWaiting" },
   { re: new RegExp("^bring an issue to the release gate$"), key: "standing.act.bringIssueToGate" },
   { re: new RegExp("^split this release into smaller releases$"), key: "standing.act.splitRelease" },
-  { re: new RegExp("^write the release note(?<on>.*)$"), key: "standing.act.writeReleaseNote", vars: (g) => ({ on: g.on ?? "" }) },
-  { re: new RegExp("^mark the merge(?<on>.*)$"), key: "standing.act.markMerge", vars: (g) => ({ on: g.on ?? "" }) },
+  { re: new RegExp("^write the release note(?: on (?<subject>.+))?$"), key: "standing.act.writeReleaseNote", vars: (g, l) => onSubject(g, l) },
+  { re: new RegExp("^mark the merge(?: on (?<subject>.+))?$"), key: "standing.act.markMerge", vars: (g, l) => onSubject(g, l) },
   { re: new RegExp("^declare a source probe on production$"), key: "standing.act.declareProbe" },
   { re: new RegExp("^pair a runner$"), key: "standing.act.pairRunner" },
   { re: new RegExp("^bring a runner online$"), key: "standing.act.runnerOnline" },
@@ -149,6 +150,134 @@ const FEEDBACK_NOTE: Rule[] = [
   { re: new RegExp("^No release carries it, so none told the reporter: tell them yourself\\.$"), key: "feedback.notice.noRelease" },
   { re: new RegExp("^Verified automatically after (?<n>\\d+) days with no reply$"), key: "feedback.notice.autoVerified", vars: (g) => ({ n: g.n ?? "" }) },
   { re: new RegExp("^triage without dedup: the item's vector is (?<status>.+)$"), key: "feedback.notice.noDedup", vars: (g) => ({ status: g.status ?? "" }) },
+];
+
+// The issues a release gate's sentence names (core `release-batch/release-gates.ts:subjectOf`): a
+// count ("3 issues"), keys ("ISS-1, ISS-2"), keys and the rest ("ISS-1, … and 2 more"), or "Some
+// issues"; keys are names and are carried over as written.
+const SUBJECT: Rule[] = [
+  { re: new RegExp("^(?<n>\\d+) (?<issues>issues?)$"), key: "standing.gate.subject.count", vars: (g) => ({ n: g.n ?? "", issues: g.issues ?? "" }) },
+  { re: new RegExp("^(?<keys>[A-Z]+-\\d+(?:, [A-Z]+-\\d+)*) and (?<n>\\d+) more$"), key: "standing.gate.subject.more", vars: (g) => ({ keys: g.keys ?? "", n: g.n ?? "" }) },
+  { re: new RegExp("^(?<keys>[A-Z]+-\\d+(?:, [A-Z]+-\\d+)*)$"), key: "standing.gate.subject.keys", vars: (g) => ({ keys: g.keys ?? "" }) },
+  { re: new RegExp("^Some issues$"), key: "standing.gate.subject.some" },
+  { re: new RegExp("^Issues at the gate$"), key: "standing.gate.subject.atGate" },
+];
+const subject = (text: string | undefined, language: string): string | null => apply(SUBJECT, text ?? "", language);
+const onSubject = (g: Record<string, string>, language: string): Vars | null => {
+  if (g.subject === undefined) return { on: "" };
+  const named = subject(g.subject, language);
+  return named === null ? null : { on: productCopy(language)("standing.gate.on", { subject: named }) };
+};
+
+// "ISS-4 owes criteria 1, 2; ISS-5 owes criterion 3": what each held issue still owes
+const OWES: Rule[] = [
+  { re: new RegExp("^(?<key>[A-Z]+-\\d+) owes (?<word>criterion|criteria) (?<list>[\\d, ]+)$"), key: "standing.gate.owes", vars: (g) => ({ key: g.key ?? "", word: g.word ?? "", list: g.list ?? "" }) },
+];
+const owes = (text: string | undefined, language: string): string | null => {
+  const named = subject(text, language);
+  if (named !== null) return named;
+  const parts = (text ?? "").split("; ").map((p) => apply(OWES, p, language));
+  return parts.every((p) => p !== null) ? parts.join("; ") : null;
+};
+const withSubject = (g: Record<string, string>, l: string): Vars | null => {
+  const named = subject(g.subject, l);
+  return named === null ? null : { ...g, subject: named };
+};
+const withOwes = (g: Record<string, string>, l: string): Vars | null => {
+  const named = owes(g.owes, l);
+  return named === null ? null : { ...g, owes: named };
+};
+const raw = (g: Record<string, string>): Vars => ({ ...g });
+
+/** A release gate's title (core `release-batch/release-gates.ts:READINGS`), one per reason. */
+const GATE_TITLE: Rule[] = (
+  [
+    ["No release step", "noGate"],
+    ["Nowhere to land", "nowhere"],
+    ["Issues already claimed", "claimed"],
+    ["Nothing at the gate", "empty"],
+    ["Too many issues", "oversize"],
+    ["Release note missing", "noteMissing"],
+    ["Work not marked merged", "unmerged"],
+    ["Production cannot be proved", "unprovable"],
+    ["No runner paired", "noRunner"],
+    ["No runner can take it", "noRunnerOnline"],
+    ["A release is running", "running"],
+    ["Criteria still owed", "unearned"],
+    ["Production cannot be read", "unreadable"],
+    ["A check could not run", "unevaluated"],
+    ["Preferred runner missing", "preference"],
+    ["Some issues held back", "heldBack"],
+    ["Verdicts not re-read", "uncorroborated"],
+  ] as const
+).map(([title, key]) => ({ re: new RegExp(`^${title}$`), key: `standing.gate.title.${key}` as ProductCopyKey }));
+
+/** A release gate's sentence, read with the issues, counts and limits it names carried over. */
+const GATE_SENTENCE: Rule[] = [
+  { re: new RegExp("^This project ships when an issue closes, so there is no release to cut\\.$"), key: "standing.gate.noGate" },
+  { re: new RegExp("^Nothing says where this project’s releases land\\. An admin completes its production environment in the project document\\.$"), key: "standing.gate.nowhere" },
+  {
+    re: new RegExp("^(?<subject>.+) (?<verb>is|are) not at the release gate, or another release already holds (?<obj>it|them)\\. Pick the issues that are waiting\\.$"),
+    key: "standing.gate.claimed",
+    vars: withSubject,
+  },
+  {
+    re: new RegExp("^No issue is waiting at the release gate\\. (?<n>\\d+) (?<issues>issues?) (?<verb>stands|stand) one step short of it, at (?<their>its|their) test step\\.$"),
+    key: "standing.gate.nearGate",
+    vars: raw,
+  },
+  { re: new RegExp("^No issue is waiting at the release gate, so there is nothing to cut\\.$"), key: "standing.gate.empty" },
+  {
+    re: new RegExp("^(?<n>\\d+) (?<issues>issues?) (?<verb>is|are) waiting, and one release carries at most (?<limit>\\d+)\\. Split them into smaller releases, oldest merge first\\.$"),
+    key: "standing.gate.oversize",
+    vars: raw,
+  },
+  {
+    re: new RegExp("^More issues are waiting, and one release carries at most (?<limit>\\d+)\\. Split them into smaller releases, oldest merge first\\.$"),
+    key: "standing.gate.oversizeUncounted",
+    vars: raw,
+  },
+  { re: new RegExp("^(?<subject>.+) (?<verb>has|have) no release note, so the release would claim a ship nobody described\\.$"), key: "standing.gate.noteMissing", vars: withSubject },
+  {
+    re: new RegExp("^(?<subject>.+) (?<verb>has|have) no merge Forge saw land, so nothing says (?<their>its|their) work is in this release\\.$"),
+    key: "standing.gate.unmerged",
+    vars: withSubject,
+  },
+  {
+    re: new RegExp("^Production declares no probe that identifies the source commit, so a release there could never be proved\\. An admin adds one to the production environment\\.$"),
+    key: "standing.gate.unprovable",
+  },
+  { re: new RegExp("^No runner is paired to this project, so no machine can run a release\\.$"), key: "standing.gate.noRunner" },
+  { re: new RegExp("^Runners are paired, and none of them can take a release right now\\.$"), key: "standing.gate.noRunnerOnline" },
+  { re: new RegExp("^Another release is already running for this project\\. Let it finish before cutting another\\.$"), key: "standing.gate.running" },
+  {
+    re: new RegExp("^(?<owes>.+)\\. The unattended sweep carries an issue only when every criterion holds a passing verdict\\.$"),
+    key: "standing.gate.unearned",
+    vars: withOwes,
+  },
+  {
+    re: new RegExp("^Nothing can read what production serves, so no verdict can earn an issue its place in an unattended release\\.$"),
+    key: "standing.gate.unreadable",
+  },
+  { re: new RegExp("^The (?<check>\\S+) check could not run, so this list may be missing a reason\\.$"), key: "standing.gate.unevaluated", vars: raw },
+  { re: new RegExp("^No runner carries the release label this project asks for, so the release goes to the pool it has\\.$"), key: "standing.gate.preference" },
+  {
+    re: new RegExp("^(?<owes>.+)\\. (?<they>It is|They are) held back until (?<their>its|their) criteria are earned; the others ship\\.$"),
+    key: "standing.gate.heldBack",
+    vars: withOwes,
+  },
+  {
+    re: new RegExp("^(?<subject>.+) (?<verb>carries|carry) a verdict earned where nothing could re-read production\\. It counts, and it is weaker evidence\\.$"),
+    key: "standing.gate.uncorroborated",
+    vars: withSubject,
+  },
+];
+
+/** What a release's data change risks (core `release-batch/landing-surfaces.ts:RISK_SENTENCE`); the ref is a name. */
+const RISK: Rule[] = [
+  { re: new RegExp("^(?<ref>.+) is removed: data it held does not come back with a rollback$"), key: "standing.risk.dataRemoved", vars: raw },
+  { re: new RegExp("^(?<ref>.+) changes shape: rows written before it are read by the new shape$"), key: "standing.risk.dataChanged", vars: raw },
+  { re: new RegExp("^(?<ref>.+) is removed: a caller still using it is refused after this ships$"), key: "standing.risk.apiRemoved", vars: raw },
 ];
 
 // A requirement's history (core `requirements/history-read.ts`): who a record came from when no
@@ -206,7 +335,9 @@ function apply(rules: Rule[], text: string, language: string): string | null {
   for (const rule of rules) {
     const m = rule.re.exec(text);
     if (!m) continue;
-    return productCopy(language)(rule.key, rule.vars?.(m.groups ?? {}, language));
+    const vars = rule.vars ? rule.vars(m.groups ?? {}, language) : undefined;
+    if (vars === null) continue;
+    return productCopy(language)(rule.key, vars);
   }
   return null;
 }
@@ -227,6 +358,10 @@ export const standingAct = (act: string, language: string) => localize(ACT, act,
 export const standingEffect = (effect: string, language: string) => localize(EFFECT, effect, language);
 /** A feedback item's own core sentence (a ship notice's reason, an automatic verify's) in `language`; one no pattern names reads as core wrote it. */
 export const feedbackNote = (note: string, language: string) => localize(FEEDBACK_NOTE, note, language);
+/** A release gate's title and sentence, and a data risk's sentence, in `language`; one no pattern names reads as core wrote it. */
+export const gateTitle = (title: string, language: string) => localize(GATE_TITLE, title, language);
+export const gateSentence = (sentence: string, language: string) => localize(GATE_SENTENCE, sentence, language);
+export const riskSentence = (sentence: string, language: string) => localize(RISK, sentence, language);
 /** A requirement history record's actor and its text, read the same way; the person's words after the act stay as written. */
 export const historyWho = (who: string, language: string) => (baseOf(language) === "en" ? who : (apply(HISTORY_WHO, who, language) ?? standingWho(who, language)));
 export const historyText = (text: string, language: string) => (baseOf(language) === "en" || text === "" ? text : (apply(HISTORY_TEXT, text, language) ?? text));
@@ -244,4 +379,14 @@ export function standingRead(kind: keyof typeof STANDING_RULES, text: string, la
 }
 
 /** Every pattern of `who`, `act` and `effect` the module reads, for the test that holds a sentence to each. */
-export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT, historyWho: HISTORY_WHO, history: HISTORY_TEXT, feedbackNote: FEEDBACK_NOTE } as const;
+export const STANDING_RULES = {
+  who: WHO,
+  act: ACT,
+  effect: EFFECT,
+  historyWho: HISTORY_WHO,
+  history: HISTORY_TEXT,
+  feedbackNote: FEEDBACK_NOTE,
+  gateTitle: GATE_TITLE,
+  gateSentence: GATE_SENTENCE,
+  risk: RISK,
+} as const;

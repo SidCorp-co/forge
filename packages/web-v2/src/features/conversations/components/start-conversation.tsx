@@ -14,6 +14,7 @@ import { useState } from "react";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
 import { roomOpeningClaims } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
@@ -32,6 +33,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   const [confirming, setConfirming] = useState(false);
   const candidates = useProjectCandidates(projectId || undefined, !!projectId);
   const open = useOpenConversation();
+  const t = useCopy();
 
   const toggle = <T,>(list: T[], value: T, same: (a: T, b: T) => boolean): T[] =>
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
@@ -62,15 +64,13 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
-          <p className="fg-h3">Start a conversation</p>
-          <p className="fg-body-sm mt-1 text-muted">
-            Pick a project, and choose who else is in the room.
-          </p>
+          <p className="fg-h3">{t("shell.chat.emptyTitle")}</p>
+          <p className="fg-body-sm mt-1 text-muted">{t("shell.start.lead")}</p>
         </div>
 
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
-            Project
+            {t("common.nav.project")}
           </label>
           <Select
             id="conversations-new-project"
@@ -82,11 +82,11 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
               setHandles([]);
               setConfirming(false);
             }}
-            placeholder="Select a project…"
+            placeholder={t("shell.start.pick")}
           />
           {projectId && (
             <p className="fg-caption mt-1 text-subtle">
-              The room starts with this project&apos;s own agent, and is about this project.
+              {t("shell.start.startsWith")}
             </p>
           )}
         </div>
@@ -119,17 +119,17 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
 
         {projectId && !confirming && (
           <Button variant="primary" onClick={() => setConfirming(true)}>
-            Start the room
+            {t("shell.start.start")}
           </Button>
         )}
 
         {confirming && (
           <div className="flex items-center justify-end gap-2.5">
             <Button variant="ghost" onClick={() => setConfirming(false)} disabled={open.isPending}>
-              Back
+              {t("shell.dock.back")}
             </Button>
             <Button variant="primary" loading={open.isPending} onClick={start}>
-              Open the room
+              {t("shell.start.open")}
             </Button>
           </div>
         )}
@@ -151,10 +151,11 @@ function Extras({
   onTogglePerson: (userId: string) => void;
   onToggleHandle: (h: PickedHandle) => void;
 }) {
+  const t = useCopy();
   if (query.isLoading) {
     return (
       <p role="status" data-testid="start-candidates-loading" className="fg-body-sm text-muted">
-        <Spinner size={14} /> Looking for who you can add…
+        <Spinner size={14} /> {t("shell.start.looking")}
       </p>
     );
   }
@@ -162,7 +163,7 @@ function Extras({
     return (
       <div data-testid="start-candidates-error">
         <ErrorState
-          title="Couldn't load who you can add"
+          title={t("shell.start.lookFailed")}
           message={formatApiError(query.error)}
           onRetry={() => query.refetch()}
         />
@@ -173,8 +174,7 @@ function Extras({
   if (!data || (data.people.length === 0 && data.handles.length === 0)) {
     return (
       <p role="status" data-testid="start-candidates-empty" className="fg-body-sm text-subtle">
-        There is nobody else you can add to a room in this project. It will start with you and the
-        project&apos;s own agent.
+        {t("shell.start.nobody")}
       </p>
     );
   }
@@ -182,7 +182,7 @@ function Extras({
     <div className="flex flex-col gap-3">
       {data.handles.length > 0 && (
         <div>
-          <p className="fg-overline text-subtle">Agents — what the room can see</p>
+          <p className="fg-overline text-subtle">{t("shell.start.agents")}</p>
           <div className="mt-1 flex flex-col gap-1">
             {data.handles.map((h) => (
               <Checkbox
@@ -203,7 +203,7 @@ function Extras({
       )}
       {data.people.length > 0 && (
         <div>
-          <p className="fg-overline text-subtle">People — who reads the room</p>
+          <p className="fg-overline text-subtle">{t("shell.start.people")}</p>
           <div className="mt-1 flex flex-col gap-1">
             {data.people.map((p) => (
               <Checkbox

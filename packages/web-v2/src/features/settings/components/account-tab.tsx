@@ -20,29 +20,26 @@ import { AssistantPreferencesCard } from "./assistant-preferences-card";
 import type { LanguagePref, ThemePref } from "@/features/preferences/types";
 import { useCopy } from "@/lib/i18n/interface-language";
 
-const THEME_OPTIONS: SelectOption[] = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-];
+const THEMES = ["system", "light", "dark"] as const;
 // A language is named in its own words wherever the screen is read (`language.*` of the locale file).
 const PROJECT_DEFAULT = "project";
 type LanguageChoice = LanguagePref | typeof PROJECT_DEFAULT;
 
 export function AccountTab() {
   const { user } = useAuth();
+  const t = useCopy();
   return (
     <div className="space-y-6">
       <PageSection>
         <PageSectionBody>
-          <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
+          <SectionTitle className="fg-h3 mb-4">{t("shell.account.profile")}</SectionTitle>
           <dl className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <dt className="fg-label">Email</dt>
+              <dt className="fg-label">{t("shell.account.email")}</dt>
               <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <dt className="fg-label">User ID</dt>
+              <dt className="fg-label">{t("shell.account.userId")}</dt>
               <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
             </div>
           </dl>
@@ -60,6 +57,7 @@ function PreferencesCard() {
   const [theme, setTheme] = useState<ThemePref>("system");
   const [language, setLanguage] = useState<LanguageChoice>(PROJECT_DEFAULT);
   const t = useCopy();
+  const themeOptions: SelectOption[] = THEMES.map((v) => ({ value: v, label: t(`shell.account.theme.${v}`) }));
   const languageOptions: SelectOption[] = [
     { value: PROJECT_DEFAULT, label: t("language.project") },
     { value: "en", label: t("language.en") },
@@ -79,7 +77,7 @@ function PreferencesCard() {
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
+        <SectionTitle className="fg-h3 mb-4">{t("shell.account.preferences")}</SectionTitle>
         {prefsQ.isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-10 w-full rounded-md" />
@@ -87,9 +85,9 @@ function PreferencesCard() {
           </div>
         ) : (
           <div className="space-y-4">
-            <Field label="Theme" hint="Applies the next time the app loads.">
+            <Field label={t("shell.account.theme")} hint={t("shell.account.themeHint")}>
               <Select
-                options={THEME_OPTIONS}
+                options={themeOptions}
                 value={theme}
                 onChange={(v) => setTheme(v as ThemePref)}
               />
@@ -109,7 +107,7 @@ function PreferencesCard() {
                 onClick={() => update.mutate({ theme, language: language === PROJECT_DEFAULT ? null : language })}
                 className="min-h-11"
               >
-                Save preferences
+                {t("shell.account.save")}
               </Button>
             </div>
           </div>

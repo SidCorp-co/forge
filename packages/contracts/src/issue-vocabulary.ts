@@ -146,7 +146,7 @@ export const ISSUE_CATEGORY_LABELS: Record<string, string> = {
 	docs: "Docs",
 	documentation: "Docs",
 	test: "Test",
-	tests: "Tests",
+	tests: "Test",
 	review: "Review",
 	security: "Security",
 	performance: "Performance",

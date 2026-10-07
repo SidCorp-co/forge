@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import product from "./product-copy.json";
-import { feedbackNote, historyText, historyWho, localizeWaiting, STANDING_RULES, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
+import { GATE_SENTENCES, RISK_SENTENCES } from "@/test/vi-chrome-shared";
+import { feedbackNote, gateSentence, gateTitle, historyText, historyWho, localizeWaiting, riskSentence, STANDING_RULES, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
 
 // One sentence core really writes for each pattern: in en it is returned as core wrote it, in vi it
 // is a Vietnamese sentence with the names, keys, versions and numbers carried over untouched.
@@ -139,5 +140,46 @@ describe("a requirement's history, mapped by the shape of core's record", () => 
 
   it("holds one record to every history pattern", () => {
     for (const rule of STANDING_RULES.history) expect(HISTORY.some((h) => rule.re.test(h)), String(rule.re)).toBe(true);
+  });
+});
+
+// Core's release-gate titles and sentences and its data-risk sentences (`release-batch/release-gates.ts`,
+// `landing-surfaces.ts`), one real sentence per reading shape, kept beside the walking test's fixture.
+describe("a release gate's words, mapped by the shape of core's English", () => {
+  const titles = [...new Set(GATE_SENTENCES.map((g) => g.title))];
+  const sentences = GATE_SENTENCES.map((g) => g.sentence);
+  const risks = RISK_SENTENCES.map((r) => r.sentence);
+
+  it("the en copy file spells every title and sentence as core writes it", () => {
+    for (const t of titles) expect(standingRead("gateTitle", t, "en"), t).toBe(t);
+    for (const s of sentences) expect(standingRead("gateSentence", s, "en"), s).toBe(s);
+    for (const r of risks) expect(standingRead("risk", r, "en"), r).toBe(r);
+    for (const g of GATE_SENTENCES) expect(standingRead("act", g.act, "en"), g.act).toBe(g.act);
+  });
+
+  it("holds a pattern to every title core gives a gate: seventeen readings, each its own words", () => {
+    expect(titles).toHaveLength(17);
+    expect(STANDING_RULES.gateTitle).toHaveLength(17);
+    const vis = titles.map((t) => gateTitle(t, "vi"));
+    expect(new Set(vis).size).toBe(titles.length);
+  });
+
+  it("reads each in vi, carrying the keys, counts and limits over untouched", () => {
+    for (const s of [...titles.map((t) => gateTitle(t, "vi")), ...sentences.map((s) => gateSentence(s, "vi")), ...risks.map((r) => riskSentence(r, "vi"))]) {
+      expect(looksEnglish(s), s).toBe(false);
+    }
+    expect(gateSentence("ISS-6, ISS-7, ISS-8, ISS-9, ISS-10 and 2 more have no release note, so the release would claim a ship nobody described.", "vi")).toMatch(/^ISS-6, ISS-7, ISS-8, ISS-9, ISS-10 .*2/);
+    expect(gateSentence("63 issues are waiting, and one release carries at most 50. Split them into smaller releases, oldest merge first.", "vi")).toMatch(/63.*50/);
+    expect(gateSentence("ISS-4 owes criteria 1, 2; ISS-5 owes criterion 3. The unattended sweep carries an issue only when every criterion holds a passing verdict.", "vi")).toMatch(/ISS-4 .*1, 2; ISS-5 .*3\./);
+    expect(riskSentence("GET /v1/orders is removed: a caller still using it is refused after this ships", "vi")).toMatch(/^GET \/v1\/orders /);
+    expect(standingAct("write the release note on ISS-6 and 2 more", "vi")).not.toMatch(/\bon\b|\bmore\b/);
+  });
+
+  it("leaves a sentence it does not know, or one naming a part it does not know, as core wrote it", () => {
+    expect(gateSentence("A gate core added later says this.", "vi")).toBe("A gate core added later says this.");
+    expect(gateTitle("A new reading", "vi")).toBe("A new reading");
+    const odd = "Someone else entirely has no release note, so the release would claim a ship nobody described.";
+    expect(gateSentence(odd, "vi")).toBe(odd);
+    expect(standingAct("write the release note on the docs team", "vi")).toBe("write the release note on the docs team");
   });
 });

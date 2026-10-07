@@ -22,6 +22,8 @@ import {
 import Link from "next/link";
 import { Icon } from "@/design";
 import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { AgentModeOffer, ConversationMode } from "../types";
 
 /**
@@ -39,33 +41,26 @@ export const PAIR_A_RUNNER = "/runners";
 
 interface ModeMeta {
   mode: ConversationMode;
-  label: string;
-  hint: string;
+  label: ProductCopyKey;
+  hint: ProductCopyKey;
 }
 
-/** What each mode is, in the words a person picking between them needs. */
+/** What each mode is, in the words a person picking between them needs (the locale file's keys). */
 export const MODES: ModeMeta[] = [
-  {
-    mode: "assistant",
-    label: "Assistant",
-    hint: "Reads this project — its issues, progress, knowledge and memory. No repository.",
-  },
-  {
-    mode: "agent",
-    label: "Agent",
-    hint: "A session on a paired runner with the repository checked out and a shell.",
-  },
+  { mode: "assistant", label: "shell.mode.assistant", hint: "shell.mode.assistantHint" },
+  { mode: "agent", label: "shell.mode.agent", hint: "shell.mode.agentHint" },
 ];
 
 /** The box's own placeholder, so the mode is readable while typing too. */
-export function modePlaceholder(mode: ConversationMode | null): string {
-  if (mode === "agent") return "Message Agent — it has the repository and a shell…";
-  if (mode === "assistant") return "Message Assistant — it reads this project, not the repository…";
-  return "Ask the agent about this project…";
+export function modePlaceholder(mode: ConversationMode | null, t: Copy): string {
+  if (mode === "agent") return t("shell.mode.agentPlaceholder");
+  if (mode === "assistant") return t("shell.mode.assistantPlaceholder");
+  return t("shell.mode.placeholder");
 }
 
-function labelOf(mode: ConversationMode): string {
-  return MODES.find((m) => m.mode === mode)?.label ?? mode;
+function labelOf(mode: ConversationMode, t: Copy): string {
+  const key = MODES.find((m) => m.mode === mode)?.label;
+  return key ? t(key) : mode;
 }
 
 /** The reason core sends is a clause; the panel prints it as a sentence. */
@@ -92,6 +87,7 @@ function BlockedPanel({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const wayOut = useRef<HTMLAnchorElement>(null);
+  const t = useCopy();
   // The control that opened this may have just been unmounted with the menu it
   // was in, so the keyboard has nowhere to stand unless this takes it. It lands
   // on the way out the panel offers rather than on the explanation.
@@ -110,7 +106,7 @@ function BlockedPanel({
       ref={ref}
       id="conversation-mode-blocked"
       role="dialog"
-      aria-label="Agent is unavailable"
+      aria-label={t("shell.mode.unavailable")}
       data-testid="mode-blocked-panel"
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
@@ -123,9 +119,9 @@ function BlockedPanel({
       }}
       className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-md border border-line bg-surface p-3 shadow-lg"
     >
-      <p className="fg-body-sm font-semibold text-fg">Agent needs a paired runner</p>
+      <p className="fg-body-sm font-semibold text-fg">{t("shell.mode.needsRunner")}</p>
       <p className="fg-caption mt-1 text-muted">
-        {asSentence(reason ?? "no runner is paired with this project")}
+        {reason ? asSentence(reason) : t("shell.mode.noRunner")}
       </p>
       <Link
         ref={wayOut}
@@ -133,7 +129,7 @@ function BlockedPanel({
         className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
       >
         <Icon name="link" size={14} />
-        Pair a runner
+        {t("shell.mode.pairRunner")}
       </Link>
     </div>
   );
@@ -155,12 +151,13 @@ function ModeTrack({
   onBlockedPress: () => void;
   describedBy: string | undefined;
 }) {
+  const t = useCopy();
   return (
     <fieldset
       className="flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5"
       data-testid="conversation-mode-toggle"
     >
-      <legend className="sr-only">What this conversation talks to</legend>
+      <legend className="sr-only">{t("shell.mode.legend")}</legend>
       {MODES.map(({ mode, label, hint }) => {
         const isBlocked = mode === "agent" && blocked;
         const selected = value === mode;
@@ -183,10 +180,10 @@ function ModeTrack({
               checked={selected}
               disabled={disabled}
               aria-describedby={isBlocked ? describedBy : undefined}
-              title={isBlocked ? undefined : hint}
+              title={isBlocked ? undefined : t(hint)}
               onChange={() => (isBlocked ? onBlockedPress() : onChange(mode))}
             />
-            {label}
+            {t(label)}
             {isBlocked && (
               <span
                 aria-hidden="true"
@@ -216,6 +213,7 @@ function ModeMenu({
   onBlockedPress: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const t = useCopy();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -266,13 +264,13 @@ function ModeMenu({
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-13 font-semibold text-fg"
       >
-        {labelOf(value)}
+        {labelOf(value, t)}
         <Icon name="chevronDown" size={13} />
       </button>
       {open && (
         <div
           role="menu"
-          aria-label="What this conversation talks to"
+          aria-label={t("shell.mode.legend")}
           data-testid="conversation-mode-menu"
           onBlur={(e) => {
             // The keyboard left the menu for something outside it: close, and
@@ -300,8 +298,8 @@ function ModeMenu({
                 }}
                 className="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left hover:bg-sunken"
               >
-                <span className="fg-body-sm font-semibold text-fg">{label}</span>
-                <span className="fg-caption text-muted">{hint}</span>
+                <span className="fg-body-sm font-semibold text-fg">{t(label)}</span>
+                <span className="fg-caption text-muted">{t(hint)}</span>
               </button>
             );
           })}
@@ -348,6 +346,7 @@ export function ConversationModeControl({
       ?.focus();
   }, []);
   const composerWidth = useContext(ComposerWidthContext);
+  const t = useCopy();
   const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
 
   if (settled) {
@@ -357,7 +356,7 @@ export function ConversationModeControl({
         className="inline-flex items-center gap-1.5 rounded-md bg-sunken px-2.5 py-1 text-13 font-semibold text-muted"
       >
         <Icon name="agent" size={13} />
-        {labelOf(settled)}
+        {labelOf(settled, t)}
       </span>
     );
   }

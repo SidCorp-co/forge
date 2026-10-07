@@ -19,6 +19,7 @@ import {
   Toggle,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import {
   type BrowserPermission,
   getPermission,
@@ -42,17 +43,11 @@ import type { NotificationRow } from "../types";
 
 const SKELETON_ROWS = ["a", "b", "c", "d", "e"] as const;
 
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
 export function NotificationsTab() {
   const [page, setPage] = useState(1);
   const notificationsQ = useNotifications(page);
   const markAll = useMarkAllRead();
+  const t = useCopy();
 
   const rows = notificationsQ.data?.items ?? [];
   const totalCount = notificationsQ.data?.totalCount ?? 0;
@@ -64,7 +59,7 @@ export function NotificationsTab() {
       <DeliveryPreferences />
 
       <div className="flex items-center justify-between gap-3">
-        <SectionTitle className="fg-h3">Notifications</SectionTitle>
+        <SectionTitle className="fg-h3">{t("shell.bell.label")}</SectionTitle>
         <Button
           variant="secondary"
           size="sm"
@@ -74,7 +69,7 @@ export function NotificationsTab() {
           onClick={() => markAll.mutate()}
           className="min-h-11"
         >
-          Mark all read
+          {t("shell.bell.markAll")}
         </Button>
       </div>
 
@@ -88,14 +83,14 @@ export function NotificationsTab() {
 
       {notificationsQ.isError && (
         <ErrorState
-          title="Couldn't load notifications"
+          title={t("shell.bell.unread")}
           message={formatApiError(notificationsQ.error)}
           onRetry={() => notificationsQ.refetch()}
         />
       )}
 
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length === 0 && (
-        <EmptyState title="All caught up" message="You have no notifications." />
+        <EmptyState title={t("shell.bell.caughtUp")} message={t("shell.notify.none")} />
       )}
 
       {!notificationsQ.isLoading && !notificationsQ.isError && rows.length > 0 && (
@@ -121,18 +116,19 @@ export function NotificationsTab() {
 function DeliveryPreferences() {
   const prefsQ = usePreferences();
   const update = useUpdatePreferences();
+  const t = useCopy();
 
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Delivery preferences</SectionTitle>
-        <p className="fg-caption mb-4">Choose which notifications Forge sends you.</p>
+        <SectionTitle className="fg-h3 mb-1">{t("shell.notify.title")}</SectionTitle>
+        <p className="fg-caption mb-4">{t("shell.notify.lead")}</p>
 
         {prefsQ.isLoading && <Skeleton className="h-11 w-full rounded-md" />}
 
         {prefsQ.isError && (
           <ErrorState
-            title="Couldn't load preferences"
+            title={t("shell.notify.prefsUnread")}
             message={formatApiError(prefsQ.error)}
             onRetry={() => prefsQ.refetch()}
           />
@@ -140,12 +136,12 @@ function DeliveryPreferences() {
 
         {prefsQ.data && (
           <ToggleRow
-            label="Mentions"
-            helper="Notify me when someone @mentions me in a comment."
+            label={t("shell.notify.mentions")}
+            helper={t("shell.notify.mentionsHint")}
             checked={prefsQ.data.notifyOnMention}
             disabled={update.isPending}
             onChange={(checked) => update.mutate({ notifyOnMention: checked })}
-            aria-label="Notify me when I'm mentioned"
+            aria-label={t("shell.notify.mentionsLabel")}
           />
         )}
 
@@ -165,6 +161,7 @@ function DeliveryPreferences() {
  *  permission state and disables itself when denied or unsupported. */
 function DesktopNotificationsToggle() {
   const [perm, setPerm] = useState<BrowserPermission>("default");
+  const t = useCopy();
   const [enabled, setEnabledState] = useState(false);
 
   // Read live permission + opt-in on mount (client-only — Notification API).
@@ -202,21 +199,21 @@ function DesktopNotificationsToggle() {
   }
 
   const helper = !supported
-    ? "Your browser does not support desktop notifications."
+    ? t("shell.notify.desktopUnsupported")
     : denied
-      ? "Blocked in your browser settings — re-enable notifications for this site, then try again."
+      ? t("shell.notify.desktopBlocked")
       : lapsed
-        ? "Notifications are off in your browser — toggle on to re-enable them for this site."
-        : "Show a desktop notification for high-signal events when this tab is in the background.";
+        ? t("shell.notify.desktopLapsed")
+        : t("shell.notify.desktopHint");
 
   return (
     <ToggleRow
-      label="Desktop notifications"
+      label={t("shell.notify.desktop")}
       helper={helper}
       checked={checked}
       disabled={!supported || denied}
       onChange={onToggle}
-      aria-label="Enable desktop notifications"
+      aria-label={t("shell.notify.desktopLabel")}
     />
   );
 }
@@ -228,6 +225,7 @@ function DesktopNotificationsToggle() {
  *  browser has no Web Audio support. */
 function SoundNotificationsToggle() {
   const [supported, setSupported] = useState(true);
+  const t = useCopy();
   const [enabled, setEnabledState] = useState(false);
 
   // Read support + opt-in on mount (client-only — AudioContext / localStorage).
@@ -249,16 +247,12 @@ function SoundNotificationsToggle() {
 
   return (
     <ToggleRow
-      label="Notification sound"
-      helper={
-        supported
-          ? "Play a sound when a new high-signal notification arrives."
-          : "Your browser does not support notification sounds."
-      }
+      label={t("shell.notify.sound")}
+      helper={supported ? t("shell.notify.soundHint") : t("shell.notify.soundUnsupported")}
       checked={enabled && supported}
       disabled={!supported}
       onChange={onToggle}
-      aria-label="Enable notification sound"
+      aria-label={t("shell.notify.soundLabel")}
     />
   );
 }
@@ -287,6 +281,9 @@ function ToggleRow({
 }
 
 function NotificationCard({ row }: { row: NotificationRow }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const at = new Date(row.createdAt);
   return (
     <PageSection>
       <PageSectionBody>
@@ -294,21 +291,21 @@ function NotificationCard({ row }: { row: NotificationRow }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {deliveryResolved(row) ? (
-                <Badge tone="green">resolved</Badge>
+                <Badge tone="green">{t("shell.notify.resolved")}</Badge>
               ) : (
-                row.readAt === null && <Badge tone="accent">new</Badge>
+                row.readAt === null && <Badge tone="accent">{t("shell.notify.new")}</Badge>
               )}
               <p className="fg-body-sm font-medium text-fg">{row.title}</p>
             </div>
             {liveBody(row) && <p className="fg-caption mt-1">{liveBody(row)}</p>}
             {row.members > 1 && (
               <p className="fg-caption mt-1 text-muted">
-                {`${row.openMembers} of ${row.members} still open`}
+                {t("shell.bell.stillOpen", { open: row.openMembers, total: row.members })}
               </p>
             )}
           </div>
           <span className="fg-caption flex-none whitespace-nowrap font-mono">
-            {fmtTime(row.createdAt)}
+            {Number.isNaN(at.getTime()) ? "—" : time.dateTime(at)}
           </span>
         </div>
       </PageSectionBody>
