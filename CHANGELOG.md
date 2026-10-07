@@ -3167,8 +3167,8 @@
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
 - **A release held on an unreadable repository says how to fix that first, once.** Commit marks, held releases and Test connection ask for the same write access for the deploy key, and name an unreachable host by its hostname (ISS-1398).
-- **A commit named with more digits than a commit has is refused.** A mark naming a real commit plus extra digits used to be accepted as that commit; it is now refused as a commit the repository does not hold, on GitLab and GitHub projects alike (ISS-1398).
-- **The release check leads with the repository when that is what holds a release back.** It says how to make the repository readable before asking for verdicts, and a repository host whose name does not resolve is named with what to check (ISS-1398).
+- **A commit named with more digits than a commit has is refused.** A mark naming a real commit plus extra digits was accepted as that commit; now it is refused, on GitLab and GitHub projects alike (ISS-1398).
+- **The release check leads with the repository when that holds a release back.** It says how to make it readable before asking for verdicts, and names an unresolvable host with what to check (ISS-1398).
 - **A release checks every issue it names, however its id is capitalised.** An issue named by an
   upper-case id skipped every check, so a release could take one it could not close (ISS-1384).
 

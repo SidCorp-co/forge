@@ -292,63 +292,6 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     expect(warned?.message).not.toContain(ISSUE_A);
   });
 
-  // ISS-1398 judge j3: readiness asked only for a verdict where a failed repository read held the
-  // criterion, which no verdict repairs; the hold already leads with making the repository readable.
-  const FIX = 'on the git host, give the deploy key write access to git@gitlab.com:sid/desk.git';
-  const unreadReport = (issueId: string) => ({
-    ...heldReport(issueId, [1, 2]),
-    unearned: [1, 2].map((criterion) => ({
-      criterion,
-      verdict: 'pass',
-      standing: null,
-      why: 'whether what it serves carries it could not be read',
-      clears: [FIX],
-    })),
-  });
-
-  it('leads the roster block with making the repository readable, said once, where a read failed', async () => {
-    ready();
-    autoRelease.mockResolvedValue(true);
-    unearned.mockResolvedValue([unreadReport(ISSUE_A)]);
-    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1127, issuePrefix: 'ISS' }]);
-
-    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
-    const message = String(
-      report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED')?.message,
-    );
-
-    expect(message).toContain(`A person clears this by making the repository readable: ${FIX}.`);
-    expect(message.split(FIX)).toHaveLength(2);
-    expect(message.indexOf(FIX)).toBeLessThan(message.indexOf('record a verdict'));
-    expect(message).toContain('`ISS-1127` owes criterion 1, 2');
-  });
-
-  it('leads the held-back warning with the same act where a read failed', async () => {
-    projectRow();
-    liveBinding(DECLARED);
-    selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
-      { id: ISSUE_B, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
-    ]);
-    execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
-    onlineIds.mockResolvedValue(['dev-1']);
-    autoRelease.mockResolvedValue(true);
-    unearned.mockResolvedValue([
-      unreadReport(ISSUE_A),
-      { issueId: ISSUE_B, unearned: [], broken: [], serving: SERVING, uncorroborated: [] },
-    ]);
-    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1142, issuePrefix: 'ISS' }]);
-
-    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
-    const message = String(
-      report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message,
-    );
-
-    expect(message).toContain('A release will still be cut');
-    expect(message).toContain(`A person clears that by making the repository readable: ${FIX}.`);
-    expect(message.split(FIX)).toHaveLength(2);
-  });
-
   // The names are a courtesy on top of the reason. Returning on a failed name
   // read would spend an actionable blocker on a lookup nobody asked for.
   it('keeps the blocker standing beside the unevaluated entry where the name read throws', async () => {
@@ -461,5 +404,64 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held?.message).toContain(`\`${ISSUE_A}\` owes criterion 2`);
+  });
+});
+
+describe('the hold where a repository read failed', () => {
+  // ISS-1398 judge j3: readiness asked only for a verdict where a failed repository read held the
+  // criterion, which no verdict repairs; the hold already leads with making the repository readable.
+  const FIX = 'on the git host, give the deploy key write access to git@gitlab.com:sid/desk.git';
+  const unreadReport = (issueId: string) => ({
+    ...heldReport(issueId, [1, 2]),
+    unearned: [1, 2].map((criterion) => ({
+      criterion,
+      verdict: 'pass',
+      standing: null,
+      why: 'whether what it serves carries it could not be read',
+      clears: [FIX],
+    })),
+  });
+
+  it('leads the roster block with making the repository readable, said once, where a read failed', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([unreadReport(ISSUE_A)]);
+    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1127, issuePrefix: 'ISS' }]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
+    const message = String(
+      report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED')?.message,
+    );
+
+    expect(message).toContain(`A person clears this by making the repository readable: ${FIX}.`);
+    expect(message.split(FIX)).toHaveLength(2);
+    expect(message.indexOf(FIX)).toBeLessThan(message.indexOf('record a verdict'));
+    expect(message).toContain('`ISS-1127` owes criterion 1, 2');
+  });
+
+  it('leads the held-back warning with the same act where a read failed', async () => {
+    projectRow();
+    liveBinding(DECLARED);
+    selectRows.mockResolvedValue([
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+      { id: ISSUE_B, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+    ]);
+    execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
+    onlineIds.mockResolvedValue(['dev-1']);
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([
+      unreadReport(ISSUE_A),
+      { issueId: ISSUE_B, unearned: [], broken: [], serving: SERVING, uncorroborated: [] },
+    ]);
+    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1142, issuePrefix: 'ISS' }]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
+    const message = String(
+      report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message,
+    );
+
+    expect(message).toContain('A release will still be cut');
+    expect(message).toContain(`A person clears that by making the repository readable: ${FIX}.`);
+    expect(message.split(FIX)).toHaveLength(2);
   });
 });
