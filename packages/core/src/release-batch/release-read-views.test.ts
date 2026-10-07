@@ -63,6 +63,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     commit: null,
     approvals: [],
     gates,
+    verification: null,
   };
 }
 
@@ -116,11 +117,11 @@ describe('the commit a shipped release names (FB-105)', () => {
       runId: 'r1',
       commit: '17126a694866e8c48a277579fce9bce59ce213ca',
     };
-    const d = detailOf(shipped, shared(1), null, new Map(), []);
+    const d = detailOf(shipped, shared(1), null, new Map(), [], null);
     expect(d.head).toBe('17126a694866e8c48a277579fce9bce59ce213ca');
   });
 
   it('reads none on a draft, which has not been deployed', () => {
-    expect(detailOf(part(1, []), shared(1), null, new Map(), []).head).toBeNull();
+    expect(detailOf(part(1, []), shared(1), null, new Map(), [], null).head).toBeNull();
   });
 });
