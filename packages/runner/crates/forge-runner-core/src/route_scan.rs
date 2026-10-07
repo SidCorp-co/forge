@@ -656,14 +656,25 @@ fn collect_bindings(tokens: &[TokenTree], b: &mut Bindings, known: &Bindings) {
             let end = (i..tokens.len())
                 .find(|&k| is_punct(&tokens[k], ';'))
                 .unwrap_or(tokens.len());
-            let routes_before = b.route_names();
             use_tree(&tokens[i + 1..end], &[], b, known, line_of(&tokens[i]));
             let public = i >= 1
                 && (is_ident(&tokens[i - 1], "pub")
                     || (i >= 2
                         && is_ident(&tokens[i - 2], "pub")
                         && matches!(&tokens[i - 1], TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis)));
-            if public && b.route_names() != routes_before {
+            // What this import binds on its own: a name an earlier import already bound to a
+            // route adds nothing to `b`, and is re-exported all the same.
+            let mut own = Bindings::default();
+            if public {
+                use_tree(
+                    &tokens[i + 1..end],
+                    &[],
+                    &mut own,
+                    known,
+                    line_of(&tokens[i]),
+                );
+            }
+            if public && own.route_names() != [0; 5] {
                 b.refused.push(Hit {
                     line: line_of(&tokens[i]),
                     what: "a re-export of a route, which hides every call through it from the \
@@ -1102,6 +1113,35 @@ mod tests {
             "use std::env::var_os as get; fn a(m: &M, k: &str) { m.get(k); }",
             0,
         );
+    }
+
+    /// The tenth whole-set read's F1: a public re-export under a name a private import already
+    /// bound is still a re-export, though it adds no name the file did not hold.
+    #[test]
+    fn a_reexport_under_a_name_already_bound_is_refused() {
+        let s = scanned(
+            "use std::env::var_os as get; fn a(k: &str) { let _ = get(k); }
+             pub mod readers { pub use std::env::var_os as get; }",
+        );
+        assert!(
+            s.refused
+                .iter()
+                .any(|h| h.what.contains("a re-export of a route")),
+            "{s:#?}"
+        );
+        let crate_wide = scanned(
+            "use std::env::var_os as get; fn a(k: &str) { let _ = get(k); }
+             pub mod readers { pub(crate) use std::env as get; }",
+        );
+        assert!(
+            crate_wide
+                .refused
+                .iter()
+                .any(|h| h.what.contains("a re-export of a route")),
+            "{crate_wide:#?}"
+        );
+        let plain = scanned("pub use crate::config::home_dir as h; use std::env::var_os as get;");
+        assert!(plain.refused.is_empty(), "{plain:#?}");
     }
 
     /// The third whole-set read's F1 and F2: a reader imported again under a second name, and a
