@@ -6,7 +6,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectRunner } from "@/features/runners/types";
 import { formatElapsed } from "@/lib/utils/format";
-import { runnersSummary } from "../derive";
+import { runnersSummary } from "./derive";
 import { RunnersCard } from "./runners-card";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));

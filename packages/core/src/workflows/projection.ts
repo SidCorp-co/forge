@@ -61,6 +61,7 @@ function revisionSummaryOf(r: DesignView['revisions'][number]): DesignRevisionSu
     reason: r.reason,
     state: r.state,
     stepCount: listIn(r.document, 'steps').length,
+    changes: r.changes,
   };
 }
 

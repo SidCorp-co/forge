@@ -75,6 +75,12 @@ export interface DesignBuildGate {
 	rule: string;
 }
 
+/** What a revision changes against the one before it: the steps by the words the design gives them, the lines by count. */
+export interface RevisionChanges {
+	steps: { added: string[]; removed: string[]; changed: string[] };
+	edges: { added: number; removed: number; changed: number };
+}
+
 export interface DesignRevisionSummary {
 	revision: number;
 	designIssueId: string | null;
@@ -88,6 +94,8 @@ export interface DesignRevisionSummary {
 	reason: string | null;
 	state: DesignRevisionState;
 	stepCount: number;
+	/** Against the revision before it; null on the first, or where either document no longer reads as a design. */
+	changes: RevisionChanges | null;
 }
 
 export interface DesignBuild {

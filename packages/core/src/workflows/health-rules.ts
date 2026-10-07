@@ -365,6 +365,14 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
     revision,
     approvedRevision: f.approvedRevision,
     proposedRevision: f.proposed?.revision ?? null,
+    proposal: f.proposed
+      ? {
+          revision: f.proposed.revision,
+          title: f.proposed.document.title ?? f.flow,
+          proposedAt: f.proposed.proposedAt.toISOString(),
+          waitingOn: f.proposed.waitingOn,
+        }
+      : null,
     rooted: f.rooted,
     observation: obs
       ? {

@@ -23,6 +23,8 @@ import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { type DesignDiff, diffOf, stepsWithRemoved } from "../design-diff";
 import { stepsForLayer } from "../health";
 import { useHealthOverlay, useWorkflowHealth } from "../hooks";
+import type { RevisionChanges } from "@forge/contracts/workflows";
+import { revisionSummary } from "../revision-summary";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from "../types";
 import { OrphanedTraces } from "./design-decision";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
@@ -118,6 +120,16 @@ function StepsPane({ shown, template, diff, revision }: { shown: WorkflowBody; t
   );
 }
 
+function RevisionSummary({ changes, first }: { changes: RevisionChanges | null; first: boolean }) {
+  const line = revisionSummary(changes, first);
+  if (!line) return null;
+  return (
+    <span className="mb-0.5 block text-fg" data-testid="revision-summary">
+      {line}
+    </span>
+  );
+}
+
 function RevisionsPane({ d }: { d: WorkflowDesign }) {
   return (
     <div data-testid="view-revisions">
@@ -133,6 +145,7 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
                 <StatusBadge family="designRevision" value={r.state} />
               </span>
               <span className="min-w-0 text-muted max-md:col-start-2">
+                <RevisionSummary changes={r.changes} first={d.revisions[d.revisions.length - 1]?.revision === r.revision} />
                 <span title={formatStamp(r.proposedAt)}>
                   Proposed by {r.proposedByName ?? r.proposedBy} · {formatRelativeTime(r.proposedAt)}
                 </span>

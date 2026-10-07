@@ -207,7 +207,13 @@ export function waitOf(row: IssueStandingRow): Wait | null {
   const { attentionGroup, waitingOn } = row.standing;
   const person = waitingOn.kind === 'you' || waitingOn.kind === 'person';
   if (attentionGroup === 'needs_you' || attentionGroup === 'paused' || person) {
-    return { who: waitingOn.who, act: waitingOn.act, reason: waitingOn.rule, ref: waitingOn.ref };
+    return {
+      who: waitingOn.who,
+      act: waitingOn.act,
+      reason: waitingOn.rule,
+      ref: waitingOn.ref,
+      since: row.standing.touchedAt,
+    };
   }
   return null;
 }

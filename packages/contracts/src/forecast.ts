@@ -15,6 +15,24 @@ export const FORECAST_TRIALS = 1000;
 /** The recent days the most runs live at once is read over: the simulation never works more. */
 export const FORECAST_PEAK_DAYS = 14;
 export const FORECAST_LABEL = "forecast" as const;
+/** A person's turn that has gone unanswered this long reads late, whatever the forecast says. */
+export const FORECAST_WAIT_LATE_MINUTES = 24 * 60;
+
+export const FORECAST_LATE_REASONS = ["p85_passed", "waiting_over_day"] as const;
+export type ForecastLateReason = (typeof FORECAST_LATE_REASONS)[number];
+
+/**
+ * An open item taking longer than it should: its work has run past the p85 of similar landed work
+ * (`p85_passed`), or a person has owed the next act for over a day (`waiting_over_day`). Core
+ * decides it once, at read time, so no screen computes its own lateness.
+ */
+export interface ForecastLate {
+	reason: ForecastLateReason;
+	/** The moment it became late: the p85 point, or the day mark of the wait. */
+	since: string;
+	/** Whole minutes past that moment as of the read. */
+	byMinutes: number;
+}
 
 /** What the numbers were read from, so a reader can judge the range for themselves. */
 export interface ForecastBasis {
@@ -52,6 +70,8 @@ export interface ForecastRange extends ForecastStamp {
 	/** Unsettled `blocks` blockers this one waits on, the critical path's first step. */
 	waitsOn: string[];
 	basis: ForecastBasis;
+	/** Non-null once work already under way has run past the p85 of similar landed work. */
+	late: ForecastLate | null;
 }
 
 /** Waiting on a person, a gate or an outage: no date, the wait named instead. */
@@ -62,6 +82,10 @@ export interface ForecastPaused extends ForecastStamp {
 	reason: string;
 	/** The issue, refusal code or device the wait is on, where there is one. */
 	ref: string | null;
+	/** When the wait began, where the read knows it; null where it does not, which is never late. */
+	since: string | null;
+	/** Non-null once a person has owed the act for more than a day. */
+	late: ForecastLate | null;
 }
 
 interface ForecastNoHistory extends ForecastStamp {

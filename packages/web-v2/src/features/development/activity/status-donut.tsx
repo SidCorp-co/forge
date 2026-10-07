@@ -6,7 +6,7 @@ import {
   PageSectionTitle,
   Icon,
 } from "@/design";
-import { conicGradient, type StatusDonutData } from "../derive";
+import { conicGradient, type StatusDonutData } from "./derive";
 
 export function StatusDonut({ data }: { data: StatusDonutData }) {
   const { segments, total } = data;

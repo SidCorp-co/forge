@@ -425,6 +425,15 @@ export interface WorkflowReconciliation {
 	rule: string;
 }
 
+/** A revision proposed and not yet decided: what Needs you reads to put the approval on the design itself. */
+export interface WorkflowProposal {
+	revision: number;
+	/** The design's own title as the proposed revision words it. */
+	title: string;
+	proposedAt: string;
+	waitingOn: WaitingOn;
+}
+
 /** `GET /api/projects/:id/workflows/:workflow/health`: every marker, node reading and count of one design. */
 export interface WorkflowHealth {
 	workflowId: string;
@@ -433,6 +442,8 @@ export interface WorkflowHealth {
 	revision: number;
 	approvedRevision: number | null;
 	proposedRevision: number | null;
+	/** The revision waiting on its approver, with whose turn it is; null where none is proposed. */
+	proposal: WorkflowProposal | null;
 	rooted: WorkflowRootedView;
 	/** The observation the provenance is read from; null when the code has not been observed. */
 	observation: {

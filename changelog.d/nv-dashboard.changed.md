@@ -1,0 +1,1 @@
+**The project Dashboard is now a BA's page.** Needs you holds requirement, workflow, feedback and release acts; it adds what lands this week and what is late, flagged by core. Run and spend figures moved to Development; revisions list changes.

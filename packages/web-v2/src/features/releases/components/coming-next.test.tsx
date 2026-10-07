@@ -23,6 +23,7 @@ const range: Forecast = {
   aheadKeys: [],
   waitsOn: [],
   basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 2, concurrency: 2, concurrencyBasis: "b" },
+  late: null,
 };
 const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.1.0", reason: "an admin cuts each release" };
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
@@ -37,7 +38,7 @@ const draftScope: ScopeForecast = {
   total: 2,
   landed: 2,
   forecast: landed,
-  next: { ...stamp, kind: "paused", who: "A project admin", act: "cut 0.1.0", reason: "r", ref: null },
+  next: { ...stamp, kind: "paused", who: "A project admin", act: "cut 0.1.0", reason: "r", ref: null, since: null, late: null },
   delivery: delivery(landed),
 };
 const next: ComingNextForecast = { ...stamp, projectId: "p", requirements: [req], draft: draftScope };

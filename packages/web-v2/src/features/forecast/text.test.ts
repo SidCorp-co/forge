@@ -22,7 +22,7 @@ const stamp = { label: "forecast" as const, asOf: at(0) };
 
 describe("forecast text", () => {
   it("reads a range as two clock times, labelled a forecast, its durations and as-of only in the tooltip", () => {
-    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(150), p85At: at(420), p50Minutes: 150, p85Minutes: 420, ahead: 3, aheadKeys: ["ISS-1", "ISS-2", "ISS-3"], waitsOn: [], basis };
+    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(150), p85At: at(420), p50Minutes: 150, p85Minutes: 420, ahead: 3, aheadKeys: ["ISS-1", "ISS-2", "ISS-3"], waitsOn: [], basis, late: null };
     const { line, detail } = forecastText(f, NOW);
     expect(line).toBe("Forecast 14:30 – 19:00 today");
     expect(line).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
@@ -32,12 +32,12 @@ describe("forecast text", () => {
   });
 
   it("says each day once where the range crosses midnight", () => {
-    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(600), p85At: at(1500), p50Minutes: 600, p85Minutes: 1500, ahead: 0, aheadKeys: [], waitsOn: [], basis };
+    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(600), p85At: at(1500), p50Minutes: 600, p85Minutes: 1500, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
     expect(forecastText(f, NOW).line).toBe("Forecast 22:00 today – tomorrow 13:00");
   });
 
   it("names who owes the move instead of a date when paused", () => {
-    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked", ref: null };
+    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked", ref: null, since: null, late: null };
     expect(forecastText(f, NOW).line).toBe("Paused — waiting on A project writer to answer a question");
   });
 
@@ -56,7 +56,7 @@ describe("forecast text", () => {
         total: 2,
         landed: 2,
         forecast: { ...stamp, kind: "landed", landedAt: at(-60) },
-        next: { ...stamp, kind: "paused", who: "A release approver", act: "cut the version, then approve the release", reason: "r", ref: null },
+        next: { ...stamp, kind: "paused", who: "A release approver", act: "cut the version, then approve the release", reason: "r", ref: null, since: null, late: null },
         title: null,
         delivery: null,
       },
@@ -70,7 +70,7 @@ describe("forecast text", () => {
   });
 });
 
-const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(300), p50Minutes: 120, p85Minutes: 300, ahead: 0, aheadKeys: [], waitsOn: [], basis };
+const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(300), p50Minutes: 120, p85Minutes: 300, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
 const lag = { kind: "automatic" as const, basis: { n: 14, floor: 10, windowDays: 60, lagP50Minutes: 30, lagP85Minutes: 90 } };
 const span = (lo: number, hi: number) => ({ p50At: at(lo), p85At: at(hi), p50Minutes: lo, p85Minutes: hi });
 const delivery = (over: Partial<DeliveryForecast>): DeliveryForecast => ({ ...stamp, landing: range, release: lag, inHands: span(150, 390), shipped: null, ...over });
@@ -109,7 +109,7 @@ describe("delivery text: in people's hands, not merged", () => {
 
 describe("feedback and requirement lines", () => {
   it("says an untriaged item waits on triage and who, with no date", () => {
-    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null }, delivery: null }, NOW)?.line;
+    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, NOW)?.line;
     expect(line).toBe("Waiting on triage — A holder of feedback.approve to triage it");
   });
 
