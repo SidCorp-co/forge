@@ -29,16 +29,16 @@ names the workflow it builds is not dispatched while that design is not approved
    contract its kind owes. A new v2 workflow is a **draft**.
 2. **Propose.** \`POST …/workflows/:workflow/design/propose\` with the revision you wrote and \`issue\`, the issue the design is
    drawn under. A later write that proposes again names it with \`issue\` beside \`baseRevision\`; without one it
-   inherits the superseded revision's issue while that issue is still work, and once that issue is closed or dropped
-   the write is refused \`WORKFLOW_DESIGN_ISSUE_REQUIRED\` until it names one. The approver now sees it on
+   inherits the issue of the latest revision that named one while that issue is still work, and once that issue is
+   closed or dropped the write is refused \`WORKFLOW_DESIGN_ISSUE_REQUIRED\` until it names one. The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
 3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
    waits, \`returned\` carries the approver's reason, \`approved\` names the revision. An approval may
    carry its approver's note on that revision's \`reason\` — the conditions it was given under, such as a
    revision still owed or a deviation accepted — so read it before linking or building, and a build job is
    given it with the approved revision. An approval records the revision as the landing of the issue it was
-   drawn under — its merged mark is written, or re-pointed from a revision only proposed — and moves no
-   status: that issue's run, or the release that claims it, takes its next move. A return reopens
+   drawn under — its merged mark is written, or re-pointed from a revision only proposed, unless that issue
+   is already closed or dropped — and moves no status: that issue's run, or the release that claims it, takes its next move. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflow\`, so the issue is admissible work again; a design issue standing at a park keeps
    its park and only gets the reason posted. **To park an issue until the approver decides**, park it at

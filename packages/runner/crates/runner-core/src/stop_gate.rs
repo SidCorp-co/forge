@@ -169,12 +169,26 @@ fn dirty_line(tree: &Path, paths: &[String]) -> String {
     } else {
         String::new()
     };
-    let tree = tree.display();
+    let quoted = sh_quote(&tree.display().to_string());
     format!(
-        "{tree} has uncommitted changes: {}{more}.\n  Clear it: commit them on the run's branch \
-         (`git -C {tree} add -A && git -C {tree} commit`), or remove what the run no longer needs.",
+        "{} has uncommitted changes: {}{more}.\n  Clear it: first delete what the run made and no \
+         longer needs (scratch files, logs, output), then commit what is left on the run's branch \
+         (`git -C {quoted} add -A && git -C {quoted} commit -m '<what the commit holds>'`).",
+        tree.display(),
         shown.join(", ")
     )
+}
+
+/// `s` as one POSIX shell word, so a hint's command runs as written whatever
+/// the path holds.
+fn sh_quote(s: &str) -> String {
+    if !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/._-+:@%,=".contains(&b))
+    {
+        return s.to_string();
+    }
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 fn standing_line(tree: &Path, standing: &[Standing]) -> String {
@@ -209,8 +223,8 @@ fn held_line(key: &str, id: &str) -> String {
     format!(
         "{key} is in_progress under this run, and nothing has been written on it since it was \
          taken.\n  Clear it: write where the work stands on it — a comment \
-         (`forge-runner api issues/{id}/comments -X POST -d -`), a record, or its `workState` — \
-         or move it on."
+         (`forge-runner api issues/{id}/comments -d '{{\"body\":\"<where the work stands>\"}}'`, \
+         the body a JSON string), a record, or its `workState` — or move it on."
     )
 }
 

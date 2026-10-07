@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ACCEPT_REVISION_SHAPE, acceptRevisionRequestSchema } from '@forge/contracts/requirements';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -91,7 +92,10 @@ revisionRoutes.post(
 revisionRoutes.post(
   '/:id/requirements/:req/revisions/:n/return',
   revisionParam,
-  strictBody(z.strictObject({ reason: z.string().max(4_000) }), '{ reason } says why it went back'),
+  strictBody(
+    z.strictObject({ reason: z.string().max(REASON_TEXT_MAX) }),
+    '{ reason } says why it went back',
+  ),
   async (c) => {
     const { id, req, n } = c.req.valid('param');
     return answer(

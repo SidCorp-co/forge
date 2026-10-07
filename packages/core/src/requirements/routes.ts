@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import {
   ACCEPT_REQUIREMENT_SHAPE,
   acceptRequirementRequestSchema,
@@ -128,7 +129,7 @@ requirementRoutes.post(
   strictBody(
     z.strictObject({
       revision: z.number().int().min(1),
-      reason: z.string().max(4_000).nullable().optional(),
+      reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
     }),
     '{ revision, reason? } names the head revision being agreed',
   ),

@@ -198,6 +198,49 @@ describe('a write proposing a revision names the issue drawing it (ISS-261)', ()
     });
   });
 
+  /** FB-54's patient-data-flow rev 8: a revision the old code stored with no issue after its issue closed. */
+  async function storedWithNone(id: string, revision: number) {
+    await db.execute(sql`
+      UPDATE project_workflow_designs SET design_issue_id = NULL
+       WHERE workflow_id = ${id} AND revision = ${revision}
+    `);
+  }
+
+  it('refuses a write naming no issue past a revision stored with none, where an earlier revision named an issue now closed', async () => {
+    const closed = await plantIssue(gitProject, 'closed', { mergedAt: new Date() });
+    const id = await proposedDesign(gitProject, 'null-after-closed-flow', closed.id);
+    ok(await decide(gitProject, id, 1, 'approve'));
+    ok(await writeChanged(gitProject, id, (await plantIssue(gitProject, 'open')).key));
+    await storedWithNone(id, 2);
+    ok(await decide(gitProject, id, 2, 'approve'));
+    const before = await designOf(gitProject, id);
+
+    const res = await writeChanged(gitProject, id);
+    expect(res.status, JSON.stringify(res.json)).toBe(422);
+    expect(codesOf(res)).toEqual(['WORKFLOW_DESIGN_ISSUE_REQUIRED']);
+    const [refusal] = res.json.error.refusals;
+    expect(refusal.path).toBe('/issue');
+    expect(refusal.detail).toContain(`${closed.key}, which is closed`);
+    const after = await designOf(gitProject, id);
+    expect(after.revision).toBe(before.revision);
+    expect(after.revisions).toHaveLength(2);
+  });
+
+  it('inherits the issue an earlier revision named past a revision stored with none, while that issue is still work', async () => {
+    const live = await plantIssue(gitProject, 'in_progress');
+    const id = await proposedDesign(gitProject, 'null-after-live-flow', live.id);
+    ok(await decide(gitProject, id, 1, 'approve'));
+    ok(await writeChanged(gitProject, id));
+    await storedWithNone(id, 2);
+    ok(await decide(gitProject, id, 2, 'approve'));
+
+    ok(await writeChanged(gitProject, id));
+    expect((await designOf(gitProject, id)).revisions[0]).toMatchObject({
+      revision: 3,
+      designIssueId: live.id,
+    });
+  });
+
   it('proposes with no issue where no revision ever named one', async () => {
     const id = await proposedDesign(gitProject, 'never-named-flow');
     ok(await decide(gitProject, id, 1, 'approve'));
@@ -312,6 +355,38 @@ describe('an approval records the approved revision on the issue that drew it (I
     const row = await markOf(dropped.id);
     expect(row?.status).toBe('dropped');
     expect(row?.merged_at).toBeNull();
+  });
+});
+
+describe('an approval leaves the mark of a design issue that already shipped (ISS-262)', () => {
+  it('writes no mark on a closed design issue, and its notice says the approval came after the close', async () => {
+    const shippedAt = new Date('2026-10-01T10:00:00Z');
+    const shippedLanding = 'workflow closed-flow rev 1, proposed';
+    const issue = await plantIssue(outsideProject, 'closed', {
+      mergedAt: shippedAt,
+      landing: shippedLanding,
+    });
+    const id = await proposedDesign(outsideProject, 'closed-flow', issue.id);
+
+    const approved = ok(await decide(outsideProject, id, 1, 'approve'));
+    expect(approved.designIssue).toMatchObject({
+      issueId: issue.id,
+      action: 'none',
+      status: 'closed',
+      mark: 'landed',
+    });
+    expect(approved.designIssue.why).toContain('closed');
+    const row = await markOf(issue.id);
+    expect(row?.status).toBe('closed');
+    expect(row?.merged_at?.getTime()).toBe(shippedAt.getTime());
+    expect(row?.merged_commit_sha).toBeNull();
+    expect(row?.merged_landing).toBe(shippedLanding);
+    const posted = await rows<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${issue.id}`,
+    );
+    const notice = posted.map((c) => c.body).find((b) => b.includes('was approved'));
+    expect(notice).toContain('after this issue was closed');
+    expect(notice).not.toContain('takes its next move');
   });
 });
 

@@ -47,6 +47,24 @@ fn a_write_before_the_declaration_does_not_speak_for_a_run_dispatched_later() {
 }
 
 #[test]
+fn a_write_between_the_declaration_and_the_take_does_not_speak_for_the_take() {
+    // Declared at 100; the master wrote on the issue at 150; the run took it at
+    // 200 and has written nothing since. The take is the later of the two, so
+    // the write at 150 is before it and does not count.
+    let rows = [take(200), row("comment.created", 150, None)];
+    assert_eq!(written_since(&rows, 100), Since::Unwritten);
+    let rows = [
+        take(200),
+        row("record.decision", 180, None),
+        row("record.wave", 120, None),
+    ];
+    assert_eq!(written_since(&rows, 100), Since::Unwritten);
+    // The same write after the take counts.
+    let rows = [row("comment.created", 250, None), take(200)];
+    assert_eq!(written_since(&rows, 100), Since::Written);
+}
+
+#[test]
 fn a_status_move_is_not_a_write_and_a_page_without_a_decision_reads_further() {
     let rows = [
         row("issue.statusChanged", 300, Some("open")),
@@ -235,4 +253,75 @@ fn porcelain_names_each_changed_path_once() {
         vec!["src/a.rs", "new.txt", "b.rs", "gone.rs"]
     );
     assert!(porcelain_paths("").is_empty());
+}
+
+/// The backticked spans of a refusal: the commands it tells the run to type.
+fn commands(r: &str) -> Vec<&str> {
+    r.split('`').skip(1).step_by(2).collect()
+}
+
+#[test]
+fn the_held_hint_sends_a_comment_body_core_accepts() {
+    let tree = PathBuf::from("/r/wt");
+    let v = decide(&facts(
+        &tree,
+        vec![(
+            "ISS-297".into(),
+            Issue::HeldUnwritten {
+                id: "0d9e6010-b39a-41c3-8702-1d1eab933311".into(),
+            },
+        )],
+    ));
+    let r = refused(&v);
+    let cmd = commands(r)
+        .into_iter()
+        .find(|c| c.starts_with("forge-runner api"))
+        .unwrap_or_else(|| panic!("no api command in {r}"));
+    assert!(
+        cmd.starts_with(
+            "forge-runner api issues/0d9e6010-b39a-41c3-8702-1d1eab933311/comments -d '"
+        ),
+        "{cmd}"
+    );
+    // `-d` takes JSON only: the argument between the quotes must parse, and
+    // carry the comment's `body` as a string.
+    let data = cmd
+        .split_once("-d '")
+        .and_then(|(_, rest)| rest.strip_suffix('\''))
+        .unwrap_or_else(|| panic!("no quoted -d argument in {cmd}"));
+    let body: serde_json::Value =
+        serde_json::from_str(data).unwrap_or_else(|e| panic!("{data} is not JSON: {e}"));
+    assert!(body["body"].is_string(), "{data}");
+}
+
+#[test]
+fn the_dirty_hint_names_removing_scratch_first_and_quotes_the_tree_as_one_word() {
+    let tree = PathBuf::from("/r/a tree/it's");
+    let mut f = facts(&tree, vec![]);
+    f.dirty = Ok(vec!["notes.tmp".into()]);
+    let v = decide(&f);
+    let r = refused(&v);
+    assert!(
+        r.contains("first delete what the run made and no longer needs"),
+        "{r}"
+    );
+    let cmd = commands(r)
+        .into_iter()
+        .find(|c| c.starts_with("git -C"))
+        .unwrap_or_else(|| panic!("no git command in {r}"));
+    assert_eq!(
+        cmd,
+        r#"git -C '/r/a tree/it'\''s' add -A && git -C '/r/a tree/it'\''s' commit -m '<what the commit holds>'"#
+    );
+}
+
+#[test]
+fn a_plain_path_is_left_bare_and_any_other_is_one_shell_word() {
+    assert_eq!(
+        sh_quote("/r/.claude/worktrees/ISS-297"),
+        "/r/.claude/worktrees/ISS-297"
+    );
+    assert_eq!(sh_quote("/r/a b"), "'/r/a b'");
+    assert_eq!(sh_quote("it's"), r#"'it'\''s'"#);
+    assert_eq!(sh_quote(""), "''");
 }

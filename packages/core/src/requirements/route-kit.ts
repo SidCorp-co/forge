@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import type { Context } from 'hono';
 import { z } from 'zod';
@@ -39,7 +40,7 @@ export const viewQuery = zValidator(
 );
 
 export const revisionFields = {
-  reason: z.string().max(4_000),
+  reason: z.string().max(REASON_TEXT_MAX),
   spec: specSchema.optional(),
   tldr: z.string().max(4_000).nullable().optional(),
   changeSummary: z.string().max(4_000).nullable().optional(),

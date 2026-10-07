@@ -27,7 +27,7 @@ export interface DesignLandingOutcome {
   status: string | null;
   /** The landing a re-point replaced, where it named one. */
   replaced: string | null;
-  /** Why nothing was written, where nothing was. */
+  /** Why nothing was written, where nothing was: a missing, archived, dropped or closed issue, or an undeclared source. */
   why: string | null;
 }
 
@@ -62,6 +62,15 @@ export async function markApprovedDesign(
   if (row.archived_at != null) return none('the design issue is archived', kind, status);
   if (status === 'dropped') {
     return none('the design issue was dropped, so nothing of it landed', kind, status);
+  }
+  // `closed` says the issue shipped, and its mark is what the release that closed it read; an
+  // approval after that is not this issue's landing, so the mark stays as it was shipped (FB-53)
+  if (status === 'closed') {
+    return none(
+      'the design issue was closed before this approval, so its mark stays as it shipped',
+      kind,
+      status,
+    );
   }
   const shape = await readLandingShape(String(row.project_id), tx);
   if (shape === null) return none(SOURCE_UNDECLARED, kind, status);
@@ -105,6 +114,9 @@ export function designLandingNotice(
         ? 'Its landing now names the approved revision.'
         : 'This project lands its work in git, where a mark names no revision, so the mark is a timestamp and this notice names the revision.';
     return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it. ${names}${was} The approval moves no status: this issue's run, or the release that claims it, takes its next move.`;
+  }
+  if (outcome.action === 'none' && outcome.status === 'closed') {
+    return `${design} after this issue was closed. A closed issue has shipped, so the approval is not recorded as its landing and its merged mark stays as it shipped. A further change to this design names the issue that draws it.`;
   }
   return null;
 }

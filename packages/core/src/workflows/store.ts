@@ -178,16 +178,20 @@ export type InheritedDesignIssue =
   | { issueId: string | null }
   | { lapsed: { issueId: string; issSeq: number; status: string } };
 
-// A revision a write proposes again is drawn under the issue the one it supersedes named, while that
-// issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38 though it was
-// drawn under ISS-64 (FB-54). Where that issue is closed or dropped the writer names the drawing issue,
-// and the write is refused until it does (`design.ts:designIssueLapsedRefusal`); where no revision
-// ever named one there is nothing to lose and none is inherited.
+// A revision a write proposes again is drawn under the issue the latest revision to name one named,
+// while that issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38
+// though it was drawn under ISS-64 (FB-54). The walk goes past revisions that name none, because
+// those were stored with null after their issue closed (patient-data-flow r8, FB-54), and reading
+// only the newest would let the next write through with none as well. Where that issue is closed or
+// dropped the writer names the drawing issue, and the write is refused until it does
+// (`design.ts:designIssueLapsedRefusal`); where no revision ever named one there is nothing to lose
+// and none is inherited.
 export async function designIssueToInherit(
   tx: Tx,
   workflowId: string,
 ): Promise<InheritedDesignIssue> {
-  const prior = (await designsOf(tx, workflowId))[0]?.designIssueId ?? null;
+  const prior =
+    (await designsOf(tx, workflowId)).find((d) => d.designIssueId !== null)?.designIssueId ?? null;
   if (!prior) return { issueId: null };
   const [issue] = await tx
     .select({ status: issues.status, issSeq: issues.issSeq })
