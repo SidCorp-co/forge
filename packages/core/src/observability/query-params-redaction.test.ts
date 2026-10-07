@@ -2,26 +2,14 @@ import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observabili
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
-
-const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c3ludGhldGlj$c3ludGhldGljLWhhc2g';
-const EMAIL = 'dup@example.test';
-const STATEMENT = 'insert into "users" ("email", "password_hash") values ($1, $2)';
-
-function driverError(message: string, extra: Record<string, unknown> = {}): Error {
-  return Object.assign(new Error(message), { severity: 'ERROR', ...extra });
-}
-
-function duplicate(): DrizzleQueryError {
-  return new DrizzleQueryError(
-    STATEMENT,
-    [EMAIL, HASH],
-    driverError('duplicate key value violates unique constraint "users_email_unique"', {
-      code: '23505',
-      constraint_name: 'users_email_unique',
-      detail: `Key (email)=(${EMAIL}) already exists.`,
-    }),
-  );
-}
+import {
+  driverError,
+  duplicate,
+  EMAIL,
+  HASH,
+  pgRefusal,
+  STATEMENT,
+} from './query-params.fixture.js';
 
 describe('redactQueryParams', () => {
   it('keeps the statement and the driver reason, and none of the bound values', () => {
@@ -138,6 +126,7 @@ describe('redactQueryParams', () => {
       `date/time field value out of range: ${REDACTED}`,
     ],
     ['value "99999999999" is out of range for type integer', `value ${REDACTED}`],
+    ['invalid value "zq9f" for "YYYY"', `invalid value ${REDACTED}`],
   ])("redacts a value the database's own text quotes, with no error to read: %s", (text, kept) => {
     const out = redactQueryParams({ reason: `refused: ${text}` });
     expect(out.reason).toBe(`refused: ${kept}`);
@@ -168,13 +157,6 @@ describe('redactQueryParams', () => {
     expect(redactQueryParams('route params: id')).toBe('route params: id');
   });
 });
-
-/** A driver error as postgres-js throws it: its bound values ride non-enumerable, as there. */
-function pgRefusal(message: string, fields: Record<string, unknown>, bound: unknown[]): Error {
-  const pg = Object.assign(new Error(message), { severity: 'ERROR', ...fields });
-  Object.defineProperty(pg, 'parameters', { value: bound, enumerable: false });
-  return pg;
-}
 
 const DOCUMENT = '{"note":"zq9-secret-document"}';
 

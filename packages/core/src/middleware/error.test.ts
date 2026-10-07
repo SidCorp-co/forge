@@ -292,3 +292,118 @@ describe('error middleware in production', () => {
     expect(text).not.toContain('zq9');
   });
 });
+
+/** Each way a value's text reaches a body through what `JSON.stringify` calls, not a field it holds. */
+const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
+  ['through its own toJSON', (text) => ({ toJSON: () => text })],
+  ['through a toJSON it inherits', (text) => Object.create({ toJSON: () => text })],
+  [
+    'through a getter',
+    (text) => Object.defineProperty({}, 'reason', { get: () => text, enumerable: true }),
+  ],
+  [
+    "through a boxed string's Symbol.toPrimitive",
+    (text) => Object.assign(new String('ordinary'), { [Symbol.toPrimitive]: () => text }),
+  ],
+  [
+    "through a boxed string's toString",
+    (text) => Object.assign(new String('ordinary'), { toString: () => text }),
+  ],
+  ['as a field of a tagged object', (text) => ({ [Symbol.toStringTag]: 'Reading', reason: text })],
+];
+
+/** A driver message only the error beside it can tell holds a bound value: no anchor names it. */
+function relationRefusal(): Error {
+  const pg = Object.assign(new Error('relation "zq" does not exist'), {
+    severity: 'ERROR',
+    code: '42P01',
+  });
+  Object.defineProperty(pg, 'parameters', { value: ['zq'], enumerable: false });
+  return pg;
+}
+
+function hookedApp(hook: (text: string) => unknown, handler: typeof errorHandler) {
+  const refuse = (details: unknown) => {
+    throw new HTTPException(400, { message: 'bad input', cause: { code: 'BAD', details } });
+  };
+  const app = new Hono<{ Variables: RequestIdVars }>();
+  app.use('*', requestId());
+  app.get('/failed-query', () => refuse({ reading: hook(failedInsert().message) }));
+  app.get('/failed-query-as-details', () => refuse(hook(failedInsert().message)));
+  app.get('/quoted-value', () =>
+    refuse({ reading: hook('invalid input syntax for type uuid: "zq9"') }),
+  );
+  app.get('/beside-its-error', () => {
+    const pg = relationRefusal();
+    return refuse({ error: pg, reading: hook(pg.message) });
+  });
+  app.onError(handler);
+  return app;
+}
+
+const HOOKED_PATHS = [
+  '/failed-query',
+  '/failed-query-as-details',
+  '/quoted-value',
+  '/beside-its-error',
+];
+
+describe.each(SERIALIZER_HOOKS)(
+  'error middleware, given details whose text renders %s',
+  (_, hook) => {
+    it.each(HOOKED_PATHS)('answers %s with none of it outside production', async (path) => {
+      const res = await hookedApp(hook, errorHandler).request(path);
+      const text = await res.text();
+      expect(res.status).toBe(400);
+      expect(text).not.toMatch(LEAKS);
+      expect(text).not.toContain('zq');
+    });
+
+    it.each(HOOKED_PATHS)('answers %s with none of it in production', async (path) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.resetModules();
+      const prod = await import('./error.js');
+      vi.unstubAllEnvs();
+      const text = await (await hookedApp(hook, prod.errorHandler).request(path)).text();
+      expect(text).not.toMatch(LEAKS);
+      expect(text).not.toContain('zq');
+    });
+  },
+);
+
+describe('error middleware, given details whose hooks answer differently when asked again', () => {
+  it.each([false, true])(
+    'asks each once and answers 400 with none of it (production: %s)',
+    async (prod) => {
+      let asked = 0;
+      let reads = 0;
+      const when = new Date(Date.UTC(2026, 9, 7));
+      when.toISOString = () => (++asked === 1 ? 'ordinary' : failedInsert().message);
+      const details = {
+        when,
+        once: Object.defineProperty({}, 'reason', {
+          get: () => {
+            if (++reads > 1) throw new Error('read twice');
+            return 'ordinary';
+          },
+          enumerable: true,
+        }),
+      };
+      const app = new Hono<{ Variables: RequestIdVars }>();
+      app.get('/x', () => {
+        throw new HTTPException(400, { message: 'bad input', cause: { code: 'BAD', details } });
+      });
+      if (prod) vi.stubEnv('NODE_ENV', 'production');
+      vi.resetModules();
+      const handler = (await import('./error.js')).errorHandler;
+      vi.unstubAllEnvs();
+      app.onError(handler);
+      const res = await app.request('/x');
+      const text = await res.text();
+      expect(res.status).toBe(400);
+      expect([asked, reads]).toEqual([1, 1]);
+      expect(text).not.toMatch(LEAKS);
+      expect(JSON.parse(text).details).toEqual({ when: 'ordinary', once: { reason: 'ordinary' } });
+    },
+  );
+});

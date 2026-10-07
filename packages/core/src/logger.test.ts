@@ -1,33 +1,7 @@
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import type { Logger } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { createLogger } from './logger.js';
-
-const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c3ludGhldGlj$bG9nZ2VyLWhhc2g';
-const EMAIL = 'dup@example.test';
-
-function failedInsert(): DrizzleQueryError {
-  const driver = Object.assign(
-    new Error('duplicate key value violates unique constraint "users_email_unique"'),
-    {
-      severity: 'ERROR',
-      code: '23505',
-      constraint_name: 'users_email_unique',
-      detail: `Key (email)=(${EMAIL}) already exists.`,
-    },
-  );
-  return new DrizzleQueryError(
-    'insert into "users" ("email", "password_hash") values ($1, $2)',
-    [EMAIL, HASH],
-    driver,
-  );
-}
-
-function capture(): { lines: string[]; log: Logger } {
-  const lines: string[] = [];
-  const log = createLogger({ level: 'debug' }, { write: (s: string) => lines.push(s) });
-  return { lines, log };
-}
+import { capture, EMAIL, failedInsert, HASH, refusal } from './logger.fixture.js';
 
 describe('the core logger', () => {
   it.each([
@@ -237,13 +211,6 @@ describe('the core logger, given what is not an Error', () => {
     }
   });
 });
-
-/** A driver error as postgres-js throws it, its bound values non-enumerable as there. */
-function refusal(message: string, fields: Record<string, unknown>, bound: unknown[]): Error {
-  const pg = Object.assign(new Error(message), { severity: 'ERROR', ...fields });
-  Object.defineProperty(pg, 'parameters', { value: bound, enumerable: false });
-  return pg;
-}
 
 const DOCUMENT = '{"note":"zq9-secret-document"}';
 
