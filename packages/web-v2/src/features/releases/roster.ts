@@ -25,6 +25,14 @@ export interface ReleaseRosterEntry {
   claimedByRunId: string | null;
   /** Empty where the close stands. A row carrying one is refused by the release, so none is offered. */
   closeRefusals: CloseRefusal[];
+  /** Where the last release failed this close short of a decision; the next one meets it again. */
+  closeFailure: CloseFailure | null;
+}
+
+/** A close that failed on a fault nothing on the issue clears, and the release that met it (ISS-1381 r4). */
+export interface CloseFailure {
+  reason: string;
+  version: string | null;
 }
 
 /**
@@ -136,6 +144,19 @@ function refusalsAt(o: Record<string, unknown>, endpoint: string, where: string)
   });
 }
 
+function failureAt(o: Record<string, unknown>, endpoint: string, where: string): CloseFailure | null {
+  const v = keyAt(o, "closeFailure");
+  if (v === null) return null;
+  if (typeof v !== "object" || v === undefined || Array.isArray(v)) {
+    throw new RosterShapeError(endpoint, where, "an object or null", v);
+  }
+  const f = v as Record<string, unknown>;
+  return {
+    reason: stringAt(f, "reason", endpoint, `${where}.reason`),
+    version: nullableStringAt(f, "version", endpoint, `${where}.version`),
+  };
+}
+
 function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEntry {
   const o = objectAt(raw, endpoint, where);
   return {
@@ -146,7 +167,14 @@ function entryAt(raw: unknown, endpoint: string, where: string): ReleaseRosterEn
     waitingDays: nullableNumberAt(o, "waitingDays", endpoint, `${where}.waitingDays`),
     claimedByRunId: nullableStringAt(o, "claimedByRunId", endpoint, `${where}.claimedByRunId`),
     closeRefusals: refusalsAt(o, endpoint, `${where}.closeRefusals`),
+    closeFailure: failureAt(o, endpoint, `${where}.closeFailure`),
   };
+}
+
+/** "The last release (version 0.6.0) could not close this": who met the failure, in words. */
+export function failedCloseLead(failure: CloseFailure, what: string): string {
+  const which = failure.version ? ` (version ${failure.version})` : "";
+  return `The last release${which} could not close ${what}: ${failure.reason.replace(/\.$/, "")}.`;
 }
 
 /**

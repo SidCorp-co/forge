@@ -50,6 +50,7 @@ vi.mock("../issues/api", async () => {
             closeRefusals: server.answered
               ? []
               : [{ code: "OPEN_QUESTIONS", reason: "holds 1 open question", clears: "Answer it." }],
+            closeFailure: null,
           },
         ],
       })),
@@ -57,7 +58,17 @@ vi.mock("../issues/api", async () => {
   };
 });
 
+// The park the waiting banner and the status menu read: an open question until it is answered.
+vi.mock("../issues/detail-api", () => ({
+  issueDetailApi: {
+    getPark: vi.fn(async () => ({
+      park: server.answered ? null : { status: "awaiting_release", owes: "information", openQuestionIds: ["q-1"] },
+    })),
+  },
+}));
+
 const { useAnswerQuestion } = await import("./hooks");
+const { useIssuePark } = await import("../issues/park");
 const { useReleaseRoster } = await import("../issues/hooks");
 
 afterEach(() => {
@@ -83,5 +94,28 @@ describe("answering a question on an issue at the release gate", () => {
     });
 
     await waitFor(() => expect(result.current.roster.data?.issues[0]?.closeRefusals).toEqual([]));
+  });
+});
+
+// ISS-1381 r4: the waiting banner and the menu's "Answer the question" read the park, which is keyed
+// under the issue's comments, so an answer that leaves it cached leaves both up until a reload.
+describe("answering the last open question on an issue at the release gate", () => {
+  it("refreshes the issue's park, so the page stops saying it waits for information", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => ({ park: useIssuePark(ISSUE, "awaiting_release"), answer: useAnswerQuestion(ISSUE) }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.park.state).toBe("ready"));
+    expect(result.current.park).toMatchObject({ park: { owes: "information" } });
+
+    await act(async () => {
+      await result.current.answer.mutateAsync({ questionId: "q-1", text: "acme", round: 1 });
+    });
+
+    await waitFor(() => expect(result.current.park).toEqual({ state: "ready", park: null }));
   });
 });

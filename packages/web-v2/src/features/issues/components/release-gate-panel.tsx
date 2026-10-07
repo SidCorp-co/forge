@@ -13,6 +13,7 @@ import {
   MonoTag,
   Skeleton,
 } from "@/design";
+import { failedCloseLead } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import Link from "next/link";
@@ -247,6 +248,11 @@ function RosterRow({
         <p className="fg-caption text-muted pl-6">
           A release could not close this:{" "}
           {issue.closeRefusals.map((r) => `${r.reason}. ${r.clears}`).join(" ")}
+        </p>
+      ) : null}
+      {!claimed && !refused && issue.closeFailure ? (
+        <p className="fg-caption text-muted pl-6">
+          {`${failedCloseLead(issue.closeFailure, "this")} A release fails the same way until whoever operates Forge fixes it.`}
         </p>
       ) : null}
     </li>

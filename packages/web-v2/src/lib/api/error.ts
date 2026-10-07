@@ -1,3 +1,4 @@
+import { claimConflictSentence } from './claim-conflict';
 import { ApiError } from './client';
 
 const FRIENDLY_CODES: Record<string, string> = {
@@ -72,6 +73,8 @@ export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const mergeMark = mergeMarkSentence(err);
     if (mergeMark) return mergeMark;
+    const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
+    if (claimed) return claimed;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     if (err.message) return err.message;
     return `Request failed (${err.status})`;

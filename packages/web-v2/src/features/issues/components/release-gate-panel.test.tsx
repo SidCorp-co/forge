@@ -40,6 +40,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     waitingDays: 0,
     claimedByRunId: null,
     closeRefusals: [],
+    closeFailure: null,
   },
   {
     id: "iss-2",
@@ -49,6 +50,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     waitingDays: 2,
     claimedByRunId: null,
     closeRefusals: [],
+    closeFailure: null,
   },
   {
     id: "iss-3",
@@ -58,6 +60,7 @@ const ISSUES: ReleaseRoster["issues"] = [
     waitingDays: 0,
     claimedByRunId: "run-9",
     closeRefusals: [],
+    closeFailure: null,
   },
 ];
 
@@ -230,6 +233,7 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
         clears: "Mark it merged with its landing.",
       },
     ],
+    closeFailure: null,
   };
 
   it("cannot be selected, and says on its row what the close is refused for and what clears it", () => {
@@ -258,6 +262,31 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
     renderPanel();
     expect(screen.getByRole("checkbox", { name: "Select every issue that can be released" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /^Release now$/ })).toBeDisabled();
+  });
+});
+
+// ISS-1381 r4: a release would meet the same fault again, so the row says so before the press.
+describe("ReleaseGatePanel — a row whose last release failed its close", () => {
+  const FAILED: ReleaseRoster["issues"][number] = {
+    id: "iss-7",
+    displayId: "ISS-7",
+    title: "Ledger rows carry their tenant",
+    mergedAt: "2026-08-26T10:00:00.000Z",
+    waitingDays: 0,
+    claimedByRunId: null,
+    closeRefusals: [],
+    closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" },
+  };
+
+  it("stays selectable and says on its row that a release fails the same way until it is fixed", () => {
+    state({ issues: [...ISSUES, FAILED] });
+    renderPanel();
+    expect(screen.getByRole("checkbox", { name: "Select ISS-7 for release" })).not.toBeDisabled();
+    expect(
+      screen.getByText(
+        "The last release (version 0.6.0) could not close this: the database refused the write (23514). A release fails the same way until whoever operates Forge fixes it.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 

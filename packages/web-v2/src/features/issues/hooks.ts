@@ -2,7 +2,7 @@
 
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -337,14 +337,41 @@ export function useReleaseRoster(projectId: string | undefined) {
   });
 }
 
-/** `showsRefusal` answers, when a refusal lands, whether the caller is showing it itself. */
+type BatchReleaseVars = { issueIds: string[]; carried?: CarriedDecisionBody[] };
+
+/**
+ * `showsRefusal` answers, when a refusal lands, whether the caller is showing it itself. One release
+ * at a time: a press while one is on the wire is dropped, held by a ref because `isPending` reaches
+ * the button only after a render, which a double click beats (ISS-1381 r4).
+ */
 export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefusal?: () => boolean } = {}) {
+  const mutation = useBatchReleaseMutation(projectId, showsRefusal);
+  const inFlight = useRef(false);
+  const { mutate: send } = mutation;
+  const mutate = useCallback(
+    (vars: BatchReleaseVars, options?: Parameters<typeof send>[1]) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      send(vars, {
+        ...options,
+        onSettled: (...args) => {
+          inFlight.current = false;
+          options?.onSettled?.(...args);
+        },
+      });
+    },
+    [send],
+  );
+  return { ...mutation, mutate };
+}
+
+function useBatchReleaseMutation(projectId: string, showsRefusal: (() => boolean) | undefined) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation<
     CreateReleaseBatchResult,
     unknown,
-    { issueIds: string[]; carried?: CarriedDecisionBody[] }
+    BatchReleaseVars
   >({
     mutationFn: ({ issueIds, carried }) => releaseBatchApi.create(projectId, issueIds, carried),
     onSuccess: (result) => {

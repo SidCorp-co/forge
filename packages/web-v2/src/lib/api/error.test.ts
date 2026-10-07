@@ -149,3 +149,48 @@ describe('formatApiError — the merge-mark refusals, in the web\'s words', () =
     expect(msg).toContain('nothing changed');
   });
 });
+
+// ISS-1381 r4 — core's CLAIM_CONFLICT sentence names the API routes an agent reads a run by; a
+// person pressing Release now has none of them, so the page says each standing in its own words.
+describe('formatApiError — CLAIM_CONFLICT', () => {
+  const conflict = (conflicts: unknown[]) =>
+    new ApiError(
+      409,
+      '1 issue named here cannot be claimed for a release. ISS-11 is claimed by release batch r-1, which is still running: read where it stands with GET /api/projects/p/release-batches/r-1/state.',
+      'CLAIM_CONFLICT',
+      { issueIds: ['i-1'], conflicts, projectId: 'p', gateStatus: 'awaiting_release' },
+    );
+
+  it('says an issue is already in a running release, and names no route', () => {
+    const msg = formatApiError(
+      conflict([
+        { id: 'i-1', key: 'ISS-11', standing: 'claimed', runId: 'r-1', runEnded: false, claimer: 'batch', status: 'awaiting_release' },
+      ]),
+    );
+    expect(msg).toContain('ISS-11 is already in a release that is still running');
+    expect(msg).not.toMatch(/\/api\/|GET |POST /);
+  });
+
+  it('names each standing a refusal carries: an ended claim, a status, an absent issue', () => {
+    const msg = formatApiError(
+      conflict([
+        { id: 'i-1', key: 'ISS-1', standing: 'claimed', runId: 'r-2', runEnded: true, claimer: 'batch', status: 'releasing' },
+        { id: 'i-2', key: 'ISS-2', standing: 'claimed', runId: 'r-2', runEnded: true, claimer: 'batch', status: 'awaiting_release' },
+        { id: 'i-3', key: 'ISS-3', standing: 'status', status: 'closed' },
+        { id: 'i-4', key: 'ISS-4', standing: 'status', status: 'in_progress' },
+        { id: 'x', key: 'x', standing: 'absent' },
+      ]),
+    );
+    expect(msg).toContain('ISS-1 is still held by a release that has ended');
+    expect(msg).toContain('ISS-2 is still marked as in a release that has ended');
+    expect(msg).toContain('ISS-3 is Closed');
+    expect(msg).toContain('ISS-4 is In progress, not at the release gate');
+    expect(msg).toContain('x is no issue on this project');
+    expect(msg).not.toMatch(/\/api\/|GET |POST /);
+  });
+
+  it('keeps the server sentence where the refusal carries no standings to compose from', () => {
+    const err = new ApiError(409, 'Nothing here can be claimed.', 'CLAIM_CONFLICT', { issueIds: ['i-1'] });
+    expect(formatApiError(err)).toBe('Nothing here can be claimed.');
+  });
+});
