@@ -6,16 +6,16 @@ import { useState } from "react";
 import { Icon, useDebounced } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { productCopy } from "@/lib/i18n/product-copy";
-import { type IssuePick, issuesApi } from "../api";
+import { type IssuePick, pickIssues } from "./api";
 
-export type { IssuePick } from "../api";
+export type { IssuePick } from "./api";
 
 /** The project's issues matching `text`, read once the person stops typing. */
 function useIssuePick(projectId: string, text: string) {
   const q = useDebounced(text.trim(), 200);
   const query = useQuery({
     queryKey: ["issues", "pick", projectId, q],
-    queryFn: () => issuesApi.pick(projectId, q),
+    queryFn: () => pickIssues(projectId, q),
     enabled: Boolean(projectId) && q.length > 0,
     staleTime: 15_000,
   });

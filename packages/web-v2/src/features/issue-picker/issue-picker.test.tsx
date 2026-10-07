@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import type { IssuePick } from "../api";
+import type { IssuePick } from "./api";
 import { IssuePicker } from "./issue-picker";
 
 const ROWS = [

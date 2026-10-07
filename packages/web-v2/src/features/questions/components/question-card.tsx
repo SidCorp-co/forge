@@ -23,7 +23,7 @@ import {
   StatusBadge,
   Textarea,
 } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issues/components/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
 import {
   type AgentQuestion,
   type AnswerInput,

@@ -3,7 +3,7 @@
 import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";
 import { enumLabel, Input, NativeSelect } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issues/components/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import type { TargetChoice } from "../api";

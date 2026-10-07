@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
-import { type IssuePick, IssuePicker } from "@/features/issues/components/issue-picker";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
