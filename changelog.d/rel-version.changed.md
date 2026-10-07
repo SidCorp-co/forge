@@ -1,1 +1,0 @@
-**A release keeps its version across attempts.** Re-cutting the same issues reuses the version unless a tag, commit, artifact or notice already carries it, which the page names; each release lists its attempts, and the list counts releases.

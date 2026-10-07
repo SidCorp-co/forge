@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.144] - 2026-10-07
+
+A release keeps its version across failed attempts; the list counts releases
+
+### Changed
+
+- **A release keeps its version across attempts.** Re-cutting the same issues reuses the version unless a tag, commit, artifact or notice already carries it, which the page names; each release lists its attempts, and the list counts releases.
+
 ## [0.4.0-dev.143] - 2026-10-07
 
 Project memory gets a page: see, correct, retire and date what Forge remembers
