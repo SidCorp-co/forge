@@ -17,7 +17,6 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import type { CoolifyConfig } from '../integrations/deploy/index.js';
 import {
   effectiveConfig,
-  findLastOutbound,
   findLastOutboundForTarget,
   listActiveDeployBindingsForProvider,
 } from '../integrations/index.js';
@@ -205,8 +204,8 @@ export async function runCoolifyDeploy(input: {
 
 /**
  * One row PER TARGET (backend / frontend / …) so an operator can see each app
- * of a multi-target integration independently. Legacy/empty targets fall back
- * to a single integration-level row.
+ * of a multi-target integration independently. A binding with no targets is
+ * refused by name: the write schema never lets one in.
  */
 export async function coolifyDeliveryStatus(input: {
   projectId: string;
@@ -221,19 +220,10 @@ export async function coolifyDeliveryStatus(input: {
         const base = { integrationId: row.id, environment: row.environment };
         const breakerOpen = row.breakerOpenedAt !== null;
         if (targets.length === 0) {
-          const last = await findLastOutbound(row.id);
-          const response = (last?.response ?? null) as { deployment_uuid?: string } | null;
-          return [
-            {
-              ...base,
-              targetId: null,
-              targetLabel: null,
-              deploymentUuid: response?.deployment_uuid ?? null,
-              status: last?.status ?? null,
-              breakerOpen,
-              createdAt: last?.createdAt ?? null,
-            },
-          ];
+          throw refuseCoolify(
+            'COOLIFY_TARGET_UNRESOLVED',
+            `coolify binding ${row.id} has no deploy targets; coolifyConfigSchema requires at least one on every write, so a row without any was stored outside it`,
+          );
         }
         return Promise.all(
           targets.map(async (t) => {
