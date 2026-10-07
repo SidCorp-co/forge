@@ -211,6 +211,106 @@ describe('a park may wait only on the revision awaiting its approver', () => {
   });
 });
 
+const promptOf = async (questionId: string | undefined) =>
+  (
+    await rows<{ prompt: string }>(
+      sql`SELECT steps -> 0 ->> 'prompt' AS prompt FROM agent_questions WHERE id = ${questionId}`,
+    )
+  )[0]?.prompt ?? '';
+
+describe('a decision park naming no revision waits on the one proposed under its issue', () => {
+  it('links the one revision awaiting its approver, says so, and its approval answers the park', async () => {
+    const issue = await plantIssue('open');
+    const workflowId = await proposedDesign('drawn-here-flow', `ISS-${seq}`);
+    ok(await park(issue, { needs: 'approve the design so the build can start' }));
+    const [asked] = await questionsOn(issue);
+    expect(asked).toMatchObject({
+      status: 'open',
+      awaits_workflow_id: workflowId,
+      awaits_revision: 1,
+    });
+    expect(await promptOf(asked?.id)).toContain(
+      '(linked to drawn-here-flow r1, proposed under this issue',
+    );
+
+    ok(await decide(workflowId, 1, 'approve'));
+    const [settled] = await questionsOn(issue);
+    expect(settled).toMatchObject({ status: 'answered', answered_by: ownerId });
+    await settleOutbox();
+    expect(await statusOf(issue)).toBe('open');
+  });
+
+  it('links even with no needs and a person already owing an answer, so the decision still reaches it', async () => {
+    const issue = await plantIssue('open');
+    const workflowId = await proposedDesign('drawn-here-owed-flow', `ISS-${seq}`);
+    ok(
+      await say('master', 'POST', '/api/questions', {
+        issueId: issue,
+        prompt: 'which tenant is this for?',
+        options: [
+          {
+            id: 'a',
+            label: 'tenant A',
+            authority: 'writer',
+            bindsTo: 'session',
+            executedBy: 'agent',
+          },
+          {
+            id: 'b',
+            label: 'tenant B',
+            authority: 'writer',
+            bindsTo: 'session',
+            executedBy: 'agent',
+          },
+        ],
+        recommendedOptionId: 'a',
+      }),
+      201,
+    );
+    const res = await park(issue, {});
+    expect(res.status, JSON.stringify(res.json)).toBe(200);
+    const linked = (await questionsOn(issue)).filter((q) => q.awaits_workflow_id === workflowId);
+    expect(linked).toHaveLength(1);
+    expect(linked[0]).toMatchObject({ status: 'open', awaits_revision: 1 });
+  });
+
+  it('refuses a park over two revisions awaiting their approver, naming both, writing nothing', async () => {
+    const issue = await plantIssue('open');
+    const first = await proposedDesign('drawn-here-first-flow', `ISS-${seq}`);
+    const second = await proposedDesign('drawn-here-second-flow', `ISS-${seq}`);
+    const res = await park(issue, { needs: 'approve the designs' });
+    expect(res.status, JSON.stringify(res.json)).toBe(422);
+    expect(codesOf(res)).toEqual(['QUESTION_DESIGN_AMBIGUOUS']);
+    const said = JSON.stringify(res.json);
+    expect(said).toContain('drawn-here-first-flow');
+    expect(said).toContain(first);
+    expect(said).toContain('drawn-here-second-flow');
+    expect(said).toContain(second);
+    expect(said).toContain('awaitsDesign');
+    expect(await statusOf(issue)).toBe('open');
+    expect(await questionsOn(issue)).toEqual([]);
+
+    ok(await park(issue, { awaitsDesign: { workflowId: second, revision: 1 } }));
+    expect((await questionsOn(issue))[0]).toMatchObject({ awaits_workflow_id: second });
+  });
+
+  it('links nothing where no revision under the issue awaits its approver, or where the park is not for a decision', async () => {
+    const decided = await plantIssue('open');
+    const workflowId = await proposedDesign('drawn-here-decided-flow', `ISS-${seq}`);
+    ok(await decide(workflowId, 1, 'approve'));
+    ok(await park(decided, { needs: 'record the landing for this approval' }));
+    expect((await questionsOn(decided))[0]).toMatchObject({
+      status: 'open',
+      awaits_workflow_id: null,
+    });
+
+    const forAnswer = await plantIssue('open');
+    await proposedDesign('drawn-here-answer-flow', `ISS-${seq}`);
+    ok(await park(forAnswer, { needs: 'the test account', waitingKind: 'needs_resource' }));
+    expect((await questionsOn(forAnswer))[0]).toMatchObject({ awaits_workflow_id: null });
+  });
+});
+
 describe('what else a design write or decision does to a waiting park', () => {
   it('asks again of the revision that superseded the one waited on, and keeps the park', async () => {
     const workflowId = await proposedDesign('superseded-flow');
@@ -296,7 +396,7 @@ describe('what else a design write or decision does to a waiting park', () => {
   it('on return over a parked design issue, answers 200, posts the reason and makes no move of its own', async () => {
     const unlinked = await plantIssue('open');
     const unlinkedFlow = await proposedDesign('parked-unlinked-flow', `ISS-${seq}`);
-    ok(await park(unlinked, { needs: 'which SLA applies?' }));
+    ok(await park(unlinked, { needs: 'which SLA applies?', waitingKind: 'needs_answer' }));
     const returned = ok(await decide(unlinkedFlow, 1, 'return', 'the SLA is 48h by contract'));
     expect(returned.designIssue).toMatchObject({ issueId: unlinked, action: 'commented' });
     await settleOutbox();

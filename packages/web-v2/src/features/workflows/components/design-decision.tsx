@@ -1,12 +1,14 @@
 "use client";
 
 import type { OrphanedTrace } from "@forge/contracts/workflow-health";
+import type { DesignApprovalBlock, DesignLeftStale } from "@forge/contracts/workflows";
 import Link from "next/link";
 import { useState } from "react";
-import { Button, Textarea } from "@/design";
+import { Button, LEGEND, Textarea, Tooltip } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+import { blockedWords, decisionRefusalWords, leavesStaleWords } from "../decision-words";
 import type { useDesignDecision } from "../hooks";
 import type { DesignDecisionBody, WorkflowDesign } from "../types";
 
@@ -17,13 +19,54 @@ export function decidableRevision(d: WorkflowDesign): number | null {
   return d.proposedRevision;
 }
 
-export function ApproveAction({ revision, decide }: { revision: number | null; decide: Decide }) {
+/** Why Approve is off, in the viewer's language, when core already knows the approval would be refused. */
+function useBlockedReason(block: DesignApprovalBlock | null | undefined): string | null {
   const t = useCopy();
+  const language = useInterfaceLanguage();
+  return block ? blockedWords(block, t, language) : null;
+}
+
+export function ApproveAction({ revision, decide, block }: { revision: number | null; decide: Decide; block?: DesignApprovalBlock | null }) {
+  const t = useCopy();
+  const blocked = useBlockedReason(block);
   if (revision === null) return null;
-  return (
-    <Button size="sm" variant="primary" onClick={() => decide.mutate({ revision, decision: "approve" })} disabled={decide.isPending} data-testid="design-approve">
+  const button = (
+    <Button size="sm" variant="primary" onClick={() => decide.mutate({ revision, decision: "approve" })} disabled={decide.isPending || blocked !== null} aria-description={blocked ?? undefined} data-testid="design-approve">
       {t("workflows.approveRev", { r: revision })}
     </Button>
+  );
+  return blocked ? (
+    <Tooltip label={blocked} side="bottom" multiline>
+      <span className="inline-flex">{button}</span>
+    </Tooltip>
+  ) : (
+    button
+  );
+}
+
+/**
+ * What the approver reads before the click: why Approve is off where core already knows the base
+ * refuses it, and the designs approving this revision leaves on a stale base.
+ */
+export function ApprovalReading({ revision, block, leavesStale }: { revision: number | null; block?: DesignApprovalBlock | null; leavesStale?: readonly DesignLeftStale[] }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const blocked = useBlockedReason(block);
+  const stale = revision !== null && leavesStale ? leavesStaleWords(revision, leavesStale, t, language) : null;
+  if (revision === null || (!blocked && !stale)) return null;
+  return (
+    <span className="grid basis-full gap-1 text-12-5">
+      {blocked ? (
+        <span className="font-medium" style={{ color: LEGEND.err.fg }} data-testid="design-approve-blocked">
+          {blocked}
+        </span>
+      ) : null}
+      {stale ? (
+        <span className="text-muted" data-testid="design-leaves-stale">
+          {stale}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -47,15 +90,16 @@ const NOTE_MODES: Record<NoteMode, { open: ProductCopyKey; label: ProductCopyKey
 };
 
 // The acts that carry text sit in the banner that names the turn they answer, never beside the header's one-click Approve: an approval with its conditions, or a return with its reason, one box open at a time and each keeping its own draft
-export function DecisionNoteControl({ revision, decide }: { revision: number | null; decide: Decide }) {
+export function DecisionNoteControl({ revision, decide, approveBlocked = false }: { revision: number | null; decide: Decide; approveBlocked?: boolean }) {
   const t = useCopy();
   const [mode, setMode] = useState<NoteMode | null>(null);
   const [drafts, setDrafts] = useState<Record<NoteMode, string>>({ approve: "", return: "" });
   if (revision === null) return null;
   if (mode === null) {
+    const modes: NoteMode[] = approveBlocked ? ["return"] : ["approve", "return"];
     return (
       <span className="flex flex-wrap gap-x-3 gap-y-1">
-        {(["approve", "return"] as const).map((m) => (
+        {modes.map((m) => (
           <Button
             key={m}
             size="sm"
@@ -96,7 +140,9 @@ export function DecisionNoteControl({ revision, decide }: { revision: number | n
 }
 
 export function DecisionError({ decide }: { decide: Decide }) {
-  return <RefusalLine error={decide.isError ? decide.error : null} testid="design-decision-error" />;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  return <RefusalLine error={decide.isError ? decide.error : null} testid="design-decision-error" words={(r) => decisionRefusalWords(r, t, language)} />;
 }
 
 const RECORD_WORDS: Record<OrphanedTrace["recordType"], ProductCopyKey> = {

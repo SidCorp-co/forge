@@ -2878,6 +2878,13 @@
       "when": 1821571200000,
       "tag": "0447_a_release_approval_decided_tells_the_run",
       "breakpoints": true
+    },
+    {
+      "idx": 450,
+      "version": "7",
+      "when": 1821830400000,
+      "tag": "0450_an_approval_before_its_landing_rule_is_recorded",
+      "breakpoints": true
     }
   ]
 }

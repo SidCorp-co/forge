@@ -444,10 +444,10 @@ export const DEFER_REQUIREMENT_SHAPE =
 	"{ reason, targetPhase? } — why it leaves the current release, and the phase or release it is meant for";
 
 export const undeferRequirementRequestSchema = z.strictObject({
-	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
+	reason: z.string().max(REASON_TEXT_MAX),
 });
 export const UNDEFER_REQUIREMENT_SHAPE =
-	"{ reason? } — puts it back at the status it was deferred from";
+	"{ reason } — why it comes back into the current release; puts it back at the status it was deferred from";
 
 export const acceptRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
@@ -556,6 +556,7 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_NO_PLAN_TO_ADOPT",
 	"REQUIREMENT_DEFERRED",
 	"REQUIREMENT_DEFER_REASON_REQUIRED",
+	"REQUIREMENT_UNDEFER_REASON_REQUIRED",
 	"REQUIREMENT_NOT_DEFERRABLE",
 	"REQUIREMENT_NOT_DEFERRED",
 	"REQUIREMENT_HAS_LIVE_ISSUES",

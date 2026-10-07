@@ -1,4 +1,9 @@
 import type { DesignStatus } from '@forge/contracts/design-status';
+import type {
+  DesignBaseFault,
+  DesignBaseFaultState,
+  DesignLeftStale,
+} from '@forge/contracts/workflows';
 import { jsonPointer as pointer } from '../lib/refusal.js';
 import type { DesignRefusal } from './design.js';
 import type { WorkflowRefusal } from './rules.js';
@@ -87,9 +92,15 @@ export function readBases(
   });
 }
 
+function faultStateOf(b: BaseReading): DesignBaseFaultState {
+  if (b.designStatus === 'missing') return 'missing';
+  return b.approvedRevision !== null && b.approvedRevision !== b.revision ? 'stale' : 'unapproved';
+}
+
 function stateOf(b: BaseReading): string {
-  if (b.designStatus === 'missing') return 'is no workflow of this project';
-  if (b.approvedRevision !== null && b.approvedRevision !== b.revision) {
+  const fault = faultStateOf(b);
+  if (fault === 'missing') return 'is no workflow of this project';
+  if (fault === 'stale') {
     return `is no longer the approved revision: "${b.workflow}" is approved at revision ${b.approvedRevision} now${
       b.designStatus === 'approved'
         ? ''
@@ -103,15 +114,38 @@ function stateOf(b: BaseReading): string {
   return `is ${b.designStatus ?? 'not in a design lifecycle'}, with ${approved}`;
 }
 
+/** `WORKFLOW_DESIGN_BASE_UNAPPROVED` with the facts its detail is worded from, so a client words it in its own language. */
+export type BaseUnapprovedRefusal = DesignRefusal & {
+  code: 'WORKFLOW_DESIGN_BASE_UNAPPROVED';
+  revision: number;
+  bases: DesignBaseFault[];
+};
+
 /** The refusal approving `doc` would meet on its bases right now, or null: read before anyone tries
  *  to approve it, so a proposed design resting on a moved base names its writer, not its approver. */
 export function standingBaseRefusal(
   revision: number,
   doc: unknown,
   held: readonly Pick<StoredWorkflow, 'flow' | 'designStatus' | 'approvedRevision'>[],
-): DesignRefusal | null {
+): BaseUnapprovedRefusal | null {
   const bases = basesOfStored(doc);
   return bases.length > 0 ? baseApprovalRefusal(revision, readBases(bases, held)) : null;
+}
+
+/** The designs whose current document declares `flow` as a base at another revision than `revision`:
+ *  approving `revision` leaves each of them on a stale base, so the approver reads them first. */
+export function designsLeftStale(
+  flow: string,
+  revision: number,
+  held: readonly Pick<StoredWorkflow, 'id' | 'flow' | 'revision' | 'document'>[],
+): DesignLeftStale[] {
+  return held.flatMap((w) => {
+    if (w.flow === flow) return [];
+    const base = basesOfStored(w.document).find((b) => b.workflow === flow);
+    return base && base.revision !== revision
+      ? [{ workflowId: w.id, flow: w.flow, revision: w.revision, basedOnRevision: base.revision }]
+      : [];
+  });
 }
 
 // A design is approved only while every base it declares stands approved at the revision
@@ -120,12 +154,20 @@ export function standingBaseRefusal(
 export function baseApprovalRefusal(
   revision: number,
   readings: readonly BaseReading[],
-): DesignRefusal | null {
+): BaseUnapprovedRefusal | null {
   const unapproved = readings.filter((b) => b.approvedRevision !== b.revision);
   if (unapproved.length === 0) return null;
   return {
     code: 'WORKFLOW_DESIGN_BASE_UNAPPROVED',
     path: '/revision',
+    revision,
+    bases: unapproved.map((b) => ({
+      workflow: b.workflow,
+      revision: b.revision,
+      state: faultStateOf(b),
+      approvedRevision: b.approvedRevision,
+      designStatus: b.designStatus === 'missing' ? null : b.designStatus,
+    })),
     detail: `revision ${revision} builds on ${unapproved
       .map((b) => `"${b.workflow}" rev ${b.revision}, which ${stateOf(b)}`)
       .join(
