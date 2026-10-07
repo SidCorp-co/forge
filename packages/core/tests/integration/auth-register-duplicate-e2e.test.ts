@@ -107,13 +107,17 @@ describe('POST /api/auth/register for an email already registered', () => {
   });
 
   it('withholds a driver message that repeats a short bound value', async () => {
-    const err = await harness.db.execute(sql`select ${'abc'}::uuid`).then(
-      () => expect.unreachable('abc was read as a uuid'),
+    const err = await harness.db.execute(sql`select ${'zq9'}::uuid`).then(
+      () => expect.unreachable('zq9 was read as a uuid'),
       (e: unknown) => e,
     );
     const lines: string[] = [];
-    pino(loggerOptions, { write: (s: string) => lines.push(s) }).error({ err });
-    expect(lines[0]).not.toMatch(/"abc"|: abc/);
+    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    log.error({ err });
+    log.error({ err: (err as Error).message });
+    log.error({ err: ((err as Error).cause as Error).message });
+    expect(lines).toHaveLength(3);
+    for (const line of lines) expect(line).not.toContain('zq9');
     expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('22P02');
   });
 });

@@ -123,6 +123,30 @@ describe('redactQueryParams', () => {
     expect(text).toContain(REDACTED);
   });
 
+  it.each([
+    [`Key (email)=(${EMAIL}) already exists.`, `Key (email)=(${REDACTED}`],
+    [`Key (a, b)=(1, ${EMAIL}) is still referenced from table "t".`, `Key (a, b)=(${REDACTED}`],
+    [`Failing row contains (7, ${EMAIL}, null).`, `Failing row contains (${REDACTED}`],
+    ['invalid input syntax for type uuid: "zq9"', `invalid input syntax for type uuid: ${REDACTED}`],
+    ['invalid input value for enum role: "zq9"', `invalid input value for enum role: ${REDACTED}`],
+    ['malformed record literal: "zq9"', `malformed record literal: ${REDACTED}`],
+    ['date/time field value out of range: "zq9"', `date/time field value out of range: ${REDACTED}`],
+    ['value "99999999999" is out of range for type integer', `value ${REDACTED}`],
+  ])("redacts a value the database's own text quotes, with no error to read: %s", (text, kept) => {
+    const out = redactQueryParams({ reason: `refused: ${text}` });
+    expect(out.reason).toBe(`refused: ${kept}`);
+  });
+
+  it("redacts a quoted value to the end of the text, trusting no quote inside it", () => {
+    const out = redactQueryParams('invalid input syntax for type uuid: "a" b\nSENTINEL"');
+    expect(out).not.toContain('SENTINEL');
+  });
+
+  it('keeps the reason a constraint names, which quotes no value', () => {
+    const text = 'duplicate key value violates unique constraint "users_email_unique"';
+    expect(redactQueryParams(text)).toBe(text);
+  });
+
   it('hands back the same value where there is nothing to redact', () => {
     const event = { exception: { values: [{ value: 'kaboom', params: [1] }] } };
     expect(redactQueryParams(event)).toBe(event);
