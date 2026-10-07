@@ -286,6 +286,29 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });
   });
 
+  it('a gap carries the reason the accepted breakdown gave for leaving it uncovered, and only a gap does (R-6)', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+      criteria: [bc(1), bc(3), bc(5)],
+      issueCriteria: [traced(1, 1, 'pass'), traced(2, 3, 'pass')],
+      judge: 'independent',
+      uncovered: new Map([
+        ['BC-5', 'covered by the vendor contract, not by an issue here'],
+        ['BC-1', 'an earlier reason the trace now outranks'],
+      ]),
+    });
+    expect(s.coverage.map((c) => [c.code, c.verdict, c.uncoveredReason])).toEqual([
+      ['BC-1', 'passing', null],
+      ['BC-3', 'passing', null],
+      ['BC-5', 'gap', 'covered by the vendor contract, not by an issue here'],
+    ]);
+  });
+
+  it('a gap no accepted breakdown speaks for carries no reason', () => {
+    const s = shipped([traced(1, 1, 'pass'), traced(2, 3, 'pass')], 'independent');
+    expect(s.coverage.find((c) => c.code === 'BC-5')?.uncoveredReason).toBeNull();
+  });
+
   it('asks the master to trace a BC no issue criterion traces to, and the rule names every gap', () => {
     const s = shipped([traced(1, 1, 'pass'), traced(2, 3, 'fail')], 'independent');
     expect(s.waitingOn).toMatchObject({ who: 'Master', act: 'fix BC-3, failing on ISS-2' });

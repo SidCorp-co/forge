@@ -12,6 +12,7 @@ import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { contractWaitHoldOf } from './contract-waits.js';
 import { createIssue } from './create-service.js';
+import { loadIssueRelations } from './dependency-read.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { serializeIssue } from './detail-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -52,6 +53,7 @@ export async function issueDetailOf(issue: IssueRow) {
     contractWait: await contractWaitHoldOf(issue.projectId, issue.id),
     proposesWorkflow: await proposesWorkflowOf(issue.id),
     requirement: await requirementOfIssue(issue.id),
+    relations: await loadIssueRelations(issue.id, issue.projectId),
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
     labels: await listIssueLabels(issue.id),
     comments: [],

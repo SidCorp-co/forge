@@ -6,9 +6,10 @@
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
-import type { RequirementStanding } from '@forge/contracts/requirements';
+import type { RequirementStanding, RequirementState } from '@forge/contracts/requirements';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -85,6 +86,39 @@ const firstBaselineAt = (
 /** Whether `projectId`'s document requires a release approval, by the one predicate release reads too. */
 export async function approvalRequiredIn(projectId: string): Promise<boolean> {
   return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
+}
+
+const uncoveredList = z.object({
+  uncovered: z.array(z.object({ code: z.string(), reason: z.string() })).optional(),
+});
+
+/**
+ * Per requirement, per BC code, the reason the newest accepted breakdown naming the code gave for
+ * leaving it without an issue. An accepted suggestion keeps its payload (`suggestions_payload_chk`),
+ * so the accept is the record and no column copies it.
+ */
+async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<string, string>>> {
+  const rows = await db
+    .select({ requirementId: suggestions.requirementId, payload: suggestions.payload })
+    .from(suggestions)
+    .where(
+      and(
+        inArray(suggestions.requirementId, [...ids]),
+        eq(suggestions.kind, 'breakdown'),
+        eq(suggestions.status, 'accepted'),
+      ),
+    )
+    .orderBy(desc(suggestions.decidedAt));
+  const out = new Map<string, Map<string, string>>();
+  for (const row of rows) {
+    if (!row.requirementId) continue;
+    const reasons = out.get(row.requirementId) ?? new Map<string, string>();
+    for (const u of uncoveredList.safeParse(row.payload).data?.uncovered ?? []) {
+      if (!reasons.has(u.code)) reasons.set(u.code, u.reason);
+    }
+    out.set(row.requirementId, reasons);
+  }
+  return out;
 }
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
@@ -176,6 +210,7 @@ export async function standingsOf(
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
   ]);
+  const uncovered = await uncoveredOf(ids);
   const [people, issueCriteria, feedbackLinks, closedAt, changedTraced] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
@@ -235,6 +270,7 @@ export async function standingsOf(
         issues: mine,
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
+        uncovered: uncovered.get(row.id) ?? new Map(),
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
         unapprovedDesigns: by(unapproved, row.id).map(({ flow, title, designStatus }) => ({
@@ -251,6 +287,27 @@ export async function standingsOf(
     );
   }
   return out;
+}
+
+/** Each of `ids`' state as its own standing reads it, for a reader outside the module. */
+export async function requirementStatesOf(
+  projectId: string,
+  ids: readonly string[],
+): Promise<Map<string, RequirementState>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({
+      id: requirements.id,
+      projectId: requirements.projectId,
+      status: requirements.status,
+      currentRevision: requirements.currentRevision,
+      ownerId: requirements.ownerId,
+      updatedAt: requirements.updatedAt,
+    })
+    .from(requirements)
+    .where(and(eq(requirements.projectId, projectId), inArray(requirements.id, [...ids])));
+  const standings = await standingsOf(projectId, rows, null);
+  return new Map([...standings].map(([id, s]) => [id, s.state]));
 }
 
 /** Which of `ids` read delivered (`standing.ts:deliveryOf`) or were accepted. */
