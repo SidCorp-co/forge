@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.124] - 2026-10-07
+
+Project and issue pages load their data in parallel, by slug and key
+
+### Changed
+
+- **Project and issue pages start loading at once.** Project routes take the slug (a slug no route can address is refused) and issue routes the display key; reconnects refetch only changes; What's new loads on open.
+
 ## [0.4.0-dev.123] - 2026-10-07
 
 Project assistant answers truthfully, files once, stays out of group talk, keeps chat logs
