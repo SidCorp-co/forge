@@ -336,40 +336,53 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   return out;
 }
 
-/**
- * `value` with every field named in `names` censored, at any depth of its own fields: a copy on
- * its own prototype wherever one is, the same value where none is. A copy that cannot be made
- * stands as an empty object, so the caller's code asked with it finds no field to read.
- */
-function censored(
-  value: object,
-  names: ReadonlySet<string>,
-  depth = 0,
-  seen = new Set<object>(),
-): object {
-  if (depth > MAX_DEPTH || seen.has(value)) return value;
+/** Whether a field named in `names` stands anywhere in `value`'s own fields, at any depth. */
+function holdsName(value: object, names: ReadonlySet<string>, seen: Set<object>): boolean {
+  if (seen.has(value)) return false;
   seen.add(value);
   const fields = attempt(() => Object.getOwnPropertyDescriptors(value));
-  if (fields === UNREADABLE) return {};
-  const changes: [string, unknown][] = [];
-  for (const [key, own] of Object.entries(fields)) {
-    if (names.has(key)) changes.push([key, REDACTED]);
-    else if ('value' in own && typeof own.value === 'object' && own.value !== null) {
-      const inner = censored(own.value, names, depth + 1, seen);
-      if (inner !== own.value) changes.push([key, inner]);
-    }
-  }
-  if (changes.length === 0) return value;
-  const copy = attempt(() => {
-    const out = (Array.isArray(value) ? [] : Object.create(Object.getPrototypeOf(value))) as object;
-    Object.defineProperties(out, fields);
-    for (const [key, v] of changes) {
-      const enumerable = fields[key]?.enumerable ?? true;
-      Object.defineProperty(out, key, { value: v, enumerable, writable: true, configurable: true });
+  if (fields === UNREADABLE) return true;
+  return Object.entries(fields).some(
+    ([key, own]) =>
+      names.has(key) ||
+      ('value' in own &&
+        typeof own.value === 'object' &&
+        own.value !== null &&
+        holdsName(own.value, names, seen)),
+  );
+}
+
+/**
+ * `value` for a `toJSON` to be asked with: where a field named in `names` stands anywhere in its
+ * own fields, a copy of every object it reaches (each once, so a part it holds twice or that holds
+ * itself is the same copy) with each such field censored; otherwise `value` itself. An object that
+ * cannot be copied stands as an empty one, so the caller's code finds no field to read there.
+ */
+function censored(value: object, names: ReadonlySet<string>): object {
+  if (!holdsName(value, names, new Set())) return value;
+  const copies = new Map<object, object>();
+  const copyOf = (from: object, depth: number): object => {
+    const known = copies.get(from);
+    if (known) return known;
+    if (depth > MAX_DEPTH) return {};
+    const fields = attempt(() => Object.getOwnPropertyDescriptors(from));
+    const out = attempt(
+      (): object => (Array.isArray(from) ? [] : Object.create(Object.getPrototypeOf(from))),
+    );
+    if (fields === UNREADABLE || out === UNREADABLE) return {};
+    copies.set(from, out);
+    for (const [key, own] of Object.entries(fields)) {
+      let field: PropertyDescriptor = own;
+      if (names.has(key)) {
+        field = { value: REDACTED, enumerable: own.enumerable, writable: true, configurable: true };
+      } else if ('value' in own && typeof own.value === 'object' && own.value !== null) {
+        field = { ...own, value: copyOf(own.value, depth + 1), writable: true, configurable: true };
+      }
+      attempt(() => Object.defineProperty(out, key, field));
     }
     return out;
-  });
-  return copy === UNREADABLE ? {} : copy;
+  };
+  return copyOf(value, 0);
 }
 
 /** Whether `value`'s `toJSON`, own or inherited, is a getter rather than a field. */

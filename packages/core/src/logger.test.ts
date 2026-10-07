@@ -530,11 +530,25 @@ describe('the core logger, given a value whose text only a serializer renders', 
         return this.headers.authorization;
       },
     });
+    const shared = () => {
+      const headers = { authorization: 'ordinary-secret' };
+      const req = {
+        first: headers,
+        headers,
+        toJSON() {
+          return this.headers.authorization;
+        },
+      };
+      (headers as Record<string, unknown>).back = req;
+      return req;
+    };
+    log.warn({ req: shared() }, 'shared');
+    log.child({ req: shared() }).warn('bound shared');
     log.warn({ req: request() }, 'request');
     log.child({ req: request() }).warn('bound request');
     rebound.setBindings({ req: request() });
     rebound.warn('rebound request');
-    expect(lines).toHaveLength(7);
+    expect(lines).toHaveLength(9);
     for (const line of lines) {
       expect(line).not.toContain('ordinary-secret');
       expect(line).not.toContain('ordinary-password');
