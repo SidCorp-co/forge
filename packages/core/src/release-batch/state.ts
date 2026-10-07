@@ -23,9 +23,8 @@ export interface ReleaseRunState {
   runStatus: string;
   /** The version this release cut. `null` only on a release row nothing versioned. */
   version: string | null;
-  /** The release gate as it stands now: what a release cut now would take, not this run. */
+  /** The release gate now, not this run; the run's own roster is `runIssues`. */
   roster: ReleaseRoster;
-  /** The issues this run was opened with, each as it stands now (ISS-1323 r2). */
   runIssues: ReleaseRunIssue[];
   attempts: ReleaseAttemptRow[];
   /** Read at request time from the probes the close reads; `null` where there are none to read. */
@@ -102,7 +101,6 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     verify ? readLiveState(verify) : Promise.resolve(null),
   ]);
   const run = (await readRun(runId)) ?? first;
-  // Read after the probes, off the run as it stands then, so an abort made meanwhile is named.
   const [start, runIssues] = await Promise.all([
     readReleaseStart(runId, run.projectId, run.metadata),
     loadRunIssues(run.metadata),

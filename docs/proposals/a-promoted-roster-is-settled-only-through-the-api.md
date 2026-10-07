@@ -11,3 +11,11 @@ and no screen in `packages/web-v2` offers either. The comment says it is an oper
 The choice nobody has made: give the release run screen an abort with the promoted-roster choice
 and a release-record form, or keep both as operator acts and say who the operator is per project.
 Until one is taken, a person reading such an issue cannot finish it themselves.
+
+## Honest costs
+
+| Choice | Cost |
+|---|---|
+| a screen for both acts | an abort form that can return a promoted roster to the gate is a destructive act a misclick takes; it needs the same confirmation and reason the API demands |
+| operator acts, named per project | every project has to say who its operator is, and an issue waits on that person |
+| leaving it | the refused issue sits at `releasing`, claimed by a completed run, until someone who knows the API finds it |

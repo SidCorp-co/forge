@@ -11,13 +11,14 @@
  * every rule below is decided in one place a test can reach without a network.
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, users } from '../db/schema.js';
+import { comments } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
 import { type CutRangeDeps, type ReadRange, readRangeTo } from './cut-range.js';
+import { personLabel } from './job-start.js';
 
 export const CARRIED_DECISIONS = ['ship-unverified', 'revert', 'cut-below'] as const;
 export type CarriedDecisionKind = (typeof CARRIED_DECISIONS)[number];
@@ -98,7 +99,6 @@ function effectivelyReverted(range: ReadRange, landing: string): boolean {
   );
 }
 
-/** A revert of `landing` in the range, and the commit that reverts it in turn, where there is one. */
 function undoneRevert(range: ReadRange, landing: string): { revert: string; undo: string } | null {
   for (const r of range.commits) {
     if (!reverts(r, landing)) continue;
@@ -292,16 +292,6 @@ export function carriedRecord(check: CarriedCheck | undefined): CarriedRecord | 
   if (check.kind !== 'read') return check;
   const { live, start, cut, carried, cutBelow } = check;
   return { kind: 'read', live, start, cut, issues: carried, cutBelow };
-}
-
-/** Who a person is, as a comment names them: the label they chose, else their email. */
-async function personLabel(userId: string): Promise<string> {
-  const [row] = await db
-    .select({ displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row?.displayName ?? row?.email ?? 'the person who pressed the release';
 }
 
 /** The decision, written on each issue that ships unverified, naming the batch that ships it. */

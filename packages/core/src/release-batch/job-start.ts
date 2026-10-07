@@ -114,7 +114,7 @@ async function whyWaiting(projectId: string): Promise<{ reason: WaitingReason; w
 }
 
 /** Who a person is, as a sentence names them: the label they chose, else their email. */
-async function personLabel(userId: string): Promise<string> {
+export async function personLabel(userId: string): Promise<string> {
   const [row] = await db
     .select({ displayName: users.displayName, email: users.email })
     .from(users)

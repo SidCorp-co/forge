@@ -67,11 +67,7 @@ export interface ReleaseReadiness {
   blockers: ReleaseBlocker[];
   /** What will change how the release runs without stopping it. */
   warnings: ReleaseWarning[];
-  /**
-   * What a release cut now would carry beyond its roster, or why that range was not read
-   * (`not-read`, `unbound`, `unread`, each with its `why`) — the same reading the create door
-   * judges (ISS-1386).
-   */
+  /** What a cut now would carry beyond its roster, or why that range was not read (ISS-1386). */
   carried: CarriedRecord | null;
 }
 
