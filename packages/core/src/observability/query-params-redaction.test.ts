@@ -335,6 +335,23 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     expect(rendered).not.toContain(EMAIL);
   });
 
+  it('leaves a serializer no getter to read again, though it rendered nothing to redact', () => {
+    let reads = 0;
+    const value = {
+      reading: Object.defineProperty({}, 'reason', {
+        get: () => {
+          reads++;
+          return 'ordinary';
+        },
+        enumerable: true,
+      }),
+    };
+    const out = redactQueryParams(value);
+    const asked = reads;
+    expect(JSON.stringify(out)).toBe('{"reading":{"reason":"ordinary"}}');
+    expect(reads).toBe(asked);
+  });
+
   it('hands back none of the functions a toJSON rendered, which no serializer calls there', () => {
     const text = duplicate().message;
     const value = { reading: { toJSON: () => ({ toJSON: () => text, note: 'kept' }) } };
