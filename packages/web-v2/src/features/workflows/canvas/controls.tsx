@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, CircleHelp, Maximize, Map as MapIcon, Play } fr
 import { useState } from "react";
 import { Button, Input, SegmentedControl, TemplateIcon, Toggle } from "@/design";
 import type { HealthLayer } from "../health";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { CanvasHealth } from "./workflow-canvas";
 import type { Canvas } from "./model";
 import { titleOf } from "./model";
@@ -24,14 +25,15 @@ export function ViewBar(p: {
   onWalk: () => void;
   health?: CanvasHealth | null | undefined;
 }) {
+  const t = useCopy();
   return (
-    <div className="wfc-float wfc-tl" role="toolbar" aria-label="View">
+    <div className="wfc-float wfc-tl" role="toolbar" aria-label={t("workflows.canvas.view")}>
       <SegmentedControl<Language>
         value={p.language}
         onChange={p.onLanguage}
         options={[
-          { value: "business", label: "Business", title: "The design's business words on every card and line" },
-          { value: "contract", label: "Contract", title: "Design ids, the data passed along and idempotency" },
+          { value: "business", label: t("workflows.canvas.business"), title: t("workflows.canvas.businessHint") },
+          { value: "contract", label: t("workflows.panel.contract"), title: t("workflows.canvas.contractHint") },
         ]}
       />
       {p.banded ? (
@@ -42,47 +44,48 @@ export function ViewBar(p: {
               value={String(p.lod) as "0" | "1" | "2"}
               onChange={(v) => p.onLod(Number(v) as Lod)}
               options={[
-                { value: "0", label: "Stages", title: "Stages only — zoom out to get here" },
-                { value: "1", label: "Steps", title: "Step titles — mid zoom" },
-                { value: "2", label: "Detail", title: "Full cards — zoom in to get here" },
+                { value: "0", label: t("workflows.canvas.stages"), title: t("workflows.canvas.stagesHint") },
+                { value: "1", label: t("workflows.tab.steps"), title: t("workflows.canvas.stepsHint") },
+                { value: "2", label: t("workflows.canvas.detail"), title: t("workflows.canvas.detailHint") },
               ]}
             />
           </span>
-          <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} title={p.allOpen ? "Fold every stage back to its summary" : "Open every stage to its steps"} data-testid="toggle-all">
+          <Button type="button" variant="ghost" size="sm" className="wfc-ib" onClick={p.onToggleAll} title={p.allOpen ? t("workflows.canvas.foldAllHint") : t("workflows.canvas.openAllHint")} data-testid="toggle-all">
             {p.allOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            <span className="wfc-t">{p.allOpen ? "Fold all" : "Open all"}</span>
+            <span className="wfc-t">{p.allOpen ? t("workflows.canvas.foldAll") : t("workflows.canvas.openAll")}</span>
           </Button>
         </>
       ) : null}
       <span className="wfc-sep" />
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} title="Step through the flow one step at a time" data-testid="walk-start-bar">
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" onClick={p.onWalk} title={t("workflows.canvas.walkHint")} data-testid="walk-start-bar">
         <Play size={16} />
-        <span className="wfc-t">Walk through</span>
+        <span className="wfc-t">{t("workflows.canvas.walk")}</span>
       </Button>
       {p.health ? <HealthBar health={p.health} /> : null}
     </div>
   );
 }
 
-const LAYERS: { value: HealthLayer; label: string; title: string }[] = [
-  { value: "planned", label: "Planned", title: "The design revision shown: the target" },
-  { value: "observed", label: "Observed", title: "What the code holds, as the latest observation drew it" },
-  { value: "both", label: "Both", title: "Matched solid, upcoming dashed, code the design does not hold beside it" },
-];
+const LAYERS: readonly HealthLayer[] = ["planned", "observed", "both"];
 
 /** The Health overlay toggle and the Planned / Observed / Both layer switch; both kept in the page address (REQ-17 BC-15, BC-28). */
 export function HealthBar({ health }: { health: CanvasHealth }) {
+  const t = useCopy();
   return (
     <>
       <span className="wfc-sep" />
-      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title="Draw each step's health markers on the canvas" data-testid="health-toggle">
-        <Toggle checked={health.on} onChange={health.onToggle} aria-label="Health overlay" />
-        Health
+      <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title={t("workflows.canvas.healthHint")} data-testid="health-toggle">
+        <Toggle checked={health.on} onChange={health.onToggle} aria-label={t("workflows.canvas.healthOverlay")} />
+        {t("workflows.col.health")}
       </span>
       {health.observed ? (
         <>
           <span className="wfc-sep" />
-          <SegmentedControl<HealthLayer> value={health.layer} onChange={health.onLayer} options={LAYERS} />
+          <SegmentedControl<HealthLayer>
+            value={health.layer}
+            onChange={health.onLayer}
+            options={LAYERS.map((value) => ({ value, label: t(`workflows.layer.${value}`), title: t(`workflows.layer.${value}.hint`) }))}
+          />
         </>
       ) : null}
     </>
@@ -90,6 +93,7 @@ export function HealthBar({ health }: { health: CanvasHealth }) {
 }
 
 export function SearchBox({ c, hits, query, onQuery, onPick }: { c: Canvas; hits: string[]; query: string; onQuery: (q: string) => void; onPick: (id: string) => void }) {
+  const t = useCopy();
   const [cur, setCur] = useState(0);
   return (
     <div className="wfc-float wfc-tr">
@@ -99,8 +103,8 @@ export function SearchBox({ c, hits, query, onQuery, onPick }: { c: Canvas; hits
         icon="search"
         type="search"
         value={query}
-        placeholder="Find a step, owner or rule"
-        aria-label="Search the flow"
+        placeholder={t("workflows.canvas.searchPlaceholder")}
+        aria-label={t("workflows.canvas.searchLabel")}
         autoComplete="off"
         data-testid="workflow-search"
         onChange={(e) => {
@@ -131,7 +135,7 @@ export function SearchBox({ c, hits, query, onQuery, onPick }: { c: Canvas; hits
               );
             })
           ) : (
-            <li className="px-2 py-1.5 text-13 text-subtle">Nothing matches</li>
+            <li className="px-2 py-1.5 text-13 text-subtle">{t("workflows.canvas.nothingMatches")}</li>
           )}
         </ul>
       ) : null}
@@ -149,25 +153,26 @@ export function ZoomBar(p: {
   onMinimap: () => void;
   onLegend: () => void;
 }) {
+  const t = useCopy();
   return (
-    <div className="wfc-float wfc-bl" role="toolbar" aria-label="Canvas">
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label="Zoom out" title="Zoom out" onClick={() => p.onZoom(1 / 1.2)}>
+    <div className="wfc-float wfc-bl" role="toolbar" aria-label={t("workflows.canvas.canvas")}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.canvas.zoomOut")} title={t("workflows.canvas.zoomOut")} onClick={() => p.onZoom(1 / 1.2)}>
         −
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title="Back to 100%" onClick={p.onReset} data-testid="zoom-pct">
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title={t("workflows.canvas.zoomReset")} onClick={p.onReset} data-testid="zoom-pct">
         {Math.round(p.zoom * 100)}%
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label="Zoom in" title="Zoom in" onClick={() => p.onZoom(1.2)}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.canvas.zoomIn")} title={t("workflows.canvas.zoomIn")} onClick={() => p.onZoom(1.2)}>
         +
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title="Fit the whole flow (F)" aria-label="Fit" onClick={p.onFit}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" title={t("workflows.canvas.fitHint")} aria-label={t("workflows.canvas.fit")} onClick={p.onFit}>
         <Maximize size={16} />
       </Button>
       <span className="wfc-sep" />
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.minimap} title="Show or hide the minimap" aria-label="Minimap" onClick={p.onMinimap}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.minimap} title={t("workflows.canvas.minimapHint")} aria-label={t("workflows.canvas.minimap")} onClick={p.onMinimap}>
         <MapIcon size={16} />
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title="What the colours and lines mean" aria-label="Legend" onClick={p.onLegend}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-pressed={p.legend} title={t("workflows.canvas.legendHint")} aria-label={t("workflows.canvas.legend")} onClick={p.onLegend}>
         <CircleHelp size={16} />
       </Button>
     </div>
@@ -198,18 +203,19 @@ export function Legend({ template }: { template: WorkflowTemplate | null }) {
 }
 
 export function WalkBar({ at, total, onWalk, onStop }: { at: number; total: number; onWalk: (at: number) => void; onStop: () => void }) {
+  const t = useCopy();
   return (
     <div className="wfc-float wfc-bc" data-testid="walk-bar">
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" disabled={at === 0} aria-label="Previous step" onClick={() => onWalk(at - 1)}>
-        ‹ <span className="wfc-t">Back</span>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" disabled={at === 0} aria-label={t("workflows.walk.previousStep")} onClick={() => onWalk(at - 1)}>
+        ‹ <span className="wfc-t">{t("workflows.walk.back")}</span>
       </Button>
       <span className="px-1.5 text-12-5 font-semibold text-muted">
         {at + 1} / {total}
       </span>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" aria-label="Next step" onClick={() => onWalk(at + 1)}>
-        <span className="wfc-t">{at === total - 1 ? "Finish" : "Next"}</span> {at === total - 1 ? "✓" : "›"}
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" data-go="true" aria-label={t("workflows.walk.nextStep")} onClick={() => onWalk(at + 1)}>
+        <span className="wfc-t">{at === total - 1 ? t("workflows.walk.finish") : t("workflows.walk.next")}</span> {at === total - 1 ? "✓" : "›"}
       </Button>
-      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label="Stop walking" title="Stop (Esc)" onClick={onStop}>
+      <Button type="button" variant="ghost" size="sm" className="wfc-ib" aria-label={t("workflows.walk.stop")} title={t("workflows.walk.stopHint")} onClick={onStop}>
         ✕
       </Button>
     </div>

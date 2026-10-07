@@ -22,8 +22,9 @@ import {
   WaitingOn,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
-import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";
 import { RELEASES_LIST, releaseHref } from "@/lib/routes/releases";
 import type { ReleaseSummary } from "../types";
@@ -32,31 +33,46 @@ import { ComingNext } from "./coming-next";
 import { ReleasePeek } from "./release-peek";
 import { ReleaseTrain } from "./release-train";
 
-const groupsOf = (rows: ReleaseSummary[]): ListGroup<ReleaseSummary>[] =>
-  standingGroups(rows, RELEASE_ATTENTION_GROUPS, RELEASE_ATTENTION_LABELS);
+type Label = ReturnType<typeof useLabel>;
+type Time = ReturnType<typeof useTimeFormat>;
 
-const requirementsOf = (r: ReleaseSummary) => (r.requirements.length > 0 ? r.requirements.join(", ") : "Maintenance");
+const groupsOf = (rows: ReleaseSummary[], label: Label): ListGroup<ReleaseSummary>[] =>
+  standingGroups(
+    rows,
+    RELEASE_ATTENTION_GROUPS,
+    Object.fromEntries(
+      RELEASE_ATTENTION_GROUPS.map((g) => {
+        const v = RELEASE_ATTENTION_LABELS[g];
+        return [g, { ...v, label: label("releaseAttention", g), hint: v.hint ? label("releaseAttentionHint", g) : null }];
+      }),
+    ) as typeof RELEASE_ATTENTION_LABELS,
+  );
+
+const requirementsOf = (r: ReleaseSummary, t: Copy) => (r.requirements.length > 0 ? r.requirements.join(", ") : t("releases.maintenance"));
 
 const rowOf =
-  (slug: string) =>
+  (slug: string, t: Copy, time: Time) =>
   (r: ReleaseSummary): ListRowView => ({
     key: r.version,
     href: releaseHref(slug, r.version),
-    title: r.headline || `Release ${r.version}`,
+    title: r.headline || t("releases.releaseVersion", { version: r.version }),
     facts: [
-      `Issues ${r.issueCount}`,
-      requirementsOf(r),
-      r.criteria.total === 0 ? "No criteria recorded" : `Criteria ${r.criteria.proven} of ${r.criteria.total} proven`,
-      ...(r.current ? ["Serving production"] : []),
+      t("releases.issuesCount", { n: r.issueCount }),
+      requirementsOf(r, t),
+      r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
+      ...(r.current ? [t("releases.servingProduction")] : []),
     ],
     state: <StatusBadge family="releaseState" value={r.state} />,
     waitingOn: <WaitingOn w={r.waitingOn} />,
     owner: r.owner ? <ActorChip name={r.owner.name} kind={r.owner.kind} size={20} /> : null,
-    age: { text: formatAge(r.at), title: `Last changed ${formatStamp(r.at)}` },
+    age: { text: time.relative(r.at), title: t("releases.lastChanged", { at: time.dateTime(r.at) }) },
     dim: r.attentionGroup === "done" || r.attentionGroup === "stopped",
   });
 
 export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
   const q = useReleases(projectId);
   const comingQ = useComingNext(projectId);
   const clock = useEtaClock();
@@ -69,11 +85,11 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
     const t = text.trim().toLowerCase();
     return t ? all.filter((r) => `${r.version} ${r.headline} ${r.requirements.join(" ")}`.toLowerCase().includes(t)) : all;
   }, [all, text]);
-  const groups = useMemo(() => groupsOf(rows), [rows]);
+  const groups = useMemo(() => groupsOf(rows, label), [rows, label]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.version), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.version), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug), [slug]);
+  const row = useMemo(() => rowOf(slug, t, time), [slug, t, time]);
   const openFull = useCallback(
     (version: string) => {
       rememberListOrigin(RELEASES_LIST);
@@ -83,9 +99,9 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   );
   usePeekKeys(peek, openFull);
 
-  const title = <PageTitle>Releases</PageTitle>;
+  const title = <PageTitle>{t("releases.title")}</PageTitle>;
   return (
-    <QueryBoundary query={q} loadingLabel="loading releases…" title={title} height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("releases.loadingList")} title={title} height="60vh" retry="always">
       {(data) => {
         const production = data.production;
         return (
@@ -101,20 +117,20 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
                 <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
                 {all.length === 0 ? (
                   <div className="px-5 py-10">
-                    <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />
+                    <EmptyState title={t("releases.emptyTitle")} message={t("releases.emptyMessage")} />
                   </div>
                 ) : (
                   <>
                     <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
                     <GroupedList
-                      ariaLabel="Releases"
+                      ariaLabel={t("releases.title")}
                       groups={groups}
                       fold={fold}
                       row={row}
                       selected={peek.open}
                       onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                      empty="Nothing matches this search."
-                      columns={{ meta: rows.some((r) => r.owner) ? "Owner · age" : "Age" }}
+                      empty={t("releases.noMatch")}
+                      columns={{ meta: rows.some((r) => r.owner) ? t("list.col.meta") : t("releases.colAge") }}
                     />
                   </>
                 )}
@@ -138,14 +154,15 @@ function SearchBar({
   /** Why production cannot be read, or null when it can. */
   productionUnreadable: string | null;
 }) {
+  const t = useCopy();
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
       <label className="flex h-[30px] min-w-[150px] max-w-[260px] flex-1 items-center gap-1.5 rounded-sm border border-line bg-surface px-2.5 text-12-5 text-subtle max-md:h-10 max-md:max-w-none max-md:basis-full">
         <Icon name="search" size={14} />
         <input
           type="search"
-          aria-label="Search releases"
-          placeholder="Search releases…"
+          aria-label={t("releases.searchLabel")}
+          placeholder={t("releases.searchPlaceholder")}
           defaultValue={text}
           onChange={(e) => onText(e.target.value)}
           className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"
@@ -153,7 +170,7 @@ function SearchBar({
       </label>
       {productionUnreadable === null ? null : (
         <span className="text-12 text-muted" title={productionUnreadable} data-testid="production-unreadable">
-          Production cannot be read right now, so what it serves is not shown.
+          {t("releases.productionUnreadable")}
         </span>
       )}
     </div>

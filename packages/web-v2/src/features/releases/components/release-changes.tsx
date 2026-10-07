@@ -1,14 +1,17 @@
 "use client";
 
-import { LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
 import type { ReleaseChanges, ReleaseSurfaceChanges } from "@forge/contracts/releases";
 import Link from "next/link";
 import { useState } from "react";
 import { EnumBadge, FieldLabel, LEGEND, ViewHeading } from "@/design";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { DisclosureToggle } from "./release-bits";
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** `1 issue` / `2 issues`: the key's `.one` reading for one, its `.many` reading otherwise. */
+const plural = (t: Copy, n: number, key: "releases.count.issue" | "releases.count.artifact" | "releases.count.designRevision") =>
+  t(`${key}.${n === 1 ? "one" : "many"}` as ProductCopyKey, { n });
 
 function IssueKeys({ keys, slug }: { keys: string[]; slug?: string }) {
   return (
@@ -29,22 +32,23 @@ function IssueKeys({ keys, slug }: { keys: string[]; slug?: string }) {
 }
 
 /** One line of what the release changes, e.g. "Deploys UI, API and Data. 2 design revisions ship nothing." */
-export function changesSentence(c: ReleaseChanges): string {
-  const deploys = c.surfaces.filter((s) => !s.shipsNothing).map((s) => LANDING_SURFACE_LABELS[s.surface]);
+export function changesSentence(c: ReleaseChanges, t: Copy, label: ReturnType<typeof useLabel>): string {
+  const deploys = c.surfaces.filter((s) => !s.shipsNothing).map((s) => label("landingSurface", s.surface));
   const design = c.surfaces.find((s) => s.shipsNothing);
   const parts: string[] = [];
-  if (c.shipsNothing) parts.push("Ships nothing: every change in it is a design revision.");
+  if (c.shipsNothing) parts.push(t("releases.changes.shipsNothing"));
   else if (deploys.length > 0) {
-    const list = deploys.length === 1 ? deploys[0] : `${deploys.slice(0, -1).join(", ")} and ${deploys.at(-1)}`;
-    parts.push(`Deploys ${list}.`);
-  } else if (c.surfaces.length === 0 && c.unclassified.length === 0) parts.push("No issue names a change.");
-  if (design && !c.shipsNothing) parts.push(`${plural(design.count, "design revision")} ${design.count === 1 ? "ships" : "ship"} nothing.`);
+    const list = deploys.length === 1 ? deploys[0] : t("releases.changes.andList", { list: deploys.slice(0, -1).join(", "), last: deploys.at(-1) ?? "" });
+    parts.push(t("releases.changes.deploys", { list: list ?? "" }));
+  } else if (c.surfaces.length === 0 && c.unclassified.length === 0) parts.push(t("releases.changes.noneNamed"));
+  if (design && !c.shipsNothing) parts.push(t(design.count === 1 ? "releases.changes.designShipsNothing.one" : "releases.changes.designShipsNothing.many", { n: design.count }));
   const n = c.unclassified.length;
-  if (n > 0) parts.push(`${plural(n, "issue")} ${n === 1 ? "names" : "name"} nothing structured.`);
+  if (n > 0) parts.push(t(n === 1 ? "releases.changes.unstructured.one" : "releases.changes.unstructured.many", { n }));
   return parts.join(" ");
 }
 
 function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
     <li className="border-b border-line-subtle py-2 text-13" data-testid="release-surface" data-surface={s.surface}>
@@ -53,7 +57,7 @@ function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
           <EnumBadge family="landingSurface" value={s.surface} />
         </span>
         <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-surface-toggle">
-          {plural(s.count, "artifact")}
+          {plural(t, s.count, "releases.count.artifact")}
         </DisclosureToggle>
         <span className="ml-auto">
           <IssueKeys keys={s.issues} slug={slug} />
@@ -90,12 +94,13 @@ function Unclassified({ items, slug }: { items: ReleaseChanges["unclassified"]; 
 }
 
 function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseChanges["unclassified"]; slug?: string }) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   return (
     <li className="grid gap-1 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
       <span className="flex flex-wrap items-baseline gap-x-2">
         <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
-          {plural(group.length, "issue")}
+          {plural(t, group.length, "releases.count.issue")}
         </DisclosureToggle>
         <span className="min-w-0 flex-1 text-12-5 text-muted">{why}</span>
       </span>
@@ -115,24 +120,26 @@ function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseC
 
 /** "What changes": per surface what the release's landings name, risks first, design apart. */
 export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?: string }) {
+  const t = useCopy();
+  const label = useLabel();
   const deploys = changes.surfaces.filter((s) => !s.shipsNothing);
   const design = changes.surfaces.filter((s) => s.shipsNothing);
   return (
-    <section aria-label="What changes" data-testid="release-changes" className="grid gap-4">
+    <section aria-label={t("releases.changes.title")} data-testid="release-changes" className="grid gap-4">
       <div>
-        <ViewHeading hint="What each issue's landing names, by where it takes effect">What changes</ViewHeading>
+        <ViewHeading hint={t("releases.changes.hint")}>{t("releases.changes.title")}</ViewHeading>
         <p className="text-13-5" data-testid="release-changes-sentence">
-          {changesSentence(changes)}
+          {changesSentence(changes, t, label)}
         </p>
         {changes.boxRead.length > 0 ? (
           <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="release-box-read">
-            <span>Paths read from a box&apos;s checkout, not a merge Forge observed:</span>
+            <span>{t("releases.changes.boxRead")}</span>
             <IssueKeys keys={changes.boxRead} slug={slug} />
           </p>
         ) : null}
       </div>
       {changes.risks.length > 0 ? (
-        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks">
+        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label={t("releases.changes.risks")}>
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
               <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
@@ -143,7 +150,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         </ul>
       ) : null}
       {deploys.length > 0 ? (
-        <ul className="border-t border-line-subtle" aria-label="Surfaces it deploys">
+        <ul className="border-t border-line-subtle" aria-label={t("releases.changes.surfaces")}>
           {deploys.map((s) => (
             <SurfaceRow key={s.surface} s={s} slug={slug} />
           ))}
@@ -151,7 +158,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
       ) : null}
       {design.length > 0 ? (
         <div data-testid="release-ships-nothing">
-          <FieldLabel>Design — ships nothing</FieldLabel>
+          <FieldLabel>{t("releases.changes.designNothing")}</FieldLabel>
           <ul className="border-t border-line-subtle">
             {design.map((s) => (
               <SurfaceRow key={s.surface} s={s} slug={slug} />
@@ -161,7 +168,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
       ) : null}
       {changes.unclassified.length > 0 ? (
         <div>
-          <FieldLabel>Unclassified — what no surface names</FieldLabel>
+          <FieldLabel>{t("releases.changes.unclassifiedHead")}</FieldLabel>
           <Unclassified items={changes.unclassified} slug={slug} />
         </div>
       ) : null}

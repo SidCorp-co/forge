@@ -4,6 +4,7 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { type Canvas, readCanvas } from "./model";
 import { useStepFocus } from "./step-focus";
 
@@ -11,6 +12,7 @@ const step = (id: string, after: string[] = []) => ({ id, title: `Step ${id}`, a
 const c: Canvas = readCanvas(
   { title: "T", summary: "", kind: "flow", steps: [step("a"), step("b", ["a"]), step("c", ["b"])], edges: [], flow: [] } as unknown as Canvas["doc"],
   null,
+  productCopy("en"),
 );
 
 describe("the shared canvas focus", () => {

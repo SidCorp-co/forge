@@ -7,8 +7,9 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding/components/ask-for-designs";
 import { useOnboardingState } from "@/features/onboarding/hooks";
 import { useProjectDocument } from "@/features/project-config/hooks";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
-import { formatRelativeTime } from "@/lib/utils/format";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { catalogue, systemContextOf, templateIdOf, templateTitle } from "../catalogue";
 import { useWorkflowTemplates, useWorkflows } from "../hooks";
@@ -21,12 +22,17 @@ import { DesignPill, ProposedMarker } from "./workflow-parts";
 // One grid template for the header and every row, so the columns line up without a table
 const COLS = "grid grid-cols-[minmax(0,1fr)_170px_84px_230px_minmax(0,220px)_92px] gap-x-3.5 px-7 max-lg:grid-cols-[minmax(0,1fr)_150px_76px_210px_minmax(0,180px)]";
 
-function size(r: WorkflowRecord): string {
+function size(r: WorkflowRecord, t: Copy): string {
   const n = r.document.steps.length;
-  return r.document.kind === "state" ? `${n} ${n === 1 ? "state" : "states"}` : `${n} ${n === 1 ? "step" : "steps"}`;
+  return r.document.kind === "state"
+    ? t(n === 1 ? "workflows.count.state.one" : "workflows.count.state.many", { n })
+    : t(n === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n });
 }
 
 function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
   const w = r.document;
   const status = r.design.shown;
   return (
@@ -45,9 +51,9 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
         {w.title}
       </span>
       <span className="truncate text-12-5 text-muted max-md:order-3" data-testid="workflow-template">
-        {templateTitle(templateIdOf(r), templates)}
+        {templateTitle(templateIdOf(r), templates, label)}
       </span>
-      <span className="text-12-5 tabular-nums text-muted max-md:hidden">{size(r)}</span>
+      <span className="text-12-5 tabular-nums text-muted max-md:hidden">{size(r, t)}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-2 max-md:order-2 max-md:justify-end">
         {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
         <ProposedMarker r={r} />
@@ -55,8 +61,8 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
       <span className="min-w-0 max-md:order-4 max-md:col-span-2">
         <HealthSummaryChips health={r.health} />
       </span>
-      <span className="text-right text-12-5 text-subtle max-lg:hidden" title={`${new Date(w.updatedAt).toLocaleString()} · ${r.writerName}`}>
-        {formatRelativeTime(w.updatedAt)}
+      <span className="text-right text-12-5 text-subtle max-lg:hidden" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>
+        {time.relative(w.updatedAt)}
       </span>
     </Link>
   );
@@ -64,6 +70,9 @@ function Row({ r, slug, templates }: { r: WorkflowRecord; slug: string; template
 
 /** A design in the narrow list beside the overview: its title and state, then what it is drawn in, its size and age. */
 function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
   const w = r.document;
   const status = r.design.shown;
   return (
@@ -81,8 +90,8 @@ function NarrowRow({ r, slug, templates }: { r: WorkflowRecord; slug: string; te
         {status ? <DesignPill status={status} reason={r.design.returnReason ?? null} /> : null}
         <ProposedMarker r={r} />
       </span>
-      <span className="col-span-2 truncate text-12 text-muted" title={`${new Date(w.updatedAt).toLocaleString()} · ${r.writerName}`}>
-        <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates)}</span> · {size(r)} · {formatRelativeTime(w.updatedAt)}
+      <span className="col-span-2 truncate text-12 text-muted" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>
+        <span data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span> · {size(r, t)} · {time.relative(w.updatedAt)}
       </span>
       <span className="col-span-2 min-w-0 empty:hidden">
         <HealthSummaryChips health={r.health} />
@@ -103,35 +112,37 @@ function Designs({
   /** Beside the overview: two-line rows, no column header. */
   narrow: boolean;
 }) {
+  const t = useCopy();
+  const label = useLabel();
   const [picked, setPicked] = useQueryParam("template");
-  const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates).localeCompare(templateTitle(b, templates)));
+  const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates, label).localeCompare(templateTitle(b, templates, label)));
   const filter = picked && chips.includes(picked) ? picked : null;
-  const groups = catalogue(filter ? all.filter((r) => templateIdOf(r) === filter) : all);
+  const groups = catalogue(filter ? all.filter((r) => templateIdOf(r) === filter) : all, t);
   const pad = narrow ? "px-5 max-md:px-4" : "px-7 max-md:px-4";
   return (
     <section aria-labelledby="designs-title" className={cn(narrow ? "pt-3.5" : "pt-5")} data-testid="designs">
       <header className={cn("flex flex-wrap items-center gap-x-4 gap-y-2.5 pb-3", pad)}>
         <h2 id="designs-title" className="fg-h3 m-0">
-          Designs <span className="font-mono text-13 font-semibold text-muted">{all.length}</span>
+          {t("workflows.designs")} <span className="font-mono text-13 font-semibold text-muted">{all.length}</span>
         </h2>
         {chips.length > 1 ? (
-          <span className="flex flex-wrap gap-1.5" role="tablist" aria-label="Diagram type">
-            {[null, ...chips].map((t) => (
+          <span className="flex flex-wrap gap-1.5" role="tablist" aria-label={t("workflows.diagramType")}>
+            {[null, ...chips].map((k) => (
               <Button
-                key={t ?? "all"}
+                key={k ?? "all"}
                 type="button"
                 variant="ghost"
                 size="sm"
                 role="tab"
-                aria-selected={filter === t}
-                onClick={() => setPicked(t)}
+                aria-selected={filter === k}
+                onClick={() => setPicked(k)}
                 className={cn(
                   "h-auto rounded-pill border px-2.5 py-0.5 text-12 font-semibold",
-                  filter === t ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
+                  filter === k ? "border-fg bg-fg text-surface" : "border-line bg-surface text-muted hover:text-fg",
                 )}
                 data-testid="template-chip"
               >
-                {t ? templateTitle(t, templates) : "All"}
+                {k ? templateTitle(k, templates, label) : t("workflows.all")}
               </Button>
             ))}
           </span>
@@ -139,12 +150,12 @@ function Designs({
       </header>
       {narrow ? null : (
         <div aria-hidden className={cn(COLS, "h-8 items-center border-y border-line-subtle text-11-5 font-semibold text-subtle max-md:hidden")}>
-          <span>Design</span>
-          <span>Diagram</span>
-          <span>Size</span>
-          <span>State</span>
-          <span>Health</span>
-          <span className="text-right max-lg:hidden">Updated</span>
+          <span>{t("workflows.col.design")}</span>
+          <span>{t("workflows.col.diagram")}</span>
+          <span>{t("workflows.col.size")}</span>
+          <span>{t("list.col.state")}</span>
+          <span>{t("workflows.col.health")}</span>
+          <span className="text-right max-lg:hidden">{t("workflows.col.updated")}</span>
         </div>
       )}
       <div className={cn("bg-surface", narrow && "border-t border-line-subtle")} data-testid="workflow-list">
@@ -166,15 +177,16 @@ function Designs({
 
 /** No design yet: the owner asks for the first ones here, confirmed before the job that draws them runs. */
 function NoWorkflows({ projectId }: { projectId: string }) {
+  const t = useCopy();
   const hint = useOnboardingState(projectId).data?.hint;
   const { ask, dialog, error } = useAskForDesigns(projectId);
   const action = hint?.action ?? "start";
   return (
     <div className="px-7 py-10 max-md:px-4" data-testid="no-workflows">
       <EmptyState
-        title="No workflow has been drawn"
-        message="The project's master draws each workflow from the code. Ask for the first designs and they arrive proposed for your review."
-        action={{ label: action === "start" ? "Ask for designs" : (hint?.actionLabel ?? "Open onboarding"), onClick: () => ask(action) }}
+        title={t("workflows.emptyTitle")}
+        message={t("workflows.emptyMessage")}
+        action={{ label: action === "start" ? t("workflows.askForDesigns") : (hint?.actionLabel ?? t("workflows.openOnboarding")), onClick: () => ask(action) }}
       />
       {error ? (
         <p role="alert" className="text-center text-12 text-red">
@@ -192,13 +204,14 @@ function NoWorkflows({ projectId }: { projectId: string }) {
  * no system context yet gets the onboarding line and the list across the page.
  */
 export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false }: { projectId: string; slug: string; projectName: string; canEdit?: boolean }) {
+  const t = useCopy();
   const q = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocument = useProjectDocument(projectId);
   return (
-    <QueryBoundary query={q} loadingLabel="loading workflows…" height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("workflows.loadingList")} height="60vh" retry="always">
       {(data) => {
-        const templates = (templatesQ.data?.templates ?? []).map((t) => t.template);
+        const templates = (templatesQ.data?.templates ?? []).map((x) => x.template);
         const all = data.workflows;
         const overview = (
           <SystemOverviewRegion
@@ -216,7 +229,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
         if (systemContextOf(all)) {
           return (
             <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
-              <PageTitle hint="What the system is, beside every design the project draws">Workflows</PageTitle>
+              <PageTitle hint={t("workflows.titleHintSplit")}>{t("workflows.title")}</PageTitle>
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
                 <aside className="w-[400px] flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
@@ -228,7 +241,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
         }
         return (
           <div className="grid min-h-full content-start bg-app" data-testid="workflows-screen">
-            <PageTitle hint="What the system is, then every design the project draws, grouped by what it is for">Workflows</PageTitle>
+            <PageTitle hint={t("workflows.titleHint")}>{t("workflows.title")}</PageTitle>
             {overview}
             {all.length === 0 ? (
               <NoWorkflows projectId={projectId} />

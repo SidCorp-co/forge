@@ -1,11 +1,12 @@
 "use client";
 
-import { RELEASE_STATE_LABELS } from "@forge/contracts/releases";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { type BannerTone, Icon, LEGEND, Tooltip, WaitBanner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
+import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import { localizeWaiting, standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { cn } from "@/lib/utils/cn";
 import type { ReleaseAttentionGroup, ReleaseDetail, ReleaseGateView } from "../types";
@@ -65,6 +66,8 @@ function GateIssues({ issues, slug }: { issues: readonly string[]; slug: string 
 }
 
 export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const [open, setOpen] = useState(false);
   const more = gate.issues.length > NAMED_IN_SENTENCE;
   const owner = gate.owner;
@@ -79,7 +82,7 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
         <b className="font-semibold">{gate.title}.</b> {gate.sentence}
         {owner.kind === "system" ? null : (
           <span className="mt-0.5 block text-12-5 text-muted" data-testid="gate-owner">
-            {owner.who} owes it: {owner.act}.
+            {t("releases.gateOwes", { who: standingWho(owner.who, language), act: standingAct(owner.act, language) })}
           </span>
         )}
         {gate.issues.length > 0 && !more ? <GateIssues issues={gate.issues} slug={slug} /> : null}
@@ -87,14 +90,14 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
           <>
             {" "}
             <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="gate-issues-toggle">
-              {open ? "Hide the issues" : `All ${gate.issues.length} issues`}
+              {open ? t("releases.gateHideIssues") : t("releases.gateAllIssues", { n: gate.issues.length })}
             </DisclosureToggle>
             {open ? <GateIssues issues={gate.issues} slug={slug} /> : null}
           </>
         ) : null}
       </span>
       <Tooltip label={`${gate.code} · ${gate.detail}`} multiline>
-        <span className="mt-0.5 text-subtle" role="img" aria-label={`Details of ${gate.title}`}>
+        <span className="mt-0.5 text-subtle" role="img" aria-label={t("releases.gateDetails", { title: gate.title })}>
           <Icon name="info" size={14} />
         </span>
       </Tooltip>
@@ -103,20 +106,24 @@ export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }
 }
 
 export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: string }) {
-  const w = r.waitingOn;
+  const t = useCopy();
+  const label = useLabel();
+  const w = localizeWaiting(r.waitingOn, useInterfaceLanguage());
   const ended = r.attentionGroup === "done" || r.attentionGroup === "stopped";
   const stuck = r.attentionGroup === "stuck";
   const head = ended
-    ? `${RELEASE_STATE_LABELS[r.state]}.`
+    ? `${label("releaseState", r.state)}.`
     : stuck
-      ? "Stuck:"
-      : `Waiting on ${w.kind === "you" ? "you" : w.who}:`;
+      ? t("releases.bannerStuck")
+      : w.kind === "you"
+        ? t("releases.bannerWaitingYou")
+        : t("releases.bannerWaitingOn", { who: w.who });
   const body = ended
     ? r.state === "shipped"
       ? r.current
-        ? "Live on production."
-        : "Superseded by a later release."
-      : "Nothing is owed on it."
+        ? t("releases.bannerLive")
+        : t("releases.bannerSuperseded")
+      : t("releases.bannerNothingOwed")
     : stuck
       ? `${w.who}: ${w.act}`
       : w.act;

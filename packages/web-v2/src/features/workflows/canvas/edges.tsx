@@ -7,6 +7,7 @@ import { memo } from "react";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { DASH, edgeHue, MARK_HUE } from "./style";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface WfEdgeData extends Record<string, unknown> {
   d: string;
@@ -28,6 +29,7 @@ export interface WfEdgeData extends Record<string, unknown> {
 }
 
 function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
+  const t = useCopy();
   const stroke = data.mark && data.mark !== "changed" ? MARK_HUE[data.mark] : edgeHue(data.kind);
   return (
     <>
@@ -52,7 +54,7 @@ function WfEdge({ id, data, markerEnd }: EdgeProps & { data: WfEdgeData }) {
             data-return={data.isReturn}
             data-on={data.on}
             data-rel={!data.dim}
-            title={data.merged ? `${data.full ?? ""}\nClick to open both stages` : (data.full ?? data.kind.tooltip)}
+            title={data.merged ? `${data.full ?? ""}\n${t("workflows.canvas.openBothStages")}` : (data.full ?? data.kind.tooltip)}
             style={{
               ["--tc" as string]: edgeHue(data.kind),
               transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)`,

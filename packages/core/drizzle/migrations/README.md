@@ -10,13 +10,18 @@ error-tracking port and then runs `packages/core/src/db/migrate.ts`.
 `packages/core/src/db/migrate.ts` calls `drizzle-orm/postgres-js/migrator`, which:
 
 1. **Reads `meta/_journal.json`** — the canonical list of migrations to
-   apply, in order (`idx` field).
-2. For each entry, opens `<tag>.sql` from this directory and computes its
-   hash.
-3. Compares the hash against rows in the `drizzle.__drizzle_migrations`
-   table in the target DB.
-4. Applies any file whose hash isn't already present, then inserts a
-   journal row in the DB.
+   apply, in order (`idx` field), and opens each `<tag>.sql`.
+2. Reads the single highest `created_at` in `drizzle.__drizzle_migrations`.
+3. Applies, in ONE transaction, every entry whose `when` exceeds it, inserting
+   a row per entry. An entry at or below it is skipped silently — the hash is
+   stored, never compared.
+
+A boot that cannot migrate exits 1 and reports the failure through the
+error-tracking port (Sentry when `SENTRY_DSN` is set), flushed before exit:
+the stage, the failing migration's tag when the statement names one, the
+pending tags, and the journal and recorded counts. A statement waiting on a
+lock another session holds fails at `MIGRATE_LOCK_TIMEOUT_MS` instead of
+waiting with nothing logged.
 
 **A `.sql` file in this folder does NOT get applied unless its tag is
 registered in `meta/_journal.json`.** The runtime migrator never scans
@@ -95,8 +100,8 @@ post-mortem in `0043_agent_sessions_zombie_fix_redo.sql`.)
 
 ### Symptom: migrator says "[migrate] done" but nothing changed
 
-Either the journal entry is missing (above) or `drizzle.__drizzle_migrations`
-already contains a row whose hash matches your file. If the columns are
+Either the journal entry is missing (above) or your entry's `when` is not
+above the highest `created_at` already in `drizzle.__drizzle_migrations`. If the columns are
 genuinely missing on the target DB despite the row, someone (or an old
 deploy) recorded the migration without the SQL actually running. Fix:
 

@@ -2,12 +2,14 @@
 
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
+import { useLabel } from "@/lib/i18n/interface-language";
 import { useQueryParam } from "@/lib/utils/use-query-param";
 import { workflowsApi } from "./api";
 import type { CanvasHealth } from "./canvas/workflow-canvas";
 import { edgeHealthOf, HEALTH_PARAM, type HealthSurface, LAYER_PARAM, layerOf, nodeHealthOf, overlayOn, sourceHref } from "./health";
-import type { DesignDecisionBody, SystemGraphRef } from "./types";
+import { builtinTemplateWords } from "./template-words";
+import type { DesignDecisionBody, SystemGraphRef, WorkflowTemplateList } from "./types";
 
 export function useWorkflows(projectId: string | undefined) {
   return useQuery({
@@ -18,13 +20,22 @@ export function useWorkflows(projectId: string | undefined) {
   });
 }
 
-/** The diagram templates this project draws in: the built-ins, then its own. They change on a deploy or a project-document write. */
+/** The diagram templates this project draws in: the built-ins, then its own. They change on a deploy or a project-document write. The built-ins read in the interface language; the project's own as written. */
 export function useWorkflowTemplates(projectId: string | undefined) {
+  const label = useLabel();
+  const select = useCallback(
+    (list: WorkflowTemplateList): WorkflowTemplateList => ({
+      ...list,
+      templates: list.templates.map((e) => (e.origin === "builtin" ? { ...e, template: builtinTemplateWords(e.template, label) } : e)),
+    }),
+    [label],
+  );
   return useQuery({
     queryKey: ["workflow-templates", projectId ?? ""],
     queryFn: () => workflowsApi.templates(projectId as string),
     enabled: Boolean(projectId),
     staleTime: 5 * 60_000,
+    select,
   });
 }
 

@@ -11,6 +11,8 @@ import { useWriteProjectDocument } from "@/features/project-config/hooks";
 import type { V1Read } from "@/features/project-config/types";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { templateFor } from "../canvas/model";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
@@ -20,10 +22,10 @@ import { WORKFLOWS_LIST, workflowHref } from "@/lib/routes/workflows";
 import type { SystemGraph, WorkflowRecord } from "../types";
 import { DesignPill, SensitivityBadge } from "./workflow-parts";
 
-const SOURCE: Record<SystemDescription["source"], string> = {
-  project: "The project's description",
-  purpose: "The system's purpose, from its system-context design",
-  summary: "The first sentence of the system-context design's summary",
+const SOURCE: Record<SystemDescription["source"], ProductCopyKey> = {
+  project: "workflows.overview.source.project",
+  purpose: "workflows.overview.source.purpose",
+  summary: "workflows.overview.source.summary",
 };
 
 /** The project document with only `project.description` changed. */
@@ -34,6 +36,7 @@ function describedDocument(document: Record<string, unknown>, description: strin
 
 /** One line, written into the project document at the revision read. */
 function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: string; held: Extract<V1Read, { declared: true }>; initial: string; onDone: () => void }) {
+  const t = useCopy();
   const write = useWriteProjectDocument(projectId);
   const [text, setText] = useState(initial);
   const submit = (e: FormEvent) => {
@@ -47,18 +50,18 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
     <form className="grid max-w-[86ch] gap-1.5" onSubmit={submit} data-testid="description-editor">
       <span className="flex items-center gap-2">
         <Input
-          aria-label="What the system is, in one line"
-          placeholder="What the system is and who it is for, in one line"
+          aria-label={t("workflows.overview.descLabel")}
+          placeholder={t("workflows.overview.descPlaceholder")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="min-w-0 flex-1"
           autoFocus
         />
         <Button type="submit" size="sm" variant="primary" disabled={!text.trim()} loading={write.isPending}>
-          Save
+          {t("workflows.save")}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </span>
       {refusal ? (
@@ -75,6 +78,7 @@ function DescriptionEditor({ projectId, held, initial, onDone }: { projectId: st
  * design was drawn, so it is never the headline for someone who can write the line instead.
  */
 function Description({ o, graph, projectId, projectDocument, canEdit }: { o: SystemOverview; graph: SystemGraph | null; projectId: string; projectDocument: V1Read | undefined; canEdit: boolean }) {
+  const t = useCopy();
   const [editing, setEditing] = useState(false);
   const described = describeSystem(projectDocument?.document, o, graph);
   const held = projectDocument?.declared ? projectDocument : null;
@@ -85,7 +89,7 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
     return (
       <Button type="button" variant="ghost" size="sm" className="-ml-2 h-7 w-fit gap-1.5 px-2 text-13 font-normal text-muted" onClick={() => setEditing(true)} data-testid="add-description">
         <Pencil size={13} aria-hidden />
-        Add a one-line description
+        {t("workflows.overview.addDescription")}
       </Button>
     );
   }
@@ -93,7 +97,7 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
   return (
     <span className="flex min-w-0 max-w-[96ch] items-center gap-2">
       <HoverCard
-        label="About this system"
+        label={t("workflows.overview.aboutSystem")}
         className="block min-w-0 truncate text-14"
         data-testid="system-description"
         data-source={described.source}
@@ -102,18 +106,18 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
             <p className="m-0 text-14 leading-relaxed-1-6">{described.text}</p>
             {summary && summary !== described.text ? (
               <div className="grid gap-0.5 border-t border-line-subtle pt-2">
-                <span className="text-12 font-semibold text-muted">How the system-context design was drawn</span>
+                <span className="text-12 font-semibold text-muted">{t("workflows.overview.howDrawn")}</span>
                 <p className="m-0 text-13 leading-relaxed-1-6 text-muted">{summary}</p>
               </div>
             ) : null}
-            <span className="text-12 text-subtle">{SOURCE[described.source]}</span>
+            <span className="text-12 text-subtle">{t(SOURCE[described.source])}</span>
           </div>
         }
       >
         {described.text}
       </HoverCard>
       {writable ? (
-        <Button type="button" variant="ghost" size="sm" className="h-6 w-6 flex-none p-0 text-subtle" aria-label="Edit the description" title="Edit the description" onClick={() => setEditing(true)}>
+        <Button type="button" variant="ghost" size="sm" className="h-6 w-6 flex-none p-0 text-subtle" aria-label={t("workflows.overview.editDescription")} title={t("workflows.overview.editDescription")} onClick={() => setEditing(true)}>
           <Pencil size={13} aria-hidden />
         </Button>
       ) : null}
@@ -122,6 +126,7 @@ function Description({ o, graph, projectId, projectDocument, canEdit }: { o: Sys
 }
 
 function FactDetail({ f }: { f: OverviewFact }) {
+  const t = useCopy();
   return (
     <ul className="m-0 grid min-w-[240px] list-none p-0" data-testid="fact-detail">
       {f.rows.map((r) => (
@@ -130,7 +135,7 @@ function FactDetail({ f }: { f: OverviewFact }) {
           {r.count !== undefined ? (
             <span className="flex-none text-12-5 tabular-nums text-muted">
               {r.count}
-              {r.unconfirmed ? <span className="text-subtle"> · {r.unconfirmed} unconfirmed</span> : null}
+              {r.unconfirmed ? <span className="text-subtle"> · {t("workflows.overview.unconfirmed", { n: r.unconfirmed })}</span> : null}
             </span>
           ) : null}
         </li>
@@ -141,10 +146,11 @@ function FactDetail({ f }: { f: OverviewFact }) {
 
 /** The facts as label and value pairs on one line; what each counts opens on hover or focus. */
 function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: SystemGraph | null; slug: string; projectDocument: V1Read | undefined }) {
+  const t = useCopy();
   const sensitivity = sensitivityOf(projectDocument?.document);
   return (
     <dl className="m-0 flex flex-wrap items-center gap-x-7 gap-y-1.5" data-testid="overview-facts">
-      {(graph ? overviewFacts(graph) : []).map((f) => (
+      {(graph ? overviewFacts(graph, t) : []).map((f) => (
         <div key={f.label} className="flex items-baseline gap-2">
           <dt className="text-12-5 text-muted">{f.label}</dt>
           <dd className="m-0 text-13-5 font-semibold">
@@ -156,7 +162,7 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
       ))}
       {sensitivity ? (
         <div className="flex items-center gap-2">
-          <dt className="text-12-5 text-muted">Data</dt>
+          <dt className="text-12-5 text-muted">{t("workflows.overview.data")}</dt>
           <dd className="m-0">
             <SensitivityBadge level={sensitivity} />
           </dd>
@@ -164,7 +170,7 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
       ) : null}
       {o.journey ? (
         <div className="flex min-w-0 items-baseline gap-2">
-          <dt className="text-12-5 text-muted">Main journey</dt>
+          <dt className="text-12-5 text-muted">{t("workflows.overview.mainJourney")}</dt>
           <dd className="m-0 min-w-0 truncate text-13-5 font-semibold">
             <Link href={workflowHref(slug, o.journey.document.flow)} onClick={() => rememberListOrigin(WORKFLOWS_LIST)} className="text-link hover:underline">
               {o.journey.document.title}
@@ -182,19 +188,20 @@ function Facts({ o, graph, slug, projectDocument }: { o: SystemOverview; graph: 
  * own line, so it does not.
  */
 function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) {
+  const t = useCopy();
   const state = useOnboardingState(quiet ? undefined : projectId);
   const { ask, dialog, pending, error } = useAskForDesigns(projectId);
   const hint = state.data?.hint;
   const action = hint?.action ?? "start";
   return (
-    <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label="System overview" data-testid="system-overview" data-empty>
+    <section className="border-b border-line-subtle bg-surface px-7 py-4 max-md:px-4" aria-label={t("workflows.overview.title")} data-testid="system-overview" data-empty>
       <p className="m-0 flex flex-wrap items-center gap-x-2 gap-y-1 text-13-5">
-        <b className="font-semibold">No system context yet.</b>
+        <b className="font-semibold">{t("workflows.overview.noContext")}</b>
         {quiet ? (
-          <span className="text-muted">Workflows shows what the system is once its system-context design is drawn.</span>
+          <span className="text-muted">{t("workflows.overview.noContextQuiet")}</span>
         ) : (
           <>
-            <span className="text-muted">One analysis job can draft it from the code, with the key designs, and ask what it cannot tell.</span>
+            <span className="text-muted">{t("workflows.overview.noContextAsk")}</span>
             <Button
               type="button"
               variant="ghost"
@@ -204,7 +211,7 @@ function NoContext({ projectId, quiet }: { projectId: string; quiet: boolean }) 
               onClick={() => ask(action)}
               data-testid="start-onboarding"
             >
-              {hint?.actionLabel ?? "Ask for designs"}
+              {hint?.actionLabel ?? t("workflows.askForDesigns")}
             </Button>
           </>
         )}
@@ -239,6 +246,7 @@ interface SystemOverviewRegionProps {
  * the shared canvas in its compact mode, folded by boundary until it reads at 12px.
  */
 export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, projectDocument, canEdit = false, variant = "page", className }: SystemOverviewRegionProps) {
+  const t = useCopy();
   const o = useMemo(() => systemOverview(records), [records]);
   const graphRef = useMemo(() => (o ? { projectId, workflowId: o.record.document.id, revision: o.record.revision } : null), [o, projectId]);
   const graph = useSystemGraph(graphRef);
@@ -262,11 +270,11 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
           {compact ? (
             // The dashboard's own header already names the project.
             <h2 id="system-overview-title" className="fg-h3 m-0 min-w-0 flex-1">
-              System overview
+              {t("workflows.overview.title")}
             </h2>
           ) : (
             <div className="grid min-w-0 flex-1 gap-0.5">
-              <span className="text-12 font-semibold text-muted">System overview</span>
+              <span className="text-12 font-semibold text-muted">{t("workflows.overview.title")}</span>
               <h2 id="system-overview-title" className="fg-h2 m-0">
                 {projectName}
               </h2>
@@ -280,7 +288,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
               className="inline-flex items-center gap-1 text-13 font-semibold text-link hover:underline"
               data-testid="open-system-context"
             >
-              {compact ? "Open workflows" : "Open system context"}
+              {compact ? t("workflows.overview.openWorkflows") : t("workflows.overview.openContext")}
               <Icon name="arrowRight" size={14} />
             </Link>
           </span>
