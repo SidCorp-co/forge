@@ -50,6 +50,22 @@ export function useConversationsAcrossProjects(projectIds: string[], archived = 
 }
 
 /**
+ * One project's live rooms, newest first: the read `useConversationsAcrossProjects` makes for that
+ * project, under its key, so the dock choosing a room and the list showing it share one cache.
+ */
+export function useProjectConversations(projectId: string | null) {
+  return useQuery({
+    queryKey: ["conversations", "list", projectId, "live"],
+    queryFn: () => conversationsApi.list(projectId as string, 50, false),
+    enabled: !!projectId,
+    select: (data): ListedConversation[] =>
+      data.items
+        .map((row) => ({ ...row, projectId: projectId as string }))
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+  });
+}
+
+/**
  * How often a room with a live Agent turn in it re-reads itself.
  */
 const AGENT_TURN_POLL_MS = 4000;

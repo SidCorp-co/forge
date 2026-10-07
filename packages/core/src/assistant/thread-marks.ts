@@ -1,6 +1,6 @@
 import type { OnboardingStatus } from '@forge/contracts/onboarding';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
@@ -8,7 +8,7 @@ import {
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
-import { conversationWindows } from '../db/schema-conversations.js';
+import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { requirements } from '../db/schema-requirements.js';
 import { firstRequirementsOnboardingOf, onboardingStatusesOf } from '../onboarding/index.js';
@@ -27,16 +27,69 @@ export interface ThreadFacts {
   batchOpen: boolean;
   /** A message in this room waits for its reply: a window not yet settled, or a runner turn still out. */
   replyPending: boolean;
+  /** The room's newest said message is the agent's, and it closes on a question (`closesOnQuestion`). */
+  agentAsked: boolean;
 }
 
 // an onboarding thread wears its onboarding's own status; any other room waits on the person
-// while a batch is open, is in progress while a reply is still being made, and is done otherwise —
-// the prototype's conversation status, so every row of the list carries one (REQ-11 BC-8)
-function threadStatusOf(f: ThreadFacts): OnboardingStatus {
+// while a batch is open, is in progress while a reply is still being made, waits on the person
+// again when the agent's last word asked them something, and is done otherwise — the prototype's
+// conversation status, so every row of the list carries one (REQ-11 BC-8, ISS-277)
+export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
   if (f.onboarding) return f.onboarding;
   if (f.batchOpen) return 'waiting_on_you';
   if (f.replyPending) return 'in_progress';
+  if (f.agentAsked) return 'waiting_on_you';
   return 'done';
+}
+
+const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s/;
+// a sentence ending on a question mark (ASCII or full-width), past any closing emphasis, quote or
+// bracket: `?` inside a link's query is followed by more of the link and is no question
+const ASKS = /[?\uFF1F][*_)"'\u201D\u2019\u00BB\]]*(?:\s|$)/;
+
+/**
+ * Whether an agent's message ends its turn asking the reader something: a question in its closing
+ * paragraph, or in the paragraph a closing list of options hangs from. A question earlier in the
+ * message is one it went on to answer.
+ */
+export function closesOnQuestion(text: string): boolean {
+  const paragraphs = text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const last = paragraphs.at(-1);
+  if (!last) return false;
+  if (ASKS.test(last)) return true;
+  const isList = last.split('\n').every((line) => LIST_LINE.test(line));
+  const before = paragraphs.at(-2);
+  return isList && before !== undefined && ASKS.test(before);
+}
+
+/** The rooms among these whose newest said message (no system line, no silence) is the agent's, asking. */
+async function roomsWhereAgentAsked(conversationIds: readonly string[]): Promise<Set<string>> {
+  const asked = new Set<string>();
+  if (conversationIds.length === 0) return asked;
+  const newest = await db
+    .selectDistinctOn([conversationMessages.conversationId], {
+      conversationId: conversationMessages.conversationId,
+      role: conversationMessages.role,
+      content: conversationMessages.content,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        inArray(conversationMessages.conversationId, [...conversationIds]),
+        ne(conversationMessages.role, 'system'),
+        isNull(conversationMessages.silenceReason),
+      ),
+    )
+    .orderBy(conversationMessages.conversationId, desc(conversationMessages.seq));
+  for (const m of newest) {
+    if (m.role === 'assistant' && closesOnQuestion(m.content)) asked.add(m.conversationId);
+  }
+  return asked;
 }
 
 /** The rooms among these holding a runner-hosted turn that is still dispatched or running. */
@@ -75,7 +128,7 @@ export async function threadMarks(
   const requirementIds = [
     ...new Set(rooms.flatMap((r) => (r.requirementId ? [r.requirementId] : []))),
   ];
-  const [onboarded, waiting, unsettled, turns, subjects] = await Promise.all([
+  const [onboarded, waiting, unsettled, turns, subjects, asked] = await Promise.all([
     onboardingStatusesOf(ids),
     db
       .select({ conversationId: questionnaireBatches.conversationId })
@@ -99,6 +152,7 @@ export async function threadMarks(
           .from(requirements)
           .where(inArray(requirements.id, requirementIds))
       : Promise.resolve([]),
+    roomsWhereAgentAsked(ids),
   ]);
   const status = onboarded;
   const open = new Set(waiting.map((w) => w.conversationId));
@@ -118,6 +172,7 @@ export async function threadMarks(
         onboarding,
         batchOpen: open.has(r.id),
         replyPending: pending.has(r.id) || turns.has(r.id),
+        agentAsked: asked.has(r.id),
       }),
       subjectKey: r.requirementId ? (keyOf.get(r.requirementId) ?? null) : null,
     });

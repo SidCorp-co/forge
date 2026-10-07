@@ -15,6 +15,7 @@ import { useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useConversation } from "../hooks";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationList } from "./conversation-list";
+import { DockOpening, WaitingOffer } from "./dock-opening";
 import { StartConversation } from "./start-conversation";
 
 /** What a person sees the dock called — the top-bar button, the dock title and its labels. */
@@ -122,6 +123,9 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
         <StartConversation onStarted={(id, projectId) => pick({ kind: "room", projectId, conversationId: id })} />
       );
     }
+    if (target.kind === "latest") {
+      return <DockOpening projectId={target.projectId} pageKey={pageKey} onResolved={dock.select} />;
+    }
     if (!project) {
       return (
         <p className="fg-body-sm p-4 text-muted">
@@ -202,6 +206,9 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
           )}
           <IconButton icon="x" size="sm" aria-label={`Close ${DOCK_TITLE}`} title="Close" onClick={dock.close} />
         </header>
+        {!listing && (target?.kind === "room" || target?.kind === "draft") && (
+          <WaitingOffer projectId={target.projectId} openId={conversationId} onOpen={pick} />
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
       </div>
     </SecondaryRegion>

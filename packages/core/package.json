@@ -29,7 +29,7 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "turbo run build --filter=@forge/core^... --output-logs=errors-only && vitest run --config vitest.integration.config.ts",
     "test:integration:ci": "vitest run --config vitest.integration.config.ts",
     "lint": "biome check src tests --max-diagnostics=none",
     "lint:fix": "biome check --write src tests",

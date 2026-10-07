@@ -145,3 +145,33 @@ describe('the open list the bell reads', () => {
     expect(res.body.count).toBe(1);
   });
 });
+
+/**
+ * Open is a fact about the records behind a delivery, never about whether anyone has looked: a read
+ * delivery whose record still fires is listed and counted beside an unread one. Nothing guarded this
+ * until ISS-277, and `openDelivery` redefined as unread left every suite green (ISS-289's judge).
+ */
+describe('a read delivery that is still open', () => {
+  let looker = '';
+  let lookerToken = '';
+  let seen = '';
+  let unseen = '';
+
+  beforeAll(async () => {
+    looker = (await createTestUser({ verified: true })).id;
+    lookerToken = await userToken(looker);
+    seen = await delivery(looker, [await record(atlas, firing)]);
+    unseen = await delivery(looker, [await record(atlas, firing)]);
+    await db.execute(sql`UPDATE notification_deliveries SET read_at = now() WHERE id = ${seen}`);
+  });
+
+  it('is listed and counted beside the unread one', async () => {
+    const list = await api(lookerToken, 'GET', '/api/notifications?openOnly=true&pageSize=100');
+    const count = await api(lookerToken, 'GET', '/api/notifications/open-count');
+    expect(list.status).toBe(200);
+    expect(count.status).toBe(200);
+    const ids = (list.body.items as Record<string, unknown>[]).map((i) => i.id);
+    expect(ids.sort()).toEqual([seen, unseen].sort());
+    expect(count.body.count).toBe(2);
+  });
+});
