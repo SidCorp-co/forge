@@ -4,6 +4,7 @@ export type {
   ReleaseAttentionGroup,
   ReleaseContentGroup,
   ReleaseDetail,
+  ReleaseFeedbackView,
   ReleaseGateView,
   ReleaseIssueView,
   ReleaseListResponse,

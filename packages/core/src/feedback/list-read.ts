@@ -377,7 +377,10 @@ export function summaryOf(
         owed.every((c) => c.status === AT_RELEASE_GATE)
           ? l.release
           : null,
-      carrierVersion: owed.find((c) => c.release)?.release ?? null,
+      carrierVersion:
+        owed.find((c) => c.release)?.release ??
+        (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??
+        null,
     },
   );
   return {

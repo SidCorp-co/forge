@@ -425,7 +425,23 @@ export interface ReleaseAttemptView {
 	settledAt: string | null;
 }
 
+/**
+ * One feedback item the release's issues carry: who reported it and whether the release told them.
+ * `on_ship` until the release ships; then `told` off the notice, or `not_told` (an agent has no bell,
+ * the reporter turned it off, or the notice never went).
+ */
+export interface ReleaseFeedbackView {
+	key: string;
+	title: string;
+	reporter: string;
+	agency: "human" | "agent";
+	told: "on_ship" | "told" | "not_told";
+	toldAt: string | null;
+}
+
 export interface ReleaseDetail extends ReleaseSummary {
+	/** The feedback this release answers, by key: what the people who asked are waiting to hear. */
+	feedbackAnswered: ReleaseFeedbackView[];
 	issues: ReleaseIssueView[];
 	requirementsCompleted: ReleaseRequirementView[];
 	issueCriteria: ReleaseIssueCriteria[];

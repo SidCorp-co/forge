@@ -53,7 +53,8 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   const g = f.attentionGroup;
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
   const version = f.route?.carriers.find((c) => c.release)?.release ?? null;
-  const approving = g !== "done" && version !== null && w.ref === version && slug;
+  const approving = g !== "done" && version !== null && w.ref === version && slug && w.act.startsWith("Approve");
+  const verifying = g !== "done" && version !== null && w.ref === version && slug && w.act.startsWith("verify the fix shipped in");
   const answer = g !== "done" && w.act === "Confirm the answer" ? answerOf(f) : null;
   return (
     <WaitBanner
@@ -65,6 +66,13 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
         ) : approving ? (
           <>
             Approve release{" "}
+            <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
+              {version}
+            </Link>
+          </>
+        ) : verifying ? (
+          <>
+            Verify the fix shipped in{" "}
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
               {version}
             </Link>
@@ -125,6 +133,27 @@ function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | 
   );
 }
 
+/** When and in which release the work shipped, ahead of why the reporter was not told: the ship is the fact, the silence its consequence. */
+function shippedLine(notice: Extract<FeedbackShipNotice, { state: "not_told" }>, slug: string) {
+  const { at, release } = notice.shipped;
+  if (!at && !release) return null;
+  return (
+    <>
+      Shipped
+      {release ? (
+        <>
+          {" in "}
+          <Link href={releaseHref(slug, release)} className="font-mono text-link hover:underline">
+            {release}
+          </Link>
+        </>
+      ) : null}
+      {at ? ` on ${formatStamp(at)}` : null}
+      {". "}
+    </>
+  );
+}
+
 /** Whether the release that shipped the work told the reporter, or why nobody was told. */
 function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | undefined; slug: string }) {
   if (!notice) return null;
@@ -148,7 +177,8 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
   return (
     <Fact label="Reporter told" testId="facts-ship-notice">
       <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
-        Not told · {notice.reason}
+        {shippedLine(notice, slug)}
+        {notice.reason}
       </span>
     </Fact>
   );

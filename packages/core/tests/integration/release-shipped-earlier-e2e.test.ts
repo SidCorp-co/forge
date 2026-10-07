@@ -92,6 +92,22 @@ describe('closing against the release that shipped the commit', () => {
     expect(await rosterClosedOf(second)).toEqual([inSecond]);
   });
 
+  it('tells the outbox the release shipped them, so the reporter whose feedback they carry is told', async () => {
+    const first = await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
+    const id = await marked(A);
+
+    await close([id]);
+
+    const events = await rows<{
+      payload: { runId: string; version: string; issueIds: string[] };
+    }>(sql`
+      SELECT payload FROM pipeline_outbox WHERE type = 'release.shipped' AND project_id = ${projectId}
+    `);
+    expect(events.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ runId: first, version: '0.4.0-dev.1', issueIds: [id] }),
+    ]);
+  });
+
   it('clears the hold an aborted release left on a row it closes, and says why on the issue', async () => {
     await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
     const id = await marked(A);

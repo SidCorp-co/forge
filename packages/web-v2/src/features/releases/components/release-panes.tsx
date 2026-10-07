@@ -2,6 +2,7 @@
 
 import { LANDING_SURFACE_LABELS, LANDING_SURFACES, type LandingSurface } from "@forge/contracts/landing-artifacts";
 import { RELEASE_PROOF_LABELS } from "@forge/contracts/releases";
+import { formatStamp } from "@/lib/utils/format";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
@@ -18,8 +19,9 @@ import {
   WaitingOn,
 } from "@/design";
 import { issueHref } from "@/lib/routes/issues";
+import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
-import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
+import type { ReleaseDetail, ReleaseFeedbackView, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
 import { TourHint } from "@/features/tours/components/tour-hint";
 import { changesSentence, WhatChanges } from "./release-changes";
@@ -66,6 +68,37 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
   );
 }
 
+const TOLD: Record<ReleaseFeedbackView["told"], (f: ReleaseFeedbackView) => string> = {
+  on_ship: () => "Its reporter is told when this release ships",
+  told: (f) => (f.toldAt ? `Reporter told ${formatStamp(f.toldAt)}` : "Reporter told"),
+  not_told: (f) => (f.agency === "agent" ? "Reporter is an agent: no notice sent" : "Reporter was not told"),
+};
+
+/** The feedback the release answers: who asked, and whether this release told them. Flush rows, no cards. */
+export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }) {
+  if (r.feedbackAnswered.length === 0) return null;
+  return (
+    <section aria-label="Feedback answered" data-testid="release-feedback">
+      <ViewHeading hint="What people asked for that this release carries">Feedback answered</ViewHeading>
+      <ul className="border-t border-line-subtle">
+        {r.feedbackAnswered.map((f) => (
+          <li key={f.key} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13" data-testid="release-feedback-row" data-told={f.told}>
+            <span className="flex flex-wrap items-center gap-2">
+              <Link className="font-mono text-12 font-semibold text-link hover:underline" href={feedbackHref(slug, f.key)}>
+                {f.key}
+              </Link>
+              <span className="min-w-0 flex-1 truncate">{f.title}</span>
+            </span>
+            <span className="text-12-5 text-muted">
+              {f.reporter} · {TOLD[f.told](f)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** How the release is built, for the engineers: collapsed, so a reader of the release reads what users get first. */
 function TechnicalDetail({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const [open, setOpen] = useState(false);
@@ -91,6 +124,7 @@ export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string;
         <TourHint tourId="release-what-changes" />
         <WhatUsersGet r={r} slug={slug} />
       </div>
+      <FeedbackAnswered r={r} slug={slug} />
       <TechnicalDetail r={r} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">

@@ -559,7 +559,14 @@ export interface FeedbackSummary
  */
 export type FeedbackShipNotice =
 	| { state: "told"; at: string; release: string | null }
-	| { state: "not_told"; reason: string };
+	| {
+			state: "not_told";
+			reason: string;
+			/** What the record says about the ship itself: when, and in which release (null when no release carries it). */
+			shipped: { at: string | null; release: string | null };
+			/** The work shipped before Forge told reporters at all, so no release owed this reporter a notice. */
+			beforeNotices: boolean;
+	  };
 
 export interface FeedbackView extends FeedbackSummary {
 	/** Null until the work that carries the item has shipped (phase resolved or verified on an issue route). */

@@ -20,6 +20,7 @@ const release = {
   issues: [],
   gates: [],
   requirementsCompleted: [],
+  feedbackAnswered: [],
   notes: {
     sections: [
       { section: "Added", entries: [{ key: "ISS-94", title: "Saved boards keep every card", userFacing: "A saved board shows every card it had.", technical: null }] },
