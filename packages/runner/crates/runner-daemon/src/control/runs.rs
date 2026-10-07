@@ -322,6 +322,10 @@ pub(crate) fn bind_declared(
         .filter(|p| p.is_absolute())
         .and_then(|p| runner_core::transcript_age::child_transcript(p, child))
         .map(|p| p.to_string_lossy().into_owned());
+    let roles = ctl
+        .config_dir
+        .as_deref()
+        .and_then(runner_core::dispatch_gate::shipped_roles);
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else { return };
     let heard = |led: &runner_core::ledger::Ledger, run_id: &str| {
@@ -329,38 +333,81 @@ pub(crate) fn bind_declared(
             tracing::warn!("[control] run {run_id}: cannot note that {child} started: {e}");
         }
     };
-    match led.unbound_run_for_master(session_id, &ctl.boot_id) {
-        Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
-            Ok(true) => {
-                heard(led, &run.run_id);
-                ctl.promises
-                    .lock()
-                    .expect("promises poisoned")
-                    .promised
-                    .remove(&run.run_id);
-                tracing::info!("[control] run {} is subagent {child}", run.run_id)
-            }
-            Ok(false) => tracing::debug!(
-                "[control] run {} was already bound when {child} started",
-                run.run_id
-            ),
-            Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
-        },
-        Ok(None) => match classify_start(
-            led.run_for_agent(child)
-                .map(|r| r.map(|run| run.run_id))
-                .map_err(|e| e.to_string()),
+    let pending = match led.unbound_run_for_master(session_id, &ctl.boot_id) {
+        Ok(pending) => pending,
+        Err(e) => {
+            tracing::warn!("[control] cannot read declared runs: {e}");
+            return;
+        }
+    };
+    // A start is a subagent's first, or a resume of one its master already
+    // ran: Claude Code fires `SubagentStart` for both. Either takes the run
+    // its master declared where it is of the role that run was declared for.
+    let mut turned_away: Option<(String, String)> = None;
+    if let Some(run) = pending {
+        let promised_role = ctl
+            .promises
+            .lock()
+            .expect("promises poisoned")
+            .promised
+            .get(&run.run_id)
+            .and_then(|p| p.role.clone());
+        match runner_core::dispatch_gate::claims_the_run(
+            agent_type,
+            roles.as_ref(),
+            promised_role.as_deref(),
         ) {
-            StartKind::Replay(run_id) => {
-                heard(led, &run_id);
-                tracing::debug!(
-                    "[control] subagent {child} is already run {run_id}, so its start is a replay"
-                )
+            Ok(()) => {
+                match led.bind_agent(&run.run_id, child) {
+                    Ok(true) => {
+                        heard(led, &run.run_id);
+                        ctl.promises
+                            .lock()
+                            .expect("promises poisoned")
+                            .promised
+                            .remove(&run.run_id);
+                        tracing::info!("[control] run {} is subagent {child}", run.run_id)
+                    }
+                    Ok(false) => match led.run_for_agent(child) {
+                        Ok(Some(holder)) => {
+                            heard(led, &holder.run_id);
+                            tracing::warn!(
+                                "[control] subagent {child} started under master session {session_id} and still answers to open run {}, so run {} stays unbound: a subagent answers to one open run, and the master closes the one it is done with",
+                                holder.run_id,
+                                run.run_id
+                            )
+                        }
+                        _ => tracing::debug!(
+                            "[control] run {} was already bound when {child} started",
+                            run.run_id
+                        ),
+                    },
+                    Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
+                }
+                return;
             }
-            StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
-            StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
-        },
-        Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
+            Err(why) => {
+                tracing::info!(
+                    "[control] subagent {child} started under master session {session_id} and is not run {}'s: {why}. The run stays unbound for the subagent dispatched for it",
+                    run.run_id
+                );
+                turned_away = Some((run.run_id, why));
+            }
+        }
+    }
+    match classify_start(
+        led.run_for_agent(child)
+            .map(|r| r.map(|run| run.run_id))
+            .map_err(|e| e.to_string()),
+    ) {
+        StartKind::Replay(run_id) => {
+            heard(led, &run_id);
+            tracing::debug!(
+                "[control] subagent {child} is already run {run_id}, so its start is a replay"
+            )
+        }
+        StartKind::Undeclared => undeclared_child(ctl, child, agent_type, turned_away.as_ref()),
+        StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
     }
 }
 

@@ -190,12 +190,35 @@ pub struct Control {
 
 #[derive(Default)]
 pub struct GateMemory {
-    /// Which tool call each pending declaration has been promised to. The
+    /// Which dispatch each pending declaration has been promised to. The
     /// gate reads it only over the control socket, which is unix's.
     #[cfg(unix)]
-    promised: std::collections::HashMap<String, String>,
+    promised: std::collections::HashMap<String, Promise>,
     #[cfg(unix)]
     allowed: std::collections::HashSet<String>,
+    /// The last role inventory this daemon read whole, which decides which
+    /// dispatch an unread inventory's promise may go to (ISS-1390).
+    #[cfg(unix)]
+    last_roles: Option<std::collections::BTreeSet<String>>,
+}
+
+/// The dispatch a pending declaration is promised to: its tool call, and the
+/// role it named, which is the role of the subagent that binds the run.
+#[cfg(unix)]
+#[derive(Debug, Clone)]
+struct Promise {
+    tool_use: String,
+    role: Option<String>,
+}
+
+#[cfg(unix)]
+impl Promise {
+    fn to(d: &runner_core::dispatch_gate::Dispatch, tool_use: String) -> Self {
+        Self {
+            tool_use,
+            role: d.subagent_type.clone(),
+        }
+    }
 }
 
 pub const HOOKS_CAN_REPORT: bool = cfg!(unix);
