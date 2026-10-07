@@ -325,6 +325,17 @@ pub fn data_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// The user's home, where Claude Code keeps its transcripts. A test build
+/// resolves it as [`data_dir`] does: a scratch `HOME` on every platform, and a
+/// refusal for any home outside a test's own scratch, since a test that wrote
+/// a transcript under the invoking user's home left its directory there.
+pub fn home_dir() -> Result<PathBuf> {
+    let dir = os_dir(HOME, dirs_next::home_dir, "home")?;
+    #[cfg(any(test, feature = "test-support"))]
+    refuse_outside_a_scratch(&dir, "resolves no home", HOME)?;
+    Ok(dir)
+}
+
 #[cfg(any(test, feature = "test-support"))]
 fn refuse_outside_a_scratch(dir: &std::path::Path, what: &str, var: &str) -> Result<()> {
     if crate::test_scratch::is_scratch(dir) {
@@ -341,9 +352,10 @@ fn os_config_dir() -> Result<PathBuf> {
     os_dir(CONFIG_HOME, dirs_next::config_dir, "config")
 }
 
-/// The variables a test build scopes the config and data dirs with.
+/// The variables a test build scopes the config, data and home dirs with.
 const CONFIG_HOME: &str = "XDG_CONFIG_HOME";
 const DATA_HOME: &str = "XDG_DATA_HOME";
+const HOME: &str = "HOME";
 
 /// The OS's `what` dir. A test build honours a scratch `var` on every
 /// platform, so a test scoping it is isolated where `dirs_next` ignores it.
@@ -502,116 +514,96 @@ mod tests {
         );
     }
 
+    /// ISS-1344. A test build resolves no home but a test's own scratch, so a
+    /// test that writes a transcript cannot reach the invoking user's home. A
+    /// scratch `HOME` is honoured on every platform, where `dirs_next` reads it
+    /// on Unix alone.
+    #[test]
+    fn a_test_build_resolves_no_home_but_a_tests_own_scratch() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("home-own");
+        let temp_dir = own.path().parent().expect("the temp dir").to_path_buf();
+        let under_temp = temp_dir.join("iss-1344-not-a-scratch");
+        let users_own = PathBuf::from(if cfg!(windows) {
+            r"C:\Users\iss-1344-nobody"
+        } else {
+            "/iss-1344-nobody"
+        });
+        let home = ScopedVar::set("HOME", &users_own);
+        for refused_dir in [&users_own, &temp_dir, &under_temp] {
+            home.move_to(refused_dir);
+            let said = home_dir()
+                .expect_err("not a test's own scratch")
+                .to_string();
+            assert!(
+                said.contains("resolves no home") && said.contains("is not one"),
+                "{said}"
+            );
+            #[cfg(target_os = "linux")]
+            assert!(
+                said.contains(&refused_dir.display().to_string()),
+                "the refusal names the directory: {said}"
+            );
+        }
+        home.move_to(own.path());
+        assert_eq!(
+            home_dir().unwrap(),
+            own.path(),
+            "a scratch HOME is the home, on every platform"
+        );
+    }
+
     /// ISS-1344. A writer under the config dir resolves it through
-    /// [`base_dir`], and the ledger through [`data_dir`], so the test build's
-    /// refusal reaches both. Every other route to a directory the OS names for
-    /// the user, in any `.rs` file of either crate, is counted here per
-    /// occurrence by file with what it does, and a new one goes red until it is
-    /// either moved or argued in. A route is any name such a directory is
-    /// derived from on some platform rather than the spelling of one call, so
-    /// a `~/.config` built by hand counts like `dirs_next`, and `dirs_next`
-    /// counts however it is imported.
+    /// [`base_dir`], the ledger through [`data_dir`] and a transcript's home
+    /// through [`home_dir`], so the test build's refusal reaches all three.
+    /// Every other route to a directory the OS names for the user, in any `.rs`
+    /// file of either crate, is counted here per occurrence by file with what it
+    /// does, and a new one goes red until it is either moved or argued in.
+    /// [`crate::route_scan`] says what a route is: a read is counted where it
+    /// happens, whatever names the variable it reads.
     #[test]
     fn every_other_resolution_of_the_config_dir_is_a_counted_reader() {
-        // Each token is split so that this test's own lines are not routes.
-        let ident = concat!("dirs_", "next");
-        let routes = [
-            concat!("Config::", "path()"),
-            concat!("home_", "dir("),
-            concat!("\".", "config\""),
-            concat!("APP", "DATA"),
-            concat!("Roaming", "AppData"),
-            concat!("Application ", "Support"),
-        ];
-        let own_path_call = concat!("Self::", "path()");
-        let env_names = [
-            concat!("\"XDG_CONFIG_", "HOME\""),
-            concat!("\"XDG_DATA_", "HOME\""),
-            concat!("\"HO", "ME\""),
-            concat!("\"USER", "PROFILE\""),
-        ];
-        // The name a setter is handed scopes a variable rather than reading
-        // it; any other occurrence on the same line still counts. Each setter
-        // is anchored on the `::` or `.` before it, so an identifier that only
-        // ends like one (`reset(`, `my_env_remove(`) is no setter.
-        let setters = [
-            "::set(",
-            "::unset(",
-            "::set_var(",
-            "::remove_var(",
-            ".env(",
-            ".env_remove(",
-        ];
-        let env_reads = |line: &str| -> usize {
-            env_names
-                .iter()
-                .map(|name| {
-                    line.match_indices(name)
-                        .filter(|(at, _)| {
-                            let before = line[..*at].trim_end();
-                            !setters.iter().any(|s| before.ends_with(s))
-                        })
-                        .count()
-                })
-                .sum()
-        };
-        let reads_env = |line: &str| env_reads(line) > 0;
-        // `dirs_next` as a whole identifier: an alias, an `extern crate` and a
-        // grouped `use` all spell it, and none of them spells `dirs_next::`.
-        let in_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
-        let identifiers = |line: &str| {
-            line.match_indices(ident)
-                .filter(|(at, _)| {
-                    !line[..*at].chars().next_back().is_some_and(in_ident)
-                        && !line[at + ident.len()..]
-                            .chars()
-                            .next()
-                            .is_some_and(in_ident)
-                })
-                .count()
-        };
-        let routes_on = |line: &str, in_config: bool| -> usize {
-            let own = if in_config {
-                line.matches(own_path_call).count()
-            } else {
-                0
-            };
-            identifiers(line)
-                + routes
-                    .iter()
-                    .map(|r| line.matches(r).count())
-                    .sum::<usize>()
-                + own
-                + env_reads(line)
-        };
         const ALLOWED: &[(&str, usize, &str)] = &[
             (
+                "forge-runner-core/build.rs",
+                1,
+                "stamped: the build's own FORGE_RUNNER_* variables, read through `key`",
+            ),
+            (
+                "forge-runner-core/src/auth/cred_store.rs",
+                2,
+                "ScopedVar's set and unset, each reading the variable it scopes to put it back \
+                 when the guard drops; test only",
+            ),
+            (
                 "forge-runner-core/src/config.rs",
-                6,
-                "os_config_dir and data_dir, the guarded routes base_dir and the ledger resolve \
-                 through: the two variables a test build honours in a scratch and the two OS \
+                10,
+                "os_config_dir, data_dir and home_dir, the guarded routes base_dir, the ledger \
+                 and a transcript's home resolve through: the three variables a test build \
+                 honours in a scratch, os_dir's read of whichever it is handed, and the three OS \
                  dirs they fall back to; Config::load's read; and the reader the isolation test \
                  checks",
             ),
             (
-                "forge-runner-core/src/daemon/master.rs",
-                4,
-                "conversation_transcript, Claude Code's transcript under ~/.claude, a read; and \
-                 its test",
+                "forge-runner-core/src/daemon/handover.rs",
+                1,
+                "the environment a handover passes whole to the daemon taking over, a read",
             ),
             (
                 "forge-runner-core/src/daemon/serving.rs",
-                9,
+                8,
                 "config_dir_in, which rebuilds the XDG rule from another process's environment to \
-                 compare it and only reads; its tests, which answer a planted environment, two of \
-                 whose messages name the crate; and a test of the production rule",
+                 compare it and only reads; its tests, which answer a planted environment; and a \
+                 test of the production rule, which hands it this process's own environment",
             ),
             (
                 "forge-runner-core/src/daemon/terminal.rs",
-                5,
+                6,
                 "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
-                 its move to base_dir; and unoverridden_config_dir's two platform arms, a \
-                 comparison",
+                 its move to base_dir; unoverridden_config_dir's two platform arms, a comparison; \
+                 and a test that reads the fake tmux's own variables, none a route, to see them \
+                 put back",
             ),
             (
                 "forge-runner-core/src/mcp/config.rs",
@@ -675,15 +667,17 @@ mod tests {
             ),
             (
                 "forge-runner/src/cmd/top/gather.rs",
-                5,
-                "prints the path, hands home to cli_config_dir, and reads the transcripts under \
-                 home's .claude/projects for SPEND (ISS-1375), a read",
+                6,
+                "prints the path, hands cli_config_dir home and a reader of this process's \
+                 environment, and reads the transcripts under home's .claude/projects for SPEND \
+                 (ISS-1375), a read",
             ),
             (
                 "forge-runner/tests/config_isolation.rs",
-                6,
+                7,
                 "the environment it hands each `status` child it spawns: inside the test's \
-                 scratch, or a dir that is no scratch to watch the child refuse it",
+                 scratch, or a dir that is no scratch to watch the child refuse it; and the \
+                 temp-dir variables it passes through, read by name",
             ),
             (
                 "forge-runner/tests/dispatch_gate_door.rs",
@@ -693,6 +687,11 @@ mod tests {
                  environment",
             ),
             (
+                "forge-runner/tests/master_status_unplaced.rs",
+                1,
+                "the temp-dir variables it passes to the child it spawns, read by name",
+            ),
+            (
                 "forge-runner/tests/probation.rs",
                 2,
                 "an_updating_box and update_by_hand: the config home the box writes its release \
@@ -700,7 +699,8 @@ mod tests {
             ),
         ];
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let mut seen = std::collections::BTreeMap::<String, usize>::new();
+        // Every file first, so a `const` one file reads another defines resolves.
+        let mut files = Vec::new();
         // The whole crate, so a `build.rs`, an example or a bench is read too.
         let mut stack: Vec<PathBuf> = ["forge-runner-core", "forge-runner"]
             .iter()
@@ -721,72 +721,74 @@ mod tests {
                 if p.extension().and_then(|e| e.to_str()) != Some("rs") {
                     continue;
                 }
-                let text = std::fs::read_to_string(&p).unwrap();
-                let in_config = p.ends_with("forge-runner-core/src/config.rs");
                 let rel = p
                     .strip_prefix(&crates)
                     .unwrap()
                     .to_string_lossy()
                     .replace('\\', "/");
-                // `lines` drops a trailing `\r`, so a CRLF checkout counts alike.
-                // A comment is skipped: no doctest runs (the manifests and the
-                // library's own refusal, below).
-                let hits: usize = text
-                    .lines()
-                    .filter(|l| !l.trim_start().starts_with("//"))
-                    .map(|l| routes_on(l, in_config))
-                    .sum();
-                if hits > 0 {
-                    seen.insert(rel, hits);
-                }
+                let tokens = crate::route_scan::lex(&std::fs::read_to_string(&p).unwrap(), &rel);
+                files.push((rel, tokens));
             }
         }
+        let mut consts = crate::route_scan::Consts::new();
+        for (_, tokens) in &files {
+            crate::route_scan::collect_file(tokens, &mut consts);
+        }
+        let mut seen = std::collections::BTreeMap::<String, usize>::new();
+        let mut sites = std::collections::BTreeMap::new();
+        let mut refused = Vec::new();
+        for (rel, tokens) in &files {
+            let in_config = rel == "forge-runner-core/src/config.rs";
+            let scanned = crate::route_scan::routes(tokens, &consts, in_config);
+            refused.extend(
+                scanned
+                    .refused
+                    .iter()
+                    .map(|h| format!("{rel} line {}: {}", h.line, h.what)),
+            );
+            let hits = scanned.routes;
+            if !hits.is_empty() {
+                seen.insert(rel.clone(), hits.len());
+                sites.insert(rel.clone(), hits);
+            }
+        }
+        // Before the allowances: what the scan cannot see through is no count one can admit.
+        assert!(
+            refused.is_empty(),
+            "the scan refuses what it cannot see through, whatever ALLOWED says:\n{}",
+            refused.join("\n")
+        );
         let want: std::collections::BTreeMap<String, usize> = ALLOWED
             .iter()
             .map(|(f, n, _)| (f.to_string(), *n))
             .collect();
-        assert_eq!(
-            seen, want,
-            "a route to the config dir that is not `config::base_dir`: a writer moves to it, \
-             a reader is counted here with what it does"
-        );
-        let read_beside_a_setter = concat!(
-            r#"cmd.env("CACHE_ROOT", std::env::var("HO"#,
-            r#"ME").unwrap());"#
-        );
-        let a_setters_name = concat!(r#"cmd.env("HO"#, r#"ME", root);"#);
-        let a_scoped_name = concat!(r#"let _h = ScopedVar::set("HO"#, r#"ME", home);"#);
-        let only_ends_like_a_setter = [
-            concat!(r#"env_remove(std::env::var("HO"#, r#"ME").unwrap());"#),
-            concat!(r#"my_env_remove("HO"#, r#"ME");"#),
-            concat!(r#"reset("HO"#, r#"ME");"#),
-        ];
+        let moved: Vec<String> = seen
+            .keys()
+            .chain(want.keys())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter(|f| seen.get(*f) != want.get(*f))
+            .map(|f| {
+                let lines: Vec<String> = sites
+                    .get(f)
+                    .into_iter()
+                    .flatten()
+                    .map(|h| format!("    line {}: {}", h.line, h.what))
+                    .collect();
+                format!(
+                    "{f}: {} route(s), {} counted\n{}",
+                    seen.get(f).copied().unwrap_or(0),
+                    want.get(f).copied().unwrap_or(0),
+                    lines.join("\n")
+                )
+            })
+            .collect();
         assert!(
-            reads_env(read_beside_a_setter)
-                && !reads_env(a_setters_name)
-                && !reads_env(a_scoped_name),
-            "a read beside a setter counts and the name a setter is handed does not"
+            moved.is_empty(),
+            "a route to the config dir that is not `config::base_dir`: a writer moves to it, \
+             a reader is counted here with what it does\n{}",
+            moved.join("\n")
         );
-        for line in only_ends_like_a_setter {
-            assert!(reads_env(line), "no setter hands this name: {line}");
-        }
-        // Judge j3's G1-G4 at d2e5e70, each of which the line scan let through.
-        let aliased = [
-            concat!("use ::dirs_", "next as d;"),
-            concat!("extern crate dirs_", "next as dn;"),
-            concat!("    dirs_", "next as dd,"),
-        ];
-        for line in aliased {
-            assert_eq!(routes_on(line, false), 1, "{line}");
-        }
-        assert_eq!(routes_on(concat!("my_dirs_", "next_x()"), false), 0);
-        let second_route = concat!(
-            r#"let home = dirs_"#,
-            r#"next::home_"#,
-            r#"dir().or_else(|| std::env::var_os("HO"#,
-            r#"ME").map(Into::into));"#
-        );
-        assert_eq!(routes_on(second_route, false), 3, "every route on a line");
 
         let ledger =
             std::fs::read_to_string(crates.join("forge-runner-core/src/runner/ledger.rs")).unwrap();
@@ -820,10 +822,17 @@ mod tests {
             "forge-runner-core/Cargo.toml",
             "forge-runner/Cargo.toml",
         ] {
-            let renamed = renamed_dependencies(&toml::Value::Table(manifest(rel)), "");
+            let m = toml::Value::Table(manifest(rel));
+            let renamed = renamed_dependencies(&m, "");
             assert!(
                 renamed.is_empty(),
                 "{rel} renames {renamed:?}, which no identifier count here can see"
+            );
+            let other = directory_crates(&m, "");
+            assert!(
+                other.is_empty(),
+                "{rel} depends on {other:?}, a crate that names the user's directories, which \
+                 the scan counts only for dirs-next: resolve through config instead"
             );
         }
         // `doctest = false` keeps `cargo test` from running them, and an
@@ -847,8 +856,28 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(renamed_dependencies(&renamed, ""), ["dependencies.d"]);
+        let plain_dirs: toml::Value = toml::from_str(
+            "[dependencies]\ndirs = \"5\"\n[target.'cfg(unix)'.dev-dependencies]\nhome = \"0.5\"",
+        )
+        .unwrap();
+        assert_eq!(
+            directory_crates(&plain_dirs, ""),
+            [
+                "dependencies.dirs",
+                "target.cfg(unix).dev-dependencies.home"
+            ]
+        );
         let master =
             std::fs::read_to_string(crates.join("forge-runner-core/src/daemon/master.rs")).unwrap();
+        let transcript = master
+            .split("pub(crate) fn conversation_transcript(")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("conversation_transcript is in master.rs");
+        assert!(
+            transcript.contains("crate::config::home_dir()"),
+            "a transcript's home resolves through the guarded route"
+        );
         let take = master
             .split("async fn take_pool_job(")
             .nth(1)
@@ -866,6 +895,41 @@ mod tests {
             .and_then(|lib| lib.get("doctest"))
             .and_then(toml::Value::as_bool)
             == Some(false)
+    }
+
+    /// Every dependency on a crate, other than `dirs-next`, that names the
+    /// user's directories, by its dotted path. A list, not a rule: a crate
+    /// missing from it is a route the scan cannot see (ISS-1344's decision).
+    fn directory_crates(v: &toml::Value, at: &str) -> Vec<String> {
+        const NAMED: [&str; 11] = [
+            "dirs",
+            "dirs-sys",
+            "dirs-sys-next",
+            "directories",
+            "directories-next",
+            "home",
+            "etcetera",
+            "xdg",
+            "platform-dirs",
+            "app_dirs2",
+            "homedir",
+        ];
+        let Some(table) = v.as_table() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (k, child) in table {
+            let path = if at.is_empty() {
+                k.clone()
+            } else {
+                format!("{at}.{k}")
+            };
+            if at.ends_with("dependencies") && NAMED.contains(&k.as_str()) {
+                out.push(path.clone());
+            }
+            out.extend(directory_crates(child, &path));
+        }
+        out
     }
 
     /// Every dependency key carrying `package = "<name>"`, by its dotted path.

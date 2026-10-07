@@ -53,8 +53,8 @@ pub fn state_in(json_path: &Path, dir: &Path) -> TrustState {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return TrustState::NoFile,
         Err(e) => return TrustState::Unreadable(format!("it could not be read: {e}")),
     };
-    if !root.is_object() {
-        return TrustState::Unreadable("it is not a JSON object".into());
+    if let Some(why) = refusal(&root, &keys_for(dir)) {
+        return TrustState::Unreadable(why.into());
     }
     let keys: Vec<String> = keys_for(dir)
         .into_iter()
@@ -104,30 +104,26 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::json!({}),
         Err(e) => return Err(format!("read {}: {e}", json_path.display())),
     };
-    if !root.is_object() {
-        return Err(format!("{} is not a JSON object", json_path.display()));
+    let keys = keys_for(dir);
+    if let Some(why) = refusal(&root, &keys) {
+        return Err(format!("{}: {why}", json_path.display()));
     }
 
     let mut wrote = false;
-    for key in keys_for(dir) {
+    for key in keys {
         let projects = root
             .as_object_mut()
-            .expect("checked above")
+            .expect("refusal() took a root that is no object")
             .entry("projects")
             .or_insert_with(|| serde_json::json!({}));
-        let Some(map) = projects.as_object_mut() else {
-            return Err(format!(
-                "{}: `projects` is not an object",
-                json_path.display()
-            ));
-        };
-        let entry = map.entry(key).or_insert_with(|| serde_json::json!({}));
-        let Some(obj) = entry.as_object_mut() else {
-            return Err(format!(
-                "{}: a project entry is not an object",
-                json_path.display()
-            ));
-        };
+        let entry = projects
+            .as_object_mut()
+            .expect("refusal() took a `projects` that is no object")
+            .entry(key)
+            .or_insert_with(|| serde_json::json!({}));
+        let obj = entry
+            .as_object_mut()
+            .expect("refusal() took an entry that is no object");
         if obj.get(TRUST_FIELD).and_then(serde_json::Value::as_bool) == Some(true) {
             continue;
         }
@@ -139,6 +135,23 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
     }
     write_atomic(json_path, &root)?;
     Ok(true)
+}
+
+/// Why the pre-trust write refuses `root` for `keys`, or `None` where it can
+/// stamp them. One answer for the write and for [`state_in`], so doctor never
+/// says the daemon's write will land in a file that write refuses (ISS-1344,
+/// from ISS-1382's judge).
+fn refusal(root: &serde_json::Value, keys: &[String]) -> Option<&'static str> {
+    if !root.is_object() {
+        return Some("it is not a JSON object");
+    }
+    let projects = root.get("projects")?;
+    if !projects.is_object() {
+        return Some("`projects` is not an object");
+    }
+    keys.iter()
+        .any(|k| projects.get(k).is_some_and(|e| !e.is_object()))
+        .then_some("a project entry is not an object")
 }
 
 fn keys_for(dir: &Path) -> Vec<String> {

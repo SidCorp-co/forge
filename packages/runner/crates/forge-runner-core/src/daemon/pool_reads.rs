@@ -169,6 +169,20 @@ fn prune(p: &mut Project, now_ms: i64) {
 /// its sweep is sequential, but a test harness is not.
 static WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+/// Whether this is the first time this process names `id` under `config_dir`
+/// for `what`. Once for the daemon's life: core serves the same id every sweep
+/// and the heartbeat reads the same file every beat, the id does not change
+/// shape between them, and a restart names it again (ISS-1344).
+fn first_naming(what: &'static str, config_dir: &Path, id: &str) -> bool {
+    type Named = std::collections::BTreeSet<(&'static str, PathBuf, String)>;
+    static NAMED: std::sync::Mutex<Named> = std::sync::Mutex::new(Named::new());
+    NAMED.lock().unwrap_or_else(|e| e.into_inner()).insert((
+        what,
+        config_dir.to_path_buf(),
+        id.to_string(),
+    ))
+}
+
 /// A record that exists and cannot be read: unopenable, or not the shape this
 /// box writes. It is not the empty record an absent file is — read as one, the
 /// heartbeat would clear at core every condition the box had reported.
@@ -238,6 +252,9 @@ pub fn note(config_dir: &Path, project_id: &str, took: &Took, now_ms: i64) {
         return;
     };
     if !is_project_id(project_id) {
+        if !first_naming("read", config_dir, project_id) {
+            return;
+        }
         tracing::warn!(
             "[pool] {project_id:?} is not a project id core takes (a UUID), so this read of its pool is not recorded — a record holding it would make core refuse every project's report"
         );
@@ -355,7 +372,10 @@ fn condition(project_id: &str, p: &Project, now_ms: i64) -> Option<Condition> {
 /// A project absent from this list read cleanly all window, or was never read.
 pub fn report(config_dir: &Path, now_ms: i64) -> Result<Vec<Condition>, Unreadable> {
     let (r, refused) = load_valid(config_dir)?;
-    for id in &refused {
+    for id in refused
+        .iter()
+        .filter(|id| first_naming("report", config_dir, id))
+    {
         tracing::warn!(
             "[pool] {id:?} in {} is not a project id core takes (a UUID) and is left out of the report; the daemon's next pool read removes it",
             path(config_dir).display()
@@ -673,6 +693,51 @@ mod tests {
         let r = report(&d, NOW);
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].project_id, P1);
+    }
+
+    /// ISS-1344. While core keeps serving a project whose id it would refuse,
+    /// the daemon reads that pool every sweep; the id is named the first time,
+    /// not every 30 seconds for as long as the daemon runs.
+    #[test]
+    fn a_refused_read_is_named_once_for_the_daemons_life() {
+        let d = dir("bad-key-once");
+        let first = logged(|| note(&d, "proj-u", &gw525(), NOW));
+        let again = logged(|| note(&d, "proj-u", &gw525(), NOW + MIN / 2));
+        assert!(
+            first.contains(r#""proj-u" is not a project id core takes"#),
+            "{first}"
+        );
+        assert!(
+            !again.contains("proj-u"),
+            "named again a sweep later: {again}"
+        );
+        let other = logged(|| note(&d, "proj-v", &gw525(), NOW));
+        assert!(
+            other.contains(r#""proj-v""#),
+            "another id is named too: {other}"
+        );
+    }
+
+    /// ISS-1344. A key left out of the report is named the first time the
+    /// heartbeat leaves it out, not on every beat until a pool read removes it.
+    #[test]
+    fn a_key_left_out_of_the_report_is_named_once_for_the_daemons_life() {
+        let d = dir("bad-key-report-once");
+        plant_the_boxs_record(&d);
+        let first = logged(|| {
+            report(&d, NOW);
+        });
+        let again = logged(|| {
+            report(&d, NOW + MIN / 2);
+        });
+        assert!(
+            first.contains(r#""proj-u" in"#) && first.contains("left out of the report"),
+            "{first}"
+        );
+        assert!(
+            !again.contains("proj-u"),
+            "named again a beat later: {again}"
+        );
     }
 
     /// The case list core's `pool-read-report.test.ts` runs its `z.uuid()`
