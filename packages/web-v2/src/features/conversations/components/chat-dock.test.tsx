@@ -110,6 +110,15 @@ describe("a conversation waiting on the person", () => {
     expect(dock.select).toHaveBeenCalledWith({ kind: "room", projectId: "p1", conversationId: "c-req1" });
   });
 
+  it("is offered by name over another open conversation, and one click opens it", async () => {
+    core([later, drafted]);
+    const dock = dockOn({ kind: "room", projectId: "p1", conversationId: "c-other" });
+    renderWithQuery(<ChatDockBody dock={dock} />);
+    expect((await screen.findByTestId("chat")).getAttribute("data-conversation")).toBe("c-other");
+    fireEvent.click(await screen.findByRole("button", { name: "Open Draft REQ-1, waiting on you" }));
+    expect(dock.select).toHaveBeenCalledWith({ kind: "room", projectId: "p1", conversationId: "c-req1" });
+  });
+
   it("is not offered while it is the conversation open", async () => {
     core([later, drafted]);
     const dock = dockOn({ kind: "room", projectId: "p1", conversationId: "c-req1" });

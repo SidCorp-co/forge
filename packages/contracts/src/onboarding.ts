@@ -39,7 +39,7 @@ export const ONBOARDING_STATUS_LABELS: Record<OnboardingStatus, string> = {
 export const THREAD_STATUS_HINTS: Record<OnboardingStatus, string> = {
 	in_progress: "in_progress: the agent is working on the last message",
 	waiting_on_you: "waiting_on_you: a question or a batch waits on you",
-	done: "done: nothing in this thread waits on anyone",
+	done: "done: nothing in this thread waits on you or on the agent",
 };
 
 /** Which analysis an onboarding job runs: the first read of the code, or the turn after a submit. */

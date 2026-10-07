@@ -147,7 +147,7 @@ conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
 
   const offset = (page - 1) * pageSize;
   const pageRows = visible.slice(offset, offset + pageSize);
-  const marks = await threadMarks(pageRows);
+  const marks = await threadMarks(pageRows, userId);
   return c.json(
     listResponse(
       c,
@@ -209,7 +209,7 @@ conversationRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => 
       roomTail(id),
       derivedScope(id),
       batchesOfConversation(id),
-      threadMarks([conversation]),
+      threadMarks([conversation], userId),
     ]);
   const scopeProjects = await projectsNamed(scope);
   return c.json({
