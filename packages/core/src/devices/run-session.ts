@@ -138,6 +138,19 @@ async function openSessionForBoxRun(
   return row ? { sessionId: row.sessionId, runId: row.runId, status: row.status } : null;
 }
 
+/**
+ * The refusals a run session's open would earn on its issues, asked before any run is declared: the
+ * box's `run declare` writes its row without core, so the one place a master can be told its
+ * dispatch cannot start is here, with the same function the open calls. Nothing is written.
+ */
+export async function preflightRunSession(args: {
+  projectId: string;
+  issueKeys: string[];
+}): Promise<void> {
+  const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
+  await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
+}
+
 export async function openRunSession(args: {
   deviceId: string;
   projectId: string;

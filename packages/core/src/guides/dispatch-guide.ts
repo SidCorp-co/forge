@@ -85,7 +85,12 @@ to separate runs, and the second waits for the first to land.
 
 ### 6. Declare, record, dispatch
 1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree>\` writes the box's row
-   and answers the run's id. A dispatch with nothing declared is refused by the box.
+   and answers the run's id. A dispatch with nothing declared is refused by the box. Before it
+   writes the row the box asks core (\`POST /api/devices/me/run-sessions/preflight\`) the question
+   the run's open would be asked, so an issue a live \`blocks\` edge holds, a build without its
+   approved design and a contract wait unsettled are refused to the pane by name, with the edge
+   and what it waits on, and nothing is recorded. A core the box cannot reach leaves the row
+   written, and the open refuses it as before.
 2. \`forge-runner run brief <run id>\` prints that run's brief: its issues with their uuids, the
    project, the base branch read from the project, its tree, branch and head, what every other
    tree holds against \`origin/<baseBranch>\`, and the method. A run the box never declared, one
