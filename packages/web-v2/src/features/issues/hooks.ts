@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { refusalFact } from "@/lib/api/refusals";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
 import type { IssueStandingScope } from "@forge/contracts/issue-standing";
@@ -141,6 +142,7 @@ function buildModuleLabelWrite(
 export function useSetIssueModules(issueId: string | undefined) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: (args: {
       current: IssueLabel[];
@@ -154,11 +156,11 @@ export function useSetIssueModules(issueId: string | undefined) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issue", issueId] });
       qc.invalidateQueries({ queryKey: ["issues"] });
-      toast({ title: "Modules updated", tone: "success" });
+      toast({ title: t("issues.toast.modulesUpdated"), tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't update modules",
+        title: t("issues.toast.modulesFailed"),
         description: formatApiError(err),
         tone: "error",
       }),
@@ -173,6 +175,7 @@ function useIssueMutation<TArgs, TData>(
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
@@ -180,7 +183,7 @@ function useIssueMutation<TArgs, TData>(
       if (opts.successMessage) toast({ title: opts.successMessage, tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
+      toast({ title: t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }
@@ -198,9 +201,10 @@ export function usePatchIssue() {
  */
 export function useSaveDescription(id: string) {
   const qc = useQueryClient();
+  const t = useCopy();
   const mut = useIssueMutation(
     (args: { id: string; body: PatchIssueInput }) => issuesApi.patch(args.id, args.body),
-    { successMessage: "Description saved" },
+    { successMessage: t("issues.toast.descriptionSaved") },
   );
   return {
     ...mut,
@@ -236,6 +240,7 @@ function openQuestionIdsOf(err: unknown): string[] | null {
 export function useTransitionIssue() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   const mut = useMutation({
     mutationFn: (args: TransitionArgs) =>
       issuesApi.transition(args.id, args.toStatus, {
@@ -266,7 +271,7 @@ export function useTransitionIssue() {
             options.onOpenQuestions(ids);
             return;
           }
-          toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
+          toast({ title: t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" });
         },
       }),
   };
@@ -283,6 +288,7 @@ export function useTransitionIssue() {
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["issue", issueId] });
     qc.invalidateQueries({ queryKey: ["activities", issueId] });
@@ -296,18 +302,18 @@ export function useMergeMarker(issueId: string) {
       refresh();
       if (answer.action === "already_merged") {
         toast({
-          title: "Already marked merged — nothing changed",
-          description: "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
+          title: t("issues.toast.alreadyMerged"),
+          description: t("issues.toast.alreadyMergedHint"),
           tone: "info",
         });
       } else {
-        toast({ title: "Marked merged", tone: "success" });
+        toast({ title: t("issues.toast.marked"), tone: "success" });
       }
     },
   });
   const unmark = useIssueMutation(
     (args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args),
-    { successMessage: "Merge mark removed" },
+    { successMessage: t("issues.toast.unmarked") },
   );
   return {
     isPending: mark.isPending || unmark.isPending,
@@ -319,8 +325,9 @@ export function useMergeMarker(issueId: string) {
 }
 
 export function useRunPipelineStep() {
+  const t = useCopy();
   return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: "Issue started" });
+    issuesApi.runPipelineStep(args.id), { successMessage: t("issues.toast.started") });
 }
 
 
@@ -348,6 +355,7 @@ export function useReleaseRoster(projectId: string | undefined) {
 export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefusal?: () => boolean } = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
     mutationFn: ({ issueIds }) => releaseBatchApi.create(projectId, issueIds),
     onSuccess: (result) => {
@@ -355,20 +363,15 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
-        title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
-        ...(result.verification === "deployment"
-          ? {
-              description:
-                "This project declares no source probe, so the release is proved by the commit production's deployment record names; if nothing shows that commit, it is refused and closes nothing.",
-            }
-          : {}),
+        title: result.issueIds.length === 1 ? t("issues.toast.batchStartedOne") : t("issues.toast.batchStarted", { n: result.issueIds.length }),
+        ...(result.verification === "deployment" ? { description: t("issues.toast.batchByDeployment") } : {}),
         tone: "success",
       });
     },
     onError: (err) => {
       if (showsRefusal?.()) return;
       toast({
-        title: "Batch release failed",
+        title: t("issues.toast.batchFailed"),
         description: formatApiError(err),
         tone: "error",
       });
@@ -391,6 +394,7 @@ const BULK_CHUNK = 8;
 export function useBulkUpdateIssues() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation<BulkSummary, unknown, { ids: string[]; update: BulkUpdate }>({
     mutationFn: async ({ ids, update }) => {
       const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0 };
@@ -411,16 +415,16 @@ export function useBulkUpdateIssues() {
     onSuccess: (summary, { ids }) => {
       qc.invalidateQueries({ queryKey: ["issues"] });
       for (const id of ids) qc.invalidateQueries({ queryKey: ["issue", id] });
-      const parts = [`${summary.updated} updated`];
-      if (summary.skipped) parts.push(`${summary.skipped} skipped`);
-      if (summary.failed) parts.push(`${summary.failed} failed`);
+      const parts = [t("issues.toast.bulkUpdated", { n: summary.updated })];
+      if (summary.skipped) parts.push(t("issues.toast.bulkSkipped", { n: summary.skipped }));
+      if (summary.failed) parts.push(t("issues.toast.bulkFailedN", { n: summary.failed }));
       toast({
         title: parts.join(" · "),
         tone: summary.failed > 0 ? "error" : "success",
       });
     },
     onError: (err) => {
-      toast({ title: "Bulk update failed", description: formatApiError(err), tone: "error" });
+      toast({ title: t("issues.toast.bulkFailed"), description: formatApiError(err), tone: "error" });
     },
   });
 }

@@ -37,6 +37,10 @@ const ENGLISH_CHROME = [
   "home", "more", "navigate", "actions", "recent", "pinned", "no matches", "resolved", "invitation", "mention", "sound", "desktop",
   "save", "restore", "reply style", "instructions", "upload", "sketch", "caption", "withdraw", "authority", "options considered",
   "rollback", "removed", "release note", "gate", "verdict", "owes", "held back", "sidebar", "people", "live", "not found", "add project",
+  "priority", "assignee", "board", "wave", "blocked", "blocking", "queued", "running", "paused", "resume", "merged", "branch", "comment",
+  "comments", "runs", "open", "closed", "on hold", "move", "mark", "labels", "complexity", "category", "cost", "tokens", "dependencies",
+  "selected", "clear", "filter", "sort", "newest", "oldest", "previous", "heartbeat", "stale", "attempt", "cooldown", "answer", "question",
+  "who", "build", "plan", "estimated", "critical", "high", "medium", "low", "bug", "lease", "nobody", "everyone", "list", "table",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

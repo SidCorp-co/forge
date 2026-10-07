@@ -1,6 +1,8 @@
 import { STATUS_META, type StatusKey } from "@/design/status";
 import { Icon } from "@/design/icons/icon";
 import { enumLabel } from "@/design/vocabulary";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 
 export type StatusDomain = "issue" | "session";
 
@@ -21,15 +23,8 @@ export interface StatusChipProps {
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
  *  as "Completed / Stalled / Idle" rather than the issue-lifecycle "Done /
- *  Zombie / Paused". Keys not listed fall back to the shared `STATUS_META`. */
-const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
-  done: "Completed",
-  zombie: "Stalled",
-  paused: "Idle",
-  passed: "Verified",
-  waiting: "Waiting for me",
-  archived: "Cancelled",
-};
+ *  Zombie / Paused" (`common.sessionKey.*`). Keys not listed fall back to the shared `common.statusKey.*`. */
+const SESSION_WORDS: ReadonlySet<StatusKey> = new Set<StatusKey>(["done", "zombie", "paused", "passed", "waiting", "archived"]);
 
 export function StatusChip({
   status,
@@ -40,12 +35,16 @@ export function StatusChip({
   glyph,
   title,
 }: StatusChipProps) {
-  const m = STATUS_META[status] ?? STATUS_META.queued;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const known = STATUS_META[status] ? status : "queued";
+  const m = STATUS_META[known];
   const isRunning = status === "running";
   const isSession = domain === "session";
-  const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
+  const word = t(`${isSession && SESSION_WORDS.has(known) ? "common.sessionKey" : "common.statusKey"}.${known}` as ProductCopyKey);
+  const baseLabel = label ?? word;
   // ISS-67: the stage is a stored job type, so it reads through the jobType labels, never raw.
-  const text = stage && isRunning ? `${baseLabel} · ${enumLabel("jobType", stage)}` : baseLabel;
+  const text = stage && isRunning ? `${baseLabel} · ${enumLabel("jobType", stage, language)}` : baseLabel;
   const mono = isSession;
   return (
     <span

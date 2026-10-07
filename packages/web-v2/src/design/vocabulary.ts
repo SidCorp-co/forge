@@ -265,11 +265,18 @@ const ENUM_GROUP: Partial<Record<EnumFamily, LabelGroup>> = {
   role: "role",
 };
 
+/** An enum family with no label group of its own, read from the shared words under `common.<family>.*`. */
+export const ENUM_COMMON: Partial<Record<EnumFamily, string>> = {
+  jobType: "common.jobType",
+};
+
 export function enumLabel(family: EnumFamily, value: string, language?: string): string {
   const own = (ENUM_FAMILIES[family] as Record<string, string>)[value];
   const group = ENUM_GROUP[family];
   if (own === undefined) return sentenceCase(value);
-  return group ? copyOr(language, labelKey(group, value), own) : own;
+  if (group) return copyOr(language, labelKey(group, value), own);
+  const common = ENUM_COMMON[family];
+  return common ? copyOr(language, `${common}.${value}`, own) : own;
 }
 
 export const PRIORITY_BARS: Record<string, number> = ISSUE_PRIORITY_BARS;

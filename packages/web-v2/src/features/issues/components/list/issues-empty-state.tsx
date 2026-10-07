@@ -1,6 +1,7 @@
 "use client";
 
 import { EmptyState } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /** What an empty page says: a module with nothing tagged, a filter that matched nothing, nothing waiting, or a new project. */
 export function IssuesEmptyState({
@@ -21,38 +22,39 @@ export function IssuesEmptyState({
   onClear: () => void;
   onNewIssue?: () => void;
 }) {
+  const t = useCopy();
   return (
     <div className="border-t border-line px-4 py-6 sm:px-6">
       <EmptyState
         title={
           inModule
-            ? "No issues in this module"
+            ? t("issues.empty.moduleTitle")
             : isFiltered
-              ? "Nothing here"
+              ? t("issues.empty.filteredTitle")
               : projectHasIssues
-                ? "Nothing is waiting on you"
-                : "No issues yet"
+                ? t("issues.empty.notYoursTitle")
+                : t("issues.empty.noneTitle")
         }
         message={
           inModule
-            ? `No issues tagged to ${moduleName ?? "this module"}.`
+            ? t("issues.empty.module", { module: moduleName ?? t("issues.empty.thisModule") })
             : creatorName !== null
-              ? `No issues created by ${creatorName}.`
+              ? t("issues.empty.creator", { name: creatorName })
               : isFiltered
-                ? "No issues match this search or filter."
+                ? t("issues.empty.filtered")
                 : projectHasIssues
-                  ? "Work is moving without you — the other filters say where it is."
-                  : "Issues for this project will appear here as work is filed."
+                  ? t("issues.empty.notYours")
+                  : t("issues.empty.none")
         }
         mascot={!isFiltered}
         action={
           isFiltered
             ? {
-                label: "Clear filters",
+                label: t("issues.empty.clearFilters"),
                 onClick: onClear,
               }
             : onNewIssue
-              ? { label: "New issue", onClick: onNewIssue }
+              ? { label: t("issues.newIssue"), onClick: onNewIssue }
               : undefined
         }
       />

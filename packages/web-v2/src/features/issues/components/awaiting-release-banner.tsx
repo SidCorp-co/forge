@@ -1,7 +1,7 @@
 "use client";
 
 import { Banner, Button } from "@/design";
-import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
 
 /**
@@ -19,17 +19,19 @@ export function AwaitingReleaseBanner({
 }) {
 	const { data } = useReleaseRoster(projectId);
 	const batch = useBatchRelease(projectId);
+	const t = useCopy();
+	const time = useTimeFormat();
 
 	const entry = data?.issues.find((i) => i.id === issueId);
 	if (!data?.gateStatus || !entry) return null;
 	const baseBranch = data.baseBranch;
 
 	const merged = entry.mergedAt
-		? `Merged into ${baseBranch ?? "the base branch"} ${formatRelativeTime(entry.mergedAt)}`
-		: "Merged";
+		? t("issues.awaiting.mergedInto", { branch: baseBranch ?? t("issues.awaiting.baseBranch"), at: time.relative(entry.mergedAt) })
+		: t("issues.rail.merged");
 
 	if (entry.claimedByRunId) {
-		return <Banner tone="info">{`${merged} — a release is shipping it now`}</Banner>;
+		return <Banner tone="info">{t("issues.awaiting.shipping", { merged })}</Banner>;
 	}
 
 	return (
@@ -42,15 +44,15 @@ export function AwaitingReleaseBanner({
 						disabled={batch.isPending}
 						onClick={() => batch.mutate({ issueIds: [issueId] })}
 					>
-						Release now
+						{t("issues.batch.releaseNow")}
 					</Button>
 				) : undefined
 			}
 		>
-			<span className="font-medium">{merged} — not shipped yet.</span>{" "}
+			<span className="font-medium">{t("issues.awaiting.notShipped", { merged })}</span>{" "}
 			{data.nextCutAt
-				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`
-				: "No release is scheduled, so this ships when a person cuts one."}
+				? t("issues.awaiting.nextCut", { when: time.countdown(data.nextCutAt) })
+				: t("issues.awaiting.noCut")}
 		</Banner>
 	);
 }

@@ -2,6 +2,7 @@
 
 import { Badge, Button, Icon, Input, Popover, SegmentedControl, type SegmentOption } from "@/design";
 import { useAssistantSetFilter } from "@/features/chat-dock/assistant-filters";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { type ReactNode, useRef, useState } from "react";
 import type { IssueFilter } from "../types";
@@ -55,6 +56,7 @@ export function IssuesToolbar({
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const assistantSet = useAssistantSetFilter();
+  const t = useCopy();
   const active = fields.filter((f) => f.value !== "");
   const chips = [
     ...extraChips,
@@ -70,8 +72,8 @@ export function IssuesToolbar({
       <SegmentedControl options={segments} value={segment} onChange={onSegment} />
       <Input
         icon="search"
-        placeholder="Search issues…"
-        aria-label="Search issues"
+        placeholder={t("issues.toolbar.search")}
+        aria-label={t("issues.toolbar.searchLabel")}
         value={query}
         onChange={(e) => onQuery(e.target.value)}
         className="w-full sm:w-56"
@@ -85,7 +87,7 @@ export function IssuesToolbar({
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
         >
-          Filter
+          {t("issues.toolbar.filter")}
           {active.length > 0 && <Badge tone="accent">{active.length}</Badge>}
         </Button>
         <Popover
@@ -95,7 +97,7 @@ export function IssuesToolbar({
           placement="bottom-start"
           gap={6}
           role="dialog"
-          aria-label="Filter issues"
+          aria-label={t("issues.toolbar.filterLabel")}
           className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
         >
           <div className="flex flex-col gap-3">
@@ -136,7 +138,7 @@ export function IssuesToolbar({
           {c.label}
           <button
             type="button"
-            aria-label={`Remove ${c.label}`}
+            aria-label={t("issues.toolbar.removeChip", { label: c.label })}
             onClick={() => onParam(c.param, "")}
             className="leading-none"
           >
@@ -146,7 +148,7 @@ export function IssuesToolbar({
       ))}
       {onClear && (
         <button type="button" onClick={onClear} className="fg-body-sm font-semibold text-link hover:underline">
-          Clear
+          {t("issues.toolbar.clear")}
         </button>
       )}
       {trailing ? <div className="ml-auto">{trailing}</div> : null}

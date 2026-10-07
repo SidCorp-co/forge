@@ -27,9 +27,6 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
-export const complexityLabel = (
-	c: IssueComplexity | null | undefined,
-): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
 /** `in_progress` at step `test` reads "In progress · Test"; a step is never guessed from a status. */
 export function statusStepLabel(
 	status: IssueStatus,
@@ -85,10 +82,6 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
 }
 
-/** A move target has no holder, so it is named by its own status word, never "Running" (ISS-1213). */
-export function transitionLabels(targets: IssueStatus[]): string[] {
-	return targets.map(statusLabel);
-}
 /** The edges still in force. A retracted (expired) edge is shown greyed where relations are
  *  listed, and is never counted, badged or called blocking. */
 export function liveDependencies(deps: IssueDependencies | undefined): IssueDependencies {
@@ -162,9 +155,6 @@ export function memberLabel(
 	return m ? m.email : assigneeId.slice(0, 8);
 }
 
-/** The creator-filter option that selects every agent's issues at once. */
-export const ANY_AGENT_LABEL = "any agent";
-
 /** ISS-756 — the ONE creator-label helper for every surface. A writer is a
  *  named account, so never a class label (ISS-1137) and never a raw id. */
 export function creatorLabelOf(
@@ -189,7 +179,7 @@ export function initials(label: string): string {
  */
 export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 	if (groupBy === "none") {
-		return [{ key: "all", label: "All issues", rows }];
+		return [{ key: "all", label: "", rows }];
 	}
 	const buckets = new Map<string, IssueRow[]>();
 	for (const r of rows) {
@@ -417,35 +407,21 @@ export function deriveSessionTimeline(
 	});
 }
 
-/** Human copy for a fresh-reason (operator detail, AC8). */
-export const FRESH_REASON_COPY: Record<FreshReason, string> = {
-	"first-in-group": "First step in this session group",
-	"different-device": "Ran on a different device (device-pin drift)",
-	"prior-failed": "Prior session in this group failed",
-	"new-session": "Started a new Claude session",
-};
-
-/** Display metadata for each comment kind badge. */
-export const COMMENT_KIND_META: Record<
-	CommentKind,
-	{
-		label: string;
-		tone: "neutral" | "accent" | "cobalt" | "green" | "red" | "amber";
-	}
-> = {
-	triage: { label: "Triage", tone: "cobalt" },
-	clarify: { label: "Clarify", tone: "cobalt" },
-	plan: { label: "Plan", tone: "cobalt" },
-	code: { label: "Code", tone: "accent" },
-	review: { label: "Review", tone: "amber" },
-	changes: { label: "Changes", tone: "red" },
-	fix: { label: "Fix", tone: "accent" },
-	approved: { label: "Approved", tone: "green" },
-	qa: { label: "QA", tone: "amber" },
-	released: { label: "Released", tone: "green" },
-	outcome: { label: "Outcome", tone: "accent" },
-	blocked: { label: "Blocked", tone: "red" },
-	comment: { label: "Comment", tone: "neutral" },
+/** The tone of each comment kind's badge; its word is the locale file's `issues.commentKind.<kind>`. */
+export const COMMENT_KIND_TONE: Record<CommentKind, "neutral" | "accent" | "cobalt" | "green" | "red" | "amber"> = {
+	triage: "cobalt",
+	clarify: "cobalt",
+	plan: "cobalt",
+	code: "accent",
+	review: "amber",
+	changes: "red",
+	fix: "accent",
+	approved: "green",
+	qa: "amber",
+	released: "green",
+	outcome: "accent",
+	blocked: "red",
+	comment: "neutral",
 };
 
 // ISS-1160 — a display key collides across projects; the fetched row's uuid never does.

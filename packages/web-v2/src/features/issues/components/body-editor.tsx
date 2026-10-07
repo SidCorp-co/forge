@@ -20,6 +20,8 @@ import { type ReactNode, useCallback, useMemo, useRef, useState } from "react";
 import { BodyView, IconButton, PreviewPane, Spinner, useDebounced } from "@/design";
 import type { IconName } from "@/design/icons/icon";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { bodyApi } from "../body-api";
 import {
   cycleHeading,
@@ -35,23 +37,24 @@ const PREVIEW_DEBOUNCE_MS = 300;
 
 interface Tool {
   icon: IconName;
-  label: string;
+  /** The tool's name in the locale file. */
+  label: ProductCopyKey;
   /** Shown in the tooltip/aria label when the action has a shortcut. */
   keys?: string;
   run: (span: { doc: string; from: number; to: number }) => Edit;
 }
 
 const TOOLS: Tool[] = [
-  { icon: "bold", label: "Bold", keys: "Ctrl+B", run: (s) => toggleWrap(s, "**") },
-  { icon: "italic", label: "Italic", keys: "Ctrl+I", run: (s) => toggleWrap(s, "_") },
-  { icon: "code", label: "Inline code", run: (s) => toggleWrap(s, "`") },
-  { icon: "link", label: "Link", keys: "Ctrl+K", run: makeLink },
-  { icon: "heading", label: "Heading", run: cycleHeading },
-  { icon: "quote", label: "Quote", run: (s) => togglePrefix(s, "> ") },
-  { icon: "list", label: "Bulleted list", run: (s) => togglePrefix(s, "- ") },
-  { icon: "list-ordered", label: "Numbered list", run: toggleOrderedList },
-  { icon: "code-block", label: "Code block", run: (s) => makeFence(s, "") },
-  { icon: "pipeline", label: "Mermaid diagram", run: (s) => makeFence(s, "mermaid") },
+  { icon: "bold", label: "issues.editor.bold", keys: "Ctrl+B", run: (s) => toggleWrap(s, "**") },
+  { icon: "italic", label: "issues.editor.italic", keys: "Ctrl+I", run: (s) => toggleWrap(s, "_") },
+  { icon: "code", label: "issues.editor.inlineCode", run: (s) => toggleWrap(s, "`") },
+  { icon: "link", label: "issues.editor.link", keys: "Ctrl+K", run: makeLink },
+  { icon: "heading", label: "issues.editor.heading", run: cycleHeading },
+  { icon: "quote", label: "issues.editor.quote", run: (s) => togglePrefix(s, "> ") },
+  { icon: "list", label: "issues.editor.bullets", run: (s) => togglePrefix(s, "- ") },
+  { icon: "list-ordered", label: "issues.editor.numbered", run: toggleOrderedList },
+  { icon: "code-block", label: "issues.editor.codeBlock", run: (s) => makeFence(s, "") },
+  { icon: "pipeline", label: "issues.editor.mermaid", run: (s) => makeFence(s, "mermaid") },
 ];
 
 const SHORTCUTS: Record<string, number> = { b: 0, i: 1, k: 3 };
@@ -97,6 +100,7 @@ export function BodyEditor({
   actions,
 }: BodyEditorProps) {
   const [showPreview, setShowPreview] = useState(false);
+  const t = useCopy();
   const view = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
@@ -122,8 +126,8 @@ export function BodyEditor({
             icon={tool.icon}
             size="sm"
             disabled={disabled}
-            aria-label={tool.keys ? `${tool.label} (${tool.keys})` : tool.label}
-            title={tool.keys ? `${tool.label} · ${tool.keys}` : tool.label}
+            aria-label={tool.keys ? `${t(tool.label)} (${tool.keys})` : t(tool.label)}
+            title={tool.keys ? `${t(tool.label)} · ${tool.keys}` : t(tool.label)}
             onMouseDown={(e) => {
               e.preventDefault();
               run(tool);
@@ -162,7 +166,7 @@ export function BodyEditor({
           status={
             preview.isFetching ? (
               <p className="fg-caption flex items-center gap-2 text-muted">
-                <Spinner size={12} /> Checking…
+                <Spinner size={12} /> {t("issues.editor.checking")}
               </p>
             ) : preview.isError ? (
               <p className="fg-body-sm text-[color:var(--red-600)]">
@@ -178,7 +182,7 @@ export function BodyEditor({
               nodes={preview.data.nodes}
             />
           ) : preview.isError ? null : (
-            <p className="fg-body-sm text-muted">Nothing to preview yet.</p>
+            <p className="fg-body-sm text-muted">{t("issues.editor.nothingToPreview")}</p>
           )}
         </PreviewPane>
         {actions}

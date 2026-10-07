@@ -8,10 +8,10 @@
 import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, SegmentedControl, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useState } from "react";
 import {
-  COMMENT_KIND_META,
+  COMMENT_KIND_TONE,
   deriveCommentKind,
   initials,
   memberLabel,
@@ -36,6 +36,7 @@ function AddCommentBox({
   const [body, setBody] = useState("");
   const staged = useStagedFiles({ unit: "comment", video: false, uniqueNames: false });
   const create = useCreateComment(issueId);
+  const t = useCopy();
 
   const submit = () => {
     const text = body.trim();
@@ -60,7 +61,7 @@ function AddCommentBox({
         }`}
       >
         <BodyEditor
-          label={parentId ? "Reply" : "Comment"}
+          label={parentId ? t("issues.thread.reply") : t("issues.thread.comment")}
           rows={parentId ? 2 : 3}
           placeholder={placeholder}
           value={body}
@@ -73,13 +74,13 @@ function AddCommentBox({
 
       <div className="flex items-center justify-between gap-2">
         <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose}>
-          Attach
+          {t("issues.thread.attach")}
         </Button>
         {staged.input}
         <div className="flex gap-2">
           {onDone && (
             <Button variant="ghost" size="sm" onClick={onDone}>
-              Cancel
+              {t("common.cancel")}
             </Button>
           )}
           <Button
@@ -90,7 +91,7 @@ function AddCommentBox({
             disabled={!body.trim()}
             onClick={submit}
           >
-            {parentId ? "Reply" : "Comment"}
+            {parentId ? t("issues.thread.reply") : t("issues.thread.comment")}
           </Button>
         </div>
       </div>
@@ -106,6 +107,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   const [decision, setDecision] = useState("");
   const [reason, setReason] = useState("");
   const record = useRecordDecision(issueId);
+  const t = useCopy();
   const ready = decision.trim().length > 0 && reason.trim().length > 0;
   const refused = record.error ? (refusalsOf(record.error)[0]?.detail ?? formatApiError(record.error)) : null;
   const submit = () => {
@@ -123,10 +125,10 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
   };
   return (
     <div className="grid gap-3" data-testid="record-decision">
-      <Field label="Decision" hint="What is decided, in one or two sentences.">
+      <Field label={t("common.decisions.decision")} hint={t("issues.thread.decisionHint")}>
         <Textarea rows={2} value={decision} onChange={(e) => setDecision(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
-      <Field label="Reason" hint="Why: the agent working this issue reads it with the decision.">
+      <Field label={t("common.decisions.reason")} hint={t("issues.thread.reasonHint")}>
         <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={4000} disabled={record.isPending} />
       </Field>
       {refused ? (
@@ -136,7 +138,7 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
       ) : null}
       <div className="flex justify-end">
         <Button variant="primary" size="sm" loading={record.isPending} disabled={!ready} onClick={submit}>
-          Record decision
+          {t("common.decisions.submit")}
         </Button>
       </div>
     </div>
@@ -145,20 +147,21 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
 
 function Composer({ issueId }: { issueId: string }) {
   const [mode, setMode] = useState<"comment" | "decision">("comment");
+  const t = useCopy();
   return (
     <div className="space-y-2">
       <SegmentedControl
         value={mode}
         onChange={setMode}
         options={[
-          { value: "comment", label: "Comment" },
-          { value: "decision", label: "Decision", title: "Record a ruling on this issue: what is decided and why" },
+          { value: "comment", label: t("issues.thread.comment") },
+          { value: "decision", label: t("common.decisions.decision"), title: t("issues.thread.decisionTitle") },
         ]}
       />
       {mode === "decision" ? (
         <RecordDecisionBox issueId={issueId} onDone={() => setMode("comment")} />
       ) : (
-        <AddCommentBox issueId={issueId} placeholder="Add a comment…" />
+        <AddCommentBox issueId={issueId} placeholder={t("issues.thread.addPlaceholder")} />
       )}
     </div>
   );
@@ -178,8 +181,9 @@ function CommentItem({
   readOnly?: boolean;
 }) {
   const [replying, setReplying] = useState(false);
+  const t = useCopy();
+  const time = useTimeFormat();
   const { kind } = deriveCommentKind(node);
-  const meta = COMMENT_KIND_META[kind];
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);
   const ownerEmail = node.author?.ownerEmail;
@@ -193,7 +197,7 @@ function CommentItem({
           <div className="flex flex-wrap items-center gap-2">
             <span
               className="fg-label text-fg"
-              title={isAgent && ownerEmail ? `An agent on ${author}, a box paired by ${ownerEmail}` : undefined}
+              title={isAgent && ownerEmail ? t("issues.thread.agentOn", { author, owner: ownerEmail }) : undefined}
             >
               {author}
             </span>
@@ -201,17 +205,17 @@ function CommentItem({
               <Badge tone="accent">
                 <span className="inline-flex items-center gap-1">
                   <Icon name="agent" size={11} />
-                  Agent
+                  {t("issues.assignee.agent")}
                 </span>
               </Badge>
             )}
             {node.intent === "decision" ? (
-              <Badge tone="green">Decision</Badge>
+              <Badge tone="green">{t("common.decisions.decision")}</Badge>
             ) : (
-              kind !== "comment" && <Badge tone={meta.tone}>{meta.label}</Badge>
+              kind !== "comment" && <Badge tone={COMMENT_KIND_TONE[kind]}>{t(`issues.commentKind.${kind}`)}</Badge>
             )}
-            <span className="fg-caption">
-              {formatRelativeTime(node.createdAt)}
+            <span className="fg-caption" title={time.dateTime(node.createdAt)}>
+              {time.relative(node.createdAt)}
             </span>
           </div>
           <div className="mt-1">
@@ -239,7 +243,7 @@ function CommentItem({
                 onClick={() => setReplying((r) => !r)}
                 className="fg-caption hover:text-fg"
               >
-                {replying ? "Cancel" : "Reply"}
+                {replying ? t("common.cancel") : t("issues.thread.reply")}
               </button>
             </div>
           )}
@@ -248,7 +252,7 @@ function CommentItem({
               <AddCommentBox
                 issueId={issueId}
                 parentId={node.id}
-                placeholder="Write a reply…"
+                placeholder={t("issues.thread.replyPlaceholder")}
                 onDone={() => setReplying(false)}
               />
             </div>
@@ -285,6 +289,7 @@ export function CommentThread({
   /** Viewer role: render the thread without composer/reply affordances. */
   readOnly?: boolean;
 }) {
+  const t = useCopy();
   // Newest top-level comment first so the latest activity is reachable without
   // scrolling past a long history (ISS-347). Sort a COPY — nested `replies`
   // stay chronological since a thread reads top-down.
@@ -296,8 +301,8 @@ export function CommentThread({
       {!readOnly && <Composer issueId={issueId} />}
       {ordered.length === 0 ? (
         <EmptyState
-          title="No comments yet"
-          message="Start the conversation."
+          title={t("issues.thread.emptyTitle")}
+          message={t("issues.thread.empty")}
           mascot={false}
         />
       ) : (

@@ -5,6 +5,7 @@
 // what was accepted here.
 
 import { Banner, Icon, IconButton } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { type ClipboardEvent, type DragEvent, useCallback, useRef, useState } from "react";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -71,6 +72,7 @@ export function useStagedFiles({
   uniqueNames: boolean;
 }) {
   const [files, setFiles] = useState<File[]>([]);
+  const t = useCopy();
   const [warnings, setWarnings] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,18 +84,18 @@ export function useStagedFiles({
     const errs: string[] = [];
     for (const f of Array.from(picked)) {
       if (f.size <= 0) {
-        errs.push(`Empty file skipped: ${f.name || "(unnamed)"}`);
+        errs.push(t("issues.files.empty", { name: f.name || t("issues.files.unnamed") }));
       } else if (f.size > MAX_BYTES) {
-        errs.push(`Too large (max 10 MB): ${f.name || "(unnamed)"}`);
+        errs.push(t("issues.files.tooLarge", { name: f.name || t("issues.files.unnamed") }));
       } else if (!(allowed.has(f.type) || f.type === "" || f.type.startsWith("text/"))) {
-        errs.push(`File type not allowed: ${f.name || f.type}`);
+        errs.push(t("issues.files.typeNotAllowed", { name: f.name || f.type }));
       } else {
         accepted.push(f);
       }
     }
     setFiles((prev) => {
       const room = MAX_FILES - prev.length;
-      if (accepted.length > room) errs.push(`Max ${MAX_FILES} attachments per ${unit}. Extras skipped.`);
+      if (accepted.length > room) errs.push(t(unit === "issue" ? "issues.files.tooManyIssue" : "issues.files.tooManyComment", { max: MAX_FILES }));
       const staged = accepted.slice(0, Math.max(0, room));
       if (!uniqueNames) return [...prev, ...staged];
       const used = new Set(prev.map((f) => nameKey(f.name)));
@@ -103,7 +105,7 @@ export function useStagedFiles({
           const unique = uniqueStagedName(f.name, used);
           used.add(nameKey(unique));
           if (unique === f.name) return f;
-          errs.push(`Renamed ${f.name} to ${unique} — one issue holds one file per name.`);
+          errs.push(t("issues.files.renamed", { from: f.name, to: unique }));
           return new File([f], unique, { type: f.type });
         }),
       ];
@@ -188,6 +190,7 @@ export function StagedFileList({
   remove: (index: number) => void;
   spaced?: boolean;
 }) {
+  const t = useCopy();
   const banner = warnings.length > 0 && (
     <Banner tone="attention">
       <ul className="space-y-0.5">
@@ -220,7 +223,7 @@ export function StagedFileList({
                 type="button"
                 icon="x"
                 size="sm"
-                aria-label={`Remove ${f.name}`}
+                aria-label={t("issues.toolbar.removeChip", { label: f.name })}
                 onClick={() => remove(i)}
               />
             </li>

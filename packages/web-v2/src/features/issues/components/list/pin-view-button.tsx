@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Input, Popover } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { useMemo, useRef, useState } from "react";
 
@@ -15,6 +16,7 @@ export function PinViewButton({
   defaultLabel: string;
 }) {
   const pinnedViews = usePinnedViews();
+  const t = useCopy();
   const viewHref = useMemo(() => {
     const p = new URLSearchParams(search);
     p.delete("new");
@@ -55,10 +57,10 @@ export function PinViewButton({
         size="sm"
         icon="pin"
         aria-pressed={isPinned}
-        aria-label={isPinned ? "Pinned view" : "Pin view"}
+        aria-label={isPinned ? t("issues.pin.pinnedView") : t("issues.pin.pinView")}
         onClick={onPinClick}
       >
-        <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
+        <span className="hidden sm:inline">{isPinned ? t("issues.pin.pinned") : t("issues.pin.pinView")}</span>
       </Button>
       <Popover
         open={pinOpen}
@@ -68,17 +70,17 @@ export function PinViewButton({
         gap={8}
         takesFocus
         role="dialog"
-        aria-label="Pin this view"
+        aria-label={t("issues.pin.dialog")}
         className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
       >
         <p className="fg-caption mb-2 text-muted">
-          Pin this view — current filters are saved with it.
+          {t("issues.pin.lead")}
         </p>
         <Input
           value={pinName}
           onChange={(e) => setPinName(e.target.value)}
           placeholder={defaultLabel}
-          aria-label="Pin name"
+          aria-label={t("issues.pin.name")}
           autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") confirmPin();
@@ -87,10 +89,10 @@ export function PinViewButton({
         />
         <div className="mt-2.5 flex justify-end gap-2">
           <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button variant="primary" size="sm" onClick={confirmPin}>
-            Pin
+            {t("issues.pin.pin")}
           </Button>
         </div>
       </Popover>

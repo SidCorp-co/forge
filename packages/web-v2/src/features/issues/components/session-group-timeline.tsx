@@ -12,10 +12,10 @@ import { useState } from "react";
 import { Badge, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle, enumLabel, Icon, MonoTag, StatusBadge } from "@/design";
 import {
   deriveSessionTimeline,
-  FRESH_REASON_COPY,
   type SessionTimelineEntry,
 } from "../derive";
 import type { IssueAgentSession } from "../types";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 
 interface SessionGroupTimelineProps {
   sessions: IssueAgentSession[];
@@ -23,6 +23,7 @@ interface SessionGroupTimelineProps {
 
 export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   const entries = deriveSessionTimeline(sessions);
+  const t = useCopy();
 
   // Render nothing on legacy issues with no group metadata at all — avoids a
   // noisy empty card when continuity simply can't be derived (AC9).
@@ -32,7 +33,7 @@ export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Session continuity</PageSectionTitle>
+        <PageSectionTitle>{t("issues.session.continuity")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody>
         {entries.map((entry, i) => (
@@ -43,16 +44,17 @@ export function SessionGroupTimeline({ sessions }: SessionGroupTimelineProps) {
   );
 }
 
-const CONTINUITY_META: Record<
-  "resumed" | "fresh",
-  { glyph: string; label: string; tone: "neutral" | "accent" }
-> = {
-  resumed: { glyph: "↻", label: "Resumed", tone: "neutral" },
-  fresh: { glyph: "✦", label: "Fresh", tone: "accent" },
+const CONTINUITY_META: Record<"resumed" | "fresh", { glyph: string; tone: "neutral" | "accent" }> = {
+  resumed: { glyph: "↻", tone: "neutral" },
+  fresh: { glyph: "✦", tone: "accent" },
 };
+const KNOWN_GROUPS = new Set(["build", "planning", "verify"]);
 
 function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: boolean }) {
   const [showOps, setShowOps] = useState(false);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const groupLabel = entry.group && KNOWN_GROUPS.has(entry.group) ? t(`issues.session.group.${entry.group as "build" | "planning" | "verify"}`) : entry.groupLabel;
   const cont = entry.continuity === "unknown" ? null : CONTINUITY_META[entry.continuity];
   // A fresh step (not chained to the one above) starts a new session — mark the
   // break, except on the very first row where there is nothing to break from.
@@ -85,7 +87,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
         {showBreak && (
           <p className="fg-caption mb-1 inline-flex items-center gap-1 text-muted">
             <Icon name="stop" size={10} />
-            fresh session
+            {t("issues.session.freshBreak")}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
@@ -94,13 +96,13 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
               <span className="mr-0.5" aria-hidden>
                 {cont.glyph}
               </span>
-              {cont.label}
+              {t(`issues.session.${entry.continuity as "resumed" | "fresh"}`)}
             </Badge>
           )}
-          {entry.groupLabel && <Badge tone="cobalt">{entry.groupLabel}</Badge>}
+          {groupLabel && <Badge tone="cobalt">{groupLabel}</Badge>}
           {entry.jobType && (
             <span className="text-12-5 font-bold text-fg" title={`step: ${entry.jobType}`}>
-              {enumLabel("jobType", entry.jobType)}
+              {enumLabel("jobType", entry.jobType, language)}
             </span>
           )}
           <StatusBadge family="session" value={entry.status} />
@@ -121,7 +123,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
           aria-expanded={showOps}
         >
           <Icon name={showOps ? "chevronDown" : "chevronRight"} size={12} />
-          Operator details
+          {t("issues.live.operatorDetails")}
         </button>
         {showOps && (
           <div className="mt-2 flex flex-wrap gap-2 border-t border-line-subtle pt-2">
@@ -131,7 +133,7 @@ function TimelineRow({ entry, isLast }: { entry: SessionTimelineEntry; isLast: b
             )}
             <OpsTag label="status" value={entry.status} />
             {entry.continuity === "fresh" && entry.freshReason && (
-              <span className="fg-caption text-muted">{FRESH_REASON_COPY[entry.freshReason]}</span>
+              <span className="fg-caption text-muted">{t(`issues.session.freshReason.${entry.freshReason}`)}</span>
             )}
           </div>
         )}

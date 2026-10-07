@@ -1,4 +1,7 @@
+import { ISSUE_RULE } from "./issue-rule-copy";
+import { BLOCKER, ISSUE_ACT, ISSUE_WHO } from "./issue-standing-rules";
 import { baseOf, productCopy, type ProductCopyKey } from "./product-copy";
+import type { Rule, Vars } from "./standing-rule";
 
 // The patterns are built with `new RegExp` because the web's compile target has no literal for named groups.
 // Core words whom a row waits on and what they owe in English (`@forge/contracts/standing`:
@@ -7,13 +10,6 @@ import { baseOf, productCopy, type ProductCopyKey } from "./product-copy";
 // leaves anything it does not recognise exactly as core wrote it. A name (a person, a key, a
 // version) is never touched. `standing-copy.test.ts` holds one real sentence per pattern.
 
-type Vars = Record<string, string | number>;
-interface Rule {
-  re: RegExp;
-  key: ProductCopyKey;
-  /** Null where a part the pattern captured is itself one no pattern names: the sentence then reads as core wrote it. */
-  vars?: (groups: Record<string, string>, language: string) => Vars | null;
-}
 
 const date = (iso: string, language: string): string => {
   const [y, m, d] = iso.split("-");
@@ -43,6 +39,7 @@ const WHO: Rule[] = [
   { re: new RegExp("^(?:Nothing|Nobody)$"), key: "standing.who.nobody" },
   { re: new RegExp("^A holder of (?<perm>.+)$"), key: "standing.who.holderOf", vars: (g) => ({ perm: g.perm ?? "" }) },
   { re: new RegExp("^Its root (?<root>.+)$"), key: "standing.who.itsRoot", vars: (g) => ({ root: g.root ?? "" }) },
+  ...ISSUE_WHO,
 ];
 
 const ACT: Rule[] = [
@@ -123,6 +120,7 @@ const ACT: Rule[] = [
   { re: new RegExp("^a check could not run$"), key: "standing.act.checkCouldNotRun" },
   { re: new RegExp("^label a runner for releases$"), key: "standing.act.labelRunner" },
   { re: new RegExp("^verdicts not re-read$"), key: "standing.act.verdictsNotReread" },
+  ...ISSUE_ACT,
 ];
 
 const EFFECT: Rule[] = [
@@ -358,6 +356,8 @@ export const standingAct = (act: string, language: string) => localize(ACT, act,
 export const standingEffect = (effect: string, language: string) => localize(EFFECT, effect, language);
 /** A feedback item's own core sentence (a ship notice's reason, an automatic verify's) in `language`; one no pattern names reads as core wrote it. */
 export const feedbackNote = (note: string, language: string) => localize(FEEDBACK_NOTE, note, language);
+/** Why an issue is not moving, who moves it, and the banner's button, in `language`; one no pattern names reads as core wrote it. */
+export const blockerText = (text: string, language: string) => localize(BLOCKER, text, language);
 /** A release gate's title and sentence, and a data risk's sentence, in `language`; one no pattern names reads as core wrote it. */
 export const gateTitle = (title: string, language: string) => localize(GATE_TITLE, title, language);
 export const gateSentence = (sentence: string, language: string) => localize(GATE_SENTENCE, sentence, language);
@@ -366,11 +366,26 @@ export const riskSentence = (sentence: string, language: string) => localize(RIS
 export const historyWho = (who: string, language: string) => (baseOf(language) === "en" ? who : (apply(HISTORY_WHO, who, language) ?? standingWho(who, language)));
 export const historyText = (text: string, language: string) => (baseOf(language) === "en" || text === "" ? text : (apply(HISTORY_TEXT, text, language) ?? text));
 
-/** A waiting-on with its `who`, `act` and `effect` in `language`; its `rule` and `kind` as core sent them. */
-export function localizeWaiting<W extends { who: string; act: string; effect?: string | undefined }>(w: W, language: string): W {
+/** Why a turn waits where it does (its `rule`) in `language`. An answered park's rule is its blocker sentence and its
+ *  who-moves sentence joined by a space, read as the two halves; one no pattern names reads as core wrote it. */
+export function standingRule(rule: string, language: string): string {
+  if (baseOf(language) === "en" || rule === "") return rule;
+  const own = apply(ISSUE_RULE, rule, language);
+  if (own !== null) return own;
+  for (let i = rule.indexOf(" "); i > 0; i = rule.indexOf(" ", i + 1)) {
+    const reason = apply(BLOCKER, rule.slice(0, i), language);
+    const who = reason === null ? null : apply(BLOCKER, rule.slice(i + 1), language);
+    if (reason !== null && who !== null) return `${reason} ${who}`;
+  }
+  return rule;
+}
+
+/** A waiting-on with its `who`, `act`, `effect` and `rule` in `language`; its `kind` as core sent it. */
+export function localizeWaiting<W extends { who: string; act: string; rule?: string | null | undefined; effect?: string | undefined }>(w: W, language: string): W {
   if (baseOf(language) === "en") return w;
   const effect = w.effect === undefined ? {} : { effect: standingEffect(w.effect, language) };
-  return { ...w, who: standingWho(w.who, language), act: standingAct(w.act, language), ...effect };
+  const rule = typeof w.rule === "string" ? { rule: standingRule(w.rule, language) } : {};
+  return { ...w, who: standingWho(w.who, language), act: standingAct(w.act, language), ...effect, ...rule };
 }
 
 /** The sentence `text` reads as in `language` by a pattern, or null where none names it; English runs through its pattern too, which the round-trip test holds to core's sentence. */
@@ -389,4 +404,6 @@ export const STANDING_RULES = {
   gateTitle: GATE_TITLE,
   gateSentence: GATE_SENTENCE,
   risk: RISK,
+  blocker: BLOCKER,
+  rule: ISSUE_RULE,
 } as const;

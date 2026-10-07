@@ -4,7 +4,10 @@
 import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
-import { AGENT_HOLDS_EDIT } from "../edit-lock";
+import { productCopy } from "@/lib/i18n/product-copy";
+import { agentHoldsEdit } from "../edit-lock";
+
+const AGENT_HOLDS_EDIT = agentHoldsEdit(productCopy("en"));
 import type { IssueDetail } from "../types";
 import { IssueQuickActions } from "./issue-quick-actions";
 import { PropertiesRail } from "./properties-rail";

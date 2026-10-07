@@ -16,7 +16,8 @@
 
 import { useId, useState } from "react";
 import { Button, Menu, type MenuItem } from "@/design";
-import { priorityLabel, transitionLabels } from "../derive";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { agentHoldsSelection, heldInSelection } from "../edit-lock";
 import { type BulkUpdate, useBulkUpdateIssues } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow, type IssueStatus } from "../types";
@@ -60,15 +61,15 @@ function RefusedAction({
   );
 }
 
-function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
+function canBatchRelease(rows: IssueRow[], t: Copy): { enabled: boolean; reason?: string } {
   if (rows.length === 0) return { enabled: false };
   const notAtGate = rows.filter((r) => r.status !== BATCH_RELEASE_GATE);
   if (notAtGate.length > 0) {
-    return { enabled: false, reason: `${notAtGate.length} selected issue${notAtGate.length > 1 ? "s are" : " is"} not awaiting release` };
+    return { enabled: false, reason: notAtGate.length > 1 ? t("issues.bulk.notAtGateMany", { n: notAtGate.length }) : t("issues.bulk.notAtGateOne") };
   }
   const claimed = rows.filter((r) => r.releaseBatchRunId != null);
   if (claimed.length > 0) {
-    return { enabled: false, reason: `${claimed.length} issue${claimed.length > 1 ? "s are" : " is"} already claimed by a batch release` };
+    return { enabled: false, reason: claimed.length > 1 ? t("issues.bulk.claimedMany", { n: claimed.length }) : t("issues.bulk.claimedOne") };
   }
   return { enabled: true };
 }
@@ -87,37 +88,38 @@ export function BulkActionBar({
   const bulk = useBulkUpdateIssues();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const statusReasonId = useId();
+  const t = useCopy();
+  const L = useLabel();
   const count = selectedRows.length;
   if (count === 0) return null;
 
   const ids = selectedRows.map((r) => r.id);
   const statusTargets = commonMoves(selectedRows);
   const heldCount = heldInSelection(selectedRows);
-  const heldReason = heldCount > 0 ? agentHoldsSelection(heldCount, count) : null;
+  const heldReason = heldCount > 0 ? agentHoldsSelection(t, heldCount, count) : null;
   const noCommonStatus = statusTargets.length === 0;
-  const batchRelease = canBatchRelease(selectedRows);
+  const batchRelease = canBatchRelease(selectedRows, t);
 
   const run = (update: BulkUpdate) =>
     bulk.mutate({ ids, update }, { onSuccess: onCleared });
 
-  const statusNames = transitionLabels(statusTargets);
-  const statusItems: MenuItem[] = statusTargets.map((s, i) => ({
-    label: statusNames[i],
+  const statusItems: MenuItem[] = statusTargets.map((s) => ({
+    label: L("issueStatus", s),
     onSelect: () => run({ kind: "status", toStatus: s }),
   }));
   const priorityItems: MenuItem[] = ISSUE_PRIORITIES.map((p) => ({
-    label: priorityLabel(p),
+    label: L("issuePriority", p),
     onSelect: () => run({ kind: "priority", priority: p }),
   }));
 
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 shadow-sm">
-        <span className="fg-body-sm font-medium text-fg">{count} selected</span>
+        <span className="fg-body-sm font-medium text-fg">{t("issues.bulk.selected", { n: count })}</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {heldReason ? (
             <RefusedAction
-              labels={["Set status", "Set priority"]}
+              labels={[t("issues.bulk.setStatus"), t("issues.bulk.setPriority")]}
               reasonId={statusReasonId}
               reason={heldReason}
             />
@@ -125,9 +127,9 @@ export function BulkActionBar({
             <>
               {noCommonStatus ? (
                 <RefusedAction
-                  labels={["Set status"]}
+                  labels={[t("issues.bulk.setStatus")]}
                   reasonId={statusReasonId}
-                  reason="No status change is valid for every selected issue"
+                  reason={t("issues.bulk.noCommonStatus")}
                 />
               ) : (
                 <Menu
@@ -140,7 +142,7 @@ export function BulkActionBar({
                       icon="chevronDown"
                       disabled={bulk.isPending}
                     >
-                      Set status
+                      {t("issues.bulk.setStatus")}
                     </Button>
                   }
                 />
@@ -155,7 +157,7 @@ export function BulkActionBar({
                     icon="chevronDown"
                     disabled={bulk.isPending}
                   >
-                    Set priority
+                    {t("issues.bulk.setPriority")}
                   </Button>
                 }
               />
@@ -165,10 +167,10 @@ export function BulkActionBar({
             variant="secondary"
             size="sm"
             disabled={!batchRelease.enabled || bulk.isPending}
-            title={batchRelease.reason ?? "Release selected issues as a batch"}
+            title={batchRelease.reason ?? t("issues.bulk.batchHint")}
             onClick={() => setBatchDialogOpen(true)}
           >
-            Batch release
+            {t("issues.bulk.batchRelease")}
           </Button>
           <Button
             variant="ghost"
@@ -176,7 +178,7 @@ export function BulkActionBar({
             onClick={onCleared}
             disabled={bulk.isPending}
           >
-            Clear selection
+            {t("issues.bulk.clearSelection")}
           </Button>
         </span>
       </div>

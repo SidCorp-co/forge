@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopy } from "@/lib/i18n/interface-language";
 import { IconButton } from "./icon-button";
 
 export interface PaginationProps {
@@ -9,13 +10,14 @@ export interface PaginationProps {
 }
 
 export function Pagination({ page, pageCount, onChange }: PaginationProps) {
+  const t = useCopy();
   return (
     <div className="flex items-center gap-2">
       <IconButton
         icon="chevronRight"
         size="sm"
         variant="secondary"
-        aria-label="Previous page"
+        aria-label={t("common.page.previous")}
         disabled={page <= 1}
         className="rotate-180"
         onClick={() => onChange?.(page - 1)}
@@ -27,7 +29,7 @@ export function Pagination({ page, pageCount, onChange }: PaginationProps) {
         icon="chevronRight"
         size="sm"
         variant="secondary"
-        aria-label="Next page"
+        aria-label={t("common.page.next")}
         disabled={page >= pageCount}
         onClick={() => onChange?.(page + 1)}
       />

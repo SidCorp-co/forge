@@ -7,6 +7,7 @@ import {
   type MenuItem,
   type SelectOption,
 } from "@/design";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRouter } from "next/navigation";
 import type { PatchIssueInput } from "../api";
 import {
@@ -36,8 +37,7 @@ export interface RowSelection {
   onToggle: (next: boolean) => void;
 }
 
-/** Shared by the table and the properties rail: the raw enum as `value`, the humanized
- *  `PRIORITY_LABELS`/`COMPLEXITY_LABELS` as the text, so neither surface shows a wire value. */
+/** The New issue form's options, in English: that form's chrome is translated with its own change. */
 export const PRIORITY_OPTIONS: SelectOption[] = [
   { value: "critical", label: PRIORITY_LABELS.critical },
   { value: "high", label: PRIORITY_LABELS.high },
@@ -54,6 +54,18 @@ export const COMPLEXITY_OPTIONS: SelectOption[] = [
   { value: "l", label: COMPLEXITY_LABELS.l },
   { value: "xl", label: COMPLEXITY_LABELS.xl },
 ];
+
+/** The table's and the properties rail's priority choices: the raw enum as `value`, its label in the interface language as the text. */
+export function usePriorityOptions(): SelectOption[] {
+  const L = useLabel();
+  return PRIORITY_OPTIONS.map((o) => ({ ...o, label: L("issuePriority", o.value) }));
+}
+
+/** The complexity choices, `—` for none, each size's word in the interface language. */
+export function useComplexityOptions(): SelectOption[] {
+  const t = useCopy();
+  return COMPLEXITY_OPTIONS.map((o) => (o.value ? { ...o, label: t(`issues.complexity.${o.value}` as never) } : o));
+}
 
 const isParentEdge = (k: IssueDependencyEdge["kind"]) =>
   k === "decomposes" || k === "parent";
@@ -133,6 +145,7 @@ export function DepBadges({
   slug: string;
 }) {
   const router = useRouter();
+  const t = useCopy();
   const navigate = (otherId: string) =>
     router.push(`/projects/${slug}/issues/${otherId}`);
 
@@ -160,32 +173,32 @@ export function DepBadges({
           tone="danger"
           label={
             openBlockers.length === 1
-              ? `Blocked by ${openBlockers[0].fromDisplayId ?? "an issue"}${openBlockers[0].fromMergedAt ? " · landed" : ""}`
-              : `Blocked by ${openBlockers.length}`
+              ? `${t("issues.deps.blockedByOne", { key: openBlockers[0].fromDisplayId ?? t("issues.deps.anIssue") })}${openBlockers[0].fromMergedAt ? ` · ${t("issues.deps.landed")}` : ""}`
+              : t("issues.deps.blockedBy", { n: openBlockers.length })
           }
           items={openBlockers.map((e) => edgeToMenuItem(e, "in", navigate))}
         />
       ) : (
         <RelationChip
           icon="lock"
-          label={`Blocked by ${blockedBy.length}`}
+          label={t("issues.deps.blockedBy", { n: blockedBy.length })}
           items={blockedBy.map((e) => edgeToMenuItem(e, "in", navigate))}
         />
       )}
       <RelationChip
         icon="arrowRight"
-        label={`Blocks ${blocks.length}`}
+        label={t("issues.deps.blocks", { n: blocks.length })}
         items={blocks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="grid"
-        label={`${subtasks.length} subtask${subtasks.length === 1 ? "" : "s"}`}
+        label={subtasks.length === 1 ? t("issues.deps.subtask") : t("issues.deps.subtasks", { n: subtasks.length })}
         items={subtasks.map((e) => edgeToMenuItem(e, "out", navigate))}
       />
       <RelationChip
         icon="fork"
         label={
-          parents.length > 1 ? `Subtask of ${parents.length}` : "Subtask of"
+          parents.length > 1 ? t("issues.deps.subtaskOfN", { n: parents.length }) : t("issues.deps.subtaskOf")
         }
         items={parents.map((e) => edgeToMenuItem(e, "in", navigate))}
       />
@@ -199,11 +212,13 @@ export function DepBadges({
 export function LastWriteCell({
   written,
 }: {
-  written: { label: string; stale: boolean } | null;
+  written: { ms: number; stale: boolean } | null;
 }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   if (!written) return <span className="fg-caption">—</span>;
-  const measures =
-    "A status move, a field edit, a merge mark or an agent's claim or lease renewal resets this; a comment on its own does not.";
+  const label = time.elapsed(written.ms);
+  const measures = t("issues.lastWrite.measures");
   return (
     <span
       className={
@@ -213,12 +228,12 @@ export function LastWriteCell({
       }
       title={
         written.stale
-          ? `Nothing has been written to this issue in ${written.label}. ${measures}`
-          : `This issue was last written to ${written.label} ago. ${measures}`
+          ? `${t("issues.lastWrite.stale", { age: label })} ${measures}`
+          : `${t("issues.lastWrite.fresh", { age: label })} ${measures}`
       }
     >
       {written.stale && <Icon name="clock" size={12} />}
-      {written.label}
+      {label}
     </span>
   );
 }

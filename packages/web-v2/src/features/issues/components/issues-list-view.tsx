@@ -7,11 +7,13 @@
 
 import { BoardRowSkeleton, ErrorState, Pagination, type SegmentOption } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
-import { filterCount, priorityLabel, statusLabel } from "../derive";
+import { filterCount } from "../derive";
 import { useIssues, usePatchIssue } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueFilter } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -25,10 +27,10 @@ import { DEFAULT_FILTER, useIssueListParams } from "./list/use-list-params";
 import { usePageSelection } from "./list/use-page-selection";
 import { useGuardedTransition } from "./use-guarded-transition";
 
-const SEGMENTS: SegmentOption<IssueFilter>[] = [
-  { value: "open", label: "Open" },
-  { value: "closed", label: "Closed" },
-  { value: "all", label: "All" },
+const segmentsOf = (t: Copy): SegmentOption<IssueFilter>[] => [
+  { value: "open", label: t("issues.segment.open") },
+  { value: "closed", label: t("issues.segment.closed") },
+  { value: "all", label: t("issues.segment.all") },
 ];
 
 function withCounts(
@@ -39,16 +41,11 @@ function withCounts(
   return options.map((o) => ({ ...o, count: filterCount(o.value, buckets) }));
 }
 
-const GROUP_OPTIONS: ToolbarOption[] = [
-  { value: "", label: "None" },
-  { value: "status", label: "Status" },
-  { value: "priority", label: "Priority" },
-  { value: "creator", label: "Creator" },
-];
-
-const PRIORITY_OPTIONS: ToolbarOption[] = [
-  { value: "", label: "Any" },
-  ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) })),
+const groupOptionsOf = (t: Copy): ToolbarOption[] => [
+  { value: "", label: t("issues.group.none") },
+  { value: "status", label: t("issues.field.status") },
+  { value: "priority", label: t("issues.field.priority") },
+  { value: "creator", label: t("issues.field.creator") },
 ];
 
 interface IssuesListViewProps {
@@ -70,7 +67,10 @@ export function IssuesListView({
   const view = useIssueListParams(slug);
   const { q, filter, priority, createdBy, assignee, label, moduleId, statusParam, groupBy, sort, page, setParams } =
     view;
-  const defaultPinLabel = `Issues${filter !== DEFAULT_FILTER ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
+  const t = useCopy();
+  const L = useLabel();
+  const defaultPinLabel = `${t("issues.screen.title")}${filter !== DEFAULT_FILTER ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
+  const priorityOptions: ToolbarOption[] = [{ value: "", label: t("issues.filter.any") }, ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: L("issuePriority", p) }))];
 
   useRoom(projectRoom(projectId));
 
@@ -99,7 +99,7 @@ export function IssuesListView({
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
   const buckets = issuesQ.data?.extra?.buckets;
-  const segments = useMemo(() => withCounts(SEGMENTS, buckets), [buckets]);
+  const segments = useMemo(() => withCounts(segmentsOf(t), buckets), [buckets, t]);
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const actions: RowActions = {
@@ -127,16 +127,16 @@ export function IssuesListView({
         query={view.rawQ}
         onQuery={view.setRawQ}
         fields={[
-          { param: "priority", title: "Priority", value: priority ?? "", options: PRIORITY_OPTIONS },
-          { param: "createdBy", title: "Created by", value: createdBy, options: options.creatorOptions },
-          { param: "assignee", title: "Assignee", value: assignee, options: options.assigneeOptions },
-          { param: "label", title: "Label", value: label, options: options.labelOptions },
-          { param: "module", title: "Module", value: moduleId, options: options.moduleOptions },
-          { param: "groupBy", title: "Group by", value: groupBy === "none" ? "" : groupBy, options: GROUP_OPTIONS },
+          { param: "priority", title: t("issues.field.priority"), value: priority ?? "", options: priorityOptions },
+          { param: "createdBy", title: t("issues.field.createdBy"), value: createdBy, options: options.creatorOptions },
+          { param: "assignee", title: t("issues.field.assignee"), value: assignee, options: options.assigneeOptions },
+          { param: "label", title: t("issues.field.label"), value: label, options: options.labelOptions },
+          { param: "module", title: t("issues.field.module"), value: moduleId, options: options.moduleOptions },
+          { param: "groupBy", title: t("common.groupBy"), value: groupBy === "none" ? "" : groupBy, options: groupOptionsOf(t) },
         ]}
         extraChips={
           statusParam
-            ? [{ param: "status", value: view.rawStatus ?? "", label: `Status: ${statusParam.map(statusLabel).join(", ")}` }]
+            ? [{ param: "status", value: view.rawStatus ?? "", label: `${t("issues.field.status")}: ${statusParam.map((s) => L("issueStatus", s)).join(", ")}` }]
             : []
         }
         onParam={(param, value) => setParams({ [param]: value, page: "" })}
@@ -162,7 +162,7 @@ export function IssuesListView({
       {issuesQ.isError && (
         <div className="px-4 sm:px-6">
           <ErrorState
-            title="Couldn't load issues"
+            title={t("issues.list.loadFailed")}
             message={formatApiError(issuesQ.error)}
             onRetry={() => issuesQ.refetch()}
           />
@@ -175,7 +175,7 @@ export function IssuesListView({
           moduleName={options.activeModuleName}
           creatorName={
             createdBy
-              ? (options.creatorOptions.find((o) => o.value === createdBy)?.label ?? "that creator")
+              ? (options.creatorOptions.find((o) => o.value === createdBy)?.label ?? t("issues.empty.thatCreator"))
               : null
           }
           isFiltered={view.isFiltered}

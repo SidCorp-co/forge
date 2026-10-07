@@ -4,7 +4,7 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { useContentLanguage } from "@/lib/api/content-language";
 import { useCurrentProject } from "@/features/projects/current-project";
 import { usePreferences } from "@/features/preferences/hooks";
-import { formatAge, formatClock, formatDate, formatDateTime, formatRelative } from "./format";
+import { formatAge, formatClock, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
 
@@ -76,6 +76,9 @@ export function useTimeFormat() {
     () => ({
       relative: (iso: string | null | undefined, now?: number) => formatRelative(iso, language, now),
       age: (iso: string | null | undefined, now?: number) => formatAge(iso, language, now),
+      elapsed: (ms: number) => formatElapsed(ms, language),
+      countdown: (iso: string | null | undefined, now?: number) => formatCountdown(iso, language, now),
+      number: (n: number) => formatNumber(n, language),
       dateTime: (at: string | number | Date) => formatDateTime(at, language),
       date: (at: string | number | Date) => formatDate(at, language),
       clock: (at: string | number | Date) => formatClock(at, language),
