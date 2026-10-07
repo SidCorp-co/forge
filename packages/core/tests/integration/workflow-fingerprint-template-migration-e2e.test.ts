@@ -60,11 +60,46 @@ function operationalDoc(flow: string): Record<string, unknown> {
     summary: 'What happens when a patient is discharged\\ and a case opens.',
     template: { id: 'operational-flow', version: 1 },
     steps: [
-      { id: 'his', does: 'The HIS says so.', after: [], node: { type: 'SOURCE', label: 'HIS', owner: 'IT', band: 'trigger' } },
-      { id: 'discharged', title: 'Discharged', does: 'The event.', after: ['his'], node: { type: 'EVENT', label: 'Discharged', event: 'patient.discharged', payload: ['patient_id'] } },
-      { id: 'rule_1', does: 'A rule.', after: ['discharged'], node: { type: 'RULE', label: 'Needs follow-up', conditions: [{ when: 'age > 65', result: 'yes' }] } },
-      { id: 'rule', does: 'Another rule.', after: ['discharged'], node: { type: 'RULE', label: 'Other', band: 'feedback' } },
-      { id: 'open-case', does: 'Open a case.', after: ['rule_1'], node: { type: 'CASE', label: 'Case' } },
+      {
+        id: 'his',
+        does: 'The HIS says so.',
+        after: [],
+        node: { type: 'SOURCE', label: 'HIS', owner: 'IT', band: 'trigger' },
+      },
+      {
+        id: 'discharged',
+        title: 'Discharged',
+        does: 'The event.',
+        after: ['his'],
+        node: {
+          type: 'EVENT',
+          label: 'Discharged',
+          event: 'patient.discharged',
+          payload: ['patient_id'],
+        },
+      },
+      {
+        id: 'rule_1',
+        does: 'A rule.',
+        after: ['discharged'],
+        node: {
+          type: 'RULE',
+          label: 'Needs follow-up',
+          conditions: [{ when: 'age > 65', result: 'yes' }],
+        },
+      },
+      {
+        id: 'rule',
+        does: 'Another rule.',
+        after: ['discharged'],
+        node: { type: 'RULE', label: 'Other', band: 'feedback' },
+      },
+      {
+        id: 'open-case',
+        does: 'Open a case.',
+        after: ['rule_1'],
+        node: { type: 'CASE', label: 'Case' },
+      },
       { id: 'untyped', does: 'No node.', after: ['open-case', 'his'] },
     ],
     edges: [
@@ -72,7 +107,15 @@ function operationalDoc(flow: string): Record<string, unknown> {
       { from: 'his', to: 'discharged', kind: 'emits' },
       { from: 'discharged', to: 'rule_1', kind: 'evaluates' },
       { from: 'discharged', to: 'rule' },
-      { from: 'open-case', to: 'discharged', kind: 'feeds-back', reevaluates: 'the context', payload: ['x'], idempotency: 'by id', onFailure: 'retry' },
+      {
+        from: 'open-case',
+        to: 'discharged',
+        kind: 'feeds-back',
+        reevaluates: 'the context',
+        payload: ['x'],
+        idempotency: 'by id',
+        onFailure: 'retry',
+      },
       { from: 'rule', to: 'rule_1', mapping: { b: '1', aaa: '2' } },
     ],
     writtenBy: {},
@@ -97,7 +140,9 @@ function legacyFingerprint(doc: Record<string, unknown>): string {
   }
   const template = JSON.stringify(doc.template);
   expect(shape).toContain(`,"template":${template}`);
-  return createHash('sha256').update(shape.replace(`,"template":${template}`, '')).digest('hex');
+  return createHash('sha256')
+    .update(shape.replace(`,"template":${template}`, ''))
+    .digest('hex');
 }
 
 async function seed(
@@ -118,7 +163,12 @@ async function seed(
 const rowOf = async (id: string) =>
   (
     await m.sql<
-      Array<{ design_status: string | null; design_fingerprint: string | null; approved_revision: number | null; revision: number }>
+      Array<{
+        design_status: string | null;
+        design_fingerprint: string | null;
+        approved_revision: number | null;
+        revision: number;
+      }>
     >`SELECT design_status, design_fingerprint, approved_revision, revision FROM project_workflows WHERE id = ${id}`
   )[0];
 
@@ -127,7 +177,13 @@ describe('an operational-flow@1 design fingerprinted before the hash carried its
     const doc = operationalDoc('discharge');
     const old = legacyFingerprint(doc);
     const id = await seed('discharge', doc, 'approved', 3, old);
-    const proposed = await seed('discharge-b', operationalDoc('discharge-b'), 'proposed', null, legacyFingerprint(operationalDoc('discharge-b')));
+    const proposed = await seed(
+      'discharge-b',
+      operationalDoc('discharge-b'),
+      'proposed',
+      null,
+      legacyFingerprint(operationalDoc('discharge-b')),
+    );
     const bare = await seed('discharge-c', operationalDoc('discharge-c'), null, null, null);
     await m.migrate();
 
@@ -135,18 +191,32 @@ describe('an operational-flow@1 design fingerprinted before the hash carried its
     if (!stored) throw new Error('fixture does not parse');
     const now = designFingerprint(stored, OPERATIONAL ?? null);
     expect(now).not.toBe(old);
-    expect(await rowOf(id)).toEqual({ design_status: 'approved', design_fingerprint: now, approved_revision: 3, revision: 3 });
+    expect(await rowOf(id)).toEqual({
+      design_status: 'approved',
+      design_fingerprint: now,
+      approved_revision: 3,
+      revision: 3,
+    });
     const b = readStoredWorkflow(operationalDoc('discharge-b'));
     if (!b) throw new Error('fixture does not parse');
-    expect(await rowOf(proposed)).toMatchObject({ design_status: 'proposed', approved_revision: null, design_fingerprint: designFingerprint(b, OPERATIONAL ?? null) });
-    expect((await rowOf(bare))?.design_fingerprint).toBe(designFingerprint({ ...b, flow: 'discharge-c' }, OPERATIONAL ?? null));
+    expect(await rowOf(proposed)).toMatchObject({
+      design_status: 'proposed',
+      approved_revision: null,
+      design_fingerprint: designFingerprint(b, OPERATIONAL ?? null),
+    });
+    expect((await rowOf(bare))?.design_fingerprint).toBe(
+      designFingerprint({ ...b, flow: 'discharge-c' }, OPERATIONAL ?? null),
+    );
   });
 
   it('leaves a design in another template as it was stored', async () => {
     const doc = { ...operationalDoc('lifecycle'), template: { id: 'state-machine', version: 1 } };
     const id = await seed('lifecycle', doc, 'approved', 3, 'a'.repeat(64));
     await m.migrate();
-    expect(await rowOf(id)).toMatchObject({ design_fingerprint: 'a'.repeat(64), design_status: 'approved' });
+    expect(await rowOf(id)).toMatchObject({
+      design_fingerprint: 'a'.repeat(64),
+      design_status: 'approved',
+    });
   });
 
   it('aborts naming the row whose document names no template', async () => {
@@ -163,6 +233,10 @@ describe('an operational-flow@1 design fingerprinted before the hash carried its
     }
     expect(refusal).toMatch(/names no template.*drawn-before-templates \(project /);
     expect(refusal).not.toContain('fine');
-    expect((await m.sql`SELECT count(*)::int AS n FROM project_workflows WHERE design_fingerprint = ${'b'.repeat(64)}`)[0]?.n).toBe(1);
+    expect(
+      (
+        await m.sql`SELECT count(*)::int AS n FROM project_workflows WHERE design_fingerprint = ${'b'.repeat(64)}`
+      )[0]?.n,
+    ).toBe(1);
   });
 });

@@ -1,9 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { DesignStatus } from '@forge/contracts/design-status';
-import {
-  bandOfNode,
-  type WorkflowTemplate,
-} from '@forge/contracts/workflow-templates';
+import { bandOfNode, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { DesignRefusalCode } from '@forge/contracts/workflows';
 import { RefusalError } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
