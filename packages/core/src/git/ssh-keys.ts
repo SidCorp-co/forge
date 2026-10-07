@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
+import { namingTheHost, readHostRefusal } from './bounded-fetch.js';
 import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
@@ -78,15 +79,6 @@ export interface SshConnTest {
   headSha?: string;
 }
 
-/** First non-empty line of a (possibly multi-line) stderr blob, truncated. */
-function firstLine(s: string): string {
-  const line = s
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return (line ?? '').slice(0, 300);
-}
-
 /**
  * Run `fn` with the environment git needs to reach `repoUrl` as `privateKey` and nothing else: the
  * key in a 0700 temp dir, a known_hosts of its own, no prompt, the ssh transport only, and ssh
@@ -140,7 +132,7 @@ export async function withDeployKey<T>(
 }
 
 export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
-  return withDeployKey(privateKey, repoUrl, (env) => lsRemote(repoUrl, env)).catch(
+  return withDeployKey(privateKey, repoUrl, (env, _dir, pin) => lsRemote(repoUrl, env, pin)).catch(
     (err: unknown): SshConnTest => {
       if (!(err instanceof HTTPException)) throw err;
       const code = isHostUnresolved(err) ? 'host_unreachable' : 'error';
@@ -149,7 +141,11 @@ export async function testSshConnection(repoUrl: string, privateKey: string): Pr
   );
 }
 
-async function lsRemote(repoUrl: string, env: NodeJS.ProcessEnv): Promise<SshConnTest> {
+async function lsRemote(
+  repoUrl: string,
+  env: NodeJS.ProcessEnv,
+  pin: PinnedSshHost,
+): Promise<SshConnTest> {
   try {
     const { stdout } = await execFileAsync('git', ['ls-remote', repoUrl, 'HEAD'], {
       env,
@@ -165,35 +161,33 @@ async function lsRemote(repoUrl: string, env: NodeJS.ProcessEnv): Promise<SshCon
     };
   } catch (err) {
     const e = err as { stderr?: string | Buffer; killed?: boolean; signal?: string };
-    const stderr = (e.stderr ?? '').toString();
-    const low = stderr.toLowerCase();
     if (e.killed || e.signal === 'SIGTERM') {
       return { ok: false, code: 'timeout', message: 'Connection timed out after 20s.' };
     }
-    if (low.includes('permission denied')) {
-      return {
-        ok: false,
-        code: 'auth_denied',
-        message:
-          'Permission denied — this deploy key is not authorised on the repository. Add the public key (with write access) to the repo.',
-      };
+    const answer = readHostRefusal((e.stderr ?? '').toString());
+    const said = namingTheHost(answer.said, pin);
+    switch (answer.kind) {
+      case 'key_refused':
+        return {
+          ok: false,
+          code: 'auth_denied',
+          message: `The git host refused this deploy key (${said}). Add the public key (with write access) to the repo.`,
+        };
+      case 'no_access':
+        return {
+          ok: false,
+          code: 'not_found',
+          message: `The git host took this deploy key but will not let it read the repository (${said}). Check the repo URL, and add the public key (with write access) to that repo.`,
+        };
+      case 'unreachable':
+        return {
+          ok: false,
+          code: 'host_unreachable',
+          message: `Could not reach the git host (${said}).`,
+        };
+      default:
+        return { ok: false, code: 'error', message: said || 'git ls-remote failed.' };
     }
-    if (
-      low.includes('could not resolve hostname') ||
-      low.includes('connection timed out') ||
-      low.includes('network is unreachable') ||
-      low.includes('connection refused')
-    ) {
-      return { ok: false, code: 'host_unreachable', message: 'Could not reach the git host.' };
-    }
-    if (low.includes('repository not found') || low.includes('does not exist')) {
-      return {
-        ok: false,
-        code: 'not_found',
-        message: 'Repository not found — check the repo URL (or the key may lack access to it).',
-      };
-    }
-    return { ok: false, code: 'error', message: firstLine(stderr) || 'git ls-remote failed.' };
   }
 }
 

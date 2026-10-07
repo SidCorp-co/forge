@@ -140,7 +140,9 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     ],
     [
       GITHUB_NOT_FOUND,
-      [`the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`],
+      [
+        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
+      ],
     ],
     [NO_REPOSITORY, ['correct the SSH clone URL set there']],
     [

@@ -57,7 +57,12 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. That refusal names two routes: mark again once the repository can be read —
+evidence unchecked. On the git route the cause is one of four, read from what the host said
+(`packages/core/src/git/bounded-fetch.ts:fetchRefusal`) and quoted in its words past any `remote:`
+banner: the host refused the key, it took the key but will not let it read that repository (or none
+is there), it could not be reached, or the repository lacks a branch. That refusal names two routes:
+mark again once the repository can be read — or, where a branch is missing, once the repository has
+it or the project names only branches it has —
 through the GitHub binding where the project reads through one, else with the deploy key over the SSH
 clone URL under Git access, and never telling a project with no binding to bind GitHub, except
 beside the key for a github.com remote — (or, where the project names no base branch, once it does), or have a person mark it merged naming

@@ -17,7 +17,15 @@ export type CommitLookup =
   | { kind: 'absent'; detail: string; details: Record<string, unknown> }
   | { kind: 'unreadable'; why: string };
 
-export type Containment = { contains: boolean } | { why: string };
+/** A read that failed; `missingBranch` where the cause is a branch the repository does not have. */
+export interface ReadFailure {
+  why: string;
+  missingBranch?: string;
+}
+
+export type BranchRead = { sha: string } | ReadFailure;
+
+export type Containment = { contains: boolean } | ReadFailure;
 
 export type Carriage =
   | { readonly kind: 'descends' }
@@ -42,7 +50,7 @@ export interface RepositoryReader {
   readonly name: string;
   readonly route: RepositoryRoute;
   commit(ref: string): Promise<CommitLookup>;
-  branchHead(branch: string): Promise<{ sha: string } | { why: string }>;
+  branchHead(branch: string): Promise<BranchRead>;
   contains(sha: string, branch: string): Promise<Containment>;
   carriage(judged: string, served: string): Promise<Carriage>;
   changedPaths(landing: string): Promise<ChangedPaths>;

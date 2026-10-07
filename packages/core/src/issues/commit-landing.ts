@@ -135,7 +135,12 @@ async function landingIn(
 
   for (const branch of branches) {
     const held = await reader.contains(sha, branch);
-    if ('why' in held) return unreadable(commit, held.why, clears);
+    if ('why' in held) {
+      const fix = held.missingBranch
+        ? `once ${repository} has a branch ${held.missingBranch}, or the project's base branch and release chain name only branches it has`
+        : clears;
+      return unreadable(commit, held.why, fix);
+    }
     if (held.contains) {
       const at = new Date(looked.committedAt ?? '');
       if (Number.isNaN(at.getTime())) {

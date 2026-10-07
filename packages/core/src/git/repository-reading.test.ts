@@ -122,9 +122,13 @@ describe('commit', () => {
   });
 
   it('answers unreadable, naming why, where the repository cannot be fetched', async () => {
-    const read = await reader(`file://${join(root, 'nowhere.git')}`).commit(sha.judged as string);
+    const nowhere = `file://${join(root, 'nowhere.git')}`;
+    const read = await reader(nowhere).commit(sha.judged as string);
     expect(read.kind).toBe('unreadable');
-    expect(read.kind === 'unreadable' && read.why).toContain('the git host answered the fetch');
+    expect(read.kind === 'unreadable' && read.why).toContain(`will not let it read ${nowhere}`);
+    expect(read.kind === 'unreadable' && read.why).toContain(
+      'does not appear to be a git repository',
+    );
   });
 });
 
@@ -142,6 +146,7 @@ describe('branchHead and contains', () => {
   it('answers why, never contains, for a branch the repository does not have', async () => {
     expect(await reader().contains(sha.judged as string, 'staging')).toEqual({
       why: `${remote} has no branch staging`,
+      missingBranch: 'staging',
     });
   });
 
@@ -150,7 +155,8 @@ describe('branchHead and contains', () => {
       sha.judged as string,
       'main',
     );
-    expect('why' in read && read.why).toContain('the git host answered the fetch');
+    expect('why' in read && read.why).toContain('does not appear to be a git repository');
+    expect('missingBranch' in read).toBe(false);
   });
 
   it('refuses a branch name git would not accept before fetching anything', async () => {

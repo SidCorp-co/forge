@@ -1,3 +1,4 @@
+// @gate-input whole-tree — the host-answer cases run a fake ssh from PATH, which the root-walk guard cannot see into.
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
