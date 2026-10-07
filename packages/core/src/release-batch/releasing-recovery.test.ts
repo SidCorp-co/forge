@@ -335,6 +335,18 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text.match(/x_closed_rule/g)).toHaveLength(1);
   });
 
+  it('puts back no name where the message quotes two objects of its kind cut alike', () => {
+    const failed = sealedClose(
+      'constraint "x_closed_rule" conflicts with constraint "x_releasing_rule"',
+      { code: 'P0001', constraint_name: 'x_closed_rule' },
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).not.toMatch(/x_closed_rule|x_releasing_rule/);
+    expect(text.match(/constraint "x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(2);
+  });
+
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {
     const failed = sealedClose('refund hook is still releasing funds', { code: 'P0001' });
 
