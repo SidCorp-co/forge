@@ -205,10 +205,11 @@ fn git_env() -> [(&'static str, &'static str); 7] {
     ]
 }
 
-/// In a tree whose path needs quoting, holding a modified file, a deleted one
-/// and an untracked one whose own name needs quoting, with no terminal and an
-/// editor that writes nothing: the commit carries the run's text as its
-/// message, and the tree is left clean.
+/// In a tree whose path needs quoting, holding a modified file, a deleted one,
+/// a deletion already staged (`git rm`), a staged rename (`git mv`) and an
+/// untracked file whose own name needs quoting, with no terminal and an editor
+/// that writes nothing: the commit carries the run's text as its message, and
+/// the tree is left clean.
 #[test]
 fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
     let scratch = Scratch::new("dirty");
@@ -217,16 +218,20 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
     git(&tree, &["init", "-q"]);
     std::fs::write(tree.join("kept.rs"), "fn a() {}").unwrap();
     std::fs::write(tree.join("gone.rs"), "fn b() {}").unwrap();
-    git(&tree, &["add", "kept.rs", "gone.rs"]);
+    std::fs::write(tree.join("removed.rs"), "fn c() {}").unwrap();
+    std::fs::write(tree.join("moved.rs"), "fn d() {}").unwrap();
+    git(&tree, &["add", "."]);
     git(&tree, &["commit", "-q", "-m", "base"]);
     std::fs::write(tree.join("kept.rs"), "fn a() { 1; }").unwrap();
     std::fs::remove_file(tree.join("gone.rs")).unwrap();
+    git(&tree, &["rm", "-q", "removed.rs"]);
+    git(&tree, &["mv", "moved.rs", "it's moved.rs"]);
     std::fs::write(tree.join("the run's \"notes\".md"), "new").unwrap();
     let dirty = porcelain_paths(&git(
         &tree,
         &["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
     ));
-    assert_eq!(dirty.len(), 3, "{dirty:?}");
+    assert_eq!(dirty.len(), 5, "{dirty:?}");
 
     let reason = refusal(&Facts {
         run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
@@ -246,4 +251,93 @@ fn the_dirty_hint_filled_with_prose_commits_it_as_the_message() {
     );
     assert_eq!(git(&tree, &["status", "--porcelain"]), "", "{cmd}");
     assert_eq!(git(&tree, &["log", "-1", "--format=%B"]).trim_end(), TEXT);
+}
+
+/// A tree whose only change is a deletion `git rm` already staged: nothing is
+/// left to stage, and the hint still commits it.
+#[test]
+fn the_dirty_hint_commits_a_deletion_already_staged() {
+    let scratch = Scratch::new("rm");
+    let tree = scratch.0.join("tree");
+    std::fs::create_dir_all(&tree).unwrap();
+    git(&tree, &["init", "-q"]);
+    std::fs::write(tree.join("work.rs"), "fn a() {}").unwrap();
+    git(&tree, &["add", "work.rs"]);
+    git(&tree, &["commit", "-q", "-m", "base"]);
+    git(&tree, &["rm", "-q", "work.rs"]);
+    let dirty = porcelain_paths(&git(
+        &tree,
+        &["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+    ));
+
+    let reason = refusal(&Facts {
+        run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+        tree: &tree,
+        runner: env!("CARGO_BIN_EXE_forge-runner"),
+        issues: vec![],
+        dirty: Ok(dirty),
+        standing: Ok(vec![]),
+        refused_in_a_row: 0,
+    });
+    let cmd = filled(&reason, "git -C", COMMIT_TEXT, TEXT);
+    let out = sh(&cmd, &git_env());
+    assert!(
+        out.status.success(),
+        "the dirty hint, filled, failed:\n{cmd}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(git(&tree, &["status", "--porcelain"]), "", "{cmd}");
+    assert_eq!(git(&tree, &["log", "-1", "--format=%B"]).trim_end(), TEXT);
+    assert_eq!(git(&tree, &["ls-files"]), "", "{cmd}");
+}
+
+/// The refusal after a hint whose commit failed: its `git add` had already
+/// staged the deletion, so the next stop reads it staged, and the hint that
+/// refusal shows runs as written.
+#[test]
+fn the_hint_after_a_failed_commit_runs_as_written() {
+    let scratch = Scratch::new("retry");
+    let tree = scratch.0.join("tree");
+    std::fs::create_dir_all(&tree).unwrap();
+    git(&tree, &["init", "-q"]);
+    std::fs::write(tree.join("kept.rs"), "fn a() {}").unwrap();
+    std::fs::write(tree.join("gone.rs"), "fn b() {}").unwrap();
+    git(&tree, &["add", "."]);
+    git(&tree, &["commit", "-q", "-m", "base"]);
+    std::fs::write(tree.join("kept.rs"), "fn a() { 1; }").unwrap();
+    std::fs::remove_file(tree.join("gone.rs")).unwrap();
+    let hook = tree.join(".git/hooks/pre-commit");
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&hook, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+    let hint = || {
+        let dirty = porcelain_paths(&git(
+            &tree,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+        ));
+        let reason = refusal(&Facts {
+            run_id: "296f5496-870e-428f-b386-d1c6007bfd9c",
+            tree: &tree,
+            runner: env!("CARGO_BIN_EXE_forge-runner"),
+            issues: vec![],
+            dirty: Ok(dirty),
+            standing: Ok(vec![]),
+            refused_in_a_row: 0,
+        });
+        filled(&reason, "git -C", COMMIT_TEXT, TEXT)
+    };
+    let first = hint();
+    assert!(
+        !sh(&first, &git_env()).status.success(),
+        "the hook let it through"
+    );
+    std::fs::remove_file(&hook).unwrap();
+    let again = hint();
+    let out = sh(&again, &git_env());
+    assert!(
+        out.status.success(),
+        "the hint after a failed commit, filled, failed:\n{again}\nstderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(git(&tree, &["status", "--porcelain"]), "", "{again}");
 }

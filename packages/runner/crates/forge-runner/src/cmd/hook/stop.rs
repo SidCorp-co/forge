@@ -16,7 +16,7 @@ use std::time::Duration;
 use runner_core::ledger::Ledger;
 use runner_core::stop_gate::{
     decide, journal_line, porcelain_paths, refused_in_a_row, written_since, Activity, Facts, Issue,
-    Outcome, Since, Verdict, JOURNAL,
+    Outcome, Since, Uncommitted, Verdict, JOURNAL,
 };
 use runner_platform::standing;
 use runner_transport::CoreClient;
@@ -131,7 +131,7 @@ fn runner_program() -> String {
 }
 
 /// The tree's uncommitted paths, untracked ones among them and ignored ones not.
-pub fn dirty_in(tree: &Path) -> Result<Vec<String>, String> {
+pub fn dirty_in(tree: &Path) -> Result<Vec<Uncommitted>, String> {
     if !tree.is_dir() {
         return Err(format!("{} is no longer on this box", tree.display()));
     }
@@ -348,7 +348,7 @@ mod tests {
         std::fs::write(tree.join(".gitignore"), "target/\n*.tmp\n").unwrap();
         assert_eq!(
             dirty_in(tree),
-            Ok(vec![".gitignore".to_string(), "new.rs".to_string()])
+            Ok(vec![".gitignore".into(), "new.rs".into()])
         );
 
         git(tree, &["add", "-A"]);
