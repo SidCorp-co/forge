@@ -347,3 +347,10 @@ export {
 	redactionCount,
 	scrubPersonalData,
 } from "./personal-data.js";
+
+export {
+	errorsWithin,
+	REDACTED,
+	redactedMessage,
+	redactQueryParams,
+} from "./query-params.js";

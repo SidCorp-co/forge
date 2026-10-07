@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 /**
  * ISS-604 — adapt the `forge_*` MCP tool catalog to OpenAI `tools[]` for provider-chat and dispatch
  * calls back to the MCP handler: one catalog, two front-ends. An MCP tool is already
@@ -58,10 +59,10 @@ export function toolError(message: string): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify({ error: message }) }], isError: true };
 }
 
-function thrownMessage(err: unknown): string {
+export function thrownMessage(err: unknown): string {
   const cause = (err as { cause?: unknown } | null)?.cause;
-  if (cause instanceof Error && cause.message) return cause.message;
-  return err instanceof Error ? err.message : String(err);
+  if (cause instanceof Error && cause.message) return redactQueryParams(cause.message, err);
+  return redactQueryParams(err instanceof Error ? err.message : String(err), err);
 }
 
 /** Flatten a result to the string the model reads as its `role:'tool'` message: text blocks joined, any other block (image, resource) JSON-serialised, capped at RESULT_CAP. */

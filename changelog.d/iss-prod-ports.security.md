@@ -1,0 +1,1 @@
+**A failed query no longer leaks its bound values into logs.** The logger, error bodies, Sentry, the outbox and the assistant's tool errors redact a failed query's params, and the database's quoted values, against the error they came from (ISS-1383).
