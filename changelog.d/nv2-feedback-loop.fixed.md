@@ -1,1 +1,0 @@
-**Feedback and the release that answers it now point at each other.** A release lists the feedback it answers and whether each reporter was told; shipped feedback names its release and date, and About is picked by title.

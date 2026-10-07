@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.100] - 2026-10-07
+
+Feedback reporters are told when their fix ships, and releases list answered feedback
+
+### Fixed
+
+- **Feedback and the release that answers it now point at each other.** A release lists the feedback it answers and whether each reporter was told; shipped feedback names its release and date, and About is picked by title.
+
 ## [0.4.0-dev.99] - 2026-10-07
 
 Actions say what they change; release notes flag engineer references
