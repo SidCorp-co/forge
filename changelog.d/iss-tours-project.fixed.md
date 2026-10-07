@@ -1,1 +1,1 @@
-**Help → Tours opens a tour while a project is open.** The rail and the mobile drawer sat outside the current-project provider, so Show read "Open a project first" and stayed disabled; the provider now wraps the whole workspace shell, and the release tour opens a release of the open project.
+**Help → Tours opens a tour while a project is open.** Show read "Open a project first" and stayed disabled, because the rail sat outside the current-project provider. The release tour now opens a release of the open project.

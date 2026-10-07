@@ -3,18 +3,17 @@
 import { usePathname, useRouter } from "next/navigation";
 import { Button, SlideOver } from "@/design";
 import { useCurrentProject } from "@/features/projects/current-project";
-import { useReleases } from "@/features/releases/hooks";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStartTour, useTourCopy, useTourStates } from "../hooks";
 import { tourHref } from "../links";
+import { useTourRelease } from "../release-context";
 import { onTourRoute, TOURS, type TourDefinition } from "../registry";
 import { standingOf } from "../state";
 
 /** Where Help opens a tour: the page in front of the person when it is the tour's, else a page of the project. */
 function useTourTarget() {
   const project = useCurrentProject();
-  const releases = useReleases(project?.id).data?.releases;
-  const latest = (releases?.find((r) => r.current) ?? releases?.[0])?.version; // any release carries the anchors
+  const latest = useTourRelease() ?? undefined;
   return (tour: TourDefinition) =>
     tour.id === "release-what-changes"
       ? tourHref(tour, project?.slug, { version: latest })
