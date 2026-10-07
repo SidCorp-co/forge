@@ -140,7 +140,12 @@ fn cost(w: &Window) -> String {
         return priced;
     }
     let models: Vec<&str> = w.unpriced.keys().map(String::as_str).collect();
-    format!("{priced} + {} unpriced", models.join(", "))
+    let models = models.join(", ");
+    if w.priced() {
+        format!("{priced} + {models} unpriced")
+    } else {
+        format!("cost unread, {models} unpriced")
+    }
 }
 
 fn notes(t: &Totals, config_path: &str) -> Vec<String> {
@@ -165,7 +170,7 @@ fn notes(t: &Totals, config_path: &str) -> Vec<String> {
             })
             .unwrap_or_else(|| format!("no [rates.\"{m}\"] in {config_path}"));
         out.push(format!(
-            "{I1}{m} has no rate ({why}), so every cost marked \"+ {m} unpriced\" leaves out its tokens: 24h {}, 7d {}",
+            "{I1}{m} has no rate ({why}), so every cost naming \"{m} unpriced\" leaves out its tokens: 24h {}, 7d {}",
             count(day),
             count(week)
         ));
@@ -197,8 +202,8 @@ fn notes(t: &Totals, config_path: &str) -> Vec<String> {
 
 /// The table's 24-hour cost of the snapshot's `index`th project, or the
 /// whole box's: `?` where the transcripts were not all read, `…` while the
-/// first read is under way, `·` for none, and a trailing `+` where a model
-/// in it has no rate. A transcript that could not be read could be any
+/// first read is under way, `·` for none, a trailing `+` where a model in it
+/// has no rate, and `$?+` where no model in it has one, never a dollar zero. A transcript that could not be read could be any
 /// project's, so it makes every cell `?` rather than a total that leaves it
 /// out (whole-set read at 07832d1f4, F4); the detail says which.
 pub fn cell(spend: &Spend, index: Option<usize>) -> String {
@@ -217,6 +222,9 @@ pub fn cell(spend: &Spend, index: Option<usize>) -> String {
     };
     if day.is_empty() {
         return "·".into();
+    }
+    if !day.priced() {
+        return "$?+".into();
     }
     let mut c = dollars(day.cost);
     if !day.unpriced.is_empty() {
@@ -390,14 +398,51 @@ mod tests {
     #[test]
     fn a_cost_leaving_a_model_out_names_it() {
         let w = Window {
-            tokens: [1, 2, 3, 4],
+            tokens: [11, 2, 3, 4],
             cost: 1.5,
             unpriced: BTreeMap::from([("model-b".to_string(), 10)]),
         };
         assert_eq!(
             window(&w),
-            "in 1 · out 2 · cache-write 3 · cache-read 4 · $1.50 + model-b unpriced"
+            "in 11 · out 2 · cache-write 3 · cache-read 4 · $1.50 + model-b unpriced"
         );
         assert_eq!(window(&Window::default()), "nothing");
+    }
+    /// Judge iss-1341+1375-cd92ac72, finding 3: with no rate for any model
+    /// in a window there is no priced part to show, so no row, total or
+    /// share reads a dollar zero; the cost is said to be unread.
+    #[test]
+    fn a_window_with_no_priced_model_shows_no_dollar_zero() {
+        let none = Window {
+            tokens: [1_000, 2_000, 0, 0],
+            cost: 0.0,
+            unpriced: BTreeMap::from([("claude-opus-5-5".to_string(), 3_000)]),
+        };
+        assert_eq!(
+            window(&none),
+            "in 1.0K · out 2.0K · cache-write 0 · cache-read 0 · cost unread, claude-opus-5-5 unpriced"
+        );
+        let spend = totals(none, Some("/r"));
+        assert_eq!(cell(&spend, Some(0)), "$?+");
+        assert_eq!(cell(&spend, None), "$?+");
+        assert!(
+            crate::cmd::top::table::legend(crate::cmd::top::table::Legend::Full)
+                .contains(&"$?+ no rate".to_string()),
+            "the full legend says what $?+ is"
+        );
+        let text = section(&spend, 0, "/c/config.toml").join("\n");
+        assert!(!text.contains("$0.00") && !text.contains('$'), "{text}");
+        assert!(
+            text.contains("every cost naming \"claude-opus-5-5 unpriced\" leaves out its tokens"),
+            "{text}"
+        );
+        // A priced part, however small, is still shown beside the rest.
+        let some = Window {
+            tokens: [1, 0, 0, 0],
+            cost: 0.0,
+            unpriced: BTreeMap::new(),
+        };
+        assert_eq!(cell(&totals(some.clone(), Some("/r")), Some(0)), "$0.00");
+        assert!(window(&some).ends_with(" · $0.00"), "{}", window(&some));
     }
 }

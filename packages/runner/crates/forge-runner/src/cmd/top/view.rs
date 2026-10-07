@@ -27,7 +27,8 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Act {
     Redraw,
-    /// `n` or `p` turned a detail's page: it stays a whole interval.
+    /// Enter opened a detail, or `n` or `p` turned its page: the page it
+    /// shows stays a whole interval.
     Turned,
     Quit,
 }
@@ -80,11 +81,16 @@ impl View {
                 self.mode = Mode::Detail(i);
                 // The box's detail turns as the whole frame always did; a
                 // project's is opened to be read, so it holds until space.
+                let held = i != 0;
                 self.paging = Paging {
-                    held: i != 0,
+                    held,
+                    keyed: !held,
                     ..Paging::default()
                 };
                 self.shown = None;
+                // Opened to be read, as `n` turns to a page to be read: it
+                // stays a whole interval from the key.
+                return Act::Turned;
             }
             (Mode::Table, Key::Sources) => self.sources = !self.sources,
             (Mode::Table, Key::Legend) => {
@@ -576,6 +582,40 @@ mod tests {
             (v.paging.page, v.paging.held),
             (1, true),
             "a held page stays"
+        );
+    }
+
+    /// Judge iss-1341+1375-cd92ac72, finding 1: Enter puts the box's detail
+    /// on screen as `n` does a page, so a redraw already due does not turn
+    /// it to page 2 a moment later; the loop restarts the timer at it.
+    #[test]
+    fn an_opened_detail_stays_a_whole_interval() {
+        let s = a_fine_box(true);
+        let mut v = View::new(5, false);
+        assert_eq!(v.pressed(Key::Open, &s), Act::Turned);
+        let keys = Err("stdin is not a terminal".to_string());
+        let first = plain(&v.draw(&s, screen(100, 12), &keys));
+        assert!(
+            first.iter().any(|r| r.starts_with("page 1 of ")),
+            "{first:#?}"
+        );
+        v.turned();
+        assert_eq!(
+            v.paging.page, 0,
+            "the interval running when Enter was pressed leaves the page it opened"
+        );
+        v.timer_restarted();
+        v.turned();
+        assert_eq!(
+            v.paging.page, 1,
+            "a whole interval after it, the page turns"
+        );
+        v.pressed(Key::Back, &s);
+        v.pressed(Key::Down, &s);
+        assert_eq!(
+            v.pressed(Key::Open, &s),
+            Act::Turned,
+            "a project's detail too, though it opens held"
         );
     }
 
