@@ -1,4 +1,4 @@
-import { redactQueryParams } from '@forge/observability';
+import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getLogger } from '../logger.js';
@@ -63,7 +63,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     };
     if (details !== undefined) body.details = details;
 
-    const logPayload = { status, code: body.code, err: redactQueryParams(err.message, err) };
+    const logPayload = { status, code: body.code, err: redactedMessage(err) };
     if (status >= 500) log.error(logPayload, 'http.error');
     else log.warn(logPayload, 'http.error');
 

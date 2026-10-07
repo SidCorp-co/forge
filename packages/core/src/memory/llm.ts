@@ -7,6 +7,7 @@
  * return means skip this run, always preceded by a log saying which of "no
  * backend", "the call failed" and "the budget ran out" it was.
  */
+import { redactedMessage } from '@forge/observability';
 import { env } from '../config/env.js';
 import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { logger } from '../logger.js';
@@ -60,7 +61,7 @@ async function postCompletion(
       signal: AbortSignal.timeout(COMPLETION_TIMEOUT_MS),
     });
   } catch (err) {
-    logger.warn({ err: (err as Error).message }, 'memory.llm: completion request failed');
+    logger.warn({ err: redactedMessage(err) }, 'memory.llm: completion request failed');
     return null;
   }
 }
@@ -78,7 +79,7 @@ async function readChoice(response: Response): Promise<CompletionChoice | null> 
     const data = (await response.json()) as { choices?: CompletionChoice[] };
     return data.choices?.[0] ?? null;
   } catch (err) {
-    logger.warn({ err: (err as Error).message }, 'memory.llm: completion body unreadable');
+    logger.warn({ err: redactedMessage(err) }, 'memory.llm: completion body unreadable');
     return null;
   }
 }

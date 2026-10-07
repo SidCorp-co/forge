@@ -6,6 +6,7 @@
  * the 23505 sits on `cause`, and the failed statement's params ride on the wrapper's message.
  */
 
+import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { type LoggerOptions, pino } from 'pino';
@@ -121,7 +122,8 @@ describe('POST /api/auth/register for an email already registered', () => {
     const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
     log.error({ err });
     log.error(err, 'failed');
-    expect(lines).toHaveLength(2);
+    log.error({ err: redactedMessage(err.cause) });
+    expect(lines).toHaveLength(3);
     for (const line of lines) expect(line).not.toContain('zq9');
     expect(JSON.parse(lines[0] ?? '').err.sqlstate).toBe('42P01');
   });

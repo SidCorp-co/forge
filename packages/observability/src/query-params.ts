@@ -216,3 +216,11 @@ export function redactQueryParams<T>(value: T, err?: unknown): T {
   const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
   return redactValue(value, chain, 0) as T;
 }
+
+/**
+ * An error's message as text to log or store, redacted while the error that names its bound values
+ * is still in hand: once it is a bare string, a value only the error could name cannot be found.
+ */
+export function redactedMessage(err: unknown): string {
+  return redactQueryParams(err instanceof Error ? err.message : String(err), err);
+}

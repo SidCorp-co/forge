@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { type MemorySource, retrievalAnalytics } from '../db/schema.js';
@@ -154,7 +155,7 @@ async function retrieve(
     if (!(err instanceof EmbeddingUnavailableError) || requested !== 'hybrid') throw err;
     const embedMs = embedMsNow();
     logger.warn(
-      { projectId: input.projectId, err: (err as Error).message, ...embedMs },
+      { projectId: input.projectId, err: redactedMessage(err), ...embedMs },
       'memory.search: embeddings unavailable, hybrid degraded to keyword',
     );
     const hits = await keywordSearchMemories({ ...base, query: input.query });
@@ -171,7 +172,7 @@ async function expand(
     return await expandIssueRelations({ projectId: input.projectId, hits, topK });
   } catch (err) {
     logger.warn(
-      { err: (err as Error).message, projectId: input.projectId },
+      { err: redactedMessage(err), projectId: input.projectId },
       'memory.search: relation expansion failed, returning ranked hits only',
     );
     return [];
@@ -222,7 +223,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     queueMicrotask(() => {
       touchMemories(hitIds).catch((err) => {
         logger.warn(
-          { err: (err as Error).message, projectId: input.projectId },
+          { err: redactedMessage(err), projectId: input.projectId },
           'memory.search: usage tracking failed',
         );
       });
@@ -297,7 +298,7 @@ function logRetrieval(
       })
       .catch((err) => {
         logger.warn(
-          { err: (err as Error).message, projectId: input.projectId },
+          { err: redactedMessage(err), projectId: input.projectId },
           'memory.search: retrieval analytics insert failed',
         );
       });

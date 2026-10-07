@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { zValidator } from '@hono/zod-validator';
 import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -575,7 +576,7 @@ issueRoutes.delete(
     queueMicrotask(() => {
       deleteMemory(issue.projectId, 'issue', id).catch((err) => {
         logger.warn(
-          { err: (err as Error).message, issueId: id, projectId: issue.projectId },
+          { err: redactedMessage(err), issueId: id, projectId: issue.projectId },
           'issues.delete: memory cleanup failed',
         );
       });

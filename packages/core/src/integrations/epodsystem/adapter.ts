@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
@@ -174,7 +175,7 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
             {
               connectionId: ctx.connectionId,
               bindingId: ctx.bindingId,
-              err: err instanceof Error ? err.message : 'unknown',
+              err: redactedMessage(err),
             },
             'epodsystem: healthcheck enrichment failed (non-fatal)',
           );

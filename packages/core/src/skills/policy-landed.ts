@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects, skillActivityEvents } from '../db/schema.js';
@@ -102,7 +103,7 @@ export async function sweepPolicyLanded(): Promise<PolicyLandedSweepResult> {
       'policy-landed: invariant sweep complete',
     );
   } catch (err) {
-    logger.error({ err: (err as Error).message }, 'policy-landed: sweep failed');
+    logger.error({ err: redactedMessage(err) }, 'policy-landed: sweep failed');
   }
 
   return result;

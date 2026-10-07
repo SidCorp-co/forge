@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -101,7 +102,7 @@ function reasonToCode(reason: Exclude<SpawnPmSessionResult, { ok: true }>['reaso
 function detachIndex(fn: () => Promise<void>): void {
   queueMicrotask(() => {
     fn().catch((err) => {
-      logger.warn({ err: (err as Error).message }, 'pm.routes: detached memory index task failed');
+      logger.warn({ err: redactedMessage(err) }, 'pm.routes: detached memory index task failed');
     });
   });
 }

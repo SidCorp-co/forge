@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, labels, projects } from '../db/schema.js';
@@ -115,7 +116,7 @@ export async function finalizeIntake(
     }
   } catch (err) {
     logger.warn(
-      { err: (err as Error).message, projectId, issueId: issue.id },
+      { err: redactedMessage(err), projectId, issueId: issue.id },
       'intake-gate: failed to attach intake label',
     );
   }
@@ -139,7 +140,7 @@ export async function finalizeIntake(
     });
   } catch (err) {
     logger.warn(
-      { err: (err as Error).message, projectId, issueId: issue.id },
+      { err: redactedMessage(err), projectId, issueId: issue.id },
       'intake-gate: failed to notify owner',
     );
   }

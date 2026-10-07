@@ -1,3 +1,4 @@
+import { redactedMessage } from '@forge/observability';
 // The flip to the chunked memory model as an operation (retrieval v3 phase 2,
 // ISS-906): an estimate before it, a state with counts during it, cancel,
 // retry and revert. The job is idempotent and resumable by construction — it
@@ -152,7 +153,7 @@ export async function runChunkReindex(projectId: string): Promise<MemoryReindex 
         }
         skip.push(row.id);
         logger.error(
-          { err: (err as Error).message, memoryId: row.id, projectId },
+          { err: redactedMessage(err), memoryId: row.id, projectId },
           'memory.reindex: chunk publish failed for row, skipping for this run',
         );
       }
@@ -245,7 +246,7 @@ export async function registerChunkReindex(): Promise<void> {
           logger.info({ projectId, queue, result }, 'memory.reindex: job finished');
         } catch (err) {
           logger.error(
-            { err: (err as Error).message, projectId, queue },
+            { err: redactedMessage(err), projectId, queue },
             'memory.reindex: job threw',
           );
         }
