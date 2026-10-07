@@ -55,28 +55,52 @@ const refuse = refuser('PROJECT_SLUG_UNKNOWN');
 
 type Dispatch = Hono['fetch'];
 
-/**
- * Wraps the app's dispatch: a Hono middleware runs after routing has chosen its handlers, so a
- * reference has to be resolved before the router sees the path. Paths under `/api/projects/` that a
- * route spells literally (`/api/projects/health`) are never read as a slug.
- */
-export function resolvingRouteRefs(app: Hono<never>, dispatch: Dispatch): Dispatch {
-  let literals: ReadonlySet<string> | null = null;
-  const literalPaths = () => {
-    literals ??= new Set(
-      app.routes
-        .map((r) => r.path)
-        .filter((p) => p.startsWith('/api/projects/') && !p.includes(':') && !p.includes('*')),
+let routed: Hono<never> | null = null;
+let heads: ReadonlySet<string> | null = null;
+
+/** The first segments under `/api/projects/` that a route spells literally, read from the router. */
+function literalProjectHeads(): ReadonlySet<string> {
+  if (!routed) {
+    throw new Error(
+      'route refs: no app is routed yet, so which slugs a project route can address is unknown; the process entry wraps app.fetch with resolvingRouteRefs before it serves',
     );
-    return literals;
-  };
-  return async (req, env, ctx) => dispatch(await resolveRouteRefs(req, literalPaths), env, ctx);
+  }
+  heads ??= new Set(
+    routed.routes
+      .map((r) => r.path.split('/'))
+      .filter((s) => s[1] === 'api' && s[2] === 'projects' && s[3] && !/[:*]/.test(s[3]))
+      .map((s) => s[3] as string),
+  );
+  return heads;
 }
 
-async function resolveRouteRefs(
-  req: Request,
-  literalPaths: () => ReadonlySet<string>,
-): Promise<Request> {
+/**
+ * Why no project route could address a project by `slug`, or null when one can: a uuid's shape is
+ * read as the id, and a segment a route under `/api/projects/` spells literally is that route.
+ */
+export function unaddressableProjectSlug(slug: string): string | null {
+  if (UUID.test(slug)) {
+    return `it has a uuid's shape, so /api/projects/${slug} is read as a project id, never as this slug`;
+  }
+  if (literalProjectHeads().has(slug)) {
+    return `/api/projects/${slug} is a route of its own, so no project route could address this project by its slug`;
+  }
+  return null;
+}
+
+/**
+ * Wraps the app's dispatch: a Hono middleware runs after routing has chosen its handlers, so a
+ * reference has to be resolved before the router sees the path. A segment under `/api/projects/`
+ * that a route spells literally (`health`) is never read as a slug; no project may hold one
+ * ({@link unaddressableProjectSlug}).
+ */
+export function resolvingRouteRefs(app: Hono<never>, dispatch: Dispatch): Dispatch {
+  routed = app;
+  heads = null;
+  return async (req, env, ctx) => dispatch(await resolveRouteRefs(req), env, ctx);
+}
+
+async function resolveRouteRefs(req: Request): Promise<Request> {
   const raw = req.url;
   const spoofed = req.headers.has(UNRESOLVED_HEADER);
   if (
@@ -112,7 +136,7 @@ async function resolveRouteRefs(
 
   const head = segments[3];
   if (segments[1] === 'api' && head && !UUID.test(head)) {
-    if (segments[2] === 'projects' && SLUG.test(head) && !literalPaths().has(url.pathname)) {
+    if (segments[2] === 'projects' && SLUG.test(head) && !literalProjectHeads().has(head)) {
       const id = await projectIdOf(head);
       if (id) {
         segments[3] = id;

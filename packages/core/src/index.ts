@@ -83,6 +83,7 @@ import {
   provideRouteRefSources,
   refuseUnresolvedRefs,
   resolvingRouteRefs,
+  unaddressableProjectSlug,
 } from './middleware/route-refs.js';
 import { SERVER_TIMING_HEADER, serverTiming } from './middleware/server-timing.js';
 import { deleteFeedbackMockups } from './mockups/index.js';
@@ -181,9 +182,11 @@ provideProjectsPorts({
   notifyInvitee: async (notice) => {
     await emitNotification({ ...notice, type: 'invitation_received' });
   },
+  unaddressableSlug: unaddressableProjectSlug,
 });
 provideProjectConfigPorts({
   projectDocumentNames,
+  unaddressableSlug: unaddressableProjectSlug,
   jobOfCredential: resolvePipelineContext,
   recordSecretResolve,
   rememberHandedOut,

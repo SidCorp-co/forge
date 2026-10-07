@@ -30,6 +30,7 @@ import {
 } from '../permissions/index.js';
 import { seedProjectPolicy } from '../project-config/index.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
+import { projectsPorts } from './ports.js';
 import { PATCHED_PROJECT } from './projections.js';
 import { refuse } from './refuse.js';
 
@@ -82,6 +83,14 @@ type NewProject = {
 };
 
 export async function createProject(input: NewProject) {
+  const unaddressable = projectsPorts().unaddressableSlug(input.slug);
+  if (unaddressable) {
+    throw refuse(
+      'PROJECT_SLUG_RESERVED',
+      `the slug \`${input.slug}\` is reserved: ${unaddressable}; pick another`,
+      '/slug',
+    );
+  }
   try {
     return await db.transaction(async (tx) => {
       const [project] = await tx

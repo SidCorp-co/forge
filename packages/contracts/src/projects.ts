@@ -10,6 +10,7 @@ export const PROJECT_REFUSAL_CODES = [
 	"ALREADY_MEMBER",
 	"INVITATION_EMAIL_MISMATCH",
 	"PROJECT_SLUG_UNKNOWN",
+	"PROJECT_SLUG_RESERVED",
 ] as const;
 
 export type ProjectRefusalCode = (typeof PROJECT_REFUSAL_CODES)[number];
