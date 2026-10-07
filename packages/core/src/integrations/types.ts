@@ -322,6 +322,20 @@ interface IntegrationPresentation {
   cardMeta?: (config: Record<string, unknown>) => Record<string, unknown>;
   /** What one binding points at, read where two of a role on one project share every other name. */
   bindingIdentity?: (config: Record<string, unknown>) => string | null;
+  /**
+   * The names the provider itself reports for what each binding points at (a Coolify application's
+   * own name), asked live. A binding it cannot answer for is absent, and `bindingIdentity` names it.
+   */
+  reportedIdentities?: (
+    bindings: readonly ReportedIdentityBinding[],
+  ) => Promise<ReadonlyMap<string, string>>;
+}
+
+/** One binding as `reportedIdentities` asks about it: its id, its effective config, its connection. */
+export interface ReportedIdentityBinding {
+  id: string;
+  config: Record<string, unknown>;
+  connection: IntegrationConnectionLike & { id: string };
 }
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */

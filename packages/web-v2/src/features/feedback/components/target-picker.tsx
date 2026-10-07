@@ -3,6 +3,7 @@
 import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useEffect, useId, useState } from "react";
 import { enumLabel, Input, NativeSelect } from "@/design";
+import { type IssuePick, IssuePicker } from "@/features/issues/components/issue-picker";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import type { TargetChoice } from "../api";
@@ -61,15 +62,21 @@ export function TargetPicker({
   const { choices, loaded } = useChoices(projectId, type);
   const listed = LISTED.has(type);
   const [text, setText] = useState(value);
+  const [issues, setIssues] = useState<IssuePick[]>([]);
   const [typed, setTyped] = useState(type);
   if (typed !== type) {
     setTyped(type);
     setText("");
+    setIssues([]);
   }
   const picked = listed ? choiceOf(choices, text) : null;
-  // A listed kind reports its key only once the text names one of the list: anything else reports
-  // nothing, so Send stays off and the line below says so by name (never a guess, never a drop).
-  useEffect(() => onValue(listed ? (picked?.key ?? "") : text), [text, listed, picked?.key, onValue]);
+  const pickedIssue = type === "issue" ? (issues[0]?.key ?? "") : null;
+  // A listed kind reports its key only once the text names one of the list, and an issue only once
+  // one is picked: anything else reports nothing, so Send stays off (never a guess, never a drop).
+  useEffect(
+    () => onValue(pickedIssue ?? (listed ? (picked?.key ?? "") : text)),
+    [text, listed, picked?.key, pickedIssue, onValue],
+  );
   const unmatched = listed && loaded && text.trim() !== "" && !picked;
   const noun = enumLabel("feedbackTarget", type).toLowerCase();
   return (
@@ -81,13 +88,19 @@ export function TargetPicker({
           onChange={(e) => onType(e.target.value as PickableTarget)}
           options={kinds.map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
         />
-        <Input
-          aria-label="Target"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={listed ? `Search ${noun}s by title` : type === "issue" ? "ISS-12" : undefined}
-          list={served.length || (listed && choices.length) ? listId : undefined}
-        />
+        {type === "issue" ? (
+          <span className="min-w-0 flex-1">
+            <IssuePicker projectId={projectId} value={issues} onChange={setIssues} ariaLabel="Target" single />
+          </span>
+        ) : (
+          <Input
+            aria-label="Target"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={listed ? `Search ${noun}s by title` : undefined}
+            list={served.length || (listed && choices.length) ? listId : undefined}
+          />
+        )}
         {served.length ? (
           <datalist id={listId} data-testid="feedback-endpoints">
             {served.map((s) => (

@@ -7,7 +7,7 @@
 // to the related issue — ISS-331).
 
 import type { IssueMove } from "@forge/contracts/issue-machine";
-import type { ComponentProps } from "react";
+import { type ComponentProps, useId } from "react";
 import { Avatar, Button, EnumBadge, MonoTag, Stat, StatusBadge, StatusChip } from "@/design";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
 import { etaOfForecast } from "@/features/forecast/eta";
@@ -17,8 +17,9 @@ import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
-import { InlineSelect, StatusEdit } from "./inline-edit-cell";
+import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -192,6 +193,8 @@ interface PropertiesRailProps {
   cost: IssueCostSummary | undefined;
   deps: IssueDependencies | undefined;
   pending: boolean;
+  /** The reader holds no write on this project: the fields say so rather than grey out silently. */
+  readOnly?: boolean | undefined;
   onPatch: (body: { priority?: IssuePriority; complexity?: IssueComplexity | null }) => void;
   onTransition: (toStatus: IssueStatus) => void;
   /** Open the module picker. Absent for a reader who cannot write. */
@@ -210,6 +213,7 @@ export function PropertiesRail({
   cost,
   deps,
   pending,
+  readOnly = false,
   onPatch,
   onTransition,
   onEditModules,
@@ -233,6 +237,12 @@ export function PropertiesRail({
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
+  const refusalId = useId();
+  const refusal: EditRefusal | null = held
+    ? { id: refusalId, text: AGENT_HOLDS_EDIT }
+    : readOnly
+      ? { id: refusalId, text: productCopy()("issues.edit.readOnly") }
+      : null;
   const runChip = runStatusChip(issue);
   const tokens = totalTokens(cost);
   const hasModule = primaryModule !== undefined || secondaryModules.length > 0;
@@ -241,9 +251,9 @@ export function PropertiesRail({
   const offerMerge = !issue.mergedAt && canMarkMerged === true;
   return (
     <div className="divide-y divide-line-subtle">
-      {held && (
-        <p role="status" className="fg-body-sm py-2 text-subtle">
-          {AGENT_HOLDS_EDIT}
+      {refusal && (
+        <p id={refusal.id} role="status" className="fg-body-sm py-2 text-subtle">
+          {refusal.text}
         </p>
       )}
       <Row label="Status">
@@ -252,7 +262,7 @@ export function PropertiesRail({
           step={issue.workState?.step ?? null}
           moves={moves}
           agentStatus={issue.agentStatus}
-          disabled={pending}
+          disabled={pending || readOnly}
           onTransition={onTransition}
           park={park}
         />
@@ -272,7 +282,8 @@ export function PropertiesRail({
           ariaLabel="Priority"
           value={issue.priority}
           options={PRIORITY_OPTIONS}
-          disabled={pending || held}
+          disabled={pending}
+          refusal={refusal}
           onCommit={(p) => onPatch({ priority: p as IssuePriority })}
           className="w-36"
         />
@@ -282,7 +293,8 @@ export function PropertiesRail({
           ariaLabel="Complexity"
           value={issue.complexity ?? ""}
           options={COMPLEXITY_OPTIONS}
-          disabled={pending || held}
+          disabled={pending}
+          refusal={refusal}
           onCommit={(c) => onPatch({ complexity: c === "" ? null : (c as IssueComplexity) })}
           className="w-36"
         />

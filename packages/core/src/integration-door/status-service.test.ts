@@ -20,6 +20,22 @@ vi.mock('../project-config/index.js', async (orig) => ({
   readDeployMap: async () => ({ productionBinding: null, environments }),
 }));
 
+let coolifyApps: { uuid: string; name: string | null }[] | Error = new Error('coolify unreachable');
+const coolifyAsked: string[] = [];
+
+vi.mock('../integrations/deploy/coolify/applications.js', async (orig) => ({
+  ...(await orig<typeof import('../integrations/deploy/coolify/applications.js')>()),
+  credentialFromSecrets: (config: { baseUrl: string }) => ({
+    baseUrl: config.baseUrl,
+    apiToken: 't',
+  }),
+  fetchCoolifyApplications: async (auth: { baseUrl: string }) => {
+    coolifyAsked.push(auth.baseUrl);
+    if (coolifyApps instanceof Error) throw coolifyApps;
+    return coolifyApps;
+  },
+}));
+
 vi.mock('../integrations/index.js', async (orig) => ({
   ...(await orig<typeof import('../integrations/index.js')>()),
   listBindingsForProject: async () => pairs,
@@ -66,6 +82,8 @@ beforeEach(() => {
   repository = null;
   environments = new Map();
   pairs = [];
+  coolifyApps = new Error('coolify unreachable');
+  coolifyAsked.length = 0;
 });
 
 describe('the integrations status read: a card is connected only where something is', () => {
@@ -111,7 +129,7 @@ describe('the integrations status read: a card is connected only where something
     expect(keys.filter((k) => ['runners', 'postgres', 'mcp', 'claude'].includes(k))).toEqual([]);
   });
 
-  it('names two deploy bindings of one provider apart: the environment where one names it, else its application', async () => {
+  it('names two deploy bindings of one provider apart: the environment where one names it, else the application Coolify cannot be asked about', async () => {
     environments = new Map([['b-dev', { name: 'dev', trigger: 'auto' }]]);
     pairs = [
       pair({
@@ -130,6 +148,58 @@ describe('the integrations status read: a card is connected only where something
     );
     expect(coolify.map((c) => c.meta?.name)).toEqual(['dev', 'app y8w4c4ks']);
     expect(new Set(coolify.map((c) => c.label)).size).toBe(2);
+  });
+
+  it('names a second Coolify binding by the application name Coolify reports, never its raw id, asking once per connection', async () => {
+    coolifyApps = [
+      { uuid: 'e0o0c40kc8ww', name: 'forge-dev-core' },
+      { uuid: 'y8w4c4kss8og', name: 'forge-beta-core' },
+    ];
+    environments = new Map([['b-dev-2', { name: 'dev', trigger: 'auto' }]]);
+    const shared = { baseUrl: 'https://coolify.example' };
+    pairs = [
+      pair({
+        id: 'b-dev-2',
+        provider: 'coolify',
+        connectionConfig: shared,
+        config: { targets: [{ id: 'primary', label: 'primary', resourceUuid: 'e0o0c40kc8ww' }] },
+      }),
+      pair({
+        id: 'b-beta-2',
+        provider: 'coolify',
+        connectionConfig: shared,
+        config: { targets: [{ id: 'primary', label: 'primary', resourceUuid: 'y8w4c4kss8og' }] },
+      }),
+    ].map((p) => ({ ...p, connection: { ...p.connection, id: 'c-shared' } }));
+    const coolify = (await buildIntegrationsStatusCards(P)).filter((c) =>
+      c.key.startsWith('coolify'),
+    );
+    expect(coolify.map((c) => c.meta?.name)).toEqual(['dev', 'forge-beta-core']);
+    expect(coolify.map((c) => c.label)).toEqual(['Coolify (dev)', 'Coolify (forge-beta-core)']);
+    expect(coolify.every((c) => !c.label.includes('y8w4c4kss8og'))).toBe(true);
+    expect(coolifyAsked).toEqual(['https://coolify.example']);
+  });
+
+  it('keeps the config identity for a binding whose application Coolify does not list', async () => {
+    coolifyApps = [{ uuid: 'other', name: 'something-else' }];
+    pairs = [
+      pair({
+        id: 'b-x-3',
+        provider: 'coolify',
+        connectionConfig: { baseUrl: 'https://coolify-3.example' },
+        config: { targets: [{ id: 'primary', label: 'primary', resourceUuid: 'gone1234' }] },
+      }),
+      pair({
+        id: 'b-y-3',
+        provider: 'coolify',
+        connectionConfig: { baseUrl: 'https://coolify-3.example' },
+        config: { targets: [{ id: 'primary', label: 'primary', resourceUuid: 'gone5678' }] },
+      }),
+    ];
+    const names = (await buildIntegrationsStatusCards(P))
+      .filter((c) => c.key.startsWith('coolify'))
+      .map((c) => c.meta?.name);
+    expect(names).toEqual(['app gone1234', 'app gone5678']);
   });
 
   it('names two bindings that share every name by their id rather than repeat one text', async () => {

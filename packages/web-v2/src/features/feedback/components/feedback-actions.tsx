@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AcceptStep, Button, enumLabel, Input, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
+import { type IssuePick, IssuePicker } from "@/features/issues/components/issue-picker";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import type { SuggestionView } from "@/features/suggestions/types";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -23,9 +24,9 @@ const CHOICES: { value: Choice; label: string; hint: string }[] = [
 
 const OPTIONAL: readonly Choice[] = ["file_issue"];
 
-/** The issue keys a person typed, split on commas and spaces: one key stays one, several become a list. */
-export function issueKeysOf(text: string): string | string[] {
-  const keys = text.split(/[\s,]+/).filter(Boolean);
+/** The issues a person picked, by key: one stays one, several become a list. */
+export function issueKeysOf(picked: readonly IssuePick[]): string | string[] {
+  const keys = picked.map((p) => p.key);
   return keys.length === 1 ? (keys[0] as string) : keys;
 }
 
@@ -33,14 +34,16 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
   const [choice, setChoice] = useState<Choice>("file_issue");
   const [text, setText] = useState("");
+  const [linked, setLinked] = useState<IssuePick[]>([]);
   const needsText = !OPTIONAL.includes(choice);
+  const missing = choice === "link_issue" ? linked.length === 0 : needsText && !text.trim();
   const submit = () => {
     const value = text.trim();
     const triage: FeedbackTriage =
       choice === "file_issue"
         ? { route: "issue", createIssue: value ? { title: value } : {} }
         : choice === "link_issue"
-          ? { route: "issue", issue: issueKeysOf(value) }
+          ? { route: "issue", issue: issueKeysOf(linked) }
           : choice === "revision"
             ? { route: "revision", suggestion: value }
             : choice === "new_requirement"
@@ -54,7 +57,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   };
   const placeholder: Record<Choice, string> = {
     file_issue: "Issue title (optional; the item's title by default)",
-    link_issue: "ISS-12, ISS-14",
+    link_issue: "",
     revision: "Revision proposal id",
     new_requirement: "Requirement title",
     answer: "The answer the reporter reads",
@@ -78,7 +81,9 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           />
         ))}
       </RadioGroup>
-      {choice === "answer" || choice === "decline" ? (
+      {choice === "link_issue" ? (
+        <IssuePicker projectId={projectId} value={linked} onChange={setLinked} ariaLabel="Issues that carry it" />
+      ) : choice === "answer" || choice === "decline" ? (
         <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={3} placeholder={placeholder[choice]} />
       ) : (
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder[choice]} />
@@ -90,7 +95,7 @@ function TriageForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
           variant="primary"
           size="sm"
           loading={act.isPending}
-          disabled={needsText && !text.trim()}
+          disabled={missing}
           onClick={submit}
         >
           {choice === "decline" ? "Decline" : "Route it"}

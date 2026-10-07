@@ -3,7 +3,7 @@
 // Project settings → Integrations: one flush table of what this project is connected to — the
 // declared repository first, then one row per binding of every provider core presents, then the
 // providers it could connect. Each row opens the provider's drawer (create / Test / Rotate /
-// Disconnect + delivery log). Core health (runners, database, MCP mount) is not listed: nothing
+// Disconnect + delivery log); connecting the repository is its provider row's act alone. Core health (runners, database, MCP mount) is not listed: nothing
 // here can connect it, and the screens that own it already show it.
 
 import Link from "next/link";
@@ -25,6 +25,7 @@ import {
   Table,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { productCopy } from "@/lib/i18n/product-copy";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsList, useIntegrationsStatus } from "../hooks";
 import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
@@ -104,15 +105,32 @@ function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>): Row
   ];
 }
 
+/** The anchor a row is reached by: the repository row links to the provider row that connects it. */
+function rowAnchor(card: Pick<StatusCard, "key">): string {
+  return `integration-${card.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+/** The provider row that owns connecting the declared repository, where core names one. */
+function connectOwner(cards: StatusCard[]): StatusCard | null {
+  const repository = cards.find(isRepositoryCard);
+  const provider = repository && deriveDirectoryStatus(repository) !== "connected" ? metaText(repository, "connectProvider") : null;
+  return provider ? (cards.find((c) => !isRepositoryCard(c) && cardProvider(c.key) === provider) ?? null) : null;
+}
+
+/**
+ * The repository row reads its state and never connects anything itself: where a provider row owns
+ * the connect act, it links there (one act, one place), and focuses that row's own button.
+ */
 function RepositoryAction({
   card,
   canEdit,
-  onConnect,
+  owner,
 }: {
   card: StatusCard;
   canEdit: boolean;
-  onConnect: (provider: string) => void;
+  owner: StatusCard | null;
 }) {
+  const t = productCopy();
   const remote = metaText(card, "remoteUrl");
   if (deriveDirectoryStatus(card) === "connected") {
     return remote?.startsWith("https://") ? (
@@ -128,17 +146,28 @@ function RepositoryAction({
     ) : null;
   }
   if (!canEdit) return null;
-  const connect = metaText(card, "connectProvider");
-  if (connect) {
+  if (owner) {
+    const provider = providerName(owner);
+    const anchor = rowAnchor(owner);
     return (
-      <Button
-        variant="primary"
-        size="sm"
-        aria-label={`Connect ${providerLabel(connect)} to reach ${metaText(card, "repository") ?? "the repository"}`}
-        onClick={() => onConnect(connect)}
+      <a
+        href={`#${anchor}`}
+        aria-label={t("integrations.repository.connectOn.label", {
+          provider,
+          repository: metaText(card, "repository") ?? t("integrations.repository.theRepository"),
+        })}
+        onClick={(e) => {
+          const row = document.getElementById(anchor);
+          if (!row) return;
+          e.preventDefault();
+          row.scrollIntoView?.({ block: "center" });
+          row.querySelector<HTMLButtonElement>("button")?.focus();
+        }}
+        className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
       >
-        Connect {providerLabel(connect)}
-      </Button>
+        {t("integrations.repository.connectOn", { provider })}
+        <Icon name="arrowDown" size={13} />
+      </a>
     );
   }
   return (
@@ -152,12 +181,13 @@ function IntegrationRow({
   row,
   canEdit,
   onOpen,
-  onConnect,
+  owner,
 }: {
   row: Row;
   canEdit: boolean;
   onOpen: (card: StatusCard) => void;
-  onConnect: (provider: string) => void;
+  /** The provider row that connects the declared repository, where one does. */
+  owner: StatusCard | null;
 }) {
   const { card } = row;
   const label = row.sub ? `${row.name} ${row.sub}` : row.name;
@@ -170,8 +200,10 @@ function IntegrationRow({
       <span className="font-mono text-muted">{row.target}</span>
     )
   ) : null;
+  const ownsRepositoryConnect = owner !== null && owner.key === card.key;
+  const tourConnect = isRepositoryCard(card) ? owner === null : ownsRepositoryConnect;
   return (
-    <TR>
+    <TR id={rowAnchor(card)}>
       <TD className="align-top">
         <span className="flex min-w-0 items-start gap-2">
           <Icon name={row.icon} size={16} className="mt-0.5 shrink-0 text-muted" />
@@ -193,15 +225,20 @@ function IntegrationRow({
       </TD>
       <TD className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{target}</TD>
       <TD className="hidden max-w-[52ch] align-top text-muted sm:table-cell">{row.health}</TD>
-      <TD className="text-right align-top whitespace-nowrap" data-tour={isRepositoryCard(card) ? "int-connect" : undefined}>
+      <TD className="text-right align-top whitespace-nowrap" data-tour={tourConnect ? "int-connect" : undefined}>
         {isRepositoryCard(card) ? (
-          <RepositoryAction card={card} canEdit={canEdit} onConnect={onConnect} />
+          <RepositoryAction card={card} canEdit={canEdit} owner={owner} />
         ) : !isProviderCard(card.key) ? null : card.configured ? (
           <Button variant="ghost" size="sm" aria-label={`Manage ${label}`} onClick={() => onOpen(card)}>
             Manage
           </Button>
         ) : canEdit ? (
-          <Button variant="secondary" size="sm" aria-label={`Connect ${label}`} onClick={() => onOpen(card)}>
+          <Button
+            variant={ownsRepositoryConnect ? "primary" : "secondary"}
+            size="sm"
+            aria-label={`Connect ${label}`}
+            onClick={() => onOpen(card)}
+          >
             Connect
           </Button>
         ) : null}
@@ -230,6 +267,7 @@ export function ProjectIntegrationsPanel({
     [list.data],
   );
   const rows = useMemo(() => rowsOf(cards, bindings), [cards, bindings]);
+  const owner = useMemo(() => connectOwner(cards), [cards]);
   const connectedCount = rows.filter((r) => deriveDirectoryStatus(r.card) === "connected").length;
 
   const connectProvider = (provider: string) => {
@@ -281,7 +319,7 @@ export function ProjectIntegrationsPanel({
                   row={row}
                   canEdit={canEdit}
                   onOpen={setSelectedCard}
-                  onConnect={connectProvider}
+                  owner={owner}
                 />
               ))}
             </TBody>

@@ -97,7 +97,16 @@
     "eta.landed": "Landed {when}.",
     "eta.shipped": "Shipped in {version} {when}.",
     "eta.shippedUnversioned": "Shipped {when}.",
-    "eta.sortBy": "Sort by forecast time"
+    "eta.sortBy": "Sort by forecast time",
+    "integrations.repository.connectOn": "Via {provider} below",
+    "integrations.repository.connectOn.label": "Connect {provider} on its row below to reach {repository}",
+    "integrations.repository.theRepository": "the repository",
+    "issues.edit.readOnly": "You can read this project but not change it: a project admin can give you write access",
+    "issues.picker.placeholder": "Search issues by key or title",
+    "issues.picker.hint": "Type a key such as ISS-52, or words from the title",
+    "issues.picker.searching": "Searching…",
+    "issues.picker.none": "No issue of this project matches “{text}”",
+    "issues.picker.remove": "Remove {key}"
   },
   "vi": {
     "whatsNew.nav": "What's new",
@@ -197,6 +206,15 @@
     "eta.landed": "Đã xong {when}.",
     "eta.shipped": "Đã phát hành {version} {when}.",
     "eta.shippedUnversioned": "Đã phát hành {when}.",
-    "eta.sortBy": "Sắp xếp theo thời điểm dự kiến"
+    "eta.sortBy": "Sắp xếp theo thời điểm dự kiến",
+    "integrations.repository.connectOn": "Qua {provider} bên dưới",
+    "integrations.repository.connectOn.label": "Kết nối {provider} ở dòng bên dưới để truy cập {repository}",
+    "integrations.repository.theRepository": "kho mã nguồn",
+    "issues.edit.readOnly": "Bạn chỉ xem được dự án này, không sửa được: quản trị viên dự án có thể cấp quyền sửa cho bạn",
+    "issues.picker.placeholder": "Tìm issue theo mã hoặc tiêu đề",
+    "issues.picker.hint": "Gõ mã như ISS-52, hoặc vài chữ trong tiêu đề",
+    "issues.picker.searching": "Đang tìm…",
+    "issues.picker.none": "Không có issue nào của dự án khớp với “{text}”",
+    "issues.picker.remove": "Bỏ {key}"
   }
 }
