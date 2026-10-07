@@ -43,7 +43,9 @@ export function digestRefusals(args: {
   }
   const held = new Set(weekKeys);
   const holds =
-    weekKeys.length > 0 ? `that week's entries are ${weekKeys.join(', ')}` : 'that week has no entries';
+    weekKeys.length > 0
+      ? `that week's entries are ${weekKeys.join(', ')}`
+      : 'that week has no entries';
   request.entryKeys.forEach((key, i) => {
     if (!held.has(key)) {
       out.push({

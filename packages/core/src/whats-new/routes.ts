@@ -1,4 +1,7 @@
-import { putWhatsNewDigestRequestSchema, PUT_WHATS_NEW_DIGEST_SHAPE } from '@forge/contracts/whats-new';
+import {
+  PUT_WHATS_NEW_DIGEST_SHAPE,
+  putWhatsNewDigestRequestSchema,
+} from '@forge/contracts/whats-new';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';

@@ -136,9 +136,9 @@ import { scheduleRoutes } from './schedules/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
+import { whatsNewProjectRoutes, whatsNewRoutes } from './whats-new/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
-import { whatsNewProjectRoutes, whatsNewRoutes } from './whats-new/routes.js';
 
 // The issue router serves its comments too; the comments module adds them here, once, at load.
 registerIssueCommentRoutes(issueRoutes);

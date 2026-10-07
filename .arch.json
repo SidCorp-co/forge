@@ -332,6 +332,9 @@
     "web-feature-version": [
       "packages/web-v2/src/features/version/**"
     ],
+    "web-feature-whats-new": [
+      "packages/web-v2/src/features/whats-new/**"
+    ],
     "web-feature-workflows": [
       "packages/web-v2/src/features/workflows/**"
     ],
@@ -485,6 +488,7 @@
         "web-feature-orgs",
         "web-feature-preferences",
         "web-feature-forecast",
+        "web-feature-whats-new",
         "web-features"
       ],
       "status": "locked",

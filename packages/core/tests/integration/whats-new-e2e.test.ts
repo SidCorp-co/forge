@@ -43,7 +43,11 @@ async function seedPlatform(owner: string): Promise<void> {
   `);
 }
 
-async function issue(note: unknown, artifacts?: unknown, landing?: string): Promise<{ id: string; key: string }> {
+async function issue(
+  note: unknown,
+  artifacts?: unknown,
+  landing?: string,
+): Promise<{ id: string; key: string }> {
   const id = randomUUID();
   seq += 1;
   await db.execute(sql`
@@ -88,7 +92,10 @@ beforeEach(async () => {
   agentToken = await patToken(agentId, [PLATFORM]);
 
   oldFix = await issue({ section: 'Fixed', userFacing: 'An old fix.' }, API);
-  screen = await issue({ section: 'Added', userFacing: 'A release page starts with what it changes.' }, UI);
+  screen = await issue(
+    { section: 'Added', userFacing: 'A release page starts with what it changes.' },
+    UI,
+  );
   improved = await issue({ section: 'Changed', userFacing: 'Integrations reads true.' }, API);
   skipped = await issue({ section: 'Skip', userFacing: 'An internal refactor.' }, API);
   silent = await issue(null, API);
@@ -116,7 +123,19 @@ type Feed = {
   seenAt: string | null;
   counts: { new: number; screens: number; improved: number; fixed: number };
   away: null | { days: number; highlights: string[]; counts: { screens: number } };
-  days: Array<{ date: string; entries: Array<{ key: string; kind: string; ui: boolean; surfaces: string[]; version: string; unread: boolean; week: string; tour: unknown }> }>;
+  days: Array<{
+    date: string;
+    entries: Array<{
+      key: string;
+      kind: string;
+      ui: boolean;
+      surfaces: string[];
+      version: string;
+      unread: boolean;
+      week: string;
+      tour: unknown;
+    }>;
+  }>;
   digests: Array<{ week: string; entryKeys: string[]; author: { agency: string } }>;
 };
 
@@ -137,7 +156,14 @@ describe("What's new reads released notes by time", () => {
       expect(keysOf(f)).not.toContain(k);
     }
     const first = f.days[0]?.entries[0];
-    expect(first).toMatchObject({ key: screen.key, kind: 'new', ui: true, surfaces: ['ui'], version: '0.2.0', tour: null });
+    expect(first).toMatchObject({
+      key: screen.key,
+      kind: 'new',
+      ui: true,
+      surfaces: ['ui'],
+      version: '0.2.0',
+      tour: null,
+    });
     expect(f.days[0]?.entries[1]).toMatchObject({ key: improved.key, kind: 'improved', ui: false });
   });
 
@@ -156,7 +182,9 @@ describe("What's new reads released notes by time", () => {
     expect(after.unread).toBe(2);
     expect(after.counts).toEqual({ new: 1, screens: 1, improved: 1, fixed: 0 });
     expect(after.away).toBeNull();
-    expect(after.days.flatMap((d) => d.entries).find((e) => e.key === oldFix.key)?.unread).toBe(false);
+    expect(after.days.flatMap((d) => d.entries).find((e) => e.key === oldFix.key)?.unread).toBe(
+      false,
+    );
 
     expect((await seen(new Date())).status).toBe(200);
     expect((await feed()).unread).toBe(0);
@@ -179,13 +207,20 @@ describe("What's new reads released notes by time", () => {
 
 describe('a weekly digest names only its own week', () => {
   const week = () => isoWeekOf(ago(2));
-  const digest = (body: Record<string, unknown>, token = agentToken, project = PLATFORM, w = week()) =>
-    api(token, 'PUT', `/api/projects/${project}/whats-new/weeks/${w}/digest`, body);
+  const digest = (
+    body: Record<string, unknown>,
+    token = agentToken,
+    project = PLATFORM,
+    w = week(),
+  ) => api(token, 'PUT', `/api/projects/${project}/whats-new/weeks/${w}/digest`, body);
 
   it("reads a week's entries for the agent that writes its digest", async () => {
     const r = await api(agentToken, 'GET', `/api/projects/${PLATFORM}/whats-new/weeks/${week()}`);
     expect(r.status, JSON.stringify(r.body)).toBe(200);
-    expect((r.body.entries as Array<{ key: string }>).map((e) => e.key)).toEqual([screen.key, improved.key]);
+    expect((r.body.entries as Array<{ key: string }>).map((e) => e.key)).toEqual([
+      screen.key,
+      improved.key,
+    ]);
     expect(r.body.digest).toBeNull();
   });
 
@@ -197,26 +232,46 @@ describe('a weekly digest names only its own week', () => {
   });
 
   it('refuses a digest over 120 words', async () => {
-    const r = await digest({ title: 'Week', body: Array(121).fill('word').join(' '), entryKeys: [screen.key] });
+    const r = await digest({
+      title: 'Week',
+      body: Array(121).fill('word').join(' '),
+      entryKeys: [screen.key],
+    });
     expect(r.status).toBe(422);
     expect(r.body.code).toBe('WHATS_NEW_DIGEST_TOO_LONG');
   });
 
   it('writes, then replaces, the week digest and the feed shows it with its agent author', async () => {
-    const first = await digest({ title: 'Week', body: 'Releases say what they change.', entryKeys: [screen.key] });
+    const first = await digest({
+      title: 'Week',
+      body: 'Releases say what they change.',
+      entryKeys: [screen.key],
+    });
     expect(first.status, JSON.stringify(first.body)).toBe(200);
     expect(first.body.act).toBe('written');
-    const again = await digest({ title: 'Week', body: 'Releases and Integrations.', entryKeys: [screen.key, improved.key] });
+    const again = await digest({
+      title: 'Week',
+      body: 'Releases and Integrations.',
+      entryKeys: [screen.key, improved.key],
+    });
     expect(again.body.act).toBe('replaced');
     const f = await feed();
     expect(f.digests).toEqual([
-      expect.objectContaining({ week: week(), entryKeys: [screen.key, improved.key], author: expect.objectContaining({ agency: 'agent' }) }),
+      expect.objectContaining({
+        week: week(),
+        entryKeys: [screen.key, improved.key],
+        author: expect.objectContaining({ agency: 'agent' }),
+      }),
     ]);
   });
 
   it("refuses a digest on a project that is not Forge's own", async () => {
     const other = await createTestProject(ownerId);
-    const r = await digest({ title: 'W', body: 'B', entryKeys: [screen.key] }, ownerToken, other.id);
+    const r = await digest(
+      { title: 'W', body: 'B', entryKeys: [screen.key] },
+      ownerToken,
+      other.id,
+    );
     expect(r.status).toBe(422);
     expect(r.body.code).toBe('WHATS_NEW_NOT_PLATFORM_PROJECT');
   });
@@ -224,16 +279,29 @@ describe('a weekly digest names only its own week', () => {
   it('refuses a viewer, who holds no whats-new.write', async () => {
     const viewer = (await createTestUser({ verified: true })).id;
     await addProjectMember(PLATFORM, viewer, 'viewer');
-    const r = await digest({ title: 'W', body: 'B', entryKeys: [screen.key] }, await userToken(viewer));
+    const r = await digest(
+      { title: 'W', body: 'B', entryKeys: [screen.key] },
+      await userToken(viewer),
+    );
     expect(r.status).toBe(403);
     expect(r.body.code).toBe('PERMISSION_FORBIDDEN');
   });
 
   it('refuses a week that is not a week, and a week not yet begun', async () => {
-    const bad = await digest({ title: 'W', body: 'B', entryKeys: [screen.key] }, agentToken, PLATFORM, '2026-W99');
+    const bad = await digest(
+      { title: 'W', body: 'B', entryKeys: [screen.key] },
+      agentToken,
+      PLATFORM,
+      '2026-W99',
+    );
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('WHATS_NEW_WEEK_INVALID');
-    const ahead = await digest({ title: 'W', body: 'B', entryKeys: [screen.key] }, agentToken, PLATFORM, isoWeekOf(new Date(Date.now() + 14 * DAY)));
+    const ahead = await digest(
+      { title: 'W', body: 'B', entryKeys: [screen.key] },
+      agentToken,
+      PLATFORM,
+      isoWeekOf(new Date(Date.now() + 14 * DAY)),
+    );
     expect(ahead.status).toBe(422);
     expect(JSON.stringify(ahead.body)).toContain('WHATS_NEW_WEEK_AHEAD');
   });
@@ -241,7 +309,9 @@ describe('a weekly digest names only its own week', () => {
 
 describe("a person's product state holds a closed key namespace", () => {
   it('refuses a key outside the namespace by name, and stores nothing', async () => {
-    const r = await api(ownerToken, 'PUT', '/api/me/product-state/whats_new_last', { value: { at: new Date().toISOString() } });
+    const r = await api(ownerToken, 'PUT', '/api/me/product-state/whats_new_last', {
+      value: { at: new Date().toISOString() },
+    });
     expect(r.status).toBe(400);
     expect(r.body.code).toBe('PRODUCT_STATE_KEY_UNKNOWN');
     const bad = await api(ownerToken, 'GET', '/api/me/product-state/tour:Not_Kebab');
@@ -252,7 +322,9 @@ describe("a person's product state holds a closed key namespace", () => {
   });
 
   it('refuses a value outside the key shape and a mark later than now', async () => {
-    const wrong = await api(ownerToken, 'PUT', '/api/me/product-state/whats_new_seen_at', { value: { when: 'yesterday' } });
+    const wrong = await api(ownerToken, 'PUT', '/api/me/product-state/whats_new_seen_at', {
+      value: { when: 'yesterday' },
+    });
     expect(wrong.status).toBe(400);
     expect(wrong.body.code).toBe('PRODUCT_STATE_VALUE_INVALID');
     const future = await seen(new Date(Date.now() + DAY));
@@ -262,7 +334,9 @@ describe("a person's product state holds a closed key namespace", () => {
 
   it('keeps a tour outcome per person, read back and listed', async () => {
     const value = { revision: 2, outcome: 'dismissed', step: 2, at: new Date().toISOString() };
-    const put = await api(ownerToken, 'PUT', '/api/me/product-state/tour:release-what-changes', { value });
+    const put = await api(ownerToken, 'PUT', '/api/me/product-state/tour:release-what-changes', {
+      value,
+    });
     expect(put.status, JSON.stringify(put.body)).toBe(200);
     const got = await api(ownerToken, 'GET', '/api/me/product-state/tour:release-what-changes');
     expect(got.body).toMatchObject({ key: 'tour:release-what-changes', value });

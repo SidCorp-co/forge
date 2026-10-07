@@ -60,7 +60,11 @@ interface Shipped {
 }
 
 /** Each issue's first shipped release on the project, from `from` up to `to`. */
-async function shippedIssues(projectId: string, from: Date, to: Date): Promise<Map<string, Shipped>> {
+async function shippedIssues(
+  projectId: string,
+  from: Date,
+  to: Date,
+): Promise<Map<string, Shipped>> {
   const runs = await releaseRunsByVersion(projectId);
   const out = new Map<string, Shipped>();
   for (const run of runs) {
@@ -84,7 +88,9 @@ const KIND_ORDER = Object.fromEntries(WHATS_NEW_KINDS.map((k, i) => [k, i])) as 
 /** New screens first, then new, improved, fixed; newest first within one rank. */
 export function byPresentation(a: WhatsNewEntry, b: WhatsNewEntry): number {
   const rank = (e: WhatsNewEntry) => (e.kind === 'new' && e.ui ? -1 : KIND_ORDER[e.kind]);
-  return rank(a) - rank(b) || b.releasedAt.localeCompare(a.releasedAt) || a.key.localeCompare(b.key);
+  return (
+    rank(a) - rank(b) || b.releasedAt.localeCompare(a.releasedAt) || a.key.localeCompare(b.key)
+  );
 }
 
 /** The released entries of the project shipped in [from, to), unread after `seenAt`. */
@@ -114,7 +120,9 @@ export async function releasedEntries(
     const at = shipped.get(r.id);
     if (!note || note.section === 'Skip' || BLANK_NOTE.test(note.userFacing) || !at) return [];
     if (designOnly(r.mergedArtifacts ?? null, r.mergedLanding)) return [];
-    const surfaces = [...new Set((r.mergedArtifacts ?? []).map((a) => a.surface))] as LandingSurface[];
+    const surfaces = [
+      ...new Set((r.mergedArtifacts ?? []).map((a) => a.surface)),
+    ] as LandingSurface[];
     return [
       {
         key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
@@ -163,12 +171,17 @@ function daysOf(entries: readonly WhatsNewEntry[], timeZone: string): WhatsNewDa
     .map(([date, list]) => ({ date, entries: [...list].sort(byPresentation) }));
 }
 
-async function digestsOf(projectId: string, weeks: readonly string[]): Promise<WhatsNewDigestView[]> {
+async function digestsOf(
+  projectId: string,
+  weeks: readonly string[],
+): Promise<WhatsNewDigestView[]> {
   if (weeks.length === 0) return [];
   const rows = await db
     .select()
     .from(whatsNewDigests)
-    .where(and(eq(whatsNewDigests.projectId, projectId), inArray(whatsNewDigests.week, [...weeks])));
+    .where(
+      and(eq(whatsNewDigests.projectId, projectId), inArray(whatsNewDigests.week, [...weeks])),
+    );
   const people = await peopleOf(rows.map((r) => r.writtenBy));
   return rows
     .map((r) => ({
@@ -183,7 +196,10 @@ async function digestsOf(projectId: string, weeks: readonly string[]): Promise<W
 }
 
 /** The digest written for one week, or null. */
-export async function digestOf(projectId: string, week: string): Promise<WhatsNewDigestView | null> {
+export async function digestOf(
+  projectId: string,
+  week: string,
+): Promise<WhatsNewDigestView | null> {
   return (await digestsOf(projectId, [week]))[0] ?? null;
 }
 
@@ -201,7 +217,11 @@ export function feedStart(since: Date | undefined, seenAt: Date | null, now: Dat
   return start < bound ? bound : start;
 }
 
-function awayOf(entries: readonly WhatsNewEntry[], seenAt: Date | null, now: Date): WhatsNewAway | null {
+function awayOf(
+  entries: readonly WhatsNewEntry[],
+  seenAt: Date | null,
+  now: Date,
+): WhatsNewAway | null {
   if (!seenAt) return null;
   const days = Math.floor((now.getTime() - seenAt.getTime()) / DAY_MS);
   if (days < WHATS_NEW_AWAY_DAYS) return null;

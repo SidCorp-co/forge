@@ -8,8 +8,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answerStyles } from '../db/schema.js';
-import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { refused } from '../lib/refusal.js';
+import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, orgResource, requireOrgCan } from '../permissions/index.js';
 import { listProductState, readMePreferences, readPreferences, readProductState } from './read.js';
@@ -117,7 +117,10 @@ preferenceRoutes.patch('/me/preferences', zValidator('json', preferencesSchema),
 const productStateKeyParam = zValidator(
   'param',
   z.object({ key: productStateKeySchema }),
-  invalid(`invalid path: a product state key is ${PRODUCT_STATE_KEY_SHAPE}`, 'PRODUCT_STATE_KEY_UNKNOWN'),
+  invalid(
+    `invalid path: a product state key is ${PRODUCT_STATE_KEY_SHAPE}`,
+    'PRODUCT_STATE_KEY_UNKNOWN',
+  ),
 );
 
 /** A person's product state: What's new's seen mark and each tour's outcome, per key. */
