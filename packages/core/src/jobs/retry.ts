@@ -110,9 +110,10 @@ async function notifyCapacityOutage(
 
 /**
  * What to tell an operator about an empty pool, given which of the three ways
- * it is empty.
+ * it is empty. A limited runner is held until its next try, never the reset its
+ * account printed (ISS-276), so that is what the operator is told to wait for.
  */
-function wedgeCopy(
+export function wedgeCopy(
   allLimited: boolean,
   limitedCount: number,
   tooOldCount: number,
@@ -122,11 +123,11 @@ function wedgeCopy(
   if (allLimited) {
     return {
       reason: `all ${limitedCount} capable device(s) are rate-limited or quarantined`,
-      action: 'raise the account limit or wait for the provider reset',
+      action: "raise the account limit, or wait for a runner's next try",
       title: `No capacity: every runner for ${scope} is limited`,
       summary: `Work for ${scope} is paused because all ${limitedCount} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
       nextStep:
-        'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.',
+        'Raise the account spend/usage limit, or wait: Forge tries each limited runner again at its next try, shown under Settings → Runners, and a turn its account answers frees it sooner; a quarantined one returns when its quarantine ends. The reset an account printed is its claim, not when work resumes. No other action needed.',
     };
   }
   if (tooOldCount > 0) {

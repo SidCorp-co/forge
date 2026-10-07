@@ -209,13 +209,7 @@ impl DialogSweep {
         match tmux.dismiss_usage_limit(&pane).await {
             Ok(()) => {
                 self.said.remove(&pane);
-                tracing::warn!(
-                    "[dialog] {pane}: the account's usage-limit list was standing; core was told ({}), and the list was dismissed with Escape — no option was chosen",
-                    match resets_in_seconds {
-                        Some(s) => format!("resets in {s}s"),
-                        None => "no readable reset, so core applies its own cooldown".into(),
-                    }
-                );
+                tracing::warn!("{}", usage_limit::dismissed_line(&pane, resets_in_seconds));
                 Outcome::UsageLimit {
                     pane,
                     resets_in_seconds,

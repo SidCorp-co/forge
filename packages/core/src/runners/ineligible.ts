@@ -33,6 +33,8 @@ interface RunnerLivenessRow {
   lastSeenAt: Date | null;
   limitReason: string | null;
   rateLimitedUntil: Date | null;
+  /** The reset the account printed: its claim, said beside the next try only where one was printed. */
+  limitPrintedResetAt: Date | null;
   quarantinedUntil: Date | null;
   provisionStatus: string | null;
   deviceDisabledAt: Date | null;
@@ -44,6 +46,8 @@ export interface RunnerHold {
   reason: RunnerHoldReason;
   /** The reading itself, where naming it tells the operator which box to open. */
   detail?: string;
+  /** `rate-limited` only: the reset the account printed, to the minute; absent where it printed none. */
+  printedReset?: string;
   /** Seconds since its last heartbeat; null where it has never reported. */
   lastSeenSeconds: number | null;
   /** Inside the dispatch window. On EVERY hold: a box can be retired and silent
@@ -58,7 +62,7 @@ function reasonFor(
   row: RunnerLivenessRow,
   now: Date,
   fresh: boolean,
-): { reason: RunnerHoldReason; detail?: string } | null {
+): { reason: RunnerHoldReason; detail?: string; printedReset?: string } | null {
   if (row.deviceDisabledAt !== null) return { reason: 'device-disabled' };
   if (row.status === 'draining' || row.status === 'disabled') {
     return { reason: 'retired', detail: row.status };
@@ -71,7 +75,12 @@ function reasonFor(
   if (row.limitReason === 'auth') return { reason: 'auth' };
   // the next try, never the reset the account printed (ISS-276)
   if (row.rateLimitedUntil !== null && row.rateLimitedUntil > now) {
-    return { reason: 'rate-limited', detail: row.rateLimitedUntil.toISOString() };
+    const printed = row.limitPrintedResetAt;
+    return {
+      reason: 'rate-limited',
+      detail: row.rateLimitedUntil.toISOString(),
+      ...(printed === null ? {} : { printedReset: `${printed.toISOString().slice(0, 16)}Z` }),
+    };
   }
   if (row.quarantinedUntil !== null && row.quarantinedUntil > now) {
     return { reason: 'quarantined', detail: row.quarantinedUntil.toISOString() };
@@ -101,6 +110,7 @@ function classifyRunnerHold(
     deviceName: row.deviceName,
     reason: found.reason,
     ...(found.detail === undefined ? {} : { detail: found.detail }),
+    ...(found.printedReset === undefined ? {} : { printedReset: found.printedReset }),
     lastSeenSeconds,
     reporting: fresh,
   };
@@ -112,6 +122,7 @@ interface RunnerLivenessSqlRow extends Record<string, unknown> {
   last_seen_at: string | null;
   limit_reason: string | null;
   rate_limited_until: string | null;
+  limit_printed_reset_at: string | null;
   quarantined_until: string | null;
   provision_status: string | null;
   device_disabled_at: string | null;
@@ -124,7 +135,7 @@ async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[
   const rows = await db.execute<RunnerLivenessSqlRow>(sql`
     SELECT d.name AS device_name,
            r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
-           r.quarantined_until, r.provision_status,
+           r.limit_printed_reset_at, r.quarantined_until, r.provision_status,
            d.disabled_at AS device_disabled_at, d.agent_version AS device_agent_version
       FROM runners r
       JOIN devices d ON d.id = r.device_id
@@ -137,6 +148,7 @@ async function readRunnerLiveness(projectId: string): Promise<RunnerLivenessRow[
     lastSeenAt: asDate(r.last_seen_at),
     limitReason: r.limit_reason,
     rateLimitedUntil: asDate(r.rate_limited_until),
+    limitPrintedResetAt: asDate(r.limit_printed_reset_at),
     quarantinedUntil: asDate(r.quarantined_until),
     provisionStatus: r.provision_status,
     deviceDisabledAt: asDate(r.device_disabled_at),

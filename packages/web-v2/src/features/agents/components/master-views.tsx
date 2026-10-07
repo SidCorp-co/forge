@@ -235,12 +235,16 @@ function Passes({ projectId, slug }: { projectId: string; slug: string }) {
   const q = useMasterPasses(projectId);
   if (q.isLoading) return <ProjectLoader label="loading passes…" />;
   if (q.isError || !q.data) return <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />;
-  const items = q.data.items;
-  if (items.length === 0) return <FactsEmpty>No pass is recorded for this project's master yet.</FactsEmpty>;
+  if (q.data.items.length === 0) return <FactsEmpty>No pass is recorded for this project's master yet.</FactsEmpty>;
+  return <PassesTable items={q.data.items} hasMore={q.data.hasMore} slug={slug} />;
+}
+
+/** The passes masters/passes served, newest first: what each dispatched, skipped and parked, or why it was refused. */
+export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPassView[]; hasMore: boolean; slug: string }) {
   const closed = (p: MasterPassView) => ("endedAt" in p ? p : null);
   return (
     <section>
-      <ViewHeading hint={q.data.hasMore ? `the newest ${items.length}` : `${items.length}`}>Passes</ViewHeading>
+      <ViewHeading hint={hasMore ? `the newest ${items.length}` : `${items.length}`}>Passes</ViewHeading>
       <Table aria-label="Passes">
         <THead className="bg-sunken">
           <TR>

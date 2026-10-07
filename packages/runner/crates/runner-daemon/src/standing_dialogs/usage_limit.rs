@@ -57,6 +57,19 @@ impl LimitReporter for NoCore {
     }
 }
 
+/// What the box logs once the list is on record and dismissed. Core holds this
+/// box until its master's next nudge whatever the account printed (ISS-276), so
+/// a printed reset is named as the account's claim and never as when work resumes.
+pub fn dismissed_line(pane: &str, resets_in_seconds: Option<u64>) -> String {
+    let printed = match resets_in_seconds {
+        Some(s) => format!("the account printed a reset {s}s away, its claim"),
+        None => "the account printed no readable reset".into(),
+    };
+    format!(
+        "[dialog] {pane}: the account's usage-limit list was standing; core was told ({printed}) and holds this box until its next nudge; the list was dismissed with Escape — no option was chosen"
+    )
+}
+
 /// Seconds from now until `printed` (the text after "continue automatically
 /// at", e.g. `3:40pm (Asia/Saigon)`), or `None` where it cannot be read. A time
 /// of day already past today is tomorrow's. Read by `date -d`, which owns the
@@ -130,6 +143,33 @@ mod tests {
         let now = runner_platform::clock::now_secs();
         let got = resets_in_seconds("3:40pm (UTC)", now).await.expect("read");
         assert!(got > 0 && got <= 24 * 3600, "{got}");
+    }
+
+    #[test]
+    fn the_dismissed_line_says_core_holds_until_the_next_nudge_and_names_a_printed_reset_as_a_claim(
+    ) {
+        let printed = dismissed_line("%3", Some(10_800));
+        assert!(
+            printed.contains("the account printed a reset 10800s away, its claim"),
+            "{printed}"
+        );
+        assert!(
+            printed.contains("holds this box until its next nudge"),
+            "{printed}"
+        );
+        let none = dismissed_line("%3", None);
+        assert!(
+            none.contains("the account printed no readable reset"),
+            "{none}"
+        );
+        assert!(
+            none.contains("holds this box until its next nudge"),
+            "{none}"
+        );
+        for line in [printed, none] {
+            assert!(!line.contains("resets in"), "{line}");
+            assert!(!line.contains("its own cooldown"), "{line}");
+        }
     }
 
     #[tokio::test]

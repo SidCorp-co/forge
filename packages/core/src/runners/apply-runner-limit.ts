@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, or, sql } from 'drizzle-orm';
+import { and, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -31,8 +31,16 @@ function deviceScope(runnerId: string) {
 }
 
 /**
- * Record a limit on every binding of the runner's device. No-ops when
- * `runnerId` is absent — orphan/sweeper failures may not carry a runner.
+ * A binding's `lastError` that is the copy of its limit's detail, not an error it reported for itself.
+ * Old values: inside an UPDATE this reads the row as it stood before the write (ISS-276: a limit stamped
+ * through one binding and lifted through another left "resets Oct 8, 12am" on the first, with no limit).
+ */
+const lastErrorMirrorsLimit = sql`(${runners.lastError} = ${runners.limitDetail})`;
+
+/**
+ * Record a limit on every binding of the runner's device, and mirror its detail into `lastError` on
+ * `runnerId` and on every binding still holding the previous limit's copy. No-ops when `runnerId` is
+ * absent — orphan/sweeper failures may not carry a runner.
  */
 export async function stampRunnerLimit(
   runnerId: string | null | undefined,
@@ -49,14 +57,11 @@ export async function stampRunnerLimit(
         limitDetail: limit.detail,
         limitRefusedAt: limit.refusedAt,
         limitPrintedResetAt: limit.printedResetAt,
+        lastError: sql`CASE WHEN ${runners.id} = ${runnerId} OR ${lastErrorMirrorsLimit} THEN ${limit.detail} ELSE ${runners.lastError} END`,
         updatedAt: new Date(),
       })
       .where(deviceScope(runnerId))
       .returning({ id: runners.id, projectId: runners.projectId });
-    await db
-      .update(runners)
-      .set({ lastError: limit.detail, updatedAt: new Date() })
-      .where(eq(runners.id, runnerId));
     logger.info(
       {
         runnerId,
@@ -101,10 +106,10 @@ async function alarmAuthDeadRunner(
 }
 
 /**
- * Clear any limit on every binding of the runner's device, and the recorded
- * `lastError` on the runner itself (called on successful job completion — a box
- * that just succeeded is not faulted). Cheap guard: only writes when one of
- * them is actually set.
+ * Clear any limit on every binding of the runner's device, with the limit's copy in `lastError` on
+ * whichever binding holds it, and the recorded `lastError` on the runner itself (called on successful
+ * job completion — a box that just succeeded is not faulted). An error another binding reported for
+ * itself stays. Cheap guard: only writes when one of them is actually set.
  */
 export async function clearRunnerLimit(
   runnerId: string | null | undefined,
@@ -120,7 +125,7 @@ export async function clearRunnerLimit(
         limitDetail: null,
         limitRefusedAt: null,
         limitPrintedResetAt: null,
-        lastError: sql`CASE WHEN ${runners.id} = ${runnerId} THEN NULL ELSE ${runners.lastError} END`,
+        lastError: sql`CASE WHEN ${runners.id} = ${runnerId} OR ${lastErrorMirrorsLimit} THEN NULL ELSE ${runners.lastError} END`,
         updatedAt: new Date(),
       })
       .where(
