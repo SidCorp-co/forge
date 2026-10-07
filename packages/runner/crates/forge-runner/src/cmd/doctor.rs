@@ -235,10 +235,10 @@ fn trust_rows<'a>(
                 "⚠ trust        {slug}: {file_shown} does not exist, so {entry} is not set — the daemon writes it before placing a master in {}",
                 path.display()
             ),
-            TrustState::Unreadable(why) => {
+            TrustState::Unreadable { why, fix } => {
                 failed = true;
                 format!(
-                    "✖ trust        {slug}: {file_shown} — {why} — so {entry} cannot be read for {}, and the daemon's own write before placement fails the same way",
+                    "✖ trust        {slug}: {file_shown} — {why} — so {entry} cannot be read for {}, and the daemon's own write before placement fails the same way; to fix it, {fix}",
                     path.display()
                 )
             }
@@ -1558,11 +1558,26 @@ mod tests {
         let scratch = forge_runner_core::test_scratch::Scratch::new("doctor-trust-shape");
         let json = scratch.join(".claude.json");
         let checkout = std::path::Path::new("/srv/untrusted");
-        for (shape, body) in [
-            ("`projects` is not an object", r#"{"projects":[]}"#),
+        for (shape, body, fix) in [
+            (
+                "`projects` is not an object",
+                r#"{"projects":[]}"#,
+                r#"to fix it, make `projects` an object keyed by checkout path, such as "projects": {}"#,
+            ),
             (
                 "a project entry is not an object",
                 r#"{"projects":{"/srv/untrusted":"yes"}}"#,
+                r#"to fix it, make projects["/srv/untrusted"] an object, such as {}, or remove it"#,
+            ),
+            (
+                "it is not a JSON object",
+                "[]",
+                "to fix it, make the file's top level a JSON object, such as {}",
+            ),
+            (
+                "it is not valid JSON",
+                "{",
+                "to fix it, correct the JSON, or move the file aside so it is written afresh",
             ),
         ] {
             std::fs::write(&json, body).unwrap();
@@ -1575,6 +1590,7 @@ mod tests {
                 "✖ trust        b:",
                 shape,
                 "the daemon's own write before placement fails the same way",
+                fix,
             ] {
                 assert!(rows[0].contains(said), "`{said}` missing: {}", rows[0]);
             }

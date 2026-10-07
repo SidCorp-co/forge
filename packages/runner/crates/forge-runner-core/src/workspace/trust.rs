@@ -39,8 +39,18 @@ pub enum TrustState {
     Untrusted { keys: Vec<String> },
     /// There is no `.claude.json` at all yet.
     NoFile,
-    /// The file is there and cannot be read or parsed, and why.
-    Unreadable(String),
+    /// The file is there and cannot be read, parsed or stamped: why, and the
+    /// edit that makes it one the pre-trust write can stamp.
+    Unreadable { why: String, fix: String },
+}
+
+impl TrustState {
+    fn unreadable(why: impl Into<String>, fix: impl Into<String>) -> Self {
+        Self::Unreadable {
+            why: why.into(),
+            fix: fix.into(),
+        }
+    }
 }
 
 /// What `json_path` says about `dir`, under every spelling [`pre_trust`] stamps.
@@ -48,13 +58,23 @@ pub fn state_in(json_path: &Path, dir: &Path) -> TrustState {
     let root = match std::fs::read(json_path) {
         Ok(bytes) => match serde_json::from_slice::<serde_json::Value>(&bytes) {
             Ok(v) => v,
-            Err(e) => return TrustState::Unreadable(format!("it is not valid JSON: {e}")),
+            Err(e) => {
+                return TrustState::unreadable(
+                    format!("it is not valid JSON: {e}"),
+                    "correct the JSON, or move the file aside so it is written afresh",
+                )
+            }
         },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return TrustState::NoFile,
-        Err(e) => return TrustState::Unreadable(format!("it could not be read: {e}")),
+        Err(e) => {
+            return TrustState::unreadable(
+                format!("it could not be read: {e}"),
+                "make it a file this user can read and write",
+            )
+        }
     };
-    if let Some(why) = refusal(&root, &keys_for(dir)) {
-        return TrustState::Unreadable(why.into());
+    if let Some(r) = refusal(&root, &keys_for(dir)) {
+        return TrustState::unreadable(r.why, r.fix);
     }
     let keys: Vec<String> = keys_for(dir)
         .into_iter()
@@ -105,8 +125,8 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
         Err(e) => return Err(format!("read {}: {e}", json_path.display())),
     };
     let keys = keys_for(dir);
-    if let Some(why) = refusal(&root, &keys) {
-        return Err(format!("{}: {why}", json_path.display()));
+    if let Some(r) = refusal(&root, &keys) {
+        return Err(format!("{}: {} — to fix it, {}", json_path.display(), r.why, r.fix));
     }
 
     let mut wrote = false;
@@ -137,21 +157,36 @@ fn trust_in(json_path: &Path, dir: &Path) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Why the pre-trust write refuses `root` for `keys`, or `None` where it can
-/// stamp them. One answer for the write and for [`state_in`], so doctor never
-/// says the daemon's write will land in a file that write refuses (ISS-1344,
-/// from ISS-1382's judge).
-fn refusal(root: &serde_json::Value, keys: &[String]) -> Option<&'static str> {
+/// Why the pre-trust write refuses `root` for `keys`, and the edit that lets it
+/// stamp them; `None` where it can. One answer for the write and for
+/// [`state_in`], so doctor never says the daemon's write will land in a file
+/// that write refuses (ISS-1344, from ISS-1382's judge).
+fn refusal(root: &serde_json::Value, keys: &[String]) -> Option<Refusal> {
     if !root.is_object() {
-        return Some("it is not a JSON object");
+        return Some(Refusal {
+            why: "it is not a JSON object",
+            fix: "make the file's top level a JSON object, such as {}".into(),
+        });
     }
     let projects = root.get("projects")?;
     if !projects.is_object() {
-        return Some("`projects` is not an object");
+        return Some(Refusal {
+            why: "`projects` is not an object",
+            fix: r#"make `projects` an object keyed by checkout path, such as "projects": {}"#.into(),
+        });
     }
-    keys.iter()
-        .any(|k| projects.get(k).is_some_and(|e| !e.is_object()))
-        .then_some("a project entry is not an object")
+    let key = keys
+        .iter()
+        .find(|k| projects.get(k.as_str()).is_some_and(|e| !e.is_object()))?;
+    Some(Refusal {
+        why: "a project entry is not an object",
+        fix: format!(r#"make projects["{key}"] an object, such as {{}}, or remove it"#),
+    })
+}
+
+struct Refusal {
+    why: &'static str,
+    fix: String,
 }
 
 fn keys_for(dir: &Path) -> Vec<String> {
@@ -348,16 +383,16 @@ mod tests {
 
         std::fs::write(&json, b"not json").expect("seed");
         assert!(
-            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("not valid JSON"))
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable { why, .. } if why.contains("not valid JSON"))
         );
         std::fs::write(&json, b"[]").expect("seed");
         assert!(
-            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("not a JSON object"))
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable { why, .. } if why.contains("not a JSON object"))
         );
         std::fs::remove_file(&json).expect("rm");
         std::fs::create_dir(&json).expect("a directory where the file goes");
         assert!(
-            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable(w) if w.contains("could not be read"))
+            matches!(state_in(&json, Path::new("/srv/x")), TrustState::Unreadable { why, .. } if why.contains("could not be read"))
         );
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -345,6 +345,11 @@ async fn ensure_server() -> bool {
     static PLACING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_attempt = PLACING.lock().await;
     if server_answers().await {
+        // A server an older runner left up, or one whose keepalive was killed, holds sessions
+        // and no keepalive; the master placed now would become its last session (ISS-1344 r5).
+        if SessionIdentity::current().is_some() && !keepalive_is_held().await {
+            hold_the_keepalive_here().await;
+        }
         return true;
     }
     let Some(id) = SessionIdentity::current() else {
@@ -426,6 +431,12 @@ async fn hold_the_keepalive_here() {
 }
 
 const KEEPALIVE_READY_WITHIN: Duration = Duration::from_secs(5);
+
+async fn keepalive_is_held() -> bool {
+    tmux(&["has-session", "-t", &session_target(KEEPALIVE)])
+        .await
+        .is_ok_and(|o| o.status.success())
+}
 
 enum Placement {
     Accepted,
@@ -2306,7 +2317,7 @@ done
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn with_no_unit_for_the_server_a_master_that_exits_reads_as_gone() {
-        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit).await;
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit, false).await;
     }
 
     /// The same where systemd takes the unit and its server never answers.
@@ -2314,13 +2325,30 @@ done
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn with_a_unit_that_never_answers_a_master_that_exits_reads_as_gone() {
-        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::UnitNeverAnswers)
-            .await;
+        a_master_that_exits_reads_as_gone_when_systemd(
+            testing::SystemdSays::UnitNeverAnswers,
+            false,
+        )
+        .await;
+    }
+
+    /// ISS-1344 r5, from judge j6 (criterion 26). The upgrade path: an older
+    /// runner left the session server up holding a session of its own and no
+    /// keepalive. The master placed now outlives that session, so without the
+    /// keepalive it is the server's last session and its exit takes the server.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn with_a_server_already_up_without_the_keepalive_a_master_that_exits_reads_as_gone() {
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit, true).await;
     }
 
     #[cfg(unix)]
     #[allow(clippy::await_holding_lock)]
-    async fn a_master_that_exits_reads_as_gone_when_systemd(says: testing::SystemdSays) {
+    async fn a_master_that_exits_reads_as_gone_when_systemd(
+        says: testing::SystemdSays,
+        already_up: bool,
+    ) {
         use crate::daemon::recovery::MasterPresence;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let iso = testing::IsolatedServer::new("nounit");
@@ -2335,7 +2363,18 @@ done
         let _stand_in = testing::StandIn::here(says);
         let cwd = crate::test_scratch::Scratch::new("nounit-cwd");
         let name = session_name(MASTER_PREFIX, &format!("nounit-{}", std::process::id()));
-        let argv = ["sh", "-c", "sleep 1"].map(String::from);
+        // The older session ends first, so the master is the last one standing when it exits.
+        let lives = if already_up {
+            let older = session_name(RUN_PREFIX, &format!("older-{}", std::process::id()));
+            let up = tmux(&["new-session", "-d", "-s", &older, "sh", "-c", "sleep 1"])
+                .await
+                .expect("the older runner's session is started");
+            assert!(up.status.success(), "the server is up before the daemon");
+            "sleep 3"
+        } else {
+            "sleep 1"
+        };
+        let argv = ["sh", "-c", lives].map(String::from);
         ensure(&name, cwd.path(), &argv, &[], None)
             .await
             .expect("the master is placed");
