@@ -9,12 +9,10 @@ import { needsViewer } from "@forge/contracts/standing";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo } from "react";
 import {
-  ErrorState,
   FilterChip,
   GroupedList,
   type ListGroup,
   ListSearch,
-  ProjectLoader,
   rememberListOrigin,
   SegmentedControl,
   Signal,
@@ -26,9 +24,9 @@ import {
   useUrlChoice,
   useUrlParams,
   visibleRows,
+  QueryBoundary,
 } from "@/design";
 import { enumLabel } from "@/design/vocabulary";
-import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { useRunStanding } from "../hooks";
@@ -128,71 +126,61 @@ export function RunsList({ access }: { access: AgentsAccess }) {
     [router, hrefOf],
   );
   usePeekKeys(peek, openFull);
-
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[50vh] place-items-center">
-        <ProjectLoader label="loading runs…" />
-      </div>
-    );
-  }
-  if (q.isError || !d) {
-    return (
-      <div className="grid min-h-[50vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
-
-  const counts: Record<RunStandingScope, number> = { live: d.counts.live, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
-  const runRowOf = runRow((id) => runHref(slug, id));
-  const masterRowOf = masterRow(masterHref(slug));
-  const row = (i: Item) => (isRun(i) ? runRowOf(i) : masterRowOf(i));
-  const open = peek.open ? groups.flatMap((g) => g.rows).find((i) => keyOf(i) === peek.open) : undefined;
-  const empty = text || on.size ? "No run matches these filters." : scope === "finished" ? "No run on this project has finished yet." : "No live run on this project.";
-
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
-      <Signals d={d} />
-      <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="runs-toolbar">
-            <span className="text-12-5 font-medium text-muted">Group</span>
-            <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} />
-            <SegmentedControl
-              options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: SCOPE_LABEL[s], count: counts[s] }))}
-              value={scope}
-              onChange={setScope}
-            />
-            <ListSearch noun="runs" value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
-            <FilterChip on={on.has("you")} onToggle={() => toggle("you")} count={d.counts.needsViewer} tone="you" testId="filter-you">
-              Waiting on you
-            </FilterChip>
-            <FilterChip on={on.has("stuck")} onToggle={() => toggle("stuck")} count={d.counts.liveByState.stuck} tone="err" testId="filter-stuck">
-              <span className="font-mono">is:stuck</span>
-            </FilterChip>
-            {d.hasMore ? (
-              <span className="text-12-5 text-subtle">
-                The newest {d.items.length} of {d.total}
-              </span>
-            ) : null}
+    <QueryBoundary query={q} loadingLabel="loading runs…" height="50vh" retry="always">
+      {(d) => {
+        const counts: Record<RunStandingScope, number> = { live: d.counts.live, finished: d.counts.finished, all: d.counts.live + d.counts.finished };
+        const runRowOf = runRow((id) => runHref(slug, id));
+        const masterRowOf = masterRow(masterHref(slug));
+        const row = (i: Item) => (isRun(i) ? runRowOf(i) : masterRowOf(i));
+        const open = peek.open ? groups.flatMap((g) => g.rows).find((i) => keyOf(i) === peek.open) : undefined;
+        const empty = text || on.size ? "No run matches these filters." : scope === "finished" ? "No run on this project has finished yet." : "No live run on this project.";
+
+        return (
+          <div className="grid min-h-full content-start bg-app" data-testid="runs-list">
+            <Signals d={d} />
+            <div className={cn("grid min-h-[60vh] items-start", open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3" data-testid="runs-toolbar">
+                  <span className="text-12-5 font-medium text-muted">Group</span>
+                  <SegmentedControl options={MODE_OPTIONS} value={mode} onChange={setMode} />
+                  <SegmentedControl
+                    options={RUN_STANDING_SCOPES.map((s) => ({ value: s, label: SCOPE_LABEL[s], count: counts[s] }))}
+                    value={scope}
+                    onChange={setScope}
+                  />
+                  <ListSearch noun="runs" value={params.get("q") ?? ""} onChange={(v) => setParams({ q: v || null })} />
+                  <FilterChip on={on.has("you")} onToggle={() => toggle("you")} count={d.counts.needsViewer} tone="you" testId="filter-you">
+                    Waiting on you
+                  </FilterChip>
+                  <FilterChip on={on.has("stuck")} onToggle={() => toggle("stuck")} count={d.counts.liveByState.stuck} tone="err" testId="filter-stuck">
+                    <span className="font-mono">is:stuck</span>
+                  </FilterChip>
+                  {d.hasMore ? (
+                    <span className="text-12-5 text-subtle">
+                      The newest {d.items.length} of {d.total}
+                    </span>
+                  ) : null}
+                </div>
+                <GroupedList
+                  ariaLabel="Agent runs"
+                  groups={groups}
+                  fold={fold}
+                  row={row}
+                  selected={peek.open}
+                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  empty={empty}
+                  columns={{ key: "Run", title: "Work", state: "State", waitingOn: "Waiting on", meta: "Holder · age" }}
+                />
+              </div>
+              {open && isRun(open) ? (
+                <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => openFull(open.id)} />
+              ) : null}
+              {open && !isRun(open) ? <MasterPeek m={open} peek={peek} onOpenFull={() => openFull(MASTER_KEY)} /> : null}
+            </div>
           </div>
-          <GroupedList
-            ariaLabel="Agent runs"
-            groups={groups}
-            fold={fold}
-            row={row}
-            selected={peek.open}
-            onPeek={(k) => peek.set(k === peek.open ? null : k)}
-            empty={empty}
-            columns={{ key: "Run", title: "Work", state: "State", waitingOn: "Waiting on", meta: "Holder · age" }}
-          />
-        </div>
-        {open && isRun(open) ? (
-          <RunPeek key={open.id} r={open} slug={slug} canWrite={canWrite} peek={peek} onOpenFull={() => openFull(open.id)} />
-        ) : null}
-        {open && !isRun(open) ? <MasterPeek m={open} peek={peek} onOpenFull={() => openFull(MASTER_KEY)} /> : null}
-      </div>
-    </div>
+        );
+      }}
+    </QueryBoundary>
   );
 }

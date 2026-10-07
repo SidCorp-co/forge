@@ -1,7 +1,6 @@
 "use client";
 
-import { DetailHeader, ErrorState, ProjectLoader, StatusBadge, useListOrigin, useUrlTab } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { DetailHeader, StatusBadge, useListOrigin, useUrlTab, QueryBoundary } from "@/design";
 import { useContractDetail } from "../hooks";
 import { CONTRACTS_LIST, contractsHref } from "@/lib/routes/contracts";
 import { ContractAction } from "./contract-bits";
@@ -22,17 +21,11 @@ export function ContractScreen({ projectId, slug, contractRef }: { projectId: st
         badge={d ? <StatusBadge family="contractState" value={d.contract.state} /> : null}
         action={d ? <ContractAction row={d.contract} slug={slug} onVersions={() => setTab("versions")} /> : null}
       />
-      {q.isLoading ? (
-        <div className="grid min-h-[40vh] place-items-center">
-          <ProjectLoader label="loading contract…" />
-        </div>
-      ) : q.isError || !d ? (
-        <div className="grid min-h-[40vh] place-items-center">
-          <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-        </div>
-      ) : (
-        <ContractPage d={d} slug={slug} projectId={projectId} tab={tab} onTab={setTab} />
-      )}
+      <QueryBoundary query={q} loadingLabel="loading contract…">
+        {(d) => (
+          <ContractPage d={d} slug={slug} projectId={projectId} tab={tab} onTab={setTab} />
+        )}
+      </QueryBoundary>
     </div>
   );
 }
