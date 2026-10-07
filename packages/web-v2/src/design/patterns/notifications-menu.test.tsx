@@ -107,3 +107,31 @@ describe("the menu's states", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 });
+
+describe("the rows the menu has not loaded (ISS-289)", () => {
+  it("offers them in a last row, and asks the feature to load them", () => {
+    const onLoad = vi.fn();
+    render(<NotificationsMenu items={[stranded]} more={{ label: "Show 3 more", onLoad }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 more" }));
+    expect(onLoad).toHaveBeenCalledTimes(1);
+  });
+
+  it("cannot be pressed twice while a page loads", () => {
+    render(<NotificationsMenu items={[stranded]} more={{ label: "Show 3 more", loading: true, onLoad: vi.fn() }} />);
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+  });
+
+  it("offers nothing more when it was handed nothing more", () => {
+    render(<NotificationsMenu items={[stranded]} />);
+    expect(screen.queryByRole("button", { name: /more/ })).toBeNull();
+  });
+});
+
+describe("every notification of any state", () => {
+  it("is one press away in the footer, even with nothing open", () => {
+    const onOpenAll = vi.fn();
+    render(<NotificationsMenu items={[]} onOpenAll={onOpenAll} />);
+    fireEvent.click(screen.getByRole("button", { name: "All notifications" }));
+    expect(onOpenAll).toHaveBeenCalledTimes(1);
+  });
+});

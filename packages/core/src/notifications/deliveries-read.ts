@@ -1,4 +1,4 @@
-import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, countDistinct, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
@@ -7,20 +7,20 @@ import {
   projects,
 } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/index.js';
-import { stillTrue } from './read.js';
+import { openDelivery, stillTrue } from './read.js';
 import { deliveryLine, deliverySubject } from './subject.js';
 
-/** One page of the caller's deliveries, newest first, each with its subject and line. */
+/**
+ * One page of the caller's deliveries, newest first, each with its subject and line. `openOnly` keeps
+ * the deliveries the badge counts (`read.ts:openDelivery`) and reads each of them whole.
+ */
 export async function listDeliveries(
   userId: string,
   q: { projectId?: string | undefined; openOnly: boolean; page: number; pageSize: number },
 ) {
   const conditions = [eq(notificationDeliveries.userId, userId)];
   if (q.projectId) conditions.push(eq(notifications.projectId, q.projectId));
-  if (q.openOnly) {
-    conditions.push(isNull(notifications.resolvedAt));
-    conditions.push(stillTrue);
-  }
+  if (q.openOnly) conditions.push(openDelivery(q.projectId));
   const where = and(...conditions);
 
   const [totalRow] = await db

@@ -4,7 +4,8 @@ import { type RefObject, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { useMarkAllRead, useMarkRead, useNotificationMembers, useNotifications, useOpenCount } from "../hooks";
+import { BELL_PAGE_SIZE } from "../api";
+import { useMarkAllRead, useMarkRead, useNotificationMembers, useOpenCount, useOpenNotifications } from "../hooks";
 import { toMemberItem, toNotificationItem } from "../map";
 import { useNotificationDelivery } from "../use-notification-delivery";
 import type { NotificationRow } from "../types";
@@ -39,7 +40,8 @@ function bellItems(rows: NotificationRow[], openSubTask: (row: NotificationRow) 
 export function NotificationsBell({ open, onClose, anchor }: NotificationsBellProps) {
   const router = useRouter();
   const { data: projects } = useProjects();
-  const notificationsQuery = useNotifications(open);
+  // ISS-289: the rows the badge counts, every one reachable; history is Settings > Notifications
+  const { query: notificationsQuery, rows, remaining } = useOpenNotifications(open);
   const { data: openCount } = useOpenCount();
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
@@ -54,7 +56,15 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
     if (slug && issueId) router.push(`/projects/${slug}/issues/${issueId}`);
   };
 
-  const rows = notificationsQuery.data?.items ?? [];
+  const nextPage = Math.min(remaining, BELL_PAGE_SIZE);
+  const more =
+    remaining > 0
+      ? {
+          label: remaining > nextPage ? `Show ${nextPage} more · ${remaining} not shown` : `Show ${nextPage} more`,
+          loading: notificationsQuery.isFetchingNextPage,
+          onLoad: () => notificationsQuery.fetchNextPage(),
+        }
+      : undefined;
   const items = [
     ...invitations.items,
     ...bellItems(rows, (row) => {
@@ -119,6 +129,11 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
             if (!member?.projectId || !member.issueId || !projects?.some((p) => p.id === member.projectId)) return;
             onClose();
             openIssue(member.projectId, member.issueId);
+          }}
+          more={more}
+          onOpenAll={() => {
+            onClose();
+            router.push("/settings?tab=notifications");
           }}
         />
       </Popover>

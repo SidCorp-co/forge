@@ -67,6 +67,25 @@ export interface NotificationsMenuProps {
   expandedLoading?: boolean;
   onToggleGroup?: (id: string) => void;
   onSelectMember?: (memberId: string) => void;
+  /** ISS-289 — rows the list has not loaded yet: the last row offers them until none is left. */
+  more?: { label: string; loading?: boolean; onLoad: () => void };
+  /** Where every notification of any state is listed; the footer opens it. */
+  onOpenAll?: () => void;
+}
+
+function MoreRow({ more }: { more: NonNullable<NotificationsMenuProps["more"]> }) {
+  return (
+    <li className="px-3 py-2 text-center">
+      <button
+        type="button"
+        onClick={more.onLoad}
+        disabled={more.loading}
+        className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
+      >
+        {more.loading ? "Loading…" : more.label}
+      </button>
+    </li>
+  );
 }
 
 function GroupMembers({
@@ -132,6 +151,8 @@ export function NotificationsMenu({
   expandedLoading,
   onToggleGroup,
   onSelectMember,
+  more,
+  onOpenAll,
 }: NotificationsMenuProps) {
   const [details, setDetails] = useState<ReadonlySet<string>>(new Set());
   const toggleDetails = (id: string) =>
@@ -173,7 +194,7 @@ export function NotificationsMenu({
       ) : !hasItems ? (
         <div className="px-4 py-8 text-center">
           <p className="fg-body-sm text-fg">You're all caught up</p>
-          <p className="fg-caption mt-0.5">New pipeline and issue events show up here.</p>
+          <p className="fg-caption mt-0.5">Nothing here is still open.</p>
         </div>
       ) : (
         <ul className="max-h-[420px] overflow-y-auto">
@@ -263,7 +284,16 @@ export function NotificationsMenu({
               </li>
             );
           })}
+          {more && <MoreRow more={more} />}
         </ul>
+      )}
+
+      {onOpenAll && (
+        <div className="border-t border-line-subtle px-3 py-2 text-center">
+          <button type="button" onClick={onOpenAll} className="fg-caption text-link hover:underline">
+            All notifications
+          </button>
+        </div>
       )}
     </div>
   );
