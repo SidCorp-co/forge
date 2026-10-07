@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.98] - 2026-10-07
+
+Release notes asked for and checked in the project's content language
+
+### Fixed
+
+- **A project's release notes are written in its content language.** A master's nudge, the release-notes fact and the master skill name it, and a Vietnamese project's note with no Vietnamese letter over five words is answered with a warning.
+
 ## [0.4.0-dev.97] - 2026-10-07
 
 BA screens say what to do in plain words, not kernel terms

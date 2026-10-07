@@ -1,1 +1,0 @@
-**A project's release notes are written in its content language.** A master's nudge, the release-notes fact and the master skill name it, and a Vietnamese project's note with no Vietnamese letter over five words is answered with a warning.
