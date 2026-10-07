@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.95] - 2026-10-07
+
+Requirements and feedback follow to their release; reporters told when fixes ship
+
+### Added
+
+- **Requirements, feedback and releases can be followed to each other.** Each names who owes the cut and links the release; a shipped release tells the reporter and the feedback page says so; the release page leads with what users get.
+
 ## [0.4.0-dev.94] - 2026-10-07
 
 The project Dashboard becomes a BA's page; development figures move to Development
