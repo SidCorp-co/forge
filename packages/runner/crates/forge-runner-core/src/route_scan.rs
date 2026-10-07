@@ -37,7 +37,8 @@ struct Bindings {
     /// that name rather than counting as unknown.
     imported: BTreeSet<String>,
     /// The path each name a `use` binds stands for, so a `use` through it is read as that path.
-    aliases: BTreeMap<String, Vec<String>>,
+    /// Every path, since a file's modules may each bind the same name to a different one.
+    aliases: BTreeMap<String, BTreeSet<Vec<String>>>,
     /// A `macro_rules!` that builds a path from a metavariable, by name.
     assembling: BTreeSet<String>,
     /// What the scan refuses outright: a glob import from a route module, and a macro that
@@ -519,9 +520,21 @@ impl Scan<'_> {
         let Some((at, defs)) = found else {
             // An imported name resolves through the name it was imported as, `KEY` in
             // `use keys::HOME_KEY as KEY` through `HOME_KEY`.
-            let original = self.b.aliases.get(n).and_then(|p| p.last());
-            return if let (false, Some(original)) = (qualified, original) {
-                resolve(self.consts, original, chain)
+            // A name two modules import from different places resolves through both.
+            let originals: Vec<&String> = self
+                .b
+                .aliases
+                .get(n)
+                .into_iter()
+                .flatten()
+                .filter_map(|p| p.last())
+                .collect();
+            return if !qualified && !originals.is_empty() {
+                let mut all = Vec::new();
+                for original in originals {
+                    all.extend(resolve(self.consts, original, chain)?);
+                }
+                Some(all)
             } else if qualified || self.b.imported.contains(n) {
                 resolve(self.consts, n, chain)
             } else {
@@ -686,17 +699,20 @@ fn use_tree(
         match &tokens[i] {
             TokenTree::Ident(id) if id == "as" => {
                 if let Some(TokenTree::Ident(alias)) = tokens.get(i + 1) {
-                    bind(&expanded(&path, known), &alias.to_string(), b);
+                    for p in expanded(&path, known) {
+                        bind(&p, &alias.to_string(), b);
+                    }
                 }
                 return;
             }
             TokenTree::Ident(id) => path.push(id.to_string()),
             TokenTree::Punct(p) if p.as_char() == '*' => {
-                let path = expanded(&path, known);
                 let from = path.join("::");
-                let route = path.iter().any(|s| s == "dirs_next")
-                    || path.ends_with(&["std".into(), "env".into()])
-                    || path.last().is_some_and(|s| s == "config");
+                let route = expanded(&path, known).iter().any(|path| {
+                    path.iter().any(|s| s == "dirs_next")
+                        || path.ends_with(&["std".into(), "env".into()])
+                        || path.last().is_some_and(|s| s == "config")
+                });
                 if route {
                     b.refused.push(Hit {
                         line,
@@ -722,33 +738,47 @@ fn use_tree(
         if last == "self" {
             let module: Vec<String> = path[..path.len() - 1].to_vec();
             if let Some(name) = module.last().cloned() {
-                bind(&expanded(&module, known), &name, b);
+                for p in expanded(&module, known) {
+                    bind(&p, &name, b);
+                }
             }
         } else {
-            bind(&expanded(&path, known), &last, b);
+            for p in expanded(&path, known) {
+                bind(&p, &last, b);
+            }
         }
     }
 }
 
-/// `path` with an opening alias of `std::env` or `dirs_next` written out.
-fn expanded(path: &[String], known: &Bindings) -> Vec<String> {
-    let mut out = path.to_vec();
-    let mut followed = BTreeSet::new();
-    // To the end of the chain; an alias met twice is a cycle, left as it stands.
-    while let Some(first) = out.first().cloned() {
-        if !followed.insert(first.clone()) {
-            break;
+/// Every path `path` stands for, with an opening alias written out to the end of its chain and
+/// each path an alias holds followed. An alias met twice on one chain is a cycle, left as it
+/// stands, and `use build::build`, a function through a module of the same name in two
+/// namespaces, is no alias of itself.
+fn expanded(path: &[String], known: &Bindings) -> Vec<Vec<String>> {
+    let mut done = BTreeSet::new();
+    let mut todo = vec![(path.to_vec(), BTreeSet::new())];
+    while let Some((out, followed)) = todo.pop() {
+        let Some(first) = out.first().cloned() else {
+            continue;
+        };
+        let next: Vec<&Vec<String>> = known
+            .aliases
+            .get(&first)
+            .into_iter()
+            .flatten()
+            .filter(|stands_for| stands_for[0] != first)
+            .collect();
+        if next.is_empty() || followed.contains(&first) || done.len() + todo.len() > 256 {
+            done.insert(out);
+            continue;
         }
-        match known.aliases.get(&first) {
-            // `use build::build` binds a function through a module of the same name, two
-            // namespaces: a path that opens with its own name is no alias of itself.
-            Some(stands_for) if stands_for[0] != first => {
-                out = stands_for.iter().chain(&out[1..]).cloned().collect();
-            }
-            _ => break,
+        for stands_for in next {
+            let mut seen = followed.clone();
+            seen.insert(first.clone());
+            todo.push((stands_for.iter().chain(&out[1..]).cloned().collect(), seen));
         }
     }
-    out
+    done.into_iter().collect()
 }
 
 /// `name` is bound to `path`.
@@ -762,10 +792,10 @@ fn bind(path: &[String], name: &str, b: &mut Bindings) {
         return;
     };
     b.imported.insert(name.to_string());
-    b.aliases.insert(
-        name.to_string(),
-        path.iter().map(|s| s.to_string()).collect(),
-    );
+    b.aliases
+        .entry(name.to_string())
+        .or_default()
+        .insert(path.iter().map(|s| s.to_string()).collect());
     if last == "dirs_next" {
         b.dirs_modules.insert(name.to_string());
     } else if path.contains(&"dirs_next") {
@@ -1162,6 +1192,23 @@ mod tests {
                 "var_os(keys::KEY); std::env::var_os(keys::KEY); }",
             ),
             3,
+        );
+    }
+
+    /// The eighth whole-set read's F1: two modules importing the same name from different places
+    /// each keep theirs.
+    #[test]
+    fn a_name_two_modules_import_differently_resolves_through_both() {
+        let src = r#"mod keys { pub const HOME_KEY: &str = concat!("HO", "ME"); pub const TOKEN: &str = "FORGE_TOKEN"; }
+            mod a { use super::keys::HOME_KEY as KEY; fn f() { std::env::var_os(KEY); } }
+            mod b { use super::keys::TOKEN as KEY; fn g() { std::env::var_os(KEY); } }"#;
+        counts(src, 3);
+        counts(
+            &src.replace(
+                "fn f() { std::env::var_os(KEY); }",
+                "fn f() { std::env::var_os(KEY); std::env::var_os(KEY); }",
+            ),
+            4,
         );
     }
 
