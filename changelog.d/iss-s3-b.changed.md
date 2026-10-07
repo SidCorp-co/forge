@@ -1,1 +1,1 @@
-**One canonical JSON writer and one release crossing.** Four key-sorters share `packages/core/src/lib/canonical-json.ts`, stored hashes pinned; a release path reads one promotion, and a stored chain of two is refused by name; the empty test-signal baseline and three empty module faces are deleted.
+**One canonical JSON writer and one release crossing.** Four key-sorters share `packages/core/src/lib/canonical-json.ts`, stored hashes pinned. A release path reads one promotion; a stored chain of two is refused by name. The empty test-signal baseline goes.
