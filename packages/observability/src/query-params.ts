@@ -552,7 +552,7 @@ function renderFields(
     // Each place an object is kept as itself holds it as it was read there.
     const kept = typeof out === 'object' && out !== null ? (walk.snapshots.get(out) ?? out) : out;
     if (array) items.push(kept);
-    else if (typeof kept !== 'function') next[key] = kept;
+    else next[key] = kept;
   }
   const snapshot = array ? items : next;
   walk.made.add(snapshot);
