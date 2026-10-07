@@ -340,6 +340,7 @@ devicePoolRoutes.post(
     }
     const stamped = await recordMasterLimit(c.get('device').id, {
       reason: body.reason,
+      refusedAt: new Date(),
       resetsInSeconds,
       detail: body.detail,
     });

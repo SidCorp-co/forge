@@ -212,13 +212,29 @@ export interface MasterOpenPass {
 	trigger: MasterPassTrigger;
 }
 
+/**
+ * The mark on the first pass that ran after one or more passes on the same box were refused: the
+ * account's real recovery, read from that pass's start. The reset the account printed is its claim
+ * and says nothing here (ISS-276).
+ */
+export interface MasterPassRecovery {
+	/** When the first refused pass of the run of refusals started. */
+	refusedSince: string;
+	/** How many passes were refused before this one ran. */
+	refusedPasses: number;
+	/** The newest refusal's reason. */
+	reason: (typeof MASTER_PASS_REFUSAL_REASONS)[number];
+}
+
 export interface MasterClosedPass extends MasterOpenPass {
 	endedAt: string;
 	dispatched: string[];
 	skipped: MasterPassSkip[];
 	parked: string[];
-	/** Set when the pass's turn was refused before it ran; such a pass is never idle. */
+	/** Set when the pass's turn was refused before it ran; such a pass is never idle. Its next try is the next nudge. */
 	refused: MasterPassRefusal | null;
+	/** Set on the first pass that ran after refused passes on the same box; null on every other. */
+	recovers: MasterPassRecovery | null;
 	/** How core judged it ended; null on a pass closed before core stored a reason. */
 	closeReason: MasterPassCloseReason | null;
 }

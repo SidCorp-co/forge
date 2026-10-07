@@ -60,10 +60,14 @@ export interface Runner {
   lastError: string | null;
   /** Why the runner is currently limited (rate/usage/auth), or null. */
   limitReason: RunnerLimitReason | null;
-  /** Reset time for a time-based limit; null for `auth` / no limit. */
+  /** The next try: when core next lets work at this account; null for `auth` / no limit. */
   rateLimitedUntil: Date | null;
   /** Short human-readable limit detail for the UI. */
   limitDetail: string | null;
+  /** When the account refused; null with no limit. */
+  limitRefusedAt: Date | null;
+  /** The reset the account printed, its claim and never the next try; null where it printed none. */
+  limitPrintedResetAt: Date | null;
   /** Hard-exclusion expiry after N identical box-scoped failures; null when not quarantined. */
   quarantinedUntil: Date | null;
   /** Why the runner is quarantined (the tripping preflight check), or null. */

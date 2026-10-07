@@ -50,7 +50,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
                   <Badge tone={r.limit.health === "down" ? "red" : "amber"}>
                     <span className="inline-flex items-center gap-1">
                       <Icon name="alert" size={10} />
-                      {r.limit.active && r.limit.resetText ? r.limit.resetText : r.limit.label}
+                      {r.limit.active && r.limit.nextTryText ? r.limit.nextTryText : r.limit.label}
                     </span>
                   </Badge>
                 ) : r.activeIssueRef ? (

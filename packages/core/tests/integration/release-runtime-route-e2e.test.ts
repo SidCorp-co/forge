@@ -307,7 +307,9 @@ describe('a reason every waiting row shares is one blocker on the card (judge fi
 
     await sweep();
     expect((await holdOf(oldest))?.code).toBe('NO_RUNNER_ONLINE');
-    expect((await holdOf(oldest))?.reason).toContain(`rate limited until ${reset.toISOString()}`);
+    expect((await holdOf(oldest))?.reason).toContain(
+      `held until its next try at ${reset.toISOString()}`,
+    );
     reset.setUTCMilliseconds(375);
     await rateLimited(reset.toISOString());
     await sweep();

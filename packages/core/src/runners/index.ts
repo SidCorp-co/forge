@@ -12,11 +12,7 @@ export { AGENT_NAMING_MIN_RUNNER, atLeastVersion, claimCapableSql } from './devi
 export { reapGhostRunners } from './ghost-reaper.js';
 export { mirrorHeartbeatToRunners } from './heartbeat-mirror.js';
 export { type RunnerHold, type RunnerHoldReason, releaseIneligibleRunners } from './ineligible.js';
-export {
-  DEFAULT_LIMIT_COOLDOWN_MS,
-  detectRunnerLimit,
-  parseUsageLimitReset,
-} from './limit-detect.js';
+export { detectRunnerLimit, parseUsageLimitReset, type RunnerLimit } from './limit-detect.js';
 export {
   deviceNotDisabled,
   runnerFresh,

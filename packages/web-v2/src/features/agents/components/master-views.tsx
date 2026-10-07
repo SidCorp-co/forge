@@ -39,7 +39,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { useMasterCharter, useMasterPasses, useMasterStanding, useRunStanding } from "../hooks";
 import { MASTER_KEY, runHref } from "@/lib/routes/agents";
-import type { MasterPassView, MasterStanding, RunStanding } from "../types";
+import type { MasterClosedPass, MasterPassView, MasterStanding, RunStanding } from "../types";
 import { fmtTime, leaseLeft, runName } from "../view";
 
 export const masterName = (m: MasterStanding) => m.name ?? "Project master";
@@ -59,12 +59,22 @@ function doing(m: MasterStanding): string {
   return "no master serves this project";
 }
 
-function lastPassText(m: MasterStanding): string | null {
+// ISS-276 / FB-87: a refusal's next try is the next nudge, never the reset the account printed; the
+// pass that ran after refusals is the real recovery, and says so
+const refusalLabel = (r: NonNullable<MasterClosedPass["refused"]>) => enumLabel("masterPassRefusal", r.reason).toLowerCase();
+
+export function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>): string {
+  const passes = `${r.refusedPasses} refused pass${r.refusedPasses === 1 ? "" : "es"}`;
+  return `the account answered again after ${passes} since ${formatRelativeTime(r.refusedSince)}`;
+}
+
+export function lastPassText(m: Pick<MasterStanding, "lastPass">): string | null {
   const l = m.lastPass;
   if (!l) return null;
-  if (l.refused) return `Last pass ${formatRelativeTime(l.endedAt)}: refused before it ran (${enumLabel("masterPassRefusal", l.refused.reason).toLowerCase()})`;
+  if (l.refused) return `Last pass refused ${formatRelativeTime(l.startedAt)} (${refusalLabel(l.refused)}), next try at the next nudge`;
   const ended = l.closeReason && l.closeReason !== "turn_ended" ? ` (${enumLabel("masterPassClose", l.closeReason).toLowerCase()})` : "";
-  return `Last pass ${formatRelativeTime(l.endedAt)}${ended}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}`;
+  const recovered = l.recovers ? `, ${recoveryText(l.recovers)}` : "";
+  return `Last pass ${formatRelativeTime(l.endedAt)}${ended}: dispatched ${l.dispatched.length}, skipped ${l.skipped.length}${recovered}`;
 }
 
 // the box denies every permission dialog in a pane it placed and the run rephrases; how often is read here
@@ -253,11 +263,16 @@ function Passes({ projectId, slug }: { projectId: string; slug: string }) {
                 <TD>
                   <EnumBadge family="masterVerb" value={p.verb} />
                   {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted" title="A turn the runner did not nudge: a person at the pane, or a task notification">unprompted</span> : null}
+                  {c?.recovers ? (
+                    <span className="ml-1.5 text-12 font-semibold text-link" title={`Recovered: ${recoveryText(c.recovers)}`}>
+                      recovered
+                    </span>
+                  ) : null}
                 </TD>
                 <TD>
                   {c?.refused ? (
-                    <span className="text-12-5 text-muted" title={c.refused.detail}>
-                      Refused before it ran: {enumLabel("masterPassRefusal", c.refused.reason).toLowerCase()}
+                    <span className="text-12-5 text-muted" title={`The account said: ${c.refused.detail}`}>
+                      Refused before it ran: {refusalLabel(c.refused)}; next try at the next nudge
                     </span>
                   ) : c ? (
                     keyList(slug, c.dispatched)

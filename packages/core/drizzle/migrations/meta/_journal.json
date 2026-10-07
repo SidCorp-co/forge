@@ -2787,6 +2787,13 @@
       "when": 1820188800000,
       "tag": "0431_an_upload_ticket_is_minted_once_per_operation",
       "breakpoints": true
+    },
+    {
+      "idx": 432,
+      "version": "7",
+      "when": 1820275200000,
+      "tag": "0432_a_refusal_holds_until_its_next_try",
+      "breakpoints": true
     }
   ]
 }

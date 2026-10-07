@@ -25,6 +25,8 @@ export async function mirrorHeartbeatToRunners(
         limit_reason = CASE WHEN ${lapsed} THEN NULL ELSE limit_reason END,
         rate_limited_until = CASE WHEN ${lapsed} THEN NULL ELSE rate_limited_until END,
         limit_detail = CASE WHEN ${lapsed} THEN NULL ELSE limit_detail END,
+        limit_refused_at = CASE WHEN ${lapsed} THEN NULL ELSE limit_refused_at END,
+        limit_printed_reset_at = CASE WHEN ${lapsed} THEN NULL ELSE limit_printed_reset_at END,
         -- stampRunnerLimit mirrors limit_detail into last_error and nothing expired that copy;
         -- only the mirror is dropped, so a preflight or dispatch error written after the stamp stays.
         last_error = CASE

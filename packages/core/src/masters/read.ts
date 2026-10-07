@@ -6,6 +6,7 @@ import type {
   MasterPaneDialog,
   MasterPassCloseReason,
   MasterPassList,
+  MasterPassRecovery,
   MasterPassRefusal,
   MasterPassSkip,
   MasterPassTrigger,
@@ -50,9 +51,44 @@ interface PassRow {
   parked: string[];
   refusal: MasterPassRefusal | null;
   close_reason: MasterPassCloseReason | null;
+  /** Read only through {@link RECOVERY_JOIN}; absent on a row an UPDATE returned. */
+  recovers_since?: string | Date | null;
+  recovers_passes?: number | null;
+  recovers_reason?: MasterPassRecovery['reason'] | null;
 }
 
 export const PASS_COLUMNS = sql`id, master_session_id, verb, issue_key, trigger, started_at, ended_at, dispatched, skipped, parked, refusal, close_reason`;
+
+// ISS-276 / FB-87: the account printed 19:30Z and answered at 16:42Z. The first pass that ran after
+// refused passes on the same box is the recovery: the refused passes of this project on that box
+// started before it with no pass that ran between. Read from the stored passes, never stored twice.
+// Takes the pass as `p`.
+const RECOVERY_JOIN = sql`LEFT JOIN LATERAL (
+  SELECT min(q.started_at) AS since, count(*)::int AS passes,
+         (array_agg(q.refusal ->> 'reason' ORDER BY q.started_at DESC))[1] AS reason
+    FROM agent_sessions ps
+    JOIN master_passes q
+      ON q.project_id = p.project_id AND q.refusal IS NOT NULL AND q.started_at < p.started_at
+    JOIN agent_sessions qs ON qs.id = q.master_session_id AND qs.device_id = ps.device_id
+   WHERE ps.id = p.master_session_id
+     AND p.ended_at IS NOT NULL AND p.refusal IS NULL AND p.close_reason = 'turn_ended'
+     AND NOT EXISTS (
+       SELECT 1 FROM master_passes o
+         JOIN agent_sessions os ON os.id = o.master_session_id AND os.device_id = ps.device_id
+        WHERE o.project_id = p.project_id AND o.refusal IS NULL AND o.close_reason = 'turn_ended'
+          AND o.started_at > q.started_at AND o.started_at < p.started_at)
+  HAVING count(*) > 0
+) rec ON true`;
+const RECOVERY_COLUMNS = sql`rec.since AS recovers_since, rec.passes AS recovers_passes, rec.reason AS recovers_reason`;
+
+function recoveryOf(row: PassRow): MasterPassRecovery | null {
+  if (!row.recovers_since || !row.recovers_passes || !row.recovers_reason) return null;
+  return {
+    refusedSince: iso(row.recovers_since),
+    refusedPasses: row.recovers_passes,
+    reason: row.recovers_reason,
+  };
+}
 
 export function openPassOf(row: PassRow): MasterOpenPass {
   return {
@@ -65,7 +101,7 @@ export function openPassOf(row: PassRow): MasterOpenPass {
   };
 }
 
-export function closedPassOf(row: PassRow & { ended_at: string | Date }): MasterClosedPass {
+function closedPassOf(row: PassRow & { ended_at: string | Date }): MasterClosedPass {
   return {
     ...openPassOf(row),
     endedAt: iso(row.ended_at),
@@ -73,6 +109,7 @@ export function closedPassOf(row: PassRow & { ended_at: string | Date }): Master
     skipped: row.skipped,
     parked: row.parked,
     refused: row.refusal,
+    recovers: recoveryOf(row),
     closeReason: row.close_reason,
   };
 }
@@ -92,7 +129,7 @@ export async function readOpenPass(
 async function closedPassWhere(executor: Tx, where: SQL): Promise<MasterClosedPass | null> {
   const [row] = rowsOf<PassRow & { ended_at: string | Date }>(
     await executor.execute(sql`
-      SELECT ${PASS_COLUMNS} FROM master_passes
+      SELECT ${PASS_COLUMNS}, ${RECOVERY_COLUMNS} FROM master_passes p ${RECOVERY_JOIN}
        WHERE ${where} AND ended_at IS NOT NULL
        ORDER BY ended_at DESC, started_at DESC
        LIMIT 1`),
@@ -272,8 +309,8 @@ export async function listMasterPasses(
 ): Promise<MasterPassList> {
   const rows = rowsOf<PassRow>(
     await db.execute(sql`
-      SELECT ${PASS_COLUMNS}
-        FROM master_passes
+      SELECT ${PASS_COLUMNS}, ${RECOVERY_COLUMNS}
+        FROM master_passes p ${RECOVERY_JOIN}
        WHERE project_id = ${projectId}
          ${opts.before ? sql`AND started_at < ${opts.before}::timestamptz` : sql``}
          ${opts.sessionId ? sql`AND master_session_id = ${opts.sessionId}::uuid` : sql``}

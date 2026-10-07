@@ -69,6 +69,7 @@ function reasonFor(
   if (row.lastSeenAt === null) return { reason: 'never-connected' };
   if (!fresh) return { reason: 'stale' };
   if (row.limitReason === 'auth') return { reason: 'auth' };
+  // the next try, never the reset the account printed (ISS-276)
   if (row.rateLimitedUntil !== null && row.rateLimitedUntil > now) {
     return { reason: 'rate-limited', detail: row.rateLimitedUntil.toISOString() };
   }

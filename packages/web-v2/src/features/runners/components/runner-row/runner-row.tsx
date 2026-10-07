@@ -18,6 +18,7 @@ import {
 	formatElapsed,
 	provisionHealth,
 	runnerLimitDisplay,
+	runnerLimitLine,
 	runnerVersionLabel,
 } from "../../types";
 import { PoolAdmission } from "../pool-admission";
@@ -46,7 +47,7 @@ export function RunnerRow({
 }) {
 	const [showActivity, setShowActivity] = useState(false);
 	const deviceDisabled = Boolean(runner.deviceDisabledAt);
-	// Tick once a second while this runner is limited (live reset countdown) OR
+	// Tick once a second while this runner is limited (live next-try countdown) OR
 	// busy (live elapsed counter on the current job).
 	const now = useNow(1000, Boolean(runner.limitReason) || Boolean(current));
 	const limit = runnerLimitDisplay(runner, now);
@@ -145,8 +146,7 @@ function RunnerHeading({
 				<Badge tone={limit.health === "down" ? "red" : "amber"}>
 					<span className="inline-flex items-center gap-1">
 						<Icon name="alert" size={11} />
-						{limit.label}
-						{limit.active && limit.resetText ? ` · ${limit.resetText}` : ""}
+						{runnerLimitLine(limit)}
 					</span>
 				</Badge>
 			)}
@@ -230,13 +230,11 @@ function RunnerFaultBanner({
 				action={clearFaultButton}
 			>
 				<span className="font-semibold">
-					{limit.label}
 					{limit.reason === "auth"
-						? " — fix the runner's credentials."
-						: limit.active && limit.resetText
-							? ` — ${limit.resetText}.`
-							: " — recently throttled."}
+						? `${limit.label} — fix the runner's credentials.`
+						: `${runnerLimitLine(limit)}.`}
 				</span>
+				{limit.printedText && <> {limit.printedText}</>}
 				{limit.detail && (
 					<>
 						{" "}

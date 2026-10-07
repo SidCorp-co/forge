@@ -33,6 +33,8 @@ export async function listProjectRunnerPools(projectId: string) {
       limitReason: runners.limitReason,
       rateLimitedUntil: runners.rateLimitedUntil,
       limitDetail: runners.limitDetail,
+      limitRefusedAt: runners.limitRefusedAt,
+      limitPrintedResetAt: runners.limitPrintedResetAt,
       repoPath: runners.repoPath,
       branch: runners.branch,
       labels: runners.labels,
