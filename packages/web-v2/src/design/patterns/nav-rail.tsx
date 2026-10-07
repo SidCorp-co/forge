@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/design/icons/icon";
 import { Kicker } from "@/design/primitives/kicker";
 import { Tooltip } from "@/design/primitives/tooltip";
 import { Menu, type MenuItem } from "./menu";
+import { useCopy, useNavLabel } from "@/lib/i18n/interface-language";
 
 export interface NavItem {
   key: string;
@@ -109,14 +110,15 @@ function Row({
 }) {
   const count = countOf(item.badge);
   const hint = count > 0 ? item.badgeHint : undefined;
+  const text = useNavLabel()(item.key, item.label);
   if (compact) {
     return (
       <button
         type="button"
         onClick={onClick}
         aria-current={active ? "page" : undefined}
-        aria-label={hint ?? item.label}
-        title={hint ?? item.label}
+        aria-label={hint ?? text}
+        title={hint ?? text}
         className={cn(
           "relative flex flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]",
           nested ? "w-[64px]" : "w-[76px]",
@@ -138,7 +140,7 @@ function Row({
             active ? "text-accent-text" : "text-muted",
           )}
         >
-          {item.label}
+          {text}
         </span>
         <Count n={count} compact />
       </button>
@@ -158,7 +160,7 @@ function Row({
       )}
     >
       <Leading item={item} active={active} size={nested ? 15 : 17} />
-      <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+      <span className="min-w-0 flex-1 truncate text-left">{text}</span>
       <Count n={count} compact={false} />
     </button>
   );
@@ -179,6 +181,7 @@ function Group({
   onToggle: () => void;
   onNavigate: (key: string) => void;
 }) {
+  const groupText = useNavLabel()(group.key, group.label);
   const within = group.items.some((it) => it.key === activeKey);
   const folded = open ? 0 : group.items.reduce((n, it) => n + countOf(it.badge), 0);
   const count = group.badge ?? folded;
@@ -195,8 +198,8 @@ function Group({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          aria-label={group.label}
-          title={group.label}
+          aria-label={groupText}
+          title={groupText}
           className={cn(
             "relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 text-subtle transition-colors duration-[120ms] hover:bg-hover",
             FOCUS,
@@ -206,7 +209,7 @@ function Group({
             <Icon name={group.icon} size={18} style={within ? { color: "var(--accent)" } : undefined} />
             {chevron(11)}
           </span>
-          <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{group.label}</span>
+          <span className="block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em] text-fg">{groupText}</span>
           <Count n={count} compact />
         </button>
         {open && <div className="ml-2.5 flex flex-col items-center gap-3px border-l border-line-subtle pl-0.5">{rows}</div>}
@@ -226,7 +229,7 @@ function Group({
         )}
       >
         <Icon name={group.icon} size={17} style={within ? { color: "var(--accent)" } : undefined} />
-        <span className="flex-1 text-left">{group.label}</span>
+        <span className="flex-1 text-left">{groupText}</span>
         <Count n={count} compact={false} />
         {chevron(14)}
       </button>
@@ -243,13 +246,14 @@ function Footer({
   onToggleCollapsed,
   version,
 }: Pick<NavRailProps, "user" | "onAccount" | "onSignOut" | "onToggleCollapsed" | "version"> & { compact: boolean }) {
+  const t = useCopy();
   const items: MenuItem[] = [];
-  if (onAccount) items.push({ label: "Account & Settings", icon: "settings", onSelect: onAccount });
-  if (onSignOut) items.push({ label: "Sign out", icon: "logOut", danger: true, onSelect: onSignOut });
+  if (onAccount) items.push({ label: t("common.nav.account"), icon: "settings", onSelect: onAccount });
+  if (onSignOut) items.push({ label: t("common.nav.signOut"), icon: "logOut", danger: true, onSelect: onSignOut });
   const chip = (
     <button
       type="button"
-      aria-label="Account menu"
+      aria-label={t("common.nav.accountMenu")}
       aria-haspopup={items.length > 0 ? "menu" : undefined}
       className={cn(
         "flex items-center rounded-md transition-colors hover:bg-hover max-md:min-h-[44px]",
@@ -265,13 +269,13 @@ function Footer({
       </span>
       {!compact && (
         <>
-          <span className="fg-body-sm flex-1 text-left text-fg">You</span>
+          <span className="fg-body-sm flex-1 text-left text-fg">{t("common.nav.you")}</span>
           <Icon name="more" size={16} className="text-subtle" />
         </>
       )}
     </button>
   );
-  const toggle = compact ? "Expand sidebar" : "Collapse sidebar";
+  const toggle = compact ? t("common.nav.expand") : t("common.nav.collapse");
   return (
     <div className="mt-auto flex w-full flex-col gap-1 border-t border-line-subtle pt-3">
       <div className={cn("flex items-center", compact ? "justify-center gap-0.5" : "gap-1")}>
@@ -315,6 +319,7 @@ export function NavRail({
   bell,
   ...footer
 }: NavRailProps) {
+  const t = useCopy();
   const go = (key: string) => onNavigate?.(key);
   const entry = (e: NavEntry) => {
     if (!isNavGroup(e)) {
@@ -374,8 +379,8 @@ export function NavRail({
         data-testid="rail-tiers"
         className={cn("flex min-h-0 w-full flex-1 flex-col overflow-y-auto", compact ? "items-center gap-3" : "gap-5")}
       >
-        {projectItems && projectItems.length > 0 && tier("Project", projectItems)}
-        {tier(compact ? "Space" : "Workspace", workspaceItems)}
+        {projectItems && projectItems.length > 0 && tier(t("common.nav.project"), projectItems)}
+        {tier(compact ? t("common.nav.space") : t("common.nav.workspace"), workspaceItems)}
       </div>
       <Footer compact={compact} {...footer} />
     </nav>

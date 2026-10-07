@@ -86,6 +86,8 @@ import {
   CONTRACT_STATE_TONES,
 } from "@forge/contracts/contract-standing";
 import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
+import { type LabelGroup, labelKey } from "@/lib/i18n/labels";
+import { copyOr } from "@/lib/i18n/product-copy";
 import { type ColorMeta, TONE_META } from "./status";
 
 /** The legend's meaning per tone: amber waits on you, cobalt is running, slate is blocked, green is
@@ -187,13 +189,35 @@ export function sentenceCase(v: string): string {
 
 const hintOf = (h: string | undefined) => (h ? h.replace(/^[a-z_-]+: /, "") : null);
 
+/** The locale file's label group of a state family and of its hints; a family with none reads as the contract says it. */
+const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: LabelGroup }>> = {
+  issue: { label: "issueStatus", hint: "hintIssueStatus" },
+  requirement: { label: "requirementState", hint: "hintRequirementState" },
+  bcVerdict: { label: "bcVerdict", hint: "hintBcVerdict" },
+  criterion: { label: "criterionStanding", hint: "hintCriterionStanding" },
+  revision: { label: "revisionState", hint: "hintRevisionState" },
+  design: { label: "designStatus", hint: "hintDesignStatus" },
+  designRevision: { label: "designRevisionState", hint: "hintDesignRevisionState" },
+  releaseState: { label: "releaseState", hint: "hintReleaseState" },
+  feedbackPhase: { label: "feedbackPhase", hint: "hintFeedbackPhase" },
+  severity: { label: "feedbackSeverity" },
+  suggestion: { label: "suggestionStatus" },
+};
+
 /** One state value's reading. A value its family does not name reads sentence-cased and neutral,
  *  so a new core value shows as words, never as a raw token. */
-export function statusReading(family: StatusFamily, value: string): StatusReading {
+export function statusReading(family: StatusFamily, value: string, language?: string): StatusReading {
   const m = STATUS_MAPS[family];
   const label = m.labels[value];
   if (label === undefined) return { label: sentenceCase(value), tone: "neutral", glyph: null, hint: null };
-  return { label, tone: m.tones[value] ?? "neutral", glyph: m.glyphs?.[value] ?? null, hint: hintOf(m.hints?.[value]) };
+  const g = STATUS_GROUP[family];
+  const hint = hintOf(m.hints?.[value]);
+  return {
+    label: g ? copyOr(language, labelKey(g.label, value), label) : label,
+    tone: m.tones[value] ?? "neutral",
+    glyph: m.glyphs?.[value] ?? null,
+    hint: g?.hint && hint ? copyOr(language, labelKey(g.hint, value), hint) : hint,
+  };
 }
 
 /** Non-state families: a neutral badge with an icon, never a status colour. */
@@ -215,8 +239,24 @@ export const ENUM_FAMILIES = {
 
 export type EnumFamily = keyof typeof ENUM_FAMILIES;
 
-export function enumLabel(family: EnumFamily, value: string): string {
-  return (ENUM_FAMILIES[family] as Record<string, string>)[value] ?? sentenceCase(value);
+/** The locale file's label group of an enum family. */
+const ENUM_GROUP: Partial<Record<EnumFamily, LabelGroup>> = {
+  priority: "issuePriority",
+  category: "issueCategory",
+  feedbackKind: "feedbackKind",
+  feedbackRoute: "feedbackRoute",
+  feedbackDecision: "feedbackDecision",
+  feedbackTarget: "feedbackTarget",
+  step: "workStep",
+  landingSurface: "landingSurface",
+  artifactChange: "artifactChange",
+};
+
+export function enumLabel(family: EnumFamily, value: string, language?: string): string {
+  const own = (ENUM_FAMILIES[family] as Record<string, string>)[value];
+  const group = ENUM_GROUP[family];
+  if (own === undefined) return sentenceCase(value);
+  return group ? copyOr(language, labelKey(group, value), own) : own;
 }
 
 export const PRIORITY_BARS: Record<string, number> = ISSUE_PRIORITY_BARS;

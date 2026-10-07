@@ -5,6 +5,7 @@
 // priority, category, kind, level) is neutral, so colour always means whose turn it is.
 
 import type { ReactNode } from "react";
+import { useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import {
   enumLabel,
@@ -15,7 +16,7 @@ import {
   type StatusFamily,
   statusReading,
 } from "../vocabulary";
-import { WORK_STEP_LABELS, type WorkStep } from "@forge/contracts/issue-vocabulary";
+import type { WorkStep } from "@forge/contracts/issue-vocabulary";
 
 export interface ToneBadgeProps {
   tone: LegendTone;
@@ -68,8 +69,10 @@ export interface StatusBadgeProps {
 }
 
 export function StatusBadge({ family, value, step, tone, size }: StatusBadgeProps) {
-  const r = statusReading(family, value);
-  const label = family === "issue" && value === "in_progress" && step ? `${r.label} · ${WORK_STEP_LABELS[step]}` : r.label;
+  const language = useInterfaceLanguage();
+  const stepLabel = useLabel();
+  const r = statusReading(family, value, language);
+  const label = family === "issue" && value === "in_progress" && step ? `${r.label} · ${stepLabel("workStep", step)}` : r.label;
   const shown = tone ?? r.tone;
   return (
     <ToneBadge
@@ -127,7 +130,8 @@ export interface EnumBadgeProps {
 
 /** A non-state enum: neutral ground, an icon (priority's bars), a sentence-case label. */
 export function EnumBadge({ family, value, label }: EnumBadgeProps) {
-  const text = label ?? enumLabel(family, value);
+  const language = useInterfaceLanguage();
+  const text = label ?? enumLabel(family, value, language);
   return (
     <span
       className="inline-flex max-w-full cursor-default items-center gap-1.5 whitespace-nowrap rounded-[4px] bg-sunken px-1.5 py-[2px] text-11-5 font-medium text-muted"

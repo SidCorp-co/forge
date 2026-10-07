@@ -12,6 +12,7 @@ import { Button } from "../primitives/button";
 import { IconButton } from "../primitives/icon-button";
 import { Kbd } from "../primitives/kbd";
 import { useUrlParams } from "../hooks/use-url-params";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface PeekState {
   /** The open row's key, when it is one of `keys`. */
@@ -75,10 +76,11 @@ export interface PeekPanelProps {
 
 export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId }: PeekPanelProps) {
   const pos = peek.position;
+  const t = useCopy();
   return (
     <aside
       className="fixed inset-0 z-30 flex flex-col overflow-y-auto border-line-subtle bg-surface lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-[calc(100dvh-48px)] lg:border-l"
-      aria-label={`${noun} ${peek.open ?? ""} summary`}
+      aria-label={t("common.peekSummary", { noun, key: peek.open ?? "" })}
       data-testid={testId ?? "peek-panel"}
       data-peek-root="1"
     >
@@ -86,22 +88,22 @@ export function PeekPanel({ peek, listLabel, noun, onOpenFull, children, testId 
         <Button type="button" size="sm" className="lg:hidden" onClick={() => peek.set(null)} data-testid="peek-back">
           ← {listLabel}
         </Button>
-        <IconButton icon="arrowUp" size="sm" aria-label={`Previous ${noun.toLowerCase()} (k)`} disabled={!pos || pos.at <= 1} onClick={() => peek.move(-1)} />
-        <IconButton icon="arrowDown" size="sm" aria-label={`Next ${noun.toLowerCase()} (j)`} disabled={!pos || pos.at >= pos.of} onClick={() => peek.move(1)} />
+        <IconButton icon="arrowUp" size="sm" aria-label={t("common.peekPrevious", { noun: noun.toLowerCase() })} disabled={!pos || pos.at <= 1} onClick={() => peek.move(-1)} />
+        <IconButton icon="arrowDown" size="sm" aria-label={t("common.peekNext", { noun: noun.toLowerCase() })} disabled={!pos || pos.at >= pos.of} onClick={() => peek.move(1)} />
         {pos ? (
           <span className="mx-1 whitespace-nowrap font-mono text-11 text-subtle" data-testid="peek-position">
-            {pos.at} of {pos.of}
+            {t("common.peekPosition", { at: pos.at, of: pos.of })}
           </span>
         ) : null}
         <span className="flex-1" />
         <Button type="button" size="sm" onClick={onOpenFull} data-testid="open-full-page">
-          Open full page ↗
+          {t("common.openFullPage")}
         </Button>
-        <IconButton icon="x" size="sm" aria-label="Close (Esc)" onClick={() => peek.set(null)} />
+        <IconButton icon="x" size="sm" aria-label={t("common.peekClose")} onClick={() => peek.set(null)} />
       </div>
       <div className="flex flex-1 shrink-0 flex-col">{children}</div>
       <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-12 text-subtle max-lg:hidden">
-        <Kbd>j</Kbd> <Kbd>k</Kbd> move · <Kbd>Enter</Kbd> full page · <Kbd>Esc</Kbd> close
+        <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>Enter</Kbd> {t("common.peekFullPage")} · <Kbd>Esc</Kbd> {t("common.peekCloseWord")}
       </div>
     </aside>
   );
