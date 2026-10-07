@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.107] - 2026-10-07
+
+A core boot that cannot migrate reports why; migration lock waits are bounded
+
+### Fixed
+
+- **A core boot that cannot migrate now reports why.** The failure, the migration it was applying and the counts reach Sentry before exit, and a migration waiting on a held lock fails after a minute.
+
 ## [0.4.0-dev.106] - 2026-10-07
 
 Feedback screens read in Vietnamese; Duplicate of becomes a feedback search
