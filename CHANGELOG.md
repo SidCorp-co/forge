@@ -3156,10 +3156,9 @@
   what it does, a refused choice says why on its own row, and the shipped-unverified note names
   who decided (ISS-1386).
 
-- **A release that could not close an issue says what to do, and leaks nothing.** Its comment
-  names the database's own reason, never the query or its values, and only steps the issue's page
-  offers: answer the question in its "Decision waiting" card, then Release now. A rule the database
-  names keeps its whole name, and a failure that is not yours to clear says so (ISS-1381).
+- **A release that could not close an issue says what to do and leaks nothing.** Its comment
+  names the database's reason, never the query or values, and only acts the issue's page
+  offers: answer the question, then Release now (ISS-1381).
 
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
