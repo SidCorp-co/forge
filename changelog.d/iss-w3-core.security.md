@@ -1,1 +1,0 @@
-**A personal access token without the write scope is refused on every write-class /mcp request, by name.** An unanswered answer expires, uploads replay by operation id, question changes reach open screens, and release paths longer than one crossing are refused.

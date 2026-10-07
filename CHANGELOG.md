@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.75] - 2026-10-07
+
+Read-only tokens cannot write through /mcp; outbox events no longer wait the poll
+
+### Fixed
+
+- **The runner box stops hanging.** Core requests carry a deadline, a refused close is sent once, old scratch is swept, an unreadable MCP file is reported, and a usage-limit choice list is reported to core and dismissed with Escape.
+- **An issue's next outbox delivery runs as soon as the one before it settles.** Deliveries keyed by issue run in strict order one at a time, so each event queued behind another used to wait out the 10-second poll.
+
+### Security
+
+- **A personal access token without the write scope is refused on every write-class /mcp request, by name.** An unanswered answer expires, uploads replay by operation id, question changes reach open screens, and release paths longer than one crossing are refused.
+
 ## [0.4.0-dev.74] - 2026-10-06
 
 Design revisions drawn under live issues, longer return reasons, runner stop refusals
