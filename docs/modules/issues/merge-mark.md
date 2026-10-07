@@ -134,7 +134,11 @@ The issue is closed through the release's own close (`closeRoster`, after `claim
 that run), so `CLOSE_ONLY_BY_RELEASE` still holds and the run's `rosterClosed` names it. It gets a
 notice naming the version, and its hold is cleared. It adds no changelog fragment: its notes belong to
 the release that shipped it. A repository that cannot be read, or a range it will not give whole, is
-`SHIPPED_EARLIER_HOST_UNAVAILABLE` or `SHIPPED_EARLIER_UNREAD`: nothing moves and no version is inferred.
+`SHIPPED_EARLIER_HOST_UNAVAILABLE` or `SHIPPED_EARLIER_UNREAD`, and a close the release path refuses is
+`SHIPPED_EARLIER_NOT_CLOSED`: nothing moves and no version is inferred. The sweep says it on the row's
+hold, as a clause beside whatever holds it — an abort hold keeps its code and the act it names
+(`packages/core/src/release-batch/shipped-earlier-hold.ts:withShippedEarlier`) — and takes the clause
+back on the sweep that can settle it.
 A work older than twelve releases is not placed, and takes the normal path.
 
 ## What counts as landed depends on the project's shape

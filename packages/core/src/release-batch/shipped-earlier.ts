@@ -39,6 +39,7 @@ import { closeRoster } from './finish.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { clearReleaseHolds } from './hold.js';
 import { releaseClaims } from './releasing-recovery.js';
+import type { ShippedEarlierUnsettled } from './shipped-earlier-hold.js';
 import { placeByKey, type ShippedRelease } from './shipped-earlier-keyed.js';
 
 /** One issue closed against the release that shipped its commit. */
@@ -51,14 +52,12 @@ interface ClosedEarlier {
   evidence: string;
 }
 
-/** One issue the pass could not settle, and the name of why. It stays as it was. */
-interface Unresolved {
+/**
+ * One issue the pass could not settle, and the name of why. Nothing about the issue moves; the
+ * sweep says it on the row's hold (`shipped-earlier-hold.ts`).
+ */
+interface Unresolved extends ShippedEarlierUnsettled {
   issueId: string;
-  code:
-    | 'SHIPPED_EARLIER_HOST_UNAVAILABLE'
-    | 'SHIPPED_EARLIER_UNREAD'
-    | 'SHIPPED_EARLIER_NOT_CLOSED';
-  detail: string;
 }
 
 export interface ShippedEarlierResult {
@@ -242,7 +241,8 @@ function noticeFor(found: ClosedEarlier): string {
 /**
  * Close, against the release that shipped it, each of `issueIds` whose landing commit an earlier
  * published release holds. Issues it does not close are left exactly as they were: a row held for a
- * person by an aborted release is read again here, and a hold on a closed row is cleared.
+ * person by an aborted release is read again here, and a hold on a closed row is cleared. What it
+ * could not settle is returned as `unresolved`, which the caller owes to the row's hold.
  */
 export async function closeShippedEarlier(
   args: ShippedEarlierArgs,

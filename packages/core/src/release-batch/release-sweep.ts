@@ -4,7 +4,8 @@
 // (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path. ISS-1215: every way it declines a waiting row is a hold record on that row
-// (`release-batch/hold.ts`), never on the log alone.
+// (`release-batch/hold.ts`), never on the log alone — and so is what `closeShippedEarlier` could
+// not settle about a row, said beside whatever holds it (`shipped-earlier-hold.ts`).
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -28,6 +29,7 @@ import {
   queuedBehindHold,
   type ReleaseHold,
   refusalHold,
+  restateAbortHolds,
   runtimeUnroutedHold,
   targetUndeclaredHold,
   writeReleaseHolds,
@@ -42,6 +44,7 @@ import {
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
 import { closeShippedEarlier, type ShippedEarlierDeps } from './shipped-earlier.js';
+import { type ShippedEarlierUnsettled, withShippedEarlier } from './shipped-earlier-hold.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
 const CANDIDATE_PAGE_LIMIT = 200;
@@ -103,12 +106,17 @@ interface HoldWrite {
   projectId: string;
   issueIds: string[];
   holdFor: (issueId: string) => ReleaseHold;
+  /** What this tick could not settle about whether a row already shipped, said on its hold. */
+  unsettled: ReadonlyMap<string, ShippedEarlierUnsettled>;
   now: Date;
   result: AutomaticReleaseSweepResult;
 }
 
 async function hold(write: HoldWrite): Promise<void> {
-  const tally = await writeReleaseHolds(write);
+  const tally = await writeReleaseHolds({
+    ...write,
+    holdFor: (id) => withShippedEarlier(write.holdFor(id), write.unsettled.get(id)),
+  });
   write.result.holdsWritten += tally.written;
   if (tally.written > 0) {
     logger.info(
@@ -207,12 +215,16 @@ async function sweepProject(
   const earlier = await closeShippedEarlier({ projectId, issueIds: gate, userId: owner }, deps);
   result.shippedEarlier += earlier.closed.length;
   const shipped = new Set(earlier.closed.map((c) => c.issueId));
+  const unsettled = new Map(earlier.unresolved.map((u) => [u.issueId, u]));
   const atGate = gate.filter((id) => !shipped.has(id));
-  // Next, so no later hold replaces the abort's: a row a person owes is not weighed at all.
+  // Next, so no later hold replaces the abort's: a row a person owes is not weighed at all, and
+  // its abort hold only gains or loses the words naming what could not be settled above.
   const blocked = await abortBlockedIssues(atGate);
+  const restated = await restateAbortHolds({ projectId, issueIds: [...blocked], unsettled, now });
+  result.holdsWritten += restated.written;
   const waiting = atGate.filter((id) => !blocked.has(id));
   if (waiting.length === 0) return;
-  const base = { projectId, now, result };
+  const base = { projectId, now, result, unsettled };
 
   const releaseGate = await readGate(projectId);
   if (!releaseGate.ok) {
