@@ -114,7 +114,7 @@ export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
   ];
 }
 
-export function ecosystemGroup(read: WorkspaceRead | undefined): NavItemGroup {
+function ecosystemGroup(read: WorkspaceRead | undefined): NavItemGroup {
   return { key: "ecosystem", label: "Ecosystem", icon: "ecosystem", items: ecosystemMenu(read), badge: read ? needsMe(read) : undefined, defaultOpen: true };
 }
 
