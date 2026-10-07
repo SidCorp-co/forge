@@ -23,5 +23,4 @@ export {
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';
 export { deliveredAmong, standingsOf } from './standing-read.js';
-export { forgeRequirementsTool } from './tool.js';
 export { lockRequirements } from './write-tx.js';

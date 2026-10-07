@@ -119,7 +119,7 @@ import {
   projectConfigRoutes,
   projectConfigSchemaRoutes,
 } from './project-config/routes.js';
-import { projectStatusRoutes } from './project-status/index.js';
+import { projectStatusRoutes } from './project-status/routes.js';
 import {
   invitationRoutes,
   masterCharterRoutes,
