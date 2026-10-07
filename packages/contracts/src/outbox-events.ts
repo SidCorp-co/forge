@@ -44,6 +44,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.filed",
 	"feedback.verifyAsked",
 	"feedback.verifySettled",
+	"release.shipped",
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
@@ -449,6 +450,13 @@ export interface OutboxEventPayloads {
 		feedbackId: string;
 		key: string;
 		decision: "verified" | "reopened";
+	};
+	/** A release run's ship was stamped: the version is live, carrying `issueIds`; whoever reported feedback they close is told. */
+	"release.shipped": {
+		projectId: string;
+		runId: string;
+		version: string;
+		issueIds: string[];
 	};
 	/** A linked issue's move left the requirement reading delivered at `revision`; its BA owes the check. */
 	"requirement.delivered": {

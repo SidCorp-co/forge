@@ -5,12 +5,13 @@
 
 import type { ReleaseChanges } from "@forge/contracts/releases";
 import type { TourId } from "@forge/contracts/tours";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { StatusCard } from "@/features/integrations/types";
 import { IntegrationsTab } from "@/features/project-settings/components/integrations-tab";
-import { WhatChanges } from "@/features/releases/components/release-changes";
+import { OverviewPane } from "@/features/releases/components/release-panes";
+import type { ReleaseDetail } from "@/features/releases/types";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { TOURS } from "@/features/tours/registry";
 
@@ -31,6 +32,18 @@ const CHANGES: ReleaseChanges = {
   boxRead: [],
   shipsNothing: false,
 } as unknown as ReleaseChanges;
+
+/** A release read as the page draws it, with Technical detail closed: the anchors are the ones a reader sees first. */
+const RELEASE = {
+  key: "0.1.0",
+  version: "0.1.0",
+  state: "draft",
+  issues: [],
+  gates: [],
+  requirementsCompleted: [],
+  notes: { sections: [{ section: "Added", entries: [{ key: "ISS-1", title: "A board keeps its cards", userFacing: "Saved boards keep every card.", technical: null }] }], withoutNotes: [] },
+  changes: CHANGES,
+} as unknown as ReleaseDetail;
 
 const REPOSITORY: StatusCard = {
   key: "repository",
@@ -57,9 +70,12 @@ function serveCore() {
 const PAGES: Record<TourId, { route: string; draw: () => ReactElement; renders: (ui: ReactElement) => unknown; ready: () => Promise<unknown> }> = {
   "release-what-changes": {
     route: "/projects/:slug/releases/:version",
-    draw: () => <WhatChanges changes={CHANGES} slug="forge" />,
-    renders: (ui) => render(ui),
-    ready: () => screen.findByTestId("release-changes"),
+    draw: () => <OverviewPane r={RELEASE} slug="forge" all={[]} />,
+    renders: (ui) => {
+      serveCore();
+      return renderWithQuery(ui);
+    },
+    ready: () => screen.findByTestId("release-users-get"),
   },
   integrations: {
     route: "/projects/:slug/settings?tab=integrations",

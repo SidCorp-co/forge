@@ -198,6 +198,7 @@ function noteSections(p: Part, s: Shared) {
       .filter((i) => i.releaseNotes?.section === section)
       .map((i) => ({
         key: i.key,
+        title: i.title,
         userFacing: i.releaseNotes?.userFacing ?? '',
         technical: i.releaseNotes?.technical ?? null,
       })),

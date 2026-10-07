@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = [
 	"contract_version_published",
 	"requirement_delivered",
 	"feedback_verify_asked",
+	"feedback_shipped",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -34,6 +35,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	contract_version_published: "Contract version",
 	requirement_delivered: "Delivered",
 	feedback_verify_asked: "Verify the fix",
+	feedback_shipped: "Shipped",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -173,6 +175,12 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "task",
 		tier: "ticket",
 	},
+	feedback_shipped: {
+		severity: "success",
+		channels: ["bell", "toast"],
+		kind: "signal",
+		tier: "log",
+	},
 };
 
 /** A type's kind, tier, default severity and channels: the one declaration core and web both read. */
@@ -202,4 +210,14 @@ export function strandedResolutionKey(issueId: string): string {
 /** The resolution key of an issue's owed-close condition, resolved once the issue reaches a terminal status. */
 export function owedCloseResolutionKey(issueId: string): string {
 	return `issue:${issueId}:owed-close`;
+}
+
+/** The dedupe key of the notice that a shipped release told one feedback item's reporter, once per item and release. */
+export function feedbackShippedKey(feedbackId: string, runId: string): string {
+	return `feedback-shipped:${feedbackId}:${runId}`;
+}
+
+/** The prefix every such notice of one item shares: what the feedback page reads "Reporter told" from. */
+export function feedbackShippedPrefix(feedbackId: string): string {
+	return `feedback-shipped:${feedbackId}:`;
 }

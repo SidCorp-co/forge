@@ -10,16 +10,17 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { readReleaseMode } from '../project-config/index.js';
-import { nextDraftVersion } from '../release-batch/index.js';
+import { approversOf, nextDraftVersion } from '../release-batch/index.js';
 import type { ReleaseFacts, Shipped } from './delivery.js';
 
 export async function readReleaseFacts(projectId: string, now: Date): Promise<ReleaseFacts> {
   const mode = await readReleaseMode(projectId);
-  const [nextVersion, lags] = await Promise.all([
+  const [nextVersion, lags, holders] = await Promise.all([
     mode === 'manual' || mode === 'approval' ? nextDraftVersion(projectId) : null,
     mode === 'automatic' ? readReleaseLags(projectId, now) : [],
+    mode === 'approval' ? approversOf(projectId) : [],
   ]);
-  return { mode, nextVersion, lags };
+  return { mode, nextVersion, lags, holders };
 }
 
 async function readReleaseLags(projectId: string, now: Date): Promise<number[]> {

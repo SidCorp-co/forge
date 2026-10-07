@@ -69,6 +69,34 @@ describe('delivery: in people’s hands, not merged', () => {
     expect(leg.kind === 'person' && leg.act).toBe('cut 1.4.0, then approve it');
   });
 
+  it('names the person who holds the approval, then the count, with the version the cut takes', () => {
+    const h = (name: string, kind: 'human' | 'agent' = 'human') => ({ id: name, name, kind });
+    const one = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '0.1.0',
+      lags: [],
+      holders: [h('Dana Lee')],
+    });
+    expect(one).toMatchObject({ kind: 'person', who: 'Dana Lee', version: '0.1.0' });
+    const two = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '0.1.0',
+      lags: [],
+      holders: [h('bot', 'agent'), h('Dana Lee'), h('Sam Ng')].slice(1),
+    });
+    expect(two).toMatchObject({ who: 'Dana Lee or Sam Ng' });
+    const many = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '0.1.0',
+      lags: [],
+      holders: [h('a'), h('b'), h('c')],
+    });
+    expect(many).toMatchObject({ who: '3 release approvers' });
+    expect(many.kind === 'person' && many.reason).toContain('a, b, c');
+    const none = releaseLegOf({ mode: 'approval', nextVersion: '0.1.0', lags: [], holders: [] });
+    expect(none).toMatchObject({ who: 'A release approver', holders: [] });
+  });
+
   it('gives no in-hands span below the release history floor', () => {
     const d = deliver({ release: automatic(9) });
     expect(d.release).toEqual({ kind: 'not_enough_history', n: 9, floor: 10 });

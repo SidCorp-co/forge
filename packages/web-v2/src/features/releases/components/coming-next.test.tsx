@@ -25,7 +25,7 @@ const range: Forecast = {
   basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 2, concurrency: 2, concurrencyBasis: "b" },
   late: null,
 };
-const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.1.0", reason: "an admin cuts each release" };
+const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.1.0", reason: "an admin cuts each release", version: "0.1.0", holders: [] };
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
 const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-90) };
 

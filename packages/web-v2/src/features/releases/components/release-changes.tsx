@@ -76,21 +76,40 @@ function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
   );
 }
 
+/** One line per reason with a count and the issues behind it on a toggle, never a row per issue. */
 function Unclassified({ items, slug }: { items: ReleaseChanges["unclassified"]; slug?: string }) {
+  const byWhy = new Map<string, ReleaseChanges["unclassified"]>();
+  for (const u of items) byWhy.set(u.why, [...(byWhy.get(u.why) ?? []), u]);
   return (
-    <ul className="border-t border-line-subtle">
-      {items.map((u) => (
-        <li key={u.key} className="grid gap-0.5 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
-          <span className="flex flex-wrap items-baseline gap-x-2">
-            <IssueKeys keys={[u.key]} slug={slug} />
-            <span className="min-w-0 flex-1 text-12-5 text-muted">{u.why}</span>
-          </span>
-          {u.paths.length > 0 ? (
-            <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span>
-          ) : null}
-        </li>
+    <ul className="border-t border-line-subtle" data-testid="release-unclassified-list">
+      {[...byWhy.entries()].map(([why, group]) => (
+        <UnclassifiedReason key={why} why={why} group={group} slug={slug} />
       ))}
     </ul>
+  );
+}
+
+function UnclassifiedReason({ why, group, slug }: { why: string; group: ReleaseChanges["unclassified"]; slug?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="grid gap-1 border-b border-line-subtle py-2 text-13" data-testid="release-unclassified">
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-12-5" testId="release-unclassified-toggle">
+          {plural(group.length, "issue")}
+        </DisclosureToggle>
+        <span className="min-w-0 flex-1 text-12-5 text-muted">{why}</span>
+      </span>
+      {open ? (
+        <ul className="grid gap-1 pl-4">
+          {group.map((u) => (
+            <li key={u.key} className="grid gap-0.5">
+              <IssueKeys keys={[u.key]} slug={slug} />
+              {u.paths.length > 0 ? <span className="break-all font-mono text-11-5 text-subtle">{u.paths.join(" · ")}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 
@@ -99,7 +118,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
   const deploys = changes.surfaces.filter((s) => !s.shipsNothing);
   const design = changes.surfaces.filter((s) => s.shipsNothing);
   return (
-    <section aria-label="What changes" data-testid="release-changes" data-tour="rel-changes" className="grid gap-4">
+    <section aria-label="What changes" data-testid="release-changes" className="grid gap-4">
       <div>
         <ViewHeading hint="What each issue's landing names, by where it takes effect">What changes</ViewHeading>
         <p className="text-13-5" data-testid="release-changes-sentence">
@@ -113,7 +132,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         ) : null}
       </div>
       {changes.risks.length > 0 ? (
-        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks" data-tour="rel-risk">
+        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks">
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
               <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
@@ -131,7 +150,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         </ul>
       ) : null}
       {design.length > 0 ? (
-        <div data-testid="release-ships-nothing" data-tour="rel-design">
+        <div data-testid="release-ships-nothing">
           <FieldLabel>Design — ships nothing</FieldLabel>
           <ul className="border-t border-line-subtle">
             {design.map((s) => (

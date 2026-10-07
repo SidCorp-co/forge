@@ -37,6 +37,7 @@ export const notificationTypes = [
   'contract_version_published',
   'requirement_delivered',
   'feedback_verify_asked',
+  'feedback_shipped',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

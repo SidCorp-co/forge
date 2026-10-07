@@ -15,6 +15,7 @@ import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
 import type { ScopeForecast } from "@forge/contracts/forecast";
+import { ReleaseLine } from "@/features/forecast/components/release-line";
 import { criteriaRestText } from "@/features/forecast/text";
 import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
@@ -22,14 +23,12 @@ import { PromoteDraftRow } from "./promote-drafts";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
-function CriteriaRest({ passing, criteria, scope }: { passing: number; criteria: number; scope: ScopeForecast }) {
+export function CriteriaRest({ passing, criteria, scope, slug }: { passing: number; criteria: number; scope: ScopeForecast; slug: string }) {
   const read = criteriaRestText(passing, criteria, scope);
   if (!read) return null;
   return (
     <p className="pb-1.5" data-testid="facts-forecast">
-      <span className="fg-body-sm text-muted" title={read.detail} data-testid="criteria-rest-line">
-        {read.line}
-      </span>
+      <ReleaseLine said={read} slug={slug} className="fg-body-sm text-muted" testId="criteria-rest-line" />
     </p>
   );
 }
@@ -167,7 +166,7 @@ export function RequirementFacts({
       </FactsGroup>
 
       <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
-        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} /> : null}
+        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} /> : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
         ) : (

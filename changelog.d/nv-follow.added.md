@@ -1,0 +1,1 @@
+**Requirements, feedback and releases can be followed to each other.** Each names who owes the cut and links the release; a shipped release tells the reporter and the feedback page says so; the release page leads with what users get.

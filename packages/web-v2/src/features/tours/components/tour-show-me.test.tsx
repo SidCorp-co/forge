@@ -28,7 +28,7 @@ describe("Show me on a What's new entry", () => {
   it("links an entry's tour to the page of the open project it runs on, with the step count", async () => {
     panel(feedOf([entry("e1", "new", "2026-10-07T08:00:00Z", { tour: { id: "release-what-changes", revision: 1 } })]));
     const link = await screen.findByTestId("whats-new-tour-link");
-    expect(link).toHaveTextContent("Show me · 3 steps");
+    expect(link).toHaveTextContent("Show me · 2 steps");
     expect(link).toHaveAttribute("href", "/projects/forge/releases/0.4.0-dev.91?tour=release-what-changes");
   });
 

@@ -5,6 +5,7 @@
 import { and, eq, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { emitEvent } from '../outbox/index.js';
 
 type RunMetadataWrite = (
   | {
@@ -54,9 +55,13 @@ export async function stampReleaseVersion(
   return rows.length === 1;
 }
 
-/** Stamp the moment a versioned release shipped, once: a retry never moves it. */
+/**
+ * Stamp the moment a versioned release shipped, once: a retry never moves it. The stamp that took
+ * tells the outbox (`release.shipped`) in the same unit, so the people whose feedback the release
+ * closed hear of it exactly when it is on record and a retry never tells them twice.
+ */
 export async function stampReleaseShipped(runId: string, executor: Tx = db): Promise<void> {
-  await executor
+  const rows = await executor
     .update(pipelineRuns)
     .set({ releaseReleasedAt: sql`now()`, updatedAt: sql`now()` })
     .where(
@@ -65,5 +70,19 @@ export async function stampReleaseShipped(runId: string, executor: Tx = db): Pro
         isNotNull(pipelineRuns.releaseVersion),
         isNull(pipelineRuns.releaseReleasedAt),
       ),
-    );
+    )
+    .returning({
+      projectId: pipelineRuns.projectId,
+      version: pipelineRuns.releaseVersion,
+      metadata: pipelineRuns.metadata,
+    });
+  const shipped = rows[0];
+  if (!shipped?.version) return;
+  const ids = (shipped.metadata as { issueIds?: unknown } | null)?.issueIds;
+  await emitEvent(executor, 'release.shipped', {
+    projectId: shipped.projectId,
+    runId,
+    version: shipped.version,
+    issueIds: Array.isArray(ids) ? ids.filter((i): i is string => typeof i === 'string') : [],
+  });
 }

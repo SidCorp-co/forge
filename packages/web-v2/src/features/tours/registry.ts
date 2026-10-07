@@ -44,9 +44,8 @@ const PARTS: Record<TourId, TourParts> = {
     title: "tour.release-what-changes.title",
     hint: { new: "tour.release-what-changes.hint.new", updated: "tour.release-what-changes.hint.updated" },
     steps: [
-      { anchor: "rel-changes", title: "tour.release-what-changes.step1.title", body: "tour.release-what-changes.step1.body" },
-      { anchor: "rel-risk", title: "tour.release-what-changes.step2.title", body: "tour.release-what-changes.step2.body" },
-      { anchor: "rel-design", title: "tour.release-what-changes.step3.title", body: "tour.release-what-changes.step3.body" },
+      { anchor: "rel-users", title: "tour.release-what-changes.step1.title", body: "tour.release-what-changes.step1.body" },
+      { anchor: "rel-technical", title: "tour.release-what-changes.step2.title", body: "tour.release-what-changes.step2.body" },
     ],
   },
   integrations: {

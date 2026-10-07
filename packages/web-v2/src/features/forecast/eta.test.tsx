@@ -117,7 +117,7 @@ describe("the ETA cell where there is no date", () => {
 });
 
 describe("a release a person still cuts", () => {
-  const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release" };
+  const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
 
   it("reads the landing, then who cuts it as the second line", () => {
     const d: DeliveryForecast = { ...stamp, landing: TODAY, release: manual, inHands: null, shipped: null };

@@ -27,6 +27,13 @@ const within = (span: ForecastSpan, asOf: string, now: number) => {
 
 const pausedText = (p: ForecastPaused) => `Paused — waiting on ${p.who}${p.act ? ` to ${p.act}` : ""}`;
 
+/** A line, its tooltip, and the release it names where it names one: the version a reader can open. */
+export interface Said {
+  line: string;
+  detail: string;
+  release?: string | null;
+}
+
 /** Whether a tooltip opens on the durations and the as-of; the ETA column writes its own, in the content language. */
 interface TextOpts {
   within?: boolean;
@@ -106,10 +113,11 @@ const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" }>) => `waits on 
  * version; a range to people's hands where production releases on its own; else the landing and the
  * person who owes the release, never a date for their act.
  */
-export function deliveryText(d: DeliveryForecast, now: number = Date.now(), opts: TextOpts = {}): { line: string; detail: string } {
+export function deliveryText(d: DeliveryForecast, now: number = Date.now(), opts: TextOpts = {}): Said {
   if (d.shipped) {
     const when = d.shipped.at ? ` · ${day(d.shipped.at)}` : "";
     return {
+      release: d.shipped.version,
       line: d.shipped.version ? `Shipped in ${d.shipped.version}${when}` : `Shipped${when}`,
       detail: d.shipped.at ? `Shipped ${new Date(d.shipped.at).toLocaleString()}` : "Shipped, with no release run on record",
     };
@@ -120,19 +128,20 @@ export function deliveryText(d: DeliveryForecast, now: number = Date.now(), opts
   const lead = d.landing.kind === "landed" ? `${landing.detail}.` : landing.detail;
   const hands = d.inHands && opts.within !== false ? `In people's hands ${within(d.inHands, d.asOf, now).replace(/^W/, "w")} ` : "";
   const detail = `${hands}${lead}${legDetail(leg)}`;
+  const release = leg.kind === "person" ? leg.version : null;
   if (d.landing.kind === "landed") {
     if (d.inHands) return { line: `Fixed · forecast live ${when(d.inHands, now)}`, detail };
-    if (leg.kind === "person") return { line: `Fixed · ${waitsOnText(leg)}`, detail };
+    if (leg.kind === "person") return { line: `Fixed · ${waitsOnText(leg)}`, detail, release };
     return { line: "Fixed · waits on the automatic release", detail };
   }
   const lands = `Forecast lands ${when(d.landing, now)}`;
   if (d.inHands) return { line: `Forecast live ${when(d.inHands, now)}`, detail };
-  if (leg.kind === "person") return { line: `${lands} · then ${waitsOnText(leg)}`, detail };
+  if (leg.kind === "person") return { line: `${lands} · then ${waitsOnText(leg)}`, detail, release };
   return { line: `${lands} · release time not known yet`, detail };
 }
 
 /** A feedback item's line: untriaged, who triages it; else its linked work's delivery; null where nothing ships. */
-export function feedbackForecastText(f: FeedbackForecast, now: number = Date.now()): { line: string; detail: string } | null {
+export function feedbackForecastText(f: FeedbackForecast, now: number = Date.now()): Said | null {
   if (f.triage) return { line: `Waiting on triage — ${f.triage.who} to ${f.triage.act}`, detail: f.triage.reason };
   return f.delivery ? deliveryText(f.delivery, now) : null;
 }
@@ -143,10 +152,10 @@ export function criteriaRestText(
   criteria: number,
   s: ScopeForecast | undefined,
   now: number = Date.now(),
-): { line: string; detail: string } | null {
+): Said | null {
   if (criteria === 0) return s?.delivery ? deliveryText(s.delivery, now) : null;
   const head = proven >= criteria ? `All ${criteria} criteria proven` : `${proven} of ${criteria} criteria proven`;
   if (proven >= criteria || !s?.delivery) return { line: head, detail: "Business criteria with a passing verdict." };
   const rest = deliveryText(s.delivery, now);
-  return { line: `${head} · rest ${rest.line.charAt(0).toLowerCase()}${rest.line.slice(1)}`, detail: rest.detail };
+  return { line: `${head} · rest ${rest.line.charAt(0).toLowerCase()}${rest.line.slice(1)}`, detail: rest.detail, release: rest.release ?? null };
 }

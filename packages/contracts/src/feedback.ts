@@ -551,7 +551,17 @@ export interface FeedbackSummary
 	updatedAt: string;
 }
 
+/**
+ * Whether the reporter was told the work shipped: the notice a release sent, when and for which
+ * release; or why nobody was told, so a reporter Forge cannot reach is named, never skipped.
+ */
+export type FeedbackShipNotice =
+	| { state: "told"; at: string; release: string | null }
+	| { state: "not_told"; reason: string };
+
 export interface FeedbackView extends FeedbackSummary {
+	/** Null until the work that carries the item has shipped (phase resolved or verified on an issue route). */
+	shipNotice: FeedbackShipNotice | null;
 	body: string | null;
 	whereSeen: string | null;
 	duplicateOf: string | null;

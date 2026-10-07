@@ -20,6 +20,7 @@ import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
 import { sourceOf } from './relations.js';
+import { shipNoticeOf } from './ship-notice.js';
 
 export interface FeedbackActor {
   userId: string;
@@ -182,6 +183,11 @@ export async function detailAs(
           }
         : null,
       openSuggestions: open?.n ?? 0,
+      shipNotice: await shipNoticeOf(row.id, {
+        route: row.route,
+        phase: summary.phase,
+        reporterAgency: row.reporterAgency,
+      }),
       can: {
         triage:
           holds(facts, 'feedback.approve') &&

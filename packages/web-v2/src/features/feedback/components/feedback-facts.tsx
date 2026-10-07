@@ -12,8 +12,14 @@ import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
 import { FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_LABELS } from "@forge/contracts/feedback";
+import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import type { FeedbackForecast } from "@forge/contracts/forecast";
+import { EtaInline } from "@/features/forecast/components/eta-cell";
+import { ReleaseLine } from "@/features/forecast/components/release-line";
+import { type EtaClock, etaOfFeedback } from "@/features/forecast/eta";
+import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { feedbackForecastText } from "@/features/forecast/text";
+import { releaseHref } from "@/lib/routes/releases";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 
@@ -71,19 +77,65 @@ const CARRIER_FAMILY = {
 } as const satisfies Record<FeedbackRoute, StatusFamily | null>;
 
 /** The item's line as its reporter means "done": who triages it, or when the fix is in people's hands. */
-function ForecastFact({ forecast }: { forecast: FeedbackForecast | undefined }) {
+function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | undefined; slug: string; clock?: EtaClock | undefined }) {
   const read = forecast ? feedbackForecastText(forecast) : null;
   if (!read) return null;
+  const eta = clock ? etaOfFeedback(forecast, clock) : null;
   return (
-    <Fact label="Forecast" testId="facts-feedback-forecast">
-      <span className="fg-body-sm text-muted" title={read.detail} data-testid="feedback-forecast-line">
-        {read.line}
+    <>
+      {eta ? (
+        <Fact label={ETA_COPY[clock?.lang ?? "en"].header} testId="facts-feedback-eta">
+          <EtaInline eta={eta} clock={clock as EtaClock} />
+        </Fact>
+      ) : null}
+      <Fact label="Forecast" testId="facts-feedback-forecast">
+        <ReleaseLine said={read} slug={slug} className="fg-body-sm text-muted" testId="feedback-forecast-line" />
+      </Fact>
+    </>
+  );
+}
+
+/** Whether the release that shipped the work told the reporter, or why nobody was told. */
+function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | undefined; slug: string }) {
+  if (!notice) return null;
+  if (notice.state === "told") {
+    return (
+      <Fact label="Reporter told" testId="facts-ship-notice">
+        <span className="fg-body-sm" title={formatStamp(notice.at)} data-testid="ship-notice-told">
+          {formatRelativeTime(notice.at)}
+          {notice.release ? (
+            <>
+              {" · "}
+              <Link href={releaseHref(slug, notice.release)} className="font-mono text-link hover:underline">
+                {notice.release}
+              </Link>
+            </>
+          ) : null}
+        </span>
+      </Fact>
+    );
+  }
+  return (
+    <Fact label="Reporter told" testId="facts-ship-notice">
+      <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
+        Not told · {notice.reason}
       </span>
     </Fact>
   );
 }
 
-export function FeedbackFacts({ f, slug, forecast }: { f: FeedbackView; slug: string; forecast?: FeedbackForecast | undefined }) {
+export function FeedbackFacts({
+  f,
+  slug,
+  forecast,
+  clock,
+}: {
+  f: FeedbackView;
+  slug: string;
+  forecast?: FeedbackForecast | undefined;
+  /** Language and clock of the ETA row; without one the row is left out. */
+  clock?: EtaClock | undefined;
+}) {
   const t = f.target;
   const r = f.route;
   const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
@@ -98,7 +150,8 @@ export function FeedbackFacts({ f, slug, forecast }: { f: FeedbackView; slug: st
             <WaitingOn w={f.waitingOn} />
           </Fact>
         ) : null}
-        <ForecastFact forecast={forecast} />
+        <ForecastFact forecast={forecast} slug={slug} clock={clock} />
+        <ShipNoticeFact notice={f.shipNotice} slug={slug} />
         <Fact label="Severity">
           <StatusBadge family="severity" value={f.severity} />
         </Fact>
