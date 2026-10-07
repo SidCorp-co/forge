@@ -136,25 +136,33 @@ fn consts_at(tokens: &[TokenTree]) -> Consts {
     into
 }
 
-/// The literal values `name` may hold, following one const through another; `None` where any
-/// definition of it is not one the scan can read.
-fn resolve(consts: &Consts, name: &str, depth: usize) -> Option<Vec<String>> {
+/// The literal values `name` may hold, following one const through another however long the
+/// chain; `None` where any definition of it is not one the scan can read, or the chain comes back
+/// to a name it is already following. `chain` holds the names being followed.
+fn resolve(consts: &Consts, name: &str, chain: &mut Vec<String>) -> Option<Vec<String>> {
+    let key = format!("global {name}");
+    if chain.contains(&key) {
+        return None;
+    }
     let defs = consts.get(name)?;
-    let mut out = Vec::new();
+    chain.push(key);
+    let mut out = Some(Vec::new());
     for d in defs {
-        match d.as_deref() {
+        let got = match d.as_deref() {
             Some(v) if v.starts_with('\u{0}') => {
-                if depth > 8 {
-                    return None;
-                }
                 let name = v[1..].rsplit_once("::").map_or(&v[1..], |(_, last)| last);
-                out.extend(resolve(consts, name, depth + 1)?);
+                resolve(consts, name, chain)
             }
-            Some(v) => out.push(v.to_string()),
-            None => return None,
+            Some(v) => Some(vec![v.to_string()]),
+            None => None,
+        };
+        match (&mut out, got) {
+            (Some(all), Some(vals)) => all.extend(vals),
+            _ => out = None,
         }
     }
-    Some(out)
+    chain.pop();
+    out
 }
 
 /// What one file holds: its routes, and what the scan refuses outright because it cannot see
@@ -475,7 +483,7 @@ impl Scan<'_> {
         }
         if let Some(n) = path_name(&args) {
             let qualified = (0..args.len()).any(|k| is_path_sep(&args, k));
-            return match self.value_of(&n, qualified, stack, 0) {
+            return match self.value_of(&n, qualified, stack, &mut Vec::new()) {
                 Some(vals) if vals.iter().any(|v| self.variables.contains(&v.as_str())) => {
                     Some(format!("reads {vals:?} through {n}"))
                 }
@@ -495,11 +503,8 @@ impl Scan<'_> {
         n: &str,
         qualified: bool,
         stack: &[Frame],
-        depth: usize,
+        chain: &mut Vec<String>,
     ) -> Option<Vec<String>> {
-        if depth > 8 {
-            return None;
-        }
         let defs = if qualified {
             None
         } else {
@@ -507,24 +512,34 @@ impl Scan<'_> {
         };
         let Some(defs) = defs else {
             return if qualified || self.b.imported.contains(n) {
-                resolve(self.consts, n, depth)
+                resolve(self.consts, n, chain)
             } else {
                 None
             };
         };
-        let mut out = Vec::new();
+        let key = format!("in scope {n}");
+        if chain.contains(&key) {
+            return None;
+        }
+        chain.push(key);
+        let mut out = Some(Vec::new());
         for d in defs {
-            match d.as_deref() {
+            let got = match d.as_deref() {
                 // A qualified reference names its own module's const, never the one in scope here.
                 Some(v) if v.starts_with('\u{0}') => match v[1..].rsplit_once("::") {
-                    Some((_, last)) => out.extend(resolve(self.consts, last, depth + 1)?),
-                    None => out.extend(self.value_of(&v[1..], false, stack, depth + 1)?),
+                    Some((_, last)) => resolve(self.consts, last, chain),
+                    None => self.value_of(&v[1..], false, stack, chain),
                 },
-                Some(v) => out.push(v.to_string()),
-                None => return None,
+                Some(v) => Some(vec![v.to_string()]),
+                None => None,
+            };
+            match (&mut out, got) {
+                (Some(all), Some(vals)) => all.extend(vals),
+                _ => out = None,
             }
         }
-        Some(out)
+        chain.pop();
+        out
     }
 
     /// Inside a `use`: the identifiers that are routes wherever they stand, and nothing it binds.
@@ -1040,6 +1055,28 @@ mod tests {
                 "var_os(READ); let _ = std::env::var_os(READ); }",
             ),
             3,
+        );
+    }
+
+    /// The fourth whole-set read's F1: a chain of consts is followed to its end however long it
+    /// is, and one that comes back on itself is no value.
+    #[test]
+    fn a_long_const_chain_resolves_and_a_cycle_counts() {
+        let names: Vec<String> = (0..12).map(|i| format!("C{i}")).collect();
+        let mut chain: String = names
+            .windows(2)
+            .map(|w| format!("const {}: &str = {};\n", w[0], w[1]))
+            .collect();
+        chain.push_str("const C11: &str = \"FORGE_TOKEN\";\n");
+        counts(&format!("{chain}fn f() {{ std::env::var_os(C0); }}"), 0);
+        counts(
+            "const A: &str = B; const B: &str = A; fn f() { std::env::var_os(A); }",
+            1,
+        );
+        counts(
+            "mod m { pub const A: &str = crate::m::B; pub const B: &str = m::A; }
+             fn f() { std::env::var_os(m::A); }",
+            1,
         );
     }
 
