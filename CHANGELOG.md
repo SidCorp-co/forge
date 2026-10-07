@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.103] - 2026-10-07
+
+Choose the interface language: Vietnamese chrome for the dashboard, navigation and status labels
+
+### Added
+
+- **Each person picks the interface language.** Account preferences offer Project default, English or Tiếng Việt; the Dashboard, navigation, lists, status labels and forecast lines follow it, with dates and times in the same language.
+
 ## [0.4.0-dev.102] - 2026-10-07
 
 Feedback triage: accept, decline with reason, message reporters, auto-verify fixes
