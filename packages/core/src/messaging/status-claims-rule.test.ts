@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { cellFor } from './cells.js';
 import { facts } from './facts.js';
-import { GROUNDING_TOOLS, STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
 import { screenAtDoor } from './screen.js';
+import { GROUNDING_TOOLS, STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
 
 // JU-1: the project assistant answered status, progress, release, roadmap, lateness and decision
 // questions from issue counts and memory, and was wrong. Each reply below is the opening sentence

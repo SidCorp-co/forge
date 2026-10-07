@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { facts, type ProgressFacts } from './facts.js';
-import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
+import { countsRead, PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 
 const snapshot = (
   shipped: number,
@@ -97,5 +97,29 @@ describe('an issue count the snapshot does not hold is still refused, naming the
   it('refuses a total one off the snapshot, read whole', () => {
     const [refusal] = judged('tổng **1.062** việc', snapshot(791, 246, 10, 14)); // i18n-allow: a planted near-miss
     expect(refusal?.why).toContain('states 1062 issues');
+  });
+});
+
+describe('a figure the turn read is not a made-up one', () => {
+  // h5 and h7 on 2026-10-07: refused for the 26 issues release 0.4.0 held, which the status read
+  // returned and no project-wide snapshot figure is.
+  const reply = 'Release 0.4.0: **26 hạng mục đã hoàn tất** phần triển khai.'; // i18n-allow: a recorded Vietnamese reply replayed against the rule
+  const status =
+    '{"nextRelease":{"version":"0.4.0","progress":{"total":26,"shipped":0,"awaitingRelease":26,"toDo":0}}}';
+
+  it('refuses the count when nothing this turn read it', () => {
+    expect(judged(reply, snapshot(83, 5, 36, 12))).toHaveLength(1);
+  });
+
+  it('passes it when a read this turn returned it', () => {
+    const readCounts = countsRead([status]);
+    expect(
+      PROGRESS_FIGURES_MATCH.check(reply, facts({ progress: snapshot(83, 5, 36, 12), readCounts })),
+    ).toEqual([]);
+  });
+
+  it('reads counts as JSON numbers only, never a version or a figure in prose', () => {
+    const read = countsRead([status, 'released 0.4.0 with 31 issues']);
+    expect([...read].sort((a, b) => a - b)).toEqual([0, 26]);
   });
 });

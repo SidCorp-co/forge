@@ -112,14 +112,16 @@ function shippedOf(
       : [];
   });
   requirementsShipped.sort((a, b) => b.at.localeCompare(a.at));
+  // the counts lead and the lists follow, so a reader cut short (a chat result's grounding cap)
+  // still holds every figure the section states
   return {
     asOf,
     since: since.toISOString(),
-    latest: shipped[0] ? view(shipped[0]) : null,
-    releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map(view),
     releaseCount: inWindow.length,
     issueCount: inWindow.reduce((n, r) => n + r.issueCount, 0),
     requirementsShipped,
+    latest: shipped[0] ? view(shipped[0]) : null,
+    releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map(view),
   };
 }
 
@@ -377,15 +379,16 @@ export async function readProjectStatus(
     asOf: now.toISOString(),
     days,
     viewer: { id: viewer.userId, name: people.get(viewer.userId)?.name ?? null },
-    shipped: shippedOf(read.releases, line.requirements, since, at),
-    inFlight: inFlightOf(read.issues, at),
-    waits: waitsOf(read.rows, at),
-    requirements: requirementsOf(read.requirements, scopes, at),
+    // the small sections first and the long lists last, for the reader a cap cuts short
     nextRelease: nextReleaseOf(read.releases, line.coming.draft, line.coming.asOf),
+    inFlight: inFlightOf(read.issues, at),
     late: lateOf(line.coming, feedback, {
       feedback: new Map(read.feedback.map((f) => [f.key, f.title])),
       draft: draftVersion,
     }),
+    shipped: shippedOf(read.releases, line.requirements, since, at),
+    requirements: requirementsOf(read.requirements, scopes, at),
+    waits: waitsOf(read.rows, at),
     roadmap: await roadmapOf(read.requirements, line.coming.requirements, delivery),
   };
 }

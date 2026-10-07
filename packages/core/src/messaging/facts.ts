@@ -31,6 +31,11 @@ export interface MessageFacts {
   /** The tools the writer's turn was offered, by the names it calls them; empty where none is known. */
   readonly offeredTools: readonly string[];
   readonly progress: ProgressFacts | null;
+  /**
+   * The counts the writer's own reads returned this turn, as JSON numbers: a figure among them was
+   * read, not made up, though no project-wide snapshot holds it (a release's 26 landed issues).
+   */
+  readonly readCounts: ReadonlySet<number>;
   readonly issueLookupFailed: boolean;
 }
 
@@ -43,6 +48,7 @@ export const NO_FACTS: MessageFacts = {
   toolCalls: [],
   offeredTools: [],
   progress: null,
+  readCounts: new Set(),
   issueLookupFailed: false,
 };
 
