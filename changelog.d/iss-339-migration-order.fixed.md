@@ -1,1 +1,0 @@
-**Choosing an interface language no longer stops core from starting.** The language migration cleared stored values before allowing them to be empty, so any database with saved preferences refused it and dev.103 never came up.
