@@ -28,7 +28,7 @@ import {
   type StatusWait,
   type StatusWaits,
 } from '@forge/contracts/project-status';
-import type { ReleaseListResponse, ReleaseSummary } from '@forge/contracts/releases';
+import type { ReleaseListResponse, ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
 import {
   REQUIREMENT_STATES,
   type RequirementState,
@@ -41,7 +41,7 @@ import {
   needsYouViewerOf,
   readAttention,
 } from '../development/index.js';
-import { readFeedbackForecasts, readForecastLine } from '../forecast/index.js';
+import { issueProgressOf, readFeedbackForecasts, readForecastLine } from '../forecast/index.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
 import { holds } from '../permissions/index.js';
@@ -213,14 +213,43 @@ function requirementsOf(
   };
 }
 
+/** A release cut and not yet in people's hands, nor ended. */
+const ON_ITS_WAY: ReadonlySet<ReleaseState> = new Set([
+  'in_progress',
+  'awaiting_approval',
+  'returned',
+]);
+
+const progressOfRelease = (r: ReleaseSummary): IssueProgress =>
+  issueProgressOf(r.contents.flatMap((g) => g.issues));
+
 function nextReleaseOf(
   releases: ReleaseListResponse,
   draft: ScopeForecast,
   asOf: string,
 ): StatusNextRelease {
   const summary = releases.releases.find((r) => r.state === 'draft') ?? null;
+  const cut = releases.releases
+    .filter((r) => ON_ITS_WAY.has(r.state))
+    .sort((a, b) => (a.openedAt ?? a.at).localeCompare(b.openedAt ?? b.at))[0];
+  if (cut) {
+    const w = cut.waitingOn;
+    return {
+      asOf,
+      version: cut.version,
+      state: cut.state,
+      progress: progressOfRelease(cut),
+      requirements: cut.requirements,
+      forecast: null,
+      turn: w.act ? { who: w.who, act: w.act } : null,
+      behind:
+        summary && summary.issueCount > 0
+          ? { version: summary.version, issueCount: summary.issueCount }
+          : null,
+    };
+  }
   const leg = draft.delivery?.release;
-  const cut = draft.next
+  const turn = draft.next
     ? { who: draft.next.who, act: draft.next.act }
     : leg?.kind === 'person'
       ? { who: leg.who, act: leg.act }
@@ -228,10 +257,12 @@ function nextReleaseOf(
   return {
     asOf,
     version: summary?.version ?? null,
+    state: summary?.state ?? null,
     progress: summary ? draft.progress : NO_PROGRESS,
     requirements: summary?.requirements ?? [],
     forecast: summary ? draft : null,
-    cut: summary ? cut : null,
+    turn: summary ? turn : null,
+    behind: null,
   };
 }
 

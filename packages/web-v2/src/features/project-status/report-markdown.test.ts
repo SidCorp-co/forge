@@ -38,6 +38,19 @@ describe("the status report as Markdown", () => {
     expect(md.match(/_read /g)).toHaveLength(7);
   });
 
+  it("names a release already cut as the next one, its state and whose turn, and the draft behind it", () => {
+    const cut = {
+      ...STATUS.nextRelease,
+      version: "0.3.0",
+      state: "awaiting_approval" as const,
+      progress: { total: 26, shipped: 0, awaitingRelease: 26, toDo: 0 },
+      turn: { who: "Lan", act: "approve 0.3.0" },
+      behind: { version: "0.4.0", issueCount: 2 },
+    };
+    const md = statusMarkdown({ ...STATUS, nextRelease: cut }, words("en"));
+    expect(md).toContain(`**0.3.0** · ${labelCopy("en")("releaseState", "awaiting_approval")} · 0 shipped · 26 landed, awaiting release · 0 to do · Lan — approve 0.3.0 · draft 0.4.0 waits behind it with 2 issues`);
+  });
+
   it("says plainly when nothing shipped in the window", () => {
     const quiet = { ...STATUS, shipped: { ...STATUS.shipped, releases: [], releaseCount: 0, issueCount: 0, requirementsShipped: [] } };
     expect(statusMarkdown(quiet, words("en"))).toContain("Nothing reached users in the last 7 days.");

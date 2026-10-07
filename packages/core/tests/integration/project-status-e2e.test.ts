@@ -58,6 +58,7 @@ describe('the project status read', () => {
   let status: Body;
   const req = { drafted: '', agreed: '', deferred: '' };
   let lastVersion = '';
+  let landed: Awaited<ReturnType<typeof issue>>;
 
   beforeAll(async () => {
     w = await world();
@@ -76,7 +77,7 @@ describe('the project status read', () => {
       INSERT INTO requirement_deferrals (requirement_id, act, from_status, target_phase, reason, decided_by)
       VALUES (${deferred.id}, 'defer', 'draft', 'phase 2', 'printing waits for the new layout', ${w.userId})
     `);
-    await issue(w, { status: 'awaiting_release', createdAt: ago(4), mergedAt: ago(1) });
+    landed = await issue(w, { status: 'awaiting_release', createdAt: ago(4), mergedAt: ago(1) });
     status = await get(w, '/status?days=7');
   }, 120_000);
 
@@ -165,6 +166,31 @@ describe('the project status read', () => {
       expect(Number.isNaN(at), section).toBe(false);
       expect(at, section).toBeGreaterThanOrEqual(asOf - 60_000);
     }
+  });
+
+  it('names a release already cut as the next one, before any draft, with whose turn moves it', async () => {
+    w.versions += 1;
+    const version = `0.0.${w.versions}`;
+    await db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, metadata)
+      VALUES (gen_random_uuid(), ${w.projectId}, 'system', 'running', now(), ${version},
+              ${JSON.stringify({ issueIds: [landed.id], source: 'release-batch' })}::jsonb)
+    `);
+    const next = (await get(w, '/status?days=7')).nextRelease as Body;
+    const rows = (await get(w, '/releases')).releases as Body[];
+    const row = rows.find((r) => r.version === version);
+    expect(row?.state).toBe('in_progress');
+    expect(next.version).toBe(version);
+    expect(next.state).toBe(row?.state);
+    expect(next.progress).toEqual({ total: 1, shipped: 0, awaitingRelease: 1, toDo: 0 });
+    expect(next.forecast).toBeNull();
+    // the draft behind it is the Releases read's own draft row, said only while it holds issues
+    const draft = rows.find((r) => r.state === 'draft');
+    expect(next.behind).toEqual(
+      draft && Number(draft.issueCount) > 0
+        ? { version: draft.version, issueCount: draft.issueCount }
+        : null,
+    );
   });
 
   it('refuses a window it cannot read, by name', async () => {

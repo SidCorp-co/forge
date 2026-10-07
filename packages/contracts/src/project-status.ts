@@ -7,7 +7,7 @@
 import type { DeliveryForecast, ForecastLate, IssueProgress, ScopeForecast } from "./forecast.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
-import type { ReleaseContentGroup, ReleaseVerified } from "./releases.js";
+import type { ReleaseContentGroup, ReleaseState, ReleaseVerified } from "./releases.js";
 import type { RequirementState } from "./requirements.js";
 import type { WaitingOn } from "./standing.js";
 
@@ -104,14 +104,22 @@ export interface StatusRequirements extends Stamped {
 	items: StatusRequirement[];
 }
 
-/** The draft release: what it holds, when it is forecast to reach people and who cuts it. */
+/**
+ * The release nearest people's hands: one already cut and on its way (`in_progress`,
+ * `awaiting_approval`, `returned`) before the draft, since a cut release reaches people first.
+ */
 export interface StatusNextRelease extends Stamped {
 	version: string | null;
-	/** Its issues in the one progress vocabulary; all zero where no release is being prepared. */
+	state: ReleaseState | null;
+	/** Its issues in the one progress vocabulary; all zero where no release is on its way. */
 	progress: IssueProgress;
 	requirements: string[];
+	/** The draft's forecast; null for a release already cut, which the forecast does not model. */
 	forecast: ScopeForecast | null;
-	cut: { who: string; act: string } | null;
+	/** Whose act moves it next: the cut release's own turn, or whoever cuts the draft. */
+	turn: { who: string; act: string } | null;
+	/** The draft collecting behind a release already cut. */
+	behind: { version: string; issueCount: number } | null;
 }
 
 export interface StatusLateItem {

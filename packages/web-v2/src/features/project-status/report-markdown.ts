@@ -105,9 +105,11 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   else {
     out.push(
       `**${n.version}** · ${join([
+        n.state && n.state !== "draft" ? label("releaseState", n.state) : null,
         progressText(n.progress, t),
         n.forecast?.delivery ? etaInline(etaOfDelivery(n.forecast.delivery, clock), clock) : null,
-        n.cut ? waitText({ kind: "person", who: n.cut.who, act: n.cut.act, rule: "", ref: null, dueAt: null }, clock.lang) : null,
+        n.turn ? waitText({ kind: "person", who: n.turn.who, act: n.turn.act, rule: "", ref: null, dueAt: null }, clock.lang) : null,
+        n.behind ? t("status.behind", { version: n.behind.version, n: n.behind.issueCount }) : null,
       ])}`,
     );
   }

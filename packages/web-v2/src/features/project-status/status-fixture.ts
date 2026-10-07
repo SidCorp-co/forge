@@ -89,7 +89,7 @@ export const STATUS: ProjectStatus = {
       },
     ],
   },
-  nextRelease: { asOf: AT, version: "0.3.0", progress: { total: 3, shipped: 0, awaitingRelease: 3, toDo: 0 }, requirements: ["REQ-4"], forecast: null, cut: { who: "A project admin", act: "cut 0.3.0" } },
+  nextRelease: { asOf: AT, version: "0.3.0", state: "draft", progress: { total: 3, shipped: 0, awaitingRelease: 3, toDo: 0 }, requirements: ["REQ-4"], forecast: null, turn: { who: "A project admin", act: "cut 0.3.0" }, behind: null },
   late: {
     asOf: AT,
     items: [{ kind: "requirement", key: "REQ-4", title: "Referrals", late: { reason: "p85_passed", since: "2026-10-07T08:00:00.000Z", byMinutes: 120 } }],

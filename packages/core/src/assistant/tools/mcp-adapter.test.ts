@@ -55,6 +55,11 @@ describe('the chat adapter over a project-bound turn', () => {
     expect(fields.forge_release).toEqual(['version']);
   });
 
+  it('offers each read its whole description, none cut at the cap', () => {
+    for (const t of buildToolset(ctx, [...CHAT_READ_MODEL_TOOLS]).tools)
+      expect(t.function.description, t.function.name).not.toContain('[truncated]');
+  });
+
   it('pins the project and refuses a read missing what it reads, by name', async () => {
     const { execute } = buildToolset(ctx, [...CHAT_READ_MODEL_TOOLS]);
     const get = await execute('forge_requirement', JSON.stringify({ requirement: 'twelve' }));

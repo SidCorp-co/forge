@@ -248,9 +248,15 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
             <Link href={releaseHref(slug, s.nextRelease.version)} className="font-mono text-13 font-semibold text-link hover:underline">
               {s.nextRelease.version}
             </Link>
+            {s.nextRelease.state && s.nextRelease.state !== "draft" ? <span className="text-muted">{label("releaseState", s.nextRelease.state)}</span> : null}
             <IssueProgressText progress={s.nextRelease.progress} className="text-muted" />
             {s.nextRelease.forecast?.delivery ? eta(s.nextRelease.forecast.delivery, clock) : null}
-            {s.nextRelease.cut ? <WaitingOn w={{ kind: "person", who: s.nextRelease.cut.who, act: s.nextRelease.cut.act }} /> : null}
+            {s.nextRelease.turn ? <WaitingOn w={{ kind: "person", who: s.nextRelease.turn.who, act: s.nextRelease.turn.act }} /> : null}
+            {s.nextRelease.behind ? (
+              <span className="text-muted" data-testid="status-next-behind">
+                {t("status.behind", { version: s.nextRelease.behind.version, n: s.nextRelease.behind.issueCount })}
+              </span>
+            ) : null}
           </p>
         )}
       </Section>
