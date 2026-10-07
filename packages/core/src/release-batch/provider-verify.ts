@@ -14,6 +14,7 @@ import {
   readStorefrontPublished,
   type StorefrontServed,
 } from '../integrations/index.js';
+import { type Carrier, readCarriers } from '../issues/index.js';
 import type { ReleaseChannel } from './plan.js';
 import {
   type Judged,
@@ -24,12 +25,15 @@ import {
   judgeWorkflow,
 } from './provider-judge.js';
 import {
+  type CarriedLanding,
   type DesignLanding,
   type Landings,
   landingsOf,
   type ProviderMismatch,
 } from './provider-landings.js';
 import { readDesignApprovals, readProviderRoster } from './provider-roster.js';
+
+type CarrierRead = { ok: true; carrier: Carrier } | { ok: false; why: string };
 
 export type { ProviderMismatch } from './provider-landings.js';
 
@@ -49,6 +53,8 @@ export function mismatchSentence(m: ProviderMismatch): string {
       return `${m.issue} landed ${m.landed ?? `theme ${m.ref}`}, and ${m.why}`;
     case 'setting':
       return `${m.issue} landed setting \`${m.ref}\` = \`${m.landed}\`, and ${m.why}`;
+    case 'carried':
+      return `${m.issue} marked \`${m.ref}\` carried by ${m.landed}, and ${m.why}`;
     case 'route':
     case 'page':
     case 'design':
@@ -91,12 +97,57 @@ function judgeDesign(
   };
 }
 
+/**
+ * An artifact marked carried by another issue: reported, not checked, where that issue's own
+ * release can still ship it — it exists in this project, has not closed or dropped, and is not in
+ * this same release (there it would be this release's to ship). Anything else is refused by name.
+ */
+function judgeCarried(
+  c: CarriedLanding,
+  read: CarrierRead | undefined,
+  roster: ReadonlySet<string>,
+): Judged {
+  const refuse = (why: string): Judged => ({
+    carried: false,
+    mismatch: {
+      issue: c.issue,
+      kind: 'carried',
+      ref: c.ref,
+      workflow: null,
+      workflowCode: null,
+      landed: c.carrier,
+      served: null,
+      why,
+    },
+  });
+  if (!read?.ok) return refuse(read?.why ?? `\`${c.carrier}\` was not read`);
+  const { carrier } = read;
+  if (roster.has(carrier.id)) {
+    return refuse(
+      `${carrier.key} is claimed by this same release, so no later release carries it: it is this release's to ship. Mark it as ${c.issue}'s own landing (unmark, then mark again without \`carriedBy\`) and it is verified here`,
+    );
+  }
+  if (carrier.status === 'closed' || carrier.status === 'dropped') {
+    return refuse(
+      `${carrier.key} is \`${carrier.status}\`, so no release of it will ship this artifact`,
+    );
+  }
+  return {
+    carried: true,
+    how: `carried by ${carrier.key} (\`${carrier.status}\`), whose own release ships it and verifies it there; not checked in this one`,
+  };
+}
+
 /** Every landing against what the provider serves; green only where every one is carried. */
 export function judgeProviderRecord(
   found: Landings,
   served: StorefrontServed,
   approvals: ReadonlyMap<string, string>,
   label: string,
+  carriage: { carriers: ReadonlyMap<string, CarrierRead>; roster: ReadonlySet<string> } = {
+    carriers: new Map(),
+    roster: new Set(),
+  },
 ): ProviderOutcome {
   const mismatches = [...found.unprovable];
   const lines: string[] = [];
@@ -114,6 +165,11 @@ export function judgeProviderRecord(
   }
   for (const s of found.settings) {
     take(s.issue, s.ref, judgeSetting(s, served.settings.get(s.key), label));
+  }
+  for (const c of found.carried) {
+    const judged = judgeCarried(c, carriage.carriers.get(c.carrier), carriage.roster);
+    if (judged.carried) lines.push(`${c.issue}: ${c.ref} — ${judged.how}`);
+    else mismatches.push(judged.mismatch);
   }
   for (const d of found.design) {
     const judged = judgeDesign(d, approvals, label);
@@ -188,7 +244,7 @@ export async function verifyByProviderRecord(args: {
   const asking =
     ask.workflowIds.length + ask.routeIds.length + ask.pageIds.length + ask.settingKeys.length >
       0 || ask.theme;
-  const [served, approvals] = await Promise.all([
+  const [served, approvals, carriers] = await Promise.all([
     asking
       ? readStorefrontPublished({ provider: channel.provider, binding: channel.bindingId, ask })
       : Promise.resolve<StorefrontServed>({
@@ -202,6 +258,13 @@ export async function verifyByProviderRecord(args: {
       projectId,
       found.design.flatMap((d) => d.refs),
     ),
+    readCarriers(
+      projectId,
+      found.carried.map((c) => c.carrier),
+    ),
   ]);
-  return judgeProviderRecord(found, served, approvals, label);
+  return judgeProviderRecord(found, served, approvals, label, {
+    carriers,
+    roster: new Set(args.issueIds),
+  });
 }

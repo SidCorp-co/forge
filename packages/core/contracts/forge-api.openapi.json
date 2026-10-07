@@ -11787,6 +11787,11 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "carriedBy": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "change": {
                           "enum": [
                             "added",
@@ -11947,6 +11952,11 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "carriedBy": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "change": {
                           "enum": [
                             "added",

@@ -70,6 +70,11 @@ function SurfaceRow({ s, slug }: { s: ReleaseSurfaceChanges; slug?: string }) {
             <li key={`${a.change}:${a.ref}`} className="flex flex-wrap items-center gap-x-2 text-12-5" data-testid="release-artifact">
               <EnumBadge family="artifactChange" value={a.change} />
               <span className="min-w-0 break-all font-mono text-12">{a.ref}</span>
+              {a.carriedBy ? (
+                <span className="text-12 text-muted" data-testid="release-artifact-carried">
+                  {t("releases.changes.carriedBy", { issue: a.carriedBy })}
+                </span>
+              ) : null}
               <span className="ml-auto">
                 <IssueKeys keys={a.issues} slug={slug} />
               </span>

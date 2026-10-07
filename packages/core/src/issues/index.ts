@@ -21,6 +21,14 @@ export {
   refuseBlockedTake,
   refuseHeldTakeForSeqs,
 } from './blocked-by.js';
+export {
+  artifactsCarriedFor,
+  type Carrier,
+  carriageOfIssue,
+  type InheritedArtifact,
+  type IssueCarriage,
+  readCarriers,
+} from './carriage.js';
 export { citedIssues } from './cited-issues.js';
 export {
   assertContractWaitsSettledForIssue,

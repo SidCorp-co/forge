@@ -10,6 +10,7 @@ import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import { carriageOfIssue } from './carriage.js';
 import { contractWaitHoldOf } from './contract-waits.js';
 import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
@@ -55,6 +56,7 @@ export async function issueDetailOf(issue: IssueRow) {
     requirement: await requirementOfIssue(issue.id),
     relations: await loadIssueRelations(issue.id, issue.projectId),
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
+    carriage: await carriageOfIssue(issue),
     labels: await listIssueLabels(issue.id),
     comments: [],
     activity: [],

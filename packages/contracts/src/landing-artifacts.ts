@@ -41,6 +41,12 @@ export interface LandingArtifact {
 	/** What changed: a screen, a route, a table, a workflow, a file path. */
 	ref: string;
 	change: ArtifactChange;
+	/**
+	 * The issue (its key, in the same project) whose own release ships this artifact: the landing
+	 * touched it, but it is that issue's to ship. Said explicitly on the mark, never inferred; a
+	 * release of this issue reports it carried, and the carrier's release verifies it.
+	 */
+	carriedBy?: string | undefined;
 }
 
 const oneOf = (values: readonly string[]) =>
@@ -65,6 +71,12 @@ const landingArtifactSchema = z.strictObject({
 		error: (issue) =>
 			`change ${JSON.stringify(issue.input)} is not an artifact change: it is one of ${oneOf(ARTIFACT_CHANGES)}`,
 	}),
+	carriedBy: z
+		.string()
+		.trim()
+		.min(1, "carriedBy names the issue whose own release ships this artifact")
+		.max(64, "carriedBy is an issue key or id")
+		.optional(),
 });
 
 export const landingArtifactsSchema = z

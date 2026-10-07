@@ -22,6 +22,7 @@ import { MergeMarkerControl } from "./merge-marker-control";
 import { type EditRefusal, InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, liveDependencies, runStatusChip } from "../derive";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import type {
@@ -71,6 +72,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
       <span className="fg-caption flex-none">{label}</span>
       <div className="min-w-0 text-right">{children}</div>
     </div>
+  );
+}
+
+/** Artifacts carried between issues: the other issue's key, linked, and the artifact as marked. */
+function CarriageList({ items, slug, from = false }: { items: Array<{ ref: string; key: string }>; slug: string; from?: boolean }) {
+  const t = useCopy();
+  return (
+    <ul className="grid gap-1" data-testid={from ? "issue-carries" : "issue-carried-by"}>
+      {items.map((c) => (
+        <li key={`${c.key}:${c.ref}`} className="grid justify-items-end gap-0.5">
+          <Link className="font-mono text-12 text-link hover:underline" href={issueHref(slug, c.key)}>
+            {from ? t("issues.rail.carriesFrom", { issue: c.key }) : c.key}
+          </Link>
+          <span className="break-all font-mono text-11-5 text-subtle">{c.ref}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -396,6 +414,16 @@ export function PropertiesRail({
               />
             )}
           </div>
+        </Row>
+      )}
+      {issue.carriage && issue.carriage.carriedBy.length > 0 && (
+        <Row label={t("issues.rail.carriedBy")}>
+          <CarriageList items={issue.carriage.carriedBy.map((c) => ({ ref: c.ref, key: c.issue }))} slug={slug} />
+        </Row>
+      )}
+      {issue.carriage && issue.carriage.carries.length > 0 && (
+        <Row label={t("issues.rail.carries")}>
+          <CarriageList items={issue.carriage.carries.map((c) => ({ ref: c.ref, key: c.from }))} slug={slug} from />
         </Row>
       )}
       {issue.liveReach && (

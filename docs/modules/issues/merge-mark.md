@@ -92,6 +92,17 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   without being told (`designLandingRef`), and a non-design artifact beside it is refused
   `ARTIFACTS_NOT_DESIGN`: a revision deploys nothing. Artifacts sent over a standing mark that names
   others are `MARK_ALREADY_STANDS`, as a landing is.
+- **Carried by another issue.** An artifact the landing touched but another issue's own release
+  ships takes `carriedBy` (that issue's key or id), said on the mark and never inferred
+  (`issues/carriage.ts:resolveCarriage`). It is stored as the carrier's key in this project, and
+  refused by name where it cannot be shipped that way: a design revision (`ARTIFACT_CARRIER_DESIGN`),
+  the issue itself (`ARTIFACT_CARRIER_SELF`), a key or id naming no issue of this project
+  (`ARTIFACT_CARRIER_UNKNOWN`), a carrier `closed` or `dropped` (`ARTIFACT_CARRIER_SHIPPED`). A
+  storefront release of the carrying-from issue reports it carried, not checked, while the carrier
+  is open and outside that release, and refuses it by name otherwise; the carrier's landing inherits
+  it (`artifactsCarriedFor`), so the carrier's own release verifies it
+  (`release-batch/provider-landings.ts:landingsOf`). The issue page says "Carried by" and "Carries";
+  a release's What changes says "carried by ISS-N".
 - **On git** the mark refuses `artifacts` (`ARTIFACTS_NOT_THIS_SHAPE`): what a git landing changed is
   its commit's changed paths against its first parent, sorted by the project document's `surfaces` —
   ordered `rules` of globs per surface, first match wins, and `ignore` for paths that ship nothing.

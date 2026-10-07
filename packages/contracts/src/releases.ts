@@ -348,6 +348,8 @@ interface ReleaseChangeArtifact {
 	change: ArtifactChange;
 	/** The issue keys whose landings name it. */
 	issues: string[];
+	/** The issue whose own release ships it, where a mark says it is carried; null where this release ships it. */
+	carriedBy: string | null;
 }
 
 export interface ReleaseSurfaceChanges {

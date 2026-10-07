@@ -4,7 +4,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { activeIssuePrefix, listCriteriaOf } from '../issues/index.js';
+import { activeIssuePrefix, artifactsCarriedFor, listCriteriaOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { approvedDesignRevisions, buildIssuesAmong } from '../workflows/index.js';
 import { designRefParts, type RosterIssue } from './provider-landings.js';
@@ -17,7 +17,7 @@ export async function readProviderRoster(
   issueIds: readonly string[],
 ): Promise<RosterIssue[]> {
   const ids = [...issueIds];
-  const [rows, built, prefix, criteria] = await Promise.all([
+  const [rows, built, prefix, criteria, inherited] = await Promise.all([
     db
       .select({
         id: issues.id,
@@ -31,8 +31,13 @@ export async function readProviderRoster(
     buildIssuesAmong(ids),
     activeIssuePrefix(projectId),
     listCriteriaOf(db, ids),
+    artifactsCarriedFor(projectId, ids),
   ]);
   return rows.map((r) => ({
+    id: r.id,
+    inherited: inherited
+      .filter((c) => c.carrierId === r.id)
+      .map((c) => ({ from: c.fromKey, mergedAt: iso(c.mergedAt), artifact: c.artifact })),
     key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id,
     criteria: criteria.get(r.id) ?? [],
     mergedAt: iso(r.mergedAt),
