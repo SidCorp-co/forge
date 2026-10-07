@@ -18,6 +18,7 @@
  * second on the binding.
  */
 
+import { redactedMessage } from '@forge/observability';
 import { z } from 'zod';
 import {
   GitHubAgentCallError,
@@ -280,7 +281,7 @@ async function openAndProject(
     });
     return { ...opened, projection };
   } catch (err) {
-    const why = err instanceof OpenedPullRequestIncomplete ? err.message : String(err);
+    const why = err instanceof OpenedPullRequestIncomplete ? err.message : redactedMessage(err);
     logger.error(
       { projectId, number: opened.number, bindingId: client.bindingId, err },
       'forge_github open-pull-request: the pull request reached GitHub and the projection row did not',
@@ -350,7 +351,7 @@ async function submitAndNote(
         outcome: 'not-recorded',
         reason:
           `the review was accepted by GitHub as ${review.reviewId} and the comment on the Forge ` +
-          `issue could not be written: ${err instanceof Error ? err.message : String(err)}. Do NOT ` +
+          `issue could not be written: ${redactedMessage(err)}. Do NOT ` +
           'submit the verdict again — that would put a second review on the pull request. Say what ' +
           'you decided in a comment on the issue instead.',
       },

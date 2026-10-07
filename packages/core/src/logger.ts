@@ -1,6 +1,14 @@
-import { errorsWithin, redactQueryParams } from '@forge/observability';
+import { errorsWithin, mayCarryBoundValues, redactQueryParams } from '@forge/observability';
 import type { Context } from 'hono';
-import { type Logger, type LoggerOptions, pino, stdSerializers } from 'pino';
+import {
+  type Bindings,
+  type ChildLoggerOptions,
+  type DestinationStream,
+  type Logger,
+  type LoggerOptions,
+  pino,
+  stdSerializers,
+} from 'pino';
 import { pgConstraintName, pgErrorCode } from './lib/db-errors.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -27,12 +35,11 @@ const redactPaths = [
 ];
 
 /**
- * A finished line with a failed query's params redacted. The `err` serializer has already redacted
- * what the error itself carried; this reaches what it cannot see — pino's `msg`, which defaults to
- * the raw `err.message`, an error under another key, a message interpolated into the text.
+ * A finished line with a failed query's params, and any value the database's own text quotes,
+ * redacted: the last pass, for what only the written line shows, such as a value's own `toJSON`.
  */
 function redactLine(line: string): string {
-  if (!line.includes('params')) return line;
+  if (!mayCarryBoundValues(line)) return line;
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(line);
@@ -129,7 +136,41 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
   return out;
 }
 
-export const loggerOptions: LoggerOptions = {
+/** A child's bindings, or `setBindings`', redacted as a call's own arguments are. */
+function redactBindings(bindings: Bindings): Bindings {
+  const errors = errorsWithin(bindings);
+  const record = besideErr(bindings, (rest) =>
+    redactQueryParams(withErrorsSerialized(rest), errors.length > 0 ? errors : undefined),
+  );
+  return Object.hasOwn(record, 'err')
+    ? { ...record, err: serializeError(record.err, errors) }
+    : record;
+}
+
+/**
+ * pino serializes a child's bindings once, when the child is made, and never hands them to
+ * `hooks.logMethod`; a `msgPrefix` is prepended after it. So both are redacted at `child` and
+ * `setBindings`, set on the root and inherited by every descendant, which pino builds from it.
+ */
+function redactingChildren(root: Logger): Logger {
+  type Child = (this: Logger, b: Bindings, o?: ChildLoggerOptions) => Logger;
+  const child = root.child as unknown as Child;
+  const setBindings = root.setBindings;
+  root.child = function (this: Logger, bindings: Bindings, options?: ChildLoggerOptions) {
+    const prefix = options?.msgPrefix;
+    const redacted =
+      typeof prefix === 'string'
+        ? { ...options, msgPrefix: redactQueryParams(prefix, errorsWithin(bindings)) }
+        : options;
+    return child.call(this, redactBindings(bindings), redacted as ChildLoggerOptions);
+  } as unknown as Logger['child'];
+  root.setBindings = function (this: Logger, bindings: Bindings) {
+    setBindings.call(this, redactBindings(bindings));
+  };
+  return root;
+}
+
+const loggerOptions: LoggerOptions = {
   level: process.env.LOG_LEVEL ?? defaultLevel,
   redact: { paths: redactPaths, censor: '[Redacted]' },
   serializers: { err: serializeError },
@@ -142,17 +183,22 @@ export const loggerOptions: LoggerOptions = {
   },
 };
 
-export const logger: Logger = pino({
-  ...loggerOptions,
-  ...(usePrettyTransport
+/** A logger built as core's is: every line, child and binding redacted. */
+export function createLogger(options: LoggerOptions = {}, stream?: DestinationStream): Logger {
+  const opts = { ...loggerOptions, ...options };
+  return redactingChildren(stream ? pino(opts, stream) : pino(opts));
+}
+
+export const logger: Logger = createLogger(
+  usePrettyTransport
     ? {
         transport: {
           target: 'pino-pretty',
           options: { colorize: true, translateTime: 'HH:MM:ss.l' },
         },
       }
-    : {}),
-});
+    : {},
+);
 
 export function getLogger(c: Context): Logger {
   const requestId = c.get('requestId' as never) as string | undefined;

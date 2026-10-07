@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import type { Context } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { describe, expect, it, vi } from 'vitest';
@@ -331,5 +332,25 @@ describe('emitBacklogStream, when something stops it', () => {
   it('leaves the shutdown registry empty once it is done', async () => {
     await run({ items: 2, limit: 10 });
     expect(openBacklogStreamCount()).toBe(0);
+  });
+});
+
+describe('emitBacklogStream, when a query behind the source fails', () => {
+  it("ends with an error frame naming a failed query's statement and none of its bound values", async () => {
+    const source: BacklogSource<unknown> = (async function* () {
+      yield { i: 0 };
+      throw new DrizzleQueryError(
+        'select * from "issues" where "id" = $1::uuid',
+        ['zq9-bound-value'],
+        Object.assign(new Error('invalid input syntax for type uuid: "zq9-bound-value"'), {
+          severity: 'ERROR',
+          code: '22P02',
+        }),
+      );
+    })();
+    const s = await run({ items: 9, limit: 100, source: () => source });
+    expect(terminal(s)).toMatchObject({ type: 'error', code: 'BACKLOG_STREAM_FAILED', emitted: 1 });
+    expect(JSON.stringify(s.written)).not.toContain('zq9');
+    expect(terminal(s)?.message).toContain('select * from "issues"');
   });
 });

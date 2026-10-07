@@ -19,8 +19,11 @@ const drizzleFactory = vi.fn((client: unknown) => {
   return Object.assign(Object.create(proto), { query: { issues: {} }, $client: client });
 });
 
+const installQueryErrorSeal = vi.fn();
+
 vi.mock('postgres', () => ({ default: postgresFactory }));
 vi.mock('drizzle-orm/postgres-js', () => ({ drizzle: drizzleFactory }));
+vi.mock('./query-error-seal.js', () => ({ installQueryErrorSeal }));
 
 const VALID_ENV = {
   DATABASE_URL: 'postgres://test:test@localhost:5432/test',
@@ -42,6 +45,7 @@ describe('db/client', () => {
     vi.resetModules();
     postgresFactory.mockClear();
     drizzleFactory.mockClear();
+    installQueryErrorSeal.mockClear();
     process.env = { ...originalEnv, ...VALID_ENV };
   });
 
@@ -62,6 +66,18 @@ describe('db/client', () => {
     void db.select;
 
     expect(postgresFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it("seals a failed query's error before it constructs the client", async () => {
+    const { db } = await import('./client.js');
+    expect(installQueryErrorSeal).not.toHaveBeenCalled();
+
+    void db.select;
+
+    expect(installQueryErrorSeal).toHaveBeenCalledTimes(1);
+    expect(installQueryErrorSeal.mock.invocationCallOrder[0]).toBeLessThan(
+      postgresFactory.mock.invocationCallOrder[0] ?? 0,
+    );
   });
 
   it('constructs the client once across two property reads', async () => {

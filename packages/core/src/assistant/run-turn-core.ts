@@ -7,7 +7,7 @@
  * NO DB writes here; the caller owns transport and persistence.
  */
 
-import { redactQueryParams } from '@forge/observability';
+import { redactedMessage } from '@forge/observability';
 import type { CallToolResult } from '../mcp/tool-result.js';
 import {
   addElision,
@@ -124,7 +124,7 @@ async function safeExecute(toolset: ChatToolset, tc: CollectedToolCall): Promise
   try {
     return await toolset.execute(tc.name, tc.arguments);
   } catch (err) {
-    return toolError(redactQueryParams(err instanceof Error ? err.message : String(err), err));
+    return toolError(redactedMessage(err));
   }
 }
 
@@ -148,9 +148,7 @@ async function executeToolRound(
         const startedAt = Date.now();
         const held = gate
           ? await gate(call, completed()).catch((err: unknown) =>
-              toolError(
-                `pre-call gate failed: ${redactQueryParams(err instanceof Error ? err.message : String(err), err)}`,
-              ),
+              toolError(`pre-call gate failed: ${redactedMessage(err)}`),
             )
           : null;
         const result = held ?? (await safeExecute(toolset, call));
@@ -300,7 +298,7 @@ export async function* runTurnEvents(
       }
     }
   } catch (err) {
-    errorMessage = redactQueryParams(err instanceof Error ? err.message : String(err), err);
+    errorMessage = redactedMessage(err);
     terminal = 'error';
     yield { type: 'error', message: errorMessage };
   }
