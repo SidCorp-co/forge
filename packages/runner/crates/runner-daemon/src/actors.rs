@@ -441,6 +441,7 @@ pub(crate) async fn job_panes(
 /// The control socket a pane's hooks and `forge-runner run` talk to.
 #[cfg(unix)]
 pub(crate) fn control(
+    client: &Arc<CoreClient>,
     activity: &Arc<agent_activity::Activities>,
     masters: &Arc<master::Masters>,
     drain: &Arc<drain::Drain>,
@@ -474,6 +475,7 @@ pub(crate) fn control(
         promises: std::sync::Mutex::new(control::GateMemory::default()),
         drain: drain.clone(),
         hosts: Arc::new(runner_platform::subagent_host::ProcHosts::system()),
+        core: Some(client.clone()),
     });
     tokio::spawn(async move {
         if let Err(e) = control::serve(ctl, cancel_rx).await {

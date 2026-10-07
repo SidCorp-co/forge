@@ -256,10 +256,43 @@ pub(crate) fn constraints(status: u16, body: &str) -> Option<Vec<String>> {
 /// reads the same line either way.
 pub(crate) fn refusal(what: &str, status: u16, text: &str) -> Error {
     let said = refused(what, status, text);
-    match constraints(status, text) {
-        Some(named) => Error::Malformed { said, named },
+    if let Some(named) = constraints(status, text) {
+        return Error::Malformed { said, named };
+    }
+    match held_code(status, text) {
+        Some(code) => Error::Held { said, code },
         None => Error::Other(said),
     }
+}
+
+/// The take refusals core answers `422` for when something holds the issues a run is
+/// declared over (`run-session-queued.ts:QUEUED_BEHIND`, the refusals a declared run
+/// waits behind). Each lifts when the holder moves, never because the same bytes were sent again.
+pub const HELD_CODES: &[&str] = &[
+    "ISSUE_BLOCKED",
+    "WORKFLOW_DESIGN_NOT_APPROVED",
+    "CONTRACT_WAIT_UNSETTLED",
+    "ISSUE_LEASE_HELD",
+];
+
+/// The held code a `422` carries, read off the envelope's own code or the first of its
+/// refusals that names one.
+pub(crate) fn held_code(status: u16, body: &str) -> Option<String> {
+    if status != 422 {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let top = parsed.pointer("/error/code").and_then(|v| v.as_str());
+    let rows = parsed
+        .pointer("/error/refusals")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("code").and_then(|v| v.as_str()));
+    top.into_iter()
+        .chain(rows)
+        .find(|c| HELD_CODES.contains(c))
+        .map(str::to_string)
 }
 
 /// A call that got no status at all, named by what went wrong and then by the
@@ -304,5 +337,31 @@ fn span(d: std::time::Duration) -> String {
         format!("{}s", d.as_secs())
     } else {
         format!("{}ms", d.as_millis())
+    }
+}
+
+#[cfg(test)]
+mod held_tests {
+    use super::*;
+
+    const BLOCKED: &str = r#"{"error":{"code":"ISSUE_BLOCKED","refusals":[{"code":"ISSUE_BLOCKED","path":"","detail":"a run session over these issues is refused. ISS-46: a live blocks edge holds it"}]}}"#;
+
+    #[test]
+    fn a_422_naming_a_hold_is_held_with_its_code() {
+        match refusal("run-session open", 422, BLOCKED) {
+            Error::Held { code, said } => {
+                assert_eq!(code, "ISSUE_BLOCKED");
+                assert!(said.contains("ISS-46"), "{said}");
+            }
+            other => panic!("a held refusal was read as {other:?}"),
+        }
+    }
+
+    #[test]
+    fn other_422s_and_other_statuses_are_not_held() {
+        let other = r#"{"error":{"code":"RUN_SESSION_REFUSED","refusals":[{"code":"WHATEVER","path":"/x","detail":"d"}]}}"#;
+        assert!(matches!(refusal("o", 422, other), Error::Other(_)));
+        assert!(matches!(refusal("o", 503, BLOCKED), Error::Other(_)));
+        assert!(matches!(refusal("o", 422, "not json"), Error::Other(_)));
     }
 }

@@ -1,8 +1,9 @@
 //! Telling core about the runs this box has declared.
 //!
 //! A master declares a run over the control socket, which writes a row in this
-//! box's registry and nothing else — the socket holds no core client, and that
-//! is deliberate (`daemon/control.rs`). This is the other half: once a sweep,
+//! box's registry, after asking core one read-only question (`control::runs::preflight_refusal`:
+//! would the open be refused by a hold?) and nothing else is written at core. This is the
+//! other half: once a sweep,
 //! every declared row core has not been told about gets a run session opened for
 //! it, and the session id core minted is written back onto the row.
 //!
@@ -61,11 +62,39 @@ impl SessionOpener for CoreSessions<'_> {
 /// about this field and not about the status code (ISS-1284).
 const RECOMPUTED_EACH_SWEEP: &str = "gate: ";
 
+/// How long a run core refused to open waits before its open is sent again.
+///
+/// A hold on a run's issues (a `blocks` edge, an unapproved design, an unsettled
+/// contract wait, another run's lease) lifts when its holder moves, which is hours for a
+/// blocker resting at `awaiting_release`, so re-sending every sweep was nineteen identical
+/// refusals in ten minutes. But core keeps the refused declaration as a queued run only
+/// while the box keeps sending it, and reaps it after ten minutes of silence
+/// (`SESSION_SILENCE_REAP_MS`), so the interval is half of that: the queued row stays
+/// where the master reads it, and the open still lands within five minutes of the hold lifting.
+pub const SESSION_RETRY_MS: i64 = 5 * 60_000;
+
 pub async fn open_declared_runs(
     opener: &impl SessionOpener,
     ledger: &mut Option<Ledger>,
     boot_id: &str,
     gate: Option<&runner_proto::gate::Condition>,
+) -> usize {
+    open_declared_runs_at(
+        opener,
+        ledger,
+        boot_id,
+        gate,
+        runner_core::agent_activity::now_ms(),
+    )
+    .await
+}
+
+pub async fn open_declared_runs_at(
+    opener: &impl SessionOpener,
+    ledger: &mut Option<Ledger>,
+    boot_id: &str,
+    gate: Option<&runner_proto::gate::Condition>,
+    now_ms: i64,
 ) -> usize {
     if boot_id.is_empty() {
         return 0;
@@ -82,6 +111,13 @@ pub async fn open_declared_runs(
     };
     let mut opened = 0;
     for run in declared {
+        // A run core refused over a hold waits out its interval; it stands on the row and
+        // at core as a queued run, so nothing is lost by not sending it this pass.
+        if let Some(last) = run.session_retry_at {
+            if now_ms.saturating_sub(last) < SESSION_RETRY_MS {
+                continue;
+            }
+        }
         let Some(project_id) = run.project_id.clone() else {
             tracing::warn!(
                 "[run-record] run {} names no project, so core cannot be told about it",
@@ -154,6 +190,14 @@ pub async fn open_declared_runs(
                     );
                 }
             }
+            // A hold is not a fault of the payload and not of the moment: it stands until
+            // its holder moves. Core has already recorded the declaration as a queued run
+            // behind this refusal, which is where the master reads it (`runs/standing`,
+            // `waiting_gate`), so the box names it once, here, and then asks again only
+            // when `SESSION_RETRY_MS` has gone, which also keeps that queued row alive.
+            Err(runner_platform::error::Error::Held { said, code }) => {
+                note_session_held(led, &run, &code, &said, now_ms);
+            }
             Err(e) => tracing::warn!(
                 "[run-record] run {}: core would not open a session: {e} — the row stands and the next sweep tries again",
                 run.run_id
@@ -161,6 +205,32 @@ pub async fn open_declared_runs(
         }
     }
     opened
+}
+
+/// A run's open core refused over a hold, written onto the row. Core has already recorded the
+/// declaration as a queued run behind the refusal, which is where the master reads it
+/// (`runs/standing`, `waiting_gate`), so the box names it once and then asks again only when
+/// `SESSION_RETRY_MS` has gone, which also keeps that queued row alive.
+fn note_session_held(
+    led: &Ledger,
+    run: &runner_core::ledger::Run,
+    code: &str,
+    said: &str,
+    now_ms: i64,
+) {
+    let first = run.session_refused_at.is_none();
+    if let Err(e) = led.mark_session_refused(&run.run_id, &format!("{code}: {said}"), now_ms) {
+        tracing::warn!(
+            "[run-record] run {}: {said}; the refusal could not be written onto the row: {e} — the next sweep sends it again",
+            run.run_id
+        );
+    } else if first {
+        tracing::warn!(
+            "[run-record] run {}: core would not open a session ({code}): {said} — the run waits at core as a queued run, and this box asks again every {} minutes rather than every sweep",
+            run.run_id,
+            SESSION_RETRY_MS / 60_000
+        );
+    }
 }
 
 pub async fn close_ended_runs(
@@ -349,6 +419,150 @@ mod close_refusal_tests {
             close_ended_runs(&closer, &mut led, "boot-1").await;
         }
         assert_eq!(closer.sent.load(Ordering::SeqCst), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod session_hold_tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+    use runner_platform::error::Error;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Opener {
+        sent: AtomicUsize,
+        held: std::sync::atomic::AtomicBool,
+    }
+
+    impl Opener {
+        fn new(held: bool) -> Self {
+            Opener {
+                sent: AtomicUsize::new(0),
+                held: held.into(),
+            }
+        }
+    }
+
+    impl SessionOpener for Opener {
+        async fn open(
+            &self,
+            _project_id: &str,
+            _run_id: &str,
+            _issue_keys: &[String],
+            _name: &str,
+            _gate: Option<&runner_proto::gate::Condition>,
+        ) -> runner_platform::error::Result<(String, String)> {
+            self.sent.fetch_add(1, Ordering::SeqCst);
+            if self.held.load(Ordering::SeqCst) {
+                Err(Error::Held {
+                    said: "run-session open 422 ISSUE_BLOCKED: ISS-46: a live blocks edge holds it, ISS-44 is at awaiting_release".into(),
+                    code: "ISSUE_BLOCKED".into(),
+                })
+            } else {
+                Ok(("session-1".into(), "run-1".into()))
+            }
+        }
+    }
+
+    fn declared() -> (Option<Ledger>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("forge-hold-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: dir.join("tree"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-46".into()],
+        })
+        .unwrap();
+        (Some(led), dir)
+    }
+
+    const SWEEP_MS: i64 = 30_000;
+    const T0: i64 = 1_000_000_000;
+
+    #[tokio::test]
+    async fn an_open_core_refused_over_a_hold_is_sent_once_per_interval_not_every_sweep() {
+        let (mut led, dir) = declared();
+        let opener = Opener::new(true);
+        let sweeps = 20; // ten minutes of 30 s sweeps
+        for n in 0..sweeps {
+            open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
+        }
+        // The first at minute 0, the second at minute 5, the third at minute 10 (not reached).
+        assert_eq!(
+            opener.sent.load(Ordering::SeqCst),
+            2,
+            "a run refused ISSUE_BLOCKED was re-sent on sweeps inside the retry interval"
+        );
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.session_refused_at,
+            Some(T0),
+            "the first refusal is kept"
+        );
+        assert!(run.session_refusal.unwrap().contains("ISSUE_BLOCKED"));
+        assert_eq!(run.session_retry_at, Some(T0 + 10 * 30_000));
+        assert!(
+            run.session_id.is_none() && run.ended_by.is_none(),
+            "the run stands"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn the_hold_lifting_opens_the_session_at_the_next_interval() {
+        let (mut led, dir) = declared();
+        let opener = Opener::new(true);
+        open_declared_runs_at(&opener, &mut led, "boot-1", None, T0).await;
+        opener.held.store(false, Ordering::SeqCst);
+        let early =
+            open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + SESSION_RETRY_MS - 1)
+                .await;
+        assert_eq!(early, 0, "inside the interval nothing is sent");
+        let at =
+            open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + SESSION_RETRY_MS).await;
+        assert_eq!(at, 1);
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert_eq!(run.session_id.as_deref(), Some("session-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn an_unheld_declaration_opens_on_its_first_sweep() {
+        let (mut led, dir) = declared();
+        let opener = Opener::new(false);
+        let n = open_declared_runs_at(&opener, &mut led, "boot-1", None, T0).await;
+        assert_eq!(n, 1);
+        assert_eq!(opener.sent.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_failure_that_is_not_a_hold_is_still_sent_every_sweep() {
+        struct Down(AtomicUsize);
+        impl SessionOpener for Down {
+            async fn open(
+                &self,
+                _: &str,
+                _: &str,
+                _: &[String],
+                _: &str,
+                _: Option<&runner_proto::gate::Condition>,
+            ) -> runner_platform::error::Result<(String, String)> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Err(Error::Other("run-session open 503".into()))
+            }
+        }
+        let (mut led, dir) = declared();
+        let opener = Down(AtomicUsize::new(0));
+        for n in 0..5 {
+            open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
+        }
+        assert_eq!(opener.0.load(Ordering::SeqCst), 5);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

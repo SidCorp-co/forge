@@ -1,0 +1,1 @@
+**A run declared over an issue a live `blocks` edge holds is refused at declare, by name.** The box asks core's new `run-sessions/preflight` first; an already-declared run whose open is held is retried every five minutes, not every sweep.

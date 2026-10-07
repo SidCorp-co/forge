@@ -30,7 +30,7 @@ import {
   writeResumeChoice,
   writeRunEvidence,
 } from './run-evidence.js';
-import { closeRunSession, openRunSession } from './run-session.js';
+import { closeRunSession, openRunSession, preflightRunSession } from './run-session.js';
 import { runVerdict } from './run-verdict.js';
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
@@ -74,6 +74,27 @@ deviceRunSessionRoutes.post(
       }
       throw err;
     }
+  },
+);
+
+const preflightBodySchema = z.object({
+  projectId: z.string().uuid(),
+  issueKeys: z.array(z.string().min(1)).min(1).max(16),
+});
+
+/**
+ * Would a run over these issues be opened? Answered by the function the open calls, writing
+ * nothing: the box asks it when a master declares, so a dispatch on a blocked issue is refused to
+ * the master by name instead of to a sweep that cannot tell anyone.
+ */
+deviceRunSessionRoutes.post(
+  '/me/run-sessions/preflight',
+  requireDevice(),
+  zValidator('json', preflightBodySchema),
+  async (c) => {
+    const body = c.req.valid('json');
+    await preflightRunSession({ projectId: body.projectId, issueKeys: body.issueKeys });
+    return c.json({ ok: true as const });
   },
 );
 
