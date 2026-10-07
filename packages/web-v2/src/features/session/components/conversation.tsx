@@ -6,7 +6,7 @@
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
 import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
-import { AttachmentList } from "@/features/issues/components/attachment-list";
+import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";

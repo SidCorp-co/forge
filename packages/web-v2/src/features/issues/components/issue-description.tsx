@@ -10,7 +10,7 @@ import { useState } from "react";
 import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { AttachmentRow, IssueDetail } from "../types";
-import { AttachmentList } from "./attachment-list";
+import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { BodyEditor } from "./body-editor";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";

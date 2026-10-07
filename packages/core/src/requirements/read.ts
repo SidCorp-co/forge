@@ -32,7 +32,6 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
-import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
@@ -43,6 +42,7 @@ import { dedupCheckOf } from './near-duplicate.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
+import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -324,12 +324,6 @@ function issueViews(
     }),
     shippedIn: shipped.get(i.id) ?? null,
   }));
-}
-
-/** Each release that shipped one of its issues, once, oldest ship first. */
-function releasesOf(shipped: ReadonlyMap<string, ShippedRelease>): ShippedRelease[] {
-  const byVersion = new Map([...shipped.values()].map((r) => [r.version, r]));
-  return [...byVersion.values()].sort((a, b) => a.at.localeCompare(b.at));
 }
 
 export async function detailOf(
