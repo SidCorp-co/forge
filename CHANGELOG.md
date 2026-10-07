@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.84] - 2026-10-07
+
+Held release rows now say why Forge could not check they already shipped
+
+### Fixed
+
+- **A held release-gate issue now says when Forge could not check it already shipped.** No source host binding, an unplaceable commit or a refused close is named on the row's hold, beside the abort a person owes.
+
 ## [0.4.0-dev.83] - 2026-10-07
 
 Failed-query values redacted, device-owner guard scoped, refusals hold a runner
