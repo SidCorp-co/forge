@@ -240,8 +240,7 @@ describe('POST /api/issues/:id/transition', () => {
     const res = await req({ toStatus: 'developed', reason: 'fix pushed' }, token);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { reopenCount: number; rewritten: unknown };
-    expect(body.reopenCount).toBe(2);
-    expect(body.rewritten).toBeNull();
+    expect(body).toMatchObject({ reopenCount: 2, rewritten: null });
     expect(publish).toHaveBeenCalledOnce();
     const [room, envelope] = publish.mock.calls[0] as [string, { event: string; data: unknown }];
     expect(room).toBe(`project:${PROJECT_ID}`);

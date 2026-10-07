@@ -3144,10 +3144,8 @@
 
 ### Fixed
 
-- **A status change that lands somewhere other than where it was asked says so.** When an
-  agent's park is kept as needs-info, or its close is held for the release, the answer now names
-  the status asked for, the status kept, which rule moved it, and whether the reason for waiting
-  was kept, instead of reading like an ordinary success.
+- **A status change kept at another status says so.** When an agent's park becomes needs-info,
+  or its close is held for release, the answer names the status asked for, the one kept, and why.
 
 - **Typing an issue's key into the issues search finds that issue.** `ISS-1280`, `iss-1280` and
   `1280` show that one issue rather than the issues mentioning it, and a key this project does not
