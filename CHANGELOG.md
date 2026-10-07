@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.91] - 2026-10-07
+
+Help → Tours works on project pages; a requirement offers to promote its drafts
+
+### Fixed
+
+- **A requirement waiting on you to promote its draft issues now offers the promote.** Promote them all from the requirement, or one from its row; a draft that cannot move is named while the rest move.
+- **Help → Tours opens a tour while a project is open.** Show read "Open a project first" and stayed disabled, because the rail sat outside the current-project provider. The release tour now opens a release of the open project.
+
 ## [0.4.0-dev.90] - 2026-10-07
 
 ETA column, What's new by week, and product tours for new screens
