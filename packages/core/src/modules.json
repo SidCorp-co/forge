@@ -807,7 +807,7 @@
     "outbox": {
       "kind": "kernel",
       "context": "platform",
-      "owns": ["pipelineOutbox"],
+      "owns": ["outboxEventTypes", "pipelineOutbox"],
       "serves": [
         "issue-delivery#core",
         "issue-delivery#ev-transition",

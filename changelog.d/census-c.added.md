@@ -1,0 +1,1 @@
+**Issue, requirement and design pages say more.** An issue read carries its relations, a coverage gap shows why the breakdown left it, and the design rail shows revisions, derived states and whom each design waits on.

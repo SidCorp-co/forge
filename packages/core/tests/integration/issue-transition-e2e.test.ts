@@ -208,29 +208,26 @@ describe('the database refuses what the kernel did not write', () => {
 });
 
 describe('a side effect after the commit', () => {
-  // the outbox CHECK as 0405 left it, admitting no `issue.pushed`: what failed the unblock toast
-  // after hop ISS-29 and ISS-19 committed `awaiting_release` (2026-10-06), answered as a 500
+  // the outbox as 0405 left it, admitting no `issue.pushed`: what failed the unblock toast after hop
+  // ISS-29 and ISS-19 committed `awaiting_release` (2026-10-06), answered as a 500. The type's row
+  // leaves `outbox_event_types`, and the foreign key is re-added NOT VALID so rows already holding
+  // it stay while a new one is refused.
+  const FK = 'pipeline_outbox_type_outbox_event_types_type_fk';
+  const REFERENCE = 'FOREIGN KEY (type) REFERENCES outbox_event_types(type)';
   async function withoutIssuePushed<T>(act: () => Promise<T>): Promise<T> {
-    const [held] = await rows<{ def: string }>(sql`
-      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'pipeline_outbox_type_chk'
-    `);
-    const def = String(held?.def);
-    const narrowed = def.replace(/,?\s*'issue\.pushed'::text/, '');
-    expect(narrowed).not.toBe(def);
+    await db.execute(sql.raw(`ALTER TABLE pipeline_outbox DROP CONSTRAINT ${FK}`));
+    await db.execute(sql`DELETE FROM outbox_event_types WHERE type = 'issue.pushed'`);
     await db.execute(
-      sql.raw('ALTER TABLE pipeline_outbox DROP CONSTRAINT pipeline_outbox_type_chk'),
-    );
-    await db.execute(
-      sql.raw(`ALTER TABLE pipeline_outbox ADD CONSTRAINT pipeline_outbox_type_chk ${narrowed}`),
+      sql.raw(`ALTER TABLE pipeline_outbox ADD CONSTRAINT ${FK} ${REFERENCE} NOT VALID`),
     );
     try {
       return await act();
     } finally {
+      await db.execute(sql`INSERT INTO outbox_event_types (type) VALUES ('issue.pushed')`);
       await db.execute(
-        sql.raw('ALTER TABLE pipeline_outbox DROP CONSTRAINT pipeline_outbox_type_chk'),
-      );
-      await db.execute(
-        sql.raw(`ALTER TABLE pipeline_outbox ADD CONSTRAINT pipeline_outbox_type_chk ${def}`),
+        sql.raw(
+          `ALTER TABLE pipeline_outbox DROP CONSTRAINT ${FK}, ADD CONSTRAINT ${FK} ${REFERENCE}`,
+        ),
       );
     }
   }

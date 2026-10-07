@@ -5,6 +5,7 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import Link from "next/link";
 import { useState } from "react";
 import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
+import { TONE_META } from "@/design/status";
 import { DisclosureToggle } from "@/features/releases/components/release-bits";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -154,17 +155,49 @@ function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
               <span className="min-w-0 flex-1 truncate" title={r.title}>
                 {r.title}
               </span>
-              {r.pinnedRevision !== null ? (
-                <span className="flex-none font-mono text-11-5 text-subtle" title={t("workflows.facts.pinned", { key: r.key, r: r.pinnedRevision })}>
-                  r{r.pinnedRevision}
-                </span>
-              ) : null}
-              <StatusBadge family="requirement" value={r.status} />
+              {r.pinnedRevision !== null ? <Pin r={r} approved={d.approvedRevision} /> : null}
+              <StatusBadge family="requirement" value={r.state} />
             </li>
           ))}
         </ul>
       )}
     </FactsGroup>
+  );
+}
+
+/** The revision a requirement's agreed baseline pins, marked where it lags the approved one. */
+function Pin({ r, approved }: { r: WorkflowDesign["requirements"][number]; approved: number | null }) {
+  const t = useCopy();
+  const pinned = r.pinnedRevision ?? 0;
+  const lags = approved !== null && pinned < approved;
+  return (
+    <span
+      className="flex-none font-mono text-11-5"
+      style={lags ? { color: TONE_META.attention.fg } : undefined}
+      title={lags ? t("workflows.facts.pinLags", { key: r.key, r: pinned, approved }) : t("workflows.facts.pinned", { key: r.key, r: pinned })}
+      data-testid="rail-requirement-pin"
+      data-lags={lags}
+    >
+      r{pinned}
+    </span>
+  );
+}
+
+/** The revision approved when the issue was linked as a build, marked where a later one is approved now. */
+function BuiltAgainst({ b, approved }: { b: WorkflowDesign["builds"][number]; approved: number | null }) {
+  const t = useCopy();
+  if (b.builtAgainst === null) return null;
+  const behind = approved !== null && b.builtAgainst < approved;
+  return (
+    <span
+      className="flex-none font-mono text-11-5"
+      style={behind ? { color: TONE_META.attention.fg } : undefined}
+      title={behind ? t("workflows.facts.builtBehind", { r: b.builtAgainst, approved }) : t("workflows.facts.builtAgainst", { r: b.builtAgainst })}
+      data-testid="rail-build-revision"
+      data-behind={behind}
+    >
+      r{b.builtAgainst}
+    </span>
   );
 }
 
@@ -190,6 +223,7 @@ function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
               <span className="min-w-0 flex-1 truncate" title={b.title}>
                 {b.title}
               </span>
+              <BuiltAgainst b={b} approved={d.approvedRevision} />
               <StatusBadge family="issue" value={b.status} />
             </li>
           ))}

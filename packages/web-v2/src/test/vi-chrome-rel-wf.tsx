@@ -232,9 +232,9 @@ const design = {
     { revision: 2, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: null, decidedBy: null, decidedByName: null, decidedAt: null, reason: null, state: "proposed", changes: { steps: { added: ["Buoc d"], removed: [], changed: ["Buoc a"] }, edges: { added: 1, removed: 0, changed: 2 } } },
     { revision: 1, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: "approve", decidedBy: "u2", decidedByName: "Minh", decidedAt: AT, reason: "ghi chu", state: "current", changes: null },
   ],
-  builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress" }],
+  builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress", builtAgainst: 1 }],
   gate: { open: false, rule: "giu" },
-  requirements: [{ key: "REQ-1", title: "Muc", status: "agreed", pinnedRevision: 1 }],
+  requirements: [{ key: "REQ-1", title: "Muc", status: "agreed", state: "in_delivery", pinnedRevision: 1 }],
 };
 const designSeed = (): [QueryKey, unknown][] => [
   ...workflowSeed(),

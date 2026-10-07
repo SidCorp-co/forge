@@ -42,4 +42,21 @@ describe("a criterion's evidence", () => {
     const row = screen.getByTestId("criterion-row");
     expect(within(row).getByRole("link", { name: "Add tax to checkout" })).toBeInTheDocument();
   });
+
+  it("names why the accepted breakdown left a gap without an issue (R-6)", () => {
+    const gap = {
+      criteria: [{ code: "BC-2", form: "plain", sinceRevision: 1 }],
+      standing: {
+        shownRevision: 1,
+        facts: { issuesTotal: 1 },
+        coverage: [
+          { code: "BC-2", body: "Refunds post the same day.", verdict: "gap", issues: [], uncoveredReason: "the bank's batch decides this" },
+        ],
+      },
+    } as unknown as RequirementDetail;
+    render(<CriteriaTable d={gap} slug="epod" />);
+    expect(screen.getByTestId("criterion-uncovered")).toHaveTextContent(
+      "Left without an issue by the accepted breakdown: the bank's batch decides this",
+    );
+  });
 });
