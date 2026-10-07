@@ -1,220 +1,218 @@
 "use client";
 
-// Project-scoped integrations management (ISS-429). The full surface — status
-// cards, provider config drill-in (create/Test/Rotate/Disconnect + delivery
-// log), and the Agent MCP servers panel — rendered INSIDE project settings, so
-// configuring a project never bounces through the workspace hub. The workspace
-// `/integrations` page is now the owner connection directory.
+// Project settings → Integrations: one flush table of what this project is connected to — the
+// declared repository first, then one row per binding of every provider core presents, then the
+// providers it could connect. Each row opens the provider's drawer (create / Test / Rotate /
+// Disconnect + delivery log). Core health (runners, database, MCP mount) is not listed: nothing
+// here can connect it, and the screens that own it already show it.
 
-import { type KeyboardEvent, useState } from "react";
-import { Button, PageSection, PageSectionBody, ErrorState, Icon, type IconName, Skeleton } from "@/design";
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import {
+  Button,
+  ErrorState,
+  Icon,
+  type IconName,
+  PageSection,
+  PageSectionHeader,
+  PageSectionTitle,
+  Skeleton,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { useIntegrationsStatus } from "../hooks";
-import { groupCardsByProvider, isProviderCard } from "../derive";
-import { providerIcon as registryIcon } from "../providers/registry";
-import type { StatusCard } from "../types";
+import { useIntegrationsList, useIntegrationsStatus } from "../hooks";
+import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
+import { connectionTargetFor, providerIcon, providerLabel } from "../providers/registry";
+import type { BindingSummary, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
-import { StatusPill, scopeLabel } from "./status-pill";
+import { StatusPill } from "./status-pill";
 
-// The status read model carries telemetry cards beside the integration ones — a runner pool, the
-// database, the agent. They are not providers and have no module; their icons live here.
-const TELEMETRY_CARD_ICON: Record<string, IconName> = {
-  runners: "cpu",
-  repository: "branch",
-  postgres: "archive",
-  mcp: "command",
-  claude: "agent",
-};
+const ROLE_WORDS = new Set(["Service", "Source", "Deploy"]);
 
-function cardIcon(key: string): IconName {
-  const base = key.split(":")[0] ?? key;
-  return TELEMETRY_CARD_ICON[base] ?? registryIcon(base);
+export function isRepositoryCard(card: Pick<StatusCard, "key">): boolean {
+  return card.key === "repository" || card.key.endsWith(":repository");
 }
 
-function externalRepoUrl(card: StatusCard): string | null {
-  const remote = card.meta?.remoteUrl;
-  return typeof remote === "string" && remote.startsWith("https://") ? remote : null;
+function metaText(card: StatusCard, key: string): string | null {
+  const value = card.meta?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
-  const lastSync = formatRelativeTime(card.lastSyncAt);
-  const repoUrl = externalRepoUrl(card);
-  const clickable = Boolean(onOpen);
-
-  return (
-    <PageSection>
-      <PageSectionBody>
-        <div
-          className={`flex min-h-[120px] flex-col gap-2.5 ${clickable ? "cursor-pointer" : ""}`}
-          {...(clickable
-            ? {
-                role: "button",
-                tabIndex: 0,
-                "aria-label": `Manage ${card.label}`,
-                onClick: onOpen,
-                onKeyDown: (e: KeyboardEvent) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen?.();
-                  }
-                },
-              }
-            : {})}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-2">
-              <Icon name={cardIcon(card.key)} size={18} className="text-muted" />
-              <span className="fg-h3">{card.label}</span>
-            </span>
-            <StatusPill card={card} />
-          </div>
-
-          <p className="fg-body-sm text-muted">{card.detail}</p>
-
-          <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-            <span className="fg-body-sm text-subtle">
-              {lastSync ? `synced ${lastSync}` : "no sync data"}
-            </span>
-            <span className="inline-flex items-center gap-3">
-              {repoUrl ? (
-                <a
-                  href={repoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Open repo
-                  <Icon name="arrowRight" size={13} />
-                </a>
-              ) : null}
-              {clickable ? (
-                <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                  Manage
-                  <Icon name="arrowRight" size={13} />
-                </span>
-              ) : null}
-            </span>
-          </div>
-        </div>
-      </PageSectionBody>
-    </PageSection>
-  );
-}
-
-/** Provider label with the env parenthetical stripped (`Coolify (prod)` →
- *  `Coolify`), used as the consolidated card's header. */
-function baseProviderLabel(card: StatusCard): string {
+/** The provider's own name on a card, without the binding parenthetical core appends. */
+function providerName(card: StatusCard): string {
   return card.label.replace(/\s*\(.*\)$/, "");
 }
 
-function scopeOf(card: StatusCard): string {
-  const role = card.meta?.role;
-  const environment = card.meta?.environment;
-  if (role === "deploy" || role === "service") {
-    return scopeLabel(role, typeof environment === "string" ? environment : null);
-  }
-  return card.key.split(":")[1] ?? "";
+/** What tells this binding apart, as core named it; a bare role word tells nothing and is not shown. */
+function bindingName(card: StatusCard): string | null {
+  const name = metaText(card, "name");
+  return name && !ROLE_WORDS.has(name) ? name : null;
 }
 
-/**
- * One consolidated card for a provider with more than one binding (e.g.
- * Coolify): a single provider header followed by one sub-row per binding. Each
- * sub-row keeps its own status pill, last-health detail, synced time, and a
- * Manage affordance that opens the drawer scoped to that binding's card. No
- * aggregate health pill in the header (we never fabricate combined health).
- */
-function GroupedIntegrationCard({
-  provider,
-  cards,
-  onOpen,
-}: {
-  provider: string;
-  cards: StatusCard[];
-  onOpen?: (card: StatusCard) => void;
-}) {
-  return (
-    <PageSection>
-      <PageSectionBody>
-        <div className="flex min-h-[120px] flex-col gap-3">
-          <span className="inline-flex items-center gap-2">
-            <Icon name={cardIcon(provider)} size={18} className="text-muted" />
-            <span className="fg-h3">{baseProviderLabel(cards[0])}</span>
-          </span>
+function healthText(card: StatusCard): string | null {
+  if (!card.configured && !isRepositoryCard(card)) return null;
+  const synced = formatRelativeTime(card.lastSyncAt);
+  return synced ? `${card.detail} · ${synced}` : card.detail;
+}
 
-          <div className="flex flex-col divide-y divide-[var(--border-subtle)]">
-            {cards.map((card) => {
-              const lastSync = formatRelativeTime(card.lastSyncAt);
-              const clickable = Boolean(onOpen);
-              const open = () => onOpen?.(card);
-              const repoUrl = externalRepoUrl(card);
-              return (
-                <div
-                  key={card.key}
-                  className={`flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0 ${
-                    clickable ? "cursor-pointer" : ""
-                  }`}
-                  {...(clickable
-                    ? {
-                        role: "button",
-                        tabIndex: 0,
-                        "aria-label": `Manage ${card.label}`,
-                        onClick: open,
-                        onKeyDown: (e: KeyboardEvent) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            open();
-                          }
-                        },
-                      }
-                    : {})}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="fg-body-sm font-semibold">{scopeOf(card)}</span>
-                    <StatusPill card={card} />
-                  </div>
-                  <p className="fg-body-sm text-muted">{card.detail}</p>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="fg-body-sm text-subtle">
-                      {lastSync ? `synced ${lastSync}` : "no sync data"}
-                    </span>
-                    <span className="inline-flex items-center gap-3">
-                      {repoUrl ? (
-                        <a
-                          href={repoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Open repo
-                          <Icon name="arrowRight" size={13} />
-                        </a>
-                      ) : null}
-                      {clickable ? (
-                        <span className="inline-flex items-center gap-1 text-13 font-semibold text-accent">
-                          Manage
-                          <Icon name="arrowRight" size={13} />
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </PageSectionBody>
-    </PageSection>
+interface Row {
+  card: StatusCard;
+  icon: IconName;
+  name: string;
+  sub: string | null;
+  target: string | null;
+  targetHref: string | null;
+  health: string | null;
+}
+
+function rowsOf(cards: StatusCard[], bindings: Map<string, BindingSummary>): Row[] {
+  const repository = cards.filter(isRepositoryCard);
+  const providers = cards.filter((c) => !isRepositoryCard(c));
+  const connected = providers.filter((c) => c.configured);
+  const open = providers.filter((c) => !c.configured);
+  return [
+    ...repository.map((card) => ({
+      card,
+      icon: "branch" as IconName,
+      name: "Repository",
+      sub: metaText(card, "provider") ? providerLabel(metaText(card, "provider") as string) : null,
+      target: metaText(card, "repository"),
+      targetHref: metaText(card, "remoteUrl")?.startsWith("https://") ? metaText(card, "remoteUrl") : null,
+      health: healthText(card),
+    })),
+    ...[...connected, ...open].map((card) => {
+      const provider = cardProvider(card.key);
+      const bindingId = metaText(card, "bindingId");
+      const binding = bindingId ? bindings.get(bindingId) : undefined;
+      return {
+        card,
+        icon: providerIcon(provider),
+        name: providerName(card),
+        sub: bindingName(card),
+        target: binding ? connectionTargetFor(provider, binding.config) : null,
+        targetHref: null,
+        health: healthText(card),
+      };
+    }),
+  ];
+}
+
+function RepositoryAction({
+  card,
+  canEdit,
+  onConnect,
+}: {
+  card: StatusCard;
+  canEdit: boolean;
+  onConnect: (provider: string) => void;
+}) {
+  const remote = metaText(card, "remoteUrl");
+  if (deriveDirectoryStatus(card) === "connected") {
+    return remote?.startsWith("https://") ? (
+      <a
+        href={remote}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-13 font-semibold text-accent hover:underline"
+      >
+        Open repo
+        <Icon name="arrowRight" size={13} />
+      </a>
+    ) : null;
+  }
+  if (!canEdit) return null;
+  const connect = metaText(card, "connectProvider");
+  if (connect) {
+    return (
+      <Button
+        variant="primary"
+        size="sm"
+        aria-label={`Connect ${providerLabel(connect)} to reach ${metaText(card, "repository") ?? "the repository"}`}
+        onClick={() => onConnect(connect)}
+      >
+        Connect {providerLabel(connect)}
+      </Button>
+    );
+  }
+  return (
+    <Link href="?tab=repo" className="text-13 font-semibold text-accent hover:underline">
+      Set repository
+    </Link>
+  );
+}
+
+function IntegrationRow({
+  row,
+  canEdit,
+  onOpen,
+  onConnect,
+}: {
+  row: Row;
+  canEdit: boolean;
+  onOpen: (card: StatusCard) => void;
+  onConnect: (provider: string) => void;
+}) {
+  const { card } = row;
+  const label = row.sub ? `${row.name} ${row.sub}` : row.name;
+  const target = row.target ? (
+    row.targetHref ? (
+      <a href={row.targetHref} target="_blank" rel="noreferrer" className="font-mono text-muted hover:underline">
+        {row.target}
+      </a>
+    ) : (
+      <span className="font-mono text-muted">{row.target}</span>
+    )
+  ) : null;
+  return (
+    <TR>
+      <TD className="align-top">
+        <span className="flex min-w-0 items-start gap-2">
+          <Icon name={row.icon} size={16} className="mt-0.5 shrink-0 text-muted" />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="fg-label text-fg">
+              {row.name}
+              {row.sub && <span className="font-normal text-muted"> · {row.sub}</span>}
+            </span>
+            <span className="sm:hidden">
+              <StatusPill card={card} />
+            </span>
+            {target && <span className="[overflow-wrap:anywhere] sm:hidden">{target}</span>}
+            {row.health && <span className="text-subtle sm:hidden">{row.health}</span>}
+          </span>
+        </span>
+      </TD>
+      <TD className="hidden align-top sm:table-cell">
+        <StatusPill card={card} />
+      </TD>
+      <TD className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{target}</TD>
+      <TD className="hidden max-w-[52ch] align-top text-muted sm:table-cell">{row.health}</TD>
+      <TD className="text-right align-top whitespace-nowrap">
+        {isRepositoryCard(card) ? (
+          <RepositoryAction card={card} canEdit={canEdit} onConnect={onConnect} />
+        ) : !isProviderCard(card.key) ? null : card.configured ? (
+          <Button variant="ghost" size="sm" aria-label={`Manage ${label}`} onClick={() => onOpen(card)}>
+            Manage
+          </Button>
+        ) : canEdit ? (
+          <Button variant="secondary" size="sm" aria-label={`Connect ${label}`} onClick={() => onOpen(card)}>
+            Connect
+          </Button>
+        ) : null}
+      </TD>
+    </TR>
   );
 }
 
 /**
- * Full integrations management for ONE project: live status cards (click a
- * provider card to configure/test/rotate/disconnect in the drawer) + the Agent
- * MCP servers preview. Used by project settings → Integrations.
+ * Full integrations management for ONE project: the flush table (a row's action opens the provider
+ * drawer) and the Agent MCP servers preview. Used by project settings → Integrations.
  */
 export function ProjectIntegrationsPanel({
   projectId,
@@ -224,62 +222,81 @@ export function ProjectIntegrationsPanel({
   canEdit?: boolean;
 }) {
   const status = useIntegrationsStatus(projectId);
+  const list = useIntegrationsList(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
+  const cards = useMemo(() => status.data?.cards ?? [], [status.data]);
+  const bindings = useMemo(
+    () => new Map((list.data?.bindings ?? []).map((b) => [b.id, b])),
+    [list.data],
+  );
+  const rows = useMemo(() => rowsOf(cards, bindings), [cards, bindings]);
+  const connectedCount = rows.filter((r) => deriveDirectoryStatus(r.card) === "connected").length;
+
+  const connectProvider = (provider: string) => {
+    const card = cards.find((c) => !isRepositoryCard(c) && cardProvider(c.key) === provider);
+    if (card) setSelectedCard(card);
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      {status.isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-[148px] w-full" />
-          ))}
-        </div>
-      ) : status.isError ? (
-        <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
-      ) : (
-        <>
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
-              Refresh
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {groupCardsByProvider(status.data?.cards ?? []).map((group) =>
-              group.cards.length > 1 ? (
-                <GroupedIntegrationCard
-                  key={group.provider}
-                  provider={group.provider}
-                  cards={group.cards}
-                  onOpen={
-                    isProviderCard(group.provider)
-                      ? (card) => setSelectedCard(card)
-                      : undefined
-                  }
-                />
-              ) : (
-                <IntegrationCard
-                  key={group.provider}
-                  card={group.cards[0]}
-                  onOpen={
-                    isProviderCard(group.cards[0].key)
-                      ? () => setSelectedCard(group.cards[0])
-                      : undefined
-                  }
-                />
-              ),
+    <div className="flex flex-col gap-10">
+      <PageSection>
+        <PageSectionHeader className="border-b-0 pt-0">
+          <span className="flex items-baseline gap-3">
+            <PageSectionTitle>Integrations</PageSectionTitle>
+            {status.data && (
+              <span className="fg-body-sm text-subtle">
+                {connectedCount} of {rows.length} connected
+              </span>
             )}
+          </span>
+          <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
+            Refresh
+          </Button>
+        </PageSectionHeader>
+        {status.isLoading ? (
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-11 w-full" />
+            ))}
           </div>
+        ) : status.isError ? (
+          <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
+        ) : (
+          <Table aria-label="Integrations">
+            <THead>
+              <TR>
+                <TH>Integration</TH>
+                <TH className="hidden sm:table-cell">Status</TH>
+                <TH className="hidden sm:table-cell">Target</TH>
+                <TH className="hidden sm:table-cell">Health</TH>
+                <TH className="text-right">
+                  <span className="sr-only">Action</span>
+                </TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.map((row) => (
+                <IntegrationRow
+                  key={row.card.key}
+                  row={row}
+                  canEdit={canEdit}
+                  onOpen={setSelectedCard}
+                  onConnect={connectProvider}
+                />
+              ))}
+            </TBody>
+          </Table>
+        )}
+      </PageSection>
 
-          <McpServersPanel projectId={projectId} canEdit={canEdit} />
+      <McpServersPanel projectId={projectId} canEdit={canEdit} onConnect={connectProvider} />
 
-          <ConnectionDetailDrawer
-            projectId={projectId}
-            card={selectedCard}
-            onClose={() => setSelectedCard(null)}
-            canEdit={canEdit}
-          />
-        </>
-      )}
+      <ConnectionDetailDrawer
+        projectId={projectId}
+        card={selectedCard}
+        onClose={() => setSelectedCard(null)}
+        canEdit={canEdit}
+      />
     </div>
   );
 }

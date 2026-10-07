@@ -1,12 +1,12 @@
 "use client";
 
 // Project settings → Integrations — the FULL per-project management surface
-// (ISS-429): live status cards with config/Test/Rotate/Disconnect drill-in,
+// (ISS-429): the integrations table with config/Test/Rotate/Disconnect drill-in,
 // the Agent MCP servers preview, and the ISS-408/F3 "Share an existing
-// connection" Card. The workspace `/integrations` page is the owner-scoped
+// connection" section. The workspace `/integrations` page is the owner-scoped
 // connection directory; everything project-scoped lives here.
 import { useMemo, useState } from "react";
-import { Banner, Button, PageSection, PageSectionBody, Field, SectionTitle, Select, type SelectOption } from "@/design";
+import { Banner, Button, PageSection, PageSectionBody, PageSectionTitle, Field, Select, type SelectOption } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
@@ -71,9 +71,9 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   );
   return (
     <PageSection>
-      <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Share an existing connection</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
+      <PageSectionBody style={{ paddingTop: 0 }}>
+        <PageSectionTitle className="mb-1">Share an existing connection</PageSectionTitle>
+        <p className="fg-body-sm mb-4 max-w-[72ch] text-muted">
           Bind one of your connections to this project without re-entering the credential. The
           connection&apos;s owner keeps it; this project gets a webhook secret of its own.
         </p>
@@ -81,7 +81,8 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
           <Banner tone="info">Only the project owner can share a connection with this project.</Banner>
         ) : !connectionsQ.isLoading && eligible.length === 0 ? (
           <Banner tone="info">
-            You don&apos;t have any connections yet. Create one on the Integrations hub first.
+            You don&apos;t have any connections to share yet. Connecting a provider in the list above
+            creates one, which other projects can then share.
           </Banner>
         ) : (
           <ShareForm projectId={projectId} eligible={eligible} loading={connectionsQ.isLoading} />
@@ -149,7 +150,7 @@ function ShareForm({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex max-w-2xl flex-col gap-4">
       <Field label="Connection" required>
         <Select
           options={eligible.map((c) => ({ value: c.id, label: connectionLabel(c) }))}
@@ -220,7 +221,7 @@ function ShareForm({
 
 export function IntegrationsTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-10">
       <ProjectIntegrationsPanel projectId={projectId} canEdit={canEdit} />
       <ShareExistingCard projectId={projectId} canEdit={canEdit} />
     </div>

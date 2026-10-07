@@ -320,6 +320,8 @@ interface IntegrationPresentation {
   neverCheckedDetail: string;
   /** Non-secret config fields this provider's card surfaces. Never a credential. */
   cardMeta?: (config: Record<string, unknown>) => Record<string, unknown>;
+  /** What one binding points at, read where two of a role on one project share every other name. */
+  bindingIdentity?: (config: Record<string, unknown>) => string | null;
 }
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */

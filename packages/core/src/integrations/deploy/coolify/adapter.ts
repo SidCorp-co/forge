@@ -364,6 +364,16 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     // Coolify is environment-split by design, so even a single binding keys by environment.
     alwaysEnvironmentKeyed: true,
     neverCheckedDetail: 'never health-checked',
+    bindingIdentity: (config) => {
+      const apps = (Array.isArray(config.targets) ? config.targets : []).flatMap((t) =>
+        t &&
+        typeof t === 'object' &&
+        typeof (t as { resourceUuid?: unknown }).resourceUuid === 'string'
+          ? [(t as { resourceUuid: string }).resourceUuid]
+          : [],
+      );
+      return apps.length > 0 ? `app ${apps.join(', ')}` : null;
+    },
   },
   adapter: coolifyAdapterMethods,
 });

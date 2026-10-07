@@ -8,7 +8,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
-import { DirectoryStatusPill, scopeLabel } from "./status-pill";
+import { DirectoryStatusPill } from "./status-pill";
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -37,8 +37,8 @@ function UsageLine({
           className="fg-body-sm inline-flex items-center gap-1 rounded-pill border border-line bg-surface px-2 py-0.5"
           title={b.active ? undefined : "this project has the integration switched off"}
         >
-          <span className="max-w-[14ch] truncate">{projectName(b.projectId)}</span>
-          <span className="text-subtle">{scopeLabel(b.role)}</span>
+          <span>{projectName(b.projectId)}</span>
+          <span className="text-subtle">{b.name}</span>
           {!b.active && <span className="text-subtle">· off</span>}
         </span>
       ))}
@@ -65,8 +65,7 @@ export function connectionRowLabel(
   // a target.
   if (connection.usage.bindings.length > 0) {
     const used = connection.usage.bindings.map((b) => {
-      const scope = scopeLabel(b.role);
-      return `${projectName(b.projectId)} ${scope}${b.active ? "" : " (off)"}`;
+      return `${projectName(b.projectId)} ${b.name}${b.active ? "" : " (off)"}`;
     });
     parts.push(`used by ${used.join(", ")}`);
   }
@@ -168,20 +167,20 @@ export function ConnectionRow({
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
-        <span className="inline-flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <Icon
             name={providerIcon(connection.provider)}
             size={16}
             className="shrink-0 text-muted"
           />
-          <span className="fg-label truncate">{title}</span>
+          <span className="fg-label min-w-0 [overflow-wrap:anywhere]">{title}</span>
           {title !== providerLabel && (
             <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
               {providerLabel}
             </span>
           )}
           <span id={ownerId}>
-            <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>
+            <Badge>{ownerLabel}</Badge>
           </span>
         </span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">

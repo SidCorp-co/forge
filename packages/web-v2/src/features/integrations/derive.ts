@@ -32,36 +32,6 @@ export function isProviderCard(key: string): boolean {
   return isDrillableProvider(cardProvider(key));
 }
 
-export interface ProviderCardGroup {
-  provider: string;
-  cards: StatusCard[];
-}
-
-function roleRank(card: StatusCard): number {
-  const role = typeof card.meta?.role === "string" ? card.meta.role : undefined;
-  const suffix = card.key.split(":")[1] ?? "";
-  return role === "service" || suffix === "service" ? 1 : 0;
-}
-
-export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
-  const groups: ProviderCardGroup[] = [];
-  const byProvider = new Map<string, ProviderCardGroup>();
-  for (const card of cards) {
-    const provider = cardProvider(card.key);
-    let group = byProvider.get(provider);
-    if (!group) {
-      group = { provider, cards: [] };
-      byProvider.set(provider, group);
-      groups.push(group);
-    }
-    group.cards.push(card);
-  }
-  for (const group of groups) {
-    if (group.cards.length > 1) group.cards.sort((a, b) => roleRank(a) - roleRank(b));
-  }
-  return groups;
-}
-
 export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">): DirectoryStatus {
   if (card.meta?.lastHealthStatus === "needs_reauth") return "needs_reauth";
   if (card.meta?.lastHealthStatus === "needs_scope") return "needs_scope";

@@ -90,7 +90,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 				header={<SettingsHeader project={project} role={listItem.role} canEdit={canEdit} isProjectAdmin={isProjectAdmin} />}
 			/>
 			<PageContainer>
-				<div className="max-w-4xl">
+				<div className={tab === "integrations" ? undefined : "max-w-4xl"}>
 					{tab === "basics" && <BasicsTab project={project} canEdit={canEdit} />}
 					{tab === "repo" && <RepoTab project={project} />}
 					{tab === "config" && <ConfigTab project={project} canEdit={canEdit} />}

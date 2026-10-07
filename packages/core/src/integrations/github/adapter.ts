@@ -305,7 +305,18 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   usage: {
     hint: "Read and write this repository through `forge_source` — a pull request diff, a failing check run's log, a comment, a new pull request, a review request, a review verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing here merges.",
   },
-  presentation: null,
+  presentation: {
+    label: 'GitHub',
+    alwaysEnvironmentKeyed: false,
+    neverCheckedDetail:
+      'Never checked — run Test connection to probe the App installation and the repository.',
+    cardMeta: (config) => ({
+      host: githubHostOf(config),
+      ...(typeof config.owner === 'string' && typeof config.repo === 'string'
+        ? { repositoryPath: `${config.owner}/${config.repo}` }
+        : {}),
+    }),
+  },
   adapter: githubAdapterMethods,
   sourceHost: githubSourceHost,
   gitCredential: githubGitCredential,

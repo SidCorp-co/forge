@@ -19,6 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Icon } from "@/design/icons/icon";
+import { EdgeCue } from "@/design/primitives/edge-cue";
 import { useScrollEdges } from "@/design/hooks/use-scroll-edges";
 import { cn } from "@/lib/utils/cn";
 
@@ -59,22 +60,6 @@ export function Table({
       <EdgeCue side="start" visible={edges.start} />
       <EdgeCue side="end" visible={edges.end} />
     </div>
-  );
-}
-
-function EdgeCue({ side, visible }: { side: "start" | "end"; visible: boolean }) {
-  return (
-    <span
-      aria-hidden
-      data-table-edge={side}
-      data-visible={visible}
-      className={cn(
-        "pointer-events-none absolute inset-y-0 w-8 opacity-0 motion-safe:transition-opacity data-[visible=true]:opacity-100",
-        side === "start"
-          ? "left-0 bg-[linear-gradient(to_right,var(--scrim),transparent_10px),linear-gradient(to_right,var(--bg-surface),transparent)]"
-          : "right-0 bg-[linear-gradient(to_left,var(--scrim),transparent_10px),linear-gradient(to_left,var(--bg-surface),transparent)]",
-      )}
-    />
   );
 }
 

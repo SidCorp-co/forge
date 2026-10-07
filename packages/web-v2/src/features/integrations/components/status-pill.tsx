@@ -15,7 +15,7 @@ export function scopeLabel(role: BindingRole, environment?: string | null): stri
 export function Pill({ icon, label, fg, bg }: { icon: IconName; label: string; fg: string; bg: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-12 font-semibold"
+      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2 py-0.5 text-12 font-semibold"
       style={{ color: fg, background: bg }}
     >
       <Icon name={icon} size={13} />

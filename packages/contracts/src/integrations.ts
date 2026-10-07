@@ -284,6 +284,9 @@ export interface ConnectionUsage {
     projectId: string;
     role: BindingRole;
     label: string;
+    /** What tells this binding apart from the connection's others on its project: the environment
+     *  that deploys through it, its label, what it points at, else its role. Never the same text twice. */
+    name: string;
     active: boolean;
   }>;
 }

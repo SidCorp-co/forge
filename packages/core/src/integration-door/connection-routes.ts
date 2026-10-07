@@ -31,6 +31,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireOrgHeld } from '../permissions/index.js';
+import { readDeployMap } from '../project-config/index.js';
 
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
@@ -61,8 +62,16 @@ integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const rows = await listConnectionsForPrincipalUser(userId);
   const bindings = await listBindingsByConnectionIds(rows.map((r) => r.id));
+  const projectIds = [...new Set([...bindings.values()].flat().map((b) => b.projectId))];
+  const deployMaps = new Map(
+    await Promise.all(projectIds.map(async (id) => [id, await readDeployMap(id)] as const)),
+  );
+  const environmentOf = (b: { id: string; projectId: string }) =>
+    deployMaps.get(b.projectId)?.environments.get(b.id)?.name ?? null;
   return c.json({
-    items: rows.map((r) => summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [])),
+    items: rows.map((r) =>
+      summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [], environmentOf),
+    ),
   });
 });
 
