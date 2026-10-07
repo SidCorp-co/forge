@@ -8,9 +8,11 @@
  * then lists the issue.
  */
 
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
-import { createTestProject, createTestUser } from '../helpers/factories.js';
+import { createTestProject, createTestUser, rows } from '../helpers/factories.js';
 
 let owner = '';
 let ownerId = '';
@@ -316,5 +318,49 @@ describe('a person links an existing issue to a requirement', () => {
       api(owner, 'POST', at(`/requirements/${draft}/issues`), { issue: loose.displayId }),
       'REQUIREMENT_NOT_AGREED',
     );
+  });
+});
+
+describe('a question that waits on a merge mark', () => {
+  it('never carries about: the ask is refused by name, and the table refuses the pair', async () => {
+    const req = await agreed();
+    const parked = await issueUnder(req, 'parked on a landing');
+    const awaited = await issueUnder(null, 'the landing it waits on');
+    const { db } = await import('../../src/db/client.js');
+    const { insertAskedQuestion } = await import('../../src/questions/index.js');
+    const ask = {
+      projectId,
+      issueId: parked.id as string,
+      prompt: 'Resume when the landing mark appears',
+      blockerKind: 'human' as const,
+      answer: { shape: 'free_text' as const, needed: 'the merge mark' },
+      awaitsMerge: { issueId: awaited.id as string },
+    };
+    const err = await db
+      .transaction((tx) =>
+        insertAskedQuestion(tx, { ...ask, id: randomUUID(), about: { requirement: null } }),
+      )
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect((err as { refusals?: { code: string }[] }).refusals?.[0]?.code).toBe(
+      'QUESTION_ABOUT_ON_MERGE_WAIT',
+    );
+
+    const id = randomUUID();
+    await db.transaction((tx) => insertAskedQuestion(tx, { ...ask, id }));
+    const [waiting] = await rows<{ awaits: string | null; about: unknown }>(
+      sql`SELECT awaits_merge_issue_id AS awaits, about FROM agent_questions WHERE id = ${id}`,
+    );
+    expect(waiting).toEqual({ awaits: awaited.id, about: null });
+    const reqRow = await read(req);
+    await expect(
+      rows(
+        sql`UPDATE agent_questions SET about = ${JSON.stringify({ kind: 'requirement', requirementId: reqRow.id })}::jsonb WHERE id = ${id} RETURNING id`,
+      ),
+    ).rejects.toMatchObject({
+      cause: { constraint_name: 'agent_questions_about_not_merge_wait_chk' },
+    });
   });
 });

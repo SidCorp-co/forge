@@ -1,16 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import type { PulseActionRecord } from "@forge/contracts/needs-you";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ageText, recordDetail } from "../derive";
+import { ageText } from "../derive";
+
+/** One record as the panel draws it, its detail already in the reader's words. */
+export interface RecordView {
+  key: string;
+  label: string;
+  detail: string;
+  href: string;
+  ageSeconds: number | null;
+}
 
 export interface RecordPanelProps {
   title: string;
   /** Every record the condition holds. */
   total: number;
   /** The records the response actually named. */
-  records: PulseActionRecord[];
+  records: RecordView[];
   onClose: () => void;
 }
 
@@ -47,7 +55,7 @@ export function RecordPanel({ title, total, records, onClose }: RecordPanelProps
                 className="fg-body-sm flex flex-wrap items-baseline gap-x-2 rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
               >
                 <span className="font-medium">{r.label === "Run" ? t("overview.awaiting.runTitle") : r.label}</span>
-                <span className="truncate text-muted">{recordDetail(r.detail, t)}</span>
+                <span className="truncate text-muted">{r.detail}</span>
                 {r.ageSeconds === null ? null : (
                   <span className="ml-auto shrink-0 tabular-nums text-subtle">
                     {ageText(r.ageSeconds, t)}

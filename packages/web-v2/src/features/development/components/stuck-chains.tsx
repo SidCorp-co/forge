@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment } from "react";
 import { StatusBadge } from "@/design";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { standingRule } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import type { OverviewChain, OverviewChainNode, OverviewStuck } from "../types";
 
@@ -21,7 +21,7 @@ function Node({ node, slug }: { node: OverviewChainNode; slug: string }) {
           <StatusBadge family="issue" value={node.status} step={node.step} {...(node.tone ? { tone: node.tone } : {})} />
         ) : null}
       </div>
-      <span className="block truncate text-12-5 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${standingRule(node.waitingOn.rule, language)}` : node.title}>
+      <span className="block truncate text-12-5 text-muted" title={node.waitingOn?.rule ? `${node.title} · ${said(node.waitingOn.says.rule, language)}` : node.title}>
         {node.title}
       </span>
     </div>

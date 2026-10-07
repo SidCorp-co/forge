@@ -167,6 +167,10 @@ export const agentQuestions = pgTable(
     /** The workflow design revision a park waits on: its approver's decision answers this question (ISS-254). */
     awaitsWorkflowId: uuid('awaits_workflow_id'),
     awaitsRevision: integer('awaits_revision'),
+    /** The issue whose merge mark a park waits on: the stamp writing it answers this question. */
+    awaitsMergeIssueId: uuid('awaits_merge_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'set null',
+    }),
     /** What the asker named the question as about (a requirement or a contract); it moves no visibility. */
     about: jsonb('about').$type<QuestionAbout>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -186,6 +190,14 @@ export const agentQuestions = pgTable(
     index('agent_questions_awaits_design_open_idx')
       .on(t.awaitsWorkflowId, t.awaitsRevision)
       .where(sql`${t.status} = 'open' and ${t.awaitsWorkflowId} is not null`),
+    // a question waits on one fact: a design decision or a merge mark, never both
+    check(
+      'agent_questions_awaits_one_chk',
+      sql`${t.awaitsWorkflowId} IS NULL OR ${t.awaitsMergeIssueId} IS NULL`,
+    ),
+    index('agent_questions_awaits_merge_open_idx')
+      .on(t.awaitsMergeIssueId)
+      .where(sql`${t.status} = 'open' and ${t.awaitsMergeIssueId} is not null`),
     index('agent_questions_session_idx').on(t.agentSessionId),
     index('agent_questions_issue_idx').on(t.issueId),
     index('agent_questions_batch_idx').on(t.batchId),
@@ -196,6 +208,11 @@ export const agentQuestions = pgTable(
     index('agent_questions_about_requirement_idx')
       .on(sql`(${t.about} ->> 'requirementId')`)
       .where(sql`${t.about} ->> 'kind' = 'requirement'`),
+    // a merge mark answers its park with the mark; a business question is a person's to answer
+    check(
+      'agent_questions_about_not_merge_wait_chk',
+      sql`${t.about} is null or ${t.awaitsMergeIssueId} is null`,
+    ),
     check(
       'agent_questions_about_shape_chk',
       sql`${t.about} is null or (

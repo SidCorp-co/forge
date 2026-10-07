@@ -1,3 +1,4 @@
+import { say } from "./said";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -33,13 +34,13 @@ const rail = { projectMark: { name: "Hop", initials: "HO", ...glyph, liveRuns: 3
 const needsYou = {
   generatedAt: AT,
   areas: {
-    requirements: { you: 2, acts: [{ act: "accept r2", count: 2 }] },
-    releases: { you: 1, acts: [{ act: "Approve release 0.1.0", count: 1 }] },
+    requirements: { you: 2, acts: [{ act: "accept r2", count: 2, says: { act: say("standing.act.acceptR", { r: 2 }) } }] },
+    releases: { you: 1, acts: [{ act: "Approve release 0.1.0", count: 1, says: { act: say("standing.act.approveReleaseV", { v: "0.1.0" }) } }] },
     feedback: { you: 0, acts: [] },
     issues: { you: 0, acts: [] },
     contracts: { you: 0, acts: [] },
     automation: { you: 0, acts: [] },
-    designs: { you: 1, acts: [{ act: "approve design Kho", count: 1 }] },
+    designs: { you: 1, acts: [{ act: "approve design Kho", count: 1, says: { act: say("standing.act.approveDesign", { what: "Kho" }) } }] },
   },
   items: [],
   requirementsInDelivery: 1,

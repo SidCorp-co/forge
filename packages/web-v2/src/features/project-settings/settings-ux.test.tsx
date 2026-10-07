@@ -1,3 +1,4 @@
+import { gateView, say } from "@/test/said";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -94,15 +95,15 @@ const readiness = (over: Partial<ReleaseReadiness> = {}): ReleaseReadiness => ({
   blockers: [{ code: "RELEASE_ROSTER_EMPTY", message: "Nothing is waiting at the release gate, so there is no release to cut.", evaluated: true }],
   warnings: [],
   gates: [
-    {
+    gateView({
       code: "RELEASE_ROSTER_EMPTY",
       kind: "blocker",
-      title: "Nothing at the gate",
-      sentence: "No issue is waiting at the release gate, so there is nothing to cut.",
+      title: say("standing.gate.title.empty"),
+      sentence: say("standing.gate.empty"),
       detail: "Nothing is waiting at the release gate, so there is no release to cut.",
       issues: [],
-      owner: { kind: "agent", who: "Master", act: "bring an issue to the release gate" },
-    },
+      owner: { kind: "agent", who: say("standing.who.master"), act: say("standing.act.bringIssueToGate") },
+    }),
   ],
   gaps: [],
   ...over,
@@ -122,15 +123,15 @@ describe("release state reads as a state, not an alarm", () => {
 
   it("keeps a real problem's severity", () => {
     const gates = [
-      {
+      gateView({
         code: "RELEASE_POOL_EMPTY",
         kind: "blocker",
-        title: "No runner paired",
-        sentence: "No runner is paired to this project, so no machine can run a release.",
+        title: say("standing.gate.title.noRunner"),
+        sentence: say("standing.gate.noRunner"),
         detail: "x",
         issues: [],
-        owner: { kind: "person", who: "A project admin", act: "pair a runner" },
-      },
+        owner: { kind: "person", who: say("standing.who.holderOf", { perm: "project.admin" }), act: say("standing.act.pairRunner") },
+      }),
     ];
     render(
       <Seeded data={[[["project", P, "release-readiness"], readiness({ gates } as Partial<ReleaseReadiness>)]]}>

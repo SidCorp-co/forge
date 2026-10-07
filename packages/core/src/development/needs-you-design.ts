@@ -5,7 +5,9 @@
  */
 
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
+import { say } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
+import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 
 interface DesignRow {
@@ -34,14 +36,18 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     title: h.flow,
     standing: {
       attentionGroup: 'needs_you',
-      waitingOn: {
-        kind: 'person',
-        who: 'A person',
-        act: `settle ${h.needsYou} health ${h.needsYou === 1 ? 'marker' : 'markers'}`,
-        rule: 'a design needs you when a marker source waits on a person, or a node is Rewrite due or Not in design with no decision (REQ-17 BC-18)',
-        ref: h.flow,
-        dueAt: null,
-      },
+      waitingOn: waitingOn(
+        'person',
+        {
+          who: say('designs.who.aPerson'),
+          act: say('designs.act.settleMarkers', {
+            n: h.needsYou,
+            markers: h.needsYou === 1 ? 'marker' : 'markers',
+          }),
+          rule: say('designs.rule.needsYou'),
+        },
+        { ref: h.flow },
+      ),
     },
     touchedAt: h.markers.reduce<string | null>(
       (at, m) => (m.since && (!at || m.since > at) ? m.since : at),

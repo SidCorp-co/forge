@@ -145,3 +145,102 @@ export function designLandingRef(
 export function designArtifact(ref: string): LandingArtifact {
 	return { surface: "design", ref, change: "changed" };
 }
+
+/**
+ * What a storefront provider can attest of a landing, read from one artifact's `ref`: a backend
+ * workflow (and the graph it was drafted at, where named), a route, a page, a theme (with the files
+ * and their sha-256 where named), or a store setting's value. Anything else — a table, test rows, a
+ * domain — is a change the provider reports no state for.
+ */
+export type StorefrontArtifact =
+	| { kind: "workflow"; id: string; graph: string | null }
+	| { kind: "route"; id: string }
+	| { kind: "page"; id: string }
+	| { kind: "theme"; id: string; files: StorefrontThemeFile[] }
+	| { kind: "setting"; key: string; value: string };
+
+export type StorefrontArtifactKind = StorefrontArtifact["kind"];
+
+export interface StorefrontThemeFile {
+	path: string;
+	/** The file's sha-256 (or a prefix of at least 8 hex) as the landing named it, else null. */
+	checksum: string | null;
+}
+
+/**
+ * The grammar a storefront artifact's `ref` is written in, said once where a mark is refused or a
+ * landing is read: what an artifact names first decides its kind.
+ */
+export const STOREFRONT_ARTIFACT_GRAMMAR =
+	"`workflow <id> [@<graph sha-256>]`, `route <id>`, `page <id>`, `theme <id> [<path> [sha256 <hex>]]…` or `setting <key> = <value>`, optionally after `draft`";
+
+const HEX = /^[0-9a-f]{8,64}$/i;
+const SUBJECT =
+	/^(?:(?:ui|api|logic|data|config):\s*)?(?:https?:\/\/\S+\s+(?:served by|on)\s+)?(?:autoflow(?:\s+[\w-]+)?\s+)?(?:(?:draft|live|served|published)\s+)?(workflow|route|page|theme)\s+(\d+)\b([\s\S]*)$/i;
+const SETTING =
+	/^(?:setting|config)s?\s*:?\s+(?:store\s+\S+\s+)?([A-Za-z_][\w.]*)\s*(?:=|:|\bis\b|\bto\b)?\s*("[^"]*"|\S+)\s*$/i;
+const THEME_FILE =
+	/\b((?:assets|sections|snippets|templates|layout|config|locales|blocks)\/[\w.\-/]*[\w-])(?:\s*(?:\(\s*)?(?:@|sha256|sha-256)?\s*([0-9a-f]{8,64})\b)?/gi;
+
+/** The first token of 8 to 64 hex an artifact names: the graph a workflow landed at. */
+function firstHex(text: string): string | null {
+	for (const token of text.split(/[\s@(),:;]+/)) {
+		if (HEX.test(token)) return token.toLowerCase();
+	}
+	return null;
+}
+
+function themeFiles(rest: string): StorefrontThemeFile[] {
+	const files = new Map<string, StorefrontThemeFile>();
+	for (const m of rest.matchAll(THEME_FILE)) {
+		const path = m[1] as string;
+		if (!files.has(path)) {
+			files.set(path, { path, checksum: m[2] ? m[2].toLowerCase() : null });
+		}
+	}
+	return [...files.values()];
+}
+
+/** The storefront artifact a ref names, by the grammar above, or null where it names none. */
+export function storefrontArtifactOf(ref: string): StorefrontArtifact | null {
+	const text = ref.trim();
+	const setting = SETTING.exec(text);
+	if (setting) {
+		return {
+			kind: "setting",
+			key: setting[1] as string,
+			value: (setting[2] as string).replace(/^"|"$/g, ""),
+		};
+	}
+	const subject = SUBJECT.exec(text);
+	if (!subject) return null;
+	const kind = (subject[1] as string).toLowerCase() as
+		| "workflow"
+		| "route"
+		| "page"
+		| "theme";
+	const id = subject[2] as string;
+	const rest = subject[3] ?? "";
+	switch (kind) {
+		case "workflow":
+			return { kind, id, graph: firstHex(rest) };
+		case "theme":
+			return { kind, id, files: themeFiles(rest) };
+		default:
+			return { kind, id };
+	}
+}
+
+/**
+ * A landing that names no artifacts, read clause by clause (`;`-separated) by the same grammar: the
+ * prose a mark wrote before artifacts existed. A clause naming none is returned as it is.
+ */
+export function storefrontLandingClauses(
+	landing: string | null | undefined,
+): Array<{ ref: string; artifact: StorefrontArtifact | null }> {
+	return (landing ?? "")
+		.split(";")
+		.map((c) => c.trim())
+		.filter((c) => c.length > 0)
+		.map((ref) => ({ ref, artifact: storefrontArtifactOf(ref) }));
+}

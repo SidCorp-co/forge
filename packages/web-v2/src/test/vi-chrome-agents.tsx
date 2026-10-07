@@ -1,7 +1,9 @@
+import type { Said } from "@forge/contracts/said";
+import type { WaitingKind } from "@forge/contracts/standing";
+import { RULE, say, verbatim, waitingOn } from "./said";
 import type { MasterStanding } from "@forge/contracts/master-standing";
 import type { RunStanding } from "@forge/contracts/run-standing";
 import type { QueryKey } from "@tanstack/react-query";
-import { fireEvent } from "@testing-library/react";
 import { AgentsScreen } from "@/features/agents/components/agents-screen";
 import { MasterItemScreen, RunItemScreen } from "@/features/agents/components/agents-item-screens";
 import { MasterPeek } from "@/features/agents/components/master-views";
@@ -14,7 +16,8 @@ import { Seeded } from "./vi-chrome-requirements";
 // The Agents / Runs screens of the Development space for the vi walking test: the runs list in each
 // grouping, a run's peek and page in every state a run can stand in, the project master with its
 // passes, leased runs and charter, and the questions a master asked. Names and titles are
-// placeholder words; core's own rule, detail and failsBy sentences stay as the placeholder "r".
+// placeholder words; core's own rule, detail and failsBy sentences are the placeholder "r", and every
+// sentence core says is built from its registry key, as core sends it.
 
 const P = "p-agents";
 const AT = "2026-10-07T08:00:00.000Z";
@@ -23,10 +26,11 @@ const noop = () => {};
 const access = { projectId: P, slug: "hop", canWrite: true };
 const peek = { open: "x", position: { at: 1, of: 3 }, set: noop, move: noop };
 const device = { id: "d1", name: "may-1" };
-const none = { source: "none", detail: "r" } as const;
+const RUN = say("issues.standing.who.run");
+const none = { source: "none", detail: "r", says: { detail: RULE } } as const;
 
-const wait = (kind: string, who: string, act: string, extra: Record<string, unknown> = {}) => ({ kind, who, act, rule: "r", ref: null, dueAt: null, ...extra });
-const held = { source: "held", kind: "run", name: "tho-1", sessionId: "s1", device, acquiredAt: AT, expiresAt: NEAR, expirySource: "claim", verdict: "live", expiryDetail: null, expiries: [{ source: "claim", at: NEAR, verdict: "live", rule: "r" }], dispatchedBy: { source: "pass", masterSessionId: "m1", passId: "pass-1", verb: "dispatch", startedAt: AT } };
+const wait = (kind: WaitingKind, who: Said, act: Said, at: { ref?: string; dueAt?: string } = {}) => waitingOn(kind, { who, act, rule: RULE }, at);
+const held = { source: "held", kind: "run", name: "tho-1", sessionId: "s1", device, acquiredAt: AT, expiresAt: NEAR, expirySource: "claim", verdict: "live", expiryDetail: null, expiries: [{ source: "claim", at: NEAR, verdict: "live", rule: "r", says: { rule: RULE } }], dispatchedBy: { source: "pass", masterSessionId: "m1", passId: "pass-1", verb: "dispatch", startedAt: AT }, says: { name: say("standing.who.named", { name: "tho-1" }), expiryDetail: null } };
 
 const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
   ({
@@ -37,6 +41,7 @@ const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
     since: AT,
     rule: "r",
     title: `Viec ${n}`,
+    says: { rule: RULE, title: verbatim(`Viec ${n}`) },
     issue: { key: `ISS-${n}`, title: `Viec ${n}`, status: "in_progress" },
     issues: [`ISS-${n}`],
     sessionId: `s-${n}`,
@@ -48,7 +53,7 @@ const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
     holder: held,
     outcome: null,
     master: { source: "session", sessionId: "m1", name: "master-1", live: true },
-    stuck: { source: "clear", detail: "r" },
+    stuck: { source: "clear", detail: "r", says: { detail: RULE } },
     release: null,
     deployLocks: [],
     pipelineStatus: "running",
@@ -56,25 +61,25 @@ const run = (n: number, over: Record<string, unknown> = {}): RunStanding =>
     startedAt: AT,
     finishedAt: null,
     attentionGroup: "running",
-    waitingOn: wait("run", "Run", "Build · 12 min", { dueAt: NEAR }),
+    waitingOn: wait("run", RUN, say("issues.standing.act.stepFor", { step: "build", n: 12 }), { dueAt: NEAR }),
     ...over,
   }) as unknown as RunStanding;
 
-const stuckRule = (rule: string) => ({ source: "stuck", rule, disagreement: null, since: AT, evidence: { table: "jobs", id: "j1", column: "last_heartbeat_at", value: AT, at: AT }, failsAt: NEAR, failsBy: "r", detail: "r" });
+const stuckRule = (rule: string) => ({ source: "stuck", rule, disagreement: null, since: AT, evidence: { table: "jobs", id: "j1", column: "last_heartbeat_at", value: AT, at: AT }, failsAt: NEAR, failsBy: "r", detail: "r", says: { failsBy: RULE, detail: RULE } });
 const by = { type: "user", agency: "human", userId: "u1", name: "Lan", reason: "Trung", at: AT };
 
 const RUNS: RunStanding[] = [
-  run(1, { state: "waiting_person", attentionGroup: "needs_you", waitingOn: wait("you", "You", "answer a question", { ref: "q1" }), holder: none }),
-  run(2, { state: "stuck", attentionGroup: "stuck", stuck: stuckRule("lease_expired"), waitingOn: wait("run", "Run", "Build", { dueAt: NEAR }) }),
-  run(3, { state: "waiting_gate", attentionGroup: "waiting_gate", waitingOn: { kind: "gate", gate: "retry_cooldown", resumesAt: NEAR, rule: "r" }, holder: none }),
-  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", "Lan", "approve"), holder: none }),
-  run(5, { state: "queued", attentionGroup: "queued", waitingOn: wait("master", "Master", "dispatch a run"), holder: none, device: null, lastBeatAt: null, attempt: none }),
+  run(1, { state: "waiting_person", attentionGroup: "needs_you", waitingOn: wait("you", say("standing.who.you"), say("issues.standing.act.answer"), { ref: "q1" }), holder: none }),
+  run(2, { state: "stuck", attentionGroup: "stuck", stuck: stuckRule("lease_expired"), waitingOn: wait("run", RUN, say("issues.standing.act.stepFor", { step: "build", n: 3 }), { dueAt: NEAR }) }),
+  run(3, { state: "waiting_gate", attentionGroup: "waiting_gate", waitingOn: { kind: "gate", gate: "retry_cooldown", resumesAt: NEAR, rule: "r", says: { rule: RULE } }, holder: none }),
+  run(4, { state: "waiting_person", attentionGroup: "waiting", waitingOn: wait("person", say("standing.who.named", { name: "Lan" }), say("designs.act.approveOrReturn", { r: 2 })), holder: none }),
+  run(5, { state: "queued", attentionGroup: "queued", waitingOn: wait("master", say("standing.who.master"), say("issues.standing.act.dispatch")), holder: none, device: null, lastBeatAt: null, attempt: none }),
   run(6, { lane: "release", state: "running", release: { version: "0.1.0", stage: "deploying", verdict: null, attemptAt: AT }, deployLocks: [{ environment: "production", subject: "0.1.0", acquiredAt: AT, expiresAt: NEAR, reclaimedFromRunId: null }], issue: null, issues: ["ISS-1", "ISS-2"] }),
-  run(7, { state: "done", attentionGroup: "finished", outcome: { kind: "done", at: AT, by }, finishedAt: AT, waitingOn: wait("none", "Nobody", ""), holder: none, liveJobs: 0 }),
-  run(8, { state: "failed", attentionGroup: "finished", outcome: { kind: "failed", at: AT, cause: "agent_exited_without_result", classified: true, detail: "r" }, finishedAt: AT, waitingOn: wait("none", "Nobody", ""), holder: none, liveJobs: 0 }),
-  run(9, { state: "cancelled", attentionGroup: "finished", outcome: { kind: "cancelled", at: AT, by }, finishedAt: AT, waitingOn: wait("none", "Nobody", ""), holder: none, liveJobs: 0 }),
-  run(10, { state: "handed_back", attentionGroup: "finished", outcome: { kind: "handed_back", at: AT, close: "died", returnedTo: [{ issueKey: "ISS-10", status: "open" }], detail: "r" }, finishedAt: AT, waitingOn: wait("none", "Nobody", ""), holder: none, liveJobs: 0 }),
-  run(11, { lane: "job", state: "running", issue: null, issues: [], job: { id: "j2", type: "triage", status: "dispatched" }, step: { source: "none", step: null, detail: "r" } }),
+  run(7, { state: "done", attentionGroup: "finished", outcome: { kind: "done", at: AT, by }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),
+  run(8, { state: "failed", attentionGroup: "finished", outcome: { kind: "failed", at: AT, cause: "agent_exited_without_result", classified: true, detail: "r" }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),
+  run(9, { state: "cancelled", attentionGroup: "finished", outcome: { kind: "cancelled", at: AT, by }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),
+  run(10, { state: "handed_back", attentionGroup: "finished", outcome: { kind: "handed_back", at: AT, close: "died", returnedTo: [{ issueKey: "ISS-10", status: "open" }], detail: "r", says: { detail: RULE } }, finishedAt: AT, waitingOn: wait("none", say("standing.who.nobody"), say("standing.act.none")), holder: none, liveJobs: 0 }),
+  run(11, { lane: "job", state: "running", issue: null, issues: [], job: { id: "j2", type: "triage", status: "dispatched" }, step: { source: "none", step: null, detail: "r", says: { detail: RULE } } }),
   run(12, { lane: "deploy", state: "running", issue: null, issues: [], step: { source: "run_column", step: "build", since: null } }),
   run(13, { state: "stuck", attentionGroup: "stuck", stuck: { ...stuckRule("disagreement"), disagreement: "box-live-core-terminal" } }),
 ] as RunStanding[];
@@ -93,7 +98,7 @@ const MASTER = {
   runsOut: 1,
   lastBeatAt: AT,
   silentAfterSeconds: 300,
-  waitingOn: { kind: "person", who: "Lan", act: "answer a pane dialog", rule: "MASTER_PANE_DIALOG", since: AT },
+  waitingOn: { kind: "person", who: "Lan", act: "answer a pane dialog", rule: "MASTER_PANE_DIALOG", since: AT, says: { who: say("standing.who.named", { name: "Lan" }), act: say("masters.act.answerDialog", { pane: say("masters.act.theMasterPane"), text: "Tiep tuc?" }) } },
   dialogsAnswered: { count: 4, countIsFloor: false, firstAt: AT, lastAt: AT, last: "Dong y", lastAgent: "master-1" },
   outdated: { since: AT, why: "r", heldBy: ["ISS-3"], draining: true },
 } as unknown as MasterStanding;
@@ -105,13 +110,14 @@ const list = (scope: "live" | "finished", items: RunStanding[], master: MasterSt
   projectId: P,
   scope,
   scopeRule: "r",
+  says: { scopeRule: RULE },
   items,
   total: items.length,
   limit: 200,
   offset: 0,
   hasMore: false,
   counts: { live: 8, finished: 4, liveByState: { queued: 1, claimed: 0, running: 3, waiting_person: 2, waiting_gate: 1, stuck: 2 }, needsViewer: 1, held: 5 },
-  excluded: [{ what: "r", count: 2, rule: "r" }],
+  excluded: [{ what: "r", count: 2, rule: "r", says: { rule: RULE } }],
   master,
 });
 
@@ -172,13 +178,9 @@ const data = (): [QueryKey, unknown][] => [
 ];
 
 const wrap = (children: React.ReactNode) => <Seeded data={data()}>{children}</Seeded>;
-const url = (qs: string) => () => window.history.replaceState(null, "", `/${qs}`);
 const withUrl = (qs: string, children: React.ReactNode) => {
   window.history.replaceState(null, "", `/${qs}`);
   return wrap(children);
-};
-const clickAll = (selector: string) => () => {
-  for (const el of document.querySelectorAll(selector)) fireEvent.click(el);
 };
 
 export const AGENTS_SCREENS = [

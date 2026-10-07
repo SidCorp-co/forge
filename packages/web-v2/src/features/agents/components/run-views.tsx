@@ -41,7 +41,7 @@ import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { formatAge, formatDateTime } from "@/lib/i18n/format";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
-import { localizeWaiting, standingAct } from "@/lib/i18n/standing-copy";
+import { said, saidOrNull, saidView } from "@/lib/i18n/said";
 import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
 import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
 import { masterHref, runHref } from "@/lib/routes/agents";
@@ -73,11 +73,11 @@ export const runRow =
       key: r.id,
       keyLabel: runKey(r, language),
       href: hrefOf(r.id),
-      title: r.title,
+      title: said(r.says.title, language),
       facts: rowFacts(r, t, language),
       state: <StatusBadge family="runStanding" value={r.state} />,
       waitingOn: w.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={w} />,
-      owner: r.holder.source === "held" ? r.holder.name : t("runs.noHolder"),
+      owner: r.holder.source === "held" ? said(r.holder.says.name, language) : t("runs.noHolder"),
       age: { text: formatAge(at, language), title: t(r.finishedAt ? "runs.finishedAt" : "runs.sinceAt", { at: formatDateTime(at, language) }) },
       dim: isFinal(r.state),
     };
@@ -128,17 +128,17 @@ function HolderFacts({ r, slug }: { r: RunStanding; slug: string }) {
         {h.source === "held" ? (
           <>
             <Fact label={t("runs.fact.run")}>
-              <span title={t("runs.holderKind", { kind: t(`runs.holder.${h.kind}`) })}>{h.name}</span>
+              <span title={t("runs.holderKind", { kind: t(`runs.holder.${h.kind}`) })}>{said(h.says.name, language)}</span>
             </Fact>
             <Fact label={t("runs.fact.box")}>
               <span className="font-mono text-12-5">{h.device?.name ?? "—"}</span>
             </Fact>
             <Fact label={t("runs.fact.lease")}>
-              <span title={h.expiryDetail ?? (h.expiresAt ? time.dateTime(h.expiresAt) : undefined)}>{leaseLeft(r, language) ?? h.expiryDetail ?? "—"}</span>
+              <span title={saidOrNull(h.says.expiryDetail, language) ?? (h.expiresAt ? time.dateTime(h.expiresAt) : undefined)}>{leaseLeft(r, language) ?? saidOrNull(h.says.expiryDetail, language) ?? "—"}</span>
             </Fact>
           </>
         ) : (
-          <FactsEmpty>{h.detail}</FactsEmpty>
+          <FactsEmpty>{said(h.says.detail, language)}</FactsEmpty>
         )}
       </FactsGroup>
       <FactsGroup title={t("runs.fact.dispatchedBy")}>
@@ -155,14 +155,14 @@ function HolderFacts({ r, slug }: { r: RunStanding; slug: string }) {
                   {t("runs.fact.passOf", { when: fmtTime(d.startedAt, language), verb: enumLabel("masterVerb", d.verb, language).toLowerCase() })}
                 </span>
               ) : (
-                <span className="text-muted" title={d.detail}>
+                <span className="text-muted" title={said(d.says.detail, language)}>
                   {t("runs.notKnown")}
                 </span>
               )}
             </Fact>
           </>
         ) : (
-          <FactsEmpty>{d && d.source === "none" ? d.detail : r.master.source === "none" ? r.master.detail : t("runs.fact.noPass")}</FactsEmpty>
+          <FactsEmpty>{d && d.source === "none" ? said(d.says.detail, language) : r.master.source === "none" ? said(r.master.says.detail, language) : t("runs.fact.noPass")}</FactsEmpty>
         )}
       </FactsGroup>
     </>
@@ -180,11 +180,11 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
           <StatusBadge family="runStanding" value={r.state} />
         </Fact>
         <Fact label={t("runs.fact.since")}>
-          <span title={`${stamp(r.since, language)} — ${r.rule}`}>{fmtTime(r.since, language)}</span>
+          <span title={`${stamp(r.since, language)} — ${said(r.says.rule, language)}`}>{fmtTime(r.since, language)}</span>
         </Fact>
         {r.stuck.source === "stuck" ? (
           <Fact label={t("runs.fact.stuck")}>
-            <span title={r.stuck.detail}>{enumLabel("runStuckRule", r.stuck.rule, language)}</span>
+            <span title={said(r.stuck.says.detail, language)}>{enumLabel("runStuckRule", r.stuck.rule, language)}</span>
           </Fact>
         ) : null}
       </FactsGroup>
@@ -206,7 +206,7 @@ export function RunFacts({ r, slug }: { r: RunStanding; slug: string }) {
           <EnumBadge family="runLane" value={r.lane} />
         </Fact>
         <Fact label={t("runs.fact.step")}>
-          <span title={r.step.source === "none" ? r.step.detail : t("runs.readFrom", { source: r.step.source })}>{stepLabel(r, language) ?? "—"}</span>
+          <span title={r.step.source === "none" ? said(r.step.says.detail, language) : t("runs.readFrom", { source: r.step.source })}>{stepLabel(r, language) ?? "—"}</span>
         </Fact>
         {r.attempt.source === "runs" ? <Fact label={t("runs.fact.attempt")}>{r.attempt.n}</Fact> : null}
       </FactsGroup>
@@ -250,7 +250,7 @@ export function RunActions({ r, slug, canWrite }: { r: RunStanding; slug: string
   const parkRefused = parkRefusalText(cancel.data);
   const live = r.outcome === null;
   const w = r.waitingOn;
-  const answer = w.kind === "you" ? standingAct(w.act, language) : null;
+  const answer = w.kind === "you" ? saidView(w, language).act : null;
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       {answer && r.issue ? (
@@ -300,7 +300,7 @@ export function RunPeek({
         noun={t("runs.noun")}
         itemKey={runKey(r, language)}
         badge={<StatusBadge family="runStanding" value={r.state} />}
-        title={r.title}
+        title={said(r.says.title, language)}
         action={<RunActions r={r} slug={slug} canWrite={canWrite} />}
       />
       <div className="px-[18px] pb-3">
@@ -321,7 +321,7 @@ function Overview({ r }: { r: RunStanding }) {
   const language = useInterfaceLanguage();
   const walked: Array<[string, string | null, string]> = [[t("runs.fact.started"), r.startedAt, "pipeline_runs.started_at"]];
   if (r.holder.source === "held" && r.holder.acquiredAt) walked.push([t("runs.moment.claimed"), r.holder.acquiredAt, "holder.acquiredAt"]);
-  walked.push([statusReading("runStanding", r.state, language).label, r.since, `since: ${r.rule}`]);
+  walked.push([statusReading("runStanding", r.state, language).label, r.since, `since: ${said(r.says.rule, language)}`]);
   if (r.finishedAt) walked.push([t("runs.fact.finished"), r.finishedAt, "pipeline_runs.finished_at"]);
   const stuck = r.stuck.source === "stuck" ? r.stuck : null;
   const o = r.outcome;
@@ -356,8 +356,8 @@ function Overview({ r }: { r: RunStanding }) {
       {stuck ? (
         <section>
           <ViewHeading hint={enumLabel("runStuckRule", stuck.rule, language)}>{t("runs.whyStuck")}</ViewHeading>
-          <p className="text-13">{stuck.detail}</p>
-          <p className="mt-1 text-12-5 text-muted">{stuck.failsBy}</p>
+          <p className="text-13">{said(stuck.says.detail, language)}</p>
+          <p className="mt-1 text-12-5 text-muted">{said(stuck.says.failsBy, language)}</p>
           <p className="mt-2 font-mono text-12 text-subtle" title={stuck.evidence.value ?? undefined} translate="no">
             {stuck.evidence.table}.{stuck.evidence.column} · {stuck.evidence.id.slice(0, 8)}
             {stuck.evidence.at ? ` · ${fmtTime(stuck.evidence.at, language)}` : ""}
@@ -385,7 +385,7 @@ function Attempts({ d, slug }: { d: RunStandingDetail; slug: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const r = d.run;
-  if (d.attempts.length === 0) return <FactsEmpty>{r.attempt.source === "none" ? r.attempt.detail : t("runs.oneAttempt")}</FactsEmpty>;
+  if (d.attempts.length === 0) return <FactsEmpty>{r.attempt.source === "none" ? said(r.attempt.says.detail, language) : t("runs.oneAttempt")}</FactsEmpty>;
   return (
     <section>
       <ViewHeading>{t("runs.attemptsOn", { subject: r.attempt.source === "runs" ? r.attempt.of : t("runs.thisSubject") })}</ViewHeading>
@@ -472,7 +472,7 @@ function Lease({ r }: { r: RunStanding }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const h = r.holder;
-  if (h.source !== "held") return <FactsEmpty>{h.detail}</FactsEmpty>;
+  if (h.source !== "held") return <FactsEmpty>{said(h.says.detail, language)}</FactsEmpty>;
   return (
     <div className="grid gap-8">
       <section>
@@ -488,7 +488,7 @@ function Lease({ r }: { r: RunStanding }) {
             <TR>
               <TD>{t("runs.fact.holder")}</TD>
               <TD>
-                {h.name} <span className="text-muted">({t(`runs.holder.${h.kind}`)})</span>
+                {said(h.says.name, language)} <span className="text-muted">({t(`runs.holder.${h.kind}`)})</span>
               </TD>
             </TR>
             <TR>
@@ -500,7 +500,7 @@ function Lease({ r }: { r: RunStanding }) {
             <TR>
               <TD>{t("runs.lease.expires")}</TD>
               <TD>
-                <span title={h.expiryDetail ?? stamp(h.expiresAt, language)}>{h.expiresAt ? `${fmtTime(h.expiresAt, language)} · ${leaseLeft(r, language)}` : (h.expiryDetail ?? "—")}</span>
+                <span title={saidOrNull(h.says.expiryDetail, language) ?? stamp(h.expiresAt, language)}>{h.expiresAt ? `${fmtTime(h.expiresAt, language)} · ${leaseLeft(r, language)}` : (saidOrNull(h.says.expiryDetail, language) ?? "—")}</span>
               </TD>
             </TR>
             <TR>
@@ -523,14 +523,14 @@ function Lease({ r }: { r: RunStanding }) {
                 <EnumBadge family="runExpirySource" value={x.source} />
                 <span title={formatDateTime(x.at, language)}>{fmtTime(x.at, language)}</span>
                 <StatusBadge family="lease" value={x.verdict} />
-                <span className="text-12-5 text-muted">{x.rule}</span>
+                <span className="text-12-5 text-muted">{said(x.says.rule, language)}</span>
               </li>
             ))}
           </ul>
         </section>
       ) : (
-        <p className="text-12-5 text-subtle" title={h.expiries[0]?.rule}>
-          {h.expiries[0]?.rule ?? h.expiryDetail}
+        <p className="text-12-5 text-subtle" title={saidOrNull(h.expiries[0]?.says.rule, language) ?? undefined}>
+          {saidOrNull(h.expiries[0]?.says.rule, language) ?? saidOrNull(h.says.expiryDetail, language)}
         </p>
       )}
     </div>

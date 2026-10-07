@@ -8,6 +8,7 @@ import type {
 import type { IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type { MasterSlots, MasterState } from "./master-standing.js";
+import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
 export const OVERVIEW_WINDOW_DAYS = 14;
@@ -15,6 +16,8 @@ export const OVERVIEW_WINDOW_DAYS = 14;
 interface OverviewUnavailable {
 	available: false;
 	reason: string;
+	/** `reason` as said (`said.ts`). */
+	says: { reason: Said };
 }
 
 export interface OverviewContractWindow {
@@ -37,6 +40,8 @@ export interface OverviewMasterSignal {
 	state: MasterState;
 	slots: MasterSlots | null;
 	slotsNote: string | null;
+	/** `slotsNote` as said (`said.ts`); a box's own refusal detail is carried as written. */
+	says: { slotsNote: Said | null };
 }
 
 export interface OverviewSignals {

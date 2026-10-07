@@ -121,6 +121,7 @@ describe('requirement-to-delivery similar -> ready: embeddings down, readiness s
     expect(read.check).toEqual({
       ran: false,
       why: "dedup was not checked: the head revision's vector is not written yet",
+      says: { why: { key: 'requirements.dedup.notWritten' } },
     });
   });
 
@@ -136,6 +137,7 @@ describe('requirement-to-delivery similar -> ready: embeddings down, readiness s
     expect((await nearDuplicatesOf(row)).check).toEqual({
       ran: false,
       why: "dedup was not checked: the head revision's vector is failed",
+      says: { why: { key: 'requirements.dedup.notChecked', vars: { status: 'failed' } } },
     });
   });
 

@@ -9,6 +9,46 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.139] - 2026-10-07
+
+Failed chat turns explain themselves, rewrites keep true answers, rooms add project members
+
+### Fixed
+
+- **A failed chat turn now delivers what it found, and a true answer is never rewritten into a false one.** Failures post reads and draft in the asker's language; rewrites add no claims; Add person lists project members.
+
+## [0.4.0-dev.138] - 2026-10-07
+
+Standing sentences become registry keys, so Vietnamese pages read Vietnamese
+
+### Changed
+
+- **Vietnamese screens now read every standing sentence in Vietnamese.** Core sends each wait, act, rule, blocker and run outcome as a registry key with typed values beside its English; the web renders the key, marking one it lacks.
+
+## [0.4.0-dev.137] - 2026-10-07
+
+A question waiting on a merge is answered when the merge mark is stamped
+
+### Added
+
+- **A park can wait on a merge mark, and the mark answers it.** `needs_info` takes `awaitsMerge: { issueId }`; whatever stamps that mark answers the question and resumes the issue. A mark already standing is refused `QUESTION_MERGE_ALREADY_MARKED`.
+
+## [0.4.0-dev.136] - 2026-10-07
+
+Storefront releases verify pages, routes, themes and settings, not only workflows
+
+### Fixed
+
+- **A storefront release verifies every landing kind, not only workflow drafts.** Routes, pages, the served theme with file hashes and store settings are read from Autoflow; a design-only issue is proved by its approval; anything unattestable is refused by name.
+
+## [0.4.0-dev.135] - 2026-10-07
+
+A project status read the assistant answers from, and a status page
+
+### Added
+
+- **A project's status is one read the assistant must answer from**: `GET /api/projects/:id/status` (shipped, in flight, waits, proof, next release, late, roadmap); chat read tools; ungrounded status claims refused; dashboard leads with Shipped recently; printable report; releases state verification.
+
 ## [0.4.0-dev.134] - 2026-10-07
 
 Design fingerprints ignore key order and hash their template

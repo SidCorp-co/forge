@@ -1,4 +1,5 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
+import { say } from '@forge/contracts/said';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -286,8 +287,7 @@ export const gitlabIntegration = declareIntegration<GitLabConfig, GitLabSecrets>
   presentation: {
     label: 'GitLab',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail:
-      'Never checked — run Test connection to probe the token and the project webhook.',
+    neverCheckedDetail: say('integrations.detail.neverGitlab'),
     cardMeta: (config) => ({
       host: gitlabHostOf(config),
       ...(typeof config.projectPath === 'string' ? { projectPath: config.projectPath } : {}),

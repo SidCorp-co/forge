@@ -1,3 +1,4 @@
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -34,7 +35,12 @@ interface StatusCard {
   lastSyncAt: string | null;
   configured: boolean;
   meta?: Record<string, unknown>;
+  /** `detail` as said (`@forge/contracts/said`). */
+  says: { detail: Said };
 }
+
+/** A card's detail from what it says: its English rendered from `says`. */
+const detailOf = (detail: Said) => ({ detail: sayEn(detail), says: { detail } });
 
 /** The card's coarser bucket over the connection rule: every state that wants a look is `attention`. */
 function healthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
@@ -85,7 +91,7 @@ function buildProviderCards(opts: {
    *  MCP providers keep the bare key unless a second binding appears (keeps
    *  existing drill-ins stable, ISS-429). */
   alwaysEnvKeyed: boolean;
-  neverCheckedDetail: string;
+  neverCheckedDetail: Said;
   extraMeta?: (row: ProviderRow) => Record<string, unknown>;
 }): StatusCard[] {
   const caps = providerCapabilities(opts.provider);
@@ -95,7 +101,7 @@ function buildProviderCards(opts: {
         key: opts.provider,
         label: opts.label,
         status: 'not_configured',
-        detail: `no ${opts.label} integration configured`,
+        ...detailOf(say('integrations.detail.noneConfigured', { provider: opts.label })),
         lastSyncAt: null,
         configured: false,
         meta: { capabilities: caps },
@@ -110,11 +116,18 @@ function buildProviderCards(opts: {
     key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
     label: envKeyed ? `${opts.label} (${row.name})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
-    detail: !row.active
-      ? 'integration disabled'
-      : row.lastHealthStatus
-        ? `last health: ${row.lastHealthStatus}${row.lastHealthDetail ? ` — ${row.lastHealthDetail}` : ''}`
-        : opts.neverCheckedDetail,
+    ...detailOf(
+      !row.active
+        ? say('integrations.detail.disabled')
+        : row.lastHealthStatus
+          ? row.lastHealthDetail
+            ? say('integrations.detail.lastHealthWhy', {
+                status: row.lastHealthStatus,
+                detail: row.lastHealthDetail,
+              })
+            : say('integrations.detail.lastHealth', { status: row.lastHealthStatus })
+          : opts.neverCheckedDetail,
+    ),
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
     meta: {
@@ -161,9 +174,6 @@ function providerServing(host: string): { provider: string; label: string } | nu
   return null;
 }
 
-const UNREACHED_COST =
-  'Forge cannot read its commits, merge into it or compare branches, so a release cannot tell what already shipped';
-
 /**
  * The declared repository, connected only where a source host binding reaches it: a repository no
  * host serves is not connected, whatever the document says, and the card names what that costs and
@@ -190,7 +200,7 @@ function repositoryCard(
       key: 'repository',
       label: 'Repository',
       status: 'not_configured',
-      detail: 'the project document declares no repository',
+      ...detailOf(say('integrations.detail.noRepository')),
       lastSyncAt: null,
       configured: false,
       meta,
@@ -201,7 +211,7 @@ function repositoryCard(
       key: 'repository',
       label: 'Repository',
       status: 'not_configured',
-      detail: `a local path no host serves: ${UNREACHED_COST}. Its head is read from a runner's bound checkout; declare the hosted repository to read the rest`,
+      ...detailOf(say('integrations.detail.localPath')),
       lastSyncAt: null,
       configured: true,
       meta,
@@ -212,11 +222,11 @@ function repositoryCard(
       key: 'repository',
       label: 'Repository',
       status: 'not_configured',
-      detail: `no source host binding reaches ${host}: ${UNREACHED_COST}. ${
+      ...detailOf(
         serving
-          ? `Connect ${serving.label} to fix it`
-          : `Bind a source host connection serving ${host} to fix it`
-      }`,
+          ? say('integrations.detail.unreachedConnect', { host, provider: serving.label })
+          : say('integrations.detail.unreachedBind', { host }),
+      ),
       lastSyncAt: null,
       configured: true,
       meta,
@@ -228,11 +238,16 @@ function repositoryCard(
     key: `${binding.provider}:repository`,
     label: `${reached.label} repository`,
     status: healthToStatus(connection.lastHealthStatus, active),
-    detail: !active
-      ? `the ${reached.label} binding that reaches it is switched off: ${UNREACHED_COST}`
-      : connection.lastHealthStatus
-        ? `read through ${reached.label} — last health: ${connection.lastHealthStatus}`
-        : `read through ${reached.label} — never health-checked`,
+    ...detailOf(
+      !active
+        ? say('integrations.detail.switchedOff', { provider: reached.label })
+        : connection.lastHealthStatus
+          ? say('integrations.detail.readThrough', {
+              provider: reached.label,
+              status: connection.lastHealthStatus,
+            })
+          : say('integrations.detail.readThroughNever', { provider: reached.label }),
+    ),
     lastSyncAt: toIso(connection.lastHealthAt),
     configured: true,
     meta,

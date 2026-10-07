@@ -5,7 +5,8 @@
  */
 
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
-import type { Standing, WaitingOn } from '@forge/contracts/standing';
+import { say } from '@forge/contracts/said';
+import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { readDetachedOpenQuestions } from '../questions/index.js';
 
 interface QuestionRow {
@@ -16,14 +17,11 @@ interface QuestionRow {
   touchedAt: string | null;
 }
 
-const owedAnswer: WaitingOn = {
-  kind: 'you',
-  who: 'You',
-  act: 'answer a question',
-  rule: 'a run asked a question that no issue, requirement or feedback holds, and only the Agents screen can take the answer',
-  ref: null,
-  dueAt: null,
-};
+const owedAnswer: WaitingOn = waitingOn('you', {
+  who: say('standing.who.you'),
+  act: say('issues.standing.act.answer'),
+  rule: say('questions.rule.unheld'),
+});
 
 export async function questionRowsOf(
   projectId: string,

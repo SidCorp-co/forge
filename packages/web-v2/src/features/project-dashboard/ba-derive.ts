@@ -7,6 +7,7 @@ import type { DeliveryForecast, FeedbackForecasts, Forecast, ForecastLate, Requi
 import type { FeedbackSummary } from "@forge/contracts/feedback";
 import { FEEDBACK_UNTRIAGED_PHASES } from "@forge/contracts/feedback";
 import { REQUIREMENT_LIFECYCLE, type RequirementState } from "@forge/contracts/requirements";
+import type { Said } from "@forge/contracts/said";
 import { partsOf, type EtaClock } from "@/features/forecast/clock";
 import { type Eta, etaOfFeedback, etaOfScope } from "@/features/forecast/eta";
 import type { NeedsYouAreaKey, NeedsYouItem } from "@/features/needs-you/types";
@@ -67,7 +68,7 @@ export interface PlanRow {
   eta: Eta | null;
   late: ForecastLate | null;
   /** The release cut this row's delivery waits on, and who cuts it; null where no cut is owed. */
-  release: { version: string; who: string } | null;
+  release: { version: string; who: Said } | null;
 }
 
 export interface PlanInputs {
@@ -82,7 +83,7 @@ export interface PlanInputs {
 const lateOfForecast = (f: Forecast | null | undefined): ForecastLate | null => (f && (f.kind === "forecast" || f.kind === "paused") ? f.late : null);
 
 const releaseOf = (d: DeliveryForecast | null | undefined): PlanRow["release"] =>
-  d?.release?.kind === "person" && d.release.version ? { version: d.release.version, who: d.release.who } : null;
+  d?.release?.kind === "person" && d.release.version ? { version: d.release.version, who: d.release.says.who } : null;
 
 const lateOfDelivery = (d: DeliveryForecast | null | undefined): ForecastLate | null => lateOfForecast(d?.landing);
 

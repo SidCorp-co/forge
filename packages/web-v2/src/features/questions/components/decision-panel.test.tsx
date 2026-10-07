@@ -121,4 +121,18 @@ describe("answering a question on an issue", () => {
     );
     expect(screen.queryByTestId("still-waits")).toBeNull();
   });
+
+  it("names the merge mark an open question waits on, and drops it once answered", async () => {
+    fakeCore(() => ({
+      body: {
+        questions: [
+          { ...asked, awaitsMerge: { issueId: "i5", key: "ISS-5" } },
+          { ...answered, id: "q2", awaitsMerge: { issueId: "i5", key: "ISS-5" } },
+        ],
+      },
+    }));
+    renderWithQuery(<DecisionPanel issueId="i1" />);
+    expect(await screen.findByText("Waiting on: merge mark of ISS-5")).toBeTruthy();
+    expect(screen.getAllByTestId("waits-on-mark")).toHaveLength(1);
+  });
 });

@@ -63,7 +63,7 @@ export interface ReleaseChannel {
 }
 
 /** How a release is proved: by one live channel's probes; where a storefront's work is published by
- *  a provider that reports what it publishes, by that report against each issue's landed draft
+ *  a provider that reports what it publishes, by that report against what each issue landed
  *  (`provider-verify.ts`); else by the commit production's own deployment record names
  *  (`serving-reading.ts`). A release none can prove is refused `RELEASE_NOT_VERIFIED`; nothing
  *  closes unverified. */

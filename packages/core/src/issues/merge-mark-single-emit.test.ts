@@ -37,6 +37,7 @@ vi.mock('../outbox/index.js', () => ({
 }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => prior }));
 vi.mock('./ports.js', () => ({
+  answerMergeQuestions: async () => [],
   contractDrift: async () => null,
   postIssueNotice: async (args: { body: string }) => ({
     id: 'c1',

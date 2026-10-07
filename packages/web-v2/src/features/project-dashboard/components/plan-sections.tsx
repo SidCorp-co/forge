@@ -4,6 +4,7 @@
 // in the viewer's timezone; "late" is core's `ForecastLate`, never decided here. A row waiting on a
 // person names who and not a time.
 
+import type { Said } from "@forge/contracts/said";
 import Link from "next/link";
 import { SectionTitle } from "@/design/primitives/heading";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
@@ -13,7 +14,7 @@ import { releaseHref } from "@/lib/routes/releases";
 import type { PlanRow } from "../ba-derive";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 
 const GRID = "grid grid-cols-[84px_minmax(0,1fr)_minmax(0,200px)] items-center gap-x-3.5 max-md:grid-cols-[auto_minmax(0,1fr)]";
 const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
@@ -33,11 +34,11 @@ function lateText(row: PlanRow, t: Copy, lang: EtaClock["lang"]): string {
   if (!l) return "";
   const by = spanText(l.byMinutes, lang);
   if (l.reason === "p85_passed") return t("dash.latePast", { by });
-  const who = row.eta?.kind === "waits" ? standingWho(row.eta.who, lang) : t("dash.aPerson");
+  const who = row.eta?.kind === "waits" ? said(row.eta.who, lang) : t("dash.aPerson");
   return t("dash.lateWaiting", { who, by });
 }
 
-type Block = { kind: "row"; row: PlanRow } | { kind: "cut"; version: string; who: string; rows: PlanRow[] };
+type Block = { kind: "row"; row: PlanRow } | { kind: "cut"; version: string; who: Said; rows: PlanRow[] };
 
 /** Rows waiting on the same release cut sit under one line naming the release and who cuts it; a lone one stays a row. */
 export function landBlocks(rows: readonly PlanRow[]): Block[] {
@@ -86,7 +87,7 @@ export function LandsThisWeek({ rows, clock, slug }: { rows: PlanRow[]; clock: E
                     <Link className="text-link hover:underline" href={releaseHref(slug, b.version)} onClick={(e) => e.stopPropagation()}>
                       {b.version}
                     </Link>{" "}
-                    {t("dash.landWhenB", { who: standingWho(b.who, clock.lang) })}
+                    {t("dash.landWhenB", { who: said(b.who, clock.lang) })}
                   </summary>
                   <ul className="m-0 list-none p-0">
                     {b.rows.map((r) => (

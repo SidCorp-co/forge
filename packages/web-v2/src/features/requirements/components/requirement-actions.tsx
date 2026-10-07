@@ -13,7 +13,7 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import { type DockDoor, useChatDock } from "@/features/chat-dock/dock";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
-import { standingEffect } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { draftIssuesToPromote } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
@@ -126,7 +126,7 @@ export function PrimaryActions({
         projectId={projectId}
         reqKey={d.key}
         label={t("requirements.act.repin")}
-        tip={s.waitingOn.effect ? standingEffect(s.waitingOn.effect, lang) : t("requirements.act.repinTip", { moved })}
+        tip={s.waitingOn.says.effect ? said(s.waitingOn.says.effect, lang) : t("requirements.act.repinTip", { moved })}
         consequence={t("requirements.act.repinConsequence", { moved })}
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />

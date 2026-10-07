@@ -7,6 +7,7 @@
  * in the order its masters are handed work, its `blocks` edges and its observed concurrency.
  */
 
+import type { Said } from "./said.js";
 import type { ProjectPermission } from "./permissions.js";
 
 /** Fewer landed issues than this in the window and no number is given. */
@@ -76,12 +77,22 @@ export interface ForecastRange extends ForecastStamp {
 	late: ForecastLate | null;
 }
 
+/** A forecast wait's sentences as said. */
+export interface ForecastWaitSays {
+	who: Said;
+	act: Said;
+	reason: Said;
+}
+
 /** Waiting on a person, a gate or an outage: no date, the wait named instead. */
+
 export interface ForecastPaused extends ForecastStamp {
 	kind: "paused";
 	who: string;
 	act: string;
 	reason: string;
+	/** `who`, `act` and `reason` as said (`said.ts`). */
+	says: ForecastWaitSays;
 	/** The issue, refusal code or device the wait is on, where there is one. */
 	ref: string | null;
 	/** When the wait began, where the read knows it; null where it does not, which is never late. */
@@ -214,6 +225,7 @@ export type ReleaseLeg =
 			who: string;
 			act: string;
 			reason: string;
+			says: ForecastWaitSays;
 			/** The version the act cuts, the page its line links to; null where no cut is owed (`none`). */
 			version: string | null;
 			/** Everyone holding the permission the act takes (`RELEASE_ACT_PERMISSION`); empty where nobody does. */

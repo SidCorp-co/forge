@@ -5,6 +5,7 @@ import { MODULE_ATTENTION_LABELS, MODULE_OPEN_KINDS } from "@forge/contracts/mod
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type BannerTone, Button, type CoverageSegment, LEGEND, ToneBadge, WaitBanner, type WaitingOnView } from "@/design";
+import { saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { formatStamp } from "@/lib/utils/format";
 import type { ModuleAttentionGroup, ModuleActivityDay, ModuleLanding, ModuleStanding } from "../types";
@@ -83,8 +84,9 @@ export function ActivityBars({ days, height = 28, barWidth = 8 }: { days: Module
 }
 
 
-export function moduleWaitingView(s: ModuleStanding): WaitingOnView {
-  const w = s.waitingOn;
+/** The module's wait as the cell draws it, read from what core said, its lead issue before the act. */
+export function moduleWaitingView(s: ModuleStanding, language = "en"): WaitingOnView {
+  const w = saidView(s.waitingOn, language);
   const lead = s.leadIssue;
   return {
     ...w,

@@ -5,12 +5,12 @@ const silences: unknown[] = [];
 vi.mock('../conversations/index.js', async () => {
   const replies = await import('../conversations/fallback-replies.js');
   return {
-    confidentLanguageOf: replies.confidentLanguageOf,
+    ...replies,
+    screened: (text: string) => ({ text, proof: null }),
     codeAuthored: (text: string) => ({ text, authored: 'code' }),
     recordSilence: async (row: unknown) => {
       silences.push(row);
     },
-    turnFailureReason: replies.turnFailureReason,
   };
 });
 vi.mock('../lib/data-egress.js', () => ({ egressDeep: async () => ({ ok: true, value: null }) }));
@@ -54,6 +54,7 @@ function ctxWith(abortReason: unknown) {
     conversationId: 'c-1',
     abort,
     setPhase: () => undefined,
+    draft: { text: '' },
     credential: async () => {
       throw new Error('no token in this test');
     },

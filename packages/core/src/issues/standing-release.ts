@@ -2,16 +2,15 @@
 // release note is unwritten, then the release itself, approved by a person where the project asks.
 
 import type { IssueWaitingKind } from '@forge/contracts/issue-standing';
+import { type Said, say } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import type { IssueStandingInput, IssueWaitingOn, Turn } from './standing.js';
 
-const wait = (kind: IssueWaitingKind, who: string, act: string, rule: string): IssueWaitingOn => ({
-  kind,
-  who,
-  act,
-  rule,
-  ref: null,
-  dueAt: null,
-});
+const wait = (kind: IssueWaitingKind, who: Said, act: Said, rule: Said): IssueWaitingOn =>
+  waitingOn(kind, { who, act, rule });
+
+const MASTER = say('standing.who.master');
+const RELEASE = say('issues.standing.who.release');
 
 export function releaseTurn(
   input: Pick<IssueStandingInput, 'criteria' | 'releaseApproval' | 'releaseNoted'>,
@@ -23,9 +22,9 @@ export function releaseTurn(
       group: 'stuck',
       waitingOn: wait(
         'master',
-        'Master',
-        'judge it again',
-        `${total - passing} of ${total} criteria have no verdict that passes now, such as one judged on a storefront draft the source has moved past or cannot read back; the release hold keeps it until a run judges them again`,
+        MASTER,
+        say('issues.standing.act.judgeAgain'),
+        say('issues.rule.criteriaStale', { n: total - passing, total }),
       ),
     };
   }
@@ -34,9 +33,9 @@ export function releaseTurn(
       group: 'queued',
       waitingOn: wait(
         'master',
-        'Master',
-        'write the release note',
-        "no release note: a release refuses to carry an issue without one (RELEASE_RECORD_MISSING), and writing it is the master's act, which it is told on its next pass",
+        MASTER,
+        say('standing.act.writeReleaseNote', { on: null }),
+        say('issues.rule.noNote'),
       ),
     };
   }
@@ -45,21 +44,29 @@ export function releaseTurn(
       group: 'queued',
       waitingOn: wait(
         'release',
-        'Release',
-        'Approve release on Releases',
-        'every criterion passed; this project requires a person to approve each release, once per release on Releases (Cut the version, then Approve release), never once per issue',
+        RELEASE,
+        say('issues.standing.act.approveOnReleases'),
+        say('issues.rule.approval'),
       ),
     };
   }
   return running
-    ? { group: 'moving', waitingOn: wait('run', 'Release', 'running', 'a release run holds it') }
+    ? {
+        group: 'moving',
+        waitingOn: wait(
+          'run',
+          RELEASE,
+          say('issues.standing.act.running'),
+          say('issues.rule.releaseRunning'),
+        ),
+      }
     : {
         group: 'queued',
         waitingOn: wait(
           'release',
-          'Release',
-          'next release',
-          'every criterion passed; the project releases without an approval',
+          RELEASE,
+          say('issues.standing.act.nextRelease'),
+          say('issues.rule.noApproval'),
         ),
       };
 }

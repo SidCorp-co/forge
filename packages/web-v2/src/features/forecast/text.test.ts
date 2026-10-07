@@ -1,5 +1,6 @@
 import type { DeliveryForecast, Forecast, ForecastBasis, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
+import { forecastWait, RULE, say } from "@/test/said";
 import { criteriaRestText, deliveryText, feedbackForecastText, forecastText, scopeText, spanText } from "./text";
 
 // the lines read clock times in the viewer's timezone; this file reads them in UTC
@@ -38,8 +39,9 @@ describe("forecast text", () => {
   });
 
   it("names who owes the move instead of a date when paused", () => {
-    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked", ref: null, since: null, late: null };
-    expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on A project writer to answer a question");
+    const f: Forecast = { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("issues.standing.act.answer"), say("issues.rule.needsInfo")), ref: null, since: null, late: null };
+    expect(forecastText(f, CLOCK).line).toBe("Paused — waiting on A holder of project.write to answer a question");
+    expect(forecastText(f, { ...CLOCK, lang: "vi" }).line).toContain("Người có quyền project.write"); // i18n-allow: the vi of what core said
   });
 
   it("gives no number below the floor", () => {
@@ -56,13 +58,13 @@ describe("forecast text", () => {
         key: "draft",
         progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
         forecast: { ...stamp, kind: "landed", landedAt: at(-60) },
-        next: { ...stamp, kind: "paused", who: "A release approver", act: "cut the version, then approve the release", reason: "r", ref: null, since: null, late: null },
+        next: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "releases.approve" }), say("forecast.act.cutNextThenApprove"), RULE), ref: null, since: null, late: null },
         title: null,
         delivery: null,
       },
       CLOCK,
     ).line;
-    expect(line).toMatch(/^All 2 landed by .+ · then waiting on A release approver to cut the version/);
+    expect(line).toMatch(/^All 2 landed by .+ · then waiting on A holder of releases.approve to cut the next version/);
   });
 
   it("spans minutes, hours and days", () => {
@@ -74,7 +76,7 @@ const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(
 const lag = { kind: "automatic" as const, basis: { n: 14, floor: 10, windowDays: 60, lagP50Minutes: 30, lagP85Minutes: 90 } };
 const span = (lo: number, hi: number) => ({ p50At: at(lo), p85At: at(hi), p50Minutes: lo, p85Minutes: hi });
 const delivery = (over: Partial<DeliveryForecast>): DeliveryForecast => ({ ...stamp, landing: range, release: lag, inHands: span(150, 390), shipped: null, ...over });
-const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
+const manual = { kind: "person" as const, mode: "manual" as const, ...forecastWait(say("standing.who.holderOf", { perm: "project.admin" }), say("standing.act.cut", { v: "0.2.0", more: null }), say("forecast.reason.manual")), version: "0.2.0", holders: [] };
 
 describe("delivery text: in people's hands, not merged", () => {
   it("ranges to people's hands where production releases on its own, labelled a forecast", () => {
@@ -86,12 +88,12 @@ describe("delivery text: in people's hands, not merged", () => {
 
   it("names the person and the act, with no date for it, where a person cuts the release", () => {
     const { line } = deliveryText(delivery({ release: manual, inHands: null }), CLOCK);
-    expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on A project admin to cut 0.2.0");
+    expect(line).toBe("Forecast lands 14:00 – 17:00 today · then waits on A holder of project.admin to cut 0.2.0");
   });
 
   it("reads a fixed change still unreleased as waiting on the release", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-30) };
-    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on A project admin to cut 0.2.0");
+    expect(deliveryText(delivery({ landing: landed, release: manual, inHands: null }), CLOCK).line).toBe("Fixed · waits on A holder of project.admin to cut 0.2.0");
     expect(deliveryText(delivery({ landing: landed, inHands: span(10, 60) }), CLOCK).line).toBe("Fixed · forecast live 12:10 – 13:00 today");
   });
 
@@ -109,7 +111,7 @@ describe("delivery text: in people's hands, not merged", () => {
 
 describe("feedback and requirement lines", () => {
   it("says an untriaged item waits on triage and who, with no date", () => {
-    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, CLOCK)?.line;
+    const line = feedbackForecastText({ key: "FB-1", triage: { ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "feedback.approve" }), say("standing.act.triageIt"), say("feedback.rule.triagerTriages", { phase: "new" })), ref: null, since: null, late: null }, delivery: null }, CLOCK)?.line;
     expect(line).toBe("Waiting on triage — A holder of feedback.approve to triage it");
   });
 

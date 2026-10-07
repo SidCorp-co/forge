@@ -2,6 +2,7 @@
 // its rows by area in the fixed area order, each row opens what it names (an issue in the list's
 // peek), and the menu's hint names the acts behind a count.
 
+import { RULE, say, waitingOn } from "@/test/said";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NeedsYouList } from "./components/needs-you-list";
@@ -17,7 +18,7 @@ const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({
   entity: "issue",
   key: "ISS-7",
   title: "Answer the agent's question",
-  waitingOn: { kind: "you", who: "You", act: "answer it", rule: "a question waits on its asker", ref: null, dueAt: null },
+  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }),
   touchedAt: null,
   ...over,
 });
@@ -45,15 +46,15 @@ describe("the needs-you inbox", () => {
     push.mockReset();
     render(<NeedsYouList slug="hop" foldKey="t2" empty="" items={[item({})]} />);
     const row = screen.getByTestId("list-row");
-    expect(within(row).getByTestId("waiting-on")).toHaveTextContent("You · answer it");
+    expect(within(row).getByTestId("waiting-on")).toHaveTextContent("You · answer a question");
     fireEvent.click(row);
     expect(push).toHaveBeenCalledWith("/projects/hop/issues?peek=ISS-7");
   });
 
   it("says under a row what doing its act changes, where core gave one", () => {
-    const w = { kind: "you" as const, who: "You", act: "split this release into smaller releases", rule: "r", effect: "Cuts the oldest 50 merged issues as this release.", ref: null, dueAt: null };
+    const w = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.splitRelease"), rule: RULE, effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitOthers") }) });
     render(<NeedsYouList slug="hop" foldKey="t2b" empty="" items={[item({ area: "releases", entity: "release", key: "0.1.0", waitingOn: w })]} />);
-    expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues as this release.");
+    expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.");
   });
 
   it("says so when nothing waits on the viewer", () => {
@@ -100,11 +101,11 @@ describe("the menu's hint", () => {
       needsYouHint("Issues", {
         you: 3,
         acts: [
-          { act: "answer it", count: 2 },
-          { act: "", count: 1 },
+          { act: "answer a question", count: 2, says: { act: say("issues.standing.act.answer") } },
+          { act: "", count: 1, says: { act: say("standing.act.none") } },
         ],
       }),
-    ).toBe("Issues · waiting on you 3: answer it (2), act");
+    ).toBe("Issues · waiting on you 3: answer a question (2), act");
   });
 
   it("says nothing waits when the count is nought", () => {

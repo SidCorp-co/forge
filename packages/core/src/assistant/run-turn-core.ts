@@ -25,6 +25,13 @@ import { type ChatToolset, toolError, toolResultText } from './tools/mcp-adapter
 
 const MAX_TOOL_ITERATIONS = 16;
 
+/**
+ * How many times one turn asks the provider again for a round that ended in an error. A stream that
+ * broke partway is the provider's fault, not the question's, and the round wrote nothing yet: its
+ * tool calls run only once it has finished.
+ */
+const ROUND_RETRIES = 1;
+
 /** What a tool call record keeps of a result: enough to see what the model was shown, never the full 24k body. */
 const RESULT_PREVIEW_CHARS = 500;
 
@@ -88,6 +95,12 @@ export interface TurnCoreResult {
   elided: ElisionReport;
   terminal: 'done' | 'error';
   errorMessage: string | null;
+  /** Where an error came from: the provider's stream, or the loop itself; null on `done`. */
+  errorSource: 'provider' | 'loop' | null;
+  /** On `error`, the most text a round streamed before it broke; the turn's draft so far. */
+  partialText: string;
+  /** What this turn added after the messages it was given: its tool rounds, then its final text. */
+  rounds: ChatMessage[];
 }
 
 interface CollectedToolCall {
@@ -176,7 +189,9 @@ function addUsage(into: ChatStreamUsage, from: ChatStreamUsage): void {
 /**
  * Yields client-facing events (chunk / tool_call / tool_result / usage, then
  * exactly one terminal `done` or `error`; the provider's own per-round `done` is
- * swallowed). Never throws — provider and tool errors become that `error`.
+ * swallowed). A round whose stream broke is asked again once, announced by a
+ * `round_retry` after its `error`. Never throws — provider and tool errors become
+ * that `error`.
  */
 export async function* runTurnEvents(
   args: TurnCoreArgs,
@@ -188,15 +203,26 @@ export async function* runTurnEvents(
     toolCalls: [],
     elided: emptyElision(),
     iterations: 0,
+    added: [],
   };
-  const result = (terminal: 'done' | 'error', finalText: string, errorMessage: string | null) => ({
+  let retries = 0;
+  let partialText = '';
+  const result = (
+    terminal: 'done' | 'error',
+    finalText: string,
+    error: { message: string; source: 'provider' | 'loop' } | null,
+  ): TurnCoreResult => ({
     finalText,
     usage: turn.usage,
     iterations: turn.iterations,
     toolCalls: turn.toolCalls,
     elided: turn.elided,
     terminal,
-    errorMessage,
+    errorMessage: error?.message ?? null,
+    errorSource: error?.source ?? null,
+    partialText: terminal === 'error' ? partialText : '',
+    rounds:
+      terminal === 'done' ? [...turn.added, { role: 'assistant', content: finalText }] : turn.added,
   });
 
   try {
@@ -211,7 +237,16 @@ export async function* runTurnEvents(
       addElision(turn.elided, bounded.elided);
 
       const round = yield* streamRound(args, turn, offered);
-      if (round.error !== null) return result('error', '', round.error);
+      if (round.error !== null) {
+        if (round.text.length > partialText.length) partialText = round.text;
+        if (args.signal?.aborted || retries >= ROUND_RETRIES) {
+          return result('error', '', { message: round.error, source: 'provider' });
+        }
+        retries += 1;
+        turn.iterations--;
+        yield { type: 'round_retry', message: round.error };
+        continue;
+      }
       if (round.calls.length === 0 || !offered) {
         yield { type: 'done' };
         return result('done', round.text, null);
@@ -221,7 +256,7 @@ export async function* runTurnEvents(
   } catch (err) {
     const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
     yield { type: 'error', message };
-    return result('error', '', message);
+    return result('error', '', { message, source: 'loop' });
   }
 }
 
@@ -231,6 +266,8 @@ interface TurnState {
   toolCalls: ToolCallRecord[];
   elided: ElisionReport;
   iterations: number;
+  /** The messages this turn appended, kept apart from the budget's elision of the whole list. */
+  added: ChatMessage[];
 }
 
 interface Round {
@@ -283,7 +320,7 @@ async function* feedToolRound(
   offered: ChatToolset,
   round: Round,
 ): AsyncGenerator<ChatStreamEvent> {
-  turn.messages.push({
+  const asked: ChatMessage = {
     role: 'assistant',
     content: round.text.length > 0 ? round.text : null,
     tool_calls: round.calls.map((tc) => ({
@@ -291,7 +328,9 @@ async function* feedToolRound(
       type: 'function' as const,
       function: { name: tc.name, arguments: tc.arguments },
     })),
-  });
+  };
+  turn.messages.push(asked);
+  turn.added.push(asked);
   const preCall = args.preCall;
   const gate = preCall
     ? (tc: CollectedToolCall, completed: readonly ToolCallRecord[]) =>
@@ -314,6 +353,8 @@ async function* feedToolRound(
       isError: record.isError,
       durationMs: record.durationMs,
     };
-    turn.messages.push({ role: 'tool', tool_call_id: id, content: text });
+    const answered: ChatMessage = { role: 'tool', tool_call_id: id, content: text };
+    turn.messages.push(answered);
+    turn.added.push(answered);
   }
 }

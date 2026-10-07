@@ -13,7 +13,8 @@ import {
   type ModuleStanding,
   modulePaths,
 } from '@forge/contracts/modules';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { type Said, say } from '@forge/contracts/said';
+import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 
 export interface ModuleNode {
   id: string;
@@ -98,19 +99,16 @@ function waitingOf(
     if (lead) return { leadIssue: lead.key, waitingOn: lead.standing.waitingOn };
   }
   const parts = [
-    byKind.queued > 0 ? `${byKind.queued} queued` : null,
-    byKind.paused > 0 ? `${byKind.paused} paused` : null,
-  ].filter((p): p is string => p !== null);
+    byKind.queued > 0 ? say('modules.act.queued', { n: byKind.queued }) : null,
+    byKind.paused > 0 ? say('modules.act.paused', { n: byKind.paused }) : null,
+  ].filter((p): p is Said => p !== null);
   return {
     leadIssue: null,
-    waitingOn: {
-      kind: 'none',
-      who: 'Nobody',
-      act: parts.length > 0 ? parts.join(' · ') : 'nothing open',
-      rule: 'No issue in this module waits on you, is stuck, or holds a live lease',
-      ref: null,
-      dueAt: null,
-    },
+    waitingOn: waitingOn('none', {
+      who: say('standing.who.nobody'),
+      act: parts.length > 0 ? say('modules.act.counts', { parts }) : say('modules.act.nothingOpen'),
+      rule: say('modules.rule.quiet'),
+    }),
   };
 }
 

@@ -1,10 +1,9 @@
 # What the conversation surface still loses around a turn
 
-**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, and the
-person-stop and dock-draft questions are
-answered on that issue, which dev ISS-129 carries. The change that lands it deletes this file.
+**Removed when:** the person-stop and dock-draft questions are answered on the issue that carries
+them, dev ISS-129. The change that lands it deletes this file.
 
-ISS-1146's independent judge, at deployment `5adef4c`, recorded three losses. None of them fails a
+ISS-1146's independent judge, at deployment `5adef4c`, recorded three losses; the two below remain. None of them fails a
 criterion, and none of them is repaired on `ISS-1146-pair-stop`. The rules do not allow a residual
 to be filed as a new issue, so they are written here, each with the reason the repair branch left it.
 
@@ -26,21 +25,7 @@ only, or dropping it as today. That is a product call, not a repair.
 
 **What ends it:** that choice, recorded on whatever change carries it out.
 
-## 2. A turn core abandons at its timeout has no window decision of its own
-
-**Seen:** a long Assistant turn that runs to `TURN_TIMEOUT_MS` is aborted with the reason
-`TURN_TIMED_OUT` (`assistant/conversation-stops.ts`), and the thread's reply is
-`ASSISTANT_TURN_TIMED_OUT` in the room's own language (`conversations/fallback-replies.ts`,
-`replyLanguageOf`). The window it closes still records the generic `nothing-to-say`, so a reader of
-the window rows cannot tell a timeout from a turn that had nothing to add.
-
-**Why it is not built here:** a `timed-out` decision widens `conversation_windows_decision_known`
-(last set in migration 0309), which is a migration, and a migration's `when` is shared across every
-open branch.
-
-**What ends it:** a `timed-out` decision written by the timeout path.
-
-## 3. Closing the dock discards the unsent draft
+## 2. Closing the dock discards the unsent draft
 
 **Seen (older than ISS-1146):** text typed in the Ask-agent dock is lost whenever the dock closes.
 `ISS-1146-pair-stop` removes the accidental route to that loss: a slide-over that stayed mounted
@@ -62,9 +47,5 @@ carry them.
 - **Taking 1 either keeps unchecked text or drops it.** An answer cut short before the reply check
   can be stored with a mark saying it was not checked, kept on screen only, or dropped as today.
   Each choice gives up something the other two keep.
-- **Leaving 2 keeps the window's decision short of the cause.** A turn core gave up on records no
-  `timed-out` decision, so a reader of the window cannot tell it from another failure.
-- **Taking 2 costs a migration.** A new window decision widens a CHECK constraint, and its `when`
-  has to be read off `scripts/check-migration-order.mjs` against every open branch.
-- **Leaving 3 costs a draft at every deliberate close.** Escape no longer causes that loss. The close
+- **Leaving 2 costs a draft at every deliberate close.** Escape no longer causes that loss. The close
   button still does.

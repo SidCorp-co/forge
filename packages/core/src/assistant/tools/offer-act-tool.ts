@@ -19,6 +19,7 @@ import {
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import type { ReplyLanguage } from '../../conversations/index.js';
 import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { issueWorkState } from '../../db/schema-issue-work-state.js';
@@ -41,21 +42,61 @@ const PERMISSION: Record<'admit' | 'write', ProjectPermission> = {
   write: 'project.write',
 };
 
-const refused = (code: ChatActRefusalCode, text: string) =>
-  toolError(`${code}: ${text} No button was offered.`);
+/**
+ * A refusal the model reads, and the sentence the person is told, already in the language they
+ * asked in, so the reply relays it in that language rather than translating an English one.
+ */
+const refused = (code: ChatActRefusalCode, text: string, say?: string) =>
+  toolError(
+    `${code}: ${text} No button was offered.${say ? ` Tell the person, in these words: "${say}"` : ''}`,
+  );
+
+/** What each act is called, and what it applies to, in the asker's language. */
+const ACT_WORDS: Record<ReplyLanguage, Record<ChatAct, { verb: string; from: string }>> = {
+  en: {
+    run: { verb: 'run', from: 'a draft, or an issue at open, approved or reopen' },
+    continue: {
+      verb: 'continued',
+      from: 'an issue at needs_info or on_hold, or at open, approved or reopen',
+    },
+    drop: { verb: 'dropped', from: 'an issue that is not closed or dropped yet' },
+    release: { verb: 'released', from: 'an issue at awaiting_release' },
+  },
+  vi: {
+    run: { verb: 'chạy', from: 'issue ở draft, hoặc ở open, approved hay reopen' }, // i18n-allow: the person-facing refusal in the asker's language
+    continue: {
+      verb: 'tiếp tục', // i18n-allow: the person-facing refusal in the asker's language
+      from: 'issue ở needs_info hay on_hold, hoặc ở open, approved hay reopen', // i18n-allow: the person-facing refusal in the asker's language
+    },
+    drop: { verb: 'bỏ', from: 'issue chưa closed hay dropped' }, // i18n-allow: the person-facing refusal in the asker's language
+    release: { verb: 'phát hành', from: 'issue ở awaiting_release' }, // i18n-allow: the person-facing refusal in the asker's language
+  },
+};
+
+const SAY = {
+  en: {
+    unknown: (key: string) => `${key} is not an issue in this project.`,
+    reason: (key: string) => `Why should ${key} be dropped? The reason goes on the issue.`,
+    status: (key: string, status: string, act: ChatAct) =>
+      `${key} is at ${status}, so it cannot be ${ACT_WORDS.en[act].verb} from here: that applies to ${ACT_WORDS.en[act].from}.`,
+    forbidden: (key: string, permission: string, act: ChatAct) =>
+      `You do not hold ${permission} on this project, so ${key} cannot be ${ACT_WORDS.en[act].verb} by you; a project admin can.`,
+  },
+  vi: {
+    unknown: (key: string) => `${key} không phải là issue nào trong project này.`, // i18n-allow: the person-facing refusal in the asker's language
+    reason: (key: string) => `Vì sao cần bỏ ${key}? Lý do sẽ được ghi vào issue.`, // i18n-allow: the person-facing refusal in the asker's language
+    status: (key: string, status: string, act: ChatAct) =>
+      `${key} đang ở trạng thái ${status} nên không thể ${ACT_WORDS.vi[act].verb} từ đây: việc này chỉ áp dụng cho ${ACT_WORDS.vi[act].from}.`, // i18n-allow: the person-facing refusal in the asker's language
+    forbidden: (key: string, permission: string, act: ChatAct) =>
+      `Bạn chưa có quyền ${permission} trên project này nên không thể ${ACT_WORDS.vi[act].verb} ${key}; quản trị viên project có thể làm việc này.`, // i18n-allow: the person-facing refusal in the asker's language
+  },
+} as const;
 
 interface Planned {
   effect: ChatActOffer['effect'];
   to?: IssueStatus;
   permission: ProjectPermission;
 }
-
-const ACT_FROM: Record<ChatAct, string> = {
-  run: 'a draft, or an issue at open, approved or reopen',
-  continue: 'an issue at needs_info or on_hold, or at open, approved or reopen',
-  drop: 'any issue that is not closed or dropped yet',
-  release: 'an issue at awaiting_release',
-};
 
 function plan(act: ChatAct, status: IssueStatus, left: IssueStatus | null): Planned | null {
   const step: Planned = { effect: 'run-step', permission: PERMISSION.write };
@@ -89,7 +130,13 @@ async function leftStatusOf(issueId: string): Promise<IssueStatus | null> {
 }
 
 /** The toolset that offers acts on this project's issues to the person a turn answers. */
-export function buildOfferActToolset(scope: { projectId: string; userId: string }): ChatToolset {
+export function buildOfferActToolset(scope: {
+  projectId: string;
+  userId: string;
+  /** The language the person asked in: the sentence a refusal hands the reply is in it. */
+  language: ReplyLanguage;
+}): ChatToolset {
+  const say = SAY[scope.language];
   return {
     tools: [
       {
@@ -124,26 +171,38 @@ export function buildOfferActToolset(scope: { projectId: string; userId: string 
         return refused(
           'CHAT_ACT_REASON_REQUIRED',
           'dropping an issue carries the reason the person gave; ask them why, or pass their words as reason.',
+          say.reason(key),
         );
       }
       let issueId: string;
       try {
         issueId = await resolveIssueKeyInProject(key, scope.projectId);
       } catch {
-        return refused('CHAT_ACT_ISSUE_UNKNOWN', `${key} names no issue in this project.`);
+        return refused(
+          'CHAT_ACT_ISSUE_UNKNOWN',
+          `${key} names no issue in this project.`,
+          say.unknown(key),
+        );
       }
       const [row] = await db
         .select({ title: issues.title, status: issues.status })
         .from(issues)
         .where(and(eq(issues.id, issueId), eq(issues.projectId, scope.projectId)))
         .limit(1);
-      if (!row) return refused('CHAT_ACT_ISSUE_UNKNOWN', `${key} names no issue in this project.`);
+      if (!row) {
+        return refused(
+          'CHAT_ACT_ISSUE_UNKNOWN',
+          `${key} names no issue in this project.`,
+          say.unknown(key),
+        );
+      }
       const status = row.status as IssueStatus;
       const planned = plan(act, status, await leftStatusOf(issueId));
       if (!planned) {
         return refused(
           'CHAT_ACT_NOT_FROM_STATUS',
-          `${key} is at ${status}, and ${act} applies to ${ACT_FROM[act]}. Tell the person where it stands.`,
+          `${key} is at ${status}, and ${act} applies to ${ACT_WORDS.en[act].from}.`,
+          say.status(key, status, act),
         );
       }
       const holds = await can(
@@ -154,7 +213,8 @@ export function buildOfferActToolset(scope: { projectId: string; userId: string 
       if (!holds) {
         return refused(
           'CHAT_ACT_FORBIDDEN',
-          `the person asking does not hold ${planned.permission} on this project, so ${act} on ${key} is not theirs to press. Tell them who can.`,
+          `the person asking does not hold ${planned.permission} on this project, so ${act} on ${key} is not theirs to press.`,
+          say.forbidden(key, planned.permission, act),
         );
       }
       const offer: ChatActOffer = {

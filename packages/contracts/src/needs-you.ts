@@ -2,6 +2,7 @@
 // each row and count is taken from the read model the list it opens draws, under the one predicate
 // `standing.ts:needsViewer`, so a menu count, the dashboard, the overview and the inbox never disagree.
 
+import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
 export const NEEDS_YOU_AREAS = [
@@ -61,6 +62,8 @@ export interface NeedsYouProjectItem extends NeedsYouItem {
 export interface NeedsYouAct {
 	act: string;
 	count: number;
+	/** `act` as said (`said.ts`). */
+	says: { act: Said };
 }
 
 export interface NeedsYouArea {
@@ -139,6 +142,8 @@ export interface PulseActionRecord {
 	key: string;
 	label: string;
 	detail: string;
+	/** `detail` as said (`said.ts`); a title or a slug is carried as written. */
+	says: { detail: Said };
 	href: string;
 	/** Null where the record has no age: a refused comparison says when it was read, not since when. */
 	ageSeconds: number | null;

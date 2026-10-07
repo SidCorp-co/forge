@@ -27,6 +27,7 @@ import type {
   ReleaseChanges,
   ReleaseSurfaceChanges,
 } from '@forge/contracts/releases';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import {
   type HostFileChange,
   resolveSourceHost,
@@ -271,10 +272,10 @@ function riskOf(surface: LandingSurface, change: LandingArtifact['change']) {
   return null;
 }
 
-const RISK_SENTENCE: Record<ReleaseChangeRiskView['risk'], (ref: string) => string> = {
-  data_removed: (ref) => `${ref} is removed: data it held does not come back with a rollback`,
-  data_changed: (ref) => `${ref} changes shape: rows written before it are read by the new shape`,
-  api_removed: (ref) => `${ref} is removed: a caller still using it is refused after this ships`,
+const RISK_SENTENCE: Record<ReleaseChangeRiskView['risk'], (ref: string) => Said> = {
+  data_removed: (ref) => say('standing.risk.dataRemoved', { ref }),
+  data_changed: (ref) => say('standing.risk.dataChanged', { ref }),
+  api_removed: (ref) => say('standing.risk.apiRemoved', { ref }),
 };
 
 /** What a release's landings change together, per surface, with the risks the data names. */
@@ -327,7 +328,8 @@ export function releaseChangesOf(
               surface: s.surface,
               ref: a.ref,
               issues: a.issues,
-              sentence: RISK_SENTENCE[risk](a.ref),
+              sentence: sayEn(RISK_SENTENCE[risk](a.ref)),
+              says: { sentence: RISK_SENTENCE[risk](a.ref) },
             },
           ]
         : [];

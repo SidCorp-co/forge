@@ -39,6 +39,7 @@ import {
   type PendingDesign,
   voidSupersededDesignQuestions,
 } from './design-wait.js';
+import { type AwaitedMerge, awaitedMergeFault, neededForMerge } from './merge-wait.js';
 import { resolveAskOrigin } from './origin.js';
 import { contractAboutRefusal, requirementIdIn } from './ports.js';
 import { screenRound } from './screen.js';
@@ -73,6 +74,8 @@ export type AskInput = {
   origin?: Extract<QuestionOrigin, { kind: 'channel_gate' }>;
   /** The design revision whose decision answers this question; only a park names one. */
   awaitsDesign?: AwaitedDesign;
+  /** The issue whose merge mark answers this question; only a park names one. */
+  awaitsMerge?: AwaitedMerge;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -201,6 +204,13 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   checkAnswer(input.answer);
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
+  if (input.about && input.awaitsMerge) {
+    throw refuseQuestion(
+      'QUESTION_ABOUT_ON_MERGE_WAIT',
+      `this question waits on issue ${input.awaitsMerge.issueId}'s merge mark, which answers it with the mark itself; a business question \`about\` a requirement or a contract is answered by a person, and its answer becomes a decision there. Ask the business question on its own, and park on the mark without \`about\``,
+      '/about',
+    );
+  }
   const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
   return insertQuestion(executor, input, about);
 }
@@ -265,8 +275,14 @@ export async function askParkQuestion(
     awaitsDesign?: AwaitedDesign | undefined;
     /** Core linked `awaitsDesign` itself, as the one revision proposed under this issue: the question says so. */
     linkedUnderIssue?: boolean | undefined;
+    awaitsMerge?: AwaitedMerge | undefined;
   },
 ) {
+  if (input.awaitsDesign && input.awaitsMerge) {
+    throw new Error(
+      'questions: a park question waits on one fact, a design decision or a merge mark, and this one names both',
+    );
+  }
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {
@@ -280,6 +296,11 @@ export async function askParkQuestion(
         : `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
     }
   }
+  if (input.awaitsMerge) {
+    const awaited = await awaitedMergeFault(executor, input.projectId, input.awaitsMerge);
+    if ('fault' in awaited) throw refuseQuestion(awaited.fault.code, awaited.fault.detail);
+    needed ||= neededForMerge(awaited.key);
+  }
   const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
   return insertQuestion(executor, {
@@ -290,6 +311,7 @@ export async function askParkQuestion(
     blockerKind: 'human',
     answer,
     ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
+    ...(input.awaitsMerge ? { awaitsMerge: input.awaitsMerge } : {}),
   });
 }
 
@@ -372,6 +394,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       parkDeadlineAt: input.parkDeadlineAt,
       awaitsWorkflowId: input.awaitsDesign?.workflowId,
       awaitsRevision: input.awaitsDesign?.revision,
+      awaitsMergeIssueId: input.awaitsMerge?.issueId,
       about: about ?? null,
     })
     .returning();

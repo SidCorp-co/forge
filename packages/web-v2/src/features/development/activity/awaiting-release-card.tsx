@@ -22,7 +22,7 @@ import { spanText } from "@/features/forecast/text";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { useIssues } from "@/features/issues/hooks";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
 
 const COLLAPSED_LIMIT = 5;
@@ -35,12 +35,12 @@ function DraftTurn({ projectId }: { projectId: string }) {
   const language = useInterfaceLanguage();
   const next = useDraftReleaseForecast(projectId, true).data?.next ?? null;
   if (!next) return null;
-  const who = standingWho(next.who, language);
+  const who = said(next.says.who, language);
   const line = next.late
     ? t("dash.lateWaiting", { who, by: spanText(next.late.byMinutes, language === "vi" ? "vi" : "en") })
-    : t("fc.waitingOnTo", { who, act: standingAct(next.act, language) });
+    : t("fc.waitingOnTo", { who, act: said(next.says.act, language) });
   return (
-    <p className="fg-body-sm pb-2 text-muted" title={next.reason} data-testid="awaiting-release-turn">
+    <p className="fg-body-sm pb-2 text-muted" title={said(next.says.reason, language)} data-testid="awaiting-release-turn">
       {line}
     </p>
   );

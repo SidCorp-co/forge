@@ -1,6 +1,7 @@
 // The design page's rail speaks to a BA: plain sentences first, the kernel's terms (Unrooted, Not
 // reconciled, Held, markers, permission strings) behind a collapsed Technical detail.
 
+import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -23,11 +24,12 @@ const health = (over: Partial<WorkflowHealth> = {}): WorkflowHealth =>
     markers: [],
     counts: { outdated: 0, needs_update: 0, has_problem: 0, remove_proposed: 0, upcoming: 0, not_in_design: 0, wrong: 0 },
     needsYou: 0,
-    reconciliation: { state: "open", undecided: 0, cleaning: 0, issues: [], version: null, criteria: { total: 0, proven: 0 }, rule: "no observation" },
+    reconciliation: { state: "open", undecided: 0, cleaning: 0, issues: [], version: null, criteria: { total: 0, proven: 0 }, rule: sentence(say("workflows.reconcile.unobserved")), says: { rule: say("workflows.reconcile.unobserved") } },
     ...over,
   }) as unknown as WorkflowHealth;
 
-const design = { gate: { open: false, rule: "held until approved" }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null } as unknown as WorkflowDesign;
+const HELD = say("designs.gate.held", { why: say("designs.gate.noApproval") });
+const design = { gate: { open: false, rule: sentence(HELD), says: { rule: HELD } }, builds: [], requirements: [], revisions: [], approver: "workflow-designs.approve", approvedRevision: null } as unknown as WorkflowDesign;
 
 describe("the design rail's plain sentences", () => {
   it("say why the code is not compared, without the word Unrooted", () => {

@@ -9,6 +9,7 @@
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
+import { say, sayEn } from '@forge/contracts/said';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -36,7 +37,7 @@ async function verifyIn(rowId: string, projectId: string, days: number): Promise
     if (row.status !== 'triaged') return null;
     const linked = await linkedOf(projectId, [row]);
     if (phaseIn(row, linked) !== 'resolved') return null;
-    const reason = `Verified automatically after ${days} days with no reply`;
+    const reason = sayEn(say('feedback.notice.autoVerified', { n: days }));
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',

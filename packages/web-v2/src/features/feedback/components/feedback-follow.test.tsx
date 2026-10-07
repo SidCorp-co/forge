@@ -6,6 +6,7 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { EtaClock } from "@/features/forecast/eta";
 import { renderWithQuery } from "@/test/render";
+import { forecastWait, RULE, say, sentence, waitingOn } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { FeedbackFacts } from "./feedback-facts";
 
@@ -17,9 +18,7 @@ const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
 const approval = {
   kind: "person" as const,
   mode: "approval" as const,
-  who: "Dana Lee",
-  act: "cut 0.1.0, then approve it",
-  reason: "a holder approves",
+  ...forecastWait(say("standing.who.named", { name: "Dana Lee" }), say("standing.act.cutThenApprove", { v: "0.1.0" }), say("forecast.reason.approval", { holders: null })),
   version: "0.1.0",
   holders: [{ id: "u1", name: "Dana Lee", kind: "human" as const }],
 };
@@ -35,7 +34,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     phase: "resolved",
     status: "triaged",
     attentionGroup: "moving",
-    waitingOn: { kind: "issue", who: "ISS-51", act: "ship", rule: "r", ref: "ISS-51", dueAt: null },
+    waitingOn: waitingOn("issue", { who: say("standing.who.named", { name: "ISS-51" }), act: say("standing.act.ship"), rule: RULE }, { ref: "ISS-51" }),
     target: { type: "screen", key: "The board", title: null },
     route: null,
     reporter: { id: "u9", name: "Ana", agency: "human" },
@@ -77,7 +76,8 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: "The reporter is an agent, which has no bell: tell it where it listens.",
+        reason: sentence(say("feedback.notice.agent")),
+        says: { reason: say("feedback.notice.agent") },
         shipped: { at: null, release: null },
         beforeNotices: false,
       },
@@ -90,7 +90,8 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: "It shipped before Forge told reporters when a release shipped.",
+        reason: sentence(say("feedback.notice.before")),
+        says: { reason: say("feedback.notice.before") },
         shipped: { at: "2026-10-07T04:13:32.795Z", release: "0.4.0-dev.89" },
         beforeNotices: true,
       },

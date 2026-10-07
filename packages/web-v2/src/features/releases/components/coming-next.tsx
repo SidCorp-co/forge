@@ -13,7 +13,7 @@ import { type Eta, type EtaClock, etaOfScope } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseSummary } from "../types";
@@ -24,9 +24,9 @@ const ROW = `${GRID} min-h-[44px] border-b border-line-subtle py-1.5`;
 /** "Waiting on you: cut 0.1.0" — the draft's own turn, as the release read model gives it to this viewer. */
 function draftTurnText(draft: ReleaseSummary, t: Copy, language: string): string | null {
   const w = draft.waitingOn;
-  if (w.kind === "none" || !w.act) return null;
-  const act = standingAct(w.act, language);
-  return w.kind === "you" ? t("releases.waitingOnYouAct", { act }) : t("releases.waitingOnAct", { who: standingWho(w.who, language), act });
+  const act = said(w.says.act, language);
+  if (w.kind === "none" || !act) return null;
+  return w.kind === "you" ? t("releases.waitingOnYouAct", { act }) : t("releases.waitingOnAct", { who: said(w.says.who, language), act });
 }
 
 /** The draft's cell: its landing, never ticked while it waits for the release; the act it waits on is its turn line, said once. */
@@ -82,7 +82,7 @@ export function ComingNext({
             <span className="flex min-w-0 flex-col max-md:order-3 max-md:col-span-3">
               <span className="truncate text-13 text-fg">{t("releases.draftRelease", { n: draft.issueCount })}</span>
               {turn ? (
-                <span className="truncate text-12-5 font-semibold text-fg" title={draft.waitingOn.rule} data-testid="coming-next-draft-turn">
+                <span className="truncate text-12-5 font-semibold text-fg" title={said(draft.waitingOn.says.rule, language)} data-testid="coming-next-draft-turn">
                   {turn}
                 </span>
               ) : null}

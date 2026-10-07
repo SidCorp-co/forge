@@ -1,6 +1,7 @@
 // R-22, R-23, R-24: the design rail reads each linked requirement by the state its own page shows,
 // marks a pin below the approved revision, and says which revision each build was linked against.
 
+import { say, sentence } from "@/test/said";
 import type { WorkflowHealth } from "@forge/contracts/workflow-health";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,8 +9,9 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowDesign } from "../types";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 
+const OPEN = say("designs.gate.open", { r: "2" });
 const design = {
-  gate: { open: true, rule: "issues that build it may be dispatched" },
+  gate: { open: true, rule: sentence(OPEN), says: { rule: OPEN } },
   approvedRevision: 7,
   revisions: [],
   approver: "workflow-designs.approve",

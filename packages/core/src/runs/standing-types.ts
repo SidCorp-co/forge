@@ -11,7 +11,8 @@ import type {
   RunWaitingKind,
   RunWaitingOn,
 } from '@forge/contracts/run-standing';
-import { nobodyWaits } from '@forge/contracts/standing';
+import { type Said, sayEn } from '@forge/contracts/said';
+import { nobodyWaits, waitingOn } from '@forge/contracts/standing';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import type { HoldState } from '../jobs/index.js';
 import type { PipelineRunLane } from '../pipeline/index.js';
@@ -183,13 +184,18 @@ export interface StandingContext {
 export const TERMINAL_SESSION: readonly string[] = terminalAgentSessionStatuses;
 
 export const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
-export const none = (detail: string): RunNone => ({ source: 'none', detail });
+export const none = (detail: Said): RunNone => ({
+  source: 'none',
+  detail: sayEn(detail),
+  says: { detail },
+});
 export const after = (d: Date, ms: number) => new Date(d.getTime() + ms);
 
 export interface Derived {
   state: RunState;
   since: Date | null;
-  rule: string;
+  /** Why it stands where it does, as said; `RunStanding.rule` is its English. */
+  rule: Said;
   outcome: RunOutcome | null;
   waitingOn: RunWaitingOn;
 }
@@ -221,8 +227,17 @@ export const NO_WAIT = nobodyWaits;
 
 export const runWait = (
   kind: Exclude<RunWaitingKind, 'gate'>,
-  who: string,
-  act: string,
-  rule: string,
+  who: Said,
+  act: Said,
+  rule: Said,
   extra: { ref?: string | null; dueAt?: string | null } = {},
-): RunWaitingOn => ({ kind, who, act, rule, ref: extra.ref ?? null, dueAt: extra.dueAt ?? null });
+): RunWaitingOn => waitingOn(kind, { who, act, rule }, extra);
+
+/** A gate wait from what its rule says. */
+export const gateWait = (gate: string, resumesAt: string | null, rule: Said): RunWaitingOn => ({
+  kind: 'gate',
+  gate,
+  resumesAt,
+  rule: sayEn(rule),
+  says: { rule },
+});

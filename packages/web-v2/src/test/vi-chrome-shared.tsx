@@ -3,6 +3,8 @@ import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { GateLine } from "@/features/releases/components/release-bits";
 import { WhatChanges } from "@/features/releases/components/release-changes";
+import type { Said } from "@forge/contracts/said";
+import { gateView, say, sentence } from "./said";
 import { Seeded } from "./vi-chrome-requirements";
 import type { ShellScreen } from "./vi-chrome-shell";
 
@@ -104,53 +106,61 @@ const badges = () => (
   </>
 );
 
-/** Core's gate readings as `release-batch/release-gates.ts` writes them, one per reading shape. */
-export const GATE_SENTENCES: Array<{ code: string; kind: "blocker" | "warning"; title: string; sentence: string; act: string; who: string }> = [
-  { code: "NO_RELEASE_GATE", kind: "blocker", title: "No release step", sentence: "This project ships when an issue closes, so there is no release to cut.", who: "A project admin", act: "declare a production environment" },
-  { code: "RELEASE_TARGET_UNDECLARED", kind: "blocker", title: "Nowhere to land", sentence: "Nothing says where this project’s releases land. An admin completes its production environment in the project document.", who: "A project admin", act: "declare where releases land" },
-  { code: "CLAIM_CONFLICT", kind: "blocker", title: "Issues already claimed", sentence: "ISS-1, ISS-2 are not at the release gate, or another release already holds them. Pick the issues that are waiting.", who: "A project admin", act: "cut the issues that are waiting" },
-  { code: "CLAIM_CONFLICT", kind: "blocker", title: "Issues already claimed", sentence: "ISS-1 is not at the release gate, or another release already holds it. Pick the issues that are waiting.", who: "A project admin", act: "cut the issues that are waiting" },
-  { code: "RELEASE_ROSTER_EMPTY", kind: "blocker", title: "Nothing at the gate", sentence: "No issue is waiting at the release gate. 2 issues stand one step short of it, at their test step.", who: "Master", act: "bring an issue to the release gate" },
-  { code: "RELEASE_ROSTER_EMPTY", kind: "blocker", title: "Nothing at the gate", sentence: "No issue is waiting at the release gate. 1 issue stands one step short of it, at its test step.", who: "Master", act: "bring an issue to the release gate" },
-  { code: "RELEASE_ROSTER_EMPTY", kind: "blocker", title: "Nothing at the gate", sentence: "No issue is waiting at the release gate, so there is nothing to cut.", who: "Master", act: "bring an issue to the release gate" },
-  { code: "RELEASE_ROSTER_OVERSIZE", kind: "blocker", title: "Too many issues", sentence: "63 issues are waiting, and one release carries at most 50. Split them into smaller releases, oldest merge first.", who: "A project admin", act: "split this release into smaller releases" },
-  { code: "RELEASE_ROSTER_OVERSIZE", kind: "blocker", title: "Too many issues", sentence: "More issues are waiting, and one release carries at most 50. Split them into smaller releases, oldest merge first.", who: "A project admin", act: "split this release into smaller releases" },
-  { code: "RELEASE_RECORD_MISSING", kind: "blocker", title: "Release note missing", sentence: "ISS-6, ISS-7, ISS-8, ISS-9, ISS-10 and 2 more have no release note, so the release would claim a ship nobody described.", who: "Master", act: "write the release note on ISS-6, ISS-7, ISS-8, ISS-9, ISS-10 and 2 more" },
-  { code: "RELEASE_RECORD_MISSING", kind: "blocker", title: "Release note missing", sentence: "ISS-6 has no release note, so the release would claim a ship nobody described.", who: "Master", act: "write the release note on ISS-6" },
-  { code: "RELEASE_WORK_UNMERGED", kind: "blocker", title: "Work not marked merged", sentence: "3 issues have no merge Forge saw land, so nothing says their work is in this release.", who: "Master", act: "mark the merge on 3 issues" },
-  { code: "RELEASE_WORK_UNMERGED", kind: "blocker", title: "Work not marked merged", sentence: "ISS-6 has no merge Forge saw land, so nothing says its work is in this release.", who: "Master", act: "mark the merge on ISS-6" },
-  { code: "RELEASE_PROBES_UNREADABLE", kind: "blocker", title: "Production cannot be proved", sentence: "Production declares no probe that identifies the source commit, so a release there could never be proved. An admin adds one to the production environment.", who: "A project admin", act: "declare a source probe on production" },
-  { code: "RELEASE_POOL_EMPTY", kind: "blocker", title: "No runner paired", sentence: "No runner is paired to this project, so no machine can run a release.", who: "A project admin", act: "pair a runner" },
-  { code: "NO_RUNNER_ONLINE", kind: "blocker", title: "No runner can take it", sentence: "Runners are paired, and none of them can take a release right now.", who: "A project admin", act: "bring a runner online" },
-  { code: "BATCH_IN_FLIGHT", kind: "blocker", title: "A release is running", sentence: "Another release is already running for this project. Let it finish before cutting another.", who: "Release gate", act: "a release is running" },
-  { code: "RELEASE_CRITERIA_UNEARNED", kind: "blocker", title: "Criteria still owed", sentence: "ISS-4 owes criteria 1, 2; ISS-5 owes criterion 3. The unattended sweep carries an issue only when every criterion holds a passing verdict.", who: "Master", act: "judge the criteria still owed" },
-  { code: "RELEASE_CRITERIA_UNEARNED", kind: "blocker", title: "Criteria still owed", sentence: "Issues at the gate. The unattended sweep carries an issue only when every criterion holds a passing verdict.", who: "Master", act: "judge the criteria still owed" },
-  { code: "RELEASE_RUNTIME_UNROUTED", kind: "blocker", title: "Production cannot be read", sentence: "Nothing can read what production serves, so no verdict can earn an issue its place in an unattended release.", who: "A project admin", act: "give production a way to be read" },
-  { code: "RELEASE_CHECK_UNEVALUATED", kind: "blocker", title: "A check could not run", sentence: "The serving check could not run, so this list may be missing a reason.", who: "Release gate", act: "a check could not run" },
-  { code: "RELEASE_RUNNER_PREFERENCE_UNMET", kind: "warning", title: "Preferred runner missing", sentence: "No runner carries the release label this project asks for, so the release goes to the pool it has.", who: "A project admin", act: "label a runner for releases" },
-  { code: "RELEASE_CRITERIA_HELD_BACK", kind: "warning", title: "Some issues held back", sentence: "ISS-4 owes criterion 1. It is held back until its criteria are earned; the others ship.", who: "Master", act: "judge the criteria still owed" },
-  { code: "RELEASE_CRITERIA_HELD_BACK", kind: "warning", title: "Some issues held back", sentence: "ISS-4 owes criteria 1, 2; ISS-5 owes criterion 3. They are held back until their criteria are earned; the others ship.", who: "Master", act: "judge the criteria still owed" },
-  { code: "RELEASE_CRITERIA_UNCORROBORATED", kind: "warning", title: "Verdicts not re-read", sentence: "ISS-4, ISS-5 carry a verdict earned where nothing could re-read production. It counts, and it is weaker evidence.", who: "Release gate", act: "verdicts not re-read" },
-  { code: "RELEASE_CRITERIA_UNCORROBORATED", kind: "warning", title: "Verdicts not re-read", sentence: "Some issues carry a verdict earned where nothing could re-read production. It counts, and it is weaker evidence.", who: "Release gate", act: "verdicts not re-read" },
+/** Core's gate readings as `release-batch/release-gates.ts` says them, one per reading shape. */
+type GateSaid = { code: string; kind: "blocker" | "warning"; title: Said; sentence: Said; who: Said; act: Said };
+const ADMIN = say("standing.who.holderOf", { perm: "project.admin" });
+const MASTER = say("standing.who.master");
+const GATE = say("standing.who.releaseGate");
+const keys = (k: string) => say("standing.gate.subject.keys", { keys: k });
+const count = (n: number) => say("standing.gate.subject.count", { n, issues: n === 1 ? "issue" : "issues" });
+const owes = (key: string, list: string) => say("standing.gate.owes", { key, word: list.includes(",") ? "criteria" : "criterion", list });
+const g = (code: string, kind: GateSaid["kind"], title: Said, sentence: Said, who: Said, act: Said): GateSaid => ({ code, kind, title, sentence, who, act });
+export const GATE_SENTENCES: GateSaid[] = [
+  g("NO_RELEASE_GATE", "blocker", say("standing.gate.title.noGate"), say("standing.gate.noGate"), ADMIN, say("standing.act.declareProduction")),
+  g("RELEASE_TARGET_UNDECLARED", "blocker", say("standing.gate.title.nowhere"), say("standing.gate.nowhere"), ADMIN, say("standing.act.declareTarget")),
+  g("CLAIM_CONFLICT", "blocker", say("standing.gate.title.claimed"), say("standing.gate.claimed", { subject: keys("ISS-1, ISS-2"), verb: "are", obj: "them" }), ADMIN, say("standing.act.cutWaiting")),
+  g("CLAIM_CONFLICT", "blocker", say("standing.gate.title.claimed"), say("standing.gate.claimed", { subject: keys("ISS-1"), verb: "is", obj: "it" }), ADMIN, say("standing.act.cutWaiting")),
+  g("RELEASE_ROSTER_EMPTY", "blocker", say("standing.gate.title.empty"), say("standing.gate.nearGate", { n: 2, issues: "issues", verb: "stand", their: "their" }), MASTER, say("standing.act.bringIssueToGate")),
+  g("RELEASE_ROSTER_EMPTY", "blocker", say("standing.gate.title.empty"), say("standing.gate.empty"), MASTER, say("standing.act.bringIssueToGate")),
+  g("RELEASE_ROSTER_OVERSIZE", "blocker", say("standing.gate.title.oversize"), say("standing.gate.oversize", { n: 63, issues: "issues", verb: "are", limit: 50 }), ADMIN, say("standing.act.splitRelease")),
+  g("RELEASE_ROSTER_OVERSIZE", "blocker", say("standing.gate.title.oversize"), say("standing.gate.oversizeUncounted", { limit: 50 }), ADMIN, say("standing.act.splitRelease")),
+  g("RELEASE_RECORD_MISSING", "blocker", say("standing.gate.title.noteMissing"), say("standing.gate.noteMissing", { subject: say("standing.gate.subject.more", { keys: "ISS-6, ISS-7, ISS-8, ISS-9, ISS-10", n: 2 }), verb: "have" }), MASTER, say("standing.act.writeReleaseNote", { on: say("standing.gate.on", { subject: keys("ISS-6, ISS-7") }) })),
+  g("RELEASE_WORK_UNMERGED", "blocker", say("standing.gate.title.unmerged"), say("standing.gate.unmerged", { subject: count(3), verb: "have", their: "their" }), MASTER, say("standing.act.markMerge", { on: say("standing.gate.on", { subject: count(3) }) })),
+  g("RELEASE_WORK_UNMERGED", "blocker", say("standing.gate.title.unmerged"), say("standing.gate.unmerged", { subject: keys("ISS-6"), verb: "has", their: "its" }), MASTER, say("standing.act.markMerge", { on: null })),
+  g("RELEASE_PROBES_UNREADABLE", "blocker", say("standing.gate.title.unprovable"), say("standing.gate.unprovable"), ADMIN, say("standing.act.declareProbe")),
+  g("RELEASE_POOL_EMPTY", "blocker", say("standing.gate.title.noRunner"), say("standing.gate.noRunner"), ADMIN, say("standing.act.pairRunner")),
+  g("NO_RUNNER_ONLINE", "blocker", say("standing.gate.title.noRunnerOnline"), say("standing.gate.noRunnerOnline"), ADMIN, say("standing.act.runnerOnline")),
+  g("BATCH_IN_FLIGHT", "blocker", say("standing.gate.title.running"), say("standing.gate.running"), GATE, say("standing.act.releaseRunning")),
+  g("RELEASE_CRITERIA_UNEARNED", "blocker", say("standing.gate.title.unearned"), say("standing.gate.unearned", { owes: [owes("ISS-4", "1, 2"), owes("ISS-5", "3")] }), MASTER, say("standing.act.judgeCriteria")),
+  g("RELEASE_CRITERIA_UNEARNED", "blocker", say("standing.gate.title.unearned"), say("standing.gate.unearned", { owes: [say("standing.gate.subject.atGate")] }), MASTER, say("standing.act.judgeCriteria")),
+  g("RELEASE_RUNTIME_UNROUTED", "blocker", say("standing.gate.title.unreadable"), say("standing.gate.unreadable"), ADMIN, say("standing.act.productionReadable")),
+  g("RELEASE_CHECK_UNEVALUATED", "blocker", say("standing.gate.title.unevaluated"), say("standing.gate.unevaluated", { check: "serving" }), GATE, say("standing.act.checkCouldNotRun")),
+  g("RELEASE_RUNNER_PREFERENCE_UNMET", "warning", say("standing.gate.title.preference"), say("standing.gate.preference"), ADMIN, say("standing.act.labelRunner")),
+  g("RELEASE_CRITERIA_HELD_BACK", "warning", say("standing.gate.title.heldBack"), say("standing.gate.heldBack", { owes: [owes("ISS-4", "1")], they: "It is", their: "its" }), MASTER, say("standing.act.judgeCriteria")),
+  g("RELEASE_CRITERIA_HELD_BACK", "warning", say("standing.gate.title.heldBack"), say("standing.gate.heldBack", { owes: [owes("ISS-4", "1, 2"), owes("ISS-5", "3")], they: "They are", their: "their" }), MASTER, say("standing.act.judgeCriteria")),
+  g("RELEASE_CRITERIA_UNCORROBORATED", "warning", say("standing.gate.title.uncorroborated"), say("standing.gate.uncorroborated", { subject: keys("ISS-4, ISS-5"), verb: "carry" }), GATE, say("standing.act.verdictsNotReread")),
+  g("RELEASE_CRITERIA_UNCORROBORATED", "warning", say("standing.gate.title.uncorroborated"), say("standing.gate.uncorroborated", { subject: say("standing.gate.subject.some"), verb: "carry" }), GATE, say("standing.act.verdictsNotReread")),
 ];
 
-/** Core's risk sentences as `release-batch/landing-surfaces.ts` writes them. */
+/** A gate reading as core sends it: its English beside what it said. */
+export const gateOf = (x: GateSaid, ownerKind?: string) =>
+  gateView({ code: x.code, kind: x.kind, title: x.title, sentence: x.sentence, detail: "x", issues: [], owner: { kind: ownerKind ?? (x.who === GATE ? "system" : x.who === MASTER ? "agent" : "person"), who: x.who, act: x.act } });
+
+/** Core's risk sentences as `release-batch/landing-surfaces.ts` says them. */
+const risk = (r: string, ref: string, s: Said) => ({ risk: r, ref, sentence: sentence(s), says: { sentence: s } });
 export const RISK_SENTENCES = [
-  { risk: "data_removed", ref: "orders.note", sentence: "orders.note is removed: data it held does not come back with a rollback" },
-  { risk: "data_changed", ref: "orders.total", sentence: "orders.total changes shape: rows written before it are read by the new shape" },
-  { risk: "api_removed", ref: "GET /v1/orders", sentence: "GET /v1/orders is removed: a caller still using it is refused after this ships" },
+  risk("data_removed", "orders.note", say("standing.risk.dataRemoved", { ref: "orders.note" })),
+  risk("data_changed", "orders.total", say("standing.risk.dataChanged", { ref: "orders.total" })),
+  risk("api_removed", "GET /v1/orders", say("standing.risk.apiRemoved", { ref: "GET /v1/orders" })),
 ];
 
 const gates = () => (
   <>
     <ul>
-      {GATE_SENTENCES.map((g) => (
-        <GateLine
-          key={`${g.code}:${g.sentence}`}
-          slug="hop"
-          gate={{ code: g.code, kind: g.kind, title: g.title, sentence: g.sentence, detail: "x", issues: [], owner: { kind: g.who === "Release gate" ? "system" : g.who === "Master" ? "agent" : "person", who: g.who, act: g.act } } as never}
-        />
-      ))}
+      {GATE_SENTENCES.map((x) => {
+        const gate = gateOf(x);
+        return <GateLine key={`${gate.code}:${gate.sentence}`} slug="hop" gate={gate as never} />;
+      })}
     </ul>
     <WhatChanges
       slug="hop"

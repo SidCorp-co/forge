@@ -1,3 +1,4 @@
+import { RULE, say, waitingOn } from "./said";
 import type { ReactElement } from "react";
 import type { NeedsYouItem } from "@/features/needs-you/types";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
@@ -34,7 +35,7 @@ import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedb
 // The next lanes register Requirements, Feedback, Releases and Workflows here.
 
 const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
-const you = { kind: "you", who: "You", act: "cut 0.1.0", rule: "r", ref: null, dueAt: null } as const;
+const you = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.cut", { v: "0.1.0", more: null }), rule: RULE });
 const needs = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: `Muc ${key}`, waitingOn: you, touchedAt: "2026-10-07T10:00:00Z" });
 const row = (key: string, over: Partial<PlanRow> = {}): PlanRow => ({ kind: "requirement", key, title: `Muc ${key}`, release: null, href: `/projects/hop/requirements/${key}`, eta: null, late: null, ...over });
 
@@ -58,7 +59,7 @@ export const CHROME_SCREENS: ChromeScreen[] = [
           clock={clock}
         />
         <AttentionQueue items={[needs("requirements", "requirement", "REQ-1"), needs("releases", "release", "0.1.0")]} slug="hop" />
-        <LandsThisWeek slug="hop" clock={clock} rows={[row("REQ-2"), row("REQ-3", { release: { version: "0.1.0", who: "A release approver" } }), row("REQ-4", { release: { version: "0.1.0", who: "A release approver" } })]} />
+        <LandsThisWeek slug="hop" clock={clock} rows={[row("REQ-2"), row("REQ-3", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } }), row("REQ-4", { release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) } })]} />
         <LateItems clock={clock} rows={[row("REQ-5", { late: { reason: "p85_passed", since: "x", byMinutes: 150 } })]} />
         <LateItems clock={clock} rows={[]} />
       </>

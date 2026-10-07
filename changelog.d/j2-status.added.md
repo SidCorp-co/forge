@@ -1,1 +1,0 @@
-**A project's status is one read the assistant must answer from**: `GET /api/projects/:id/status` (shipped, in flight, waits, proof, next release, late, roadmap); chat read tools; ungrounded status claims refused; dashboard leads with Shipped recently; printable report; releases state verification.

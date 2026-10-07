@@ -2,6 +2,7 @@
 // every press would be refused REQUIREMENT_DESIGN_UNAPPROVED; core now names the unapproved linked
 // designs in the standing, and the act is held, saying which, until they are approved.
 
+import { RULE, say, waitingOn } from "@/test/said";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
@@ -21,7 +22,7 @@ function detail(unapprovedDesigns: { flow: string; title: string; designStatus: 
     revisions: [{ revision: 1, state: "current" }],
     standing: {
       state: "draft",
-      waitingOn: { kind: "you", who: "You", act: "agree r1", rule: "", ref: null, dueAt: null },
+      waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.agreeR", { r: 1 }), rule: RULE }),
       facts: { stalePins: [], staleContractPins: [], unapprovedDesigns },
     },
   } as unknown as RequirementDetail;
@@ -138,7 +139,7 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
       status: "agreed",
       standing: {
         state: "agreed",
-        waitingOn: { kind: "you" },
+        waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Checkout", r: 3 }), rule: RULE }),
         facts: { stalePins: [{ flow: "checkout", title: "Checkout", approved: 3, pinned: 2 }], staleContractPins: [], unapprovedDesigns: [] },
       },
     } as unknown as RequirementDetail;

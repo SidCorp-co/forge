@@ -17,8 +17,10 @@ import {
   type ForecastLate,
   type ForecastPaused,
   type ForecastRange,
+  type ForecastWaitSays,
 } from '@forge/contracts/forecast';
 import type { ProjectPermission } from '@forge/contracts/permissions';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { lateAfterP85, latestLate, lateWaiting } from './late.js';
 
@@ -45,22 +47,37 @@ export interface Wait {
   ref: string | null;
   /** When the wait began, where it is known; absent, it is never called late. */
   since?: string | null;
+  says: ForecastWaitSays;
+}
+
+/** A wait from what it says: its English rendered from `says`, never written beside it. */
+export function waitOn(says: ForecastWaitSays, ref: string | null, since?: string | null): Wait {
+  return {
+    who: sayEn(says.who),
+    act: sayEn(says.act),
+    reason: sayEn(says.reason),
+    ref,
+    ...(since === undefined ? {} : { since }),
+    says,
+  };
 }
 
 /** A wait on the holders of `permission`, by name; nobody holding it says so and where it is granted. */
 export function holdersWait(
   names: readonly string[],
   permission: ProjectPermission,
-  act: string,
-  reason: string,
+  act: Said,
+  reason: Said,
   ref: string | null,
 ): Wait {
-  return {
-    who: holdersWho(names),
-    act: names.length === 0 ? nobodyHoldsAct(act, permission) : act,
-    reason,
+  return waitOn(
+    {
+      who: holdersWho(names),
+      act: names.length === 0 ? nobodyHoldsAct(act, permission) : act,
+      reason,
+    },
     ref,
-  };
+  );
 }
 
 export interface WorkItem {
@@ -212,6 +229,7 @@ export function pausedOf(asOf: string, wait: Wait): ForecastPaused {
     reason: wait.reason,
     ref: wait.ref,
     since,
+    says: wait.says,
     late: lateWaiting(since, new Date(asOf)),
   };
 }
@@ -234,8 +252,8 @@ function waitsOf(
       return holdersWait(
         writers,
         'project.write',
-        'break the cycle',
-        `${item.key} sits on a cycle of blocks edges, so none of them can start`,
+        say('forecast.act.breakCycle'),
+        say('forecast.reason.cycle', { key: item.key }),
         item.key,
       );
     }
@@ -245,15 +263,24 @@ function waitsOf(
       const blocker = byKey.get(key);
       const held = blocker
         ? resolve(blocker)
-        : {
-            who: key,
-            act: 'land first',
-            reason: `${item.key} waits on ${key}, which is not open work this project forecasts`,
-            ref: key,
-          };
+        : waitOn(
+            {
+              who: say('standing.who.named', { name: key }),
+              act: say('forecast.act.landFirst'),
+              reason: say('forecast.reason.notForecast', { item: item.key, key }),
+            },
+            key,
+          );
       if (held) {
         wait = blocker
-          ? { ...held, reason: `waits on ${key}: ${held.reason}`, ref: held.ref ?? key }
+          ? waitOn(
+              {
+                ...held.says,
+                reason: say('forecast.reason.waitsOn', { key, reason: held.says.reason }),
+              },
+              held.ref ?? key,
+              held.since,
+            )
           : held;
         break;
       }
