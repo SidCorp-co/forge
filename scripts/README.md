@@ -736,6 +736,11 @@ The record is two places: `CHANGELOG.md`, which holds released version sections 
 `changelog.d/<name>.<section>.md` — the name the branch or issue that writes it, the section one of
 `added`, `changed`, `fixed`, `removed`, `security`. `scripts/cut-release.sh` folds the fragments into
 the new version section through `lib/assemble-release.mjs` and deletes them in the release commit.
+Two fragment forms feed What's new, which reads the running build's `CHANGELOG.md`
+(`packages/core/src/whats-new/changelog.ts`): an entry may close with one line `tour: <id>`, folded
+as an invisible `<!-- tour: <id> -->` the entry's "Show me" is read from, and a week's digest is
+`digest-<year>-w<nn>.digest.md`, folded under `### Digest` as `<!-- digest: <week> -->` and held to
+`DIGEST_WORD_BUDGET` words instead of `ENTRY_WORD_BUDGET`.
 
 **Why fragments.** While unreleased entries were lines under `## [Unreleased]`, a release inserting
 its version heading under that line and a branch appending an entry below it edited neighbouring
@@ -754,7 +759,7 @@ Rules:
 |---|---|
 | `unreleased-in-record` | `CHANGELOG.md` carries a `## [Unreleased]` heading — a writer following the guidance fragments replaced. Each entry under it is named with the fragment path to move it to |
 | `entry-outside-a-fragment` | an entry this change adds sits in a version section the base revision already held, and is not a correction of a published entry — the merge that slid a branch's entry under a release. A version section new at HEAD is a release, or several in a promotion, and passes |
-| `fragment-shape` | a file under `changelog.d/` is not named `<name>.<section>.md`, is empty, holds a heading, a list marker or a second paragraph, or does not open with a bold lead |
+| `fragment-shape` | a file under `changelog.d/` is not named `<name>.<section>.md`, is empty, holds a heading, a list marker or a second paragraph, or does not open with a bold lead; a digest is not named `digest-<year>-w<nn>` or carries a `tour:` line |
 | `structure` | one release section carries the same `###` heading twice, or an entry this change adds is followed by prose a blank line cut off from its bullet |
 | `no-silent-loss` | an entry present at the base revision is absent at HEAD, is not an edit of one that is present, and nothing declares the removal |
 | `entry-budget` | an entry this change adds runs over `ENTRY_WORD_BUDGET` words, or one it corrects runs over the larger of that budget and what the entry already held. The refusal names each entry with the ceiling actually applied to it and whether it paired as a correction, because an inherited ceiling advertised to an entry that did not inherit one reads as a rule the checker is not following |

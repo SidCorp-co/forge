@@ -91,7 +91,6 @@ services:
       # Without it every admin route 403s — set at least one email so a
       # human can reach the admin surface on a fresh deployment.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      FORGE_PLATFORM_PROJECT_ID: ${FORGE_PLATFORM_PROJECT_ID:-}
       # Embeddings (memory-knowledge module). Empty = disabled; embeddings
       # singleton is lazy and only errors on first semantic-search use.
       EMBEDDINGS_BASE_URL: ${EMBEDDINGS_BASE_URL:-}

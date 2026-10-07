@@ -79,7 +79,7 @@ Work-landing forecasts, priority-first dispatch, and releases that say what they
 ### Added
 
 - **Forge forecasts when work lands, as a labelled range.** Issues, requirements and the draft release show a p50–p85 range from the project's own history, queue and blocks edges, or name whom the work waits on instead.
-- **A release says what it changes.** Each landing names its artifacts by surface — from the mark, a design approval, or its commit's paths read by host or box — and the release page and peek open with "What changes".
+- **A release says what it changes.** Each landing names its artifacts by surface — from the mark, a design approval, or its commit's paths read by host or box — and the release page and peek open with "What changes". <!-- tour: release-what-changes -->
 
 ### Fixed
 
@@ -92,7 +92,7 @@ Integrations screens tell the truth, and held-runner cards say why
 ### Fixed
 
 - **A limited runner says why and since when on the dashboard.** The Runners card reads usage limit, refused when and next try when, names a printed reset as the account's claim, and a limit's error copy clears with it.
-- **The Integrations screens tell the truth.** A repository no source host reaches reads not connected with a Connect GitHub act, health rows leave the list, bindings are named apart, and connections carry their status.
+- **The Integrations screens tell the truth.** A repository no source host reaches reads not connected with a Connect GitHub act, health rows leave the list, bindings are named apart, and connections carry their status. <!-- tour: integrations -->
 
 ## [0.4.0-dev.85] - 2026-10-07
 
@@ -8270,7 +8270,7 @@ Requirements, feedback and suggestions get homes; issue statuses say who acts ne
   to *"use it for hard rules the agent must always follow"* — an enforcement promise the control
   plane was not making.
 
-One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body reaches every
+  One sentence, `ALWAYS_INJECT_GUARANTEE_NOTE`, now states the split: the body reaches every
   agent prompt, and nothing checks whether the agent followed it. `GET`/`PATCH
   /api/projects/:id/project-facts` both serve it — the PATCH answer replaces the GET's in the
   tab's query cache, so a field on only one of them would leave the screen on the owner's first

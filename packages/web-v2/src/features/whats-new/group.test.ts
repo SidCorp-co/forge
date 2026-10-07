@@ -6,22 +6,21 @@ const digest = (week: string) => ({
   week,
   title: "Week",
   body: "A summary.",
-  entryKeys: ["ISS-1"],
-  author: { name: "agent", agency: "agent" as const },
-  writtenAt: "2026-10-07T09:00:00Z",
+  version: "0.4.0-dev.91",
+  releasedAt: "2026-10-07T00:00:00.000Z",
 });
 
 describe("What's new groups by time, never by version", () => {
   const entries = [
     entry("ISS-1", "improved", "2026-10-07T08:00:00Z"),
-    entry("ISS-2", "new", "2026-10-07T07:00:00Z", { ui: true }),
+    entry("ISS-2", "new", "2026-10-07T07:00:00Z"),
     entry("ISS-3", "fixed", "2026-10-06T08:00:00Z"),
     entry("ISS-4", "new", "2026-10-05T08:00:00Z"),
     entry("ISS-5", "fixed", "2026-09-30T08:00:00Z"),
     entry("ISS-6", "improved", "2026-09-22T08:00:00Z"),
   ];
 
-  it("reads Today, Yesterday, This week, then one heading per earlier week, a new screen first", () => {
+  it("reads Today, Yesterday, This week, then one heading per earlier week, new before improved", () => {
     const sections = sectionsOf(feedOf(entries), NOW);
     expect(sections.map((s) => s.key)).toEqual(["today", "yesterday", "rest-of-week", "2026-W40", "2026-W39"]);
     expect(sections[0]?.entries.map((e) => e.key)).toEqual(["ISS-2", "ISS-1"]);

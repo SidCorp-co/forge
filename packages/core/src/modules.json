@@ -1038,7 +1038,6 @@
     "whats-new": {
       "kind": "domain",
       "context": "release",
-      "owns": ["whatsNewDigests"],
       "serves": ["REQ-14", "issue-delivery#act-release"]
     },
     "workflows": {

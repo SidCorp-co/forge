@@ -40,7 +40,6 @@ const LOCK_NAMESPACES = {
   suggestions: 26,
   workflows: 27,
   rocketchatConnection: 28,
-  whatsNewDigests: 29,
   releaseVersion: 1120,
 } as const;
 

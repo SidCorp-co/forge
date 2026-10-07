@@ -6,6 +6,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
+import { feedOf } from "@/features/whats-new/fixtures";
 
 const nav = vi.hoisted(() => ({ pathname: "/projects/forge/settings", search: "tab=integrations", replace: vi.fn(), push: vi.fn() }));
 
@@ -36,7 +37,7 @@ function serve() {
   return fakeCore((call) => {
     if (call.method === "GET" && call.path.startsWith("/projects") && !call.path.startsWith("/projects/")) return { body: [project] };
     if (call.path === "/me/product-state") return { body: { items: [] } };
-    if (call.path.startsWith("/me/whats-new")) return { status: 503, body: { code: "WHATS_NEW_PLATFORM_UNSET" } };
+    if (call.path.startsWith("/me/whats-new")) return { body: feedOf([]) };
     if (call.path.endsWith("/releases")) return { body: { releases: [{ version: "0.4.0", current: true }], counts: {} } };
     if (call.method === "POST" || call.method === "PUT") return { body: {} };
     return { status: 404, body: { code: "NOT_SERVED" } };

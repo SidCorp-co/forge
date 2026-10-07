@@ -84,3 +84,35 @@ describe('the release writer refuses what it cannot write', () => {
     ).toThrow(/changelog\.d\/a\.bugfix\.md names section `bugfix`.*does not open with a bold lead/);
   });
 });
+
+describe("the release writer folds the forms What's new reads", () => {
+  it("an entry's tour line becomes an invisible comment; a digest leads, marked with its week", () => {
+    const out = assembleRelease(
+      HEADER + OLDER,
+      [
+        { file: 'iss-x.added.md', text: '**A new screen.** It opens.\ntour: integrations\n' },
+        { file: 'digest-2026-w41.digest.md', text: '**The week.** Screens and fixes.\n' },
+        { file: 'iss-y.fixed.md', text: '**A fix.** Done.\n' },
+      ],
+      '1.0.0',
+      '2026-10-07',
+      'H',
+    );
+    expect(out).toContain(
+      '### Digest\n\n- <!-- digest: 2026-W41 --> **The week.** Screens and fixes.\n\n### Added\n\n' +
+        '- **A new screen.** It opens. <!-- tour: integrations -->\n\n### Fixed\n\n- **A fix.** Done.\n',
+    );
+  });
+
+  it('a digest not named for a week is refused by file', () => {
+    expect(() =>
+      assembleRelease(
+        HEADER + OLDER,
+        [{ file: 'weekly.digest.md', text: '**W.** x' }],
+        '1.0.0',
+        'd',
+        'H',
+      ),
+    ).toThrow('changelog.d/weekly.digest.md');
+  });
+});
