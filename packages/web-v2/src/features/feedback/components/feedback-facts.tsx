@@ -8,10 +8,11 @@ import Link from "next/link";
 import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, WaitingOn } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
-import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { feedbackNote, standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
-import { FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_LABELS } from "@forge/contracts/feedback";
+import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
@@ -26,13 +27,14 @@ const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verifi
 
 /** New → Triaged → Planned → Resolved → Verified; a declined or reopened item reads off the strip. */
 function PhaseSteps({ f }: { f: FeedbackView }) {
+  const label = useLabel();
   const at = STRIP.indexOf(f.phase);
   if (at < 0) return null;
   return (
     <StepBar
       steps={STRIP.map((p, i) => ({
         key: p,
-        label: FEEDBACK_PHASE_LABELS[p],
+        label: label("feedbackPhase", p),
         state: i < at || (i === at && p === "verified") ? "done" : i === at ? "now" : "next",
         tone: f.attentionGroup === "needs_you" ? "you" : "run",
       }))}
@@ -50,6 +52,9 @@ function answerOf(f: FeedbackView): { text: string; by: string | null } | null {
 
 /** One line at the top of the page and the peek: whom it waits on, from core's read model. */
 export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?: string; className?: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const language = useInterfaceLanguage();
   const w = f.waitingOn;
   const g = f.attentionGroup;
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
@@ -60,26 +65,26 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   return (
     <WaitBanner
       tone={g === "waiting" || g === "done" ? "calm" : tone}
-      head={g === "done" ? `${FEEDBACK_PHASE_LABELS[f.phase]}.` : `Waiting on ${w.kind === "you" ? "you" : w.who}:`}
+      head={g === "done" ? `${label("feedbackPhase", f.phase)}.` : t("feedback.banner.waitingOn", { who: w.kind === "you" ? t("feedback.banner.you") : standingWho(w.who, language) })}
       body={
         g === "done" ? (
-          "Nothing is owed on it."
+          t("feedback.banner.nothingOwed")
         ) : approving ? (
           <>
-            Approve release{" "}
+            {t("feedback.banner.approveRelease")}{" "}
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
               {version}
             </Link>
           </>
         ) : verifying ? (
           <>
-            Verify the fix shipped in{" "}
+            {t("feedback.banner.verifyShippedIn")}{" "}
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={releaseHref(slug as string, version as string)}>
               {version}
             </Link>
           </>
         ) : (
-          w.act || w.who
+          (w.act ? standingAct(w.act, language) : "") || standingWho(w.who, language)
         )
       }
       rule={w.rule}
@@ -87,7 +92,7 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
     >
       {answer ? (
         <span data-testid="feedback-answer">
-          {answer.by ? `${answer.by} answered: ` : "Answered: "}“{answer.text}”
+          {answer.by ? t("feedback.banner.answeredBy", { by: answer.by }) : t("feedback.banner.answered")}“{answer.text}”
         </span>
       ) : null}
     </WaitBanner>
@@ -117,6 +122,7 @@ const CARRIER_FAMILY = {
 
 /** The item's line as its reporter means "done": who triages it, or when the fix is in people's hands. */
 function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | undefined; slug: string; clock?: EtaClock | undefined }) {
+  const t = useCopy();
   const fallbackClock = useEtaClock();
   const read = forecast ? feedbackForecastText(forecast, clock ?? fallbackClock) : null;
   if (!read) return null;
@@ -128,7 +134,7 @@ function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | 
           <EtaInline eta={eta} clock={clock as EtaClock} />
         </Fact>
       ) : null}
-      <Fact label="Forecast" testId="facts-feedback-forecast">
+      <Fact label={t("feedback.fact.forecast")} testId="facts-feedback-forecast">
         <ReleaseLine said={read} slug={slug} className="fg-body-sm text-muted" testId="feedback-forecast-line" />
       </Fact>
     </>
@@ -136,21 +142,23 @@ function ForecastFact({ forecast, slug, clock }: { forecast: FeedbackForecast | 
 }
 
 /** When and in which release the work shipped, ahead of why the reporter was not told: the ship is the fact, the silence its consequence. */
-function shippedLine(notice: Extract<FeedbackShipNotice, { state: "not_told" }>, slug: string) {
+function ShippedLine({ notice, slug }: { notice: Extract<FeedbackShipNotice, { state: "not_told" }>; slug: string }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const { at, release } = notice.shipped;
   if (!at && !release) return null;
   return (
     <>
-      Shipped
+      {t("feedback.fact.shipped")}
       {release ? (
         <>
-          {" in "}
+          {t("feedback.fact.shippedIn")}
           <Link href={releaseHref(slug, release)} className="font-mono text-link hover:underline">
             {release}
           </Link>
         </>
       ) : null}
-      {at ? ` on ${formatStamp(at)}` : null}
+      {at ? t("feedback.fact.shippedOn", { date: time.dateTime(at) }) : null}
       {". "}
     </>
   );
@@ -158,12 +166,15 @@ function shippedLine(notice: Extract<FeedbackShipNotice, { state: "not_told" }>,
 
 /** Whether the release that shipped the work told the reporter, or why nobody was told. */
 function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | undefined; slug: string }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   if (!notice) return null;
   if (notice.state === "told") {
     return (
-      <Fact label="Reporter told" testId="facts-ship-notice">
-        <span className="fg-body-sm" title={formatStamp(notice.at)} data-testid="ship-notice-told">
-          {formatRelativeTime(notice.at)}
+      <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
+        <span className="fg-body-sm" title={time.dateTime(notice.at)} data-testid="ship-notice-told">
+          {time.relative(notice.at)}
           {notice.release ? (
             <>
               {" · "}
@@ -177,10 +188,10 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
     );
   }
   return (
-    <Fact label="Reporter told" testId="facts-ship-notice">
+    <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
       <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
-        {shippedLine(notice, slug)}
-        {notice.reason}
+        <ShippedLine notice={notice} slug={slug} />
+        {feedbackNote(notice.reason, language)}
       </span>
     </Fact>
   );
@@ -188,24 +199,29 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
 
 /** Who confirmed the fix and when, or the day Forge will if nobody does: the record behind "Reporter told". */
 function VerifiedFact({ f }: { f: FeedbackView }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   if (f.verified) {
     const v = f.verified;
     return (
-      <Fact label="Verified" testId="facts-verified">
-        <span className="fg-body-sm" title={formatStamp(v.at)} data-testid="verified-line">
-          {v.how === "automatic" ? "Verified automatically" : `Verified by ${v.byReporter ? "the reporter" : (v.byName ?? "a member")}`}
+      <Fact label={t("feedback.fact.verified")} testId="facts-verified">
+        <span className="fg-body-sm" title={time.dateTime(v.at)} data-testid="verified-line">
+          {v.how === "automatic"
+            ? t("feedback.fact.verifiedAuto")
+            : t("feedback.fact.verifiedBy", { who: v.byReporter ? t("feedback.fact.theReporter") : (v.byName ?? t("feedback.fact.aMember")) })}
           {" · "}
-          {formatRelativeTime(v.at)}
-          {v.how === "automatic" && v.reason ? <span className="block text-12-5 text-muted">{v.reason}</span> : null}
+          {time.relative(v.at)}
+          {v.how === "automatic" && v.reason ? <span className="block text-12-5 text-muted">{feedbackNote(v.reason, language)}</span> : null}
         </span>
       </Fact>
     );
   }
   if (!f.autoVerify) return null;
   return (
-    <Fact label="Verifies itself" testId="facts-auto-verify">
-      <span className="fg-body-sm text-muted" title={formatStamp(f.autoVerify.at)}>
-        {formatStamp(f.autoVerify.at)} if nobody confirms it first ({f.autoVerify.windowDays}-day window)
+    <Fact label={t("feedback.fact.verifiesItself")} testId="facts-auto-verify">
+      <span className="fg-body-sm text-muted" title={time.dateTime(f.autoVerify.at)}>
+        {t("feedback.fact.verifiesAt", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays })}
       </span>
     </Fact>
   );
@@ -223,17 +239,20 @@ export function FeedbackFacts({
   /** Language and clock of the ETA row; without one the row is left out. */
   clock?: EtaClock | undefined;
 }) {
+  const tr = useCopy();
+  const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   const t = f.target;
   const r = f.route;
   const carrierType = r?.route === "issue" ? "issue" : r?.route === "new_requirement" ? "requirement" : r?.route === "duplicate" ? "feedback" : "other";
   return (
     <div data-testid="feedback-facts">
-      <FactsGroup title="Status">
-        <Fact label="State">
+      <FactsGroup title={tr("feedback.fact.status")}>
+        <Fact label={tr("feedback.fact.state")}>
           <StatusBadge family="feedbackPhase" value={f.phase} />
         </Fact>
         {f.attentionGroup !== "done" ? (
-          <Fact label="Waiting on">
+          <Fact label={tr("feedback.fact.waitingOn")}>
             <WaitingOn w={f.waitingOn} />
           </Fact>
         ) : null}
@@ -241,17 +260,17 @@ export function FeedbackFacts({
         <ShipNoticeFact notice={f.shipNotice} slug={slug} />
         <VerifiedFact f={f} />
         {f.snoozed ? (
-          <Fact label="Snoozed" testId="facts-snoozed">
+          <Fact label={tr("feedback.fact.snoozed")} testId="facts-snoozed">
             <span className="fg-body-sm" data-testid="snoozed-until">
-              Snoozed until {formatStamp(f.snoozed.until)}
+              {tr("feedback.row.snoozedUntil", { date: time.dateTime(f.snoozed.until) })}
               {f.snoozed.reason ? <span className="block text-12-5 text-muted">{f.snoozed.reason}</span> : null}
             </span>
           </Fact>
         ) : null}
-        <Fact label="Severity">
+        <Fact label={tr("feedback.fact.severity")}>
           <StatusBadge family="severity" value={f.severity} />
         </Fact>
-        <Fact label="Kind">
+        <Fact label={tr("feedback.fact.kind")}>
           <EnumBadge family="feedbackKind" value={f.kind} />
         </Fact>
         <div className="pt-2.5">
@@ -259,18 +278,18 @@ export function FeedbackFacts({
         </div>
       </FactsGroup>
 
-      <FactsGroup title="About" testId="facts-about">
+      <FactsGroup title={tr("feedback.fact.about")} testId="facts-about">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-13">
           <EnumBadge family="feedbackTarget" value={t.type} />
           {t.type === "screen" ? <span>“{t.key}”</span> : <KeyLink type={t.type} k={t.key} slug={slug} />}
           {t.title ? <span className="min-w-0 truncate text-muted">{t.title}</span> : null}
         </div>
-        {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-12-5 text-muted">Seen at {f.whereSeen}</p> : null}
+        {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-12-5 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
       </FactsGroup>
 
-      <FactsGroup title="Carried by" testId="facts-route">
+      <FactsGroup title={tr("feedback.fact.carriedBy")} testId="facts-route">
         {!r ? (
-          <FactsEmpty>Not routed yet.</FactsEmpty>
+          <FactsEmpty>{tr("feedback.fact.notRouted")}</FactsEmpty>
         ) : (
           <div className="grid gap-1.5 text-13">
             <span className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -290,7 +309,7 @@ export function FeedbackFacts({
           </div>
         )}
         {f.duplicates.length > 0 ? (
-          <Fact label="Duplicates">
+          <Fact label={tr("feedback.fact.duplicates")}>
             {f.duplicates.map((k) => (
               <KeyLink key={k} type="feedback" k={k} slug={slug} />
             ))}
@@ -298,42 +317,42 @@ export function FeedbackFacts({
         ) : null}
       </FactsGroup>
 
-      <FactsGroup title="Reporter">
-        <Fact label="Sent by">
-          <ActorChip name={f.reporter.name ?? "Unknown reporter"} kind={f.reporter.agency} />
+      <FactsGroup title={tr("feedback.fact.reporter")}>
+        <Fact label={tr("feedback.fact.sentBy")}>
+          <ActorChip name={f.reporter.name ?? tr("feedback.unknownReporter")} kind={f.reporter.agency} />
         </Fact>
-        <Fact label="Sent">
-          <span title={formatStamp(f.createdAt)}>{formatRelativeTime(f.createdAt)}</span>
+        <Fact label={tr("feedback.fact.sent")}>
+          <span title={time.dateTime(f.createdAt)}>{time.relative(f.createdAt)}</span>
         </Fact>
         {f.reporters.length > 1 ? (
-          <Fact label="Also reported by" testId="facts-reporters">
+          <Fact label={tr("feedback.fact.alsoReportedBy")} testId="facts-reporters">
             <span className="grid gap-0.5 text-13">
               {f.reporters.slice(1).map((r) => (
                 <span key={r.id}>
-                  {r.name ?? "Unknown reporter"}
-                  {r.from ? <span className="text-12-5 text-muted"> via {r.from}</span> : null}
+                  {r.name ?? tr("feedback.unknownReporter")}
+                  {r.from ? <span className="text-12-5 text-muted">{tr("feedback.fact.via", { from: r.from })}</span> : null}
                 </span>
               ))}
             </span>
           </Fact>
         ) : null}
         {f.source ? (
-          <Fact label="From" testId="facts-source">
+          <Fact label={tr("feedback.fact.from")} testId="facts-source">
             <Link
               href={`/projects/${encodeURIComponent(slug)}/automation?tab=reports`}
               className="text-link hover:underline"
-              title={`Agent report ${f.source.agentReport.id} · filed ${formatStamp(f.source.agentReport.createdAt)}`}
+              title={tr("feedback.fact.agentReportTitle", { id: f.source.agentReport.id, at: time.dateTime(f.source.agentReport.createdAt) })}
             >
-              Agent report {f.source.agentReport.id.slice(0, 8)}
+              {tr("feedback.fact.agentReport", { id: f.source.agentReport.id.slice(0, 8) })}
             </Link>
             <span className="text-12-5 text-muted">
-              {enumLabel("agentReportKind", f.source.agentReport.kind)} · {enumLabel("agentReportTarget", f.source.agentReport.target)}
+              {enumLabel("agentReportKind", f.source.agentReport.kind, language)} · {enumLabel("agentReportTarget", f.source.agentReport.target, language)}
               {f.source.agentReport.targetRef ? ` ${f.source.agentReport.targetRef}` : ""}
             </span>
           </Fact>
         ) : null}
         {f.clarification ? (
-          <Fact label="Clarification">
+          <Fact label={tr("feedback.fact.clarification")}>
             <span className="grid gap-0.5" title={f.clarification.prompt ?? undefined}>
               <StatusBadge family="question" value={f.clarification.status} />
               {f.clarification.answer ? <span className="text-12-5 text-muted">{f.clarification.answer}</span> : null}
@@ -341,9 +360,9 @@ export function FeedbackFacts({
           </Fact>
         ) : null}
         {f.sensitive ? (
-          <Fact label="Data">
-            <span className="text-12-5" title="This project's data policy scrubs feedback text on write; attachments are flagged">
-              Sensitive · scrubbed on write
+          <Fact label={tr("feedback.fact.data")}>
+            <span className="text-12-5" title={tr("feedback.fact.sensitiveHint")}>
+              {tr("feedback.fact.sensitive")}
             </span>
           </Fact>
         ) : null}

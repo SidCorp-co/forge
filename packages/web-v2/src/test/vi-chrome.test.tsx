@@ -21,8 +21,12 @@ const ENGLISH_CHROME = [
   "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason", "designs", "diagram", "steps",
   "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all", "walk through", "zoom", "fit", "minimap",
   "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users", "external systems", "where it stands", "properties", "template",
-  "drawn by", "the code", "trace", "if", "who owns what", "newest first", "proposal", "coverage", "summary", "scope", "accept", "reject", "defer", "drop",
-  "created", "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry", "step", "ago",
+  "drawn by", "the code", "trace", "if", "who owns what", "newest first", "proposal", "coverage", "summary", "scope", "accept", "reject",
+  "defer", "drop", "created", "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry",
+  "step", "ago", "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "reopen", "severity", "carried by",
+  "sent", "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered", "confirm",
+  "what happened", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of", "original", "until", "subject",
+  "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send", "suggested",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

@@ -140,6 +140,17 @@ const EFFECT: Rule[] = [
   },
 ];
 
+/** Core's sentences on a feedback item that are not whose turn it is: why a shipped fix told nobody, the reason an automatic verify records, why triage ran with no dedup. */
+const FEEDBACK_NOTE: Rule[] = [
+  { re: new RegExp("^The reporter has turned this notice off, so it reached nobody: tell them yourself\\.$"), key: "feedback.notice.turnedOff" },
+  { re: new RegExp("^The reporter is an agent, which has no bell: tell it where it listens\\.$"), key: "feedback.notice.agent" },
+  { re: new RegExp("^It shipped before Forge told reporters when a release shipped\\.$"), key: "feedback.notice.before" },
+  { re: new RegExp("^(?<release>\\S+) shipped it and sent the reporter no notice\\.$"), key: "feedback.notice.silent", vars: (g) => ({ release: g.release ?? "" }) },
+  { re: new RegExp("^No release carries it, so none told the reporter: tell them yourself\\.$"), key: "feedback.notice.noRelease" },
+  { re: new RegExp("^Verified automatically after (?<n>\\d+) days with no reply$"), key: "feedback.notice.autoVerified", vars: (g) => ({ n: g.n ?? "" }) },
+  { re: new RegExp("^triage without dedup: the item's vector is (?<status>.+)$"), key: "feedback.notice.noDedup", vars: (g) => ({ status: g.status ?? "" }) },
+];
+
 // A requirement's history (core `requirements/history-read.ts`): who a record came from when no
 // person is named, and the act each record leads with; the reason, summary or note after the colon
 // is what a person wrote and is carried over untouched.
@@ -214,6 +225,8 @@ function localize(rules: Rule[], text: string, language: string): string {
 export const standingWho = (who: string, language: string) => localize(WHO, who, language);
 export const standingAct = (act: string, language: string) => localize(ACT, act, language);
 export const standingEffect = (effect: string, language: string) => localize(EFFECT, effect, language);
+/** A feedback item's own core sentence (a ship notice's reason, an automatic verify's) in `language`; one no pattern names reads as core wrote it. */
+export const feedbackNote = (note: string, language: string) => localize(FEEDBACK_NOTE, note, language);
 /** A requirement history record's actor and its text, read the same way; the person's words after the act stay as written. */
 export const historyWho = (who: string, language: string) => (baseOf(language) === "en" ? who : (apply(HISTORY_WHO, who, language) ?? standingWho(who, language)));
 export const historyText = (text: string, language: string) => (baseOf(language) === "en" || text === "" ? text : (apply(HISTORY_TEXT, text, language) ?? text));
@@ -231,4 +244,4 @@ export function standingRead(kind: keyof typeof STANDING_RULES, text: string, la
 }
 
 /** Every pattern of `who`, `act` and `effect` the module reads, for the test that holds a sentence to each. */
-export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT, historyWho: HISTORY_WHO, history: HISTORY_TEXT } as const;
+export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT, historyWho: HISTORY_WHO, history: HISTORY_TEXT, feedbackNote: FEEDBACK_NOTE } as const;

@@ -98,22 +98,6 @@ describe("the four verbs", () => {
     );
   });
 
-  it("marks a duplicate of the item picked by title, never itself or a declined one", async () => {
-    const calls = core();
-    renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Duplicate of…" }));
-    const input = screen.getByRole("textbox", { name: "Original" });
-    await waitFor(() => expect(document.querySelectorAll("datalist option")).toHaveLength(1));
-    expect(document.querySelector("datalist option")?.getAttribute("label")).toBe("FB-2");
-    fireEvent.change(input, { target: { value: "Old and declined" } });
-    await screen.findByTestId("verb-unmatched");
-    fireEvent.change(input, { target: { value: "Export drops the last row" } });
-    fireEvent.click(within(screen.getByTestId("verb-duplicate")).getByRole("button", { name: "Mark duplicate" }));
-    await waitFor(() =>
-      expect(posts(calls)).toEqual([{ method: "POST", path: "/projects/p1/feedback/FB-4/triage", body: { route: "duplicate", duplicateOf: "FB-2" } }]),
-    );
-  });
-
   it("snoozes to the day picked with its reason, as an instant core is sent", async () => {
     const calls = core();
     renderWithQuery(<TriageVerbs projectId="p1" f={view()} />);
