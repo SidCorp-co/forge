@@ -366,6 +366,10 @@ interface Walk extends Rendering {
   errors: Error[];
   /** The objects the walk is inside, so one that holds itself is told from one met twice. */
   open: Set<object>;
+  /** What each object handed back as itself held when it was read, should a later hook change it. */
+  snapshots: Map<object, object>;
+  /** The copies this walk made, which it may settle in place. */
+  made: WeakSet<object>;
 }
 
 /**
@@ -496,8 +500,25 @@ function renderFields(
     if (array) items.push(out);
     else if (typeof out !== 'function') next[key] = out;
   }
-  if (!changed) return value;
-  return array ? items : next;
+  const snapshot = array ? items : next;
+  walk.made.add(snapshot);
+  if (!changed) walk.snapshots.set(value, snapshot);
+  return changed ? snapshot : value;
+}
+
+/**
+ * `rendered` with every object handed back as itself replaced by what it held when it was read:
+ * a rendering that ran the caller's code may have run a hook that changed one read before it.
+ */
+function settled(rendered: unknown, walk: Walk, done = new Map<object, unknown>()): unknown {
+  if (typeof rendered !== 'object' || rendered === null) return rendered;
+  if (done.has(rendered)) return done.get(rendered);
+  const own = walk.snapshots.get(rendered) ?? rendered;
+  done.set(rendered, own);
+  if (!walk.made.has(own)) return own;
+  const fields = own as Record<string, unknown>;
+  for (const key of Object.keys(fields)) fields[key] = settled(fields[key], walk, done);
+  return own;
 }
 
 /** The one read of the caller's code a redaction makes, so what is redacted is what is written. */
@@ -505,8 +526,17 @@ export function asSerialized(
   value: unknown,
   how: Rendering = {},
 ): { value: unknown; errors: Error[] } {
-  const walk: Walk = { ...how, reads: how.reads ?? new WeakMap(), errors: [], open: new Set() };
-  return { value: render(value, '', 0, walk, true), errors: walk.errors };
+  const walk: Walk = {
+    ...how,
+    reads: how.reads ?? new WeakMap(),
+    errors: [],
+    open: new Set(),
+    snapshots: new Map(),
+    made: new WeakSet(),
+  };
+  const out = render(value, '', 0, walk, true);
+  // Unchanged, the walk ran none of the caller's code, and what it read stands as it was.
+  return { value: out === value ? out : settled(out, walk), errors: walk.errors };
 }
 
 /**

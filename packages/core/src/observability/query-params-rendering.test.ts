@@ -365,6 +365,30 @@ describe('redactQueryParams, reading a value as JSON reads it', () => {
     expect(JSON.stringify(redactQueryParams(value))).toBe(JSON.stringify(value));
   });
 
+  it('writes what a value held when it was read, though a later hook changed it', () => {
+    let asked = 0;
+    const early: Record<string, unknown> = { note: 'kept' };
+    const items: unknown[] = ['kept'];
+    const value = {
+      early,
+      items,
+      get later() {
+        Object.defineProperty(early, 'toJSON', {
+          value: () => {
+            asked++;
+            return duplicate().message;
+          },
+        });
+        early.note = HASH;
+        items.push(HASH);
+        return 'kept';
+      },
+    };
+    const out = redactQueryParams(value);
+    expect(JSON.stringify(out)).toBe('{"early":{"note":"kept"},"items":["kept"],"later":"kept"}');
+    expect(asked).toBe(0);
+  });
+
   it('still hands back the same data where there is nothing to redact', () => {
     const value = { reason: 'ordinary', nested: [{ id: 1 }] };
     expect(redactQueryParams(value)).toBe(value);

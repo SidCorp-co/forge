@@ -155,12 +155,13 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect(scrubSentryEvent({ request })).toBeNull();
   });
 
-  it('drops an event whose rendering shows a fixed body that keeps a key-named secret', () => {
-    const event = {
-      breadcrumbs: [],
-      toJSON: () => ({ request: { data: Object.freeze({ password: 'ordinary-password' }) } }),
-    };
-    expect(scrubSentryEvent(event)).toBeNull();
+  it('scrubs a fixed body the rendering shows in the copy it renders, sending no secret', () => {
+    const data = Object.freeze({ password: 'ordinary-password' });
+    const event = { breadcrumbs: [], toJSON: () => ({ request: { data } }) };
+    expect(JSON.stringify(scrubSentryEvent(event))).toBe(
+      '{"request":{"data":{"password":"[Filtered]"}}}',
+    );
+    expect(data.password).toBe('ordinary-password');
   });
 
   it('sends an event whose fixed fields hold nothing to scrub', () => {
