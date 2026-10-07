@@ -29,9 +29,11 @@ reaches production, named or not. So the create reads that range first:
 - `packages/core/src/release-batch/carried.ts:judgeCarried` requires a decision for each, sent in the create body's `carried`:
   - `ship-unverified` with `why`: what is unverified. It goes on the run's `metadata.carried`, and
     `packages/core/src/release-batch/carried.ts:noteShipUnverified` writes a comment on the issue naming the release version, the
-    run and the reason.
+    run, the person who decided (their display name, else their email) and the reason.
   - `revert`: holds only where the range holds an effective revert of the landing — a commit whose
-    message says `This reverts commit <landing>` that no later commit reverts in turn.
+    message says `This reverts commit <landing>` that no later commit reverts in turn. Where the
+    revert was itself reverted, the refusal names both commits and offers reverting the landing
+    again, `ship-unverified` or `cut-below`; only where no revert exists does it say to revert first.
   - `cut-below`: moves the cut to the first parent of the earliest such landing and reads the range
     again to that cut. It is refused where a roster member's landing would fall above the new cut.
 
@@ -42,15 +44,22 @@ Each outcome has its own code:
 | an issue in the range holds no decision | `RELEASE_CARRIES_UNDECIDED` (409), each issue named with its status and the ways out |
 | a decision that does not hold | `RELEASE_CARRIED_DECISION_REFUSED` (409), the issue and why |
 | a cut-below that drops a roster member | `RELEASE_CUT_DROPS_ROSTER` (409), each member it drops |
-| the repository fails to answer, on either route | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503) |
+| the repository fails to answer, on either route | `RELEASE_CHECK_UNEVALUATED` with check `carried` (503), its message naming the read's own reason |
 | the project has neither a GitHub binding nor a deploy key | not refused: warning `RELEASE_CARRIED_UNREAD`, naming what to attach under Git access, and the GitHub binding only for a github.com remote |
 | a publish chain or a cherry-pick crossing | not refused: `carried.kind` is `not-read` with its reason |
 
-The create answer carries `carried` (the cut and each issue with its decision) and the warnings. The
-release job's prompt (`packages/core/src/release-batch/prompt.ts`) tells the agent the exact cut to promote, not the branch head. The
-release screen's readiness (`packages/core/src/release-batch/readiness.ts:loadReleaseReadiness`) runs the same check before anyone
-presses. The batch release dialog lists each carried issue with Ship unverified (a reason is
-required), Reverted or Cut below, and sends the decisions when release is pressed again. Once the
+Each carried issue is named with its display id, title and status. The create answer carries
+`carried` (the cut and each issue with its decision) and the warnings. The release job's prompt
+(`packages/core/src/release-batch/prompt.ts`) tells the agent the exact cut to promote, not the
+branch head. The release screen's readiness
+(`packages/core/src/release-batch/readiness.ts:loadReleaseReadiness`) runs the same check before
+anyone presses and answers the same `carried` reading, so a range that was not read says so there
+with its reason. The batch release dialog
+(`packages/web-v2/src/features/issues/components/batch-release-dialog.tsx`) lists each carried
+issue by its title with Ship unverified (a reason is required), Reverted or Cut below, each choice
+explained before it is picked, and sends the decisions when release is pressed again. A refusal is
+said directly above the Release button, and a decision the server refused is marked on its own row
+with why. Once the
 batch opens, its notice names the cut and each warning the create answered with. A create takes a
 decision for as many issues as the range can hold commits, which is more than a roster may name.
 

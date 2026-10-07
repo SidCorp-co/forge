@@ -302,7 +302,7 @@ describe("issues the release would ship without naming them", () => {
     for (const row of [seven, screen.getByTestId("carried-ISS-8")]) {
       for (const label of ["Ship unverified", "Reverted", "Cut below"]) expect(row).toHaveTextContent(label);
     }
-    expect(seven).toHaveTextContent("at needs_info");
+    expect(seven).toHaveTextContent("Needs info");
   });
 
   it("holds the release until each is decided, and a Ship unverified carries its reason", async () => {

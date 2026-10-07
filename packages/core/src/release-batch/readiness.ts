@@ -12,7 +12,7 @@ import {
   type ReleaseWarning,
   releaseBlockerSentence,
 } from './blockers.js';
-import { readCarried } from './carried.js';
+import { type CarriedRecord, carriedRecord, readCarried } from './carried.js';
 import { releaseRunnerLabelOf } from './channel.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 import { readWeighingNow } from './runtime-weighing.js';
@@ -67,6 +67,12 @@ export interface ReleaseReadiness {
   blockers: ReleaseBlocker[];
   /** What will change how the release runs without stopping it. */
   warnings: ReleaseWarning[];
+  /**
+   * What a release cut now would carry beyond its roster, or why that range was not read
+   * (`not-read`, `unbound`, `unread`, each with its `why`) — the same reading the create door
+   * judges (ISS-1386).
+   */
+  carried: CarriedRecord | null;
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
@@ -126,6 +132,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     gaps,
     blockers,
     warnings: report.warnings,
+    carried: carriedRecord(report.carried),
   };
 }
 

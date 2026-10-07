@@ -3145,6 +3145,10 @@
 ### Fixed
 
 - **`forge-runner top` reads master panes under any locale.** A detail opened with Enter stays on its first page for a whole refresh, and where no model has a rate the cost reads as unread, never `$0.00` (ISS-1341, ISS-1375).
+- **Deciding what else a release ships is easier to get right.** Each issue shows its title, each
+  choice says what it does, a refused choice says why on its own row beside the button, and the
+  shipped-unverified note names who decided (ISS-1386).
+
 - **A release that could not close an issue tells a person what to do, and leaks nothing.** The
   comment names the database's own reason, never the query or its values, and the acts to take in
   the product: answer the question, then close it (ISS-1381).

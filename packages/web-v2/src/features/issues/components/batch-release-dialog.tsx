@@ -6,6 +6,7 @@ import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import type { CarriedDecisionBody } from "../api";
+import { STATUS_LABELS } from "../derive";
 import { useBatchRelease } from "../hooks";
 
 /** Minimal issue shape required by the dialog — avoids coupling to the full IssueRow. */
@@ -19,27 +20,90 @@ export interface BatchReleaseIssue {
 interface CarriedIssue {
   issueId: string;
   displayId: string;
+  title: string;
   status: string;
 }
 
 type CarriedChoice = { decision: CarriedDecisionBody["decision"] | ""; why: string };
 
-const CHOICES: Array<{ value: CarriedDecisionBody["decision"]; label: string }> = [
-  { value: "ship-unverified", label: "Ship unverified" },
-  { value: "revert", label: "Reverted" },
-  { value: "cut-below", label: "Cut below" },
+/** Each choice with what it does, said before a person picks one (ISS-1386 r2). */
+const CHOICES: Array<{ value: CarriedDecisionBody["decision"]; label: string; explains: string }> = [
+  {
+    value: "ship-unverified",
+    label: "Ship unverified",
+    explains: "It ships as it is, with this release. Say what is unverified; that is written on the issue.",
+  },
+  {
+    value: "revert",
+    label: "Reverted",
+    explains: "Its work is taken back out. Only holds once a revert of it is already on the branch being released.",
+  },
+  {
+    value: "cut-below",
+    label: "Cut below",
+    explains: "The release stops just before it, so it also leaves out every landing above it.",
+  },
 ];
+
+/** The refusal and every reason riding behind it, each as its code and details. */
+function refusalsIn(err: unknown): Array<{ code: string; details: Record<string, unknown> }> {
+  if (!(err instanceof ApiError) || !err.code) return [];
+  const head = (err.details ?? {}) as Record<string, unknown>;
+  const rest = Array.isArray(head.alsoBlocking) ? (head.alsoBlocking as unknown[]) : [];
+  return [
+    { code: err.code, details: head },
+    ...rest.flatMap((b) => {
+      const r = b as { code?: unknown; details?: unknown };
+      return typeof r?.code === "string" ? [{ code: r.code, details: (r.details ?? {}) as Record<string, unknown> }] : [];
+    }),
+  ];
+}
 
 /** The carried issues a refusal names, read off its details rather than out of its prose. */
 function carriedIn(err: unknown): CarriedIssue[] | null {
-  if (!(err instanceof ApiError) || err.code !== "RELEASE_CARRIES_UNDECIDED") return null;
-  const listed = (err.details as { carried?: unknown } | undefined)?.carried;
+  const found = refusalsIn(err).find((r) => r.code === "RELEASE_CARRIES_UNDECIDED");
+  const listed = found?.details.carried;
   if (!Array.isArray(listed)) return null;
   return listed.flatMap((i) =>
     i && typeof i.issueId === "string" && typeof i.displayId === "string"
-      ? [{ issueId: i.issueId, displayId: i.displayId, status: String(i.status ?? "") }]
+      ? [
+          {
+            issueId: i.issueId,
+            displayId: i.displayId,
+            title: typeof i.title === "string" ? i.title : "",
+            status: String(i.status ?? ""),
+          },
+        ]
       : [],
   );
+}
+
+/** Why the server refused each decision it refused, by issue id. */
+function refusedIn(err: unknown): Record<string, string> {
+  const found = refusalsIn(err).find((r) => r.code === "RELEASE_CARRIED_DECISION_REFUSED");
+  const listed = found?.details.refused;
+  if (!Array.isArray(listed)) return {};
+  return Object.fromEntries(
+    listed.flatMap((r) => (r && typeof r.issueId === "string" ? [[r.issueId, String(r.why ?? "")]] : [])),
+  );
+}
+
+/** The banner's words: a carried refusal is said in the person's terms, the rows carrying the rest. */
+function refusalMessage(err: unknown): string {
+  const head = err instanceof ApiError ? err.code : null;
+  if (head === "RELEASE_CARRIES_UNDECIDED") {
+    const n = carriedIn(err)?.length ?? 0;
+    return `This release would also ship ${n === 1 ? "an issue" : `${n} issues`} nobody put on it. Decide each one above, then press Release again.`;
+  }
+  if (head === "RELEASE_CARRIED_DECISION_REFUSED") {
+    const n = Object.keys(refusedIn(err)).length;
+    return `${n === 1 ? "A decision" : `${n} decisions`} did not hold; each is marked above with why. Change it and press Release again.`;
+  }
+  return formatApiError(err);
+}
+
+function statusLabel(status: string): string {
+  return (STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
 function decisionOf(issueId: string, choice: CarriedChoice | undefined): CarriedDecisionBody | null {
@@ -71,6 +135,8 @@ export function BatchReleaseDialog({
   const [refusal, setRefusal] = useState<{ message: string; tries: number } | null>(null);
   const [carried, setCarried] = useState<CarriedIssue[]>([]);
   const [choices, setChoices] = useState<Record<string, CarriedChoice>>({});
+  const [refusedWhy, setRefusedWhy] = useState<Record<string, string>>({});
+  const bannerRef = useRef<HTMLDivElement | null>(null);
 
   // A refusal belongs to the press that met it, so a dialog opened again starts clean; a press
   // still in flight is kept, since resetting it would leave its answer nowhere to land.
@@ -81,8 +147,15 @@ export function BatchReleaseDialog({
     setRefusal(null);
     setCarried([]);
     setChoices({});
+    setRefusedWhy({});
     if (!pendingRef.current) reset();
   }, [open, reset]);
+
+  // Each refusal is brought into view: the person is at the Release button, not the top (ISS-1386 r2).
+  const tries = refusal?.tries ?? 0;
+  useEffect(() => {
+    if (tries > 0) bannerRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [tries]);
 
   const decisions = carried.map((i) => decisionOf(i.issueId, choices[i.issueId]));
   const undecided = decisions.filter((d) => d === null).length;
@@ -108,7 +181,8 @@ export function BatchReleaseDialog({
           const named = carriedIn(err);
           // A refusal names only what is still undecided, so the decisions already made are kept.
           if (named) setCarried((prev) => [...prev, ...named.filter((n) => !prev.some((p) => p.issueId === n.issueId))]);
-          setRefusal((prev) => ({ message: formatApiError(err), tries: (prev?.tries ?? 0) + 1 }));
+          setRefusedWhy(refusedIn(err));
+          setRefusal((prev) => ({ message: refusalMessage(err), tries: (prev?.tries ?? 0) + 1 }));
         },
       },
     );
@@ -127,28 +201,14 @@ export function BatchReleaseDialog({
           be released together and closed in one batch. This cannot be undone.
         </p>
 
-        <ul className="flex flex-col gap-1.5 rounded-lg border border-line bg-canvas p-3">
+        <ul className="flex flex-col divide-y divide-line border-y border-line">
           {selectedIssues.map((issue) => (
-            <li key={issue.id} className="fg-body-sm flex min-w-0 items-baseline gap-2">
+            <li key={issue.id} className="fg-body-sm flex min-w-0 items-baseline gap-2 py-1.5">
               <span className="font-mono text-xs font-semibold text-fg shrink-0">{issue.displayId}</span>
               <span className="min-w-0 truncate text-muted">{issue.title}</span>
             </li>
           ))}
         </ul>
-
-        {/* A toast paints beneath this drawer's scrim, so the refusal is said here and only here. */}
-        {refusal && (
-          <div role="alert">
-            <Banner tone="danger">
-              {isPending ? (
-                <p className="font-medium">Sending try {refusal.tries + 1}…</p>
-              ) : refusal.tries > 1 ? (
-                <p className="font-medium">Try {refusal.tries} failed as well.</p>
-              ) : null}
-              <p>{inlineCode(refusal.message)}</p>
-            </Banner>
-          </div>
-        )}
 
         {carried.length > 0 && (
           <section className="flex flex-col gap-3" aria-label="Issues this release carries">
@@ -163,17 +223,30 @@ export function BatchReleaseDialog({
                   className="flex flex-col gap-2 border-t border-line pt-3"
                   data-testid={`carried-${issue.displayId}`}
                 >
-                  <div className="flex items-baseline gap-2">
+                  <div className="flex min-w-0 items-baseline gap-2">
                     <MonoTag>{issue.displayId}</MonoTag>
-                    <span className="fg-caption text-muted">at {issue.status}</span>
+                    <span className="fg-body-sm min-w-0 truncate text-fg">{issue.title}</span>
+                    <span className="fg-caption ml-auto shrink-0 text-muted">{statusLabel(issue.status)}</span>
                   </div>
+                  {refusedWhy[issue.issueId] ? (
+                    <p className="fg-caption text-danger">Refused: {refusedWhy[issue.issueId]}</p>
+                  ) : null}
                   <RadioGroup
                     name={`carried-${issue.issueId}`}
                     value={choice.decision}
                     onChange={(v) => choose(issue.issueId, { decision: v as CarriedChoice["decision"] })}
                   >
                     {CHOICES.map((c) => (
-                      <Radio key={c.value} value={c.value} label={c.label} />
+                      <Radio
+                        key={c.value}
+                        value={c.value}
+                        label={
+                          <span className="flex flex-col">
+                            <span>{c.label}</span>
+                            <span className="fg-caption text-muted">{c.explains}</span>
+                          </span>
+                        }
+                      />
                     ))}
                   </RadioGroup>
                   {choice.decision === "ship-unverified" && (
@@ -190,6 +263,20 @@ export function BatchReleaseDialog({
               );
             })}
           </section>
+        )}
+
+        {/* A toast paints beneath this drawer's scrim, so the refusal is said here and only here. */}
+        {refusal && (
+          <div role="alert" ref={bannerRef}>
+            <Banner tone="danger">
+              {isPending ? (
+                <p className="font-medium">Sending try {refusal.tries + 1}…</p>
+              ) : refusal.tries > 1 ? (
+                <p className="font-medium">Try {refusal.tries} failed as well.</p>
+              ) : null}
+              <p>{inlineCode(refusal.message)}</p>
+            </Banner>
+          </div>
         )}
 
         <div className="flex items-center gap-2 pt-2">

@@ -11,9 +11,9 @@
  * every rule below is decided in one place a test can reach without a network.
  */
 
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { comments, users } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
@@ -33,6 +33,8 @@ export interface CarriedDecision {
 export interface LandedIssue {
   issueId: string;
   displayId: string;
+  /** What a person picking a decision knows the issue by (ISS-1386 r2). */
+  title: string;
   status: string;
   landing: string;
 }
@@ -96,6 +98,27 @@ function effectivelyReverted(range: ReadRange, landing: string): boolean {
   );
 }
 
+/** A revert of `landing` in the range, and the commit that reverts it in turn, where there is one. */
+function undoneRevert(range: ReadRange, landing: string): { revert: string; undo: string } | null {
+  for (const r of range.commits) {
+    if (!reverts(r, landing)) continue;
+    const undo = range.commits.find((c) => reverts(c, r.sha));
+    if (undo) return { revert: r.sha, undo: undo.sha };
+  }
+  return null;
+}
+
+const short = (sha: string) => sha.slice(0, 12);
+
+/** Why a `revert` decision does not hold, naming the commits that make it so. */
+function refuseRevert(final: ReadRange, landing: string): string {
+  const undone = undoneRevert(final, landing);
+  if (undone) {
+    return `its landing ${short(landing)} was reverted by ${short(undone.revert)}, and that revert was reverted by ${short(undone.undo)}, so the landing ships with this release; revert the landing again on \`${final.start}\`, or decide \`ship-unverified\` or \`cut-below\` instead`;
+  }
+  return `no commit up to the cut reverts its landing ${short(landing)}; revert it on \`${final.start}\` first`;
+}
+
 function refuseDecision(
   decision: CarriedDecision,
   issue: LandedIssue | undefined,
@@ -109,7 +132,7 @@ function refuseDecision(
     return '`ship-unverified` says what is unverified, and this one says nothing';
   }
   if (decision.decision === 'revert' && inFinal && !effectivelyReverted(final, issue.landing)) {
-    return `no commit up to the cut reverts its landing ${issue.landing.slice(0, 12)} without being reverted in turn; revert it on \`${final.start}\` first`;
+    return refuseRevert(final, issue.landing);
   }
   if (decision.decision === 'cut-below' && inFinal) {
     return `the cut at ${final.cut.slice(0, 12)} still carries its landing`;
@@ -183,8 +206,13 @@ export function judgeCarried(
 
 async function landedIn(projectId: string, shas: readonly string[]): Promise<LandedIssue[]> {
   if (shas.length === 0) return [];
-  const rows = await db.execute<{ id: string; status: string; landing: string }>(sql`
-    SELECT i.id, i.status, i.merged_commit_sha AS landing
+  const rows = await db.execute<{
+    id: string;
+    title: string | null;
+    status: string;
+    landing: string;
+  }>(sql`
+    SELECT i.id, i.title, i.status, i.merged_commit_sha AS landing
     FROM issues i
     WHERE i.project_id = ${projectId}
       AND i.merged_commit_sha IS NOT NULL
@@ -202,6 +230,7 @@ async function landedIn(projectId: string, shas: readonly string[]): Promise<Lan
   return rows.map((r) => ({
     issueId: r.id,
     displayId: shown.get(r.id) ?? r.id,
+    title: r.title ?? '(untitled)',
     status: r.status,
     landing: r.landing.toLowerCase(),
   }));
@@ -265,6 +294,16 @@ export function carriedRecord(check: CarriedCheck | undefined): CarriedRecord | 
   return { kind: 'read', live, start, cut, issues: carried, cutBelow };
 }
 
+/** Who a person is, as a comment names them: the label they chose, else their email. */
+async function personLabel(userId: string): Promise<string> {
+  const [row] = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.displayName ?? row?.email ?? 'the person who pressed the release';
+}
+
 /** The decision, written on each issue that ships unverified, naming the batch that ships it. */
 export async function noteShipUnverified(args: {
   runId: string;
@@ -276,14 +315,15 @@ export async function noteShipUnverified(args: {
   if (check?.kind !== 'read') return;
   const shipped = check.carried.filter((i) => i.decision === 'ship-unverified');
   if (shipped.length === 0) return;
+  const decider = await personLabel(userId);
   await db.insert(comments).values(
     shipped.map((i) => ({
       issueId: i.issueId,
       authorId: userId,
       body:
-        `Release ${version} (run ${runId}) ships this issue's landing ${i.landing.slice(0, 12)} ` +
-        `while it stands at \`${i.status}\` and off the release's roster. Whoever pressed the ` +
-        `release decided \`ship-unverified\`: ${i.why ?? ''}`,
+        `Release ${version} (run ${runId}) ships this issue's landing ${short(i.landing)} ` +
+        `while it stands at \`${i.status}\` and off the release's roster. ${decider} decided, ` +
+        `when pressing the release, to ship it unverified: ${i.why ?? ''}`,
     })),
   );
 }

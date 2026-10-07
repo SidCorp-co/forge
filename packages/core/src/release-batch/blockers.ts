@@ -152,9 +152,10 @@ function carriedBlockers(
     out.push(blocker('RELEASE_CUT_DROPS_ROSTER', { ...range, issueIds, displayIds }));
   }
   if (check.undecided.length > 0) {
-    const carried = check.undecided.map(({ issueId, displayId, status, landing }) => ({
+    const carried = check.undecided.map(({ issueId, displayId, title, status, landing }) => ({
       issueId,
       displayId,
+      title,
       status,
       landing,
     }));

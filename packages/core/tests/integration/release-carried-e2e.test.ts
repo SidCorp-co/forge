@@ -320,4 +320,20 @@ describe('where the range is not read', () => {
     expect(res.body.carried).toMatchObject({ kind: 'not-read' });
     expect(String((res.body.carried as { why: string }).why)).toContain('deploys the branch');
   });
+
+  it('says on readiness, before anyone presses, that a publish chain’s range is not read (r2)', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects SET release_chain = '[{"branch": "main"}]'::jsonb WHERE id = ${projectId}
+    `);
+    await landed('awaiting_release', sha('a'));
+
+    const res = await fetch(`${server.baseUrl}/api/projects/${projectId}/release-readiness`, {
+      headers: { authorization: `Bearer ${jwt}` },
+    });
+    const body = (await res.json()) as { carried?: { kind: string; why: string } };
+
+    expect(res.status).toBe(200);
+    expect(body.carried?.kind).toBe('not-read');
+    expect(body.carried?.why).toContain('deploys the branch');
+  });
 });
