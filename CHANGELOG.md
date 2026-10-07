@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.113] - 2026-10-07
+
+A release that failed after deploying no longer strands its issues
+
+### Fixed
+
+- **An issue a failed release held is closed once a later release ships its commit.** A release that failed after deploying no longer leaves its issues waiting forever: the next shipped release holding their commit closes and lists them.
+
 ## [0.4.0-dev.112] - 2026-10-07
 
 New issue forms close as soon as core saves; vendored archmap matches its manifest again
