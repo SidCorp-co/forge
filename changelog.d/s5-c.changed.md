@@ -1,1 +1,0 @@
-**The web reads its locale words through one reader.** The ETA column's copy now lives in `product-copy.json` beside What's new and the tours, attention draws its states through QueryBoundary, and unused web exports are dropped. No rendered word changes.

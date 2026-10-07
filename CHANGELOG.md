@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.92] - 2026-10-07
+
+One box-read frame and one locale reader; ADR 0009 matches the code; web accepts confirm
+
+### Changed
+
+- **The runner's two checkout read frames share one frame helper.** `checkout.head.read` and `checkout.ancestry.read` decode, refuse and post through one module, wire unchanged. ADR 0009 now names the pass-open and release-retry decisions the box takes.
+- **Checkout head and ancestry reads share one ask-a-box exchange, behaviour unchanged.** About fifty exports nothing outside their file used lose `export`, and the dead `ForecastKind` and `TourOutcome` types are deleted.
+- **The web reads its locale words through one reader.** The ETA column's copy now lives in `product-copy.json` beside What's new and the tours, attention draws its states through QueryBoundary, and unused web exports are dropped. No rendered word changes.
+
+### Fixed
+
+- **Accepting in the web now asks why, and on whose authority.** Suggestions, revisions, agrees, re-pins, deliveries and mockups open a confirm step; the reason shows in Activity and History, where delivery accepts and drops now appear.
+
 ## [0.4.0-dev.91] - 2026-10-07
 
 Help → Tours works on project pages; a requirement offers to promote its drafts
