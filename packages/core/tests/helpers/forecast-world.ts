@@ -6,8 +6,15 @@ import { api, type Body, userToken } from './api.js';
 import {
   addProjectMember,
   createTestDevice,
+  createTestFeedback,
+  createTestIssue,
   createTestProject,
+  createTestRelease,
+  createTestRequirement,
+  createTestRunSession,
   createTestUser,
+  recordStatusMove,
+  type TestIssueInput,
 } from './factories.js';
 
 // The rows a forecast reads, seeded where they live: issues, their status moves in activity_log,
@@ -51,40 +58,19 @@ export async function world(): Promise<World> {
   };
 }
 
-export async function issue(
-  w: World,
-  over: {
-    status: string;
-    createdAt: Date;
-    mergedAt?: Date | null;
-    waitingKind?: string;
-    priority?: string;
-    requirementId?: string | null;
-  },
-): Promise<{ id: string; key: string }> {
-  const id = randomUUID();
+export function issue(w: World, over: TestIssueInput): Promise<{ id: string; key: string }> {
   w.seq += 1;
-  await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, created_at, merged_at, waiting_kind, priority, requirement_id)
-    VALUES (${id}, ${w.projectId}, ${w.seq}, ${`issue ${w.seq}`}, ${over.status}, ${w.userId},
-            ${over.createdAt.toISOString()}, ${over.mergedAt?.toISOString() ?? null},
-            ${over.waitingKind ?? null}, ${over.priority ?? 'medium'}, ${over.requirementId ?? null})
-  `);
-  return { id, key: `ISS-${w.seq}` };
+  return createTestIssue(w.projectId, w.userId, w.seq, over);
 }
 
-export async function moved(
+export function moved(
   w: World,
   issueId: string,
   from: string,
   to: string,
   at: Date,
 ): Promise<void> {
-  await db.execute(sql`
-    INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
-    VALUES (${issueId}, 'user', ${w.userId}, 'human', 'issue.statusChanged',
-            ${JSON.stringify({ from, to })}::jsonb, ${at.toISOString()})
-  `);
+  return recordStatusMove(issueId, w.userId, from, to, at);
 }
 
 /** `n` issues landed one a day, each `45..75` minutes from in_progress to merge (p50 59). */
@@ -113,17 +99,7 @@ export async function landHistory(w: World, n: number): Promise<Landed[]> {
 
 /** A run a box declared: its run session started at `start`, its run finished at `end` (null: still open). */
 export async function declaredRun(w: World, start: Date, end: Date | null): Promise<void> {
-  const runId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, metadata)
-    VALUES (${runId}, ${w.projectId}, 'system', ${end ? 'completed' : 'running'}, ${start.toISOString()},
-            ${end?.toISOString() ?? null}, '{}'::jsonb)
-  `);
-  await db.execute(sql`
-    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at)
-    VALUES (${w.projectId}, ${w.deviceId}, ${runId}, 'run_session', ${end ? 'completed' : 'running'},
-            ${start.toISOString()}, ${start.toISOString()})
-  `);
+  await createTestRunSession(w.projectId, w.deviceId, start, end);
 }
 
 /** A release run that shipped `issueIds` at `at`, under the next patch number. */
@@ -134,42 +110,19 @@ export async function shipRelease(
 ): Promise<string> {
   w.versions += 1;
   const version = `0.0.${w.versions}`;
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, finished_at, release_version, release_released_at, metadata)
-    VALUES (${randomUUID()}, ${w.projectId}, 'system', 'completed', ${at.toISOString()}, ${at.toISOString()},
-            ${version}, ${at.toISOString()}, ${JSON.stringify({ issueIds })}::jsonb)
-  `);
+  await createTestRelease(w.projectId, version, issueIds, at);
   return version;
 }
 
-export async function requirement(w: World, title: string): Promise<{ id: string; key: string }> {
-  const id = randomUUID();
+export function requirement(w: World, title: string): Promise<{ id: string; key: string }> {
   w.reqSeq += 1;
-  await db.execute(sql`
-    INSERT INTO requirements (id, project_id, req_seq, title, status)
-    VALUES (${id}, ${w.projectId}, ${w.reqSeq}, ${title}, 'draft')
-  `);
-  return { id, key: `REQ-${w.reqSeq}` };
+  return createTestRequirement(w.projectId, w.reqSeq, title);
 }
 
 /** A feedback item, untriaged, or triaged onto `carriers` as an issue route. */
-export async function feedback(w: World, carriers: readonly string[] = []): Promise<string> {
+export function feedback(w: World, carriers: readonly string[] = []): Promise<string> {
   w.fbSeq += 1;
-  const seq = w.fbSeq;
-  await db.transaction(async (tx) => {
-    const [made] = (await tx.execute(sql`
-      INSERT INTO feedback (project_id, fb_seq, kind, title, where_seen, status, route, reported_by, reporter_agency)
-      VALUES (${w.projectId}, ${seq}, 'bug', ${`feedback ${seq}`}, 'The board',
-              ${carriers.length ? 'triaged' : 'new'}, ${carriers.length ? 'issue' : null}, ${w.userId}, 'human')
-      RETURNING id
-    `)) as unknown as { id: string }[];
-    for (const issueId of carriers) {
-      await tx.execute(sql`
-        INSERT INTO feedback_route_issues (feedback_id, issue_id) VALUES (${made?.id}, ${issueId})
-      `);
-    }
-  });
-  return `FB-${seq}`;
+  return createTestFeedback(w.projectId, w.userId, w.fbSeq, carriers);
 }
 
 export const ago = (hours: number) => new Date(Date.now() - hours * 3_600_000);

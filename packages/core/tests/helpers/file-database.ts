@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
+import { TEST_PROCESS_ENV } from './global-setup.js';
 
 const adminUrl = process.env.TEST_PG_ADMIN_URL;
 const template = process.env.TEST_PG_TEMPLATE;
@@ -22,10 +23,10 @@ try {
 const url = new URL(adminUrl);
 url.pathname = `/${name}`;
 process.env.DATABASE_URL = url.toString();
-process.env.NODE_ENV = 'test';
-process.env.LOG_LEVEL ??= 'silent';
-process.env.JWT_SECRET ??= 'integration-secret-at-least-32-characters-long';
-process.env.DEVICE_TOKEN_PEPPER ??= 'integration-pepper-at-least-32-characters-long';
+process.env.NODE_ENV = TEST_PROCESS_ENV.NODE_ENV;
+process.env.LOG_LEVEL ??= TEST_PROCESS_ENV.LOG_LEVEL;
+process.env.JWT_SECRET ??= TEST_PROCESS_ENV.JWT_SECRET;
+process.env.DEVICE_TOKEN_PEPPER ??= TEST_PROCESS_ENV.DEVICE_TOKEN_PEPPER;
 
 /**
  * The process wired the way its entry wires it — every port provided, every route mounted, every

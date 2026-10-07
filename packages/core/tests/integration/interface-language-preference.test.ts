@@ -4,13 +4,14 @@
  * refused by name with nothing written. Against real Postgres, through the route and the column.
  */
 
-import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { pgConstraintName } from '../../src/lib/db-errors.js';
 import { api, userToken } from '../helpers/api.js';
 import { createTestUser, truncateAll } from '../helpers/factories.js';
+import { groundBefore, type MigrationGround } from '../helpers/migration-ground.js';
 
 let userId: string;
 let token: string;
@@ -60,38 +61,35 @@ describe('the interface language preference', () => {
 });
 
 /**
- * Migration 0442 against a table that holds a row, which a throwaway database never has: the reset
- * to null ran before NOT NULL was dropped and was refused on forge-dev, so core never started (the
- * dev.103 deploy). Replayed on the pre-0442 shape inside a transaction that is rolled back.
+ * Migration 0442's own rule, on the shape it shipped against: no stored 'en' was a choice anyone
+ * made, so every row it finds is reset to null. Whether it applies to a table holding rows at all is
+ * the integration template's to prove, for every new migration (tests/helpers/global-setup.ts).
  */
-describe('migration 0442 on a table that holds a row', () => {
-  const statements = readFileSync(
-    new URL(
-      '../../drizzle/migrations/0442_each_person_picks_the_interface_language.sql',
-      import.meta.url,
-    ),
-    'utf8',
-  ).split('--> statement-breakpoint');
-  const replayed = Symbol('replayed');
+describe('migration 0442 on the rows it finds', () => {
+  const TAG = '0442_each_person_picks_the_interface_language';
+  let ground: MigrationGround;
 
-  it("resets a stored 'en' to null instead of refusing the row", async () => {
-    await patch({ theme: 'dark' });
-    const outcome = await db
-      .transaction(async (tx) => {
-        await tx.execute(
-          sql`ALTER TABLE user_preferences DROP CONSTRAINT user_preferences_language_chk`,
-        );
-        await tx.execute(sql`UPDATE user_preferences SET language = 'en'`);
-        await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET NOT NULL`);
-        await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET DEFAULT 'en'`);
-        for (const statement of statements) await tx.execute(sql.raw(statement));
-        const rows = await tx.execute(
-          sql`SELECT language FROM user_preferences WHERE user_id = ${userId}`,
-        );
-        expect(rows[0]?.language).toBeNull();
-        throw replayed;
-      })
-      .catch((e: unknown) => e);
-    expect(outcome).toBe(replayed);
+  beforeAll(async () => {
+    ground = await groundBefore(TAG);
+  }, 120_000);
+
+  afterAll(async () => {
+    await ground.drop();
+  });
+
+  it("resets a stored 'en' to null", async () => {
+    const m = await ground.fresh();
+    try {
+      const id = randomUUID();
+      await m.sql`INSERT INTO users (id, email, password_hash, kind) VALUES (${id}, ${`${id}@forge.test`}, '!x', 'human')`;
+      await m.sql`INSERT INTO user_preferences (user_id) VALUES (${id})`;
+      const [before] = await m.sql`SELECT language FROM user_preferences WHERE user_id = ${id}`;
+      expect(before?.language).toBe('en');
+      await m.migrate();
+      const [after] = await m.sql`SELECT language FROM user_preferences WHERE user_id = ${id}`;
+      expect(after?.language).toBeNull();
+    } finally {
+      await m.drop();
+    }
   });
 });
