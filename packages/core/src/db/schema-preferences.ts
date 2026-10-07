@@ -46,6 +46,9 @@ export const userPreferences = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('user_preferences_language_chk', sql`${t.language} IS NULL OR ${t.language} IN ('en', 'vi')`),
+    check(
+      'user_preferences_language_chk',
+      sql`${t.language} IS NULL OR ${t.language} IN ('en', 'vi')`,
+    ),
   ],
 );
