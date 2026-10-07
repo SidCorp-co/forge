@@ -235,7 +235,7 @@ describe('sealQueryError, given fields the driver defined for good', () => {
       value: Object.freeze(['zq9-secret']),
       enumerable: true,
     });
-    const sealed = sealQueryError(pg) as Error & Record<string, unknown>;
+    const sealed = sealQueryError(pg) as unknown as Record<string, unknown>;
     expect(JSON.stringify(sealed)).not.toContain('zq9');
     expect(sealed.code).toBe('23505');
     expect(sealed.constraint_name).toBe('notes_key');

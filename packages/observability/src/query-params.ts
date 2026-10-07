@@ -338,9 +338,9 @@ function fixedForGood(target: object, key: string): boolean {
   return own !== undefined && !own.configurable && !own.writable;
 }
 
-/** Sets a field where its descriptor allows it; false where only a copy can drop the old value. */
 type Key = string | symbol;
 
+/** Sets a field where its descriptor allows it; false where only a copy can drop the old value. */
 function rewrite(target: object, key: Key, value: unknown, enumerable?: boolean): boolean {
   const own = Object.getOwnPropertyDescriptor(target, key);
   const wanted = enumerable ?? own?.enumerable ?? false;
@@ -383,7 +383,7 @@ function sealedDriverMessage(text: string, values: string[]): string {
 
 type Change = { value: unknown; enumerable?: boolean };
 
-/** A fixed field's array emptied where it stands; false where it is frozen too, for a copy to drop. */
+/** Empties a fixed array of bound values in place; false where a frozen one refuses. */
 function emptied(v: unknown): boolean {
   if (!Array.isArray(v)) return false;
   try {
