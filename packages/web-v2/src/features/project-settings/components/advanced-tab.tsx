@@ -1,30 +1,47 @@
 "use client";
 
-// Project settings → Advanced. Move-to-org + soft archive / unarchive
-// (ISS-353). Owner-only (the buttons are disabled for non-owners and the
-// server returns 403). Archiving requires type-to-confirm of the project name;
-// it hides the project from the default list and pauses auto-pipeline dispatch
-// but destroys nothing — issues, comments, runs, and sessions are retained and
-// unarchive restores it. Moving to another org requires org admin on BOTH orgs
-// (core enforces) — we offer only orgs where the caller is owner/admin and
-// confirm before the PATCH since the destination org's admins gain control.
+// Project settings → Advanced: the technical view. The documents every other section's fields are
+// stored in, edited raw (who each document is stays fixed), what a run reads of them, the plugins a
+// device installs, and the two acts on the project itself: moving it to another organization and
+// archiving it (ISS-353), both org-admin only and both confirmed first.
 import { useState } from "react";
 import { Button, PageSection, PageSectionBody, Field, Input, SectionTitle, Select } from "@/design";
 import { useOrgs } from "@/features/orgs/hooks";
 import type { ProjectDetail } from "@/features/projects/types";
 import { isOrgAdmin } from "@/features/projects/write-access";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
+import { BindingsSection, PolicyDocumentSection, ProjectDocumentSection, TestingProfilesSection } from "./config-documents";
+import { EffectiveSection, EnvironmentStateSection } from "./config-readings";
+import { PluginsSection } from "./plugins-section";
+import { SecretsSection } from "./secrets-section";
 
-export function AdvancedTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+export function AdvancedSection({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+  const t = useCopy();
   return (
     <div className="space-y-6">
-      {canEdit && <MoveToOrgCard project={project} />}
-      <ArchiveCard project={project} canEdit={canEdit} />
+      <section id="documents" aria-label={t("settings.project.advanced.technical")} className="scroll-mt-24">
+        <h3 className="fg-h3 text-accent-text!">{t("settings.project.advanced.technical")}</h3>
+        <p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{t("settings.project.advanced.technicalLead")}</p>
+        <ProjectDocumentSection project={project} canEdit={canEdit} />
+        <PolicyDocumentSection projectId={project.id} canEdit={canEdit} />
+        <TestingProfilesSection projectId={project.id} canEdit={canEdit} />
+        <SecretsSection projectId={project.id} canEdit={canEdit} />
+        <BindingsSection projectId={project.id} canEdit={canEdit} />
+        <EnvironmentStateSection projectId={project.id} />
+        <EffectiveSection projectId={project.id} />
+        <PluginsSection projectId={project.id} canEdit={canEdit} />
+      </section>
+      <div className="border-t border-line pt-2">
+        {canEdit && <MoveToOrgCard project={project} />}
+        <ArchiveCard project={project} canEdit={canEdit} />
+      </div>
     </div>
   );
 }
 
 function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
+  const t = useCopy();
   const archive = useArchiveProject(project.id);
   const unarchive = useUnarchiveProject(project.id);
   const [confirming, setConfirming] = useState(false);
@@ -38,36 +55,29 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Archive project</SectionTitle>
+        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.advanced.archive")}</SectionTitle>
         {project.archivedAt ? (
           <>
-            <p className="fg-caption mb-4 text-muted">
-              This project is <strong>archived</strong>. It is hidden from the default project list and no
-              new pipeline jobs are dispatched. All issues, comments, runs, and sessions are retained.
-              Unarchive to make it active again.
-            </p>
+            <p className="fg-caption mb-4 text-muted">{t("settings.project.advanced.archivedBody")}</p>
             {canEdit && (
               <Button variant="primary" loading={unarchive.isPending} onClick={() => unarchive.mutate()} className="min-h-11">
-                Unarchive project
+                {t("settings.project.advanced.unarchive")}
               </Button>
             )}
           </>
         ) : (
           <>
-            <p className="fg-caption mb-4 text-muted">
-              Archiving hides this project from the default list and pauses auto-pipeline dispatch. Nothing
-              is deleted — issues, comments, runs, and sessions are kept and you can unarchive at any time.
-            </p>
+            <p className="fg-caption mb-4 text-muted">{t("settings.project.advanced.archiveBody")}</p>
             {canEdit &&
               (confirming ? (
                 <div className="space-y-4">
-                  <Field label="Confirm archive" hint={`Type the project name "${project.name}" to confirm.`}>
+                  <Field label={t("settings.project.advanced.confirmArchive")} hint={t("settings.project.advanced.typeName", { name: project.name })}>
                     <Input
                       value={typed}
                       onChange={(e) => setTyped(e.target.value)}
                       placeholder={project.name}
                       autoComplete="off"
-                      aria-label="Type the project name to confirm archive"
+                      aria-label={t("settings.project.advanced.typeNameLabel")}
                     />
                   </Field>
                   <div className="flex gap-2">
@@ -78,16 +88,16 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
                       onClick={() => archive.mutate(undefined, { onSuccess: stopConfirming })}
                       className="min-h-11"
                     >
-                      Confirm archive
+                      {t("settings.project.advanced.confirmArchive")}
                     </Button>
                     <Button variant="secondary" onClick={stopConfirming} className="min-h-11">
-                      Cancel
+                      {t("common.cancel")}
                     </Button>
                   </div>
                 </div>
               ) : (
                 <Button variant="danger" onClick={() => setConfirming(true)} className="min-h-11">
-                  Archive project
+                  {t("settings.project.advanced.archive")}
                 </Button>
               ))}
           </>
@@ -100,6 +110,7 @@ function ArchiveCard({ project, canEdit }: { project: ProjectDetail; canEdit: bo
 /** Move the project to another org the caller administers (owner/admin on the
  *  destination; core also requires admin on the current org). */
 function MoveToOrgCard({ project }: { project: ProjectDetail }) {
+  const t = useCopy();
   const orgsQ = useOrgs();
   const update = useUpdateProject(project.id);
   const [targetOrgId, setTargetOrgId] = useState("");
@@ -112,10 +123,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   function move() {
     const target = targets.find((o) => o.id === targetOrgId);
     if (!target) return;
-    const ok = window.confirm(
-      `Move "${project.name}" to the organization "${target.name}"? ` +
-        `Owners and admins of "${target.name}" will gain full admin control of this project.`,
-    );
+    const ok = window.confirm(t("settings.project.advanced.moveConfirm", { name: project.name, org: target.name }));
     if (!ok) return;
     update.mutate({ orgId: target.id }, { onSuccess: () => setTargetOrgId("") });
   }
@@ -123,20 +131,16 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Move to organization</SectionTitle>
-        <p className="fg-caption mb-4 text-muted">
-          Transfer this project to another organization you administer. Owners
-          and admins of the destination org will manage the project; per-project
-          members are kept.
-        </p>
+        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.advanced.move")}</SectionTitle>
+        <p className="fg-caption mb-4 text-muted">{t("settings.project.advanced.moveBody")}</p>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1 sm:max-w-80">
-            <Field label="Destination organization">
+            <Field label={t("settings.project.advanced.destination")}>
               <Select
                 options={targets.map((o) => ({ value: o.id, label: o.name }))}
                 value={targetOrgId}
                 onChange={(v) => setTargetOrgId(v)}
-                placeholder="Select an organization…"
+                placeholder={t("settings.project.advanced.destinationPlaceholder")}
               />
             </Field>
           </div>
@@ -147,7 +151,7 @@ function MoveToOrgCard({ project }: { project: ProjectDetail }) {
             onClick={move}
             className="min-h-11"
           >
-            Move
+            {t("settings.project.advanced.moveAct")}
           </Button>
         </div>
       </PageSectionBody>

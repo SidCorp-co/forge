@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { feedOf } from "@/features/whats-new/fixtures";
 
-const nav = vi.hoisted(() => ({ pathname: "/projects/forge/settings", search: "tab=integrations", replace: vi.fn(), push: vi.fn() }));
+const nav = vi.hoisted(() => ({ pathname: "/projects/forge/settings", search: "tab=connections", replace: vi.fn(), push: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: nav.replace, prefetch: vi.fn() }),
@@ -64,12 +64,12 @@ describe("tours in the workspace layout", () => {
     await waitFor(() => expect(within(release).getByRole("button", { name: "Show" })).toBeEnabled());
     expect(integrations).not.toHaveTextContent("Open a project first");
     await userEvent.click(within(integrations).getByRole("button", { name: "Show" }));
-    expect(nav.push).toHaveBeenCalledWith("/projects/forge/settings?tab=integrations&tour=integrations");
+    expect(nav.push).toHaveBeenCalledWith("/projects/forge/settings?tab=connections&tour=integrations");
   });
 
   it("?tour= on the tour's page starts it at step 1", async () => {
     nav.pathname = "/projects/forge/settings";
-    nav.search = "tab=integrations&tour=integrations";
+    nav.search = "tab=connections&tour=integrations";
     serve();
     renderWithQuery(<WorkspaceLayout><div data-tour="int-status" style={{ width: 10, height: 10 }} /></WorkspaceLayout>);
     await waitFor(() => expect(started.tours).toEqual(["integrations"]));

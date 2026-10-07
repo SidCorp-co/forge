@@ -52,8 +52,8 @@ const PARTS: Record<TourId, TourParts> = {
     audience: "admin",
     route: {
       pattern: /^\/projects\/[^/]+\/settings$/,
-      tab: "integrations",
-      href: (slug) => `/projects/${encodeURIComponent(slug)}/settings?tab=integrations`,
+      tab: "connections",
+      href: (slug) => `/projects/${encodeURIComponent(slug)}/settings?tab=connections`,
     },
     title: "tour.integrations.title",
     hint: { new: "tour.integrations.hint.new", updated: "tour.integrations.hint.updated" },

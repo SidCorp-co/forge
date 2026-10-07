@@ -20,6 +20,7 @@ import { OVERVIEW_SCREENS } from "./vi-chrome-overview";
 import { RUNNER_SCREENS } from "./vi-chrome-runners";
 import { INTEGRATION_SCREENS } from "./vi-chrome-integrations.fixture";
 import { SETTINGS_SCREENS } from "./vi-chrome-settings";
+import { PROJECT_SETTINGS_SCREENS } from "./vi-chrome-project-settings.fixture";
 import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
@@ -92,5 +93,5 @@ export const CHROME_SCREENS: ChromeScreen[] = [
   { name: "Feedback facts and history", render: feedbackFacts },
   { name: "Feedback triage and message forms", render: feedbackForms },
   { name: "Feedback filing form", render: feedbackFilingForm },
-  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS,
+  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS, ...PROJECT_SETTINGS_SCREENS,
 ];

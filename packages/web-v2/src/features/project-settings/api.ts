@@ -39,8 +39,12 @@ export const projectSettingsApi = {
 	getReleaseReadiness: (id: string) =>
 		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
-	getKnowledgeEntry: (id: string, slug: string) =>
-		apiClient<{ slug: string; body: string }>(`/projects/${id}/knowledge/${slug}`),
+	/** `PUT /api/projects/:id/knowledge/:slug` — the entry a release gap names, written by a person. */
+	putKnowledgeEntry: (id: string, slug: string, entry: { title: string; body: string }) =>
+		apiClient<{ id: string; slug: string }>(`/projects/${id}/knowledge/${encodeURIComponent(slug)}`, {
+			method: "PUT",
+			body: JSON.stringify({ ...entry, kind: "guide", injection: "on_demand", confidence: "verified", authoredBy: "human" }),
+		}),
 
 	/** `GET /api/projects/:id/members` — members with emails. */
 	listMembers: (id: string) =>

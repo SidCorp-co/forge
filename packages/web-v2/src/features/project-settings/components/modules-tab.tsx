@@ -26,6 +26,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { useCreateLabel, useDeleteLabel, useLabels, useUpdateLabel } from "../hooks";
 import type { ProjectLabel } from "../types";
@@ -104,16 +105,17 @@ function ModuleControls({
   onPatch: (patch: ModulePatch) => void;
   onDelete: () => void;
 }) {
+  const t = useCopy();
   const parentOptions = useMemo<SelectOption[]>(() => {
     const banned = descendantIds(modules, m.id);
     return [
-      { value: NO_PARENT, label: "No parent" },
+      { value: NO_PARENT, label: t("settings.project.work.noParent") },
       ...modules
         .filter((o) => !banned.has(o.id))
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((o) => ({ value: o.id, label: o.name })),
     ];
-  }, [modules, m.id]);
+  }, [modules, m.id, t]);
 
   return (
     <>
@@ -121,11 +123,11 @@ function ModuleControls({
         type="color"
         value={m.color}
         onChange={(e) => onPatch({ color: e.target.value })}
-        aria-label={`Colour for ${m.name}`}
+        aria-label={t("settings.project.work.colourOf", { name: m.name })}
         className="h-10 w-12 shrink-0 cursor-pointer rounded-md border border-line bg-surface p-1"
       />
       <Select
-        aria-label={`Parent of ${m.name}`}
+        aria-label={t("settings.project.work.parentOf", { name: m.name })}
         value={m.parentId ?? NO_PARENT}
         options={parentOptions}
         disabled={saving}
@@ -134,16 +136,17 @@ function ModuleControls({
       />
       <IconButton
         icon={expanded ? "chevronUpDown" : "chevronDown"}
-        aria-label={expanded ? `Hide description of ${m.name}` : `Describe ${m.name}`}
+        aria-label={expanded ? t("settings.project.work.hideDescription", { name: m.name }) : t("settings.project.work.describe", { name: m.name })}
         aria-expanded={expanded}
         onClick={onExpand}
       />
-      <IconButton icon="trash" aria-label={`Delete module ${m.name}`} onClick={onDelete} disabled={saving} />
+      <IconButton icon="trash" aria-label={t("settings.project.work.deleteModuleNamed", { name: m.name })} onClick={onDelete} disabled={saving} />
     </>
   );
 }
 
 function ModuleName({ module: m, onPatch }: { module: ProjectLabel; onPatch: (patch: ModulePatch) => void }) {
+  const t = useCopy();
   const [name, setName] = useState(m.name);
   function commit() {
     const trimmed = name.trim();
@@ -159,7 +162,7 @@ function ModuleName({ module: m, onPatch }: { module: ProjectLabel; onPatch: (pa
         if (e.key === "Enter") e.currentTarget.blur();
         if (e.key === "Escape") setName(m.name);
       }}
-      aria-label={`Module name for ${m.name}`}
+      aria-label={t("settings.project.work.moduleName", { name: m.name })}
       maxLength={64}
       className="min-w-0 basis-full sm:basis-auto sm:flex-1 sm:max-w-56"
     />
@@ -183,6 +186,7 @@ function ModuleRow({
   onDelete: () => void;
   saving: boolean;
 }) {
+  const t = useCopy();
   const { module: m, depth } = node;
   const [description, setDescription] = useState(m.description ?? "");
   const [expanded, setExpanded] = useState(false);
@@ -213,7 +217,9 @@ function ModuleRow({
           </span>
         )}
         {childCount !== undefined ? (
-          <span className="flex-none text-12 text-subtle">{childCount ? `${childCount} child modules` : "No child modules"}</span>
+          <span className="flex-none text-12 text-subtle">
+            {childCount ? t("settings.project.work.children", { n: childCount }) : t("settings.project.work.noChildren")}
+          </span>
         ) : null}
         {canEdit && (
           <ModuleControls
@@ -238,8 +244,8 @@ function ModuleRow({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={commitDescription}
-            aria-label={`Description of ${m.name}`}
-            placeholder="What this module covers"
+            aria-label={t("settings.project.work.descriptionOf", { name: m.name })}
+            placeholder={t("settings.project.work.descriptionPlaceholder")}
             maxLength={2000}
             rows={2}
           />
@@ -250,6 +256,7 @@ function ModuleRow({
 }
 
 export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const t = useCopy();
   const labelsQ = useLabels(projectId);
   const create = useCreateLabel(projectId);
   const update = useUpdateLabel(projectId);
@@ -266,11 +273,8 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Modules</SectionTitle>
-        <p className="fg-body-sm mb-4 text-muted">
-          The parts of this project issues are attributed to. Each issue has one primary module and
-          any number of secondary ones.
-        </p>
+        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.work.modules")}</SectionTitle>
+        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.work.modulesLead")}</p>
 
         {labelsQ.isLoading ? (
           <div className="space-y-2">
@@ -280,14 +284,14 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
           </div>
         ) : labelsQ.isError ? (
           <ErrorState
-            title="Couldn't load modules"
+            title={t("settings.project.work.modulesUnread")}
             message={formatApiError(labelsQ.error)}
             onRetry={() => labelsQ.refetch()}
           />
         ) : modules.length === 0 ? (
           <EmptyState
-            title="No modules yet"
-            message="Add a module to attribute issues to a part of this project."
+            title={t("settings.project.work.noModules")}
+            message={t("settings.project.work.noModulesBody")}
             mascot={false}
           />
         ) : (
@@ -309,16 +313,16 @@ export function ModulesTab({ projectId, canEdit }: { projectId: string; canEdit:
 
         {canEdit && (
           <AddByName
-            placeholder="New module name"
-            ariaLabel="New module name"
+            placeholder={t("settings.project.work.newModule")}
+            ariaLabel={t("settings.project.work.newModule")}
             loading={create.isPending}
             onAdd={(name, done) => create.mutate({ name, kind: "module" }, { onSuccess: done })}
           />
         )}
         <ConfirmDelete
           target={pendingDelete}
-          title="Delete module"
-          consequence="is removed from the taxonomy. Issues tagged with it keep their other modules. This cannot be undone."
+          title={t("settings.project.work.deleteModule")}
+          consequence={t("settings.project.work.deleteModuleBody")}
           remove={remove}
           onClose={() => setPendingDelete(null)}
         />

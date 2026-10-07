@@ -65,20 +65,23 @@ function GateIssues({ issues, slug }: { issues: readonly string[]; slug: string 
   );
 }
 
-export function GateLine({ gate, slug }: { gate: ReleaseGateView; slug: string }) {
+/** How a reason reads: a `problem` stops a release and has someone to clear it, a `warning` changes how
+ *  one runs, and a `state` is the project as it normally stands (nothing waiting, a release already running). */
+export type GateTone = "problem" | "warning" | "state";
+
+const GATE_DOT: Record<GateTone, string> = { problem: LEGEND.err.dot, warning: LEGEND.you.dot, state: LEGEND.neutral.dot };
+
+export function GateLine({ gate, slug, tone }: { gate: ReleaseGateView; slug: string; tone?: GateTone }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const [open, setOpen] = useState(false);
   const more = gate.issues.length > NAMED_IN_SENTENCE;
   const owner = gate.owner;
   const title = gateTitle(gate.title, language);
+  const read = tone ?? (gate.kind === "blocker" ? "problem" : "warning");
   return (
-    <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code}>
-      <span
-        aria-hidden
-        className="mt-[7px] size-1.5 flex-none rounded-full"
-        style={{ background: gate.kind === "blocker" ? LEGEND.err.dot : LEGEND.you.dot }}
-      />
+    <li className="flex items-start gap-2 py-2 text-13" data-testid="release-gate" data-code={gate.code} data-tone={read}>
+      <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: GATE_DOT[read] }} />
       <span className="min-w-0 flex-1">
         <b className="font-semibold">{title}.</b> {gateSentence(gate.sentence, language)}
         {owner.kind === "system" ? null : (

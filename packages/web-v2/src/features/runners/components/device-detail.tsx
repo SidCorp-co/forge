@@ -220,7 +220,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 /**
  * One project this device serves — READ-ONLY here. Per-project assignment,
  * repo path/branch, and provisioning moved to the project's Settings → Runners
- * tab (`/projects/<slug>/settings?tab=runners`); this is the device-side roll-up
+ * tab (`/projects/<slug>/settings?tab=connections#runners`); this is the device-side roll-up
  * that links there.
  */
 function ProjectPoolRow({
@@ -231,7 +231,7 @@ function ProjectPoolRow({
 		<button
 			type="button"
 			onClick={() =>
-				router.push(`/projects/${assignment.slug}/settings?tab=runners`)
+				router.push(`/projects/${assignment.slug}/settings?tab=connections#runners`)
 			}
 			className="flex w-full items-center justify-between gap-2 py-3 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
 		>

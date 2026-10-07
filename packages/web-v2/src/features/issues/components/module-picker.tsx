@@ -122,7 +122,7 @@ export function ModulePicker({
           mascot={false}
           action={{
             label: t("issues.modules.openSettings"),
-            onClick: () => router.push(`/projects/${slug}/settings?tab=modules`),
+            onClick: () => router.push(`/projects/${slug}/settings?tab=work#modules`),
           }}
         />
       ) : (
