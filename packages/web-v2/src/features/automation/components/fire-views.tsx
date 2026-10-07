@@ -27,48 +27,52 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
-import { formatAge, formatStamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
-import { fireWhy, fmtDuration, producedLine, shortId } from "../view";
+import { fireWhy, fmtDuration, producedLine, type RowCtx, shortId } from "../view";
 
 export const fireRow =
-  (hrefOf: (id: string) => string) =>
+  (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
   (f: FireStanding): ListRowView => {
-    const why = fireWhy(f);
+    const why = fireWhy(f, language);
     return {
       key: f.id,
       keyLabel: `#${shortId(f.id)}`,
       href: hrefOf(f.id),
       title: f.scheduleName,
-      facts: [enumLabel("fireTrigger", f.trigger), fmtDuration(f.durationSeconds), producedLine(f.produced), ...(why ? [why] : [])],
+      facts: [enumLabel("fireTrigger", f.trigger, language), fmtDuration(f.durationSeconds, t), producedLine(f.produced, t), ...(why ? [why] : [])],
       state: <StatusBadge family="scheduleRun" value={f.status} />,
       waitingOn: f.waitingOn.kind === "none" ? <span className="text-12-5 text-subtle">—</span> : <WaitingOn w={f.waitingOn} />,
-      owner: enumLabel("fireTrigger", f.trigger),
-      age: { text: formatAge(f.startedAt), title: `Started ${formatStamp(f.startedAt)}` },
+      owner: enumLabel("fireTrigger", f.trigger, language),
+      age: { text: time.age(f.startedAt), title: t("schedules.fire.started", { at: time.dateTime(f.startedAt) }) },
       dim: f.attentionGroup === "nothing_produced",
     };
   };
 
 /** A schedule's fires as hairline rows, each opening the fire's page. */
 export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slug: string }) {
-  if (fires.length === 0) return <FactsEmpty>No fires yet.</FactsEmpty>;
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  if (fires.length === 0) return <FactsEmpty>{t("schedules.noFires")}</FactsEmpty>;
   return (
     <ul className="border-t border-line-subtle" data-testid="fire-lines">
       {fires.map((f) => {
-        const why = fireWhy(f);
+        const why = fireWhy(f, language);
         return (
           <li key={f.id} className="border-b border-line-subtle">
             <Link href={fireHref(slug, f.id)} className="flex flex-wrap items-center gap-2 py-2 text-13 hover:bg-hover">
               <span className="font-mono text-12 font-semibold text-link">#{shortId(f.id)}</span>
               <StatusBadge family="scheduleRun" value={f.status} />
-              <span className="text-muted">{enumLabel("fireTrigger", f.trigger)}</span>
-              <span className="font-mono text-12 text-subtle">{fmtDuration(f.durationSeconds)}</span>
-              <span className="text-muted">{producedLine(f.produced)}</span>
+              <span className="text-muted">{enumLabel("fireTrigger", f.trigger, language)}</span>
+              <span className="font-mono text-12 text-subtle">{fmtDuration(f.durationSeconds, t)}</span>
+              <span className="text-muted">{producedLine(f.produced, t)}</span>
               {why ? <span className="truncate text-danger">{why}</span> : null}
-              <span className="ml-auto font-mono text-11 text-subtle" title={formatStamp(f.startedAt)}>
-                {formatAge(f.startedAt)}
+              <span className="ml-auto font-mono text-11 text-subtle" title={time.dateTime(f.startedAt)}>
+                {time.age(f.startedAt)}
               </span>
             </Link>
           </li>
@@ -79,13 +83,15 @@ export function FireLines({ fires, slug }: { fires: readonly FireStanding[]; slu
 }
 
 function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   if (f.waitingOn.kind === "none") return null;
   const w = f.waitingOn;
   return (
     <WaitBanner
       tone="you"
-      head={w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`}
-      body={w.act}
+      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) })}
+      body={standingAct(w.act, language)}
       rule={f.waitingOn.rule}
       className={className}
       testId="fire-banner"
@@ -94,43 +100,46 @@ function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
 }
 
 export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "schedule">; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const f = d.fire;
-  const why = fireWhy(f);
+  const why = fireWhy(f, language);
   return (
     <>
-      <FactsGroup title="Result">
-        <Fact label="Status">
+      <FactsGroup title={t("schedules.fire.result")}>
+        <Fact label={t("schedules.fire.status")}>
           <StatusBadge family="scheduleRun" value={f.status} />
         </Fact>
         {why ? (
-          <Fact label="Why">
-            <span className="text-danger" title={f.refusal ?? f.error ?? f.reason ?? undefined}>
+          <Fact label={t("schedules.fire.why")}>
+            <span className="text-danger" title={f.refusal ?? f.error ?? f.reason ?? undefined} data-value={f.refusal ?? f.error ?? f.reason ?? undefined}>
               {why}
             </span>
           </Fact>
         ) : null}
-        <Fact label="Started">
-          <span title={formatStamp(f.startedAt)}>{formatAge(f.startedAt)} ago</span>
+        <Fact label={t("schedules.fire.startedLabel")}>
+          <span title={time.dateTime(f.startedAt)}>{t("schedules.ago", { age: time.age(f.startedAt) })}</span>
         </Fact>
-        <Fact label="Took">{fmtDuration(f.durationSeconds)}</Fact>
-        <Fact label="Trigger">
+        <Fact label={t("schedules.fire.took")}>{fmtDuration(f.durationSeconds, t)}</Fact>
+        <Fact label={t("schedules.fire.trigger")}>
           <EnumBadge family="fireTrigger" value={f.trigger} />
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Produced">
-        <Fact label="Counted" testId="fire-produced">
-          {producedLine(f.produced)}
+      <FactsGroup title={t("schedules.fire.produced")}>
+        <Fact label={t("schedules.fire.counted")} testId="fire-produced">
+          {producedLine(f.produced, t)}
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Source">
-        <Fact label="Schedule">
+      <FactsGroup title={t("schedules.fire.source")}>
+        <Fact label={t("schedules.fire.schedule")}>
           <Link href={scheduleHref(slug, d.schedule.id)} className="text-link hover:underline">
             {d.schedule.name}
           </Link>
           <StatusBadge family="scheduleStanding" value={d.schedule.state} />
         </Fact>
         {f.sessionId ? (
-          <Fact label="Session">
+          <Fact label={t("schedules.fire.session")}>
             <Link href={sessionHref(slug, f.sessionId)} className="font-mono text-12-5 text-link hover:underline">
               {shortId(f.sessionId)}
             </Link>
@@ -154,9 +163,10 @@ export function FirePeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel="Automation" noun="Fire" onOpenFull={onOpenFull} testId="fire-peek">
-      <PeekHead noun="Fire" itemKey={`#${shortId(f.id)}`} badge={<StatusBadge family="scheduleRun" value={f.status} />} title={f.scheduleName} />
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.fire")} onOpenFull={onOpenFull} testId="fire-peek">
+      <PeekHead noun={t("schedules.noun.fire")} itemKey={`#${shortId(f.id)}`} badge={<StatusBadge family="scheduleRun" value={f.status} />} title={f.scheduleName} />
       <FireBanner f={f} className="px-[18px]" />
       <div className="px-[18px] pb-4 pt-4">
         {schedule ? <FireFacts d={{ fire: { ...f, output: null }, schedule }} slug={slug} /> : null}
@@ -168,14 +178,17 @@ export function FirePeek({
 const FIRE_TABS = ["produced", "output"] as const;
 
 function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const p = d.produced;
   const empty = !p.reports.length && !p.issues.length && !p.proposals.length && !p.runs.length && !p.notifications.length;
-  if (empty) return <FactsEmpty>This fire produced nothing.</FactsEmpty>;
+  if (empty) return <FactsEmpty>{t("schedules.fire.nothing")}</FactsEmpty>;
   return (
     <div className="grid gap-8" data-testid="fire-produced-items">
       {p.reports.length ? (
         <section>
-          <ViewHeading hint={`${p.reports.length}`}>Reports</ViewHeading>
+          <ViewHeading hint={`${p.reports.length}`}>{t("schedules.fire.reports")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.reports.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -183,7 +196,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
                 <Link href={reportHref(slug, r.id)} className="text-link hover:underline">
                   {r.summary}
                 </Link>
-                <span className="text-subtle">{enumLabel("agentReportKind", r.kind)}</span>
+                <span className="text-subtle">{enumLabel("agentReportKind", r.kind, language)}</span>
               </li>
             ))}
           </ul>
@@ -191,7 +204,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.issues.length ? (
         <section>
-          <ViewHeading hint={`${p.issues.length}`}>Issues</ViewHeading>
+          <ViewHeading hint={`${p.issues.length}`}>{t("schedules.fire.issues")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.issues.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -207,7 +220,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.proposals.length ? (
         <section>
-          <ViewHeading hint={`${p.proposals.length}`}>Proposals</ViewHeading>
+          <ViewHeading hint={`${p.proposals.length}`}>{t("schedules.fire.proposals")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.proposals.map((a) => (
               <li key={`${a.skill}:${a.summary}`} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -221,7 +234,7 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.runs.length ? (
         <section>
-          <ViewHeading hint={`${p.runs.length}`}>Runs</ViewHeading>
+          <ViewHeading hint={`${p.runs.length}`}>{t("schedules.fire.runs")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.runs.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
@@ -235,14 +248,14 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
       ) : null}
       {p.notifications.length ? (
         <section>
-          <ViewHeading hint={`${p.notifications.length}`}>Notifications</ViewHeading>
+          <ViewHeading hint={`${p.notifications.length}`}>{t("schedules.fire.notifications")}</ViewHeading>
           <ul className="border-t border-line-subtle">
             {p.notifications.map((n) => (
               <li key={n.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
                 <EnumBadge family="notificationType" value={n.type} />
                 <span>{n.title}</span>
-                <span className="ml-auto font-mono text-11 text-subtle" title={formatStamp(n.createdAt)}>
-                  {formatAge(n.createdAt)}
+                <span className="ml-auto font-mono text-11 text-subtle" title={time.dateTime(n.createdAt)}>
+                  {time.age(n.createdAt)}
                 </span>
               </li>
             ))}
@@ -254,15 +267,16 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
 }
 
 export function FirePage({ projectId, slug, fireId }: { projectId: string; slug: string; fireId: string }) {
+  const t = useCopy();
   const q = useFireDetail(projectId, fireId);
   const [tab, setTab] = useUrlTab(FIRE_TABS);
   return (
-    <QueryBoundary query={q} loadingLabel="loading the fire…">
+    <QueryBoundary query={q} loadingLabel={t("schedules.fire.loading")}>
       {(data) => {
         const d = data;
         const tabs = [
-          { value: "produced" as const, label: "Produced" },
-          { value: "output" as const, label: "Output" },
+          { value: "produced" as const, label: t("schedules.fire.produced") },
+          { value: "output" as const, label: t("schedules.fire.output") },
         ];
         return (
           <DetailLayout
@@ -277,7 +291,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
             <DetailMobileTitle itemKey={`#${shortId(d.fire.id)}`} title={d.fire.scheduleName} badge={<StatusBadge family="scheduleRun" value={d.fire.status} />} />
             <FireBanner f={d.fire} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="fire-tabs" />
-            <DetailPane label={tab === "output" ? "Output" : "Produced"}>
+            <DetailPane label={tab === "output" ? t("schedules.fire.output") : t("schedules.fire.produced")}>
               {tab === "produced" ? (
                 <Produced d={d} slug={slug} />
               ) : d.fire.output ? (
@@ -285,7 +299,7 @@ export function FirePage({ projectId, slug, fireId }: { projectId: string; slug:
                   {d.fire.output}
                 </pre>
               ) : (
-                <FactsEmpty>{d.fire.sessionId ? "A prompt fire's output is its session's transcript." : "This fire wrote no output."}</FactsEmpty>
+                <FactsEmpty>{d.fire.sessionId ? t("schedules.fire.outputIsTranscript") : t("schedules.fire.noOutput")}</FactsEmpty>
               )}
             </DetailPane>
           </DetailLayout>

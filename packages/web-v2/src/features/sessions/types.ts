@@ -12,6 +12,7 @@ import {
 } from "@forge/contracts/run-standing";
 import type { AgentSessionStatus } from "@forge/contracts/session-machine";
 import type { StatusKey } from "@/design/status";
+import { type Copy, copyLocale, copyOr, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
 export type { AgentSessionStatus };
 
@@ -49,9 +50,6 @@ export interface LivenessResult {
 }
 
 export type SessionFailureReason = FailureCause | LegacyNeutralReason;
-
-/** Exhaustive over every cause; a legacy neutral reason carries its own copy only where it has one. */
-type ReasonCopy = Record<FailureCause, string> & Partial<Record<LegacyNeutralReason, string>>;
 
 /** Usage telemetry jsonb — every key is optional (older rows omit fields). */
 export interface SessionUsage {
@@ -143,11 +141,11 @@ export const AGENT_SESSION_KINDS: AgentSessionKind[] = [
   "chat",
 ];
 
-export const SESSION_KIND_LABEL: Record<AgentSessionKind, string> = {
-  master: "Master",
-  run_session: "Run",
-  pipeline: "Step",
-  chat: "Chat",
+export const SESSION_KIND_KEY: Record<AgentSessionKind, ProductCopyKey> = {
+  master: "sessions.kind.master",
+  run_session: "sessions.kind.run_session",
+  pipeline: "sessions.kind.pipeline",
+  chat: "sessions.kind.chat",
 };
 
 /**
@@ -185,134 +183,20 @@ export function isAwaitingReply(
   return isInteractiveSession(session) && session.status === "idle";
 }
 
-/** Operator-facing label for each terminal failure reason — surfaced on the
- *  list row + the detail blocker-card so "failed" is actionable (ISS-378). */
-export const FAILURE_REASON_LABEL: ReasonCopy = {
-  provider_spend_cap: "Spend limit reached",
-  provider_usage_limit: "Usage limit reached",
-  provider_subscription_disabled: "Subscription disabled",
-  provider_auth_expired: "Sign-in expired",
-  provider_overloaded: "Model provider overloaded",
-  provider_refused_request: "Request refused",
-  agent_startup_failed: "Agent didn't start",
-  agent_skill_missing: "Skill missing on runner",
-  agent_exited_without_result: "Agent exited with no result",
-  agent_killed: "Agent killed",
-  agent_stopped_on_question: "Stopped on a question",
-  workspace_preflight_failed: "Checkout not usable",
-  workspace_disk_full: "Runner disk full",
-  repo_root_contention: "Runner repo busy",
-  box_session_saturated: "Runner at session capacity",
-  runner_unreachable: "Runner unreachable",
-  duplex_channel_failed: "Session channel failed",
-  session_lost: "Session lost",
-  checkout_unbound: "No checkout bound",
-  credential_mint_failed: "Credential not minted",
-  attachment_unreadable: "Attachment unreadable",
-  dispatch_failed: "Not dispatched",
-  forge_budget_exhausted: "Project budget spent",
-  runner_unsupported_type: "Runner can't run this step",
-  resume_failed: "Resume failed",
-  residency_expired: "Session window expired",
-  park_unanswered: "Question went unanswered",
-  audit_ran_blind: "Ran without evidence",
-  session_authority_refused: "Refused: could not act as its owner",
-  orphan_under_terminal_run: "Cleaned up (run ended)",
-  pipeline_cancelled: "Pipeline cancelled",
-  pipeline_completed: "Cleaned up (run finished)",
-  pipeline_failed: "Cleaned up (run failed)",
-  manual_ops_stale_chat_schedule: "Cleared by an operator",
-  unclassified: "Unclassified",
-  queue_timeout: "Queue timeout",
-  heartbeat_timeout: "No heartbeat",
-  turn_never_reported: "No turn ever reported",
-  no_worker_online: "No runner online",
-  no_client_ack: "No acknowledgement",
-  skill_not_synced: "Skill not ready yet",
-  user_cancelled: "Cancelled",
-  migration_zombie_cleanup: "Swept (migration)",
-  issue_busy: "Issue busy",
-  runner_full: "Runner at capacity",
-};
-
-/** Suggested next action for a failed/stalled session — the one-line remedy on
- *  the detail blocker-card (ISS-378 AC#6). */
-export const FAILURE_REASON_ACTION: ReasonCopy = {
-  provider_spend_cap: "The account hit its spend cap — raise it, or wait for the window to reset.",
-  provider_usage_limit: "The account hit its usage window — it retries once the window resets.",
-  provider_subscription_disabled:
-    "Claude Code access is off for this organization — an admin has to turn it back on.",
-  provider_auth_expired: "The runner's sign-in expired — re-authenticate it, then Retry.",
-  provider_overloaded: "The model provider was busy — Retry.",
-  provider_refused_request: "The provider refused the request — check the model and prompt settings.",
-  agent_startup_failed: "The agent never got going on this runner — check its MCP config, then Retry.",
-  agent_skill_missing: "The skill hasn't reached this runner — sync it, then Retry.",
-  agent_exited_without_result: "The agent exited before reporting — Retry to re-dispatch.",
-  agent_killed: "Something killed the agent process — check the runner logs.",
-  agent_stopped_on_question:
-    "The agent stopped to ask a question nobody answers in a job pane — make the prompt say what to do, then Retry.",
-  workspace_preflight_failed: "The runner's checkout is unusable — fix the repo path or remote.",
-  workspace_disk_full: "The runner is out of disk — free space, then Retry.",
-  repo_root_contention:
-    "Another job on that runner held the repo for ten minutes — Retry once it is free.",
-  box_session_saturated:
-    "That runner had no session slot free — the job moves to another box on its own.",
-  runner_unreachable: "The runner never picked it up — check it's online, then Retry.",
-  duplex_channel_failed: "The session channel dropped — a fresh session is the next step.",
-  session_lost: "The session died without reporting — Retry to re-dispatch.",
-  checkout_unbound: "The device's binding to this project names no checkout — bind one with forge-runner bind, then ask again.",
-  credential_mint_failed: "Forge could not mint a credential for this turn — ask again.",
-  attachment_unreadable: "A file this turn carried could not be copied to the session — attach it again.",
-  dispatch_failed: "The turn could not be handed to the device — ask again.",
-  forge_budget_exhausted: "This project spent its monthly budget — raise it or wait for the cycle.",
-  runner_unsupported_type: "This runner can't run this step — assign a runner that can.",
-  resume_failed: "Resuming the previous session failed — Rerun to start fresh.",
-  residency_expired: "The session outlived its window — Rerun to start fresh.",
-  park_unanswered: "Nobody answered the agent's question before its deadline — the work stopped and its branch was kept.",
-  audit_ran_blind: "The scheduled run called no tools, so it produced no evidence — Rerun.",
-  session_authority_refused:
-    "The run never started: the person it acts as lost their role, is gone, or no free runner can carry their token — the detail names which.",
-  unclassified: "The cause wasn't recorded — open the run timeline to see why.",
-  queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
-  heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",
-  turn_never_reported:
-    "A runner picked this up but nothing ever reported the agent starting a turn — check whether its prompt was actually submitted, then Rerun.",
-  no_worker_online: "Bring a runner online or check device pairing, then Retry.",
-  no_client_ack: "The runner never acknowledged the dispatch — Retry to re-send.",
-  user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",
-  issue_busy: "Another session holds this issue — it will retry once that frees.",
-  runner_full: "The runner is at capacity — it will dispatch when a slot frees.",
-  skill_not_synced: "The skill hadn't finished syncing to the runner yet — start a new chat to retry.",
-  orphan_under_terminal_run: "The run ended while this was still open — nothing to do.",
-  pipeline_cancelled: "The pipeline run was cancelled — nothing to do.",
-  pipeline_completed: "The run finished while this was still open — nothing to do.",
-  pipeline_failed: "The run failed and this was cleaned up with it — see the run timeline.",
-  migration_zombie_cleanup: "Swept by a migration — nothing to do.",
-  manual_ops_stale_chat_schedule: "An operator cleared this stale session — nothing to do.",
-};
-
-/**
- * Look a stored reason up, from a caller that only has a `string`.
- *
- * The maps above are exhaustive over the union so a missing entry is a build
- * error; a caller reading a row off the wire has plain text and must come
- * through here. `resolveFailureCause` is what makes an old spelling land on the
- * right entry instead of the fallback.
- */
-export function failureReasonLabel(reason: string | null | undefined): string | null {
+/** Operator-facing label for each terminal failure reason, in the interface language, so "failed"
+ *  is actionable on the list row and the detail blocker-card (ISS-378). Its text is the locale file's
+ *  `sessions.reason.<cause>`; a reason the file has no word for reads null. */
+export function failureReasonLabel(reason: string | null | undefined, language = "en"): string | null {
   if (!reason) return null;
-  return (
-    FAILURE_REASON_LABEL[reason as SessionFailureReason] ??
-    FAILURE_REASON_LABEL[resolveFailureCause(reason)]
-  );
+  const read = (r: string) => copyOr(language, `sessions.reason.${r}`, copyOr("en", `sessions.reason.${r}`, ""));
+  return read(reason) || read(resolveFailureCause(reason)) || null;
 }
 
-export function failureReasonAction(reason: string | null | undefined): string | null {
+/** Suggested next action for a failed or stalled session, the one-line remedy on the detail blocker-card (ISS-378 AC#6). */
+export function failureReasonAction(reason: string | null | undefined, language = "en"): string | null {
   if (!reason) return null;
-  return (
-    FAILURE_REASON_ACTION[reason as SessionFailureReason] ??
-    FAILURE_REASON_ACTION[resolveFailureCause(reason)]
-  );
+  const read = (r: string) => copyOr(language, `sessions.reasonAction.${r}`, copyOr("en", `sessions.reasonAction.${r}`, ""));
+  return read(reason) || read(resolveFailureCause(reason)) || null;
 }
 
 export function heartbeatReapMs(
@@ -405,66 +289,44 @@ export interface SessionOutcome {
 export function classifySessionOutcome(
   display: AgentSessionDisplayStatus,
   failureReason?: string | null,
+  language = "en",
 ): SessionOutcome {
+  const t = productCopy(language);
   if (display === "completed" || display === "completed_via_recovery") {
-    return { bucket: "success", statusKey: "done", label: "Completed", tooltip: "Finished cleanly." };
+    return { bucket: "success", statusKey: "done", label: t("sessions.outcome.completed"), tooltip: t("sessions.outcome.completedHint") };
   }
 
   if (display === "cancelled_stale") {
-    return {
-      bucket: "swept",
-      statusKey: "swept",
-      label: "Swept (overdue)",
-      tooltip:
-        "Swept after going stale (no recent heartbeat). This is automatic cleanup, not a failure.",
-    };
+    return { bucket: "swept", statusKey: "swept", label: t("sessions.outcome.swept"), tooltip: t("sessions.outcome.sweptHint") };
   }
 
   if (display === "cancelled") {
-    return {
-      bucket: "cleanup",
-      statusKey: "archived",
-      label: "Cancelled",
-      tooltip: "Stopped on purpose — not a failure.",
-    };
+    return { bucket: "cleanup", statusKey: "archived", label: t("sessions.outcome.cancelled"), tooltip: t("sessions.outcome.cancelledHint") };
   }
 
   if (display === "failed") {
     const reason = failureReason ?? null;
     const presentation = reason ? presentationOf(reason) : "failure";
     if (presentation === "cleanup") {
-      return {
-        bucket: "cleanup",
-        statusKey: "swept",
-        label: "Cleaned up",
-        tooltip:
-          "This step was automatically cleaned up when the pipeline finished — not a failure.",
-      };
+      return { bucket: "cleanup", statusKey: "swept", label: t("sessions.outcome.cleanedUp"), tooltip: t("sessions.outcome.cleanedUpHint") };
     }
     if (presentation === "swept") {
       return {
         bucket: "swept",
         statusKey: "swept",
-        label: failureReasonLabel(reason) ?? "Cancelled",
-        tooltip:
-          failureReasonAction(reason) ??
-          "Cancelled by a lifecycle or capacity rule — not a failure.",
+        label: failureReasonLabel(reason, language) ?? t("sessions.outcome.cancelled"),
+        tooltip: failureReasonAction(reason, language) ?? t("sessions.outcome.sweptRuleHint"),
       };
     }
     return {
       bucket: "failed",
       statusKey: "failed",
-      label: failureReasonLabel(reason) ?? "Failed",
-      tooltip: failureReasonAction(reason) ?? "The agent step failed — see the run timeline.",
+      label: failureReasonLabel(reason, language) ?? t("sessions.outcome.failed"),
+      tooltip: failureReasonAction(reason, language) ?? t("sessions.outcome.failedHint"),
     };
   }
 
-  return {
-    bucket: "active",
-    statusKey: statusToChip(display),
-    label: display,
-    tooltip: "",
-  };
+  return { bucket: "active", statusKey: statusToChip(display), label: display, tooltip: "" };
 }
 
 /** Whether a terminal session is a genuine failure (the only bucket that should
@@ -493,30 +355,25 @@ export function isRetryable(row: SessionRow): boolean {
 }
 
 /** `useElapsed`'s format, for a duration that has stopped. */
-export function formatDuration(ms: number): string {
+export function formatDuration(ms: number, t: Copy): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(s / 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
+  if (h > 0) return t("common.elapsed.hours", { h, m: String(m % 60).padStart(2, "0") });
+  if (m > 0) return t("common.elapsed.minutes", { m, s: String(s % 60).padStart(2, "0") });
+  return t("common.age.seconds", { n: s });
 }
 
-/** Short absolute timestamp, or "—" when absent/invalid (older rows). */
-export function formatShortTime(iso: string | null | undefined): string {
+/** The absolute time of a stamp in the interface language (`useTimeFormat().dateTime`), or "—" when absent or invalid (older rows). */
+export function formatShortTime(iso: string | null | undefined, dateTime: (at: number) => string): string {
   const ms = iso ? new Date(iso).getTime() : Number.NaN;
-  if (Number.isNaN(ms)) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return Number.isNaN(ms) ? "—" : dateTime(ms);
 }
 
-/** USD cost — sub-cent precision for tiny sessions, 2dp otherwise; "—" when absent. */
-export function formatCost(usd: number | undefined): string {
+/** USD cost in the interface language's digits: sub-cent precision for tiny sessions, 2 decimals otherwise; "—" when absent. */
+export function formatCost(usd: number | undefined, language = "en"): string {
   if (usd == null) return "—";
-  if (usd > 0 && usd < 0.01) return "<$0.01";
-  return `$${usd.toFixed(2)}`;
+  const digits = (n: number) => new Intl.NumberFormat(copyLocale(language), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+  if (usd > 0 && usd < 0.01) return `<$${digits(0.01)}`;
+  return `$${digits(usd)}`;
 }

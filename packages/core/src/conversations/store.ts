@@ -35,6 +35,7 @@ export {
   renameConversation,
   setConversationArchived,
   setConversationPresence,
+  setRoomQuiet,
   settleConversationMode,
 } from './rooms.js';
 

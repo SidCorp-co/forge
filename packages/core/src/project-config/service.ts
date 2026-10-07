@@ -20,6 +20,7 @@ import {
   type TestingProfile,
   testingProfileSchema,
 } from './policy-schema.js';
+import { projectConfigPorts } from './ports.js';
 import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
 import { type ProjectDocument, projectDocumentSchema } from './schema.js';
 import {
@@ -190,6 +191,14 @@ export async function writeProjectConfig(input: {
         : [],
     async check(document) {
       const refusals: ApiRefusal[] = [];
+      const unaddressable = projectConfigPorts().unaddressableSlug(document.project.slug);
+      if (unaddressable) {
+        refusals.push({
+          code: 'PROJECT_SLUG_RESERVED',
+          path: '/project/slug',
+          detail: `slug "${document.project.slug}" is reserved: ${unaddressable}; pick another.`,
+        });
+      }
       const takenBy = await drizzleConfigStore.slugTakenBy(projectId, document.project.slug);
       if (takenBy) {
         refusals.push({

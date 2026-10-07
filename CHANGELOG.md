@@ -9,6 +9,30 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.125] - 2026-10-07
+
+Approvals and answers reach a running pool job's pane without a manual nudge
+
+### Fixed
+
+- **A release decision or answer sent to a running pool job now reaches its pane.** The box told core the job had ended; it now types into the pane, confirms the submit, and says `gone` only for a vanished pane.
+
+## [0.4.0-dev.124] - 2026-10-07
+
+Project and issue pages load their data in parallel, by slug and key
+
+### Changed
+
+- **Project and issue pages start loading at once.** Project routes take the slug (a slug no route can address is refused) and issue routes the display key; reconnects refetch only changes; What's new loads on open.
+
+## [0.4.0-dev.123] - 2026-10-07
+
+Project assistant answers truthfully, files once, stays out of group talk, keeps chat logs
+
+### Fixed
+
+- **The chat assistant no longer refuses right figures, files twice, or talks over a group.** Product counts and 1.061 pass the progress screen; a rewrite reuses its filing; tagged-person messages and stop requests quiet a room; promotion archives chat_logs.
+
 ## [0.4.0-dev.122] - 2026-10-07
 
 Storefront releases finish by checking what the provider publishes

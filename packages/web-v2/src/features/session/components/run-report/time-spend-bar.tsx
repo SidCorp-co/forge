@@ -1,4 +1,4 @@
-// "Where the time went" — the run's wall clock as one proportional bar.
+// "{t("runs.report.timeWent")}" — the run's wall clock as one proportional bar.
 //
 // Deliberately NOT a second copy of the pipeline step strip at the top of the
 // page: that answers "which steps ran", this answers "which part of THIS step
@@ -6,6 +6,7 @@
 // single most actionable shape here, and no step strip can show it.
 
 import { formatDurationMs } from "@/features/pipeline/derive";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { TimeSpanKey, TimeSpend } from "../../run-report";
 
 const SPAN_COLOR: Record<TimeSpanKey, string> = {
@@ -14,21 +15,17 @@ const SPAN_COLOR: Record<TimeSpanKey, string> = {
   agent: "var(--cobalt-500)",
 };
 
-function clockOf(iso: string): string {
-  return new Date(iso).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-}
-
 export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  const clockOf = (iso: string) => time.clockSeconds(iso);
   return (
     <section className="py-4">
       <div className="flex items-baseline gap-2.5">
-        <span className="fg-overline">Where the time went</span>
+        <span className="fg-overline">{t("runs.report.timeWent")}</span>
         <span className="fg-caption ml-auto">
-          {clockOf(spend.from)} → {clockOf(spend.to)} · {formatDurationMs(spend.totalMs)} wall
+          {clockOf(spend.from)} → {clockOf(spend.to)} · {t("runs.report.wall", { d: formatDurationMs(spend.totalMs, language) })}
         </span>
       </div>
       <div className="mt-2.5 flex h-3 gap-0.5 overflow-hidden rounded-pill">
@@ -37,14 +34,14 @@ export function TimeSpendBar({ spend }: { spend: TimeSpend }) {
             key={span.key}
             className="block"
             style={{ flex: span.ms, background: SPAN_COLOR[span.key] }}
-            title={`${span.label} — ${formatDurationMs(span.ms)}`}
+            title={`${span.label} — ${formatDurationMs(span.ms, language)}`}
           />
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
         {spend.spans.map((span) => (
           <span key={span.key} className="fg-caption">
-            <b className="fg-body-sm">{formatDurationMs(span.ms)}</b> {span.label}{" "}
+            <b className="fg-body-sm">{formatDurationMs(span.ms, language)}</b> {span.label}{" "}
             <em className="not-italic opacity-70">{clockOf(span.at)}</em>
           </span>
         ))}

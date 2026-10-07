@@ -1,6 +1,5 @@
 "use client";
 
-import { describeWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Button, IconButton, Input } from "@/design";
@@ -8,10 +7,18 @@ import { fileBase64, mockupsApi } from "@/features/mockups/api";
 import { requirementsApi } from "@/features/requirements/api";
 import { formatApiError } from "@/lib/api/error";
 import { boardExporter, boardStore, useBoard } from "@/features/board/board-store";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { productCopy } from "@/lib/i18n/product-copy";
+import { describeBoard } from "../ui-actions/actions";
+
+function OpeningBoard() {
+  const t = useCopy();
+  return <p className="fg-body-sm p-4 text-muted">{t("conversations.board.opening")}</p>;
+}
 
 const BoardCanvas = dynamic(() => import("@/features/board/board-canvas"), {
   ssr: false,
-  loading: () => <p className="fg-body-sm p-4 text-muted">Opening the board…</p>,
+  loading: () => <OpeningBoard />,
 });
 
 /** The dock's width while a board is open: wide enough to draw in, still inside the dock's own bound. */
@@ -34,6 +41,7 @@ const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$
  * board as a wireframe mockup, with its SVG beside it, on the issue, requirement or feedback item named (ISS-78).
  */
 export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
+  const t = useCopy();
   const board = useBoard();
   const [key, setKey] = useState(issueKey ?? "");
   const [state, setState] = useState<{ busy: boolean; said: string | null; error: boolean }>({
@@ -51,7 +59,8 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
       const target = await boardTarget(projectId, ref);
       const svg = await boardExporter.svg();
       const name = `board-${stamp()}`;
-      const caption = describeWireframe(doc);
+      // stored beside the mockup, so it is the same line whoever proposes it, in whatever language
+      const caption = describeBoard(doc, productCopy());
       const made = await mockupsApi.propose(projectId, { target, kind: "wireframe", document: doc, name: `${name}.wireframe.json`, caption });
       if (svg) {
         await mockupsApi.propose(projectId, {
@@ -63,7 +72,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           contentBase64: await fileBase64(new Blob([svg], { type: "image/svg+xml" })),
         });
       }
-      setState({ busy: false, said: `Proposed on ${made.mockup.target.key} as ${made.mockup.key}${svg ? " with its picture" : ""}; an approver accepts it there.`, error: false });
+      setState({ busy: false, said: t("conversations.board.proposed", { target: made.mockup.target.key, key: made.mockup.key, picture: svg ? t("conversations.board.withPicture") : "" }), error: false });
     } catch (err) {
       setState({ busy: false, said: formatApiError(err), error: true });
     }
@@ -74,10 +83,10 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
     <section data-testid="board-panel" className="flex h-full min-h-0 flex-col border-b border-line">
       <header className="flex flex-none flex-wrap items-center gap-2 px-3 py-2">
         <p className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">
-          {board.doc ? describeWireframe(board.doc) : "Board"}
+          {board.doc ? describeBoard(board.doc, t) : t("conversations.board.title")}
         </p>
         <Input
-          aria-label="Issue, requirement or feedback item to propose the board on"
+          aria-label={t("conversations.board.targetLabel")}
           placeholder="ISS-… REQ-… FB-…"
           value={key}
           onChange={(e) => setKey(e.target.value.toUpperCase())}
@@ -89,9 +98,9 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
           disabled={!validKey || state.busy || !board.doc}
           onClick={attach}
         >
-          {state.busy ? "Proposing…" : `Propose on ${validKey ? key.trim() : "…"}`}
+          {state.busy ? t("conversations.board.proposing") : t("conversations.board.proposeOn", { key: validKey ? key.trim() : "…" })}
         </Button>
-        <IconButton icon="x" size="sm" aria-label="Close the board" onClick={boardStore.close} />
+        <IconButton icon="x" size="sm" aria-label={t("conversations.board.close")} onClick={boardStore.close} />
       </header>
       {state.said && (
         <p

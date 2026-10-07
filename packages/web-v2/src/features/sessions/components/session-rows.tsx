@@ -1,4 +1,6 @@
 import { useRouter } from "next/navigation";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import {
   Badge,
   IconButton,
@@ -43,6 +45,7 @@ export function SessionList({
   stuck: StuckRuns;
   actions: RowActions;
 }) {
+  const t = useCopy();
   return (
     <>
       {/* Desktop / tablet: dense table. */}
@@ -50,15 +53,15 @@ export function SessionList({
         <Table>
           <THead>
             <TR>
-              <TH>Session</TH>
-              <TH>Issue · agent</TH>
-              <TH>Runner</TH>
-              <TH>Started</TH>
-              <TH className="text-right">Turns</TH>
-              <TH className="text-right">Duration</TH>
-              <TH className="text-right">Cost</TH>
-              <TH>Status</TH>
-              <TH className="text-right">Actions</TH>
+              <TH>{t("sessions.col.session")}</TH>
+              <TH>{t("sessions.col.issueAgent")}</TH>
+              <TH>{t("sessions.col.runner")}</TH>
+              <TH>{t("sessions.col.started")}</TH>
+              <TH className="text-right">{t("sessions.col.turns")}</TH>
+              <TH className="text-right">{t("sessions.col.duration")}</TH>
+              <TH className="text-right">{t("sessions.col.cost")}</TH>
+              <TH>{t("sessions.col.status")}</TH>
+              <TH className="text-right">{t("sessions.col.actions")}</TH>
             </TR>
           </THead>
           <TBody>
@@ -112,6 +115,7 @@ interface RowProps {
 /** A row's display state, its duration and the route it opens. */
 function useRowView({ row, slug, stuck }: RowProps) {
   const router = useRouter();
+  const t = useCopy();
   const display = deriveSessionDisplayStatus(row, stuck);
   const live = display === "running" || display === "stalled";
   const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
@@ -120,7 +124,7 @@ function useRowView({ row, slug, stuck }: RowProps) {
     ? "—"
     : live
       ? elapsed
-      : formatDuration(new Date(row.updatedAt).getTime() - startMs);
+      : formatDuration(new Date(row.updatedAt).getTime() - startMs, t);
   const stage = sessionStep(row.metadata) ?? undefined;
   const open = slug ? () => router.push(`/projects/${slug}/agents/${row.id}`) : undefined;
   return { display, duration, stage, open };
@@ -136,7 +140,7 @@ export interface RowActions {
   abort: MutationLike;
 }
 
-function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
+function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions, t: Copy): MenuItem[] {
   const items: MenuItem[] = [];
   const isLive = display === "running" || display === "stalled";
   const isQueued = row.status === "queued" || row.status === "idle";
@@ -148,16 +152,16 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "cancelled";
 
   if (isLive || isQueued) {
-    items.push({ label: "Cancel", icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });
+    items.push({ label: t("sessions.action.cancel"), icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });
   }
   if (isLive || display === "idle") {
-    items.push({ label: "Abort", icon: "stop", onSelect: () => a.abort.mutate(row.id) });
+    items.push({ label: t("sessions.action.abort"), icon: "stop", onSelect: () => a.abort.mutate(row.id) });
   }
   if ((display === "failed" || display === "cancelled_stale") && isRetryable(row)) {
-    items.push({ label: "Retry", icon: "rerun", onSelect: () => a.retry.mutate(row.id) });
+    items.push({ label: t("sessions.action.retry"), icon: "rerun", onSelect: () => a.retry.mutate(row.id) });
   }
   if (isTerminal) {
-    items.push({ label: "Rerun", icon: "rerun", onSelect: () => a.rerun.mutate(row.id) });
+    items.push({ label: t("sessions.action.rerun"), icon: "rerun", onSelect: () => a.rerun.mutate(row.id) });
   }
   return items;
 }
@@ -171,14 +175,15 @@ function RowActionsMenu({
   display: AgentSessionDisplayStatus;
   actions: RowActions;
 }) {
-  const items = buildMenuItems(row, display, actions);
+  const t = useCopy();
+  const items = buildMenuItems(row, display, actions, t);
   if (items.length === 0) return <span className="fg-caption">—</span>;
   return (
     <Menu
       align="right"
       items={items}
       trigger={
-        <IconButton icon="more" aria-label="Session actions" className="min-h-11 min-w-11" />
+        <IconButton icon="more" aria-label={t("sessions.action.menu")} className="min-h-11 min-w-11" />
       }
     />
   );
@@ -190,6 +195,9 @@ function SessionTableRow(props: RowProps & {
 }) {
   const { row, slug, deviceName, now, stuck, actions, depth, hasChildren } = props;
   const { display, duration, stage, open } = useRowView(props);
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
+  const t = useCopy();
   return (
     <TR>
       <TD>
@@ -211,7 +219,7 @@ function SessionTableRow(props: RowProps & {
           )}
           <SessionKindTag row={row} />
           {hasChildren && (
-            <span className="text-11 text-muted" title="this session owns others in this list">
+            <span className="text-11 text-muted" title={t("sessions.owns")}>
               &#8226;
             </span>
           )}
@@ -223,10 +231,10 @@ function SessionTableRow(props: RowProps & {
       <TD className="max-w-[160px]">
         <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />
       </TD>
-      <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt)}</TD>
-      <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
+      <TD className="whitespace-nowrap font-mono text-muted">{formatShortTime(row.startedAt ?? row.dispatchedAt, time.dateTime)}</TD>
+      <TD className="text-right font-mono text-muted">{row.usage?.turns != null ? time.number(row.usage.turns) : "—"}</TD>
       <TD className="text-right font-mono text-muted">{duration}</TD>
-      <TD className="text-right font-mono text-muted">{formatCost(row.estimatedCost)}</TD>
+      <TD className="text-right font-mono text-muted">{formatCost(row.estimatedCost, language)}</TD>
       <TD>
         <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
       </TD>
@@ -240,6 +248,9 @@ function SessionTableRow(props: RowProps & {
 function SessionMobileRow(props: RowProps) {
   const { row, slug, deviceName, now, stuck, actions, depth } = props;
   const { display, duration, stage, open } = useRowView(props);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
     // has to survive the narrow layout or the tree is a desktop-only claim.
@@ -264,12 +275,12 @@ function SessionMobileRow(props: RowProps) {
       <div className="mt-3 flex items-center justify-between gap-3">
         <StatusCell row={row} display={display} stage={stage} now={now} stuck={stuck} />
         <div className="flex items-center gap-3">
-          <Badge tone="neutral">{row.usage?.turns ?? 0} turns</Badge>
+          <Badge tone="neutral">{t("sessions.turnsCount", { n: time.number(row.usage?.turns ?? 0) })}</Badge>
           <span className="fg-mono text-muted">{duration}</span>
-          <span className="fg-mono text-muted">{formatCost(row.estimatedCost)}</span>
+          <span className="fg-mono text-muted">{formatCost(row.estimatedCost, language)}</span>
         </div>
       </div>
-      <div className="fg-caption mt-1.5 text-subtle">Started {formatShortTime(row.startedAt ?? row.dispatchedAt)}</div>
+      <div className="fg-caption mt-1.5 text-subtle">{t("sessions.startedAt", { at: formatShortTime(row.startedAt ?? row.dispatchedAt, time.dateTime) })}</div>
       {row.deviceId && (
         <div className="mt-2.5">
           <RunnerCell row={row} deviceName={deviceName} display={display} now={now} stuck={stuck} />

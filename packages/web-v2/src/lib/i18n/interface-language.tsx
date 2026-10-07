@@ -2,9 +2,9 @@
 
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { useContentLanguage } from "@/lib/api/content-language";
-import { useCurrentProject } from "@/features/projects/current-project";
+import { useCurrentProjectRef } from "@/features/projects/current-project";
 import { usePreferences } from "@/features/preferences/hooks";
-import { formatAge, formatClock, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
+import { formatAge, formatClock, formatClockSeconds, formatCompact, formatCountdown, formatDate, formatDateTime, formatElapsed, formatNumber, formatRelative } from "./format";
 import { labelCopy } from "./labels";
 import { baseOf, copyOr, type Copy, copyLocale, productCopy } from "./product-copy";
 
@@ -34,9 +34,9 @@ export function InterfaceLanguageScope({ language, children }: { language: Inter
 
 /** Resolves the language for the open project from the person's preference and the project's content language. */
 export function WorkspaceInterfaceLanguage({ children }: { children: ReactNode }) {
-  const project = useCurrentProject();
+  const projectRef = useCurrentProjectRef();
   const choice = usePreferences().data?.language;
-  const content = useContentLanguage(project?.id).data?.contentLanguage;
+  const content = useContentLanguage(projectRef).data?.contentLanguage;
   const language = resolveInterfaceLanguage(choice, content);
   return <InterfaceLanguageScope language={language}>{children}</InterfaceLanguageScope>;
 }
@@ -82,6 +82,8 @@ export function useTimeFormat() {
       dateTime: (at: string | number | Date) => formatDateTime(at, language),
       date: (at: string | number | Date) => formatDate(at, language),
       clock: (at: string | number | Date) => formatClock(at, language),
+      clockSeconds: (at: string | number | Date) => formatClockSeconds(at, language),
+      compact: (n: number) => formatCompact(n, language),
     }),
     [language],
   );

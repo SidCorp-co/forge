@@ -9,7 +9,7 @@
 // every name here, the way it already re-exports `canonical-entry.ts`, so no
 // caller moved.
 
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
 import {
@@ -19,6 +19,7 @@ import {
   conversationParticipants,
   conversations,
   type RoomPresence,
+  type RoomQuiet,
 } from '../db/schema-conversations.js';
 import type { Executor } from './db-executor.js';
 
@@ -143,6 +144,21 @@ export async function setConversationPresence(
     .where(eq(conversations.id, conversationId))
     .returning(selection);
   return row ?? null;
+}
+
+/**
+ * Quiet the room until its handle is named again, or lift the quiet; the room's other presence keys
+ * stay as they are.
+ */
+export async function setRoomQuiet(
+  conversationId: string,
+  quiet: RoomQuiet | null,
+  tx: Executor = defaultDb,
+): Promise<void> {
+  const presence = quiet
+    ? sql`coalesce(${conversations.presence}, '{}'::jsonb) || jsonb_build_object('quiet', ${JSON.stringify(quiet)}::jsonb)`
+    : sql`nullif(coalesce(${conversations.presence}, '{}'::jsonb) - 'quiet', '{}'::jsonb)`;
+  await tx.update(conversations).set({ presence }).where(eq(conversations.id, conversationId));
 }
 
 export async function setConversationArchived(

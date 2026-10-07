@@ -13,6 +13,7 @@ import {
   explicitAnchor,
   foldPresence,
   getConversation,
+  groupHearing,
   handleForProject,
   linkedSpeakerOf,
   messageAuthorTokenId,
@@ -25,6 +26,7 @@ import {
   reserveDelivery,
   roomHandles,
   type StoredConversationMessage,
+  setRoomQuiet,
   splitWindowTail,
   type WindowClaim,
   windowAddressesAHandle,
@@ -88,21 +90,25 @@ export async function decide(
   }
   const onboarding = await onboardingRoomOf(window.conversationId);
   if (onboarding) return toOnboardingJob(onboarding.live);
-  const last = messages[messages.length - 1];
-  const speaker = [...messages].reverse().find((m) => m.role === 'user') ?? last;
-  const unlinked = () =>
+  const speakerOf = (said: StoredConversationMessage[]) =>
+    [...said].reverse().find((m) => m.role === 'user') ?? said[said.length - 1];
+  const unlinked = (who: StoredConversationMessage | undefined) =>
     refuseAuthority(args, venue, window, deliveryKey, claim, {
-      authorKey: speaker?.authorKey ?? null,
-      authorLabel: speaker?.authorLabel ?? null,
+      authorKey: who?.authorKey ?? null,
+      authorLabel: who?.authorLabel ?? null,
     });
-  if (venue.shape === 'direct' && !speaker?.authorUserId) return unlinked();
+  if (venue.shape === 'direct' && !speakerOf(messages)?.authorUserId) {
+    return unlinked(speakerOf(messages));
+  }
 
   const room = await mayRoomSpeak(r, conversation, venue, messages);
   if ('decision' in room) return room;
 
   // a turn acts as the person whose message it answers, in every shape; a group room
   // once ran as its handle or its org's creator, so a viewer's ask wrote with their role (ISS-17).
-  if (!speaker?.authorUserId) return unlinked();
+  // In a group room that is the person whose message was for the handle, not whoever spoke last.
+  const speaker = speakerOf(room.heard);
+  if (!speaker?.authorUserId) return unlinked(speaker);
   const resolved = await resolveTurnAuthority({
     userId: speaker.authorUserId,
     projectId: venue.projectId,
@@ -114,7 +120,7 @@ export async function decide(
   return takeTurn(r, {
     conversation,
     venue,
-    messages,
+    messages: room.heard,
     speaker,
     room,
     authority: resolved.authority,
@@ -269,6 +275,8 @@ interface Room {
   presence: ReturnType<typeof applyRoomPresence>;
   names: Awaited<ReturnType<typeof roomHandles>>[number]['handle'][];
   sent: Set<string>;
+  /** The window's messages the turn answers: in a group room, those meant for a handle. */
+  heard: StoredConversationMessage[];
 }
 
 /** Whether the room addressed a handle and the proactivity guards let it speak. */
@@ -296,10 +304,16 @@ async function mayRoomSpeak(
           conversationTransport(venue.adapter)?.venueScope?.(venue.externalId) ?? null,
         )
       : new Set<string>();
+  let heard = messages;
+  if (venue.shape === 'group') {
+    const hearing = await hearGroup(window.conversationId, conversation, messages, names, sent);
+    if ('decision' in hearing) return hearing;
+    heard = hearing;
+  }
   if (
     venue.shape === 'group' &&
     presence.answerInGroup === 'mention' &&
-    !windowAddressesAHandle(messages, names, sent)
+    !windowAddressesAHandle(heard, names, sent)
   ) {
     return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };
   }
@@ -308,7 +322,43 @@ async function mayRoomSpeak(
     thresholds: presence,
   });
   if (!verdict.speak) return { decision: verdict.decision, detail: verdict.detail };
-  return { presence, names, sent };
+  return { presence, names, sent, heard };
+}
+
+/**
+ * A group room's window, read for whom it speaks to before any turn is spent: a stop request quiets
+ * the room on its presence, a quiet room stays quiet until a handle is named, and messages that tag
+ * only a person are theirs.
+ */
+async function hearGroup(
+  conversationId: string,
+  conversation: Conversation,
+  messages: StoredConversationMessage[],
+  names: Room['names'],
+  sent: Set<string>,
+): Promise<StoredConversationMessage[] | RoutedWindow> {
+  const hearing = groupHearing(messages, names, sent, conversation.presence?.quiet);
+  switch (hearing.kind) {
+    case 'asked-to-stop': {
+      const quiet = { since: new Date().toISOString(), by: hearing.by };
+      await setRoomQuiet(conversationId, quiet);
+      return {
+        decision: 'nothing-to-say',
+        detail: { reason: 'asked-to-stop', ...quiet, handles: names },
+      };
+    }
+    case 'quiet-until-mentioned':
+      return {
+        decision: 'nothing-to-say',
+        detail: { reason: 'quiet-until-mentioned', ...hearing.quiet, handles: names },
+      };
+    case 'addressed-to-person':
+      return { decision: 'nothing-to-say', detail: { reason: 'addressed-to-person' } };
+    default:
+      if (hearing.liftsQuiet && conversation.presence?.quiet)
+        await setRoomQuiet(conversationId, null);
+      return hearing.messages;
+  }
 }
 
 async function takeTurn(

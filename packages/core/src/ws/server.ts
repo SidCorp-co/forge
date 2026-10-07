@@ -28,6 +28,13 @@ interface AliveSocket extends WebSocket {
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+/**
+ * A subscribe may ask for the frames its room published in the last `replayMs`, measured on the
+ * client from when its page started reading: the reads it made before this socket heard anything.
+ * The span is widened by the time the subscribe waited on its gate here, and by its own trip,
+ * which neither side can see.
+ */
+const REPLAY_SLACK_MS = 2_000;
 
 function parseBearer(header: string | string[] | undefined): string | undefined {
   if (!header) return undefined;
@@ -210,7 +217,11 @@ export function attachWs(server: AnyServer): void {
         return;
       }
       if (!msg || typeof msg !== 'object') return;
-      const { type, room } = msg as { type?: unknown; room?: unknown };
+      const { type, room, replayMs } = msg as {
+        type?: unknown;
+        room?: unknown;
+        replayMs?: unknown;
+      };
       if (type === 'runner:sessions') {
         if (ws.principal.type === 'device') {
           void handleRunnerSessions(ws as unknown as import('ws').WebSocket, msg);
@@ -220,6 +231,7 @@ export function attachWs(server: AnyServer): void {
       if (typeof room !== 'string' || room.length === 0) return;
 
       if (type === 'subscribe') {
+        const receivedAt = Date.now();
         void (async () => {
           const allowed = await canSubscribe(ws.principal, room).catch(() => false);
           if (!allowed) {
@@ -235,6 +247,19 @@ export function attachWs(server: AnyServer): void {
             return;
           }
           roomManager.subscribe(ws, room);
+          if (typeof replayMs === 'number' && Number.isFinite(replayMs) && replayMs >= 0) {
+            const waited = Date.now() - receivedAt;
+            const replay = roomManager.replay(ws, room, replayMs + waited + REPLAY_SLACK_MS);
+            try {
+              ws.send(
+                JSON.stringify({
+                  event: 'replay.done',
+                  data: { room, ...replay },
+                  timestamp: new Date().toISOString(),
+                }),
+              );
+            } catch {}
+          }
         })();
       } else if (type === 'unsubscribe') {
         roomManager.unsubscribe(ws, room);

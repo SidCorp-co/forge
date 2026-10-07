@@ -1,12 +1,14 @@
 "use client";
 
 import { IssuesScreen } from "@/features/issues/components/issues-screen";
-import { ProjectGate } from "@/features/projects/components/project-gate";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { ProjectRefGate } from "@/features/projects/components/project-gate";
 
 export default function ProjectIssuesPage() {
+  const t = useCopy();
   return (
-    <ProjectGate label="loading issues…">
-      {(p) => <IssuesScreen scope={{ projectId: p.id, slug: p.slug }} />}
-    </ProjectGate>
+    <ProjectRefGate label={t("issues.board.loading")}>
+      {(p) => <IssuesScreen scope={{ projectId: p.ref, slug: p.slug }} />}
+    </ProjectRefGate>
   );
 }

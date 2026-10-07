@@ -2,6 +2,7 @@
 
 import { PageTitle, Tabs, useUrlTab } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { agentsListHref } from "@/lib/routes/agents";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useStuckRuns } from "../hooks";
@@ -11,13 +12,13 @@ import { type AgentsAccess, RunsList } from "./runs-list";
 const AGENTS_TABS = ["runs", "questions", "sessions"] as const;
 type AgentsTab = (typeof AGENTS_TABS)[number];
 
-const TABS = [
-  { value: "runs", label: "Runs" },
-  { value: "questions", label: "Questions" },
-  { value: "sessions", label: "Sessions" },
-];
-
 export function AgentsScreen({ access }: { access: AgentsAccess }) {
+  const t = useCopy();
+  const TABS = [
+    { value: "runs", label: t("agents.tab.runs") },
+    { value: "questions", label: t("agents.tab.questions") },
+    { value: "sessions", label: t("agents.tab.sessions") },
+  ];
   const [urlTab, setTab] = useUrlTab(AGENTS_TABS);
   const params = new URLSearchParams(useLocationSearch());
   const focusQuestionId = params.get("q");
@@ -27,7 +28,7 @@ export function AgentsScreen({ access }: { access: AgentsAccess }) {
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="agents-screen">
-      <PageTitle hint="Every run core knows of, the project master beside them, and the questions agents asked.">Agents / Runs</PageTitle>
+      <PageTitle hint={t("agents.hint")}>{t("agents.title")}</PageTitle>
       <div className="border-b border-line-subtle px-5 max-md:px-2" data-testid="agents-tabs">
         <Tabs tabs={TABS} value={tab} onChange={(t) => setTab(t as AgentsTab)} />
       </div>

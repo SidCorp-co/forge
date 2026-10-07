@@ -1,6 +1,7 @@
 "use client";
 
 import type { QueryClient } from "@tanstack/react-query";
+import { noteInvalidated } from "@/lib/api/ref-bridge";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 
 export const INVALIDATE_WINDOW_MS = 250;
@@ -18,7 +19,10 @@ function fire(hash: string): void {
 	if (!w) return;
 	open.delete(hash);
 	clearTimeout(w.timer);
-	for (const qc of w.clients) invalidateThroughInFlight(qc, { queryKey: w.queryKey });
+	for (const qc of w.clients) {
+		noteInvalidated(qc, w.queryKey);
+		invalidateThroughInFlight(qc, { queryKey: w.queryKey });
+	}
 }
 
 /** Invalidate `queryKey` once, at the end of the window its first event opened. */

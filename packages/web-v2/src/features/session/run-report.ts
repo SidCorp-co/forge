@@ -1,4 +1,5 @@
 import type { SessionRow } from "@/features/sessions/types";
+import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import type { ConversationItem, MessageEntry, RunTotals, ToolCallData, ToolKind } from "./types";
 import { getToolLabel, toolKind } from "./types";
 
@@ -31,8 +32,10 @@ function lineCount(text: string): number {
   return text ? text.split("\n").length : 0;
 }
 
-function plural(n: number, one: string): string {
-  return `${n} ${one}${n === 1 ? "" : "s"}`;
+type Unit = "line" | "hit" | "read" | "toolCall" | "command" | "file" | "call";
+
+function plural(t: Copy, n: number, unit: Unit): string {
+  return t(`runs.unit.${unit}.${n === 1 ? "one" : "many"}` as ProductCopyKey, { n });
 }
 
 /** `mcp__forge__forge_issues` → `forge`; "" for a non-MCP tool. */
@@ -88,17 +91,17 @@ function testCounts(text: string): { passed: number; failed: number } | null {
   return best;
 }
 
-function runOutcome(text: string): ToolOutcome {
+function runOutcome(text: string, t: Copy): ToolOutcome {
   const counts = testCounts(text);
   if (counts) {
     const { passed, failed } = counts;
     return {
-      text: failed > 0 ? `${passed} passed, ${failed} failed` : `${passed} passed`,
+      text: failed > 0 ? t("runs.outcome.passedFailed", { passed, failed }) : t("runs.outcome.passed", { passed }),
       tone: failed > 0 ? "bad" : "ok",
     };
   }
   const first = firstLine(text);
-  return first ? { text: first, tone: "muted" } : { text: "no output", tone: "muted" };
+  return first ? { text: first, tone: "muted" } : { text: t("runs.outcome.noOutput"), tone: "muted" };
 }
 
 /**
@@ -106,23 +109,23 @@ function runOutcome(text: string): ToolOutcome {
  * fallback is the first non-empty output line, which is what a reader scanning
  * 400 rows can actually use — a JSON blob is not.
  */
-export function toolOutcome(tc: ToolCallData): ToolOutcome {
+export function toolOutcome(tc: ToolCallData, t: Copy = productCopy()): ToolOutcome {
   const text = outputText(tc);
-  if (tc.isError) return { text: firstLine(text) || "error", tone: "bad" };
+  if (tc.isError) return { text: firstLine(text) || t("runs.outcome.error"), tone: "bad" };
   switch (toolKind(tc.name)) {
     case "run":
-      return runOutcome(text);
+      return runOutcome(text, t);
     case "read":
-      return { text: plural(lineCount(text), "line"), tone: "muted" };
+      return { text: plural(t, lineCount(text), "line"), tone: "muted" };
     case "search":
-      return { text: plural(lineCount(text), "hit"), tone: "muted" };
+      return { text: plural(t, lineCount(text), "hit"), tone: "muted" };
     case "edit": {
       const { added, removed } = editCounts(tc);
       return { text: `+${added} −${removed}`, tone: "ok" };
     }
     default: {
       const first = firstLine(text);
-      return first ? { text: first, tone: "muted" } : { text: "done", tone: "muted" };
+      return first ? { text: first, tone: "muted" } : { text: t("runs.outcome.done"), tone: "muted" };
     }
   }
 }
@@ -177,7 +180,7 @@ function distinctPaths(calls: ToolCallData[]): number {
   return paths.size || calls.length;
 }
 
-function groupMeta(kind: ActivityKind, calls: ToolCallData[]): string {
+function groupMeta(kind: ActivityKind, calls: ToolCallData[], t: Copy): string {
   if (kind === "edited") {
     const totals = calls.reduce(
       (acc, tc) => {
@@ -191,23 +194,23 @@ function groupMeta(kind: ActivityKind, calls: ToolCallData[]): string {
   if (kind === "explored") {
     const reads = calls.filter((tc) => toolKind(tc.name) === "read").length;
     const searches = calls.length - reads;
-    return searches > 0 ? `${reads} read · ${searches} searched` : plural(reads, "read");
+    return searches > 0 ? t("runs.group.exploredMeta", { reads, searches }) : plural(t, reads, "read");
   }
   return "";
 }
 
-function headlineFor(kind: ActivityKind, n: number, calls: ToolCallData[]): string {
+function headlineFor(kind: ActivityKind, n: number, calls: ToolCallData[], t: Copy): string {
   switch (kind) {
     case "errors":
-      return `${plural(n, "tool call")} returned an error`;
+      return t("runs.group.errors", { what: plural(t, n, "toolCall") });
     case "ran":
-      return `Ran ${plural(n, "command")}`;
+      return t("runs.group.ran", { what: plural(t, n, "command") });
     case "edited":
-      return `Edited ${plural(distinctPaths(calls), "file")}`;
+      return t("runs.group.edited", { what: plural(t, distinctPaths(calls), "file") });
     case "forge":
-      return `Forge · ${plural(n, "call")}`;
+      return t("runs.group.forge", { what: plural(t, n, "call") });
     default:
-      return `Explored ${plural(n, "file")}`;
+      return t("runs.group.explored", { what: plural(t, n, "file") });
   }
 }
 
@@ -216,7 +219,7 @@ function headlineFor(kind: ActivityKind, n: number, calls: ToolCallData[]): stri
  * only view that answers "what happened" without scrolling — the transcript
  * answers "what happened at 01:00:41", which is a different question.
  */
-export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[] {
+export function deriveActivityGroups(items: ConversationItem[], t: Copy = productCopy()): ActivityGroup[] {
   const calls = allToolCalls(items);
   const byKind = new Map<ActivityKind, ToolCallData[]>();
   for (const tc of calls) {
@@ -229,13 +232,13 @@ export function deriveActivityGroups(items: ConversationItem[]): ActivityGroup[]
     if (!members?.length) continue;
     groups.push({
       kind,
-      headline: headlineFor(kind, members.length, members),
-      meta: groupMeta(kind, members),
+      headline: headlineFor(kind, members.length, members, t),
+      meta: groupMeta(kind, members, t),
       total: members.length,
       children: members.slice(0, CHILD_CAP).map((tc) => ({
         id: tc.id,
-        label: getToolLabel(tc),
-        outcome: toolOutcome(tc),
+        label: getToolLabel(tc, t),
+        outcome: toolOutcome(tc, t),
       })),
     });
   }
@@ -280,7 +283,7 @@ function transcriptArg(tc: ToolCallData): string {
  * 10 are the verdicts. Drop them and the record still lists what ran, but no
  * longer says what the agent thought it was doing.
  */
-export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[] {
+export function deriveTranscriptRows(items: ConversationItem[], t: Copy = productCopy()): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
   let saidCount = 0;
   for (const item of items) {
@@ -311,7 +314,7 @@ export function deriveTranscriptRows(items: ConversationItem[]): TranscriptRow[]
         tool: server ? `MCP ${server}` : block.tool.name,
         isMcp: !!server,
         arg: transcriptArg(block.tool),
-        outcome: toolOutcome(block.tool),
+        outcome: toolOutcome(block.tool, t),
         body: outputText(block.tool),
         isError: !!block.tool.isError,
       });
@@ -381,12 +384,12 @@ export interface RunBlocker {
  * The LAST failing tool call, not the first: an agent that recovers from an
  * early ENOENT and then fails a test suite was blocked by the test suite.
  */
-export function deriveBlocker(items: ConversationItem[]): RunBlocker | null {
+export function deriveBlocker(items: ConversationItem[], t: Copy = productCopy()): RunBlocker | null {
   const failures = allToolCalls(items).filter((tc) => tc.isError);
   const last = failures[failures.length - 1];
   if (!last) return null;
   return {
-    label: getToolLabel(last),
+    label: getToolLabel(last, t),
     output: outputText(last),
     errorCount: failures.length,
   };
@@ -452,15 +455,15 @@ function msBetween(from: string | null, to: string | null): number | null {
  * folded into its neighbour, so the bar can be shorter than the wall time and
  * still be true.
  */
-export function deriveTimeSpend(session: SessionRow): TimeSpend | null {
+export function deriveTimeSpend(session: SessionRow, t: Copy = productCopy()): TimeSpend | null {
   const from = session.createdAt;
   const to = session.updatedAt;
   const totalMs = msBetween(from, to);
   if (totalMs === null) return null;
   const candidates: { key: TimeSpanKey; label: string; from: string | null; to: string | null }[] = [
-    { key: "queued", label: "queued", from, to: session.dispatchedAt },
-    { key: "startup", label: "startup", from: session.dispatchedAt, to: session.startedAt },
-    { key: "agent", label: "agent", from: session.startedAt, to },
+    { key: "queued", label: t("runs.span.queued"), from, to: session.dispatchedAt },
+    { key: "startup", label: t("runs.span.startup"), from: session.dispatchedAt, to: session.startedAt },
+    { key: "agent", label: t("runs.span.agent"), from: session.startedAt, to },
   ];
   const spans: TimeSpan[] = [];
   for (const c of candidates) {
