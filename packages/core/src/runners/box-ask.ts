@@ -38,7 +38,12 @@ export function boxAsks<E>() {
         pending.delete(requestId);
         frame.settle(frame.unanswered());
       }, frame.timeoutMs);
-      pending.set(requestId, { deviceId: frame.deviceId, projectId: frame.projectId, entry, timer });
+      pending.set(requestId, {
+        deviceId: frame.deviceId,
+        projectId: frame.projectId,
+        entry,
+        timer,
+      });
       const took = frame.send(frame.deviceId, {
         event: frame.event,
         data: { requestId, ...frame.data },
