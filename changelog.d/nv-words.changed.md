@@ -1,1 +1,0 @@
-**Waiting-on lines speak in a BA's words.** A pinned design reads "Update to the approved design: <name> (revision N)", a release approval names its version, an answer asks to be confirmed, and kernel terms sit under Technical detail.
