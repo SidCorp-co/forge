@@ -279,6 +279,21 @@ async fn take_the_directory(
     crate::worktree::remove_at(&repo_root.to_string_lossy(), worktree, &why).await
 }
 
+/// A run other than `run_id` that the ledger holds on `worktree`, by the rows
+/// the sweep keeps a checkout for (`Ledger::held_worktrees`), and by any
+/// spelling of the path that resolves alike.
+fn another_holder(ledger: &Ledger, run_id: &str, worktree: &Path) -> Result<Option<String>> {
+    let here = worktree.canonicalize().ok();
+    Ok(ledger
+        .held_worktrees()?
+        .into_iter()
+        .find(|(path, holder)| {
+            holder != run_id
+                && (path == worktree || here.is_some() && path.canonicalize().ok() == here)
+        })
+        .map(|(_, holder)| holder))
+}
+
 /// What this release may do about the path the run names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Held {
@@ -389,6 +404,25 @@ pub async fn force_terminal(
         run_id,
         worktree,
     )?;
+
+    // Another run the ledger still holds on the same checkout is working in it,
+    // or owes it a release of its own. The sweep keeps such a checkout
+    // (`worktree_reap`, "still holds it in the ledger"), and the release reads
+    // the same rows: before it, the release of one run removed the tree a
+    // second, unended run held, between two of its agent's commands (ISS-1378,
+    // runs b229ea3b and a8401d85). Asked before anything is salvaged,
+    // committed or pushed from the tree, which would be that run's work moved
+    // under it.
+    if held == Held::Ours {
+        if let Some(other) = another_holder(ledger, run_id, worktree)? {
+            return Err(Error::Other(format!(
+                "refusing to {verb:?} run {run_id}: run {other} still holds {} in the ledger, so \
+                 the checkout stays for it, as the sweep keeps it — nothing was preserved, pushed \
+                 or removed",
+                worktree.display()
+            )));
+        }
+    }
 
     // One credential for this release, resolved from what this box provisioned
     // rather than from what a git child happens to read (ISS-1250). It is read
@@ -503,7 +537,13 @@ pub enum Release {
     Done(Box<Forced>),
     /// Refused, and the refusal is young enough that the next sweep tries
     /// again. `first` is true on the one attempt that opened this streak.
-    Refusing { why: String, first: bool },
+    Refusing {
+        why: String,
+        first: bool,
+        /// The refusal is a live agent in the checkout, which no window
+        /// decides: it is retried for as long as that agent lives.
+        while_its_agent_lives: bool,
+    },
     /// Refused for longer than any retry can help. The leases are back, the run
     /// is over, and the checkout is still on disk with nobody's permission to
     /// remove it.
@@ -561,16 +601,11 @@ pub async fn release(
             let why = e.to_string();
             let refusal = ledger.note_release_refusal(run_id, &why, now_secs)?;
             let standing_secs = now_secs - refusal.since;
-            let after = if standing_secs >= RELEASE_GRACE_SECS {
-                Decided::ByTheWindow { standing_secs }
-            } else if refusal.attempts >= RELEASE_ATTEMPT_BOUND {
-                Decided::ByTheAttempts {
-                    attempts: refusal.attempts,
-                }
-            } else {
+            let Some(after) = decided(&e, standing_secs, refusal.attempts) else {
                 return Ok(Release::Refusing {
                     why,
                     first: refusal.opened_the_streak,
+                    while_its_agent_lives: matches!(e, Error::AgentInTree(_)),
                 });
             };
             // The leases first and the decision second: a run ended over a
@@ -590,6 +625,29 @@ pub async fn release(
     }
 }
 
+/// Which bound decides a refusal `refused` that has stood `standing_secs`
+/// over `attempts` attempts, or none while it is retried.
+///
+/// A live agent's process in the checkout is never decided (ISS-1390). Decided
+/// at the window, it was concluded as permanent: `Ledger::held_worktrees` then
+/// kept the tree from the sweep and only a hand `run release` moved it. The
+/// cause ends when the agent does, so the release is retried until then. The
+/// price: the run's leases stay out while an agent lives in its checkout, and
+/// the first refusal's line names its pid so somebody can end one that never
+/// leaves.
+fn decided(refused: &Error, standing_secs: i64, attempts: i64) -> Option<Decided> {
+    if matches!(refused, Error::AgentInTree(_)) {
+        return None;
+    }
+    if standing_secs >= RELEASE_GRACE_SECS {
+        Some(Decided::ByTheWindow { standing_secs })
+    } else if attempts >= RELEASE_ATTEMPT_BOUND {
+        Some(Decided::ByTheAttempts { attempts })
+    } else {
+        None
+    }
+}
+
 /// What is being forced, and by whom.
 #[derive(Clone, Copy)]
 pub struct Forcing<'a> {
@@ -606,4 +664,164 @@ pub struct Ports<'a> {
     pub procs: &'a dyn ProcessGroup,
     pub sessions: &'a dyn SessionReader,
     pub leases: &'a dyn LeaseKeeper,
+}
+
+#[cfg(test)]
+mod decided_tests {
+    use super::*;
+
+    /// ISS-1390: a refusal whose cause is a live agent in the checkout is
+    /// retried for as long as the agent lives, whatever the window or the
+    /// attempts say, and every other refusal is still decided by them.
+    #[test]
+    fn a_live_agents_refusal_is_never_decided_and_any_other_still_is() {
+        let past = (RELEASE_GRACE_SECS, RELEASE_ATTEMPT_BOUND);
+        let agent = Error::AgentInTree("a live agent".into());
+        let other = Error::Other("a lock".into());
+        assert_eq!(decided(&agent, past.0, past.1), None);
+        assert_eq!(decided(&agent, 10 * RELEASE_GRACE_SECS, 1), None);
+        assert_eq!(
+            decided(&other, past.0, 1),
+            Some(Decided::ByTheWindow {
+                standing_secs: past.0
+            })
+        );
+        assert_eq!(
+            decided(&other, 0, past.1),
+            Some(Decided::ByTheAttempts { attempts: past.1 })
+        );
+        assert_eq!(decided(&other, past.0 - 1, past.1 - 1), None);
+    }
+}
+
+/// A release over a checkout another open run holds (ISS-1378 b7a88622e,
+/// ported to the split crates), against a real repository.
+#[cfg(test)]
+mod holder_tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+    use std::path::PathBuf;
+
+    struct Procs;
+    #[async_trait::async_trait]
+    impl ProcessGroup for Procs {
+        async fn kill(&self, _pid: u32) -> Reaped {
+            Reaped::NotFound
+        }
+    }
+    struct World;
+    #[async_trait::async_trait]
+    impl SessionReader for World {
+        async fn is_terminal(&self, _id: &str) -> Result<bool> {
+            Ok(true)
+        }
+    }
+    #[async_trait::async_trait]
+    impl LeaseKeeper for World {
+        async fn release(&self, _p: Option<&str>, _k: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn is_returned(&self, _p: Option<&str>, _k: &str) -> Result<bool> {
+            Ok(true)
+        }
+    }
+
+    async fn git(dir: &Path, args: &[&str]) {
+        let out = tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success(), "git {args:?}: {out:?}");
+    }
+
+    /// A repository with one clean linked checkout, and a ledger.
+    async fn a_repo(tag: &str) -> (PathBuf, PathBuf, Ledger) {
+        let root = std::env::temp_dir().join(format!(
+            "forge-{tag}-{}-{}",
+            std::process::id(),
+            runner_core::agent_activity::now_ms()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        git(&root, &["init", "-q", "-b", "main"]).await;
+        git(&root, &["config", "user.email", "t@t"]).await;
+        git(&root, &["config", "user.name", "t"]).await;
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        git(&root, &["add", "a.txt"]).await;
+        git(&root, &["commit", "-q", "-m", "a"]).await;
+        let wt = root.join(".worktrees/iss-964");
+        git(
+            &root,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "iss-964",
+                &wt.to_string_lossy(),
+            ],
+        )
+        .await;
+        let led = Ledger::open(&root.join("ledger.db")).unwrap();
+        (root, wt, led)
+    }
+
+    fn declare(led: &mut Ledger, run_id: &str, master: &str, key: &str, wt: &Path) {
+        led.create_run_group(NewRun {
+            run_id: run_id.into(),
+            project_id: "proj-1".into(),
+            master_session_id: master.into(),
+            worktree_path: wt.to_path_buf(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec![key.into()],
+        })
+        .unwrap();
+    }
+
+    fn forcing(root: &Path) -> Forcing<'_> {
+        Forcing {
+            this_boot: "boot-1",
+            repo_root: root,
+            base_branch: Some("main"),
+            by: "recovery",
+            reason: "test",
+        }
+    }
+
+    /// Run b229ea3b's release took the tree run a8401d85 held. A second run
+    /// the ledger still holds on the same checkout keeps it through the first
+    /// run's release, as the sweep keeps it; once that run is over too, the
+    /// release goes through.
+    #[tokio::test]
+    async fn a_release_leaves_a_checkout_another_open_run_still_holds() {
+        let (root, wt, mut led) = a_repo("another-holder").await;
+        declare(&mut led, "run-1", "master-1", "ISS-964", &wt);
+        led.end_run("run-1", "master", "done").unwrap();
+        declare(&mut led, "run-2", "master-2", "ISS-965", &wt);
+        let ports = Ports {
+            procs: &Procs,
+            sessions: &World,
+            leases: &World,
+        };
+
+        let refused = force_terminal(&mut led, "run-1", forcing(&root), ports).await;
+        assert!(wt.exists(), "the checkout run-2 holds was removed under it");
+        let why = refused
+            .expect_err("another run holds the checkout")
+            .to_string();
+        assert!(
+            why.contains("run run-2 still holds") && why.contains("nothing was preserved"),
+            "{why}"
+        );
+
+        led.end_run("run-2", "master", "done").unwrap();
+        force_terminal(&mut led, "run-1", forcing(&root), ports)
+            .await
+            .expect("nobody else holds it now");
+        assert!(!wt.exists(), "released once no other run holds it");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

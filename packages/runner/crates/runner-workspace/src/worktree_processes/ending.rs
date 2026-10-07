@@ -66,6 +66,16 @@ pub enum Ending {
         ended: Vec<Resident>,
         not_asked: usize,
     },
+    /// Residents that run beneath a live Claude Code process: the checkout is
+    /// that agent's work, whatever the ledger says about the run that held it,
+    /// so nothing in it was signalled (ISS-1378).
+    Live {
+        /// Each such resident, and the Claude Code process it runs beneath.
+        agents: Vec<(Resident, u32)>,
+        /// Everybody else living there, left alone with them.
+        others: Vec<Resident>,
+        not_asked: usize,
+    },
 }
 
 /// How loudly the line a removal owes arrives.
@@ -200,6 +210,34 @@ impl Ending {
                 "who is living in {} could not be read ({said}) — the directory stays, because \
                  not knowing is not the same as knowing nobody is in it",
                 at.display()
+            )),
+            Ending::Live {
+                agents,
+                others,
+                not_asked,
+            } => Verdict::Refuse(format!(
+                "{} process(es) living in {} run beneath a live Claude Code process — {} — so the \
+                 checkout is a live agent's work whatever the ledger says about the run that held \
+                 it. Nothing in it was signalled, and the directory stays for as long as that \
+                 agent lives{}{}",
+                agents.len(),
+                at.display(),
+                agents
+                    .iter()
+                    .map(|(r, agent)| format!("{r}, beneath Claude Code pid {agent}"))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+                match others.as_slice() {
+                    [] => ".".to_string(),
+                    rest => format!(
+                        ". Also living in it, and left alone with them: {}.",
+                        rest.iter()
+                            .map(Resident::to_string)
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                },
+                also(*not_asked)
             )),
             // What was ended is named here too, and not only what stands. A
             // refusal that printed the survivors alone would leave the
