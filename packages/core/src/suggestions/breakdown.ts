@@ -56,12 +56,11 @@ async function liveCodes(tx: Tx, requirementId: string, revision: number) {
   return new Map(rows.map((r) => [r.code, r.id]));
 }
 
-type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
+export type Breakdown = ReturnType<(typeof SUGGESTION_PAYLOADS)['breakdown']['schema']['parse']>;
 
-/** What a breakdown is checked against, at propose and again at accept: the requirement is agreed,
- *  and the payload's traces and blockers hold at `head`. */
-/** Each blockedBy entry that names an existing issue, read in the caller's transaction. */
-async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
+/** Each blockedBy entry that names an existing issue, read in the caller's transaction; the list's
+ *  breakdown read resolves blockers through it too (`breakdown-read.ts`). */
+export async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
   const refusals: Refusal[] = [];
   const ids = new Map<string, string>();
   const prefix = await activeIssuePrefix(projectId);
@@ -115,6 +114,8 @@ async function namedBlockersIn(tx: Tx, projectId: string, p: Breakdown) {
   return { refusals, ids };
 }
 
+/** What a breakdown is checked against, at propose and again at accept: the requirement is agreed,
+ *  and the payload's traces and blockers hold at `head`. */
 export async function breakdownGuardIn(
   tx: Tx,
   projectId: string,
@@ -212,7 +213,10 @@ async function buildStepRefusals(
 }
 
 /** The flows of the designs a baseline pins, in flow order. */
-async function pinnedDesignsIn(tx: Tx, workflowIds: readonly string[]): Promise<PinnedDesign[]> {
+export async function pinnedDesignsIn(
+  tx: Tx,
+  workflowIds: readonly string[],
+): Promise<PinnedDesign[]> {
   if (workflowIds.length === 0) return [];
   return tx
     .select({ workflowId: projectWorkflows.id, flow: projectWorkflows.flow })

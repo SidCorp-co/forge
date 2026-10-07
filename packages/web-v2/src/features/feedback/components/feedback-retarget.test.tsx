@@ -58,6 +58,21 @@ describe("changing what a feedback item is about", () => {
     });
   });
 
+  // ISS-279's judge: the label was lower-cased whole, so it read "api route or tool"
+  it("names a route or tool target with the label's own casing", () => {
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ target: { type: "endpoint", key: "shop-tools:save_backend_workflow", title: null } })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
+    expect(screen.getByText("Now API route or tool shop-tools:save_backend_workflow. Its route and phase stay as they are; the move is kept in its history.")).toBeInTheDocument();
+  });
+
+  it("tells the mover before Move it that a project serving nothing has no route or tool to name", async () => {
+    fakeCore(() => ({ body: { endpoints: [] } }));
+    renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
+    fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
+    expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("File it as a Screen instead.");
+  });
+
   it("shows a refusal by its code and keeps what was typed", async () => {
     fakeCore(() => ({
       status: 422,

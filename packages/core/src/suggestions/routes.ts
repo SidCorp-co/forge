@@ -17,7 +17,8 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { listSuggestions, type SuggestionActor, type SuggestionTargetRef } from './read.js';
+import { listSuggestions } from './list.js';
+import type { SuggestionActor, SuggestionTargetRef } from './read.js';
 import {
   acceptSuggestion,
   createSuggestion,

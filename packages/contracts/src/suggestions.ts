@@ -378,6 +378,38 @@ export interface SuggestionView {
 	reason: string | null;
 	createdAt: string;
 	payloadPurgedAt: string | null;
+	/** The list's reading of a proposed breakdown on a requirement (ISS-278); absent on every other
+	 *  kind and status, and on a write's answer. */
+	breakdown?: SuggestionBreakdownRead;
+}
+
+/** What one slice of a proposed breakdown waits on, as its accept would write the blocks edge: another
+ *  slice of the same breakdown by index, an existing issue, or the refusal the accept would give. */
+export type SuggestionBreakdownBlocker =
+	| { slice: number; title: string }
+	| { issue: string; title: string; status: string }
+	| { ref: string; code: string; refusal: string };
+
+/** One slice of a proposed breakdown, read from its stored payload at the requirement's head. */
+export interface SuggestionBreakdownSlice {
+	title: string;
+	description: string | null;
+	complexity: string;
+	criteria: { code: string; body: string }[];
+	/** The pinned design it builds and the revision the latest baseline pins it at; null when it
+	 *  builds none, or where `buildsRefusal` says why the accept would refuse it. */
+	builds: { flow: string; designRevision: number | null } | null;
+	buildsRefusal: string | null;
+	blockedBy: SuggestionBreakdownBlocker[];
+}
+
+/** A proposed breakdown as its accept would file it at the requirement's `revision`; a stored payload
+ *  that no longer parses carries no slices and says why in `unreadable`. */
+export interface SuggestionBreakdownRead {
+	revision: number | null;
+	slices: SuggestionBreakdownSlice[];
+	uncovered: { code: string; reason: string }[];
+	unreadable: string | null;
 }
 
 /** A revision_diff or requirement_draft accept: the revision it wrote, proposed for a revision_diff

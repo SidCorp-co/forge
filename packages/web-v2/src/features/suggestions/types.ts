@@ -1,4 +1,7 @@
 export type {
+  SuggestionBreakdownBlocker,
+  SuggestionBreakdownRead,
+  SuggestionBreakdownSlice,
   SuggestionKind,
   SuggestionListResponse,
   SuggestionProducer,

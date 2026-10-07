@@ -36,8 +36,9 @@ function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
 
-// a runner's next try or quarantine end is written to the minute (`blocker-sentences.ts:atUtcMinute`),
-// so its milliseconds moving each heartbeat while the hold stands never reach the words compared here
+// a runner's next try or quarantine end is written rounded up to the minute
+// (`blocker-sentences.ts:atUtcMinute`), so its milliseconds moving each heartbeat inside one minute
+// while the hold stands never reach the words compared here
 function comparable(text: string): string {
   return withoutReadingTimes(text);
 }

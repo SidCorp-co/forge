@@ -49,7 +49,7 @@ describe('a time in a runner hold', () => {
       detail: '2026-10-06T08:05:59.000Z',
     });
     expect(quarantined).toContain(
-      'is quarantined until 08:05 UTC on 2026-10-06 after repeated failures.',
+      'is quarantined until 08:06 UTC on 2026-10-06 after repeated failures.',
     );
     for (const clause of [
       runnerHoldClause({ ...limited, printedReset: '2026-10-06T19:30Z' }),
@@ -57,6 +57,16 @@ describe('a time in a runner hold', () => {
     ]) {
       expect(clause).not.toMatch(/\d{4}-\d\d-\d\dT\d\d:\d\d/);
     }
+  });
+
+  // ISS-279's judge, fixed in ISS-278: cut to the minute, a next try at 16:23:59 read "16:23" and the
+  // hold outlasted the time it showed; rounded up, the shown time is never before the hold ends
+  it('rounds a time up to the minute, so the hold never outlasts the time it shows', () => {
+    const at = (detail: string) => runnerHoldClause({ ...limited, detail });
+    expect(at('2026-10-06T16:23:59.000Z')).toContain('next try at 16:24 UTC on 2026-10-06.');
+    expect(at('2026-10-06T16:23:00.001Z')).toContain('next try at 16:24 UTC on 2026-10-06.');
+    expect(at('2026-10-06T16:23:00.000Z')).toContain('next try at 16:23 UTC on 2026-10-06.');
+    expect(at('2026-10-06T23:59:30.000Z')).toContain('next try at 00:00 UTC on 2026-10-07.');
   });
 
   it('keeps a reading it cannot parse as it was written, rather than inventing a time', () => {

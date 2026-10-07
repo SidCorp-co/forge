@@ -1,22 +1,17 @@
 /**
- * The reads of suggestions: the list a requirement page or the BA door opens, and the helpers every
- * write resolves a target, a row and a head with.
+ * The helpers every suggestion read and write resolves a target, a row, a view and a head with; the
+ * list a requirement page or the BA door opens is `list.ts`.
  */
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type {
-  SuggestionListResponse,
-  SuggestionStatus,
-  SuggestionView,
-} from '@forge/contracts/suggestions';
-import { and, count, desc, eq, inArray } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import type { SuggestionView } from '@forge/contracts/suggestions';
+import { and, eq } from 'drizzle-orm';
+import type { Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { rowIn } from '../requirements/index.js';
-import { resolveTarget, type SuggestionTarget, type SuggestionTargetRef } from './target.js';
+import type { SuggestionTarget } from './target.js';
 
 export interface SuggestionActor {
   userId: string;
@@ -82,39 +77,6 @@ export async function rowOf(tx: Tx, projectId: string, id: string, lock = false)
   const [row] = lock ? await query.for('update') : await query;
   if (!row) throw notFound(`project ${projectId} holds no suggestion ${id}`);
   return row;
-}
-
-export async function listSuggestions(input: {
-  projectId: string;
-  userId: string;
-  target?: SuggestionTargetRef | undefined;
-  statuses?: readonly SuggestionStatus[] | undefined;
-  limit?: number | undefined;
-}): Promise<SuggestionListResponse> {
-  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
-  const target = input.target
-    ? await resolveTarget(input.projectId, input.target, input.userId)
-    : null;
-  const scoped = and(
-    eq(suggestions.projectId, input.projectId),
-    target ? onTarget(target) : undefined,
-  );
-  const rows = await db
-    .select()
-    .from(suggestions)
-    .where(
-      and(
-        scoped,
-        input.statuses?.length ? inArray(suggestions.status, [...input.statuses]) : undefined,
-      ),
-    )
-    .orderBy(desc(suggestions.createdAt))
-    .limit(input.limit ?? 100);
-  const [open] = await db
-    .select({ n: count() })
-    .from(suggestions)
-    .where(and(scoped, eq(suggestions.status, 'proposed')));
-  return { suggestions: rows.map(viewOf), open: open?.n ?? 0 };
 }
 
 export { resolveTarget, type SuggestionTarget, type SuggestionTargetRef } from './target.js';
