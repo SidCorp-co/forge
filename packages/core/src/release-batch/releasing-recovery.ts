@@ -96,10 +96,13 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
 function failureMessage(err: unknown): string {
   const driver = pgDriverError(err);
   if (driver) {
-    // The database's quoting texts lose their value first; then any bound value of two or more
-    // characters still in the text, however short, sends it to the SQLSTATE's description.
+    // The database's quoting texts lose their value first; then any bound value still in the text
+    // sends it to the SQLSTATE's description — a one-character value only as a word of its own.
     const unquoted = redactQueryParams(driver.message);
-    const leaks = pgBoundValues(err).some((v) => v.length >= 2 && unquoted.includes(v));
+    const words = new Set(unquoted.split(/[^\p{L}\p{N}_-]+/u));
+    const leaks = pgBoundValues(err).some((v) =>
+      v.length >= 2 ? unquoted.includes(v) : words.has(v),
+    );
     const reason = leaks ? pgErrorClassDescription(driver.code) : unquoted;
     return `the database refused the write (${driver.code}): ${reason}`;
   }

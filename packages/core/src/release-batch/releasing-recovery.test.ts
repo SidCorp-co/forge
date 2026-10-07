@@ -152,6 +152,22 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     }
   });
 
+  it('keeps a one-character bound value out where the reason names it as a word (ISS-1381 r2)', () => {
+    const failed = new DrizzleQueryError(
+      'update "issues" set "tenant" = $1 where "issues"."id" = $2',
+      [7, 'bad'],
+      Object.assign(new Error('tenant 7: invalid input syntax for type uuid: "bad"'), {
+        code: 'P0001',
+        severity: 'ERROR',
+      }),
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).not.toContain('tenant 7');
+    expect(text).toContain('a database function or trigger raised an error');
+  });
+
   it('says a database query failed without a reason when drizzle’s wrapper carries no driver error', () => {
     const failed = new DrizzleQueryError(
       'update "issues" set "status" = $1',
