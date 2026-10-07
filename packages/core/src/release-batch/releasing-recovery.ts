@@ -224,13 +224,15 @@ export async function recoverStrandedReleasing(
   };
 }
 
-/** Release every claim on `runId`, and in the same transaction add the closed ones to the run's
- *  `metadata.rosterClosed`: without the claim, that is the only record this batch closed them. */
+/** Release every claim on `runId` (or only those on `only`), and in the same transaction add the
+ *  closed ones to the run's `metadata.rosterClosed`: without the claim, that is the only record this
+ *  batch closed them. */
 export async function releaseClaims(
   tx: Tx,
   runId: string,
+  only?: readonly string[],
 ): Promise<{ cleared: string[]; closed: string[] }> {
-  const rows = await releaseRunClaims(runId, tx);
+  const rows = await releaseRunClaims(runId, tx, only);
   // The claim held the release step; without the claim nothing is releasing it.
   for (const row of rows) {
     const work = await readWorkState(tx, row.id);
