@@ -505,19 +505,25 @@ impl Scan<'_> {
         stack: &[Frame],
         chain: &mut Vec<String>,
     ) -> Option<Vec<String>> {
-        let defs = if qualified {
+        // The frame that defines `n`, and with it the scope its own definition is read in: a
+        // bare name inside it names what is in scope there, not at the read.
+        let found = if qualified {
             None
         } else {
-            stack.iter().rev().find_map(|f| f.consts.get(n))
+            stack
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(k, f)| f.consts.get(n).map(|defs| (k, defs)))
         };
-        let Some(defs) = defs else {
+        let Some((at, defs)) = found else {
             return if qualified || self.b.imported.contains(n) {
                 resolve(self.consts, n, chain)
             } else {
                 None
             };
         };
-        let key = format!("in scope {n}");
+        let key = format!("in scope {at} {n}");
         if chain.contains(&key) {
             return None;
         }
@@ -528,7 +534,7 @@ impl Scan<'_> {
                 // A qualified reference names its own module's const, never the one in scope here.
                 Some(v) if v.starts_with('\u{0}') => match v[1..].rsplit_once("::") {
                     Some((_, last)) => resolve(self.consts, last, chain),
-                    None => self.value_of(&v[1..], false, stack, chain),
+                    None => self.value_of(&v[1..], false, &stack[..=at], chain),
                 },
                 Some(v) => Some(vec![v.to_string()]),
                 None => None,
@@ -568,14 +574,20 @@ impl Scan<'_> {
 /// import through another's alias resolves in whichever order the two stand.
 fn bindings(tokens: &[TokenTree]) -> Bindings {
     let mut known = Bindings::default();
-    for _ in 0..8 {
+    // `expanded` follows an alias chain to its end, so a pass settles every import whose chain
+    // the pass before recorded; this bound is a guard, and a file that meets it is refused.
+    for _ in 0..64 {
         let mut b = Bindings::default();
         collect_bindings(tokens, &mut b, &known);
         if b == known {
-            break;
+            return known;
         }
         known = b;
     }
+    known.refused.push(Hit {
+        line: tokens.first().map_or(0, line_of),
+        what: "imports the scan could not settle in 64 passes: name each import's own path".into(),
+    });
     known
 }
 
@@ -715,15 +727,23 @@ fn use_tree(
 
 /// `path` with an opening alias of `std::env` or `dirs_next` written out.
 fn expanded(path: &[String], known: &Bindings) -> Vec<String> {
-    let Some(first) = path.first() else {
-        return Vec::new();
-    };
-    match known.aliases.get(first) {
-        Some(stands_for) if stands_for.len() > 1 || stands_for[0] != *first => {
-            stands_for.iter().chain(&path[1..]).cloned().collect()
+    let mut out = path.to_vec();
+    let mut followed = BTreeSet::new();
+    // To the end of the chain; an alias met twice is a cycle, left as it stands.
+    while let Some(first) = out.first().cloned() {
+        if !followed.insert(first.clone()) {
+            break;
         }
-        _ => path.to_vec(),
+        match known.aliases.get(&first) {
+            // `use build::build` binds a function through a module of the same name, two
+            // namespaces: a path that opens with its own name is no alias of itself.
+            Some(stands_for) if stands_for[0] != first => {
+                out = stands_for.iter().chain(&out[1..]).cloned().collect();
+            }
+            _ => break,
+        }
     }
+    out
 }
 
 /// `name` is bound to `path`.
@@ -1078,6 +1098,33 @@ mod tests {
              fn f() { std::env::var_os(m::A); }",
             1,
         );
+    }
+
+    /// The fifth whole-set read's F1: a const's own bare reference is read in the scope that
+    /// defines it, not in the scope that reads it.
+    #[test]
+    fn a_consts_reference_is_read_where_the_const_is_defined() {
+        let src = r#"const A: &str = B; const B: &str = concat!("HO", "ME");
+            fn f() { const B: &str = "FORGE_TOKEN"; std::env::var_os(A); }"#;
+        counts(src, 2);
+        counts(
+            &src.replace("var_os(A); }", "var_os(A); std::env::var_os(A); }"),
+            3,
+        );
+    }
+
+    /// The fifth whole-set read's F2: an alias chain of any length, in either order, and a cycle
+    /// that ends.
+    #[test]
+    fn an_alias_chain_of_any_length_is_followed() {
+        let mut uses: Vec<String> = vec!["use std::env::var_os as a0;".into()];
+        uses.extend((0..128).map(|i| format!("use a{i} as a{};", i + 1)));
+        for order in [uses.clone(), uses.iter().rev().cloned().collect()] {
+            let once = format!("{} fn r(k: &str) {{ a128(k); }}", order.join(" "));
+            counts(&once, 1);
+            counts(&once.replace("a128(k); }", "a128(k); a128(k); }"), 2);
+        }
+        counts("use a as b; use b as a; fn r(k: &str) { b(k); }", 0);
     }
 
     /// The whole-set read's F3: an import through another import's alias, in either order.
