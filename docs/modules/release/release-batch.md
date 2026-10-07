@@ -104,16 +104,27 @@ started can therefore be told apart from one whose agent is working:
 | queued, nobody holds it | `waiting`, with when it was queued, when it is handed back, and a reason: `no-eligible-box` (each box and what holds it), `no-box`, or `eligible-not-taken` (the eligible boxes, named) |
 | queued, a box holds the claim | `claimed`, held but not started |
 | cancelled by the unstarted deadline | `handed-back`, with that deadline's own reason |
+| never dispatched, under a run a person aborted | `aborted`, with when, who (their display name, else their email) and the reason they gave, read off the run's abort stamp |
 | any other end, never dispatched | `ended`, with the job's error |
 | no release job under the run | `none` |
 
 `packages/core/src/release-batch/unstarted-recovery.ts:recoverUnstartedReleaseBatches` hands back a batch still `waiting` after
 `packages/core/src/release-batch/job-start.ts:RELEASE_UNSTARTED_DEADLINE_MS`. It finds those batches with the same predicate,
 `packages/core/src/release-batch/job-start.ts:unpickedJobSql`, so the reading and the hand-back cannot disagree about which batch
-is unstarted. The run screen prints `waiting` and `claimed` as "No box has started this release",
-`handed-back` and `ended` as "This release never started", and `none` as "This run holds no release
-job", each with the reading's own why and, for `waiting`, the hand-back time. It prints nothing for
-`taken`. On the release gate, a claimed issue reads "in a release", not "shipping now".
+is unstarted. Each reading's `why` is written for the person who pressed: no runner term, and no
+timestamp inside the sentence — the screen prints the times itself.
+
+The run screen (`packages/web-v2/src/features/releases/components/release-run-screen.tsx`) prints
+`waiting` and `claimed` as "No box has started this release", `handed-back` as "Handed back to the
+release gate", `aborted` as "Aborted before it started" with who, when and why, `ended` as "This
+release never started", and `none` as "This run holds no release job", each with the reading's own
+why, its code spans shown as code and its times in the reader's local time with how long ago or
+until. It prints nothing for `taken`. Where the release never started, its Method section says no
+method was announced for that reason. Its Roster lists the issues the run was opened with
+(`runIssues`, read off the run's `metadata.issueIds` by
+`packages/core/src/release-batch/queries.ts:loadRunIssues`), each as it stands now, not the
+release gate. The screen is flat: sections under hairlines, no cards. On the release gate, a
+claimed issue reads "in a release", not "shipping now".
 
 ## 3. The finish
 

@@ -8,19 +8,20 @@
 // the roster, the ledger, the live probe reading and the bounds itself, and this
 // screen derives nothing it was not sent.
 
+import type { ReactNode } from "react";
 import {
   Badge,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   ErrorState,
   MonoTag,
   PageTitle,
   ProjectLoader,
+  SectionTitle,
   Skeleton,
 } from "@/design";
+import { STATUS_LABELS } from "@/features/issues/derive";
+import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
+import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import { useReleaseRunState } from "../hooks";
 import type {
 	ReleaseBoundsReading,
@@ -120,10 +121,26 @@ function LiveReading({
 const START_HEADLINE: Record<Exclude<ReleaseStart["kind"], "taken">, string> = {
 	waiting: "No box has started this release",
 	claimed: "No box has started this release",
-	"handed-back": "This release never started",
+	"handed-back": "Handed back to the release gate",
+	aborted: "Aborted before it started",
 	ended: "This release never started",
 	none: "This run holds no release job",
 };
+
+/** An instant in the reader's own clock, with how long ago or until; the UTC instant on hover. */
+function When({ iso }: { iso: string }) {
+	const at = new Date(iso);
+	const sameDay = at.toDateString() === new Date().toDateString();
+	const clock = sameDay
+		? at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+		: at.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+	const relative = at.getTime() > Date.now() ? formatCountdown(iso) : formatRelativeTime(iso);
+	return (
+		<time dateTime={iso} title={iso}>
+			{clock} ({relative})
+		</time>
+	);
+}
 
 /** Says why nothing has happened yet, so a batch no box took never reads like one at work. */
 function StartLine({ start }: { start: ReleaseStart }) {
@@ -134,11 +151,16 @@ function StartLine({ start }: { start: ReleaseStart }) {
 			<p className={`text-sm font-medium ${waiting ? "text-amber" : "text-fg"}`}>
 				{START_HEADLINE[start.kind]}
 			</p>
-			<p className="text-sm text-muted">{start.why}</p>
+			{start.kind === "aborted" ? (
+				<p className="text-sm text-muted">
+					{start.by} aborted it before any box took it, <When iso={start.at} />: {inlineCode(start.why)}
+				</p>
+			) : (
+				<p className="text-sm text-muted">{inlineCode(start.why)}</p>
+			)}
 			{start.kind === "waiting" ? (
 				<p className="text-xs text-subtle">
-					Waiting since <time dateTime={start.since}>{start.since}</time> · handed back at{" "}
-					<time dateTime={start.handedBackAt}>{start.handedBackAt}</time>
+					Waiting since <When iso={start.since} /> · handed back at <When iso={start.handedBackAt} />
 				</p>
 			) : null}
 		</div>
@@ -148,10 +170,24 @@ function StartLine({ start }: { start: ReleaseStart }) {
 function MethodLine({
 	method,
 	methodUnloaded,
+	start,
+	ended,
 }: {
 	method: ReleaseMethod | null;
 	methodUnloaded: boolean;
+	start: ReleaseStart;
+	ended: boolean;
 }) {
+	if (!method && start.kind !== "taken") {
+		// The start line already says why; this only must not promise a run that never began.
+		return (
+			<p className="text-sm text-muted" data-testid="method-line">
+				{ended
+					? "No method was announced: this release never started."
+					: "No method yet: no box has started this release."}
+			</p>
+		);
+	}
 	if (!method) {
 		return (
 			<p className="text-sm text-muted" data-testid="method-line">
@@ -170,9 +206,7 @@ function MethodLine({
 				) : (
 					<Badge tone="green">loaded</Badge>
 				)}
-				<time className="text-xs text-subtle" dateTime={method.announcedAt}>
-					{method.announcedAt}
-				</time>
+				<When iso={method.announcedAt} />
 			</div>
 			{method.detail ? (
 				<p className="text-xs text-muted">{method.detail}</p>
@@ -203,8 +237,9 @@ function Bounds({ bounds }: { bounds: ReleaseBoundsReading }) {
 	);
 }
 
+/** The issues this run was opened with, and where the release gate it came from stands. */
 function Roster({ state }: { state: ReleaseRunState }) {
-	const { roster } = state;
+	const { roster, runIssues } = state;
 	return (
 		<div className="flex flex-col gap-2" data-testid="roster">
 			<div className="flex flex-wrap items-center gap-2 text-xs text-muted">
@@ -216,20 +251,32 @@ function Roster({ state }: { state: ReleaseRunState }) {
 					<span>prefers {roster.releaseRunnerLabel}</span>
 				) : null}
 			</div>
-			<ul className="flex flex-col gap-1">
-				{roster.issues.map((issue) => (
-					<li key={issue.id} className="text-sm">
-						<MonoTag>{issue.displayId}</MonoTag> {issue.title}
-						{issue.waitingDays !== null ? (
-							<span className="text-xs text-subtle">
-								{" "}
-								· waiting {issue.waitingDays}d
+			{runIssues.length === 0 ? (
+				<p className="text-sm text-muted">This run names no issue.</p>
+			) : (
+				<ul className="flex flex-col divide-y divide-line">
+					{runIssues.map((issue) => (
+						<li key={issue.id} className="flex min-w-0 items-baseline gap-2 py-1.5 text-sm">
+							<MonoTag>{issue.displayId}</MonoTag>
+							<span className="min-w-0 truncate">{issue.title}</span>
+							<span className="ml-auto shrink-0 text-xs text-subtle">
+								{(STATUS_LABELS as Record<string, string>)[issue.status] ?? issue.status}
 							</span>
-						) : null}
-					</li>
-				))}
-			</ul>
+						</li>
+					))}
+				</ul>
+			)}
 		</div>
+	);
+}
+
+/** A flat section: a heading over its content, a hairline above it, no surface of its own. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+	return (
+		<section className="flex min-w-0 flex-col gap-2 py-4">
+			<SectionTitle className="fg-h3">{title}</SectionTitle>
+			{children}
+		</section>
 	);
 }
 
@@ -276,62 +323,40 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 
 			<StartLine start={data.start} />
 
-			<div className="grid gap-4 lg:grid-cols-3">
-				<Card>
-					<CardHeader>
-						<CardTitle>Production, right now</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<LiveReading
-							live={data.live}
-							verification={data.verification}
-							runStatus={data.runStatus}
-							readAt={dataUpdatedAt}
-							refreshing={isFetching}
-						/>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle>Method</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<MethodLine
-							method={data.method}
-							methodUnloaded={data.methodUnloaded}
-						/>
-					</CardContent>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardTitle>Bounds</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<Bounds bounds={data.bounds} />
-					</CardContent>
-				</Card>
+			<div className="grid divide-y divide-line border-y border-line lg:grid-cols-3 lg:divide-x lg:divide-y-0 [&>*]:lg:px-4 [&>*:first-child]:lg:pl-0">
+				<Section title="Production, right now">
+					<LiveReading
+						live={data.live}
+						verification={data.verification}
+						runStatus={data.runStatus}
+						readAt={dataUpdatedAt}
+						refreshing={isFetching}
+					/>
+				</Section>
+				<Section title="Method">
+					<MethodLine
+						method={data.method}
+						methodUnloaded={data.methodUnloaded}
+						start={data.start}
+						ended={data.runStatus !== "running" && data.runStatus !== "paused"}
+					/>
+				</Section>
+				<Section title="Bounds">
+					<Bounds bounds={data.bounds} />
+				</Section>
 			</div>
 
-			<Card>
-				<CardHeader>
-					<CardTitle>What this run did</CardTitle>
-				</CardHeader>
-				<CardContent>
+			<div className="divide-y divide-line border-b border-line">
+				<Section title="What this run did">
 					<ReleaseTimeline
 						attempts={data.attempts}
 						ended={data.runStatus !== "running" && data.runStatus !== "paused"}
 					/>
-				</CardContent>
-			</Card>
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Roster</CardTitle>
-				</CardHeader>
-				<CardContent>
+				</Section>
+				<Section title="Roster">
 					<Roster state={data} />
-				</CardContent>
-			</Card>
+				</Section>
+			</div>
 		</div>
 	);
 }

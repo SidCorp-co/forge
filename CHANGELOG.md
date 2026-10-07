@@ -3145,6 +3145,10 @@
 ### Fixed
 
 - **`forge-runner top` reads master panes under any locale.** A detail opened with Enter stays on its first page for a whole refresh, and where no model has a rate the cost reads as unread, never `$0.00` (ISS-1341, ISS-1375).
+- **A release run's page reads plainly.** Times are in your clock, a release aborted before it
+  started says who aborted it and why, the roster is the run's own, and the page is one flat
+  column of sections (ISS-1323).
+
 - **Deciding what else a release ships is easier to get right.** Each issue shows its title, each
   choice says what it does, a refused choice says why on its own row beside the button, and the
   shipped-unverified note names who decided (ISS-1386).

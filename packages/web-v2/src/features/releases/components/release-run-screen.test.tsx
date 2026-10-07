@@ -191,17 +191,18 @@ describe("the start line (ISS-1323)", () => {
 
 		const line = screen.getByTestId("start-line");
 		expect(line).toHaveTextContent("No box has started this release");
-		expect(line).toHaveTextContent("`box-1` is `draining`");
-		expect(line).toHaveTextContent("handed back at 2026-09-26T12:20:00.000Z");
+		expect(line).toHaveTextContent("box-1 is draining");
+		expect(line).toHaveTextContent("handed back at");
+		expect(line.querySelector('time[datetime="2026-09-26T12:20:00.000Z"]')).not.toBeNull();
 	});
 
-	it("says a handed-back release never started, without the waiting copy", () => {
+	it("says a handed-back release went back to the gate, without the waiting copy", () => {
 		state({ start: { kind: "handed-back", at: "2026-09-26T12:20:00.000Z", why: "no box took it." } });
 
 		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
 
 		const line = screen.getByTestId("start-line");
-		expect(line).toHaveTextContent("This release never started");
+		expect(line).toHaveTextContent("Handed back to the release gate");
 		expect(line).toHaveTextContent("no box took it.");
 		expect(line.textContent).not.toMatch(/handed back at|No box has started/);
 	});

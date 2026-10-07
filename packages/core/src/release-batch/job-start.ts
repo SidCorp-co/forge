@@ -9,9 +9,10 @@
 
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, type JobStatus, jobs } from '../db/schema.js';
+import { devices, type JobStatus, jobs, users } from '../db/schema.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
+import { readAbortStamp } from './abort-stamp.js';
 import { runnerHoldClause } from './blocker-sentences.js';
 import { projectRunnerDeviceIds } from './channel.js';
 
@@ -48,6 +49,8 @@ export type ReleaseStart =
     }
   | { kind: 'claimed'; since: string; why: string }
   | { kind: 'handed-back'; at: string; why: string }
+  /** A person aborted the batch before any box took its job: who (their label), when, their reason. */
+  | { kind: 'aborted'; at: string; by: string; why: string }
   | { kind: 'ended'; status: JobStatus; at: string | null; why: string }
   | { kind: 'none'; why: string };
 
@@ -64,7 +67,9 @@ export interface ReleaseJobRow {
 const TAKEN_STATUSES: ReadonlySet<JobStatus> = new Set(['dispatched', 'running', 'done']);
 
 /** Which of the six a row is, before any fleet read: `waiting` is resolved by `readReleaseStart`. */
-export function classifyReleaseJob(row: ReleaseJobRow): Exclude<ReleaseStart['kind'], 'none'> {
+export function classifyReleaseJob(
+  row: ReleaseJobRow,
+): Exclude<ReleaseStart['kind'], 'none' | 'aborted'> {
   if (row.dispatchedAt !== null || TAKEN_STATUSES.has(row.status)) return 'taken';
   if (row.status === 'held' || (row.status === 'queued' && row.heldBy !== null)) return 'claimed';
   if (row.status === 'queued') return 'waiting';
@@ -83,17 +88,16 @@ async function deviceNames(ids: string[]): Promise<string[]> {
 }
 
 /** Why no box has taken a queued release job: the same readings the batch door refuses on. */
-async function whyWaiting(
-  projectId: string,
-  handedBackAt: string,
-): Promise<{ reason: WaitingReason; why: string }> {
-  const back = `If none takes it by ${handedBackAt}, the batch is handed back and its issues return to the release gate.`;
+async function whyWaiting(projectId: string): Promise<{ reason: WaitingReason; why: string }> {
+  // The hand-back time is the screen's to print, in the reader's own clock (ISS-1323 r2).
+  const back =
+    'If none picks it up before the deadline, the batch is handed back and its issues return to the release gate.';
   const eligible = await onlineCapableDeviceIds(projectId, {});
   if (eligible.length > 0) {
     const names = (await deviceNames(eligible)).map((n) => `\`${n}\``).join(', ');
     return {
       reason: 'eligible-not-taken',
-      why: `No box has started this release yet. ${names} can take it and none has claimed it: a box takes a pool job when it next asks for work with a slot free. ${back}`,
+      why: `No box has started this release yet. ${names} can run it and has not picked it up; a box picks up a release the next time it has room for more work. ${back}`,
     };
   }
   if ((await projectRunnerDeviceIds(projectId)).length === 0) {
@@ -105,8 +109,18 @@ async function whyWaiting(
   const holds = await releaseIneligibleRunners(projectId);
   return {
     reason: 'no-eligible-box',
-    why: `No box has started this release, and none of this project's boxes can take it now. ${holds.map(runnerHoldClause).join(' ')} ${back}`,
+    why: `No box has started this release, and none of this project's boxes can run it now. ${holds.map(runnerHoldClause).join(' ')} ${back}`,
   };
+}
+
+/** Who a person is, as a sentence names them: the label they chose, else their email. */
+async function personLabel(userId: string): Promise<string> {
+  const [row] = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.displayName ?? row?.email ?? 'a person no longer on this workspace';
 }
 
 /** The newest `release_batch` job under the run, with the name of the device that took it. */
@@ -129,7 +143,11 @@ async function readReleaseJob(runId: string): Promise<ReleaseJobRow | null> {
   return row ?? null;
 }
 
-export async function readReleaseStart(runId: string, projectId: string): Promise<ReleaseStart> {
+export async function readReleaseStart(
+  runId: string,
+  projectId: string,
+  runMetadata: unknown = null,
+): Promise<ReleaseStart> {
   const row = await readReleaseJob(runId);
   if (!row) {
     return {
@@ -138,7 +156,17 @@ export async function readReleaseStart(runId: string, projectId: string): Promis
     };
   }
   const since = row.queuedAt.toISOString();
-  switch (classifyReleaseJob(row)) {
+  const kind = classifyReleaseJob(row);
+  const abort = kind === 'taken' ? null : readAbortStamp(runMetadata);
+  if (abort) {
+    return {
+      kind: 'aborted',
+      at: abort.at,
+      by: abort.by ? await personLabel(abort.by) : 'someone',
+      why: abort.reason,
+    };
+  }
+  switch (kind) {
     case 'taken':
       return {
         kind: 'taken',
@@ -149,31 +177,26 @@ export async function readReleaseStart(runId: string, projectId: string): Promis
       return {
         kind: 'claimed',
         since,
-        why: 'A session holds this release job and has not started it on a box yet.',
+        why: 'A session holds this release and has not started it on a box yet.',
       };
     case 'waiting': {
       const handedBackAt = new Date(
         row.queuedAt.getTime() + RELEASE_UNSTARTED_DEADLINE_MS,
       ).toISOString();
-      return {
-        kind: 'waiting',
-        since,
-        handedBackAt,
-        ...(await whyWaiting(projectId, handedBackAt)),
-      };
+      return { kind: 'waiting', since, handedBackAt, ...(await whyWaiting(projectId)) };
     }
     case 'handed-back':
       return {
         kind: 'handed-back',
         at: (row.finishedAt ?? row.queuedAt).toISOString(),
-        why: `This release never started: ${UNSTARTED_HANDBACK_REASON}, and its issues went back to the release gate.`,
+        why: `Handed back because ${UNSTARTED_HANDBACK_REASON}.`,
       };
     case 'ended':
       return {
         kind: 'ended',
         status: row.status,
         at: row.finishedAt?.toISOString() ?? null,
-        why: `This release never started: its job ended \`${row.status}\` before any box took it${row.error ? `, with: ${row.error}` : ''}.`,
+        why: `It ended \`${row.status}\` before any box took it${row.error ? `, with: ${row.error}` : ''}.`,
       };
   }
 }

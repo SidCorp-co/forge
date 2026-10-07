@@ -10,9 +10,10 @@
 // claimed rows, it writes nothing, and `service.ts` went back over budget as
 // the ledger, the method gate and the promotion-aware abort landed.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
@@ -145,6 +146,44 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       })),
     })),
   };
+}
+
+/** One issue a release run was opened with, as it stands now. */
+export interface ReleaseRunIssue {
+  id: string;
+  displayId: string;
+  title: string;
+  status: string;
+}
+
+/**
+ * The roster a release run was opened with — its `metadata.issueIds` — each as it stands now, in
+ * the order the run named them. The gate's roster is a different list: it is what a release cut
+ * now would take (ISS-1323 r2).
+ */
+export async function loadRunIssues(runMetadata: unknown): Promise<ReleaseRunIssue[]> {
+  const raw = (runMetadata as { issueIds?: unknown } | null)?.issueIds;
+  const ids = Array.isArray(raw) ? raw.filter((id): id is string => typeof id === 'string') : [];
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ id: issues.id, title: issues.title, status: issues.status })
+    .from(issues)
+    .where(inArray(issues.id, ids));
+  const shown = await issueDisplayIds(rows.map((r) => r.id));
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.flatMap((id) => {
+    const row = byId.get(id);
+    return row
+      ? [
+          {
+            id,
+            displayId: shown.get(id) ?? id,
+            title: row.title ?? '(untitled)',
+            status: row.status,
+          },
+        ]
+      : [];
+  });
 }
 
 export async function findReleaseBatchRun(
