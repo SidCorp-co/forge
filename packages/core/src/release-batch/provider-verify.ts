@@ -185,7 +185,7 @@ export function judgeProviderRecord(
   }
   const read =
     found.workflows.length + found.routes.length + found.pages.length + found.themes.length;
-  if (read + found.settings.length === 0) {
+  if (read + found.settings.length + found.carried.length === 0) {
     return {
       ok: false,
       reason: `no issue of this release landed anything ${label} serves, so nothing it carries can be checked against what ${label} serves`,

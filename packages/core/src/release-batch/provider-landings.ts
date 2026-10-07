@@ -223,11 +223,15 @@ export function landingsOf(roster: readonly RosterIssue[], label = 'the provider
     unprovable: [],
   };
   for (const issue of roster) {
-    const fromVerdicts = verdictWorkflows(issue);
+    const named = markArtifacts(issue);
+    // a workflow the mark says another issue carries is that issue's to ship, verdict or not
+    const carriedWorkflows = new Set(
+      named.flatMap((n) => (n.carriedBy && n.artifact?.kind === 'workflow' ? [n.artifact.id] : [])),
+    );
+    const fromVerdicts = verdictWorkflows(issue).filter((w) => !carriedWorkflows.has(w.workflowId));
     const seen = new Set(fromVerdicts.map((w) => w.workflowId));
     out.workflows.push(...fromVerdicts);
     let attested = fromVerdicts.length;
-    const named = markArtifacts(issue);
     const designRefs: string[] = [];
     const unattested: string[] = [];
     const own = named.map((n) => ({ ...n, landedAt: issue.mergedAt, inherited: false }));

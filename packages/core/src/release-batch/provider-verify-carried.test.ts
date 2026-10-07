@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   rows: [] as Row[],
   roster: [] as string[],
   published: {} as Record<string, string | null>,
+  criteria: new Map<string, CriterionWithVerdict[]>(),
   queries: [] as string[],
 }));
 
@@ -71,7 +72,7 @@ vi.mock('../issues/index.js', async (importOriginal) => ({
   transitionIssueStatus: vi.fn(),
   activeIssuePrefix: async () => 'ISS',
   listCriteriaOf: async (_db: unknown, ids: readonly string[]) =>
-    new Map<string, CriterionWithVerdict[]>(ids.map((id) => [id, []])),
+    new Map<string, CriterionWithVerdict[]>(ids.map((id) => [id, state.criteria.get(id) ?? []])),
 }));
 vi.mock('../integrations/registry.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../integrations/registry.js')>()),
@@ -214,7 +215,40 @@ async function refusalOf(p: Promise<unknown>) {
   }
 }
 
+function draftVerdict(workflowId: string, draftVersion: string): CriterionWithVerdict {
+  return {
+    id: `c-${workflowId}`,
+    n: 1,
+    statement: 'access block holds',
+    position: 1,
+    requirementCriterionId: null,
+    latest: {
+      id: `v-${workflowId}`,
+      verdict: 'pass',
+      reason: null,
+      identityKind: 'storefront_draft',
+      commitSha: null,
+      runtimeRef: null,
+      designWorkflowId: null,
+      designFlow: null,
+      designRevision: null,
+      contractRef: null,
+      contractVersion: null,
+      storefrontWorkflowId: workflowId,
+      storefrontDraftVersion: draftVersion,
+      storefrontEnvironment: 'preview',
+      corroboration: 'corroborated',
+      corroborationNote: null,
+      evidence: [],
+      authorAgency: 'agent',
+      backfilled: false,
+      createdAt: '2026-10-07T18:41:36.201Z',
+    },
+  };
+}
+
 beforeEach(() => {
+  state.criteria = new Map();
   state.queries = [];
   state.published = { '96': RUN_PUBLISHED, '193': null };
 });
@@ -234,6 +268,26 @@ describe('HOP 0.4.0: an artifact carried by another issue', () => {
     expect(outcome.ok && outcome.readings).toContainEqual(
       `ISS-54: ${ACCESS_193} — carried by ISS-110 (\`in_progress\`), whose own release ships it and verifies it there; not checked in this one`,
     );
+  });
+
+  it('reports carriage for a workflow the issue also judged a draft of, and for a release carrying all it touched', async () => {
+    state.rows = [
+      {
+        ...iss54('ISS-110'),
+        artifacts: [{ surface: 'logic', ref: ACCESS_193, change: 'changed', carriedBy: 'ISS-110' }],
+      },
+      iss110('in_progress'),
+    ];
+    state.roster = ['id-54'];
+    state.criteria = new Map([['id-54', [draftVerdict('193', '999dcf6d'.padEnd(64, '0'))]]]);
+    const outcome = await verifyByProviderRecord({
+      projectId: HOP,
+      issueIds: ['id-54'],
+      channel: production,
+    });
+    expect(outcome).toMatchObject({ ok: true });
+    expect(outcome.ok && outcome.readings.join('\n')).toContain('carried by ISS-110');
+    expect(state.queries.some((q) => q.includes('ForgeAutoflowPublished'))).toBe(false);
   });
 
   it('refuses a carrier claimed by the same release, by name', async () => {
