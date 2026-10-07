@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { DetailHeader, ErrorState, ProjectLoader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { DetailHeader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useModuleDetail, useModuleRollup } from "../hooks";
 import { MODULES_LIST, moduleHref, modulesHref } from "@/lib/routes/modules";
 import { ancestorsOf } from "../tree";
@@ -19,21 +19,11 @@ const VIEWS = [
 function ModuleDetailBody({ projectId, slug, moduleSlug }: { projectId: string; slug: string; moduleSlug: string }) {
   const q = useModuleDetail(projectId, moduleSlug);
   const [tab, setTab] = useModuleTab();
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading module…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  return <ModulePage d={q.data} slug={slug} tab={tab} onTab={setTab} />;
+  return (
+    <QueryBoundary query={q} loadingLabel="loading module…">
+      {(d) => <ModulePage d={d} slug={slug} tab={tab} onTab={setTab} />}
+    </QueryBoundary>
+  );
 }
 
 // The shell's top bar is the page's sticky header (the shared DetailHeader): back to Modules, the
@@ -63,36 +53,32 @@ export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: strin
         views={parent ? <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="header" /> : null}
         action={row ? <ModuleAction standing={row.standing} slug={slug} /> : null}
       />
-      {q.isLoading ? (
-        <div className="grid min-h-[40vh] place-items-center">
-          <ProjectLoader label="loading module…" />
-        </div>
-      ) : q.isError || !q.data ? (
-        <div className="grid min-h-[40vh] place-items-center">
-          <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-        </div>
-      ) : parent && view === "children" ? (
-        <ModuleLevel
-          projectId={projectId}
-          slug={slug}
-          data={q.data}
-          scope={parent}
-          toolbar={
-            <div className="border-b border-line-subtle px-3 py-2.5 md:hidden">
-              <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
-            </div>
-          }
-        />
-      ) : (
-        <>
-          {parent ? (
-            <div className="border-b border-line-subtle px-5 py-2.5 md:hidden">
-              <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
-            </div>
-          ) : null}
-          <ModuleDetailBody projectId={projectId} slug={slug} moduleSlug={moduleSlug} />
-        </>
-      )}
+      <QueryBoundary query={q} loadingLabel="loading module…">
+        {(data) =>
+          parent && view === "children" ? (
+            <ModuleLevel
+              projectId={projectId}
+              slug={slug}
+              data={data}
+              scope={parent}
+              toolbar={
+                <div className="border-b border-line-subtle px-3 py-2.5 md:hidden">
+                  <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
+                </div>
+              }
+            />
+          ) : (
+            <>
+              {parent ? (
+                <div className="border-b border-line-subtle px-5 py-2.5 md:hidden">
+                  <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
+                </div>
+              ) : null}
+              <ModuleDetailBody projectId={projectId} slug={slug} moduleSlug={moduleSlug} />
+            </>
+          )
+        }
+      </QueryBoundary>
     </div>
   );
 }

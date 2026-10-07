@@ -10,7 +10,6 @@ import {
   DetailPane,
   DetailTabs,
   EnumBadge,
-  ErrorState,
   Fact,
   FactsEmpty,
   FactsGroup,
@@ -19,16 +18,15 @@ import {
   PeekHead,
   PeekPanel,
   type PeekState,
-  ProjectLoader,
   StatusBadge,
   useUrlTab,
   ViewHeading,
   WaitBanner,
   WaitingOn,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
-import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
@@ -258,49 +256,41 @@ function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
 export function FirePage({ projectId, slug, fireId }: { projectId: string; slug: string; fireId: string }) {
   const q = useFireDetail(projectId, fireId);
   const [tab, setTab] = useUrlTab(FIRE_TABS);
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading the fire…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const d = q.data;
-  const tabs = [
-    { value: "produced" as const, label: "Produced" },
-    { value: "output" as const, label: "Output" },
-  ];
   return (
-    <DetailLayout
-      testId="fire-detail"
-      dataKey={d.fire.id}
-      rail={
-        <FactsRail>
-          <FireFacts d={d} slug={slug} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={`#${shortId(d.fire.id)}`} title={d.fire.scheduleName} badge={<StatusBadge family="scheduleRun" value={d.fire.status} />} />
-      <FireBanner f={d.fire} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="fire-tabs" />
-      <DetailPane label={tab === "output" ? "Output" : "Produced"}>
-        {tab === "produced" ? (
-          <Produced d={d} slug={slug} />
-        ) : d.fire.output ? (
-          <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-12-5" data-testid="fire-output">
-            {d.fire.output}
-          </pre>
-        ) : (
-          <FactsEmpty>{d.fire.sessionId ? "A prompt fire's output is its session's transcript." : "This fire wrote no output."}</FactsEmpty>
-        )}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading the fire…">
+      {(data) => {
+        const d = data;
+        const tabs = [
+          { value: "produced" as const, label: "Produced" },
+          { value: "output" as const, label: "Output" },
+        ];
+        return (
+          <DetailLayout
+            testId="fire-detail"
+            dataKey={d.fire.id}
+            rail={
+              <FactsRail>
+                <FireFacts d={d} slug={slug} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={`#${shortId(d.fire.id)}`} title={d.fire.scheduleName} badge={<StatusBadge family="scheduleRun" value={d.fire.status} />} />
+            <FireBanner f={d.fire} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="fire-tabs" />
+            <DetailPane label={tab === "output" ? "Output" : "Produced"}>
+              {tab === "produced" ? (
+                <Produced d={d} slug={slug} />
+              ) : d.fire.output ? (
+                <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-12-5" data-testid="fire-output">
+                  {d.fire.output}
+                </pre>
+              ) : (
+                <FactsEmpty>{d.fire.sessionId ? "A prompt fire's output is its session's transcript." : "This fire wrote no output."}</FactsEmpty>
+              )}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

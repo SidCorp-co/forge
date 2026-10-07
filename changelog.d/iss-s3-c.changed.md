@@ -1,0 +1,1 @@
+**Loading and failed screens share one boundary.** About 30 web screens, peeks and detail pages draw their loader and error shell through `QueryBoundary` instead of repeating it; what a person sees is unchanged.

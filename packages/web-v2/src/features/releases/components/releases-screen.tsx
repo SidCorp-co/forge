@@ -6,14 +6,12 @@ import { useCallback, useMemo } from "react";
 import {
   ActorChip,
   EmptyState,
-  ErrorState,
   GroupedList,
   Icon,
   type ListGroup,
   standingGroups,
   type ListRowView,
   PageTitle,
-  ProjectLoader,
   rememberListOrigin,
   StatusBadge,
   useGroupFold,
@@ -23,7 +21,7 @@ import {
   visibleRows,
   WaitingOn,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { useReleases } from "../hooks";
@@ -82,52 +80,46 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
   usePeekKeys(peek, openFull);
 
   const title = <PageTitle>Releases</PageTitle>;
-  if (q.isLoading || q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        {q.isLoading ? (
-          <ProjectLoader label="loading releases…" />
-        ) : (
-          <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-        )}
-      </div>
-    );
-  }
-  const production = q.data.production;
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="releases-screen">
-      {title}
-      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <SearchBar
-            text={text}
-            onText={(q) => setParams({ q: q || null })}
-            productionUnreadable={production.ok ? null : production.reason}
-          />
-          {all.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />
+    <QueryBoundary query={q} loadingLabel="loading releases…" title={title} height="60vh" retry="always">
+      {(data) => {
+        const production = data.production;
+        return (
+          <div className="grid min-h-full content-start bg-app" data-testid="releases-screen">
+            {title}
+            <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+              <div className="min-w-0">
+                <SearchBar
+                  text={text}
+                  onText={(q) => setParams({ q: q || null })}
+                  productionUnreadable={production.ok ? null : production.reason}
+                />
+                {all.length === 0 ? (
+                  <div className="px-5 py-10">
+                    <EmptyState title="No release yet" message="A release is cut when merged issues are waiting at the release gate. None is waiting." />
+                  </div>
+                ) : (
+                  <>
+                    <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
+                    <GroupedList
+                      ariaLabel="Releases"
+                      groups={groups}
+                      fold={fold}
+                      row={row}
+                      selected={peek.open}
+                      onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                      empty="Nothing matches this search."
+                      columns={{ meta: rows.some((r) => r.owner) ? "Owner · age" : "Age" }}
+                    />
+                  </>
+                )}
+              </div>
+              {peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
             </div>
-          ) : (
-            <>
-              <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />
-              <GroupedList
-                ariaLabel="Releases"
-                groups={groups}
-                fold={fold}
-                row={row}
-                selected={peek.open}
-                onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                empty="Nothing matches this search."
-                columns={{ meta: rows.some((r) => r.owner) ? "Owner · age" : "Age" }}
-              />
-            </>
-          )}
-        </div>
-        {peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} /> : null}
-      </div>
-    </div>
+          </div>
+        );
+      }}
+    </QueryBoundary>
   );
 }
 
