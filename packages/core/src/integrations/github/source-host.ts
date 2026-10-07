@@ -20,7 +20,7 @@ import {
   writePullRequestComment,
 } from './agent-ops.js';
 import { buildRepoClient, GitHubReadError, type GitHubRepoClient } from './client.js';
-import { readLiveDivergence } from './live-divergence.js';
+import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
@@ -183,6 +183,14 @@ function githubSourceHostOf(
       return status === 'ahead' || status === 'identical';
     },
     readDivergence: (refs) => readLiveDivergence(client, refs),
+    async readRange(base, head) {
+      try {
+        const { commits, aheadBy } = await readCompareCommits(client, base, head);
+        return { ok: true, commits, complete: commits.length >= aheadBy };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
     readFile: (path, ref, maxBytes) => readFileAt(client, path, ref, maxBytes),
 
     diff: (args) => readPullRequestDiff(agent(), args),

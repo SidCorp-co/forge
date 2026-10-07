@@ -135,6 +135,17 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
       return refs.some((r) => r.name === branch);
     },
 
+    async readRange(base, head) {
+      try {
+        const commits: WaitingCommit[] = (await commitsBetween(base, head)).flatMap((c) =>
+          c.id ? [{ sha: c.id, message: c.message ?? '', parents: c.parent_ids ?? [] }] : [],
+        );
+        return { ok: true, commits, complete: true };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    },
+
     async readDivergence(refs): Promise<LiveDivergence> {
       try {
         const [baseSha, liveSha] = await Promise.all([

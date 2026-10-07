@@ -20,18 +20,41 @@ import { releaseWorld, seedProductionDeployTrigger, stubProbe } from '../helpers
 
 const sha = (n: number) => n.toString(16).padStart(40, '0');
 const [A, B, N] = [sha(0xa), sha(0xb), sha(0xe)];
-const [C1, C2] = [sha(0xc1), sha(0xc2)];
+const [C1, C2, C3] = [sha(0xc1), sha(0xc2), sha(0xc3)];
 
 /** `commit -> the commits it holds`: a release commit holds what is listed for it. */
 type History = Record<string, string[]>;
 const HISTORY: History = { [C1]: [A, C1], [C2]: [A, B, C1, C2] };
 
-function host(history: History, opts: { fail?: string } = {}) {
+interface HostOptions {
+  fail?: string;
+  /** `base..head` -> the subjects of the commits the range holds. */
+  ranges?: Record<string, string[]>;
+  head?: string;
+  /** Answers a range with fewer commits than it holds. */
+  incomplete?: boolean;
+}
+
+function host(history: History, opts: HostOptions = {}) {
   return async () =>
     ({
       compare: async (base: string, head: string) => {
         if (opts.fail) throw new Error(opts.fail);
         return (history[head] ?? []).includes(base) ? 'ahead' : 'diverged';
+      },
+      branchHead: async () => opts.head ?? C3,
+      readRange: async (base: string, head: string) => {
+        if (opts.fail) return { ok: false, reason: opts.fail };
+        const subjects = opts.ranges?.[`${base}..${head}`] ?? [];
+        return {
+          ok: true,
+          complete: !opts.incomplete,
+          commits: subjects.map((message, i) => ({
+            sha: sha(0x1000 + i),
+            message,
+            parents: [],
+          })),
+        };
       },
     }) as never;
 }
@@ -79,11 +102,19 @@ async function shipped(version: string, commit: string, at: string): Promise<str
 }
 
 /** A waiting row marked as merged at `commit`, as Forge observed it. */
-async function marked(commit: string | null): Promise<string> {
+async function marked(commit: string): Promise<string> {
   const id = await fx.insertIssue('awaiting_release');
   await db.execute(sql`UPDATE issues SET merged_commit_sha = ${commit} WHERE id = ${id}`);
   return id;
 }
+
+/** A waiting row carrying an `asserted` mark: somebody's word, naming no commit. */
+const asserted = () => fx.insertIssue('awaiting_release');
+
+const subjectFor = async (id: string, what = 'the work') => {
+  const [key] = await fx.displayIds([id]);
+  return `${key}: ${what}`;
+};
 
 async function runOf(id: string) {
   const [row] = await rows<{ status: string; claim: string | null }>(sql`
@@ -164,14 +195,6 @@ describe('closing against the release that shipped the commit', () => {
 
     expect(result).toEqual({ closed: [], unresolved: [] });
     expect(await runOf(id)).toEqual({ status: 'awaiting_release', claim: null });
-  });
-
-  it('does not take a mark Forge did not observe as a commit', async () => {
-    await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
-    const id = await marked(null);
-
-    expect(await close([id])).toEqual({ closed: [], unresolved: [] });
-    expect((await runOf(id))?.status).toBe('awaiting_release');
   });
 
   it('does not count a release that never shipped', async () => {
@@ -268,5 +291,115 @@ describe('a cut that names only shipped issues', () => {
     expect((await runOf(id))?.status).toBe('closed');
     const [after] = await rows<{ n: number }>(sql`SELECT count(*)::int AS n FROM pipeline_runs`);
     expect(after?.n).toBe(before?.n);
+  });
+});
+
+describe('an asserted mark names no commit, so the commits declaring the issue are placed', () => {
+  // A range between two commits is read once for the process, so each test cuts commits of its own.
+  let RANGE_1 = '';
+  let RANGE_2 = '';
+  let UNRELEASED = '';
+  let HEAD = '';
+
+  async function threeReleases() {
+    const [c1, c2, c3] = [randomUUID(), randomUUID(), randomUUID()].map((u) =>
+      u.replaceAll('-', '').padEnd(40, '0'),
+    ) as [string, string, string];
+    RANGE_1 = `${c1}..${c2}`;
+    RANGE_2 = `${c2}..${c3}`;
+    UNRELEASED = `${c3}..${c3}`;
+    HEAD = c3;
+    await shipped('0.4.0-dev.1', c1, '2026-10-06T10:00:00Z');
+    const second = await shipped('0.4.0-dev.2', c2, '2026-10-06T11:00:00Z');
+    const third = await shipped('0.4.0-dev.3', c3, '2026-10-06T12:00:00Z');
+    return { second, third };
+  }
+
+  it('closes it against the release whose range holds its last declaring commit', async () => {
+    const { second, third } = await threeReleases();
+    const id = await asserted();
+    const other = await asserted();
+    const ranges = {
+      [RANGE_1]: [await subjectFor(id, 'first half')],
+      [RANGE_2]: [await subjectFor(other)],
+    };
+
+    const result = await close([id, other], host(HISTORY, { head: HEAD, ranges }));
+
+    expect(result.unresolved).toEqual([]);
+    expect(result.closed.map((c) => [c.issueId, c.version]).sort()).toEqual(
+      [
+        [id, '0.4.0-dev.2'],
+        [other, '0.4.0-dev.3'],
+      ].sort(),
+    );
+    expect(await rosterClosedOf(second)).toEqual([id]);
+    expect(await rosterClosedOf(third)).toEqual([other]);
+  });
+
+  it('clears the hold an aborted release left on it', async () => {
+    await threeReleases();
+    const id = await asserted();
+    await abortHold(id);
+
+    await close([id], host(HISTORY, { head: HEAD, ranges: { [RANGE_2]: [await subjectFor(id)] } }));
+
+    expect((await runOf(id))?.status).toBe('closed');
+    expect(await fx.holdOf(id)).toBeNull();
+  });
+
+  it('leaves it alone while a commit declaring it is still unreleased', async () => {
+    await threeReleases();
+    const id = await asserted();
+    const ranges = {
+      [RANGE_1]: [await subjectFor(id)],
+      [UNRELEASED]: [await subjectFor(id, 'more')],
+    };
+
+    const result = await close([id], host(HISTORY, { head: HEAD, ranges }));
+
+    expect(result).toEqual({ closed: [], unresolved: [] });
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+  });
+
+  it('leaves it alone where no range declares it', async () => {
+    await threeReleases();
+    const id = await asserted();
+
+    expect(await close([id], host(HISTORY, { head: HEAD }))).toEqual({
+      closed: [],
+      unresolved: [],
+    });
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+  });
+
+  it('refuses by name a range the repository cannot give whole, and moves nothing', async () => {
+    await threeReleases();
+    const id = await asserted();
+    await abortHold(id);
+    const ranges = { [RANGE_1]: [await subjectFor(id)] };
+
+    const result = await close([id], host(HISTORY, { head: HEAD, ranges, incomplete: true }));
+
+    expect(result.closed).toEqual([]);
+    expect(result.unresolved.map((u) => u.code)).toEqual(['SHIPPED_EARLIER_UNREAD']);
+    expect(result.unresolved[0]?.detail).toContain('unplaced');
+    expect((await runOf(id))?.status).toBe('awaiting_release');
+    expect((await fx.holdOf(id))?.code).toBe('RELEASE_ABORT_BLOCKED');
+  });
+
+  it('is the shape live on dev: rows held for a person, closed by the sweep with no act', async () => {
+    const { third } = await threeReleases();
+    const held = [await asserted(), await asserted()];
+    for (const id of held) await abortHold(id);
+    const ranges = { [RANGE_2]: await Promise.all(held.map((id) => subjectFor(id))) };
+
+    const result = await sweepAutomaticReleases(new Date(), {
+      host: host(HISTORY, { head: HEAD, ranges }),
+    });
+
+    expect(result.shippedEarlier).toBe(2);
+    for (const id of held) expect(await fx.holdOf(id)).toBeNull();
+    expect((await rosterClosedOf(third)).sort()).toEqual([...held].sort());
   });
 });

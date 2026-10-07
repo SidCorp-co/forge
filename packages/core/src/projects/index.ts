@@ -27,7 +27,13 @@ export const liveReachForIssue: typeof import('./live-reach-read.js').liveReachF
   ...args
 ) => (await import('./live-reach-read.js')).liveReachForIssue(...args);
 export type { ReadingOwnership } from './commit-owners.js';
-export { declaredIssueSeqs, readingOwnership, subjectOf, unclaimedShas } from './commit-owners.js';
+export {
+  commitOwners,
+  declaredIssueSeqs,
+  readingOwnership,
+  subjectOf,
+  unclaimedShas,
+} from './commit-owners.js';
 export { issueWorkRecordsAt } from './issue-work-records.js';
 export type { LiveReading } from './live-reach.js';
 export { evidenceFor, issueRefPattern } from './live-reach.js';

@@ -29,6 +29,30 @@ async function headOf(client: GitHubRepoClient, branch: string): Promise<string>
   return sha;
 }
 
+/** Every commit `head` holds that `base` does not, as many pages as one reading may take. */
+export async function readCompareCommits(
+  client: GitHubRepoClient,
+  base: string,
+  head: string,
+): Promise<{ commits: WaitingCommit[]; aheadBy: number }> {
+  const commits: WaitingCommit[] = [];
+  let aheadBy = 0;
+  for (let page = 1; page <= COMPARE_MAX_PAGES; page += 1) {
+    const cmp = await client.get<CompareRead>(
+      `/repos/${client.fullName}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}?per_page=${COMPARE_PAGE_SIZE}&page=${page}`,
+    );
+    aheadBy = typeof cmp.ahead_by === 'number' ? cmp.ahead_by : (cmp.total_commits ?? 0);
+    const got = cmp.commits ?? [];
+    for (const c of got) {
+      if (!c.sha) continue;
+      const parents = (c.parents ?? []).flatMap((p) => (p.sha ? [p.sha] : []));
+      commits.push({ sha: c.sha, message: c.commit?.message ?? '', parents });
+    }
+    if (got.length < COMPARE_PAGE_SIZE || commits.length >= aheadBy) break;
+  }
+  return { commits, aheadBy };
+}
+
 /**
  * The commits on `baseRef` that `liveRef` does not contain.
  *
@@ -44,21 +68,7 @@ export async function readLiveDivergence(
       headOf(client, refs.baseRef),
       headOf(client, refs.liveRef),
     ]);
-    const commits: WaitingCommit[] = [];
-    let aheadBy = 0;
-    for (let page = 1; page <= COMPARE_MAX_PAGES; page += 1) {
-      const cmp = await client.get<CompareRead>(
-        `/repos/${client.fullName}/compare/${encodeURIComponent(liveSha)}...${encodeURIComponent(baseSha)}?per_page=${COMPARE_PAGE_SIZE}&page=${page}`,
-      );
-      aheadBy = typeof cmp.ahead_by === 'number' ? cmp.ahead_by : (cmp.total_commits ?? 0);
-      const got = cmp.commits ?? [];
-      for (const c of got) {
-        if (!c.sha) continue;
-        const parents = (c.parents ?? []).flatMap((p) => (p.sha ? [p.sha] : []));
-        commits.push({ sha: c.sha, message: c.commit?.message ?? '', parents });
-      }
-      if (got.length < COMPARE_PAGE_SIZE || commits.length >= aheadBy) break;
-    }
+    const { commits, aheadBy } = await readCompareCommits(client, liveSha, baseSha);
     return { ok: true, baseSha, liveSha, aheadBy, commits, complete: commits.length >= aheadBy };
   } catch (err) {
     if (err instanceof GitHubReadError || err instanceof GitHubClientError) {

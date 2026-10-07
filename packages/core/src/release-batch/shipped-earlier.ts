@@ -10,9 +10,18 @@
  * writers a release finish uses, not a second close path.
  *
  * What counts as a published release is a run whose finish record reads `finished`, whose ship stamp
- * is set, and whose `finish.commit` is the commit the probes verified live. Anything the repository
- * cannot answer is a refusal by name and writes nothing: the issue takes today's path, and a
- * version is never inferred from a commit that could not be placed.
+ * is set, and whose `finish.commit` is the commit the probes verified live. Two evidences place an
+ * issue in one:
+ *
+ * - an `observed` mark names a commit; the release is the earliest whose commit holds it.
+ * - an `asserted` mark names none (it is somebody's word that the work shipped), so the repository
+ *   is asked instead which commits declare the issue (`commitOwners`, the rule the live reading
+ *   places commits with) in each recent release's own range. The issue is placed in the release
+ *   whose range holds its last declaring commit, and only where the range between the newest
+ *   shipped release and the branch head holds none: work still unreleased is not shipped.
+ *
+ * Anything the repository cannot answer is a refusal by name and writes nothing: the issue takes
+ * today's path, and a version is never inferred from a commit that could not be placed.
  */
 
 import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
@@ -23,9 +32,17 @@ import {
   resolveSourceHost,
   type SourceHost,
   SourceHostUnavailable,
+  type WaitingCommit,
 } from '../integrations/source-host/index.js';
-import { accountActor, claimIssuesForRelease, mergeMarkKindOf } from '../issues/index.js';
+import {
+  accountActor,
+  claimIssuesForRelease,
+  heldIssuePrefixes,
+  mergeMarkKindOf,
+} from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { readLandingBranches } from '../project-config/index.js';
+import { commitOwners, issueRefPattern } from '../projects/index.js';
 import { closeRoster } from './finish.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { clearReleaseHolds } from './hold.js';
@@ -44,6 +61,8 @@ interface ClosedEarlier {
   version: string;
   runId: string;
   commit: string;
+  /** What placed it there, in words the issue's notice repeats. */
+  evidence: string;
 }
 
 /** One issue the pass could not settle, and the name of why. It stays as it was. */
@@ -144,10 +163,12 @@ interface Candidate {
   id: string;
   status: IssueStatus;
   reopenCount: number;
-  sha: string;
+  issSeq: number;
+  /** The commit an `observed` mark names; null on an `asserted` one, which names none. */
+  sha: string | null;
 }
 
-/** The waiting, unclaimed rows carrying a commit Forge itself observed landing. */
+/** The waiting, unclaimed rows an earlier release could have shipped: observed and asserted marks. */
 async function candidatesOf(projectId: string, issueIds: readonly string[]): Promise<Candidate[]> {
   if (issueIds.length === 0) return [];
   const rows = await db
@@ -155,6 +176,7 @@ async function candidatesOf(projectId: string, issueIds: readonly string[]): Pro
       id: issues.id,
       status: issues.status,
       reopenCount: issues.reopenCount,
+      issSeq: issues.issSeq,
       mergedAt: issues.mergedAt,
       sha: issues.mergedCommitSha,
       landing: issues.mergedLanding,
@@ -168,17 +190,89 @@ async function candidatesOf(projectId: string, issueIds: readonly string[]): Pro
         isNull(issues.releaseBatchRunId),
       ),
     );
-  return rows.flatMap((r) => {
-    const observed =
-      mergeMarkKindOf({
-        mergedAt: r.mergedAt,
-        mergedCommitSha: r.sha,
-        mergedLanding: r.landing,
-      }) === 'observed';
-    return observed && r.sha && /^[0-9a-f]{40}$/i.test(r.sha)
-      ? [{ id: r.id, status: r.status, reopenCount: r.reopenCount, sha: r.sha.toLowerCase() }]
-      : [];
+  return rows.flatMap((r): Candidate[] => {
+    const kind = mergeMarkKindOf({
+      mergedAt: r.mergedAt,
+      mergedCommitSha: r.sha,
+      mergedLanding: r.landing,
+    });
+    const base = { id: r.id, status: r.status, reopenCount: r.reopenCount, issSeq: r.issSeq };
+    if (kind === 'asserted' && r.issSeq != null) return [{ ...base, sha: null }];
+    if (kind === 'observed' && r.issSeq != null && r.sha && /^[0-9a-f]{40}$/i.test(r.sha)) {
+      return [{ ...base, sha: r.sha.toLowerCase() }];
+    }
+    return [];
   });
+}
+
+/** How far back the keyed reading looks: this many shipped releases' own ranges, newest first. */
+const KEYED_WINDOW = 12;
+
+// A range between two commits never changes, so one read is kept for the process, bounded.
+const RANGES = new Map<string, WaitingCommit[]>();
+const RANGES_LIMIT = 200;
+
+async function rangeOf(host: SourceHost, base: string, head: string): Promise<WaitingCommit[]> {
+  const key = `${base}..${head}`;
+  const held = RANGES.get(key);
+  if (held) return held;
+  const read = await host.readRange(base, head);
+  if (!read.ok) throw new Error(`${base}..${head} could not be read: ${read.reason}`);
+  if (!read.complete) {
+    throw new Error(
+      `${base}..${head} holds more commits than one reading takes, so it is unplaced`,
+    );
+  }
+  if (RANGES.size >= RANGES_LIMIT) RANGES.delete(RANGES.keys().next().value as string);
+  RANGES.set(key, read.commits);
+  return read.commits;
+}
+
+/**
+ * Which release's own range holds the last commit declaring each of `rows`, for the rows none of
+ * whose declaring commits is still unreleased. A row no range declares is not placed: it takes the
+ * normal path. Throws where a range cannot be read whole.
+ */
+async function placeByKey(
+  host: SourceHost,
+  projectId: string,
+  releases: readonly ShippedRelease[],
+  rows: readonly Candidate[],
+): Promise<Map<string, ShippedRelease>> {
+  const placed = new Map<string, ShippedRelease>();
+  const newest = releases[releases.length - 1];
+  if (rows.length === 0 || releases.length < 2 || !newest) return placed;
+  const { defaultBranch } = await readLandingBranches(projectId);
+  if (!defaultBranch) {
+    throw new Error(
+      'the project document declares no `source.git.defaultBranch` to read the unreleased range on',
+    );
+  }
+  const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
+  const owned = (commits: WaitingCommit[]): Set<number> => {
+    const seqs = new Set<number>();
+    for (const bySeq of commitOwners(commits, pattern, defaultBranch).values()) {
+      for (const seq of bySeq.keys()) seqs.add(seq);
+    }
+    return seqs;
+  };
+
+  const unreleased = owned(
+    await rangeOf(host, newest.commit, await host.branchHead(defaultBranch)),
+  );
+  const first = Math.max(1, releases.length - KEYED_WINDOW);
+  const ranges: Array<{ release: ShippedRelease; seqs: Set<number> }> = [];
+  for (let i = first; i < releases.length; i += 1) {
+    const prev = releases[i - 1] as ShippedRelease;
+    const release = releases[i] as ShippedRelease;
+    ranges.push({ release, seqs: owned(await rangeOf(host, prev.commit, release.commit)) });
+  }
+  for (const row of rows) {
+    if (unreleased.has(row.issSeq)) continue;
+    const last = [...ranges].reverse().find((r) => r.seqs.has(row.issSeq));
+    if (last) placed.set(row.id, last.release);
+  }
+  return placed;
 }
 
 async function readerFor(
@@ -196,10 +290,9 @@ async function readerFor(
 /** The comment the issue carries, naming what the record shows. */
 function noticeFor(found: ClosedEarlier): string {
   return (
-    `Shipped in ${found.version} before this issue reached \`awaiting_release\`. Its landing ` +
-    `commit is an ancestor of \`${found.commit}\`, the commit release ${found.version} was ` +
-    `verified serving, so it is closed against that release and no later one carries it. ` +
-    `It adds no changelog fragment of its own: its notes belong to ${found.version}.`
+    `Shipped in ${found.version} before this issue reached \`awaiting_release\`: ${found.evidence}. ` +
+    `It is closed against that release, which was verified serving \`${found.commit}\`, and no ` +
+    `later release carries it. It adds no changelog fragment of its own: its notes belong to ${found.version}.`
   );
 }
 
@@ -233,21 +326,46 @@ export async function closeShippedEarlier(
   }
 
   const unresolved: Unresolved[] = [];
-  const byRelease = new Map<string, { release: ShippedRelease; rows: Candidate[] }>();
+  const placement = new Map<string, { release: ShippedRelease; evidence: string }>();
   for (const row of waiting) {
-    let release: ShippedRelease | null;
+    if (row.sha === null) continue;
     try {
-      release = await earliestHolding(host, row.sha, releases);
+      const release = await earliestHolding(host, row.sha, releases);
+      if (release) {
+        placement.set(row.id, {
+          release,
+          evidence: `its landing commit \`${row.sha}\` is an ancestor of the release's`,
+        });
+      }
     } catch (err) {
       const detail = `commit ${row.sha} could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
       logger.warn({ projectId, issueId: row.id }, `release-shipped-earlier: ${detail}`);
       unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
-      continue;
     }
-    if (!release) continue;
-    const group = byRelease.get(release.runId) ?? { release, rows: [] };
+  }
+  const keyed = waiting.filter((w) => w.sha === null);
+  try {
+    for (const [id, release] of await placeByKey(host, projectId, releases, keyed)) {
+      placement.set(id, {
+        release,
+        evidence:
+          "the last commit declaring it is in that release's range, and none is left unreleased",
+      });
+    }
+  } catch (err) {
+    const detail = `the commits declaring these issues could not be placed against the releases that shipped: ${err instanceof Error ? err.message : String(err)}`;
+    logger.warn({ projectId, issues: keyed.length }, `release-shipped-earlier: ${detail}`);
+    for (const row of keyed) {
+      unresolved.push({ issueId: row.id, code: 'SHIPPED_EARLIER_UNREAD', detail });
+    }
+  }
+  const byRelease = new Map<string, { release: ShippedRelease; rows: Candidate[] }>();
+  for (const row of waiting) {
+    const placed = placement.get(row.id);
+    if (!placed) continue;
+    const group = byRelease.get(placed.release.runId) ?? { release: placed.release, rows: [] };
     group.rows.push(row);
-    byRelease.set(release.runId, group);
+    byRelease.set(placed.release.runId, group);
   }
 
   const closed: ClosedEarlier[] = [];
@@ -276,6 +394,7 @@ export async function closeShippedEarlier(
           version: release.version,
           runId: release.runId,
           commit: release.commit,
+          evidence: placement.get(id)?.evidence ?? 'a release holds its commits',
         };
         closed.push(found);
         if (args.userId) {
