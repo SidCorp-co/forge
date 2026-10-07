@@ -1,3 +1,4 @@
+import type { ReleaseVerifiedBy } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
@@ -7,6 +8,7 @@ import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   type CloseVerification,
   RELEASE_PROCEDURE_FACT,
+  type RecordedVerification,
   type ReleaseChannel,
   type ReleasePlan,
   type ReleaseRollback,
@@ -65,6 +67,18 @@ function releaseProbesOf(production: NamedEnvironment): {
   return { verify: null, verifySource: declared.length > 0 ? 'declared-unusable' : 'none' };
 }
 
+/** Whether the binding publishes the project's storefront work and its provider reports what it
+ *  publishes: the same provider the project's `source.storefront` builds on, declaring the reader. */
+function publishesStorefront(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): boolean {
+  const { source } = decl.path.document;
+  const provider = decl.binding.binding.provider;
+  return (
+    source.type === 'storefront' &&
+    source.storefront.provider === provider &&
+    typeof getIntegration(provider)?.storefrontPublished === 'function'
+  );
+}
+
 function channelOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): ReleaseChannel {
   const pair = decl.binding;
   const label = effectiveConfig(pair).releaseRunnerLabel;
@@ -75,6 +89,7 @@ function channelOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): Releas
     label: pair.binding.label,
     instructions: pair.binding.instructions ?? null,
     ...releaseProbesOf(decl.production),
+    providerRecord: publishesStorefront(decl),
     rollback: classifyRollback(
       pair.binding.provider,
       (pair.connection.config as Record<string, unknown> | null)?.rollback,
@@ -104,13 +119,35 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
  * How this release is proved, the one reading every door takes. THROWS where a binding's `verify`
  * was refused: that is a declaration to correct, and reading past it to the deployment record would release past
  * the probes somebody meant to declare. Otherwise the first channel with probes proves it, whichever
- * binding sorts first; with none, production's deployment record has to name the commit.
+ * binding sorts first; with none, a storefront provider's report of what it publishes proves it where
+ * the binding has one, and production's deployment record has to name the commit everywhere else.
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
   if (refused.length > 0) throw blockerRefusal('RELEASE_PROBES_UNREADABLE', { bindings: refused });
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
-  return cfg ? { kind: 'probed', cfg } : { kind: 'deployment' };
+  if (cfg) return { kind: 'probed', cfg };
+  const provider = channels.find((c) => c.providerRecord);
+  return provider ? { kind: 'provider', channel: provider } : { kind: 'deployment' };
+}
+
+/**
+ * How a release is proved, and through which provider: as its run recorded it, else as the project
+ * declares it now. `null` where neither names one: no production binding, or a probe declaration a
+ * release would refuse.
+ */
+export async function releaseVerifiedBy(
+  projectId: string,
+  recorded: RecordedVerification | null,
+): Promise<ReleaseVerifiedBy | null> {
+  const channels = await resolveReleaseChannels(projectId);
+  const channel = channels[0];
+  const provider = channel
+    ? (getIntegration(channel.provider)?.presentation?.label ?? channel.provider)
+    : null;
+  if (recorded) return { kind: recorded, provider };
+  if (!channel || refusedVerifyBindings(channels).length > 0) return null;
+  return { kind: closeVerification(channels).kind, provider };
 }
 
 /** The production binding's release runner label, or `null` where none is declared. */

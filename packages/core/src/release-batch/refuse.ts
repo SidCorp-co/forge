@@ -1,6 +1,7 @@
 import type { ReleaseBlockerCode, ReleaseRefusalCode } from '@forge/contracts/releases';
 import { type Refusal, RefusalError, refuser } from '../lib/refusal.js';
 import { type ReleaseBlockerReport, releaseBlockerSentence } from './blocker-sentences.js';
+import type { ProviderMismatch } from './provider-verify.js';
 
 /** Every release refusal, at every door, in the one refusal envelope. */
 export const refuseRelease = refuser<ReleaseRefusalCode>('RELEASE_REFUSED');
@@ -20,6 +21,24 @@ export function notVerifiedRefusal(reason: string, live: string | null): Refusal
     path: '',
     detail: reason,
     live,
+  };
+  return new RefusalError([row], 'RELEASE_REFUSED');
+}
+
+/**
+ * A storefront provider's report did not carry the release. The row carries each landing it did not
+ * carry, with the issue, the workflow and both identities, beside the sentence naming them.
+ */
+export function providerNotVerifiedRefusal(
+  reason: string,
+  mismatches: readonly ProviderMismatch[],
+): RefusalError {
+  const row: Refusal & { live: null; mismatches: readonly ProviderMismatch[] } = {
+    code: 'RELEASE_NOT_VERIFIED',
+    path: '',
+    detail: reason,
+    live: null,
+    mismatches,
   };
   return new RefusalError([row], 'RELEASE_REFUSED');
 }

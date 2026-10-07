@@ -22,6 +22,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/index.js';
 import { admitRoster } from './blockers.js';
 import {
+  type CloseVerification,
   closeVerification,
   type RecordedVerification,
   type ReleaseVerification,
@@ -31,7 +32,8 @@ import { verifyByDeploymentRecord } from './deployment-verify.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { askProviderLiveGate, type GateOffRecord } from './provider-live.js';
-import { notVerifiedRefusal, reasonOf } from './refuse.js';
+import { verifyByProviderRecord } from './provider-verify.js';
+import { notVerifiedRefusal, providerNotVerifiedRefusal, reasonOf } from './refuse.js';
 import { verifyServingNow } from './verify.js';
 
 /** The one ledger key a recorded release writes under. */
@@ -83,6 +85,12 @@ async function admissibleIssues(projectId: string, issueIds: string[]): Promise<
   }));
 }
 
+const SOURCE_OF: Record<ReleaseVerification, string> = {
+  probed: 'the live probes',
+  provider: 'what the storefront provider publishes',
+  deployment: "production's deployment record",
+};
+
 /** The account, as the issue itself will carry it. */
 function issueNote(args: {
   commit: string;
@@ -92,7 +100,7 @@ function issueNote(args: {
   providerRef: string | null;
 }): string {
   const handle = args.providerRef ? ` The provider's handle on it: \`${args.providerRef}\`.` : '';
-  const source = args.how === 'probed' ? 'the live probes' : "production's deployment record";
+  const source = SOURCE_OF[args.how];
   return `Released outside a release batch, and recorded from what production is serving.\n\n- commit claimed: \`${args.commit}\`\n- deployment identity read back from ${source}: \`${args.identity}\`\n\n${args.account}${handle}`;
 }
 
@@ -137,6 +145,25 @@ async function closeRecorded(
   return { closed, failed };
 }
 
+/** What production serves, read once by the way this release is proved; refused where it does not
+ *  show the claim (the commit, or on a storefront every landing of the issues recorded). */
+async function readWhatServes(
+  verification: CloseVerification,
+  args: { projectId: string; commit: string; issueIds: string[] },
+): Promise<{ identity: string; readings: string[] }> {
+  if (verification.kind === 'provider') {
+    const read = await verifyByProviderRecord({ ...args, channel: verification.channel });
+    if (!read.ok) throw providerNotVerifiedRefusal(read.reason, read.mismatches);
+    return read;
+  }
+  const read =
+    verification.kind === 'probed'
+      ? await verifyServingNow({ cfg: verification.cfg, expected: args.commit })
+      : await verifyByDeploymentRecord(args.projectId, args.commit);
+  if (!read.ok) throw notVerifiedRefusal(read.reason, read.live);
+  return read;
+}
+
 /**
  * Record a release that has already happened, and close what it carried. The
  * probes are read BEFORE anything is claimed, so a record that cannot be earned
@@ -157,11 +184,7 @@ export async function recordPerformedRelease(
   const roster = await admissibleIssues(projectId, issueIds);
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
-  const read =
-    verification.kind === 'probed'
-      ? await verifyServingNow({ cfg: verification.cfg, expected: commit })
-      : await verifyByDeploymentRecord(projectId, commit);
-  if (!read.ok) throw notVerifiedRefusal(read.reason, read.live);
+  const read = await readWhatServes(verification, { projectId, commit, issueIds });
   // The deployment record says what was built, not that it answers, so only a probe reads health.
   const outcome = {
     identity: read.identity,
@@ -189,7 +212,7 @@ export async function recordPerformedRelease(
 
   await claimRoster(projectId, issueIds, run.id);
 
-  await writeLedger(run.id, { commit, outcome, account, providerRef });
+  await writeLedger(run.id, { commit, outcome, account, providerRef, how: verification.kind });
 
   const note = issueNote({ commit, identity, how: verification.kind, account, providerRef });
   const { closed, failed } = await closeRecorded(roster, {
@@ -234,6 +257,7 @@ async function writeLedger(
     outcome: { identity: string; readings: string[]; health: 'up' | null };
     account: string;
     providerRef: string | null;
+    how: ReleaseVerification;
   },
 ): Promise<void> {
   const { outcome } = args;
@@ -248,7 +272,10 @@ async function writeLedger(
     identity: outcome.identity,
     readings: outcome.readings,
     verdict: 'ok',
-    verdictReason: `what production serves reads ${outcome.identity}, which is the commit this record claims`,
+    verdictReason:
+      args.how === 'provider'
+        ? `what the storefront provider publishes (${outcome.identity}) carries every landing of the issues this record names`
+        : `what production serves reads ${outcome.identity}, which is the commit this record claims`,
     settledAt: new Date(),
   });
 }

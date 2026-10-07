@@ -52,6 +52,7 @@ const noProbe: ReleaseChannel = {
   instructions: null,
   verify: null,
   verifySource: 'none',
+  providerRecord: false,
   rollback: null,
   releaseRunnerLabel: null,
 };

@@ -365,6 +365,7 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       toast({
         title: result.issueIds.length === 1 ? t("issues.toast.batchStartedOne") : t("issues.toast.batchStarted", { n: result.issueIds.length }),
         ...(result.verification === "deployment" ? { description: t("issues.toast.batchByDeployment") } : {}),
+        ...(result.verification === "provider" ? { description: t("issues.toast.batchByProvider") } : {}),
         tone: "success",
       });
     },

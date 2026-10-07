@@ -1,6 +1,7 @@
 
 import { parseReleaseRoster } from "@/features/releases/roster";
 import type { IssueStandingDetail, IssueStandingList, IssueStandingScope } from "@forge/contracts/issue-standing";
+import type { RecordedReleaseVerification } from "@forge/contracts/releases";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { filterToQueryParams } from "./derive";
 import type {
@@ -169,7 +170,7 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: string;
-  verification: "probed" | "deployment";
+  verification: Exclude<RecordedReleaseVerification, "unverified">;
 }
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";

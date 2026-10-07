@@ -8,6 +8,7 @@ import { peopleOf } from '../lib/people.js';
 import { agrees } from '../lib/plural.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
+import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import { approvalRequired, environmentsOf, readReleasePath } from '../project-config/index.js';
 import { refuseRelease } from './refuse.js';
@@ -200,23 +201,37 @@ export async function decideApproval(input: {
     'approving or returning a release',
   );
   if (denied) throw new RefusalError([denied], denied.code);
-  const [row] = await db
-    .update(releaseApprovals)
-    .set({
-      decision: decision.decision === 'approve' ? 'approved' : 'returned',
-      decidedByUser: userId,
-      decidedAt: sql`now()`,
-      reason: decision.decision === 'return' ? decision.reason : null,
-    })
-    .where(
-      and(
-        eq(releaseApprovals.id, approvalId),
-        eq(releaseApprovals.runId, runId),
-        eq(releaseApprovals.projectId, projectId),
-        isNull(releaseApprovals.decision),
-      ),
-    )
-    .returning();
+  const row = await db.transaction(async (tx) => {
+    const [decided] = await tx
+      .update(releaseApprovals)
+      .set({
+        decision: decision.decision === 'approve' ? 'approved' : 'returned',
+        decidedByUser: userId,
+        decidedAt: sql`now()`,
+        reason: decision.decision === 'return' ? decision.reason : null,
+      })
+      .where(
+        and(
+          eq(releaseApprovals.id, approvalId),
+          eq(releaseApprovals.runId, runId),
+          eq(releaseApprovals.projectId, projectId),
+          isNull(releaseApprovals.decision),
+        ),
+      )
+      .returning();
+    if (decided?.decision && decided.decidedAt) {
+      await emitEvent(tx, 'release.approvalDecided', {
+        projectId,
+        runId,
+        approvalId,
+        decision: decided.decision,
+        reason: decided.reason,
+        decidedBy: userId,
+        decidedAt: decided.decidedAt.toISOString(),
+      });
+    }
+    return decided;
+  });
   if (!row) {
     const [held] = await db
       .select()
