@@ -1,0 +1,1 @@
+**A held release-gate issue now says when Forge could not check it already shipped.** No source host binding, an unplaceable commit or a refused close is named on the row's hold, beside the abort a person owes.

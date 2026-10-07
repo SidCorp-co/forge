@@ -11,57 +11,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { SourceHostUnavailable } from '../../src/integrations/source-host/index.js';
 import { createReleaseBatch } from '../../src/release-batch/create.js';
-import { abortBlockedHold, writeReleaseHolds } from '../../src/release-batch/hold.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { closeShippedEarlier } from '../../src/release-batch/shipped-earlier.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import { releaseWorld, seedProductionDeployTrigger, stubProbe } from '../helpers/release-world.js';
-
-const sha = (n: number) => n.toString(16).padStart(40, '0');
-const [A, B, N] = [sha(0xa), sha(0xb), sha(0xe)];
-const [C1, C2, C3] = [sha(0xc1), sha(0xc2), sha(0xc3)];
-
-/** `commit -> the commits it holds`: a release commit holds what is listed for it. */
-type History = Record<string, string[]>;
-const HISTORY: History = { [C1]: [A, C1], [C2]: [A, B, C1, C2] };
-
-interface HostOptions {
-  fail?: string;
-  /** `base..head` -> the subjects of the commits the range holds. */
-  ranges?: Record<string, string[]>;
-  head?: string;
-  /** Answers a range with fewer commits than it holds. */
-  incomplete?: boolean;
-}
-
-function host(history: History, opts: HostOptions = {}) {
-  return async () =>
-    ({
-      compare: async (base: string, head: string) => {
-        if (opts.fail) throw new Error(opts.fail);
-        return (history[head] ?? []).includes(base) ? 'ahead' : 'diverged';
-      },
-      branchHead: async () => opts.head ?? C3,
-      readRange: async (base: string, head: string) => {
-        if (opts.fail) return { ok: false, reason: opts.fail };
-        const subjects = opts.ranges?.[`${base}..${head}`] ?? [];
-        return {
-          ok: true,
-          complete: !opts.incomplete,
-          commits: subjects.map((message, i) => ({
-            sha: sha(0x1000 + i),
-            message,
-            parents: [],
-          })),
-        };
-      },
-    }) as never;
-}
+import {
+  A,
+  B,
+  C1,
+  C2,
+  HISTORY,
+  host,
+  N,
+  shippedEarlierWorld,
+} from '../helpers/shipped-earlier-world.js';
 
 let projectId: string;
 let ownerId: string;
 const fx = releaseWorld(() => ({ projectId, ownerId }));
+const { shipped, marked, asserted, claim, runOf, abortHold } = shippedEarlierWorld(
+  () => ({ projectId }),
+  fx,
+);
 
 beforeAll(async () => {
   testEnv();
@@ -82,67 +54,16 @@ beforeEach(async () => {
   stubProbe({});
 });
 
-/** A release that shipped: its finish record `finished` at `commit`, its ship stamp set. */
-async function shipped(version: string, commit: string, at: string): Promise<string> {
-  const id = randomUUID();
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, release_version, release_released_at, metadata)
-    VALUES (${id}, ${projectId}, 'system', 'completed', ${at}::timestamptz, ${version}, ${at}::timestamptz,
-            ${JSON.stringify({
-              source: 'release-batch',
-              finish: {
-                requestId: randomUUID(),
-                state: 'finished',
-                commit,
-                version: 1,
-              },
-            })}::jsonb)
-  `);
-  return id;
-}
-
-/** A waiting row marked as merged at `commit`, as Forge observed it. */
-async function marked(commit: string): Promise<string> {
-  const id = await fx.insertIssue('awaiting_release');
-  await db.execute(sql`UPDATE issues SET merged_commit_sha = ${commit} WHERE id = ${id}`);
-  return id;
-}
-
-/** A waiting row carrying an `asserted` mark: somebody's word, naming no commit. */
-const asserted = () => fx.insertIssue('awaiting_release');
-
 const subjectFor = async (id: string, what = 'the work') => {
   const [key] = await fx.displayIds([id]);
   return `${key}: ${what}`;
 };
-
-async function runOf(id: string) {
-  const [row] = await rows<{ status: string; claim: string | null }>(sql`
-    SELECT status, release_batch_run_id AS claim FROM issues WHERE id = ${id}
-  `);
-  return row;
-}
 
 async function rosterClosedOf(runId: string): Promise<string[]> {
   const [row] = await rows<{ closed: string[] | null }>(sql`
     SELECT metadata -> 'rosterClosed' AS closed FROM pipeline_runs WHERE id = ${runId}
   `);
   return row?.closed ?? [];
-}
-
-async function abortHold(id: string): Promise<void> {
-  await writeReleaseHolds({
-    projectId,
-    issueIds: [id],
-    holdFor: () =>
-      abortBlockedHold({
-        projectId,
-        version: '0.4.0-dev.2',
-        reason: 'Nothing to release: already shipped.',
-        waitingFor: 'record these issues as shipped',
-      }),
-    now: new Date(),
-  });
 }
 
 const close = (ids: string[], h = host(HISTORY)) =>
@@ -405,14 +326,6 @@ describe('an asserted mark names no commit, so the commits declaring the issue a
 });
 
 describe('an asserted mark that claimed a commit', () => {
-  /** The audit comment a mark writes (`merge-marker.ts` `writeMarkTrail`), as the kernel words it. */
-  async function claim(id: string, commit: string, tail = ''): Promise<void> {
-    await fx.postComment(
-      id,
-      `mark_merged target=dev commit=${commit}${tail}\nthis mark is a claim: commit ${commit} is recorded here as this call's claim`,
-    );
-  }
-
   it('is closed against the earliest release holding the claimed commit, with no declaring subject', async () => {
     const first = await shipped('0.4.0-dev.1', C1, '2026-10-06T10:00:00Z');
     await shipped('0.4.0-dev.2', C2, '2026-10-06T11:00:00Z');

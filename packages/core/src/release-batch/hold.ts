@@ -15,6 +15,7 @@ import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
+import { type ShippedEarlierUnsettled, withShippedEarlier } from './shipped-earlier-hold.js';
 
 /** What holds a row back, as the sweep decided it. */
 export interface ReleaseHold {
@@ -305,6 +306,29 @@ export async function abortBlockedIssues(issueIds: readonly string[]): Promise<S
       ),
     );
   return new Set(rows.map((r) => r.issueId));
+}
+
+/**
+ * Say on each abort-held row what `closeShippedEarlier` could not settle about it, or take back what
+ * an earlier sweep said where it now could. The abort stays the hold — its code, its owner, the act
+ * it names — and only the clause `withShippedEarlier` owns changes, so a row whose answer stands
+ * still is not rewritten.
+ */
+export async function restateAbortHolds(args: {
+  projectId: string;
+  issueIds: readonly string[];
+  unsettled: ReadonlyMap<string, ShippedEarlierUnsettled>;
+  now: Date;
+}): Promise<ReleaseHoldTally> {
+  if (args.issueIds.length === 0) return { written: 0, unchanged: 0, skipped: 0 };
+  const standing = await standingHolds(args.issueIds);
+  const held = args.issueIds.filter((id) => standing.get(id)?.code === RELEASE_ABORT_BLOCKED);
+  return writeReleaseHolds({
+    projectId: args.projectId,
+    issueIds: held,
+    holdFor: (id) => withShippedEarlier(standing.get(id) as ReleaseHold, args.unsettled.get(id)),
+    now: args.now,
+  });
 }
 
 interface ReleaseHoldTally {
