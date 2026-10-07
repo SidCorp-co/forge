@@ -158,7 +158,7 @@ const EFFECT: Rule[] = [
 const FEEDBACK_NOTE: Rule[] = [
   { re: new RegExp("^The reporter has turned this notice off, so it reached nobody: tell them yourself\\.$"), key: "feedback.notice.turnedOff" },
   { re: new RegExp("^The reporter is an agent, which has no bell: tell it where it listens\\.$"), key: "feedback.notice.agent" },
-  { re: new RegExp("^It shipped before Forge told reporters when a release shipped\\.$"), key: "feedback.notice.before" },
+  { re: new RegExp("^Shipped before release notices existed on this project \\((?<date>\\d{4}-\\d{2}-\\d{2})\\)\\.$"), key: "feedback.notice.before", vars: (g) => ({ date: g.date ?? "" }) },
   { re: new RegExp("^(?<release>\\S+) shipped it and sent the reporter no notice\\.$"), key: "feedback.notice.silent", vars: (g) => ({ release: g.release ?? "" }) },
   { re: new RegExp("^No release carries it, so none told the reporter: tell them yourself\\.$"), key: "feedback.notice.noRelease" },
   { re: new RegExp("^Verified automatically after (?<n>\\d+) days with no reply$"), key: "feedback.notice.autoVerified", vars: (g) => ({ n: g.n ?? "" }) },

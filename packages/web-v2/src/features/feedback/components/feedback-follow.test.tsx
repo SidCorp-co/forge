@@ -80,6 +80,7 @@ describe("feedback follows its work to the release", () => {
         reason: "The reporter is an agent, which has no bell: tell it where it listens.",
         shipped: { at: null, release: null },
         beforeNotices: false,
+      noticesBegan: null,
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
@@ -90,15 +91,16 @@ describe("feedback follows its work to the release", () => {
     const f = view({
       shipNotice: {
         state: "not_told",
-        reason: "It shipped before Forge told reporters when a release shipped.",
+        reason: "Shipped before release notices existed on this project (2026-10-07).",
         shipped: { at: "2026-10-07T04:13:32.795Z", release: "0.4.0-dev.89" },
         beforeNotices: true,
+      noticesBegan: "2026-10-07T07:39:54.217Z",
       },
     });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const line = screen.getByTestId("ship-notice-not-told");
     expect(line.textContent).toContain("Shipped in 0.4.0-dev.89 on ");
-    expect(line.textContent).toContain("before Forge told reporters");
+    expect(screen.getByTestId("ship-notice-before").textContent).toMatch(/^Not told: shipped before release notices existed \(.*2026.*\)\.$/);
     expect(line.textContent).not.toContain("No release has told");
     expect(within(line).getByRole("link", { name: "0.4.0-dev.89" }).getAttribute("href")).toBe("/projects/hop/releases/0.4.0-dev.89");
   });

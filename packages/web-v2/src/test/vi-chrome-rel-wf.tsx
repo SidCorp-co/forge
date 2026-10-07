@@ -72,7 +72,9 @@ const detail = {
   feedbackAnswered: [
     { key: "FB-1", title: "Muc", reporter: "Lan", agency: "human", told: "on_ship", toldAt: null },
     { key: "FB-2", title: "Muc", reporter: "Minh", agency: "agent", told: "not_told", toldAt: null },
+    { key: "FB-3", title: "Muc", reporter: "Lan", agency: "human", told: "before_notices", toldAt: null },
   ],
+  feedbackToldCounts: { on_ship: 1, told: 0, not_told: 1, before_notices: 1 },
   issues: [
     { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you("cut 0.1.0"), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
     { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you("cut 0.1.0"), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },

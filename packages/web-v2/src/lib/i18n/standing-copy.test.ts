@@ -38,7 +38,7 @@ const EFFECT = [
 const FEEDBACK_NOTE = [
   "The reporter has turned this notice off, so it reached nobody: tell them yourself.",
   "The reporter is an agent, which has no bell: tell it where it listens.",
-  "It shipped before Forge told reporters when a release shipped.",
+  "Shipped before release notices existed on this project (2026-10-07).",
   "0.2.0 shipped it and sent the reporter no notice.",
   "No release carries it, so none told the reporter: tell them yourself.",
   "Verified automatically after 14 days with no reply",

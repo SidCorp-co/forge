@@ -35,7 +35,7 @@ import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
 import { feedbackIdsOfRequirement, NO_FEEDBACK, routeIssuesOf } from './relations.js';
 import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
-import { relayOwedAmong } from './ship-notice.js';
+import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
 import {
   type CarrierRelease,
   feedbackStandingOf,
@@ -81,10 +81,8 @@ export interface Linked {
   releaseHolders: string[];
   /** The project's verify window in days, read only where a triaged item could read resolved. */
   verifyWindowDays: number;
-  /** Items of these rows that read resolved on issues and whose reporter nothing told (`ship-notice.ts`). */
-  untold: Set<string>;
-  /** Who holds feedback.approve, by name, read only where an item owes its reporter a relay. */
-  relayHolders: string[];
+  /** Whose reporter nothing told among these rows (`ship-notice.ts:untoldAmong`). */
+  untold: UntoldAmong;
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -208,8 +206,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ? await holderNames(RELEASE_ACT_PERMISSION[release], projectId)
       : [];
   const linked: Linked = {
-    untold: new Set(),
-    relayHolders: [],
+    untold: NONE_UNTOLD,
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
@@ -265,15 +262,13 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     roots: new Map(allRows.map((r) => [r.id, r])),
     names: await userNames(allRows.map((r) => r.reportedBy)),
   };
-  return {
-    ...linked,
-    ...(await relayOwedAmong(
-      projectId,
-      rows.filter(
-        (r) => r.route === 'issue' && r.status === 'triaged' && phaseIn(r, linked) === 'resolved',
-      ),
-    )),
-  };
+  const shipped = rows.flatMap((r) => {
+    const phase = r.route === 'issue' ? phaseIn(r, linked) : null;
+    return phase === 'resolved' || phase === 'verified'
+      ? [{ id: r.id, route: r.route, phase, reporterAgency: r.reporterAgency }]
+      : [];
+  });
+  return { ...linked, untold: await untoldAmong(projectId, shipped) };
 }
 
 /** Every issue an issue-routed item names, by key with its own status; none for another route. */
@@ -413,8 +408,8 @@ export function summaryOf(
           ? l.release
           : null,
       releaseHolders: l.releaseHolders,
-      relayOwed: phase === 'resolved' && l.untold.has(r.id),
-      relayHolders: l.relayHolders,
+      relayOwed: phase === 'resolved' && l.untold.untold.has(r.id),
+      relayHolders: l.untold.relayHolders,
       carrierVersion:
         owed.find((c) => c.release)?.release ??
         (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??
@@ -422,6 +417,7 @@ export function summaryOf(
     },
   );
   return {
+    reporterNotTold: notToldOf(r.id, l.untold),
     id: r.id,
     key: feedbackKey(r.fbSeq),
     title: withhold ? `${feedbackKey(r.fbSeq)} (${WITHHELD})` : r.title,
@@ -486,7 +482,12 @@ export async function listFeedbackAs(
     number
   >;
   for (const s of all) counts[s.attentionGroup] += 1;
-  return { ok: true, list: { feedback: listed, counts, sensitive: level !== 'off' } };
+  const untold = {
+    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
+    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
+    noticesBegan: linked.untold.noticesBegan,
+  };
+  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
 }
 
 /** The phase of one item as a write reads it, under the write's own transaction where given. */

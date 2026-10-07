@@ -106,7 +106,7 @@ function canOf(i: {
   phase: FeedbackPhase;
   userId: string;
   canSeeNotes: boolean;
-}): FeedbackView['can'] {
+}): Omit<FeedbackView['can'], 'tellShipped'> {
   const { facts, row, phase } = i;
   const approver = holds(facts, 'feedback.approve');
   const untriaged = phase === 'new' || phase === 'reopened';
@@ -249,6 +249,12 @@ export async function detailAs(
   const q = questions[0];
   const step = q?.steps.at(-1);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
+  const shipNotice = await shipNoticeOf(projectId, {
+    id: row.id,
+    route: row.route,
+    phase,
+    reporterAgency: row.reporterAgency,
+  });
   return shown<FeedbackView>(
     {
       ...summary,
@@ -313,13 +319,14 @@ export async function detailAs(
           }
         : null,
       openSuggestions: open?.n ?? 0,
-      shipNotice: await shipNoticeOf({
-        id: row.id,
-        route: row.route,
-        phase: summary.phase,
-        reporterAgency: row.reporterAgency,
-      }),
-      can: canOf({ facts, row, phase, userId: viewer.userId, canSeeNotes }),
+      shipNotice,
+      can: {
+        ...canOf({ facts, row, phase, userId: viewer.userId, canSeeNotes }),
+        tellShipped:
+          approver &&
+          shipNotice?.state === 'not_told' &&
+          reporters.some((r) => r.agency === 'human'),
+      },
       sensitive: level !== 'off',
     },
     feedbackKey(row.fbSeq),

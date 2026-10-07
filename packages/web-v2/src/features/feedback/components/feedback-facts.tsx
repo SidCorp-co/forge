@@ -196,7 +196,11 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
     <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
       <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
         <ShippedLine notice={notice} slug={slug} />
-        {feedbackNote(notice.reason, language)}
+        {notice.beforeNotices && notice.noticesBegan ? (
+          <span data-testid="ship-notice-before">{t("feedback.fact.notToldBefore", { date: time.date(notice.noticesBegan) })}</span>
+        ) : (
+          feedbackNote(notice.reason, language)
+        )}
       </span>
     </Fact>
   );

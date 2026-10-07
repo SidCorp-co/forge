@@ -12,6 +12,7 @@ import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggest
 import { useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
 import { RetargetForm } from "./feedback-retarget";
+import { TellShippedBar } from "./feedback-tell";
 import { TriageVerbs } from "./feedback-verbs";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
@@ -178,6 +179,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
       {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.retarget ? <RetargetForm projectId={projectId} f={f} /> : null}
+      {f.can.tellShipped ? <TellShippedBar projectId={projectId} f={f} /> : null}
       {f.can.redact ? <RedactBar projectId={projectId} f={f} /> : null}
     </div>
   );

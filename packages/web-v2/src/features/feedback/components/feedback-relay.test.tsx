@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { FeedbackView } from "../types";
+import { FeedbackActions } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
@@ -16,7 +17,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const NOW = Date.parse("2026-10-08T03:00:00.000Z");
 const CLOCK = { lang: "en" as const, now: NOW, timeZone: "UTC" };
-const CAN = { triage: false, verify: true, reopen: true, askVerify: true, redact: false, retarget: false, accept: false, snooze: false, message: true, note: true, attach: false };
+const CAN = { triage: false, verify: true, reopen: true, askVerify: true, redact: false, retarget: false, accept: false, snooze: false, message: true, tellShipped: false, note: true, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",
@@ -47,6 +48,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
       reason: "The reporter is an agent, which has no bell: tell it where it listens.",
       shipped: { at: "2026-10-07T09:00:00.000Z", release: "0.4.2" },
       beforeNotices: false,
+    noticesBegan: null,
     },
     attachments: [],
     decisions: [],
@@ -135,5 +137,27 @@ describe("a reporter no bell reaches is told by a person", () => {
       />,
     );
     expect(screen.getByTestId("ship-notice-how")).toHaveTextContent("Dana told them outside Forge");
+  });
+});
+
+describe("an item shipped before release notices existed is told on purpose, by anyone who wants to", () => {
+  const legacy = {
+    state: "not_told" as const,
+    reason: "Shipped before release notices existed on this project (2026-10-07).",
+    shipped: { at: "2026-10-01T09:00:00.000Z", release: "0.3.0" },
+    beforeNotices: true,
+    noticesBegan: "2026-10-07T07:39:54.217Z",
+  };
+
+  it("offers Tell the reporter now and sends it to core", async () => {
+    const calls = fakeCore(() => ({ body: { feedback: view() } }));
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ shipNotice: legacy, can: { ...CAN, verify: false, reopen: false, askVerify: false, tellShipped: true } })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tell the reporter now" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toEqual([{ method: "POST", path: "/projects/p1/feedback/FB-4/tell-shipped", body: {} }]));
+  });
+
+  it("offers nothing to tell where the reporter was told", () => {
+    renderWithQuery(<FeedbackActions projectId="p1" f={view({ can: { ...CAN, verify: false, reopen: false, askVerify: false, tellShipped: false } })} />);
+    expect(screen.queryByTestId("feedback-tell-shipped")).toBeNull();
   });
 });

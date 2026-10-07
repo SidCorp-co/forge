@@ -18,9 +18,9 @@ import { feedbackMessages } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
-import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
+import { reporterLanguageOf, tellReporters } from './reporter-language.js';
 import { messageNotice } from './reporter-notices.js';
 import { type Reporter, reportersOf, withBell } from './reporters.js';
 import { decideActRefusal } from './rules.js';
@@ -37,7 +37,9 @@ async function plan(tx: Tx, row: Row, audience: ToReporters, text: string) {
   const said = storedText(level, text.trim()).text;
   const addressed = audienceOf(await reportersOf(tx, row), audience);
   const reached = withBell(addressed);
-  const notice = messageNotice(feedbackKey(row.fbSeq), row.title, said);
+  // the preview reads as the first reporter it reaches will read it; each reporter gets their own language
+  const first = reached[0] ? await reporterLanguageOf(reached[0].id, row.projectId) : 'en';
+  const notice = messageNotice(first, feedbackKey(row.fbSeq), row.title, said);
   return { addressed, reached, notice, said };
 }
 
@@ -137,14 +139,12 @@ export async function sendMessage(input: {
       sentBy: actor.userId,
       sentAgency: actor.agency,
     });
-    await emitEvent(tx, 'feedback.reporterTold', {
-      projectId,
-      feedbackId: row.id,
-      kind: 'message',
+    await tellReporters(
+      tx,
+      { projectId, feedbackId: row.id, kind: 'message' },
       recipients,
-      title: p.notice.title,
-      body: p.notice.body,
-    });
+      (language) => messageNotice(language, feedbackKey(row.fbSeq), row.title, p.said),
+    );
     return null;
   });
   if (refusals) return { ok: false, refusals };

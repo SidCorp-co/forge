@@ -1,1 +1,1 @@
-**A reporter hears their feedback shipped**: one notice per item, in their language, saying what changed; a reporter no bell reaches is owed a recorded relay on triagers' Needs you; the page leads with state, ETA and release.
+**A reporter hears their feedback shipped**: every reporter notice reads in their language; one ship notice per item; untold items owe a relay on Needs you, or, shipped before release notices, read a dated state with "Tell the reporter now".

@@ -13,19 +13,33 @@ import { feedback, feedbackMessages, feedbackRouteIssues } from '../db/schema-fe
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { feedbackEgress, WITHHELD } from './egress.js';
+import { noticesBeganIn } from './ship-notice.js';
 
 const ISSUE_ROUTE: FeedbackRoute = 'issue';
 
+/** When the release shipped, and whether that was before this project's first release notice. */
+async function shippedAtOf(
+  projectId: string,
+  runId: string,
+): Promise<{ at: Date | null; beforeNotices: boolean }> {
+  const [[run], began] = await Promise.all([
+    db
+      .select({ at: pipelineRuns.releaseReleasedAt })
+      .from(pipelineRuns)
+      .where(eq(pipelineRuns.id, runId)),
+    noticesBeganIn(projectId),
+  ]);
+  const at = run?.at ?? null;
+  return { at, beforeNotices: at !== null && began !== null && at < began };
+}
+
 /** The latest message or relay to each item's reporters sent since the release shipped. */
 async function toldByPeople(
-  runId: string,
+  at: Date | null,
   items: readonly { id: string }[],
 ): Promise<Map<string, Date>> {
-  const [run] = await db
-    .select({ at: pipelineRuns.releaseReleasedAt })
-    .from(pipelineRuns)
-    .where(eq(pipelineRuns.id, runId));
-  if (!run?.at) return new Map();
+  const run = { at };
+  if (!run.at) return new Map();
   const rows = await db
     .select({ id: feedbackMessages.feedbackId, at: feedbackMessages.createdAt })
     .from(feedbackMessages)
@@ -95,10 +109,11 @@ export async function feedbackAnsweredBy(
           )
       : [];
   const told = new Map(sent.map((n) => [n.key, n]));
-  const relayed =
+  const ship =
     release.shipped && release.runId
-      ? await toldByPeople(release.runId, items)
-      : new Map<string, Date>();
+      ? await shippedAtOf(projectId, release.runId)
+      : { at: null, beforeNotices: false };
+  const relayed = await toldByPeople(ship.at, items);
   return items.map((i) => {
     const key = feedbackKey(i.seq);
     const notice = release.runId ? told.get(feedbackShippedKey(i.id, release.runId)) : undefined;
@@ -108,7 +123,9 @@ export async function feedbackAnsweredBy(
       ? 'on_ship'
       : at
         ? 'told'
-        : 'not_told';
+        : ship.beforeNotices
+          ? 'before_notices'
+          : 'not_told';
     return {
       key,
       title: withhold ? `${key} (${WITHHELD})` : i.title,

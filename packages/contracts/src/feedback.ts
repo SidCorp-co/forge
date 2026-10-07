@@ -300,6 +300,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_MESSAGE_EMPTY",
 	"FEEDBACK_MESSAGE_NO_RECIPIENT",
 	"FEEDBACK_RELAY_NOT_TO_REPORTERS",
+	"FEEDBACK_ALREADY_TOLD",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
 	"FEEDBACK_VERIFY_ASK_SELF",
@@ -639,6 +640,8 @@ export type FeedbackWaitingKind = (typeof FEEDBACK_WAITING_KINDS)[number];
 /** One item as a list row reads it; the derived facts are the server's, never the client's. */
 export interface FeedbackSummary
 	extends Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
+	/** Set on a shipped issue-routed item nothing told its reporter, by which of the two it is. */
+	reporterNotTold: FeedbackNotTold | null;
 	id: string;
 	key: string;
 	title: string;
@@ -682,9 +685,14 @@ export type FeedbackShipNotice =
 			reason: string;
 			/** What the record says about the ship itself: when, and in which release (null when no release carries it). */
 			shipped: { at: string | null; release: string | null };
-			/** The work shipped before Forge told reporters at all, so no release owed this reporter a notice. */
+			/** The work shipped before this project's first release notice, so no release owed this reporter one; nobody owes a relay. */
 			beforeNotices: boolean;
+			/** This project's first release notice, the cutoff `beforeNotices` is read against; null while none was sent. */
+			noticesBegan: string | null;
 	  };
+
+/** Why a shipped item's reporter was not told: a relay is owed, or it shipped before release notices existed. */
+export type FeedbackNotTold = "owed" | "before_notices";
 
 /** The confirmation of the fix: who and when, or that nobody did within the window and Forge did. */
 export interface FeedbackVerifiedView {
@@ -738,6 +746,8 @@ export interface FeedbackView extends FeedbackSummary {
 		snooze: boolean;
 		/** Send a message to its reporters. */
 		message: boolean;
+		/** Tell its reporters now that the work shipped: a shipped item nothing told yet, with a reporter a bell reaches. */
+		tellShipped: boolean;
 		/** Write an internal note, which no reporter is ever sent. */
 		note: boolean;
 		/** Add an attachment: a project writer, while the reporter's data stands. */
@@ -753,6 +763,8 @@ export interface FeedbackResponse {
 export interface FeedbackListResponse {
 	feedback: FeedbackSummary[];
 	counts: Record<FeedbackAttentionGroup, number>;
+	/** Shipped items whose reporter nothing told, counted apart: owed a relay, or shipped before release notices existed (since `noticesBegan`). */
+	untold: { owed: number; beforeNotices: number; noticesBegan: string | null };
 	sensitive: boolean;
 }
 

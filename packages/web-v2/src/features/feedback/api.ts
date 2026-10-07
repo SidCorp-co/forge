@@ -81,6 +81,8 @@ export const feedbackApi = {
     apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),
   sendMessage: (projectId: string, key: string, body: { audience: FeedbackMessageAudience; text: string; relayed?: boolean }) =>
     apiClient<FeedbackResponse>(`${one(projectId, key)}/messages`, post(body)),
+  /** Tells the reporters now that the work shipped, in each one's language; refused once they were told. */
+  tellShipped: (projectId: string, key: string) => apiClient<FeedbackResponse>(`${one(projectId, key)}/tell-shipped`, post({})),
   /** Each file in turn, so a refusal names the one core would not keep; the item reads as the last kept left it. */
   attach: async (projectId: string, key: string, files: readonly File[]): Promise<FeedbackResponse | null> => {
     let last: FeedbackResponse | null = null;

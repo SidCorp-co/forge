@@ -21,7 +21,8 @@ vi.mock('./auto-resolve.js', () => ({
 
 vi.mock('../feedback/index.js', async () => {
   const { noticeCopy } = await import('../feedback/reporter-language.js');
-  return { noticeCopy, reporterLanguageOf: async () => 'vi' };
+  const { shippedNotice } = await import('../feedback/reporter-notices.js');
+  return { noticeCopy, shippedNotice, reporterLanguageOf: async () => 'vi' };
 });
 
 const { consumerOf } = await import('../outbox/consumers.js');

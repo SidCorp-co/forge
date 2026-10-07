@@ -334,9 +334,17 @@ export function detailOf(
   const reqIds = new Set(facts.flatMap((i) => (i.requirementId ? [i.requirementId] : [])));
   const latest = p.approvals[0] ?? null;
   const strip = ({ runId: _run, ...view }: ApprovalView): ReleaseApprovalView => view;
+  const toldCount = (told: ReleaseFeedbackView['told']) =>
+    feedbackAnswered.filter((f) => f.told === told).length;
   return {
     ...summary,
     feedbackAnswered,
+    feedbackToldCounts: {
+      on_ship: toldCount('on_ship'),
+      told: toldCount('told'),
+      not_told: toldCount('not_told'),
+      before_notices: toldCount('before_notices'),
+    },
     issues,
     changes: releaseChangesOf(issues.map((i) => ({ key: i.key, reading: i.landing }))),
     requirementsCompleted: [...reqIds]

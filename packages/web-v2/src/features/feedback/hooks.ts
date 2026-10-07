@@ -113,3 +113,14 @@ export function useSendMessage(projectId: string, key: string) {
     onSettled: invalidate,
   });
 }
+
+/** Tells a shipped item's reporters now that it shipped; the answer is the item reading them told. */
+export function useTellShipped(projectId: string, key: string) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate(projectId);
+  return useMutation({
+    mutationFn: () => feedbackApi.tellShipped(projectId, key),
+    onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
+    onSettled: invalidate,
+  });
+}

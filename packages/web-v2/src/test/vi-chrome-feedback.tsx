@@ -21,7 +21,7 @@ import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 
 const P = "p1";
 const AT = "2026-10-05T08:00:00.000Z";
-const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, note: true, attach: true };
+const CAN = { triage: true, verify: true, reopen: true, askVerify: true, redact: true, retarget: true, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: true };
 
 const summary = (n: number, over: Partial<FeedbackSummary> = {}): FeedbackSummary =>
   ({
@@ -147,7 +147,7 @@ export const feedbackFacts = () => (
         attentionGroup: "waiting",
         waitingOn: { kind: "person", who: "Lan", act: "verify the fix shipped in 0.2.0", rule: "r", ref: "0.2.0" } as never,
         route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null },
-        shipNotice: { state: "not_told", reason: "The reporter has turned this notice off, so it reached nobody: tell them yourself.", shipped: { at: AT, release: "0.2.0" }, beforeNotices: false },
+        shipNotice: { state: "not_told", reason: "The reporter has turned this notice off, so it reached nobody: tell them yourself.", shipped: { at: AT, release: "0.2.0" }, beforeNotices: false, noticesBegan: null },
         snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" },
         source: { agentReport: { id: "0123456789ab", kind: "bug", severity: "high", target: "issue", targetRef: "ISS-4", createdAt: AT } },
         sensitive: true,
@@ -155,7 +155,7 @@ export const feedbackFacts = () => (
     />
     <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, reason: "Verified automatically after 14 days with no reply" }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" } }, route: null })} />
     <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null }, autoVerify: null })} />
-    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null }, shipNotice: { state: "not_told", reason: "No release carries it, so none told the reporter: tell them yourself.", shipped: { at: null, release: null }, beforeNotices: false } })} />
+    <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null }, shipNotice: { state: "not_told", reason: "No release carries it, so none told the reporter: tell them yourself.", shipped: { at: null, release: null }, beforeNotices: false, noticesBegan: null } })} />
     <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: { kind: "none", who: "Nobody", act: "", rule: "r", ref: null } as never })} />
     <FeedbackBanner slug="hop" f={view({ attentionGroup: "needs_you", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: { kind: "you", who: "You", act: "Approve release 0.2.0", rule: "r", ref: "0.2.0" } as never })} />
     <FeedbackBanner slug="hop" f={view({ attentionGroup: "waiting", route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null }, waitingOn: { kind: "person", who: "Lan", act: "verify the fix shipped in 0.2.0", rule: "r", ref: "0.2.0" } as never })} />

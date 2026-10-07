@@ -2,9 +2,11 @@
 // telling, never off a flag that could drift from it. A release's notice that reached their bell tells
 // them (`notifications/notify-feedback.ts`); so does a message to reporters sent once the work shipped,
 // or a relay a person recorded for a reporter no bell reaches (a reporters message with no recipient).
-// While nothing told them, the item owes a holder of feedback.approve that relay (`standing.ts`).
+// While nothing told them, the item owes a holder of feedback.approve that relay (`standing.ts`),
+// unless its work shipped before this project's releases sent any notice: that item reads a named,
+// dated state of its own, owes nobody, and anyone who wants to may still tell the reporter now.
 
-import type { FeedbackPhase, FeedbackShipNotice } from '@forge/contracts/feedback';
+import type { FeedbackNotTold, FeedbackPhase, FeedbackShipNotice } from '@forge/contracts/feedback';
 import { feedbackShippedPrefix } from '@forge/contracts/notifications';
 import { and, desc, eq, inArray, like, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -58,14 +60,21 @@ async function shippedOf(feedbackIds: readonly string[]): Promise<Map<string, Sh
   return out;
 }
 
-/** The first moment a shipped release put `release.shipped` on the outbox; null before any did. */
-async function noticesBegan(): Promise<Date | null> {
+/**
+ * When this project's releases began telling reporters: the first `release.shipped` it put on the
+ * outbox, the event every ship notice is sent from. Null while none has.
+ */
+export async function noticesBeganIn(projectId: string): Promise<Date | null> {
   const [first] = await db
     .select({ at: sql<Date | null>`min(${pipelineOutbox.createdAt})` })
     .from(pipelineOutbox)
-    .where(eq(pipelineOutbox.type, 'release.shipped'));
+    .where(
+      and(eq(pipelineOutbox.type, 'release.shipped'), eq(pipelineOutbox.projectId, projectId)),
+    );
   return first?.at == null ? null : new Date(first.at);
 }
+
+const day = (at: Date) => at.toISOString().slice(0, 10);
 
 interface SentNotice {
   feedbackId: string;
@@ -139,15 +148,15 @@ function untoldReason(
   item: ShipNoticeItem,
   notice: SentNotice | undefined,
   shipped: Shipped,
-  before: boolean,
+  began: Date | null,
 ): string {
+  if (began) return `Shipped before release notices existed on this project (${day(began)}).`;
   if (notice) {
     return 'The reporter has turned this notice off, so it reached nobody: tell them yourself.';
   }
   if (item.reporterAgency === 'agent') {
     return 'The reporter is an agent, which has no bell: tell it where it listens.';
   }
-  if (before) return 'It shipped before Forge told reporters when a release shipped.';
   return shipped.release
     ? `${shipped.release} shipped it and sent the reporter no notice.`
     : 'No release carries it, so none told the reporter: tell them yourself.';
@@ -158,6 +167,7 @@ function untoldReason(
  * work shipped, else why nobody told the reporter. Items that have not shipped read null.
  */
 export async function shipNoticesOf(
+  projectId: string,
   items: readonly ShipNoticeItem[],
 ): Promise<Map<string, FeedbackShipNotice | null>> {
   const out = new Map<string, FeedbackShipNotice | null>(items.map((i) => [i.id, null]));
@@ -168,7 +178,7 @@ export async function shipNoticesOf(
     shippedOf(ids),
     noticesOf(ids),
     reporterMessagesOf(ids),
-    noticesBegan(),
+    noticesBeganIn(projectId),
   ]);
   const names = await userNames(messages.map((m) => m.by));
   for (const item of shippedItems) {
@@ -200,38 +210,69 @@ export async function shipNoticesOf(
       });
       continue;
     }
-    const before =
-      !notice && item.reporterAgency === 'human' && ship.at !== null && began !== null
-        ? ship.at < began
-        : false;
+    const before = !notice && ship.at !== null && began !== null && ship.at < began;
     out.set(item.id, {
       state: 'not_told',
-      reason: untoldReason(item, notice, ship, before),
+      reason: untoldReason(item, notice, ship, before ? began : null),
       shipped: { at: ship.at?.toISOString() ?? null, release: ship.release },
       beforeNotices: before,
+      noticesBegan: began?.toISOString() ?? null,
     });
   }
   return out;
 }
 
-export async function shipNoticeOf(item: ShipNoticeItem): Promise<FeedbackShipNotice | null> {
-  return (await shipNoticesOf([item])).get(item.id) ?? null;
+export async function shipNoticeOf(
+  projectId: string,
+  item: ShipNoticeItem,
+): Promise<FeedbackShipNotice | null> {
+  return (await shipNoticesOf(projectId, [item])).get(item.id) ?? null;
+}
+
+export interface UntoldAmong {
+  /** Resolved items no notice, message or relay told, shipped once notices existed: a relay is owed. */
+  untold: Set<string>;
+  /** Shipped items nothing told whose work shipped before the project's first release notice. */
+  beforeNotices: Set<string>;
+  /** That first notice, when the project has sent one. */
+  noticesBegan: string | null;
+  /** Who holds feedback.approve, by name, read only where a relay is owed. */
+  relayHolders: string[];
 }
 
 /**
- * Of items that read resolved on issues, those whose reporter nothing told, and who holds
- * feedback.approve by name (read only where one is owed): the relay `standing.ts` waits on.
+ * Of shipped items on issues, those whose reporter nothing told: owed a relay (`standing.ts`), or
+ * shipped before this project's releases told anyone, which owes nobody and is counted apart.
  */
-export async function relayOwedAmong(
+export async function untoldAmong(
   projectId: string,
-  resolved: readonly Omit<ShipNoticeItem, 'phase'>[],
-): Promise<{ untold: Set<string>; relayHolders: string[] }> {
-  const untold = new Set<string>();
-  if (resolved.length === 0) return { untold, relayHolders: [] };
-  const notices = await shipNoticesOf(resolved.map((r) => ({ ...r, phase: 'resolved' })));
-  for (const [id, n] of notices) if (n?.state === 'not_told') untold.add(id);
-  return {
-    untold,
-    relayHolders: untold.size > 0 ? await holderNames('feedback.approve', projectId) : [],
+  shipped: readonly ShipNoticeItem[],
+): Promise<UntoldAmong> {
+  const out: UntoldAmong = {
+    untold: new Set(),
+    beforeNotices: new Set(),
+    noticesBegan: null,
+    relayHolders: [],
   };
+  if (shipped.length === 0) return out;
+  const phases = new Map(shipped.map((i) => [i.id, i.phase]));
+  for (const [id, n] of await shipNoticesOf(projectId, shipped)) {
+    if (n?.state !== 'not_told') continue;
+    out.noticesBegan = n.noticesBegan;
+    if (n.beforeNotices) out.beforeNotices.add(id);
+    else if (phases.get(id) === 'resolved') out.untold.add(id);
+  }
+  if (out.untold.size > 0) out.relayHolders = await holderNames('feedback.approve', projectId);
+  return out;
 }
+
+export const NONE_UNTOLD: UntoldAmong = {
+  untold: new Set(),
+  beforeNotices: new Set(),
+  noticesBegan: null,
+  relayHolders: [],
+};
+
+/** Which way a shipped item's reporter was not told, or null where they were (or it has not shipped). */
+export const notToldOf = (id: string, u: UntoldAmong): FeedbackNotTold | null =>
+  u.untold.has(id) ? 'owed' : u.beforeNotices.has(id) ? 'before_notices' : null;

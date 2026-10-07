@@ -11,7 +11,7 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, notifications } from '../db/schema.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
-import { noticeCopy, reporterLanguageOf } from '../feedback/index.js';
+import { noticeCopy, reporterLanguageOf, shippedNotice } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -110,15 +110,7 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       recipients: [item.reporter],
       projectId: p.projectId,
       type: 'feedback_shipped',
-      title: noticeCopy(language, 'shipped.title', {
-        key,
-        version: p.version,
-        title: item.title,
-      }),
-      body:
-        said.length > 0
-          ? said.join('\n')
-          : noticeCopy(language, 'shipped.body', { version: p.version }),
+      ...shippedNotice(language, key, item.title, p.version, said),
       dedupeKey: feedbackShippedKey(item.id, p.runId),
     });
   }
