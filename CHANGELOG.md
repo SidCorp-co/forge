@@ -3143,6 +3143,9 @@
 
 ### Fixed
 
+- **A release checks every issue it names, however its id is capitalised.** An issue named by an
+  upper-case id skipped every check, so a release could take one it could not close (ISS-1384).
+
 - **`top`'s keys behave.** A page `n` or `p` shows is not turned straight away, `--help` lists every key, and on unix Ctrl-\\ and Ctrl-Z work as in any terminal program; on Windows the view says they do nothing.
 - **A release says, before you press it, which issues it could not close.** Each shows why and
   what clears it, cannot be selected, and is left off automatic and scheduled releases instead of

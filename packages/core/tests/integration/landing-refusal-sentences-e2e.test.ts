@@ -188,7 +188,7 @@ describe('LANDING_SHAPE_MARK_STANDS names what decided the lane the mark was mad
 });
 
 describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
-  it('raises one blocker per lane in roster order, each naming its issues in roster order', async () => {
+  it('raises one blocker per lane in roster order, each naming its issues once whatever their case', async () => {
     const w = await world('standard');
     await harness.db.execute(sql`
       UPDATE projects SET base_branch = 'main', release_chain = '[{"branch":"main"}]'::jsonb
@@ -204,8 +204,12 @@ describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
       VALUES (${connection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true, '{}'::jsonb)
     `);
     // Keyed and inserted 1, 2, 3, and sent 2, 3, 1: neither the table's order nor its reverse is
-    // the roster's, so a read that does not keep the roster's order cannot pass by chance.
-    const key = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+    // the roster's, so a read that does not keep the roster's order cannot pass by chance. Each key
+    // carries hex letters, and the roster spells them in three cases and names one twice: Postgres
+    // matches a uuid in any case, so every spelling is the same issue and is checked once.
+    const key = (n: number) => `abcdef0${n}-0000-4000-8000-00000000000${n}`;
+    const mixedCase = (id: string) =>
+      [...id].map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c)).join('');
     const gitFirst = await issueAt(w, 'awaiting_release', null, {}, key(1));
     const gitSecond = await issueAt(w, 'awaiting_release', null, {}, key(2));
     const declared = await issueAt(
@@ -216,7 +220,7 @@ describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
       key(3),
     );
     const report = await harness.mods.collectReleaseBlockers(w.projectId, {
-      issueIds: [gitSecond, declared, gitFirst],
+      issueIds: [gitSecond.toUpperCase(), mixedCase(declared), gitFirst, gitSecond],
       door: 'record',
     });
     const unmerged = report.blockers.filter((b) => b.code === 'RELEASE_WORK_UNMERGED');
