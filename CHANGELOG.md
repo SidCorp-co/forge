@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.126] - 2026-10-07
+
+Agents, sessions, runs, schedules, skills and conversations screens read in Vietnamese
+
+### Changed
+
+- **Sessions, agents, runs, schedules, skills and conversations now read in Vietnamese.** With the interface set to Tiếng Việt, their menus, labels, gate reasons, dates and release settings are translated; what people and agents wrote stays as written.
+
 ## [0.4.0-dev.125] - 2026-10-07
 
 Approvals and answers reach a running pool job's pane without a manual nudge
