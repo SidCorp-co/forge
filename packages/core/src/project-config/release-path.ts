@@ -1,9 +1,10 @@
 import { releaseApprovalRequired } from '@forge/contracts/releases';
+import { crossingsTo, type Promotion } from './promotion-path.js';
 import type { DeploymentTrigger, EnvironmentDeclaration, ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
 import { defaultBranchOf } from './source.js';
 
-export type Promotion = ProjectDocument['promotions'][number];
+export type { Promotion } from './promotion-path.js';
 
 export interface NamedEnvironment {
   name: string;
@@ -36,24 +37,6 @@ export function productionOf(document: ProjectDocument): NamedEnvironment | null
 
 export function bindingOf(env: NamedEnvironment): string | null {
   return 'binding' in env.declaration.deployment ? env.declaration.deployment.binding : null;
-}
-
-function crossingsTo(
-  promotions: readonly Promotion[],
-  from: string,
-  to: string,
-): Promotion[] | null {
-  const queue: { at: string; trail: Promotion[] }[] = [{ at: from, trail: [] }];
-  const seen = new Set([from]);
-  while (queue.length > 0) {
-    const { at, trail } = queue.shift() as { at: string; trail: Promotion[] };
-    if (at === to) return trail;
-    for (const p of promotions.filter((q) => q.from === at && !seen.has(q.to))) {
-      seen.add(p.to);
-      queue.push({ at: p.to, trail: [...trail, p] });
-    }
-  }
-  return null;
 }
 
 export function releasePathOf(revision: number, document: ProjectDocument): ReleasePathRead {

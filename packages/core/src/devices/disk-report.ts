@@ -176,7 +176,7 @@ function sayDiskVerdict(deviceId: string, disk: DeviceDisk, was: DiskVerdict | n
   if (disk.verdict === 'critical') {
     logger.error(
       fields,
-      `disk: this box's scratch is under ${DISK_CRITICAL_FREE_PERCENT}% free; a run that cannot create a file fails in whatever way its own tooling fails, and the worktree sweep will not reclaim it`,
+      `disk: this box's scratch is under ${DISK_CRITICAL_FREE_PERCENT}% free; a run that cannot create a file fails in whatever way its own tooling fails, and the runner's hourly sweep removes only a run's scratch older than 48 hours that no live run holds, never a checkout with unsaved or unpushed work, so it may not free enough`,
     );
   } else if (disk.verdict === 'tight' || disk.verdict === 'unmeasurable') {
     logger.warn(fields, `disk: this box's scratch reads ${disk.verdict}`);

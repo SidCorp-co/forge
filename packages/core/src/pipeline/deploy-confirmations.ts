@@ -1,4 +1,5 @@
 import { DEPLOY_CONFIRM_WINDOW_MS } from '@forge/contracts/pipeline';
+import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -47,7 +48,7 @@ async function writeHold(
    *  building, and refusing THEIR record leaves it saying a finished deploy is still pending. */
   evenIfTerminal = false,
 ): Promise<boolean> {
-  const live = inArray(pipelineRuns.status, ['running', 'paused']);
+  const live = inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES);
   const written = await db
     .update(pipelineRuns)
     .set({
@@ -239,7 +240,9 @@ export async function markCloseDeferred(runId: string): Promise<void> {
       metadata: sql`jsonb_set(coalesce(${pipelineRuns.metadata}, '{}'::jsonb), ARRAY[${DEPLOY_CLOSE_PENDING_METADATA_KEY}], 'true'::jsonb, true)`,
       updatedAt: new Date(),
     })
-    .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])));
+    .where(
+      and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES)),
+    );
 }
 
 export async function isCloseDeferred(runId: string): Promise<boolean> {

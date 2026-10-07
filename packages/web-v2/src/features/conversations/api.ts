@@ -135,13 +135,22 @@ export const conversationsApi = {
 
   /**
    * Mint a ticket, then stream the bytes to the capability URL it names — two
-   * calls because the second carries no credential (ISS-1146).
+   * calls because the second carries no credential (ISS-1146). `operationId` is minted once per
+   * file and sent again on a retry, so a lost answer is replayed rather than stored a second time.
    */
-  upload: async (id: string, file: File): Promise<ConversationAttachment> => {
+  upload: async (
+    id: string,
+    file: File,
+    operationId: string,
+  ): Promise<ConversationAttachment> => {
     const ticket = await apiClient<UploadTicket>(`/conversations/${id}/attachments`, {
       method: "POST",
       // A browser naming no type gets a refusal that names one, not a schema error.
-      body: JSON.stringify({ name: file.name, mime: file.type || "application/octet-stream" }),
+      body: JSON.stringify({
+        name: file.name,
+        mime: file.type || "application/octet-stream",
+        operationId,
+      }),
     });
     return apiPutBytes<ConversationAttachment>(`/uploads/${ticket.uploadId}`, file);
   },

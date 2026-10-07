@@ -2,9 +2,9 @@
 
 // web-v2 feature module: parked decisions — react-query surface.
 //
-// There is no websocket event for a question in either direction: core's
-// `wakeMastersForAnswer` publishes to DEVICE rooms, which no browser subscribes
-// to. So this module refetches its own key and nothing else will do it for it.
+// A question's ask, answer, void and expiry reach the project room as `question.changed`
+// (`lib/ws/event-router.ts`), which refetches `["questions"]`; the polls below stay as the
+// fallback for a dropped socket.
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";

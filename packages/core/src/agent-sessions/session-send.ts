@@ -23,6 +23,7 @@ import {
   sessionInbox,
 } from '../db/schema-session-inbox.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { SEND_UNDELIVERED_DEADLINE_MS } from '../lib/session-send-deadline.js';
 import { agentSessionsPorts } from './ports.js';
 import { pushSession } from './push.js';
 import { refuseSession } from './refusals.js';
@@ -243,7 +244,8 @@ async function refuseUnsettled(agentSessionId: string, seq: number, what: string
 }
 
 interface SendResolution {
-  outcome: SessionSendOutcome;
+  /** `undelivered`: nobody refused and nobody confirmed for longer than the deadline. */
+  outcome: SessionSendOutcome | 'undelivered';
   /** True once the message is known to have reached the model, not merely the CLI. */
   applied: boolean;
 }
@@ -258,6 +260,7 @@ export async function resolveSessionSend(
   }
   if (isSendEpisodeLive(row, now)) return { outcome: 'unknown', applied };
 
+  const unknown = undeliveredAfterDeadline(row, applied, now);
   const [session] = await db
     .select({ deviceId: agentSessions.deviceId, status: agentSessions.status })
     .from(agentSessions)
@@ -276,5 +279,16 @@ export async function resolveSessionSend(
   if (lastSeen === null || now - lastSeen > dispatchLivenessMs()) {
     return { outcome: 'gone', applied };
   }
-  return { outcome: 'unknown', applied };
+  return { outcome: unknown, applied };
+}
+
+function undeliveredAfterDeadline(
+  row: SessionInboxRow,
+  applied: boolean,
+  now: number,
+): 'unknown' | 'undelivered' {
+  if (applied) return 'unknown';
+  return now - row.sendRequestedAt.getTime() > SEND_UNDELIVERED_DEADLINE_MS
+    ? 'undelivered'
+    : 'unknown';
 }

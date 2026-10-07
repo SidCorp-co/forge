@@ -24,6 +24,7 @@ import {
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { refuser } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
+import { emitEvent, emitEvents } from '../outbox/index.js';
 import { holds, type PermissionFacts } from '../permissions/index.js';
 import {
   type AwaitedDesign,
@@ -287,6 +288,11 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
     })
     .returning();
   if (!row) throw new Error('the question was not written');
+  await emitEvent(executor, 'question.asked', {
+    questionId: row.id,
+    projectId: row.projectId,
+    issueId: row.issueId ?? null,
+  });
   return view(row);
 }
 export function answeredBody(step: QuestionStep | undefined): string {
@@ -312,10 +318,17 @@ export async function deleteFeedbackQuestions(tx: Tx, feedbackId: string): Promi
 /** A questionnaire batch's items, each a question of its own, asked in the batch's transaction. */
 export async function insertBatchQuestions(
   tx: Tx,
-  rows: Array<typeof agentQuestions.$inferInsert>,
+  rows: Array<typeof agentQuestions.$inferInsert & { id: string }>,
 ): Promise<void> {
   if (rows.length === 0) return;
   await tx.insert(agentQuestions).values(rows);
+  await emitEvents(
+    tx,
+    rows.map((r) => ({
+      type: 'question.asked' as const,
+      payload: { questionId: r.id, projectId: r.projectId, issueId: r.issueId ?? null },
+    })),
+  );
 }
 
 /** Records where answered questionnaire items landed: each row's whole landing list, as read and extended. */

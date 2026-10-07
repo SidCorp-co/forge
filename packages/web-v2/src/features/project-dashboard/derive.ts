@@ -9,6 +9,7 @@ import {
   type RunnerLimitDisplay,
   runnerLimitDisplay,
 } from "@/features/runners/types";
+import { LIVE_PIPELINE_RUN_STATUSES } from "@forge/contracts/run-machine";
 import { NON_OPEN_STATUSES as NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import type { QueueStats } from "@/features/sessions/types";
 
@@ -129,8 +130,6 @@ export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageD
  * Live runs + in-flight spend (AC#3, AC#1)
  * ------------------------------------------------------------------ */
 
-const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
-
 /** A run whose issue waits at the manual release gate. */
 const isAwaitingRelease = (r: PipelineRunListItem) => r.issueStatus === "awaiting_release";
 
@@ -138,7 +137,7 @@ const isAwaitingRelease = (r: PipelineRunListItem) => r.issueStatus === "awaitin
  *  ordered by `startedAt` desc). Includes runs parked at the manual release
  *  gate — prefer `activeRuns`/`awaitingReleaseRuns` for anything user-facing. */
 export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
+  return (runs ?? []).filter((r) => (LIVE_PIPELINE_RUN_STATUSES as readonly string[]).includes(r.status));
 }
 
 export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {

@@ -150,8 +150,8 @@ function DeviceDisk({ device }: { device: DeviceRow }) {
 			{disk && disk.verdict !== "clear" && disk.verdict !== "unmeasurable" && (
 				<p className="fg-caption text-subtle">
 					Tight is under {disk.tightFreePercent}% free on either axis, critical under{" "}
-					{disk.criticalFreePercent}%. The worktree sweep does not reclaim scratch outside a
-					repository.
+					{disk.criticalFreePercent}%. The runner sweeps its scratch hourly, removing a run's entries older than 48 hours that no
+					live run holds; a checkout with unsaved or unpushed work is kept.
 				</p>
 			)}
 			{stale && <p className="fg-caption text-subtle">{stale}.</p>}

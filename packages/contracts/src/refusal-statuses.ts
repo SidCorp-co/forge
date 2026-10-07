@@ -1,5 +1,6 @@
 // Every module's non-422 refusal codes in one table, read by both doors of core.
 import { AGENT_SESSION_REFUSAL_STATUSES } from "./agent-sessions.js";
+import { ATTACHMENT_REFUSAL_STATUSES } from "./attachments.js";
 import { AUTH_REFUSAL_STATUSES } from "./auth.js";
 import { CONVERSATION_REFUSAL_STATUSES } from "./conversations.js";
 import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
@@ -25,6 +26,7 @@ const DECLARED: ReadonlyArray<
 > = [
 	REQUEST_REFUSAL_STATUSES,
 	AGENT_SESSION_REFUSAL_STATUSES,
+	ATTACHMENT_REFUSAL_STATUSES,
 	AUTH_REFUSAL_STATUSES,
 	CONVERSATION_REFUSAL_STATUSES,
 	DEVICE_REFUSAL_STATUSES,
