@@ -1,0 +1,213 @@
+/**
+ * The rows a forecast reads, each where it already lives: the landed history off `issues.merged_at`
+ * and the first `in_progress` move in `activity_log`, and whether anything can take the project's
+ * work off the runners' dispatch liveness and its master's standing.
+ */
+
+import { FORECAST_LABEL, FORECAST_WINDOW_DAYS, type Forecast } from '@forge/contracts/forecast';
+import { ISSUE_RESOLVED_STATUSES, type IssueStatus } from '@forge/contracts/issue-machine';
+import type { IssueStandingRow } from '@forge/contracts/issue-standing';
+import { type SQL, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { idList, rowsOf } from '../db/raw-sql.js';
+import { readMasterStanding } from '../masters/index.js';
+import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
+import type { CycleSample, History, Wait } from './model.js';
+
+const DAY_MS = 86_400_000;
+export const LANDED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
+
+interface SampleRow {
+  complexity: string | null;
+  landed_at: string;
+  minutes: number;
+}
+
+export async function readHistory(projectId: string, now: Date): Promise<History> {
+  const rows = rowsOf<SampleRow>(
+    await db.execute(sql`
+      SELECT i.complexity, i.merged_at AS landed_at,
+             EXTRACT(EPOCH FROM (i.merged_at - s.started_at)) / 60 AS minutes
+        FROM issues i
+        JOIN LATERAL (
+          SELECT min(al.created_at) AS started_at
+            FROM activity_log al
+           WHERE al.issue_id = i.id
+             AND al.action = 'issue.statusChanged'
+             AND al.payload ->> 'to' = 'in_progress'
+        ) s ON s.started_at IS NOT NULL AND s.started_at < i.merged_at
+       WHERE i.project_id = ${projectId}
+         AND i.merged_at IS NOT NULL
+         AND i.merged_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
+         AND i.merged_at <= ${now.toISOString()}::timestamptz`),
+  );
+  const samples: CycleSample[] = rows.map((r) => ({
+    minutes: Number(r.minutes),
+    complexity: r.complexity,
+  }));
+  const first = rows.reduce(
+    (t, r) => Math.min(t, new Date(r.landed_at).getTime()),
+    Number.POSITIVE_INFINITY,
+  );
+  const spanDays = Number.isFinite(first)
+    ? Math.min(FORECAST_WINDOW_DAYS, Math.max(1, (now.getTime() - first) / DAY_MS))
+    : 0;
+  return { samples, spanDays };
+}
+
+interface WorkRow {
+  id: string;
+  iss_seq: number;
+  status: IssueStatus;
+  complexity: string | null;
+  created_at: string;
+  merged_at: string | null;
+  started_at: string | null;
+  released: boolean;
+}
+
+export async function readWork(projectId: string, ids: readonly string[]): Promise<WorkRow[]> {
+  if (ids.length === 0) return [];
+  return rowsOf<WorkRow>(
+    await db.execute(sql`
+      SELECT i.id, i.iss_seq, i.status, i.complexity, i.created_at, i.merged_at,
+             (SELECT min(al.created_at) FROM activity_log al
+               WHERE al.issue_id = i.id AND al.action = 'issue.statusChanged'
+                 AND al.payload ->> 'to' = 'in_progress') AS started_at,
+             coalesce(i.session_context ? 'runRelease', false) AS released
+        FROM issues i
+       WHERE i.project_id = ${projectId}
+         AND i.id IN (${sql.join(
+           ids.map((id) => sql`${id}::uuid`),
+           sql`, `,
+         )})`),
+  );
+}
+
+const HOLD_ACT: Record<string, string> = {
+  'device-disabled': 'turn the box back on',
+  retired: 'return the runner to service',
+  'never-connected': 'start the runner',
+  disconnected: 'bring the runner back online',
+  stale: 'bring the runner back online',
+  auth: 'sign the box in again',
+  'rate-limited': 'wait for the usage limit to reset',
+  quarantined: 'wait out the quarantine or clear it',
+  provisioning: 'finish provisioning the checkout',
+  'below-floor': 'update the runner',
+};
+
+/** A wait that holds every issue: nothing can take work, or the master that takes it cannot. */
+export async function projectWaitOf(projectId: string): Promise<Wait | null> {
+  const live = await onlineCapableDeviceIds(projectId, {});
+  if (live.length === 0) {
+    const held = await releaseIneligibleRunners(projectId);
+    const [first] = held;
+    if (!first) {
+      return {
+        who: 'A project admin',
+        act: 'pair a runner',
+        reason: 'no runner is registered for this project, so nothing can take its work',
+        ref: null,
+      };
+    }
+    const said = held
+      .map((h) => `${h.deviceName} is ${h.reason}${h.detail ? ` (${h.detail})` : ''}`)
+      .join('; ');
+    return {
+      who: `Whoever can reach ${first.deviceName}`,
+      act: HOLD_ACT[first.reason] ?? 'bring a runner back',
+      reason: `no runner can take this project's work: ${said}`,
+      ref: first.deviceName,
+    };
+  }
+  const master = await readMasterStanding(projectId);
+  if (master.state === 'silent') {
+    return {
+      who: master.device ? `Whoever can reach ${master.device.name}` : 'A project admin',
+      act: 'restart the master',
+      reason: `the project's master has been silent since ${master.lastBeatAt ?? 'it started'}, so nothing is dispatched`,
+      ref: master.device?.name ?? null,
+    };
+  }
+  if (master.state === 'waiting_person' && master.waitingOn) {
+    return {
+      who: master.waitingOn.who,
+      act: master.waitingOn.act,
+      reason: `the project's master is stopped on a dialog (${master.waitingOn.rule})`,
+      ref: master.device?.name ?? null,
+    };
+  }
+  const refused = master.state !== 'none' ? master.lastPass?.refused : null;
+  if (refused) {
+    return {
+      who: 'Nobody',
+      act: `wait out the ${refused.reason.replace('_', ' ')}`,
+      reason: `the master's last pass was refused (${refused.reason}): ${refused.detail}`,
+      ref: master.device?.name ?? null,
+    };
+  }
+  return null;
+}
+
+/** Whom a row waits on where it is a person or a gate rather than a run, a master or a blocker. */
+export function waitOf(row: IssueStandingRow): Wait | null {
+  const { attentionGroup, waitingOn } = row.standing;
+  const person = waitingOn.kind === 'you' || waitingOn.kind === 'person';
+  if (attentionGroup === 'needs_you' || attentionGroup === 'paused' || person) {
+    return { who: waitingOn.who, act: waitingOn.act, reason: waitingOn.rule, ref: waitingOn.ref };
+  }
+  return null;
+}
+
+export const INTAKE_WAIT: Wait = {
+  who: 'A project writer',
+  act: 'release it to the master',
+  reason:
+    "the project's intake is manual: an open issue reaches a master only once a person releases it",
+  ref: null,
+};
+
+export interface IssueRow {
+  id: string;
+  iss_seq: number;
+  status: IssueStatus;
+  merged_at: string | null;
+}
+
+/** An issue outside the open set: landed, or ended without landing. */
+export function settledForecast(asOf: string, row: IssueRow): Forecast {
+  const stamp = { label: FORECAST_LABEL, asOf };
+  if (row.merged_at !== null || LANDED_STATUSES.includes(row.status)) {
+    return { ...stamp, kind: 'landed', landedAt: row.merged_at };
+  }
+  return { ...stamp, kind: 'ended', status: row.status };
+}
+
+async function issueRowsWhere(projectId: string, where: SQL): Promise<IssueRow[]> {
+  return rowsOf<IssueRow>(
+    await db.execute(sql`
+      SELECT i.id, i.iss_seq, i.status, i.merged_at
+        FROM issues i
+       WHERE i.project_id = ${projectId} AND i.archived_at IS NULL AND ${where}
+       ORDER BY i.iss_seq`),
+  );
+}
+
+export const issueRowsBySeq = (projectId: string, issSeq: number) =>
+  issueRowsWhere(projectId, sql`i.iss_seq = ${issSeq}`);
+
+export const issueRowsByIds = (projectId: string, ids: readonly string[]) =>
+  ids.length === 0 ? Promise.resolve([]) : issueRowsWhere(projectId, sql`i.id IN (${idList(ids)})`);
+
+/** A requirement's issues by its REQ number; null where the project holds no such requirement. */
+export async function requirementIssueRows(
+  projectId: string,
+  reqSeq: number,
+): Promise<IssueRow[] | null> {
+  const [req] = rowsOf<{ id: string }>(
+    await db.execute(sql`
+      SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${reqSeq}`),
+  );
+  return req ? issueRowsWhere(projectId, sql`i.requirement_id = ${req.id}`) : null;
+}

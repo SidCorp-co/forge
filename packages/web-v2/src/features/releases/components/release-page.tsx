@@ -10,6 +10,7 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease, useReleases } from "../hooks";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
@@ -27,6 +28,7 @@ const LABEL: Record<ReleaseTab, string> = {
 export function ReleasePage({ projectId, slug, version }: { projectId: string; slug: string; version: string }) {
   const [tab, onTab] = useUrlTab(RELEASE_TABS);
   const q = useRelease(projectId, version);
+  const forecastQ = useDraftReleaseForecast(projectId, q.data?.release.state === "draft");
   const list = useReleases(projectId);
   return (
     <QueryBoundary query={q} loadingLabel="loading release…">
@@ -45,7 +47,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
             dataKey={r.key}
             rail={
               <FactsRail>
-                <ReleaseFacts r={r} />
+                <ReleaseFacts r={r} forecast={forecastQ.data} />
               </FactsRail>
             }
           >

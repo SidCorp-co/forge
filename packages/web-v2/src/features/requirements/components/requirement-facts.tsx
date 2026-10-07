@@ -14,6 +14,8 @@ import { workflowHref } from "@/lib/routes/workflows";
 import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { FeedbackRoute } from "@forge/contracts/feedback";
+import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
+import { useRequirementForecast } from "@/features/forecast/hooks";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { CoverageSummary, Stepper } from "./standing-bits";
 
@@ -92,12 +94,16 @@ export function RequirementFacts({
   d,
   slug,
   onOpenRevisions,
+  projectId,
 }: {
   d: RequirementDetail;
   slug: string;
+  /** Reads when its issues are forecast to have landed. */
+  projectId: string;
   /** Opens the revisions view; the peek, which has none, leaves it out and the revision reads as text. */
   onOpenRevisions?: () => void;
 }) {
+  const forecast = useRequirementForecast(projectId, d.key).data;
   const s = d.standing;
   const f = s.facts;
   const baseline = d.baselines[0];
@@ -146,6 +152,11 @@ export function RequirementFacts({
       </FactsGroup>
 
       <FactsGroup title="Issues" count={f.issuesTotal ? `Done ${f.issuesDone} of ${f.issuesTotal}` : undefined} testId="facts-issues">
+        {d.issues.length > 0 && forecast?.forecast ? (
+          <p className="pb-1.5" data-testid="facts-forecast">
+            <ScopeForecastLine scope={forecast} />
+          </p>
+        ) : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>Not broken down into issues yet.</FactsEmpty>
         ) : (

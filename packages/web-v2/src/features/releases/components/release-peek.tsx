@@ -2,6 +2,7 @@
 
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease } from "../hooks";
 import { ReleaseActions } from "./release-actions";
 import { ReleaseBanner } from "./release-bits";
@@ -19,6 +20,7 @@ export function ReleasePeek({
   onOpenFull: () => void;
 }) {
   const q = useRelease(projectId, version);
+  const forecastQ = useDraftReleaseForecast(projectId, q.data?.release.state === "draft");
   return (
     <PeekPanel peek={peek} listLabel="Releases" noun="Release" onOpenFull={onOpenFull} testId="release-peek">
       <QueryBoundary query={q} loadingLabel="loading release…">
@@ -43,7 +45,7 @@ export function ReleasePeek({
               />
               <ReleaseBanner r={r} className="px-[18px]" />
               <div className="px-[18px] pb-4 pt-4">
-                <ReleaseFacts r={r} />
+                <ReleaseFacts r={r} forecast={forecastQ.data} />
               </div>
             </>
           );

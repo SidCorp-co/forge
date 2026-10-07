@@ -58,6 +58,9 @@
     "core-feedback": [
       "packages/core/src/feedback/**"
     ],
+    "core-forecast": [
+      "packages/core/src/forecast/**"
+    ],
     "core-guides": [
       "packages/core/src/guides/**"
     ],
@@ -238,6 +241,9 @@
     ],
     "web-feature-feedback": [
       "packages/web-v2/src/features/feedback/**"
+    ],
+    "web-feature-forecast": [
+      "packages/web-v2/src/features/forecast/**"
     ],
     "web-feature-guides": [
       "packages/web-v2/src/features/guides/**"
@@ -478,6 +484,7 @@
         "web-feature-chat-dock",
         "web-feature-orgs",
         "web-feature-preferences",
+        "web-feature-forecast",
         "web-features"
       ],
       "status": "locked",

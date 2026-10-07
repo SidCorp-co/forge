@@ -25,7 +25,7 @@ export {
   servedCarries,
   servedProductionCommit,
 } from './provider-live.js';
-export { loadReleaseRoster } from './queries.js';
+export { loadReleaseRoster, waitingIssueIds as draftReleaseIssueIds } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export { recoverUnstartedReleaseBatches } from './unstarted-recovery.js';

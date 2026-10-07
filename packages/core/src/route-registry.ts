@@ -52,6 +52,7 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
+import { forecastRoutes } from './forecast/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import {
@@ -240,6 +241,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', searchRoutes);
   app.route('/api/projects', issueStandingRoutes);
   app.route('/api/projects', developmentOverviewRoutes);
+  app.route('/api/projects', forecastRoutes);
   app.route('/api/projects', needsYouRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
