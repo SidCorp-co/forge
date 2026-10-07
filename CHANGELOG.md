@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.143] - 2026-10-07
+
+Project memory gets a page: see, correct, retire and date what Forge remembers
+
+### Added
+
+- **A project's memory has its own page.** Each memory shows who wrote it, when, whether anyone checked it and which cited issues or requirements are gone; Correct and Retire take a reason, and the assistant cites memory with its date.
+
 ## [0.4.0-dev.142] - 2026-10-07
 
 Feedback reporters hear in their language what shipped, or someone relays it
