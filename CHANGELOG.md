@@ -3144,6 +3144,9 @@
 ### Fixed
 
 - **`top`'s keys behave.** A page `n` or `p` shows is not turned straight away, `--help` lists every key, and Ctrl-\\ and Ctrl-Z work as in any terminal program.
+- **Refusals on the landing route name a route that works.** A git project's close names a
+  commit or declaring the issue outside git, never a landing; re-sending an issue's own landing
+  declaration no longer counts as an edit (ISS-1384).
 
 - **A box whose declaration gate is failing open now notifies platform admins.** A sixth alert
   names each such box, and the notification clears once the box recovers (ISS-1324).

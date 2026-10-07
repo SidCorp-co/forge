@@ -151,7 +151,9 @@ served, which says the change landed at a commit holding none of it.
   declaration while `merged_at` is set is refused `LANDING_SHAPE_MARK_STANDS` (409), naming
   `unmark` as the route, and writes nothing. The condition is the UPDATE's own WHERE
   (`packages/core/src/issues/update-service.ts:shapeUnderNoMarkGuard`), so no mark lands between the decision and the
-  write; the same value re-sent passes. A `closed` issue cannot be unmarked, so its lane is fixed.
+  write; the same value re-sent passes and writes nothing, `updated_at` included
+  (`packages/core/src/issues/update-service.ts:declarationOnly`). On an issue that declared nothing the refusal says the
+  project's shape applied, never that the issue declared null. A `closed` issue cannot be unmarked, so its lane is fixed.
   The other order is held too: the mark writer reads the declaration off the row its caller
   loaded, and `recordIssueMerge` stamps only while the issue still declares that value, so a
   declaration that moved in between is refused `LANDING_SHAPE_MOVED` with nothing written.
@@ -160,7 +162,8 @@ served, which says the change landed at a commit holding none of it.
   issue's own value or null. Every refusal names who decided (`whereItLands`): *this issue's work
   lands outside git (declared on the issue)*, or *this project's work lands outside git (kind
   `website`)*. The release record can now hold both lanes in one roster, so
-  `RELEASE_WORK_UNMERGED` is raised once per lane, each in its own words.
+  `RELEASE_WORK_UNMERGED` is raised once per lane, each in its own words, lanes and issues in
+  the order the roster named them.
 
 Where no issue declares one, `landingShapeOf` reads `projects.kind`: `website` — the store is the source of truth and a repo is
 optional — lands `outside_git`; `standard` lands in `git`; any other value is refused by name

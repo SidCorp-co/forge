@@ -159,31 +159,62 @@ const NOT_A_BRANCH =
   'any happened. Where the chain is empty or names one branch there is no live branch to ' +
   'exclude, so a branch of that name counts like any other';
 
-/** Who reads the refusal: an agent at the agent-only gate, or anyone a project-declared
- *  `work_evidence` entry criterion holds, a person included. */
-export type EvidenceReader = 'agent' | 'anyone';
+/** Which door the refusal answers: an agent's move at the agent-only gate (`advance`), an agent's
+ *  mark with nothing behind it (`mark`, `merge-marker.ts:agentEvidence`), or a project-declared
+ *  `work_evidence` entry criterion, which holds anyone, a person included (`criterion`). */
+export type EvidenceDoor = 'advance' | 'mark' | 'criterion';
+
+/** What the refused caller does once the evidence is recorded, at each door. */
+const THEN: Readonly<Record<EvidenceDoor, string>> = {
+  advance: 'before advancing',
+  mark: 'then mark it again',
+  criterion: 'before this status',
+};
 
 const DECLARED =
   'This check holds a person as well as an agent because the project declares it in ' +
   "`statusEntryCriteria`; where this project's work leaves none of these, that declaration is " +
   'what to change.';
 
-function unknownLaneWhy(reader: EvidenceReader): string {
-  const unknown =
-    "This project's kind is none of " +
-    projectKinds.map((k) => `\`${k}\``).join(', ') +
-    ', so whether its work lands in git is unknown and the commit route is not offered.';
-  return reader === 'agent' ? unknown : `${unknown} ${DECLARED}`;
+const WHERE_IT_NOW_IS =
+  'where the work now is (the live URL, the deployment, the CMS entry or storefront resource)';
+
+const UNKNOWN_LANE =
+  "This project's kind is none of " +
+  projectKinds.map((k) => `\`${k}\``).join(', ') +
+  ', so whether its work lands in git is unknown and the commit route is not offered.';
+
+/** Outside git the landing a mark names is the route, for anyone. A branch is that lane's second
+ *  route and its base-branch paragraph is a git lane's, so the sentence ends on the lane. */
+function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
+  const lands = `${whereItLands(lane, true)}, so a commit is not read here.`;
+  if (door === 'mark') {
+    return (
+      'this mark names no landing, and no branch or code handoff is recorded for this issue, so ' +
+      'nothing was marked — mark it again with `mark_merged` carrying `data.landing`, ' +
+      `${WHERE_IT_NOW_IS}. ${lands}`
+    );
+  }
+  return (
+    'no landing, branch or code handoff is recorded for this issue — mark it merged with ' +
+    `\`mark_merged\` carrying \`data.landing\`, ${WHERE_IT_NOW_IS}, or ${BRANCH_OR_HANDOFF}, ` +
+    `${THEN[door]}. ${lands}${door === 'criterion' ? ` ${DECLARED}` : ''}`
+  );
 }
 
-/**
- * The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this issue's lane for
- * this reader: the commit route is read on a `git` lane alone, and for an agent alone
- * (`merge-marker.ts:applyMergeMarker`), so a sentence offering it to anyone else sends them into
- * the same refusal again; outside git the landing a mark names is the route, for anyone.
- */
-export function noWorkEvidenceDetail(lane: Lane | null, reader: EvidenceReader = 'agent'): string {
-  if (lane?.shape === 'git' && reader === 'agent') {
+/** On a git lane the commit route is read for an agent alone (`merge-marker.ts:applyMergeMarker`),
+ *  so a sentence offering it to anyone else sends them into the same refusal again. */
+function gitDetail(door: EvidenceDoor): string {
+  if (door === 'mark') {
+    return (
+      'this mark names no commit, and no branch or code handoff is recorded for this issue, so ' +
+      `nothing was marked — ${BRANCH_OR_HANDOFF}, then mark it again; or, where the work landed ` +
+      'on the base branch itself, mark it again with `mark_merged` carrying `data.commit`, the ' +
+      "commit it landed at, which Forge checks against the project's repository. " +
+      `${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
+    );
+  }
+  if (door === 'advance') {
     return (
       'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
       'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
@@ -193,29 +224,26 @@ export function noWorkEvidenceDetail(lane: Lane | null, reader: EvidenceReader =
       `${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
     );
   }
-  if (lane?.shape === 'git') {
-    return (
-      `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
-      'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
-      "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
-      "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
-      "landing; a person's mark naming a commit is checked only for the repository holding it, " +
-      `not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
-      `${DECLARED} ${NOT_A_BRANCH}`
-    );
-  }
-  if (lane?.shape === 'outside_git') {
-    return (
-      'no landing, branch or code handoff is recorded for this issue — mark it merged with ' +
-      '`mark_merged` carrying `data.landing`, where the work now is (the live URL, the ' +
-      `deployment, the CMS entry or storefront resource), or ${BRANCH_OR_HANDOFF}, before ` +
-      `advancing. ${whereItLands(lane, true)}, so a commit is not read here.` +
-      `${reader === 'anyone' ? ` ${DECLARED}` : ''} ${NOT_A_BRANCH}`
-    );
-  }
   return (
-    `no branch or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, before ` +
-    `advancing. ${unknownLaneWhy(reader)} ${NOT_A_BRANCH}`
+    `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
+    'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
+    "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
+    "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
+    "landing; a person's mark naming a commit is checked only for the repository holding it, " +
+    `not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
+    `${DECLARED} ${NOT_A_BRANCH}`
+  );
+}
+
+/** The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this issue's lane at
+ *  this door. */
+export function noWorkEvidenceDetail(lane: Lane | null, door: EvidenceDoor = 'advance'): string {
+  if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door);
+  if (lane?.shape === 'git') return gitDetail(door);
+  return (
+    `no branch or code handoff is recorded for this issue${door === 'mark' ? ', so nothing was marked' : ''} ` +
+    `— ${BRANCH_OR_HANDOFF}, ${THEN[door]}. ${UNKNOWN_LANE}` +
+    `${door === 'criterion' ? ` ${DECLARED}` : ''} ${NOT_A_BRANCH}`
   );
 }
 
@@ -233,20 +261,20 @@ export function noWorkEvidenceDetail(lane: Lane | null, reader: EvidenceReader =
 export async function missingWorkEvidenceStrict(
   issueId: string,
   executor: EvidenceExecutor = db,
-  reader: EvidenceReader = 'agent',
+  door: EvidenceDoor = 'advance',
 ): Promise<string | null> {
   if (await hasChildIssues(issueId, executor)) return null;
   const evidence = await collectWorkEvidence(issueId, executor);
-  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, reader);
+  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, door);
 }
 
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
-  reader: EvidenceReader = 'agent',
+  door: EvidenceDoor = 'advance',
 ): Promise<string | null> {
   try {
-    return await missingWorkEvidenceStrict(issueId, executor, reader);
+    return await missingWorkEvidenceStrict(issueId, executor, door);
   } catch (err) {
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;
