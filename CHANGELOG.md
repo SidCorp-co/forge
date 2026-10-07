@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.97] - 2026-10-07
+
+BA screens say what to do in plain words, not kernel terms
+
+### Changed
+
+- **Waiting-on lines speak in a BA's words.** A pinned design reads "Update to the approved design: <name> (revision N)", a release approval names its version, an answer asks to be confirmed, and kernel terms sit under Technical detail.
+
+### Fixed
+
+- **What's new lists the newest version first within a day, a first look reads 7 days, and Later on a tour hint goes at once and says when it could not be remembered.**
+
 ## [0.4.0-dev.96] - 2026-10-07
 
 Dashboard shows workflow approvals under Workflows with a link to the revision
