@@ -101,12 +101,11 @@ fn socket_args() -> Vec<String> {
     }
 }
 
-/// Whether a test said this box has no user manager to give the session server
-/// a unit; never in a build that is not a test's. The test build's twin is
-/// `testing::no_user_manager`.
+/// What a test said systemd answers in its place; never anything in a build
+/// that is not a test's. The test build's twin is `testing::systemd_stand_in`.
 #[cfg(not(test))]
-fn no_user_manager() -> bool {
-    false
+fn systemd_stand_in() -> Option<Placement> {
+    None
 }
 
 /// The one place a tmux process is built, so a test build can hand the
@@ -376,6 +375,7 @@ async fn ensure_server() -> bool {
             tracing::warn!(
                 "[terminal] systemd took the session server but its socket never answered within {SERVER_READY_WITHIN:?} — panes will be killed with this service, as they were before"
             );
+            hold_the_keepalive_here().await;
             false
         }
         Placement::Unavailable(detail) => {
@@ -453,8 +453,8 @@ impl Drop for OverlapWatch {
 
 async fn ask_systemd_for_the_server(id: &SessionIdentity) -> Placement {
     let _overlap = OverlapWatch::enter();
-    if no_user_manager() {
-        return Placement::Unavailable("a test said this box has no user manager".into());
+    if let Some(said) = systemd_stand_in() {
+        return said;
     }
     let sock = id.socket.to_string_lossy().into_owned();
     let out = Command::new("systemd-run")
@@ -512,7 +512,13 @@ async fn server_answers() -> bool {
         .is_ok_and(|o| o.status.success())
 }
 
-const SERVER_READY_WITHIN: Duration = Duration::from_secs(30);
+/// How long a unit's server has to answer: shorter in a test build, so a test
+/// standing in for a unit that never answers does not wait out the real one.
+const SERVER_READY_WITHIN: Duration = if cfg!(test) {
+    Duration::from_secs(10)
+} else {
+    Duration::from_secs(30)
+};
 
 /// Poll the socket until it answers, or `within` elapses.
 async fn server_answers_within(within: Duration) -> bool {
@@ -888,7 +894,7 @@ pub fn pane_env() -> Vec<(String, String)> {
 /// module's transport and the rules they break are `daemon/master.rs`'s. A
 /// second copy over there would be a second thing to keep true.
 #[cfg(test)]
-use testing::{no_user_manager, tmux_command};
+use testing::{systemd_stand_in, tmux_command};
 
 #[cfg(test)]
 pub(crate) mod testing {
@@ -898,34 +904,49 @@ pub(crate) mod testing {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
-    thread_local! {
-        static NO_UNIT: Cell<bool> = const { Cell::new(false) };
+    /// What systemd answers in a test's place. Only the unix tests stand one in,
+    /// since no other box runs a tmux server for them.
+    #[derive(Clone, Copy)]
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub(crate) enum SystemdSays {
+        /// No user manager to give the server a unit, as on macOS or in a container.
+        NoUnit,
+        /// A unit is taken and its server never answers.
+        UnitNeverAnswers,
     }
 
-    /// systemd answers that it has no user manager to give the session server
-    /// a unit, as on macOS or in a container, on this thread until dropped.
-    /// A thread's, not the process's environment: a current-thread
-    /// `#[tokio::test]` asks systemd from the thread that took it.
+    thread_local! {
+        static STAND_IN: Cell<Option<SystemdSays>> = const { Cell::new(None) };
+    }
+
+    /// systemd answers `says` on this thread until dropped. A thread's, not the
+    /// process's environment: a current-thread `#[tokio::test]` asks systemd
+    /// from the thread that took it.
     #[cfg(unix)]
-    pub(crate) struct NoUnit;
+    pub(crate) struct StandIn;
 
     #[cfg(unix)]
-    impl NoUnit {
-        pub(crate) fn here() -> Self {
-            NO_UNIT.with(|n| n.set(true));
+    impl StandIn {
+        pub(crate) fn here(says: SystemdSays) -> Self {
+            STAND_IN.with(|s| s.set(Some(says)));
             Self
         }
     }
 
     #[cfg(unix)]
-    impl Drop for NoUnit {
+    impl Drop for StandIn {
         fn drop(&mut self) {
-            NO_UNIT.with(|n| n.set(false));
+            STAND_IN.with(|s| s.set(None));
         }
     }
 
-    pub(super) fn no_user_manager() -> bool {
-        NO_UNIT.with(Cell::get)
+    pub(super) fn systemd_stand_in() -> Option<Placement> {
+        STAND_IN.with(Cell::get).map(|says| match says {
+            SystemdSays::NoUnit => {
+                Placement::Unavailable("a test said this box has no user manager".into())
+            }
+            SystemdSays::UnitNeverAnswers => Placement::Accepted,
+        })
     }
 
     /// A tmux a test put in place of the real one: the program spawned, and
@@ -2284,6 +2305,21 @@ done
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn with_no_unit_for_the_server_a_master_that_exits_reads_as_gone() {
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit).await;
+    }
+
+    /// The same where systemd takes the unit and its server never answers.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn with_a_unit_that_never_answers_a_master_that_exits_reads_as_gone() {
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::UnitNeverAnswers)
+            .await;
+    }
+
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_master_that_exits_reads_as_gone_when_systemd(says: testing::SystemdSays) {
         use crate::daemon::recovery::MasterPresence;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let iso = testing::IsolatedServer::new("nounit");
@@ -2295,7 +2331,7 @@ done
             testing::cannot_run("this box does not resolve its tmux socket from the config dir");
             return;
         }
-        let _no_unit = testing::NoUnit::here();
+        let _stand_in = testing::StandIn::here(says);
         let cwd = crate::test_scratch::Scratch::new("nounit-cwd");
         let name = session_name(MASTER_PREFIX, &format!("nounit-{}", std::process::id()));
         let argv = ["sh", "-c", "sleep 1"].map(String::from);

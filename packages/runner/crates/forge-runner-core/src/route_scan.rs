@@ -43,6 +43,19 @@ struct Bindings {
     refused: Vec<Hit>,
 }
 
+impl Bindings {
+    /// How many names each route kind is bound to, to tell whether one `use` bound a route.
+    fn route_names(&self) -> [usize; 5] {
+        [
+            self.dirs_modules.len(),
+            self.dirs_items.len(),
+            self.env_modules.len(),
+            self.env_reads.len(),
+            self.configs.len(),
+        ]
+    }
+}
+
 /// The value a `const` or `static` is defined with, by name, across every file scanned.
 pub(crate) type Consts = BTreeMap<String, Vec<Option<String>>>;
 
@@ -423,7 +436,9 @@ impl Scan<'_> {
                 hit(format!("{name}! {why}"));
             }
         }
-        if self.b.env_reads.contains(name) && !qualified {
+        // Through a path too (`readers::get`), never as a method (`.get`).
+        let a_method = i >= 1 && is_punct(&tokens[i - 1], '.');
+        if self.b.env_reads.contains(name) && !a_method {
             if let Some(why) = self.read_at(tokens, i, stack) {
                 hit(format!("{name}, a reader imported from std::env, {why}"));
             }
@@ -574,7 +589,21 @@ fn collect_bindings(tokens: &[TokenTree], b: &mut Bindings, known: &Bindings) {
             let end = (i..tokens.len())
                 .find(|&k| is_punct(&tokens[k], ';'))
                 .unwrap_or(tokens.len());
+            let routes_before = b.route_names();
             use_tree(&tokens[i + 1..end], &[], b, known, line_of(&tokens[i]));
+            let public = i >= 1
+                && (is_ident(&tokens[i - 1], "pub")
+                    || (i >= 2
+                        && is_ident(&tokens[i - 2], "pub")
+                        && matches!(&tokens[i - 1], TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis)));
+            if public && b.route_names() != routes_before {
+                b.refused.push(Hit {
+                    line: line_of(&tokens[i]),
+                    what: "a re-export of a route, which hides every call through it from the \
+                           file that makes it: import it where it is called"
+                        .into(),
+                });
+            }
             i = end;
         } else if is_ident(&tokens[i], "extern")
             && tokens.get(i + 1).is_some_and(|t| is_ident(t, "crate"))
@@ -939,6 +968,32 @@ mod tests {
         counts(
             r#"use crate::daemon::handover::LISTENER_ENV; fn a() { std::env::var_os(LISTENER_ENV); }"#,
             1,
+        );
+    }
+
+    /// The second whole-set read's F1: a reader re-exported and called through its module.
+    #[test]
+    fn a_reexported_reader_is_refused_and_each_call_through_it_counts() {
+        let once = scanned(
+            "mod readers { pub use std::env::var_os as get; } fn read(k: &str) { let _ = readers::get(k); }",
+        );
+        assert_eq!((once.routes.len(), once.refused.len()), (1, 1), "{once:#?}");
+        assert!(
+            once.refused[0].what.contains("a re-export of a route"),
+            "{once:#?}"
+        );
+        let twice = scanned(
+            "mod readers { pub(crate) use std::env::var_os as get; }
+             fn read(k: &str) { let _ = readers::get(k); let _ = readers::get(k); }",
+        );
+        assert_eq!(
+            (twice.routes.len(), twice.refused.len()),
+            (2, 1),
+            "{twice:#?}"
+        );
+        counts(
+            "use std::env::var_os as get; fn a(m: &M, k: &str) { m.get(k); }",
+            0,
         );
     }
 
