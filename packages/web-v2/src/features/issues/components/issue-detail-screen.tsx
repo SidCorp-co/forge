@@ -204,7 +204,8 @@ export function IssueDetailScreen({
       slug={slug}
       cost={costQ.data}
       deps={depsQ.data}
-      pending={pending || !canWrite}
+      pending={pending}
+      readOnly={!canWrite}
       onPatch={onPatch}
       onTransition={onTransition}
       onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}

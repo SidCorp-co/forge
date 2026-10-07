@@ -8,7 +8,12 @@ export {
 } from './agent-access.js';
 export { listAgentGrantedBindings } from './agent-access-store.js';
 export { agentIntegration } from './agent-declaration.js';
-export { bindingNames, type NameableBinding } from './binding-name.js';
+export {
+  bindingNames,
+  type NameableBinding,
+  type ReportableBinding,
+  reportedBindingIdentities,
+} from './binding-name.js';
 export {
   applyClaimedInbound,
   findDeliveryById,
@@ -126,6 +131,7 @@ export type {
   IntegrationProvider,
   OutboundDispatchInput,
   OutboundDispatchResult,
+  ReportedIdentityBinding,
   StorefrontTargetArgs,
   VerifyBindingTargetArgs,
 } from './types.js';

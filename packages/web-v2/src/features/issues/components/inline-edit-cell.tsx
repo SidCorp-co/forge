@@ -20,49 +20,66 @@ interface InlineSelectProps {
   options: SelectOption[];
   onCommit: (value: string) => void;
   disabled?: boolean;
+  /** Why the field cannot be changed: the control is disabled, described by this line and titled with its text. */
+  refusal?: EditRefusal | null;
   ariaLabel: string;
   /** Use the OS-native picker (mobile cards). */
   native?: boolean;
   className?: string;
 }
 
-/** Compact always-editable select for a single issue field. */
+/** A refusal shown once beside the fields it holds: the id of its visible line, and its words. */
+export interface EditRefusal {
+  id: string;
+  text: string;
+}
+
+/** Compact select for a single issue field; a refused one is disabled and says why. */
 export function InlineSelect({
   value,
   options,
   onCommit,
   disabled,
+  refusal,
   ariaLabel,
   native,
   className,
 }: InlineSelectProps) {
-  if (native) {
-    return (
-      <NativeSelect
-        aria-label={ariaLabel}
-        value={value}
-        disabled={disabled}
-        options={options}
-        className={className}
-        onChange={(e) => {
-          const next = e.target.value;
-          if (next !== value) onCommit(next);
-        }}
-      />
-    );
-  }
-  return (
+  const off = Boolean(disabled) || Boolean(refusal);
+  const describedBy = refusal?.id;
+  const control = native ? (
+    <NativeSelect
+      aria-label={ariaLabel}
+      aria-describedby={describedBy}
+      value={value}
+      disabled={off}
+      options={options}
+      className={className}
+      onChange={(e) => {
+        const next = e.target.value;
+        if (next !== value) onCommit(next);
+      }}
+    />
+  ) : (
     <Select
       quiet
       aria-label={ariaLabel}
+      aria-describedby={describedBy}
       value={value}
-      disabled={disabled}
+      disabled={off}
       options={options}
       className={className}
       onChange={(next) => {
         if (next !== value) onCommit(next);
       }}
     />
+  );
+  return refusal ? (
+    <span title={refusal.text} className="inline-block cursor-not-allowed">
+      {control}
+    </span>
+  ) : (
+    control
   );
 }
 

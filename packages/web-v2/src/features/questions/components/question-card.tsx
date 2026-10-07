@@ -14,7 +14,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Input,
   PageSection,
   PageSectionBody,
   PageSectionHeader,
@@ -24,6 +23,7 @@ import {
   StatusBadge,
   Textarea,
 } from "@/design";
+import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picker";
 import {
   type AgentQuestion,
   type AnswerInput,
@@ -266,20 +266,23 @@ function resumeLine(resume: AnswerResume | undefined): string | null {
 interface WaitDraft {
   on: boolean;
   reason: string;
-  blockedBy: string;
+  /** The blocking issue, picked from the project's issues; empty for none. */
+  blockedBy: IssuePick[];
 }
 
-const NO_WAIT: WaitDraft = { on: false, reason: "", blockedBy: "" };
+const NO_WAIT: WaitDraft = { on: false, reason: "", blockedBy: [] };
 
 /**
  * An answer that does not release its issue: what it still waits on, and the issue whose blocks
  * edge holds it, sent with the answer as `stillWaits` (ISS-257).
  */
 function StillWaitsFields({
+  projectId,
   draft,
   fault,
   onChange,
 }: {
+  projectId: string;
   draft: WaitDraft;
   fault: string | null;
   onChange: (next: WaitDraft) => void;
@@ -302,10 +305,12 @@ function StillWaitsFields({
             />
           </Field>
           <Field label="Blocked by issue" hint="Optional. Its blocks edge releases this issue once it settles.">
-            <Input
+            <IssuePicker
+              projectId={projectId}
               value={draft.blockedBy}
-              placeholder="ISS-12"
-              onChange={(e) => onChange({ ...draft, blockedBy: e.target.value })}
+              onChange={(blockedBy) => onChange({ ...draft, blockedBy })}
+              ariaLabel="Blocked by issue"
+              single
             />
           </Field>
         </div>
@@ -354,7 +359,7 @@ export function QuestionCard({
       return;
     }
     setWaitFault(null);
-    const blockedBy = wait.blockedBy.trim();
+    const blockedBy = wait.blockedBy[0]?.key;
     onAnswer({
       questionId: question.id,
       round,
@@ -405,7 +410,7 @@ export function QuestionCard({
           <div className="space-y-2">
             <p className="fg-caption text-subtle">Round {current.round}</p>
             {current.prompt && <p className="fg-body text-fg">{current.prompt}</p>}
-            {holds && <StillWaitsFields draft={wait} fault={waitFault} onChange={setWait} />}
+            {holds && <StillWaitsFields projectId={question.projectId} draft={wait} fault={waitFault} onChange={setWait} />}
             {question.answerShape === "choice" ? (
               question.options.map((option) => (
                 <OptionRow

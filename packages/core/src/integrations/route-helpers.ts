@@ -133,6 +133,8 @@ export function summarizeConnectionWithUsage(
   bindings: IntegrationBindingRow[],
   /** Binding id → the project-document environment that deploys through it, where one does. */
   environmentOf: (binding: IntegrationBindingRow) => string | null,
+  /** Binding id → the name its provider reports for what it points at (`reportedBindingIdentities`). */
+  reported?: ReadonlyMap<string, string>,
 ) {
   const names = new Map<string, string>();
   const byProject = new Map<string, IntegrationBindingRow[]>();
@@ -147,6 +149,7 @@ export function summarizeConnectionWithUsage(
         label: binding.label ?? '',
         config: effectiveConfig({ binding, connection }),
       })),
+      reported,
     );
     for (const [id, name] of named) names.set(id, name);
   }

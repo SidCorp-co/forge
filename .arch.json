@@ -251,6 +251,9 @@
     "web-feature-integrations": [
       "packages/web-v2/src/features/integrations/**"
     ],
+    "web-feature-issue-picker": [
+      "packages/web-v2/src/features/issue-picker/**"
+    ],
     "web-feature-issues": [
       "packages/web-v2/src/features/issues/**"
     ],
@@ -493,6 +496,7 @@
         "web-feature-preferences",
         "web-feature-forecast",
         "web-feature-whats-new",
+        "web-feature-issue-picker",
         "web-features"
       ],
       "status": "locked",
