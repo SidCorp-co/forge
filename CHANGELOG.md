@@ -9,6 +9,23 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.90] - 2026-10-07
+
+ETA column, What's new by week, and product tours for new screens
+
+### Added
+
+- **Product tours, opened by the person.** What's new entries offer "Show me", a page a tour runs on offers it in one inline line, and Help lists every tour as Seen, Not seen or Updated; finishing is remembered per revision.
+- **What's new reads Forge's releases by time.** The rail's What's new opens released notes since your last look, by day, with a weekly agent-written digest; the dot clears on opening, and a week away reads a summary first.
+
+### Changed
+
+- **Lists show an ETA column with clock times.** Issues, requirements, feedback and Coming next read the forecast as "14:10", "Mai 18:50" in the project's language, sortable; concurrency is capped by runs live at once, not issue status.
+
+### Fixed
+
+- **A breakdown's details show each slice before Accept.** Each lists its description, criteria by BC code, the design revision it builds and what it waits on. The feedback form warns when a project serves no routes; hold times round up.
+
 ## [0.4.0-dev.89] - 2026-10-07
 
 A release hold for a commit-less mark names what settles it, not a box
