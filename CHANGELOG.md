@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.136] - 2026-10-07
+
+Storefront releases verify pages, routes, themes and settings, not only workflows
+
+### Fixed
+
+- **A storefront release verifies every landing kind, not only workflow drafts.** Routes, pages, the served theme with file hashes and store settings are read from Autoflow; a design-only issue is proved by its approval; anything unattestable is refused by name.
+
 ## [0.4.0-dev.135] - 2026-10-07
 
 A project status read the assistant answers from, and a status page

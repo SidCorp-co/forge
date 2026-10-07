@@ -1,1 +1,0 @@
-**A storefront release verifies every landing kind, not only workflow drafts.** Routes, pages, the served theme with file hashes and store settings are read from Autoflow; a design-only issue is proved by its approval; anything unattestable is refused by name.
