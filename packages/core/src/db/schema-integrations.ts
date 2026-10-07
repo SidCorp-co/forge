@@ -14,10 +14,7 @@ import {
 import * as ints from './schema-integration-types.js';
 import { integrationBindings } from './schema-project-config.js';
 
-// ISS-234 — Integration Framework foundation. secrets_enc columns hold the
-// AES-256-GCM ciphertext produced by src/integrations/vault.ts; the legacy
-// project_integrations table was retired by ISS-410 (epic ISS-404, F5) in
-// favour of the integration_connections / integration_bindings model below.
+// secrets_enc columns hold the AES-256-GCM ciphertext produced by src/integrations/vault.ts.
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
     return 'bytea';

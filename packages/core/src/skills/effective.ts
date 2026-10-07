@@ -57,8 +57,7 @@ interface EffectiveSkill {
 interface SkillBodyRow {
   id: string;
   name: string;
-  /** Optional so the pure helpers still accept legacy/partial fixtures. */
-  description?: string | null;
+  description: string | null;
   version: number;
   scope: 'global' | 'project';
   skillMd: string | null;

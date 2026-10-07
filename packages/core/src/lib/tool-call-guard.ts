@@ -9,7 +9,7 @@ import {
 } from './tool-grant.js';
 
 interface ToolCallBound {
-  readonly grant: readonly string[] | null | undefined;
+  readonly grant: readonly string[] | null;
   readonly fence: readonly string[] | null;
   readonly grantEpoch: number | undefined;
   readonly tokenId: string;

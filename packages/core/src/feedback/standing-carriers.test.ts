@@ -11,7 +11,13 @@ const routedTo = (...statuses: string[]): PhaseFacts => ({
   rootPhase: null,
 });
 
-const reader = { isReporter: false, canTriage: false, canApproveRelease: false, canWrite: false };
+const reader = {
+  isReporter: false,
+  canTriage: false,
+  canApproveRelease: false,
+  canWrite: false,
+  canAdmin: false,
+};
 
 describe('an issue route carried by several issues reads every one of them (ISS-265)', () => {
   it('is planned while any carrier that is not dropped is still open', () => {
@@ -70,6 +76,7 @@ describe('a planned item waits on every carrier still owed, each named', () => {
     const w = feedbackStandingOf('planned', 'issue', ['ISS-4', 'ISS-7'], 'R', reader, null, {
       masterOwesTriage: false,
       carrierRelease: 'manual',
+      releaseHolders: ['Ada'],
     }).waitingOn;
     expect(w.act).toBe('cut the release that carries ISS-4 and ISS-7');
     expect(w.rule).toContain('ISS-4 and ISS-7 wait at awaiting_release');

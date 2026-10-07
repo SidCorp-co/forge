@@ -13,8 +13,9 @@ const draftTurn = (blockers: ReturnType<typeof blocker>[]) =>
     version: '0.3.0',
     approval: null,
     approvers: [],
+    admins: ['Ada'],
     viewer: { userId: 'u', agency: 'human', isAdmin: true, mayApprove: true },
-    gates: gateViews(blockers, []),
+    gates: gateViews(blockers, [], ['Ada']),
     inFlight: null,
   });
 

@@ -52,7 +52,7 @@ const suggestionParam = zValidator(
 function actorOf(c: Context<{ Variables: AuthVars }>): SuggestionActor {
   const agency = c.get('agency');
   if (!agency) throw new Error('suggestions: a request reached its handler without an auth gate');
-  return { userId: c.get('userId'), agency };
+  return { userId: c.get('userId'), agency, deviceId: c.get('patDeviceId') ?? null };
 }
 
 function answer(c: Context, outcome: SuggestionOutcome) {

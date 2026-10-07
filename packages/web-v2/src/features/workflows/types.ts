@@ -14,7 +14,7 @@ import type {
 } from "@forge/contracts/system-graph";
 import type { WaitingOn } from "@forge/contracts/standing";
 import type { WorkflowHealthSummary } from "@forge/contracts/workflow-health";
-import type { DesignApprovalBlock, DesignBuildGate, DesignLeftStale, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
+import type { DesignApprovalBlock, DesignBuild, DesignBuildGate, DesignLeftStale, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
 
 export type { DesignBuildGate, DesignRequirementLink };
 export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
@@ -170,7 +170,7 @@ export interface WorkflowDesign {
   canDecide: boolean;
   waitingOn: WaitingOn<DesignWaitingKind>;
   revisions: DesignRevision[];
-  builds: { issueId: string; displayId: string; title: string; status: string }[];
+  builds: DesignBuild[];
   gate: DesignBuildGate;
   requirements: DesignRequirementLink[];
   /** The refusal approving the proposed revision would meet on its bases now, with its facts; null when none. */

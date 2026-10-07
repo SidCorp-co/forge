@@ -39,6 +39,7 @@ beforeEach(async () => {
   ] as { device_id: string }[];
   tokens.box = (
     await mintPat({
+      permissions: ['*'],
       userId: ownerId,
       name: 'box',
       deviceId: (runner as { device_id: string }).device_id,
@@ -179,7 +180,7 @@ describe('a gate reason no issue act clears', () => {
     const release = await draft();
     expect(release.gates.find((g: Doc) => g.code === 'RELEASE_POOL_EMPTY')?.owner).toMatchObject({
       kind: 'person',
-      who: 'A project admin',
+      who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
     });
     expect(release).toMatchObject({ attentionGroup: 'needs_you', waitingOn: { kind: 'you' } });
   });

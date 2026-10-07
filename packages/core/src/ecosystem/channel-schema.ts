@@ -1,3 +1,4 @@
+import { REASON_NOTE_MAX } from '@forge/contracts/comments';
 import { PERSON_VIAS } from '@forge/contracts/ecosystem';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { z } from 'zod';
@@ -178,7 +179,7 @@ const gateSchema = z.strictObject({
   decision: z.enum(['approved', 'returned']).optional(),
   decidedBy: uuid().optional(),
   decidedAt: timestamp().optional(),
-  note: z.string().max(1000).optional(),
+  note: z.string().max(REASON_NOTE_MAX).optional(),
 });
 export type Gate = z.infer<typeof gateSchema>;
 
@@ -304,7 +305,7 @@ export const holdSchema = z
     by: authorSchema,
     side: uuid(),
     at: timestamp(),
-    reason: z.string().max(1000).regex(/\S/).optional(),
+    reason: z.string().max(REASON_NOTE_MAX).regex(/\S/).optional(),
   })
   .refine((h) => h.action !== 'hold' || h.reason !== undefined, {
     path: ['reason'],

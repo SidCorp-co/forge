@@ -103,6 +103,7 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
     canTriage: false,
     canApproveRelease: false,
     canWrite: false,
+    canAdmin: false,
     ...over,
   });
 
@@ -111,6 +112,7 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
       masterOwesTriage: false,
       carrierRelease: 'approval',
       carrierVersion: '0.4.0-dev.97',
+      releaseHolders: ['Ana'],
     });
     expect(s.waitingOn.act).toBe('Approve release 0.4.0-dev.97');
     expect(s.waitingOn.ref).toBe('0.4.0-dev.97');
@@ -142,7 +144,7 @@ describe('the release gate speaks in plain words', () => {
       message: 'kernel detail',
       details: {},
     }));
-    const views = gateViews(entries as never, []);
+    const views = gateViews(entries as never, [], ['Ada']);
     expect(views.length).toBeGreaterThan(5);
     for (const v of views) {
       expect(`${v.owner.act} ${v.sentence} ${v.title}`, v.code).not.toMatch(/roster|in parts/i);
@@ -156,6 +158,7 @@ describe('the release gate speaks in plain words', () => {
       [
         { code: 'RELEASE_ROSTER_OVERSIZE', message: 'k', details: { waiting: 63, limit: 50 } },
       ] as never,
+      [],
       [],
     );
     expect(v?.sentence).toContain('63 issues are waiting');

@@ -33,7 +33,12 @@ const view = (over: Partial<AgentReportView> = {}): AgentReportView => ({
 });
 
 const owner = { id: 'u1', name: 'Owner' };
-const writer = { userId: 'u1', canWrite: true, isAdmin: true };
+const writer = {
+  userId: 'u1',
+  canWrite: true,
+  isAdmin: true,
+  holders: { admins: [], writers: [] },
+};
 
 // F9: a report an issue run filed is about the harness it ran under, not the viewer's to-do
 describe('whom a new agent report waits on', () => {
@@ -58,5 +63,34 @@ describe('whom a new agent report waits on', () => {
     const s = reportStandingOf(facts, writer);
     expect(needsViewer(s)).toBe(true);
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'triage a report' });
+  });
+});
+
+// H3: a group's wait read "A project writer" whoever held write, and when nobody did
+describe('a report whose schedule has no owner', () => {
+  const facts: ReportFacts = {
+    view: view({ scheduleRunId: 'f1' }),
+    fire: { id: 'f1', scheduleId: 's1', scheduleName: 'Nightly steward', owner: null },
+    issue: null,
+  };
+  const reader = (writers: string[]) => ({
+    userId: 'u9',
+    canWrite: false,
+    isAdmin: false,
+    holders: { admins: ['Ada'], writers },
+  });
+
+  it('names the writers who triage it', () => {
+    expect(reportStandingOf(facts, reader(['Ana', 'Bo'])).waitingOn).toMatchObject({
+      kind: 'writers',
+      who: 'Ana, Bo',
+      act: 'triage a report',
+    });
+  });
+
+  it('says nobody holds write, and where it is granted, when nobody does', () => {
+    const w = reportStandingOf(facts, reader([])).waitingOn;
+    expect(w).toMatchObject({ kind: 'none', who: 'Nobody' });
+    expect(w.rule).toContain('no person on this project holds project.write');
   });
 });

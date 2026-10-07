@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
+import { holderNames, namedHolders } from '../permissions/index.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
@@ -18,7 +19,7 @@ import { readLandingReadings } from './landing-surfaces.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
-import { approversOf, loadReleaseFacts } from './release-facts.js';
+import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
@@ -43,9 +44,10 @@ export async function nextDraftVersion(projectId: string): Promise<string> {
 async function draftPart(projectId: string): Promise<Part | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
-  const [version, report] = await Promise.all([
+  const [version, report, admins] = await Promise.all([
     nextDraftVersion(projectId),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
+    holderNames('project.admin', projectId),
   ]);
   return {
     version,
@@ -56,7 +58,7 @@ async function draftPart(projectId: string): Promise<Part | null> {
     releasedAt: null,
     attempts: [],
     approvals: [],
-    gates: gateViews(report.blockers, report.warnings),
+    gates: gateViews(report.blockers, report.warnings, admins),
     verification: null,
     commit: null,
   };
@@ -116,13 +118,14 @@ async function sharedFor(
   current: string | null,
   required: boolean,
 ): Promise<Shared> {
-  const [facts, approvers, language] = await Promise.all([
+  const [facts, approvers, admins, language] = await Promise.all([
     loadReleaseFacts(
       projectId,
       parts.flatMap((p) => p.issueIds),
       parts.flatMap((p) => (p.runId ? [p.runId] : [])),
     ),
-    approversOf(projectId),
+    namedHolders('releases.approve', projectId),
+    holderNames('project.admin', projectId),
     readContentLanguage(projectId),
   ]);
   return {
@@ -130,6 +133,7 @@ async function sharedFor(
     required,
     viewer,
     approvers,
+    admins,
     facts,
     contentLanguage: language.contentLanguage,
   };

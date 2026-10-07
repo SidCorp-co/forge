@@ -34,6 +34,7 @@ const input = (
   releaseNoted: true,
   viewer: { userId: 'u1', canWrite: true },
   writers: [],
+  admins: [],
   withheld: null,
   now,
   ...over,

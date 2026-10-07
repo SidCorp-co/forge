@@ -26,7 +26,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
-import type { WaitingOn } from '@forge/contracts/standing';
+import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
 import { answeredWait } from './answered-wait.js';
 import { releaseTurn } from './standing-release.js';
 import { landedWait } from './strand-rules.js';
@@ -105,6 +105,8 @@ export interface IssueStandingInput {
   viewer: { userId: string; canWrite: boolean } | null;
   /** The names of the people holding project.write, whom a person's turn names (FB-104). */
   writers: readonly string[];
+  /** The names of the people holding project.admin, whom an act only an admin takes names. */
+  admins: readonly string[];
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
   withheld: IssueWithheld | null;
   now: Date;
@@ -125,12 +127,6 @@ const minutesSince = (from: Date | null, now: Date) =>
 
 type People = Pick<IssueStandingInput, 'viewer' | 'writers'>;
 
-/** A few writers by name and the count of the rest: "Ana", "Ana, Bo", "Ana, Bo, Chi +2". */
-function writersNamed(writers: readonly string[]): string {
-  const shown = writers.slice(0, 3).join(', ');
-  return writers.length > 3 ? `${shown} +${writers.length - 3}` : shown;
-}
-
 /** Whose a person's act is: the viewer where they can write, else the project's writers by name,
  *  else nobody — said with where write is granted, never "A project writer" naming no one (FB-104). */
 function forPerson(
@@ -146,14 +142,14 @@ function forPerson(
       waitingOn: wait(
         'none',
         'Nobody',
-        `${act}: no person on this project can write until a project admin grants write under Settings → Members`,
+        nobodyHoldsAct(act, 'project.write'),
         `${rule}; no person holds project.write on this project`,
       ),
     };
   }
   return {
     group: 'needs_you',
-    waitingOn: wait('person', writersNamed(people.writers), act, rule),
+    waitingOn: wait('person', holdersWho(people.writers), act, rule),
   };
 }
 
@@ -161,8 +157,8 @@ const held = (lease: IssueLeaseView | null) =>
   lease !== null && (lease.verdict === 'live' || lease.verdict === 'shared');
 
 // whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
-// needs_info or an open human question → a person answers; draft → a person takes it on or drops
-// it; awaiting_release → the master while a criterion no longer passes or no note is written, else
+// needs_info or an open human question → a person answers; draft → its live blocker first, else a
+// person takes it on or drops it; awaiting_release → the master while a criterion no longer passes or no note is written, else
 // a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
@@ -261,6 +257,9 @@ function personTurn(input: IssueStandingInput): Turn | null {
     return forPerson(input, 'answer a question', 'a run asked a question only a person can answer');
   }
   if (status === 'draft') {
+    // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
+    const blocker = input.blockedBy.find((b) => b.holds);
+    if (blocker) return blockerTurn(blocker);
     return forPerson(input, 'take on or drop', 'a draft is not work until a person accepts it');
   }
   return null;
@@ -303,16 +302,21 @@ function blockerTurn(blocker: StandingEdge): Turn {
   };
 }
 
-const WITHHELD_ACT: Record<IssueWithheldCode, { who: string; act: string }> = {
-  POLICY_UNDECLARED: { who: 'A project writer', act: 'declare the policy' },
-  POLICY_STATE_UNDECLARED: { who: 'A project writer', act: 'declare its policy state' },
+// the project document is declared by a holder of project.admin (`project-config/routes.ts`), so a
+// policy refusal names them
+const WITHHELD_ACT: Record<IssueWithheldCode, { who: string | 'admins'; act: string }> = {
+  POLICY_UNDECLARED: { who: 'admins', act: 'declare the policy' },
+  POLICY_STATE_UNDECLARED: { who: 'admins', act: 'declare its policy state' },
   WORKFLOW_DESIGN_NOT_APPROVED: { who: 'A design approver', act: 'approve the design' },
   CONTRACT_WAIT_UNSETTLED: { who: 'The contract provider', act: 'approve a contract version' },
 };
 
 /** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */
-function withheldTurn(withheld: IssueWithheld): Turn {
-  const { who, act } = WITHHELD_ACT[withheld.code];
+function withheldTurn(withheld: IssueWithheld, admins: readonly string[]): Turn {
+  const named = WITHHELD_ACT[withheld.code];
+  const nobody = named.who === 'admins' && admins.length === 0;
+  const who = named.who === 'admins' ? holdersWho(admins) : named.who;
+  const act = nobody ? nobodyHoldsAct(named.act, 'project.admin') : named.act;
   return {
     group: 'stuck',
     waitingOn: wait(
@@ -388,7 +392,7 @@ function turnOf(input: IssueStandingInput): Turn {
     return { group: 'queued', waitingOn: wait('judge', landed.who, landed.act, landed.reason) };
   }
   const withheld = withheldOf(input);
-  if (withheld) return withheldTurn(withheld);
+  if (withheld) return withheldTurn(withheld, input.admins);
   return idleTurn(input.status);
 }
 

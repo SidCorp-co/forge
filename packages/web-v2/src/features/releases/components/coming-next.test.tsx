@@ -25,7 +25,7 @@ const range: Forecast = {
   basis: { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 2, concurrency: 2, concurrencyBasis: "b" },
   late: null,
 };
-const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.1.0", reason: "an admin cuts each release", version: "0.1.0", holders: [] };
+const manual = { kind: "person" as const, mode: "manual" as const, who: "Ada", act: "cut 0.1.0", reason: "an admin cuts each release", version: "0.1.0", holders: [] };
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
 const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-90) };
 
@@ -37,7 +37,7 @@ const draftScope: ScopeForecast = {
   title: null,
   progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
   forecast: landed,
-  next: { ...stamp, kind: "paused", who: "A project admin", act: "cut 0.1.0", reason: "r", ref: null, since: null, late: null },
+  next: { ...stamp, kind: "paused", who: "Ada", act: "cut 0.1.0", reason: "r", ref: null, since: null, late: null },
   delivery: delivery(landed),
 };
 const next: ComingNextForecast = { ...stamp, projectId: "p", requirements: [req], draft: draftScope };
@@ -58,7 +58,7 @@ describe("Coming next on Releases", () => {
     expect(within(row).getByTestId("issue-progress").textContent).toBe("0 shipped · 1 landed, awaiting release · 2 to do");
     const cell = within(row).getByTestId("eta-cell");
     expect(within(cell).getByTestId("eta-line").textContent).toBe("13:00");
-    expect(within(cell).getByTestId("eta-sub").textContent).toBe("rồi chờ Admin project cắt"); // i18n-allow: asserts the vi ETA copy
+    expect(within(cell).getByTestId("eta-sub").textContent).toBe("rồi chờ Ada cắt"); // i18n-allow: asserts the vi ETA copy
     expect(cell.getAttribute("title")).toMatch(/^Trong 1,0 giờ – 4,0 giờ · tính lúc 12:00\./); // i18n-allow: asserts the vi ETA copy
     expect(row.textContent).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
   });

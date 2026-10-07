@@ -9,6 +9,58 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.133] - 2026-10-07
+
+Code merges after design approval keep their commit; refusals name their rule
+
+### Added
+
+- **Issue, requirement and design pages say more.** An issue read carries its relations, a coverage gap shows why the breakdown left it, and the design rail shows revisions, derived states and whom each design waits on.
+
+### Fixed
+
+- **A commit marked after a design approval is recorded, not swallowed.** Refusals now name their rule: a status sent to PATCH points to the transition route, and an answer body names every missing field at once.
+
+## [0.4.0-dev.132] - 2026-10-07
+
+Coolify bindings without a target are refused by name, not borrowed
+
+### Removed
+
+- **A Coolify binding with no deploy targets is now refused by name in the delivery status** instead of answering one integration-level row. Production read 0 of 17 bindings, dev 0 of 2, and the write schema never admits one.
+
+## [0.4.0-dev.131] - 2026-10-07
+
+Tokens must state their grant; waits name people; retired paths removed
+
+### Fixed
+
+- **Every wait names the people who can act.** Feedback, forecasts, runs, automation and releases name the writers, admins or approvers by name, or say nobody holds it and where to grant it. A blocked draft now waits on its blocker.
+
+### Removed
+
+- **Three second paths are gone.** `PUT /api/projects/:id/content-language` (Settings writes the project document), the integrations list's duplicate `bindings` key (it answers `items`), and a job session's park frame, now refused `JOB_SESSION_PARK_RETIRED`.
+
+### Security
+
+- **A token whose grant was never stated now reaches nothing.** Every door refuses it `PAT_GRANT_UNSTATED` instead of reading it as full access, the token list says to re-mint it, and minting without a grant is refused.
+
+## [0.4.0-dev.130] - 2026-10-07
+
+Questions owned by no issue reach needs-you, and the question block reads Vietnamese
+
+### Fixed
+
+- **A question tied to no issue now waits on you in Needs you and the dashboard, and the question block reads in your language.** It opens on the Agents Questions tab; the card, tabs and badges follow the interface language.
+
+## [0.4.0-dev.129] - 2026-10-07
+
+The assistant keeps working past 90 s, reads before stating facts, answers in your language
+
+### Fixed
+
+- **A long chat turn now posts what it did and keeps working, finishing in the same thread.** Replies hold tracker dates and statuses to the turn's own reads, answer in the asker's language, and offer issue acts as buttons.
+
 ## [0.4.0-dev.128] - 2026-10-07
 
 A design decision now releases the run parked waiting on it

@@ -24,6 +24,7 @@ import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf } from './needs-you-design.js';
+import { questionRowsOf } from './needs-you-question.js';
 import { designHealthOf } from './ports.js';
 
 export interface NeedsYouViewer {
@@ -32,6 +33,8 @@ export interface NeedsYouViewer {
   isAdmin: boolean;
   /** Holds releases.approve (`permissions/can.ts:holds`). */
   mayApprove: boolean;
+  /** Holds project.write: the grant an answer to a question takes. */
+  mayWrite: boolean;
 }
 
 export interface AttentionRow {
@@ -77,7 +80,7 @@ export async function readAttention(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ) {
-  const [requirements, feedback, releases, issues, contracts, automation, health] =
+  const [requirements, feedback, releases, issues, contracts, automation, health, detached] =
     await Promise.all([
       listRequirementsAs(viewer, projectId),
       listFeedbackAs(viewer, projectId),
@@ -86,6 +89,7 @@ export async function readAttention(
       readContractStanding(projectId, viewer.userId, now),
       automationOf(projectId, viewer.userId, now),
       designHealthOf(viewer, projectId),
+      questionRowsOf(projectId, viewer),
     ]);
   if (!feedback.ok) {
     throw new Error(
@@ -129,6 +133,7 @@ export async function readAttention(
       standing: c,
       touchedAt: c.touchedAt,
     })),
+    questions: detached,
     designs: [...health.values()].flatMap((h) => designRowOf(h) ?? []),
     automation: [
       ...automation.schedules.map(

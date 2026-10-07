@@ -91,19 +91,10 @@ const termSchema = z
 	.min(1)
 	.max(CONTENT_LANGUAGE_LIMITS.termMax);
 
-/** `keepTermsInEnglish` as the project document and the write body hold it. */
+/** `keepTermsInEnglish` as the project document holds it. */
 export const keepTermsInEnglishSchema = z
 	.array(termSchema)
 	.max(CONTENT_LANGUAGE_LIMITS.keepTermsMax);
-
-/** `PUT /api/projects/:id/content-language`; `null` for the terms clears them. */
-export const contentLanguageWriteSchema = z.strictObject({
-	baseRevision: z.number().int().min(1),
-	contentLanguage: z.string().min(1).max(CONTENT_LANGUAGE_LIMITS.tagMax),
-	keepTermsInEnglish: keepTermsInEnglishSchema.nullable().optional(),
-});
-export type ContentLanguageWrite = z.infer<typeof contentLanguageWriteSchema>;
-export const CONTENT_LANGUAGE_WRITE_SHAPE = `{ baseRevision: the project document revision read, contentLanguage: BCP-47 tag, keepTermsInEnglish?: string[] (≤${CONTENT_LANGUAGE_LIMITS.keepTermsMax}) | null }`;
 
 /** What a project writes in, resolved: `source` says whether its document declared it. */
 interface ContentLanguageSetting {
@@ -112,7 +103,7 @@ interface ContentLanguageSetting {
 	source: "document" | "default";
 }
 
-/** `GET /api/projects/:id/content-language`, and the PUT's answer. */
+/** `GET /api/projects/:id/content-language`. */
 export interface ContentLanguageView extends ContentLanguageSetting {
 	/** The project document revision this was read at; null when the project has none. */
 	revision: number | null;

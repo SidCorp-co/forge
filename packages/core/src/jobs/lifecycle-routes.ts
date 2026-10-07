@@ -1,3 +1,4 @@
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -30,7 +31,7 @@ const failBodySchema = z
 
 const cancelBodySchema = z
   .object({
-    reason: z.string().max(500).optional(),
+    reason: z.string().max(REASON_LINE_MAX).optional(),
   })
   .strict();
 

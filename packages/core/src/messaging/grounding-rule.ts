@@ -1,120 +1,180 @@
 /**
- * A claim about how the project stands — what shipped, how far a requirement is, what comes next,
- * what is late, what was decided — has to rest on a read the turn actually made (JU-1). The
- * assistant answered such questions from issue counts and memory, and they were wrong — lateness
- * above all is the forecast's, which no issue count says; the read
- * tools that answer them exist now, so a reply making the claim with none of them called this
- * turn, or with every such call refused, is sent back to call one. Where the turn was offered none
- * of them (agent mode, a door without the project toolset) the rule has nothing to hold it to and
- * does not judge.
+ * A date or a status a chat reply states about the tracker has to be one this turn's own tool
+ * results carry (chat mining 2026-10-07: 12 replies the person contradicted; one gave every
+ * completion date as 2024-05-15 with no tool call while the tracker held 2026-07-14/15). The
+ * grammar abstains by default, as `status-assertions.ts` does: a construction it does not
+ * recognise is passed, because a false refusal costs every reply a rewrite.
  */
 
-// every Vietnamese regex below carries its `i18n-allow` pragma on its own line: the language gate reads it same-line only.
-
-import type { MessageRule, RuleBreak } from './contract.js';
+import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
+import { formatIssueRef } from '../lib/issue-ref.js';
+import type { MessageRefusal, MessageVerdict, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
+import { issueTokenRe } from './issue-tokens.js';
 
-/** The read tools a status claim rests on, by the names a chat turn calls them. */
-export const GROUNDING_TOOLS = {
-  status: 'forge_project_status',
-  requirements: 'forge_requirements',
-  requirement: 'forge_requirement',
-  releases: 'forge_releases',
-  release: 'forge_release',
-  decisions: 'forge_decisions',
+export const GROUNDING_RULE = {
+  id: 'tracker-facts-grounded',
+  shape:
+    'state a date or a status about the tracker only as a tool returned it this turn; look it up first, or ask instead of stating it',
+  example: 'ISS-59 was closed on 2026-07-15, as the tracker read this turn shows.',
 } as const;
 
-interface ClaimFamily {
-  readonly name: string;
-  readonly patterns: readonly RegExp[];
-  /** Tools whose successful read grounds this family. */
-  readonly groundedBy: readonly string[];
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-const { status, requirements, requirement, releases, release, decisions } = GROUNDING_TOOLS;
+/** Words that make a date in the same clause a claim about the tracker. */
+const EVENT_RE =
+  /\b(created|closed|merged|released|shipped|deployed|opened|filed|completed|finished|updated|due|landed)\b|tạo|đóng|merge|phát hành|triển khai|hoàn thành|cập nhật|hạn chót|xong|ngày/i; // i18n-allow: the Vietnamese event words a tracker date is stated with
 
-const FAMILIES: readonly ClaimFamily[] = [
-  {
-    name: 'what shipped or was released',
-    patterns: [
-      /\b(?:shipped|went live|reached (?:the )?users|released (?:to|in|on|as)|was released|were released|has been released|have been released)\b/i,
-      /\brelease[ds]?\s+v?\d+\.\d+/i,
-      /\b(?:awaiting|waits? (?:on|for)|waiting (?:on|for)) (?:release )?approval\b/i,
-      /đã\s+phát\s+hành|(?:tới|đến)\s+(?:tay\s+)?người\s+dùng|bản\s+phát\s+hành|đã\s+ra\s+mắt|chờ\s+(?:phê\s+)?duyệt/i, // i18n-allow: the Vietnamese phrasing of a shipped claim this rule reads
-    ],
-    groundedBy: [status, releases, release],
-  },
-  {
-    name: "a requirement's progress",
-    patterns: [
-      /\brequirements?\b[^.\n]{0,60}\b(?:in progress|in delivery|delivered|accepted|agreed|done|complete[d]?|proven)\b/i,
-      /\bREQ-\d+\b[^.\n]{0,80}\b(?:\d+\s*(?:\/|of)\s*\d+|in progress|in delivery|delivered|done|complete[d]?|proven|unproven)\b/i,
-      /\b\d+\s*(?:\/|of)\s*\d+\s+(?:criteria|BCs?)\b/i,
-      /yêu\s+cầu[^.\n]{0,60}(?:đang\s+(?:làm|giao|triển\s+khai)|đã\s+xong|hoàn\s+thành|đã\s+giao|in[_ ]progress|in[_ ]delivery)|\d+\s*\/\s*\d+\s+tiêu\s+chí/i, // i18n-allow: the Vietnamese phrasing of a requirement-progress claim this rule reads
-    ],
-    groundedBy: [status, requirements, requirement],
-  },
-  {
-    name: 'what comes next and when',
-    patterns: [
-      /\b(?:roadmap|next release|forecast|ETA|expected (?:on|by|to (?:land|ship|reach))|will (?:ship|reach users|land) (?:on|by|in))\b/i,
-      /lộ\s+trình|release\s+kế\s+tiếp|bản\s+kế\s+tiếp|dự\s+kiến/i, // i18n-allow: the Vietnamese phrasing of a roadmap claim this rule reads
-    ],
-    groundedBy: [status, releases, release, requirements, requirement],
-  },
-  {
-    name: 'what is late or blocked',
-    patterns: [
-      /\b(?:is|are|running|currently)\s+(?:late|overdue|behind schedule)\b|\bnothing is late\b|\bno(?:thing)? (?:is )?(?:late|overdue|blocked)\b/i,
-      /đang\s+trễ|bị\s+trễ|không\s+có\s+gì\s+trễ|bị\s+kẹt|đang\s+kẹt/i, // i18n-allow: the Vietnamese phrasing of a lateness claim this rule reads
-    ],
-    groundedBy: [status],
-  },
-  {
-    name: 'what was decided',
-    patterns: [
-      /\bdecisions? (?:were|was|made|taken)\b|\b(?:was|were) decided\b|\bdecided (?:to|that|on)\b/i,
-      /(?:các|những)\s+quyết\s+định\s+(?:đã|quan\s+trọng|gần\s+đây|nổi\s+bật|đáng\s+chú\s+ý|chính|được)|đã\s+chốt|đã\s+quyết\s+định|quyết\s+định\s+ngày/i, // i18n-allow: the Vietnamese phrasing of a decision claim this rule reads
-    ],
-    groundedBy: [decisions, requirement],
-  },
+/** Where the writer is not asserting: a denial, a condition, a plan or a hedge, in either language. */
+const ABSTAIN_RE =
+  /\b(not|never|no longer|if|once|unless|until|will|would|could|should|may|might|expected|planned|plan|target|probably|maybe|estimate[ds]?)\b|\bchưa\b|\bkhông\b|\bnếu\b|\bsẽ\b|có thể|dự kiến|ước tính|kế hoạch/i; // i18n-allow: the Vietnamese denial, condition and hedge words
+
+const STATUS_PHRASES: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
+  [/^(?:draft|bản nháp|nháp)\b/i, ['draft']], // i18n-allow: the Vietnamese status names
+  [/^(?:in[ _-]progress|đang (?:làm|thực hiện|xử lý))/i, ['in_progress']], // i18n-allow: the Vietnamese status names
+  [/^(?:needs[ _-]info|chờ thông tin|cần thêm thông tin)/i, ['needs_info']], // i18n-allow: the Vietnamese status names
+  [/^(?:on[ _-]hold|tạm dừng|tạm hoãn)/i, ['on_hold']], // i18n-allow: the Vietnamese status names
+  [/^(?:awaiting[ _-]release|chờ phát hành|chờ release)/i, ['awaiting_release']], // i18n-allow: the Vietnamese status names
+  [/^(?:approved)\b/i, ['approved']],
+  [/^(?:reopen(?:ed)?)\b/i, ['reopen']],
+  [/^(?:dropped|đã hủy|đã bỏ|bị bỏ)/i, ['dropped']], // i18n-allow: the Vietnamese status names
+  [/^(?:closed|đã đóng)/i, ['closed']], // i18n-allow: the Vietnamese status names
+  [/^(?:hoàn thành|đã xong)/i, ISSUE_RESOLVED_STATUSES], // i18n-allow: the Vietnamese status names
+  [/^(?:open|đang mở)\b/i, ['open']], // i18n-allow: the Vietnamese status names
 ];
 
-const ALL_GROUNDING: ReadonlySet<string> = new Set(Object.values(GROUNDING_TOOLS));
+/** What may stand between an issue key and the status it is said to be at. */
+const LINKER_RE =
+  /^[\s`*_"'(),]*(?:(?:is|was|are|now|currently|still|at|status|in|đang ở|đang|vẫn|hiện|hiện tại|trạng thái|ở|là)[\s`*_"':,]*){0,4}[:\-–→]?[\s`*_"']*/i; // i18n-allow: the Vietnamese linking words
 
-/** The first span of the text a family's patterns match, or null. */
-function claimIn(text: string, family: ClaimFamily): string | null {
-  for (const re of family.patterns) {
-    const m = re.exec(text);
-    if (m) return m[0].trim();
+const CLAUSE_SPLIT_RE = /([.;!?\n]+)/;
+
+function clausesOf(text: string): { text: string; asked: boolean }[] {
+  const plain = text.replace(/```[\s\S]*?```/g, ' ').replace(/^[ \t]*>.*$/gm, ' ');
+  const pieces = plain.split(CLAUSE_SPLIT_RE);
+  const out: { text: string; asked: boolean }[] = [];
+  for (let i = 0; i < pieces.length; i += 2) {
+    const body = (pieces[i] ?? '').trim();
+    if (body) out.push({ text: body, asked: (pieces[i + 1] ?? '').includes('?') });
   }
-  return null;
+  return out;
 }
 
-/** Tools this turn read successfully. */
-function readThisTurn(f: MessageFacts): Set<string> {
-  return new Set(f.toolCalls.filter((c) => c.isError !== true).map((c) => c.name));
+interface Day {
+  readonly quote: string;
+  readonly ms: number;
 }
 
-export const STATUS_CLAIMS_GROUNDED: MessageRule = {
-  id: 'status-claims-grounded',
-  shape:
-    'state what shipped, how far a requirement is, what comes next, what is late or what was decided only from forge_project_status, forge_requirement(s), forge_release(s) or forge_decisions called this turn',
-  example: 'I filed it as a draft; tell me if the title needs a change.',
-  needs: [],
-  check: (text, f) => {
-    if (!f.offeredTools.some((t) => ALL_GROUNDING.has(t))) return [];
-    const read = readThisTurn(f);
-    const breaks: RuleBreak[] = [];
-    for (const family of FAMILIES) {
-      const quote = claimIn(text, family);
-      if (!quote) continue;
-      if (family.groundedBy.some((t) => read.has(t))) continue;
+function day(y: number, m: number, d: number): number | null {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const ms = Date.UTC(y, m - 1, d);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** Calendar dates written as ISO, as day/month/year, or as the Vietnamese long form. */
+export function datesIn(text: string): Day[] {
+  const out: Day[] = [];
+  const push = (quote: string, ms: number | null) => {
+    if (ms !== null) out.push({ quote, ms });
+  };
+  for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})/g)) {
+    push(m[0], day(Number(m[1]), Number(m[2]), Number(m[3])));
+  }
+  for (const m of text.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g)) {
+    push(m[0], day(Number(m[3]), Number(m[2]), Number(m[1])));
+  }
+  const longForm = /ngày\s+(\d{1,2})\s+tháng\s+(\d{1,2})(?:\s+năm\s+(\d{4}))/gi; // i18n-allow: the Vietnamese date form
+  for (const m of text.matchAll(longForm)) {
+    push(m[0], day(Number(m[3]), Number(m[2]), Number(m[1])));
+  }
+  return out;
+}
+
+/** A stated date is grounded by a result date within a day of it: a timestamp near midnight reads as either day. */
+function grounded(stated: Day, results: readonly Day[]): boolean {
+  return results.some((r) => Math.abs(r.ms - stated.ms) <= DAY_MS);
+}
+
+function dateBreaks(text: string, results: readonly string[]): RuleBreak[] {
+  const seen = datesIn(results.join('\n'));
+  const breaks: RuleBreak[] = [];
+  for (const clause of clausesOf(text)) {
+    if (clause.asked || ABSTAIN_RE.test(clause.text) || !EVENT_RE.test(clause.text)) continue;
+    for (const stated of datesIn(clause.text)) {
+      if (grounded(stated, seen)) continue;
       breaks.push({
-        quote,
-        why: `the reply states ${family.name} ("${quote}") and no read this turn grounds it — call ${family.groundedBy.join(' or ')} and answer from what it returns`,
+        quote: clause.text,
+        why:
+          results.length === 0
+            ? `the reply states the date ${stated.quote} about the tracker, and this turn read nothing from it — look it up before stating it, or ask`
+            : `the reply states the date ${stated.quote} about the tracker, and no tool result this turn carries that date`,
       });
     }
-    return breaks;
-  },
-};
+  }
+  return breaks;
+}
+
+function statusBreaks(text: string, results: readonly string[], f: MessageFacts): RuleBreak[] {
+  if (f.issueLookupFailed) return [];
+  const read = results.join('\n').toUpperCase();
+  const breaks: RuleBreak[] = [];
+  const said = new Set<string>();
+  for (const clause of clausesOf(text)) {
+    if (clause.asked || ABSTAIN_RE.test(clause.text)) continue;
+    for (const m of clause.text.matchAll(issueTokenRe(f.prefixes))) {
+      const seq = Number(m[2]);
+      const row = f.issueRows.get(seq);
+      if (!row) continue;
+      const after = clause.text.slice((m.index ?? 0) + m[0].length);
+      const linked = LINKER_RE.exec(after);
+      const rest = after.slice(linked ? linked[0].length : 0);
+      const hit = STATUS_PHRASES.find(([re]) => re.test(rest));
+      if (!hit) continue;
+      const ref = formatIssueRef(f.prefix, seq);
+      if (said.has(ref)) continue;
+      said.add(ref);
+      const [, statuses] = hit;
+      if (!statuses.includes(row.status)) {
+        breaks.push({
+          quote: clause.text,
+          why: `the reply says ${ref} is ${statuses.join(' or ')}, and the tracker holds ${ref} at ${row.status}`,
+        });
+      } else if (!read.includes(m[0].toUpperCase())) {
+        breaks.push({
+          quote: clause.text,
+          why: `the reply states ${ref}'s status without reading ${ref} this turn — read it before stating it`,
+        });
+      }
+    }
+  }
+  return breaks;
+}
+
+/** Every date and status the reply states about the tracker that this turn's results do not carry. */
+export function ungroundedClaims(
+  text: string,
+  toolResults: readonly string[],
+  f: MessageFacts,
+): RuleBreak[] {
+  return [...dateBreaks(text, toolResults), ...statusBreaks(text, toolResults, f)];
+}
+
+/** The cell's verdict, refused as well where a segment states a tracker fact this turn did not read. */
+export function withGrounding(
+  verdict: MessageVerdict,
+  segments: readonly string[],
+  toolResults: readonly string[],
+  f: MessageFacts,
+): MessageVerdict {
+  const refusals: MessageRefusal[] = segments.flatMap((s) =>
+    ungroundedClaims(s ?? '', toolResults, f).map((b) => ({
+      rule: GROUNDING_RULE.id,
+      why: b.why,
+      quote: b.quote,
+      shape: GROUNDING_RULE.shape,
+      example: GROUNDING_RULE.example,
+    })),
+  );
+  if (refusals.length === 0) return verdict;
+  return { ok: false, refusals: [...(verdict.ok ? [] : verdict.refusals), ...refusals] };
+}

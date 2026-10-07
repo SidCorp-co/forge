@@ -1,3 +1,4 @@
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import type { ReleaseApprovalView } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -25,7 +26,7 @@ export const approvalRequestSchema = z.strictObject({
     commit: z.string().regex(SHA),
     reading: z.string().trim().min(1).max(500),
   }),
-  note: z.string().trim().min(1).max(500).optional(),
+  note: z.string().trim().min(1).max(REASON_LINE_MAX).optional(),
 });
 type ApprovalRequest = z.infer<typeof approvalRequestSchema>;
 

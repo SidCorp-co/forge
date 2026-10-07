@@ -36,7 +36,13 @@ beforeAll(async () => {
   await bindTestRunner(projectId, deviceId);
   await bindTestRunner(projectId, otherDevice);
   const box = (who: string, device: string) =>
-    mintPat({ userId: ownerId, name: who, deviceId: device, projectIds: [projectId] });
+    mintPat({
+      permissions: ['*'],
+      userId: ownerId,
+      name: who,
+      deviceId: device,
+      projectIds: [projectId],
+    });
   say = requester(app, {
     owner: await signUserToken(ownerId),
     box: (await box('box', deviceId)).plaintext,

@@ -15,7 +15,7 @@ import { forgeRequirementsTool, forgeRequirementTool } from '../requirements/too
  * The chat assistant's tools over read models it may not import (ADR 0008); not served on /mcp.
  * The process entry hands them to the assistant's allowlist at boot. Status, requirement, release
  * and decision questions are answered from the first six, and the reply screen refuses such an
- * answer that none of them grounded (`messaging/grounding-rule.ts`, JU-1).
+ * answer that none of them grounded (`messaging/status-claims-rule.ts`, JU-1).
  */
 export const CHAT_READ_MODEL_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [
   { factory: forgeProjectStatusTool },

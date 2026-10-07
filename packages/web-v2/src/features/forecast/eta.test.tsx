@@ -87,12 +87,12 @@ describe("the ETA cell reads a clock, not a duration", () => {
 
 describe("the ETA cell where there is no date", () => {
   it("paused: who it waits on, short and muted, the full act in the tooltip", () => {
-    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked at needs_info", ref: null, since: null, late: null };
+    const f: Forecast = { ...stamp, kind: "paused", who: "Ana", act: "answer a question", reason: "parked at needs_info", ref: null, since: null, late: null };
     const eta = etaOfForecast(f, vi);
     expect(eta.kind).toBe("waits");
-    expect(etaLines(eta, vi)).toEqual({ line: "Chờ Người ghi project", sub: null }); // i18n-allow: asserts the vi ETA copy
-    expect(etaLines(eta, en).line).toBe("Waits on project writer");
-    expect(eta.detail).toBe("Người ghi project — trả lời một câu hỏi. parked at needs_info"); // i18n-allow: asserts the vi ETA copy; the act reads through the issue standing patterns, the reason stays as core wrote it
+    expect(etaLines(eta, vi)).toEqual({ line: "Chờ Ana", sub: null }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(eta, en).line).toBe("Waits on Ana");
+    expect(eta.detail).toBe("Ana — trả lời một câu hỏi. parked at needs_info"); // i18n-allow: asserts the vi ETA copy; the act reads through the issue standing patterns, the reason stays as core wrote it
   });
 
   it("not enough history: a dash, the sample size in the tooltip", () => {
@@ -117,12 +117,12 @@ describe("the ETA cell where there is no date", () => {
 });
 
 describe("a release a person still cuts", () => {
-  const manual = { kind: "person" as const, mode: "manual" as const, who: "A project admin", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
+  const manual = { kind: "person" as const, mode: "manual" as const, who: "Ada", act: "cut 0.2.0", reason: "an admin cuts each release", version: "0.2.0", holders: [] };
 
   it("reads the landing, then who cuts it as the second line", () => {
     const d: DeliveryForecast = { ...stamp, landing: TODAY, release: manual, inHands: null, shipped: null };
-    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "14:10", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
-    expect(etaLines(etaOfDelivery(d, en), en).sub).toBe("then project admin cuts it");
+    expect(etaLines(etaOfDelivery(d, vi), vi)).toEqual({ line: "14:10", sub: "rồi chờ Ada cắt" }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(etaOfDelivery(d, en), en).sub).toBe("then Ada cuts it");
   });
 
   // JU-7: hop's REQ-11 read '✓ Oct 4' under ETA while still in delivery; a landed change not in people's hands has no tick and no date
@@ -130,7 +130,7 @@ describe("a release a person still cuts", () => {
     const d: DeliveryForecast = { ...stamp, landing: { ...stamp, kind: "landed", landedAt: at(-30) }, release: manual, inHands: null, shipped: null };
     const eta = etaOfDelivery(d, vi);
     expect(eta.kind).toBe("landed");
-    expect(etaLines(eta, vi)).toEqual({ line: "Xong code, chờ release", sub: "rồi chờ Admin project cắt" }); // i18n-allow: asserts the vi ETA copy
+    expect(etaLines(eta, vi)).toEqual({ line: "Xong code, chờ release", sub: "rồi chờ Ada cắt" }); // i18n-allow: asserts the vi ETA copy
     expect(etaInline(eta, vi)).not.toContain("✓");
     render(<EtaCell eta={eta} clock={vi} />);
     expect(screen.getByTestId("eta-cell").querySelector("svg")).toBeNull();
@@ -177,7 +177,7 @@ describe("the ETA column's language and order", () => {
 
   it("sorts by the p50 within each group, every row without a time last in its own order", () => {
     type R = { key: string; f: Forecast };
-    const paused: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer", reason: "r", ref: null, since: null, late: null };
+    const paused: Forecast = { ...stamp, kind: "paused", who: "Ana", act: "answer", reason: "r", ref: null, since: null, late: null };
     const rows: R[] = [
       { key: "ISS-1", f: paused },
       { key: "ISS-2", f: range(1850, 1900) },

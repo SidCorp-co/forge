@@ -1,156 +1,132 @@
+// The production replies that stated tracker facts no tool had read this turn (chat mining
+// 2026-10-07, anonymised): every completion date given as 2024-05-15 with no tool call while the
+// tracker held 2026-07-14/15, and an issue said to be closed that the person saw still open.
+
 import { describe, expect, it } from 'vitest';
-import { cellFor } from './cells.js';
 import { facts } from './facts.js';
-import { GROUNDING_TOOLS, STATUS_CLAIMS_GROUNDED } from './grounding-rule.js';
-import { screenAtDoor } from './screen.js';
+import { datesIn, ungroundedClaims, withGrounding } from './grounding-rule.js';
+import { admitted } from './screen.js';
 
-// JU-1: the project assistant answered status, progress, release, roadmap, lateness and decision
-// questions from issue counts and memory, and was wrong. Each reply below is the opening sentence
-// of a recorded answer from 2026-10-07 (journey-understand asks f2..f7, h2..h7), the turn that wrote
-// it calling only the forge CLI, forge_memory and forge_knowledge.
+const rows = (pairs: [number, string][]) =>
+  facts({
+    prefix: 'ISS',
+    prefixes: ['ISS'],
+    issueRows: new Map(pairs.map(([seq, status]) => [seq, { seq, merged: false, status }])),
+    knownIssueSeqs: new Set(pairs.map(([seq]) => seq)),
+  });
 
-const OFFERED = ['forge', 'forge_knowledge', 'forge_memory', ...Object.values(GROUNDING_TOOLS)];
-const call = (name: string, isError = false) => ({ name, arguments: '{}', isError });
-const memoryOnly = [call('forge'), call('forge_memory'), call('forge_knowledge')];
+const ISSUE_59_READ = 'ISS-59 · closed · mergedAt 2026-07-15T03:12:00Z · Export filter by date';
 
-const RECORDED: { ask: string; reply: string; family: string }[] = [
-  {
-    ask: 'f3',
-    reply: 'There are no requirements currently in progress.',
-    family: "a requirement's progress",
-  },
-  {
-    ask: 'h3',
-    reply: 'Hiện toàn dự án có 39 yêu cầu in_progress.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
-    family: "a requirement's progress",
-  },
-  {
-    ask: 'f2',
-    reply: '0.4.0-dev.112 — also shipped with the same underlying fix commit present.',
-    family: 'what shipped or was released',
-  },
-  { ask: 'h2', reply: '0.2.0 Chờ phê duyệt để hoàn tất.', family: 'what shipped or was released' }, // i18n-allow: a recorded Vietnamese reply replayed against the rule
-  {
-    ask: 'h7',
-    reply: 'HOP has shipped 79 items to the release branch, with 39 currently in progress.',
-    family: 'what shipped or was released',
-  },
-  {
-    ask: 'f5',
-    reply: 'There is no dated, committed roadmap currently recorded.',
-    family: 'what comes next and when',
-  },
-  {
-    ask: 'h5',
-    reply: 'Release kế tiếp hiện chưa có ngày ETA được ghi nhận.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
-    family: 'what comes next and when',
-  },
-  {
-    ask: 'f4',
-    reply: 'No due dates are set, so nothing is late.',
-    family: 'what is late or blocked',
-  },
-  {
-    ask: 'f6',
-    reply: 'This week’s notable requirements/design decisions were: requirements are first-class.',
-    family: 'what was decided',
-  },
-  {
-    ask: 'h6',
-    reply: 'Các quyết định đáng chú ý gần đây: giao diện theo mockup.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
-    family: 'what was decided',
-  },
-];
-
-describe('a status claim with no read behind it', () => {
-  it.each(RECORDED)('refuses $ask, naming the claim and the read to call', ({ reply, family }) => {
-    const broke = STATUS_CLAIMS_GROUNDED.check(
-      reply,
-      facts({ toolCalls: memoryOnly, offeredTools: OFFERED }),
+describe('a tracker date in a reply is one this turn read', () => {
+  it('refuses the invented completion date when the turn read nothing', () => {
+    const breaks = ungroundedClaims(
+      'ISS-59 hoàn thành ngày 2024-05-15.', // i18n-allow: a production ask or reply replayed as the test case
+      [],
+      rows([[59, 'closed']]),
     );
-    expect(broke.length).toBeGreaterThan(0);
-    expect(broke[0]?.why).toContain(`the reply states ${family}`);
-    expect(broke[0]?.why).toMatch(/call forge_(?:project_status|requirements|releases|decisions)/);
+    const why = breaks.map((b) => b.why);
+    expect(why).toHaveLength(2);
+    expect(why[0]).toContain('2024-05-15');
+    expect(why[0]).toContain('read nothing');
+    expect(why[1]).toContain('without reading ISS-59 this turn');
   });
 
-  it('passes the same reply once forge_project_status answered this turn', () => {
-    for (const { reply, family } of RECORDED) {
-      const tool = family === 'what was decided' ? 'forge_decisions' : 'forge_project_status';
-      expect(
-        STATUS_CLAIMS_GROUNDED.check(
-          reply,
-          facts({ toolCalls: [...memoryOnly, call(tool)], offeredTools: OFFERED }),
-        ),
-        reply,
-      ).toEqual([]);
-    }
-  });
-
-  it('holds a refused read to nothing: the call happened and grounded no claim', () => {
-    const broke = STATUS_CLAIMS_GROUNDED.check(
-      RECORDED[0]?.reply ?? '',
-      facts({ toolCalls: [call('forge_project_status', true)], offeredTools: OFFERED }),
+  it('refuses the invented date when the turn read the issue and it says otherwise', () => {
+    const breaks = ungroundedClaims(
+      'ISS-59 was closed on 2024-05-15.',
+      [ISSUE_59_READ],
+      rows([[59, 'closed']]),
     );
-    expect(broke).toHaveLength(1);
+    expect(breaks.map((b) => b.why).join('\n')).toContain(
+      'no tool result this turn carries that date',
+    );
   });
 
-  it('grounds a release claim on forge_releases but not on forge_decisions', () => {
-    const reply = 'Release 0.2.0 was released to users yesterday.';
-    const on = (tool: string) =>
-      STATUS_CLAIMS_GROUNDED.check(
-        reply,
-        facts({ toolCalls: [call(tool)], offeredTools: OFFERED }),
-      );
-    expect(on('forge_releases')).toEqual([]);
-    expect(on('forge_decisions')).toHaveLength(1);
+  it('passes the date the turn read, and its day either side of a midnight timestamp', () => {
+    const f = rows([[59, 'closed']]);
+    expect(ungroundedClaims('ISS-59 was closed on 2026-07-15.', [ISSUE_59_READ], f)).toEqual([]);
+    expect(ungroundedClaims('ISS-59 đã đóng ngày 16/07/2026.', [ISSUE_59_READ], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
   });
 
-  it('does not judge a turn offered none of the reads (agent mode, a door without them)', () => {
+  it('abstains on a planned, hedged or asked date, and on a date about nothing in the tracker', () => {
+    const f = rows([[59, 'closed']]);
+    expect(ungroundedClaims('Bản release dự kiến phát hành 2026-10-20.', [], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
+    expect(ungroundedClaims('Should ISS-59 ship on 2026-10-20?', [], f)).toEqual([]);
+    expect(ungroundedClaims('The meeting is 2026-10-20 at the office.', [], f)).toEqual([]);
+  });
+
+  it('reads ISO, day/month/year and the Vietnamese long form as calendar days', () => {
+    const written = '2026-07-15, 15/07/2026, ngày 15 tháng 7 năm 2026'; // i18n-allow: the Vietnamese date form
+    expect(datesIn(written).map((d) => d.ms)).toEqual([
+      Date.UTC(2026, 6, 15),
+      Date.UTC(2026, 6, 15),
+      Date.UTC(2026, 6, 15),
+    ]);
+    expect(datesIn('2026-13-40')).toEqual([]);
+  });
+});
+
+describe('a status a reply gives an issue is the status the tracker holds, read this turn', () => {
+  it('refuses "closed" for an issue the tracker holds open — the person saw Open after a refresh', () => {
+    const breaks = ungroundedClaims(
+      'Đã xử lý: ISS-744 đã đóng.', // i18n-allow: a production ask or reply replayed as the test case
+      ['ISS-744 · open'],
+      rows([[744, 'open']]),
+    );
+    expect(breaks).toHaveLength(1);
+    expect(breaks[0]?.why).toContain('the tracker holds ISS-744 at open');
+  });
+
+  it('refuses a right status stated without reading the issue this turn', () => {
+    const breaks = ungroundedClaims('ISS-61 is draft.', [], rows([[61, 'draft']]));
+    expect(breaks[0]?.why).toContain('without reading ISS-61 this turn');
+  });
+
+  it('passes a status the turn read, in English, Vietnamese or as the raw word', () => {
+    const f = rows([
+      [61, 'draft'],
+      [62, 'in_progress'],
+      [63, 'awaiting_release'],
+    ]);
+    const read = ['ISS-61 draft', 'ISS-62 in_progress', 'ISS-63 awaiting_release'];
+    expect(ungroundedClaims('ISS-61 is draft', read, f)).toEqual([]);
+    expect(ungroundedClaims('ISS-62 đang làm', read, f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
+    expect(ungroundedClaims('ISS-63: `awaiting_release`', read, f)).toEqual([]);
+    expect(ungroundedClaims('ISS-63 hoàn thành', read, f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
+  });
+
+  it('abstains on a denial, a question and an issue the project does not hold', () => {
+    const f = rows([[744, 'open']]);
+    expect(ungroundedClaims('ISS-744 chưa đóng.', [], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
+    expect(ungroundedClaims('Is ISS-744 closed?', [], f)).toEqual([]);
+    expect(ungroundedClaims('ISS-9999 is closed.', [], f)).toEqual([]);
     expect(
-      STATUS_CLAIMS_GROUNDED.check(
-        RECORDED[0]?.reply ?? '',
-        facts({ toolCalls: memoryOnly, offeredTools: ['forge', 'forge_memory'] }),
-      ),
+      ungroundedClaims('ISS-744 đã đóng.', [], facts({ ...f, issueLookupFailed: true })), // i18n-allow: a production ask or reply replayed as the test case
     ).toEqual([]);
   });
+});
 
-  it('leaves a reply that states no status alone', () => {
-    for (const reply of [
-      'I filed it as a draft; tell me if the title needs a change.',
-      'The change you asked about is done.',
-      'Forge is a development-work orchestration platform.',
-      // h7 on 2026-10-07, refused as a decision claim: it names decisions still owed, not one taken
-      'Tiếp theo cần hoàn tất các quyết định và truy vết tiêu chí còn thiếu.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
-      'Referral Management đang chờ quyết định nghiệp vụ.', // i18n-allow: a recorded Vietnamese reply replayed against the rule
-    ]) {
-      expect(
-        STATUS_CLAIMS_GROUNDED.check(reply, facts({ toolCalls: [], offeredTools: OFFERED })),
-        reply,
-      ).toEqual([]);
-    }
-  });
-
-  it('is read at the web chat door and the chat-sync door, refusing by its own id', () => {
-    for (const door of ['web-chat-reply', 'chat-sync'] as const) {
-      const verdict = screenAtDoor(
-        door,
-        ['There are no requirements currently in progress.'],
-        facts({ toolCalls: memoryOnly, offeredTools: OFFERED }),
-      );
-      expect(verdict.ok, door).toBe(false);
-      if (!verdict.ok)
-        expect(verdict.refusals.map((r) => r.rule)).toContain('status-claims-grounded');
-    }
-  });
-
-  it('passes every other rule example in the cells it sits in', () => {
-    for (const cell of [cellFor('role', 'chat'), cellFor('public', 'report')]) {
-      for (const rule of cell?.rules ?? []) {
-        expect(
-          STATUS_CLAIMS_GROUNDED.check(rule.example, facts({ offeredTools: OFFERED })),
-          rule.id,
-        ).toEqual([]);
-      }
-    }
+describe('the grounding joins the cell verdict', () => {
+  it('turns a passing verdict into a refusal naming the rule, and keeps an earlier refusal', () => {
+    const f = rows([[59, 'closed']]);
+    const refused = withGrounding(admitted(['x']), ['ISS-59 closed on 2024-05-15'], [], f);
+    expect(refused.ok).toBe(false);
+    expect(!refused.ok && refused.refusals[0]?.rule).toBe('tracker-facts-grounded');
+    const kept = withGrounding(
+      {
+        ok: false,
+        refusals: [{ rule: 'non-empty', why: 'w', quote: null, shape: 's', example: 'e' }],
+      },
+      ['ISS-59 closed on 2024-05-15'],
+      [],
+      f,
+    );
+    expect(!kept.ok && kept.refusals.map((r) => r.rule)).toEqual([
+      'non-empty',
+      'tracker-facts-grounded',
+      'tracker-facts-grounded',
+    ]);
+    const clean = admitted(['fine']);
+    expect(withGrounding(clean, ['Nothing about dates.'], [], f)).toBe(clean);
   });
 });

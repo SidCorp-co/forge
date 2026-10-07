@@ -4,7 +4,7 @@
 // provides it at boot (`work-ports.ts`).
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { ChangedTrace } from '@forge/contracts/requirements';
+import type { ChangedTrace, RequirementState } from '@forge/contracts/requirements';
 import type { Tx } from '../db/client.js';
 import { portSlot } from '../lib/port-slot.js';
 
@@ -23,6 +23,11 @@ interface WorkflowPorts {
     executor: Pick<Tx, 'execute'>,
     issueIds: readonly string[],
   ) => Promise<Map<string, ChangedTrace[]>>;
+  /** Each requirement's state as its own standing reads it (requirements `standing.ts:stateOf`). */
+  requirementStatesOf: (
+    projectId: string,
+    requirementIds: readonly string[],
+  ) => Promise<Map<string, RequirementState>>;
   /** Answer the open questions waiting on a revision with its decision, in the decision's transaction. */
   answerDesignQuestions: (
     tx: Tx,
@@ -54,5 +59,6 @@ const slot = portSlot<WorkflowPorts>('workflows', 'provideWorkflowPorts');
 export const provideWorkflowPorts = slot.provide;
 export const repositoryOf = slot.port('repositoryOf');
 export const changedTracedOf = slot.port('changedTracedOf');
+export const requirementStatesOf = slot.port('requirementStatesOf');
 export const answerDesignQuestions = slot.port('answerDesignQuestions');
 export const reaskSupersededDesignQuestions = slot.port('reaskSupersededDesignQuestions');

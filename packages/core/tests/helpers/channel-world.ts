@@ -54,17 +54,19 @@ export async function openChannelWorld(): Promise<ChannelWorld> {
       VALUES (${orgId}, ${agent}, 'member', ${handle})
     `);
     await addProjectMember(projectId, agent, 'member');
-    const token = (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] }))
-      .plaintext;
+    const token = (
+      await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
+    ).plaintext;
     return { agent, token };
   };
   const forge = await agentOn(w.project.forge, w.org.platform, 'forge-master');
   const plugin = await agentOn(w.project.plugin, w.org.plugin, 'forge-plugin-master');
-  const cli = await mintPat({ userId: w.user.platform, name: 'laptop' });
+  const cli = await mintPat({ permissions: ['*'], userId: w.user.platform, name: 'laptop' });
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   const forgeMember = (await createTestUser({ verified: true })).id;
   await addProjectMember(w.project.forge, forgeMember, 'member');
   const turn = await mintPat({
+    permissions: ['*'],
     userId: w.user.platform,
     name: 'turn:session-1',
     projectIds: [w.project.forge],

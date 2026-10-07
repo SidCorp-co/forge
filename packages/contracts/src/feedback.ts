@@ -8,6 +8,7 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
+import { REASON_LINE_MAX } from "./reason-text.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
@@ -281,6 +282,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_TARGET_UNKNOWN",
 	"FEEDBACK_TARGET_NOT_IN_PROJECT",
 	"FEEDBACK_TARGET_NOT_ONE",
+	"FEEDBACK_SCREEN_TWICE",
 	"FEEDBACK_TARGET_UNCHANGED",
 	"FEEDBACK_TARGET_CORE_FILED",
 	"FEEDBACK_ROUTE_TARGET_MISMATCH",
@@ -399,7 +401,7 @@ export const feedbackDedupSchema = z.strictObject({
 	ran: z.boolean(),
 	nearest: z.string().nullable(),
 	similarity: z.number().min(-1).max(1).optional(),
-	why: z.string().max(500).optional(),
+	why: z.string().max(REASON_LINE_MAX).optional(),
 });
 export type FeedbackDedup = z.infer<typeof feedbackDedupSchema>;
 
@@ -462,15 +464,6 @@ export const FEEDBACK_MESSAGE_AUDIENCES = [
 ] as const;
 export type FeedbackMessageAudience =
 	(typeof FEEDBACK_MESSAGE_AUDIENCES)[number];
-
-export const FEEDBACK_MESSAGE_AUDIENCE_LABELS: Record<
-	FeedbackMessageAudience,
-	string
-> = {
-	reporter: "This reporter",
-	all_reporters: "Every reporter merged into it",
-	internal: "Internal note",
-};
 
 /** `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing. */
 export const feedbackMessageRequestSchema = z.strictObject({

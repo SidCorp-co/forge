@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
+import { REASON_TEXT_MAX } from "./reason-text.js";
 import { NODE_DECISION_SHAPE, nodeDecisionSchema } from "./workflow-health.js";
 
 export const COMMENT_SCOPES = [
@@ -51,9 +52,13 @@ export interface CommentRefusal {
 
 const COMMENT_BODY_MAX = 64_000;
 
-/** The one bound on a reason or decision text: a design's approve or return, a decision comment, a
- *  requirement's accept, defer, drop or repin (ISS-263). */
-export const REASON_TEXT_MAX = 4_000;
+export {
+	REASON_LINE_MAX,
+	REASON_NOTE_MAX,
+	REASON_PARAGRAPH_MAX,
+	REASON_SENTENCE_MAX,
+	REASON_TEXT_MAX,
+} from "./reason-text.js";
 
 const DECISIONS_LIST_MAX = 200;
 

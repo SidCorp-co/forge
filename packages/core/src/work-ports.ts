@@ -11,7 +11,6 @@ import {
   agentSessionEventsRetention,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
-  requestSessionSend,
   resolveSessionSend,
   stampFinalizeAttempt,
   transitionSessions,
@@ -125,6 +124,7 @@ import {
   plannedRevisionFor,
   requirementOfIssue,
   rowIn as requirementRowIn,
+  requirementStatesOf,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';
@@ -152,7 +152,6 @@ function provideWorkPipelinePorts(): void {
   providePipelinePorts({
     insertJobRow,
     wakeMastersForProject,
-    requestSessionSend,
     resolveSessionSend,
     transitionSessions,
     broadcastSessionEvent,
@@ -271,6 +270,7 @@ export function provideWorkPorts(): void {
 
   provideWorkflowPorts({
     changedTracedOf,
+    requirementStatesOf,
     answerDesignQuestions,
     reaskSupersededDesignQuestions,
     repositoryOf: async (projectId) => {

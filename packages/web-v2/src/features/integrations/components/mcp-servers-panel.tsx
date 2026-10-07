@@ -186,7 +186,7 @@ export function McpServersPanel({
 }) {
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
-  const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
+  const byBindingId = new Map((bindings.data?.items ?? []).map((b) => [b.id, b]));
   const t = useCopy();
 
   return (

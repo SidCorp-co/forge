@@ -13,7 +13,11 @@ import {
   patPrefixOf,
 } from './pat-format.js';
 import { patIsLive } from './pat-live.js';
-import { PAT_EXPLICIT_PERMISSIONS, PAT_PERMISSION_ALL } from './pat-permissions.js';
+import {
+  PAT_EXPLICIT_PERMISSIONS,
+  patGrantIsStated,
+  type StatedPatGrant,
+} from './pat-permissions.js';
 
 const ARGON2_OPTIONS = {
   type: argon2.argon2id,
@@ -32,11 +36,8 @@ interface MintPatInput {
   scopes?: string[] | undefined;
   projectIds?: string[] | null | undefined;
   boundProjectId?: string | null | undefined;
-  /**
-   * What this token may reach: the names, or `PAT_GRANT_ALL` for the whole
-   * menu. Omitting it writes the legacy shape, which reaches everything.
-   */
-  permissions?: readonly string[] | null | undefined;
+  /** What this token may reach: the names, or `PAT_GRANT_ALL` for the whole menu. */
+  permissions: StatedPatGrant;
   /** The menu epoch this token's reach is fixed at; omitted, it is 1, the narrowest. */
   grantEpoch?: number | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
@@ -89,6 +90,9 @@ function getDummyHash(): Promise<string> {
  * the ambient handle, so every other caller is unchanged.
  */
 export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedPat> {
+  if (!patGrantIsStated(input.permissions)) {
+    throw new Error(`mintPat: token '${input.name}' states no grant; name what it may reach`);
+  }
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
@@ -104,7 +108,7 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
       scopes: input.scopes ?? ['read', 'write'],
       projectIds: input.projectIds ?? null,
       boundProjectId: input.boundProjectId ?? null,
-      permissions: input.permissions ? [...input.permissions] : null,
+      permissions: [...input.permissions],
       grantEpoch: input.grantEpoch ?? 1,
       deviceId: input.deviceId ?? null,
       expiresAt: input.expiresAt ?? null,
@@ -176,21 +180,20 @@ export async function supersedeNamedToken(
       ),
     );
 }
-/**
- * A grant with its token-explicit names replaced by `explicit`, its route grant kept; a grant that
- * named no route group (a legacy token) keeps its whole reach as `*`.
- */
-export function grantNaming(
-  permissions: readonly string[] | null,
-  explicit: readonly string[],
-): string[] {
-  const routes = (permissions ?? []).filter(
+/** A grant with its token-explicit names replaced by `explicit`, its route grant kept as it was. */
+function grantNaming(permissions: StatedPatGrant, explicit: readonly string[]): string[] {
+  const routes = permissions.filter(
     (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
   );
-  return [...new Set([...(routes.length > 0 ? routes : [PAT_PERMISSION_ALL]), ...explicit])];
+  return [...new Set([...routes, ...explicit])];
 }
 
-/** Every live token of one holder names exactly `explicit` among its token-explicit permissions; answers how many. */
+/**
+ * Every live token of one holder names exactly `explicit` among its token-explicit permissions;
+ * answers how many. A token left naming nothing reaches nothing and is revoked, and one stating no
+ * grant is left as it is: refused at every door, and regranting it would hand it a reach nobody
+ * chose.
+ */
 export async function regrantLiveTokens(
   tx: Tx,
   userId: string,
@@ -200,13 +203,17 @@ export async function regrantLiveTokens(
     .select({ id: personalAccessTokens.id, permissions: personalAccessTokens.permissions })
     .from(personalAccessTokens)
     .where(and(eq(personalAccessTokens.userId, userId), patIsLive()));
+  let regranted = 0;
   for (const token of live) {
+    if (!patGrantIsStated(token.permissions)) continue;
+    const permissions = grantNaming(token.permissions, explicit);
     await tx
       .update(personalAccessTokens)
-      .set({ permissions: grantNaming(token.permissions, explicit) })
+      .set(permissions.length > 0 ? { permissions } : { revokedAt: sql`now()` })
       .where(eq(personalAccessTokens.id, token.id));
+    regranted += 1;
   }
-  return live.length;
+  return regranted;
 }
 
 export interface VerifiedPat {

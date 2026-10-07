@@ -215,7 +215,7 @@ describe('a high item is triaged onto an issue', () => {
 });
 
 describe('a carrier at the release gate waits on whoever makes that release', () => {
-  it('names a project writer to release it by hand where no release model is declared', async () => {
+  it('names the project writers to release it by hand where no release model is declared', async () => {
     await seedIssueStatus(ids.carrier, 'awaiting_release');
     const act = `release ${ids.carrierKey} by hand and close it`;
     expect(await standingAs('member', ids.high)).toEqual({
@@ -224,7 +224,11 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
     });
     expect(await standingAs('viewer', ids.high)).toEqual({
       attentionGroup: 'moving',
-      waitingOn: expect.objectContaining({ kind: 'person', who: 'A project writer', act }),
+      waitingOn: expect.objectContaining({
+        kind: 'person',
+        who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+        act,
+      }),
     });
   });
 });

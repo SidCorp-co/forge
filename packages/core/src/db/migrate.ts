@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
+import { OUTBOX_EVENT_TYPES } from '@forge/contracts/outbox-events';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { flushReports, isErrorTrackingEnabled, reportCondition } from '../lib/error-tracking.js';
+import { RefusalError } from '../lib/refusal.js';
 import {
   describeUnrecorded,
   type JournalEntry,
@@ -24,7 +26,12 @@ export const MIGRATE_LOCK_TIMEOUT_MS = 60_000;
 const REPORT_FLUSH_MS = 5_000;
 
 /** Where the boot was when it stopped: `reading-recorded` is the first query, so a refused connect lands there. */
-export type MigrateStage = 'environment' | 'reading-recorded' | 'applying' | 'auditing';
+export type MigrateStage =
+  | 'environment'
+  | 'reading-recorded'
+  | 'applying'
+  | 'auditing'
+  | 'checking-event-types';
 
 export interface MigrateFailure {
   stage: MigrateStage;
@@ -152,6 +159,13 @@ async function reportDrift(unrecorded: JournalEntry[]): Promise<void> {
   }
 }
 
+/** The registry's event types `outbox_event_types` lacks: an emit of any of them would fail the
+ *  outbox's foreign key, so the boot refuses before the app serves one. */
+export function outboxTypesUnseeded(seeded: readonly string[]): string[] {
+  const held = new Set(seeded);
+  return OUTBOX_EVENT_TYPES.filter((t) => !held.has(t));
+}
+
 /**
  * The boot's migration step: applies every pending migration, audits the record, and answers the
  * process exit code. A failure at any stage is logged AND reported through the error-tracking port,
@@ -208,6 +222,22 @@ export async function migrateAtBoot(
       );
     }
     if (unexpected.length > 0) await reportDrift(unexpected);
+
+    stage = 'checking-event-types';
+    const seeded = await sql<{ type: string }[]>`SELECT type FROM outbox_event_types`;
+    const unseeded = outboxTypesUnseeded(seeded.map((r) => r.type));
+    if (unseeded.length > 0) {
+      throw new RefusalError(
+        [
+          {
+            code: 'OUTBOX_TYPE_UNSEEDED',
+            path: '',
+            detail: `outbox_event_types holds no row for ${unseeded.join(', ')}, which OUTBOX_EVENT_TYPES emits, so every such emit would fail its foreign key. Add a migration inserting each (INSERT INTO "outbox_event_types" ("type") VALUES ('<type>')), then deploy again.`,
+          },
+        ],
+        'OUTBOX_TYPE_UNSEEDED',
+      );
+    }
 
     console.log(
       `[migrate] done — journal ${journal.length}, recorded ${after.length}, known-unrecorded ${investigated.length}, unexpected ${unexpected.length}`,

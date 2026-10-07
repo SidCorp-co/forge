@@ -1,5 +1,6 @@
 // The policy and testing-profile documents a project declares beside its project document.
 
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import {
   AUTONOMOUS_DRIVER_STATUSES,
   ISSUE_TERMINAL_STATUSES,
@@ -98,7 +99,9 @@ export const testingProfileSchema = z.strictObject({
     ),
     { max: 20 },
   ),
-  limits: unique(z.array(z.strictObject({ id: slug(), note: z.string().min(1).max(500) })).max(30)),
+  limits: unique(
+    z.array(z.strictObject({ id: slug(), note: z.string().min(1).max(REASON_LINE_MAX) })).max(30),
+  ),
 });
 
 export type TestingProfile = z.infer<typeof testingProfileSchema>;

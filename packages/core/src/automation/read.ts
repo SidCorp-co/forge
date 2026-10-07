@@ -13,7 +13,7 @@ import {
 } from '@forge/contracts/automation-standing';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { holds } from '../permissions/index.js';
+import { holderNames, holds } from '../permissions/index.js';
 import {
   type FireRow,
   fireFacts,
@@ -42,10 +42,15 @@ export async function automationViewerOf(
 ): Promise<AutomationViewer | null> {
   const access = await loadProjectAccess(projectId, userId);
   if (!holds(access, 'project.read')) return null;
+  const [admins, writers] = await Promise.all([
+    holderNames('project.admin', projectId),
+    holderNames('project.write', projectId),
+  ]);
   return {
     userId,
     canWrite: holds(access, 'project.write'),
     isAdmin: holds(access, 'project.admin'),
+    holders: { admins, writers },
   };
 }
 

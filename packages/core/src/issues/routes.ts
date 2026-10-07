@@ -19,7 +19,12 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from './issue-route-ref.js';
-import { assertAssigneeIsMember, refuseUpdate, toHttpCreateError } from './issue-write-refusals.js';
+import {
+  assertAssigneeIsMember,
+  patchBodyAnswer,
+  refuseUpdate,
+  toHttpCreateError,
+} from './issue-write-refusals.js';
 import { type ResolvedLabelAttach, resolveLabelIdsForWrite } from './label-service.js';
 import { readLandingShape } from './landing-evidence.js';
 import { isSelfReferentialBranch } from './metadata.js';
@@ -83,7 +88,7 @@ issueRoutes.get(
 issueRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
-  zValidator('json', issuePatchSchema),
+  zValidator('json', issuePatchSchema, patchBodyAnswer),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');

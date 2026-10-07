@@ -2,10 +2,11 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { UserKind } from '../db/schema.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import type { VerifiedPat } from './pat.js';
+import { statedPatGrant } from './pat-permissions.js';
 
 /**
  * The one place a token row becomes a principal, so a token core mints for itself acts
- * exactly as it would when presented at a door.
+ * exactly as it would when presented at a door. A row stating no grant is refused here.
  */
 export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
   return {
@@ -16,7 +17,7 @@ export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
     tokenId: row.id,
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
-    permissions: row.permissions ?? null,
+    permissions: statedPatGrant(row.permissions, row.tokenPrefix),
     grantEpoch: row.grantEpoch,
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,

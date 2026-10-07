@@ -1,3 +1,4 @@
+import { REASON_NOTE_MAX } from '@forge/contracts/comments';
 import { CHANNEL_ACTIONS, type ChannelAction } from '@forge/contracts/ecosystem';
 import { z } from 'zod';
 import { REGISTER_STATUSES } from './channel-register.js';
@@ -50,7 +51,7 @@ const BY_ACTION = {
   gate: z.strictObject({
     ref,
     decision: z.enum(['approve', 'return']),
-    note: z.string().trim().min(1).max(1000).optional(),
+    note: z.string().trim().min(1).max(REASON_NOTE_MAX).optional(),
   }),
 } satisfies Record<ChannelAction, z.ZodType>;
 

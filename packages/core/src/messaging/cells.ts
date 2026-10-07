@@ -9,7 +9,7 @@
 import { NO_ROLE, ROLE_HOLDER, ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import { ISSUE_KEYS_EXIST, ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
 import { type Audience, type CellId, type CellSpec, cellId, type Intent } from './contract.js';
-import { STATUS_CLAIMS_GROUNDED } from './grounding-rule.js';
+import { STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 import {
   COMMENT_HAS_TEXT,

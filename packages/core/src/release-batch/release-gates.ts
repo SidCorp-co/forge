@@ -1,5 +1,6 @@
 import type { ReleaseGateOwner, ReleaseGateView } from '@forge/contracts/releases';
 import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { agrees, counted } from '../lib/plural.js';
 import type { ReleaseBlocker, ReleaseReasonCode, ReleaseWarning } from './blocker-sentences.js';
 
@@ -213,24 +214,33 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   RELEASE_CRITERIA_UNCORROBORATED: { by: 'system', act: () => 'verdicts not re-read' },
 };
 
-const OWNER_OF: Record<Owing, Pick<ReleaseGateOwner, 'kind' | 'who'>> = {
+const OWNER_OF: Record<Exclude<Owing, 'admin'>, Pick<ReleaseGateOwner, 'kind' | 'who'>> = {
   master: { kind: 'agent', who: 'Master' },
-  admin: { kind: 'person', who: 'A project admin' },
   system: { kind: 'system', who: 'Release gate' },
 };
 
-function ownerOf(code: ReleaseReasonCode, details: Details): ReleaseGateOwner {
+// an admin's act names the project's admins, and where none holds project.admin says where it is granted
+function ownerOf(
+  code: ReleaseReasonCode,
+  details: Details,
+  admins: readonly string[],
+): ReleaseGateOwner {
   const owed = OWED[code];
+  const act = owed.act(details);
+  const effect = owed.effect ? { effect: owed.effect(details) } : {};
+  if (owed.by !== 'admin') return { ...OWNER_OF[owed.by], act, ...effect };
   return {
-    ...OWNER_OF[owed.by],
-    act: owed.act(details),
-    ...(owed.effect ? { effect: owed.effect(details) } : {}),
+    kind: 'person',
+    who: holdersWho(admins),
+    act: admins.length === 0 ? nobodyHoldsAct(act, 'project.admin') : act,
+    ...effect,
   };
 }
 
 function gateView(
   entry: ReleaseBlocker | ReleaseWarning,
   kind: ReleaseGateView['kind'],
+  admins: readonly string[],
 ): ReleaseGateView {
   const reading = READINGS[entry.code];
   return {
@@ -240,16 +250,18 @@ function gateView(
     sentence: reading.plain(entry.details),
     detail: entry.message,
     issues: issuesNamed(entry.details),
-    owner: ownerOf(entry.code, entry.details),
+    owner: ownerOf(entry.code, entry.details, admins),
   };
 }
 
+/** Every blocker and warning as the gate shows it; `admins` are the names of project.admin's holders, whom an admin's act names. */
 export function gateViews(
   blockers: readonly ReleaseBlocker[],
   warnings: readonly ReleaseWarning[],
+  admins: readonly string[],
 ): ReleaseGateView[] {
   return [
-    ...blockers.map((b) => gateView(b, 'blocker')),
-    ...warnings.map((w) => gateView(w, 'warning')),
+    ...blockers.map((b) => gateView(b, 'blocker', admins)),
+    ...warnings.map((w) => gateView(w, 'warning', admins)),
   ];
 }

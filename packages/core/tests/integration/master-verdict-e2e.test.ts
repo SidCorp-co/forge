@@ -44,6 +44,7 @@ beforeAll(async () => {
     owner: await signUserToken(ownerId),
     box: (
       await mintPat({
+        permissions: ['*'],
         userId: ownerId,
         name: 'box',
         deviceId,
@@ -52,6 +53,7 @@ beforeAll(async () => {
     ).plaintext,
     otherBox: (
       await mintPat({
+        permissions: ['*'],
         userId: ownerId,
         name: 'other',
         deviceId: otherDevice,

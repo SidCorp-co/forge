@@ -1,3 +1,4 @@
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../index.js';
 
@@ -6,7 +7,7 @@ const sentryTargetSchema = z.object({
   organizationSlug: z.string().min(1).max(200).optional(),
   projectSlug: z.string().min(1).max(200).optional(),
   environment: z.string().min(1).max(120).optional(),
-  notes: z.string().max(2000).optional(),
+  notes: z.string().max(REASON_PARAGRAPH_MAX).optional(),
 });
 
 export const SENTRY_TARGET_OLD_SHAPE =

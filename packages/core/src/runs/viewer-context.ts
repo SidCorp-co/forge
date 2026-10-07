@@ -11,8 +11,9 @@ import {
 import { effectiveProjectRole } from '../lib/authz.js';
 import { peopleOf } from '../lib/people.js';
 import { readMasterStanding } from '../masters/read.js';
-import { holds } from '../permissions/index.js';
+import { holderNames, holds } from '../permissions/index.js';
 import type { StandingContext } from './standing.js';
+import { RUN_NEED_PERMISSION } from './standing-types.js';
 
 export interface RunViewer {
   userId: string;
@@ -34,10 +35,13 @@ async function viewerOf(viewer: RunViewer | null, projectId: string) {
 }
 
 export async function contextFor(projectId: string, viewer: RunViewer | null) {
-  const [master, who, queuedGates] = await Promise.all([
+  const [master, who, queuedGates, write, admin, approve] = await Promise.all([
     readMasterStanding(projectId),
     viewerOf(viewer, projectId),
     gateReasonsForQueuedJobsIn([projectId]),
+    holderNames(RUN_NEED_PERMISSION.write, projectId),
+    holderNames(RUN_NEED_PERMISSION.admin, projectId),
+    holderNames(RUN_NEED_PERMISSION.approve, projectId),
   ]);
   const slots =
     master.slots && master.slots.max !== null
@@ -46,6 +50,7 @@ export async function contextFor(projectId: string, viewer: RunViewer | null) {
   const ctx: StandingContext = {
     now: new Date(),
     viewer: who,
+    holders: { write, admin, approve },
     slots,
     stuckAfterMs: RUN_STUCK_AFTER_MS,
     queuedGates,

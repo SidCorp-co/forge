@@ -26,7 +26,7 @@ import {
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_NAMES,
-  patGrantIsLegacy,
+  patGrantIsStated,
   patGrantIsStatedFull,
 } from './pat-permissions.js';
 import { tokenChanged } from './ports.js';
@@ -54,10 +54,11 @@ const notFound = () =>
 
 /**
  * Which of the three grants a row carries, read once here so a listing does
- * not have to work it out from the array and reach a different answer.
+ * not have to work it out from the array and reach a different answer. An
+ * `unstated` row reaches nothing: every door refuses it as `PAT_GRANT_UNSTATED`.
  */
-function grantOf(permissions: string[] | null): 'legacy' | 'full' | 'named' {
-  if (patGrantIsLegacy(permissions)) return 'legacy';
+function grantOf(permissions: string[] | null): 'unstated' | 'full' | 'named' {
+  if (!patGrantIsStated(permissions)) return 'unstated';
   return patGrantIsStatedFull(permissions) ? 'full' : 'named';
 }
 
@@ -105,7 +106,8 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
   // What is wrong with the body is answered before what is wrong with the
   // account, so a caller at the token limit still reads which field it left
   // out rather than a limit it would have met either way.
-  if (!body.permissions || body.permissions.length === 0) {
+  const permissions = body.permissions;
+  if (!patGrantIsStated(permissions)) {
     throw new HTTPException(400, {
       message:
         'a token states what it may reach: send `permissions` naming the groups this token ' +
@@ -117,10 +119,10 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
       },
     });
   }
-  const routeGroups = body.permissions.filter(
+  const routeGroups = permissions.filter(
     (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
   );
-  if (body.permissions.includes(PAT_PERMISSION_ALL) && routeGroups.length > 1) {
+  if (permissions.includes(PAT_PERMISSION_ALL) && routeGroups.length > 1) {
     throw new HTTPException(400, {
       message:
         `full access is the whole route grant: send ["${PAT_PERMISSION_ALL}"] with no route ` +
@@ -128,13 +130,13 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
         'the groups this token needs without it.',
       cause: {
         code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
-        details: { sent: body.permissions },
+        details: { sent: permissions },
       },
     });
   }
 
   const fenced = (body.projectIds ?? null) !== null || Boolean(body.boundProjectId);
-  const accountOnly = body.permissions.filter((p) =>
+  const accountOnly = permissions.filter((p) =>
     (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
   );
   if (fenced && accountOnly.length > 0) {
@@ -197,7 +199,7 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
     scopes: body.scopes,
     projectIds: body.projectIds ?? null,
     boundProjectId: body.boundProjectId ?? null,
-    permissions: body.permissions,
+    permissions,
     grantEpoch: PAT_GRANT_EPOCH,
     expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
   });

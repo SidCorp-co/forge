@@ -9,10 +9,23 @@ const FILING_TOOL = 'forge';
 const RESULT_CHARS = 300;
 const ARGUMENT_CHARS = 200;
 const LISTED_CALLS = 16;
+/** What the reply screen reads of one result: the body the model was shown, up to the tool cap. */
+const GROUNDING_CHARS = 24_000;
 
-interface DoneCall {
+/** The `forge` verbs that change the tracker, and the flags that make `forge issue` one of them. */
+const WRITE_VERBS: ReadonlySet<string> = new Set(['new', 'comment', 'attach']);
+const ISSUE_WRITE_FLAG =
+  /^--(status|relates|blocks|priority|assign|assignee|title|category|label|labels|module|with)(=|$)/;
+const WRITE_TOOLS: ReadonlySet<string> = new Set(['forge_memory_note', 'forge_preferences']);
+
+/** One call that landed this turn, as the partial reply and the retry name it. */
+export interface DoneCall {
   readonly said: string;
   readonly result: string;
+  /** It changed something: a filing, a comment, an attachment, a status, a note. */
+  readonly write: boolean;
+  /** The issue keys its result names, in the order it names them. */
+  readonly keys: readonly string[];
 }
 
 export interface TurnWrites {
@@ -20,6 +33,10 @@ export interface TurnWrites {
   readonly tools: ChatToolset | undefined;
   /** What a retry is told the turn already did, or null when it did nothing yet. */
   doneSoFar(): string | null;
+  /** Every call that landed so far, oldest first, across every attempt. */
+  calls(): readonly DoneCall[];
+  /** The text of every result the model was shown this turn, refused ones included. */
+  resultTexts(): readonly string[];
 }
 
 const oneLine = (text: string, cap: number): string => {
@@ -57,6 +74,18 @@ export function titleKey(title: string): string {
     .replace(/^["'“‘]+|["'”’.!?:;]+$/g, '');
 }
 
+const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g;
+
+/** Did this call change something? The `forge` verbs and flags that write, and the note tools. */
+export function isWriteCall(name: string, argsJson: string): boolean {
+  if (WRITE_TOOLS.has(name)) return true;
+  if (name !== FILING_TOOL) return false;
+  const argv = argvOf(argsJson);
+  if (!argv?.[0]) return false;
+  if (WRITE_VERBS.has(argv[0])) return true;
+  return argv[0] === 'issue' && argv.slice(1).some((a) => ISSUE_WRITE_FLAG.test(a));
+}
+
 const callSaid = (name: string, argsJson: string): string => {
   const argv = name === FILING_TOOL ? argvOf(argsJson) : null;
   return argv ? `${name} ${JSON.stringify(argv)}` : `${name} ${oneLine(argsJson, ARGUMENT_CHARS)}`;
@@ -74,14 +103,19 @@ function refiled(title: string, earlier: CallToolResult): CallToolResult {
  */
 export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   const done: DoneCall[] = [];
+  const shown: string[] = [];
   const filings = new Map<string, Promise<CallToolResult>>();
-  if (!tools) return { tools, doneSoFar: () => null };
+  if (!tools) return { tools, doneSoFar: () => null, calls: () => [], resultTexts: () => [] };
   const run = async (name: string, argsJson: string): Promise<CallToolResult> => {
     const result = await tools.execute(name, argsJson);
+    const text = toolResultText(result);
+    shown.push(text.slice(0, GROUNDING_CHARS));
     if (!result.isError) {
       done.push({
         said: callSaid(name, argsJson),
-        result: oneLine(toolResultText(result), RESULT_CHARS),
+        result: oneLine(text, RESULT_CHARS),
+        write: isWriteCall(name, argsJson),
+        keys: [...new Set(text.match(ISSUE_KEY_RE) ?? [])],
       });
     }
     return result;
@@ -109,6 +143,8 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   };
   return {
     tools: ledgered,
+    calls: () => [...done],
+    resultTexts: () => [...shown],
     doneSoFar() {
       if (done.length === 0) return null;
       const listed = done.slice(-LISTED_CALLS).map((c) => `- ${c.said} → ${c.result}`);

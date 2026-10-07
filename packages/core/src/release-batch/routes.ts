@@ -1,3 +1,4 @@
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { RELEASE_HOLD_OWERS } from '@forge/contracts/releases';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -117,7 +118,7 @@ const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
 const abortBodySchema = z
   .object({
-    reason: z.string().trim().max(2000).optional(),
+    reason: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
     /**
      * What to do with a roster whose run already promoted. Absent is `hold`, which is what this
      * door did before the choice existed (ISS-1199).

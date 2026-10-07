@@ -18,6 +18,8 @@ import {
   type ForecastPaused,
   type ForecastRange,
 } from '@forge/contracts/forecast';
+import type { ProjectPermission } from '@forge/contracts/permissions';
+import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { lateAfterP85, latestLate, lateWaiting } from './late.js';
 
 const MINUTE = 60_000;
@@ -43,6 +45,22 @@ export interface Wait {
   ref: string | null;
   /** When the wait began, where it is known; absent, it is never called late. */
   since?: string | null;
+}
+
+/** A wait on the holders of `permission`, by name; nobody holding it says so and where it is granted. */
+export function holdersWait(
+  names: readonly string[],
+  permission: ProjectPermission,
+  act: string,
+  reason: string,
+  ref: string | null,
+): Wait {
+  return {
+    who: holdersWho(names),
+    act: names.length === 0 ? nobodyHoldsAct(act, permission) : act,
+    reason,
+    ref,
+  };
 }
 
 export interface WorkItem {
@@ -74,6 +92,8 @@ interface ForecastInput {
   history: History;
   /** A wait that holds the whole project, such as no runner able to take work. */
   projectWait: Wait | null;
+  /** Who holds project.write, by name: whom a wait only a writer settles names. */
+  writers: readonly string[];
   seed: number;
   trials?: number;
   floor?: number;
@@ -197,7 +217,11 @@ export function pausedOf(asOf: string, wait: Wait): ForecastPaused {
 }
 
 /** An item's own wait, else the first blocker's that is paused, followed down the chain. */
-function waitsOf(items: readonly WorkItem[], projectWait: Wait | null): Map<string, Wait> {
+function waitsOf(
+  items: readonly WorkItem[],
+  projectWait: Wait | null,
+  writers: readonly string[],
+): Map<string, Wait> {
   const byKey = new Map(items.map((i) => [i.key, i]));
   const out = new Map<string, Wait>();
   const clear = new Set<string>();
@@ -207,12 +231,13 @@ function waitsOf(items: readonly WorkItem[], projectWait: Wait | null): Map<stri
     const known = out.get(item.key);
     if (known) return known;
     if (visiting.has(item.key)) {
-      return {
-        who: 'A project writer',
-        act: 'break the cycle',
-        reason: `${item.key} sits on a cycle of blocks edges, so none of them can start`,
-        ref: item.key,
-      };
+      return holdersWait(
+        writers,
+        'project.write',
+        'break the cycle',
+        `${item.key} sits on a cycle of blocks edges, so none of them can start`,
+        item.key,
+      );
     }
     visiting.add(item.key);
     let wait = item.wait ?? projectWait;
@@ -319,7 +344,7 @@ export function runForecast(input: ForecastInput): ForecastRun {
     };
   };
 
-  const waits = waitsOf(input.items, input.projectWait);
+  const waits = waitsOf(input.items, input.projectWait, input.writers);
   const live: WorkItem[] = [];
   for (const item of input.items) {
     if (item.landed) {

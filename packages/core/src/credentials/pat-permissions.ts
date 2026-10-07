@@ -1,4 +1,5 @@
 import { TOKEN_EXPLICIT_PERMISSIONS } from '@forge/contracts/permissions';
+import { HTTPException } from 'hono/http-exception';
 import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
 
 /**
@@ -369,23 +370,53 @@ export const PAT_EXPLICIT_PERMISSIONS = TOKEN_EXPLICIT_PERMISSIONS;
 /** Full access as a stated value: off the menu, so no named grant holds it. */
 export const PAT_PERMISSION_ALL = '*';
 
-export const PAT_GRANT_ALL: readonly string[] = Object.freeze([PAT_PERMISSION_ALL]);
+export const PAT_GRANT_ALL: StatedPatGrant = Object.freeze([PAT_PERMISSION_ALL] as const);
 
-export function patGrantIsLegacy(granted: readonly string[] | null | undefined): boolean {
-  return granted === null || granted === undefined || granted.length === 0;
+/** A grant a token was minted with: at least one name, `PAT_GRANT_ALL` for full access. */
+export type StatedPatGrant = readonly [string, ...string[]];
+
+export const PAT_GRANT_UNSTATED = 'PAT_GRANT_UNSTATED';
+
+/** Whether a stored grant names anything; a NULL or empty one was minted before grants were stated. */
+export function patGrantIsStated(
+  granted: readonly string[] | null | undefined,
+): granted is StatedPatGrant {
+  return granted !== null && granted !== undefined && granted.length > 0;
+}
+
+/**
+ * The grant a token row is admitted on. A row whose grant is NULL or empty states no reach, and is
+ * refused by name rather than read as the whole menu.
+ */
+export function statedPatGrant(
+  granted: readonly string[] | null | undefined,
+  prefix: string,
+): StatedPatGrant {
+  if (patGrantIsStated(granted)) return granted;
+  throw new HTTPException(403, {
+    message:
+      `token ${prefix} was minted before a token stated what it may reach, so it reaches nothing. ` +
+      'Revoke it under Settings → API Tokens and mint a new one naming the groups it needs, ' +
+      `or ["${PAT_PERMISSION_ALL}"] for full access chosen on purpose.`,
+    cause: { code: PAT_GRANT_UNSTATED, details: { prefix } },
+  });
 }
 
 export function patGrantIsStatedFull(granted: readonly string[] | null | undefined): boolean {
   return granted?.includes(PAT_PERMISSION_ALL) ?? false;
 }
 
+/**
+ * Whether `granted` covers `wanted`. `null` is a request no token bounds — a turn answering a
+ * person who signed in, whose project role is the whole bound; a token's own grant is never null,
+ * because `statedPatGrant` refused that row before it became a principal.
+ */
 export function patGrantCovers(
-  granted: readonly string[] | null | undefined,
+  granted: readonly string[] | null,
   wanted: PatPermission | null,
 ): boolean {
   if (wanted === null) return false;
-  if (granted === null || granted === undefined) return true;
-  if (granted.length === 0) return true;
+  if (granted === null) return true;
   if (granted.includes(PAT_PERMISSION_ALL)) return true;
   return granted.includes(wanted);
 }

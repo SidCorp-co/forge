@@ -88,12 +88,6 @@ interface PipelinePorts {
     issueId: string | null;
     status: IssueStatus;
   }) => Promise<{ boxes: number; delivered: number }>;
-  requestSessionSend: (req: {
-    agentSessionId: string;
-    kind: 'answer';
-    intentId: string;
-    body: string;
-  }) => Promise<{ published: boolean }>;
   resolveSessionSend: (
     row: typeof sessionInbox.$inferSelect,
     now: number,
@@ -181,7 +175,6 @@ export const SWEEP_SESSION_COLUMNS = [
 
 export const insertJobRow = port('insertJobRow');
 export const wakeMastersForProject = port('wakeMastersForProject');
-export const requestSessionSend = port('requestSessionSend');
 export const resolveSessionSend = port('resolveSessionSend');
 export const transitionSessions = port('transitionSessions');
 export const broadcastSessionEvent = port('broadcastSessionEvent');

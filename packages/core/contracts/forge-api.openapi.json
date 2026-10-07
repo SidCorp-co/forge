@@ -18179,82 +18179,6 @@
         "x-forge-validated": [
           "param"
         ]
-      },
-      "put": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "baseRevision": {
-                    "maximum": 9007199254740991,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "contentLanguage": {
-                    "maxLength": 35,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "keepTermsInEnglish": {
-                    "anyOf": [
-                      {
-                        "items": {
-                          "maxLength": 60,
-                          "minLength": 1,
-                          "type": "string"
-                        },
-                        "maxItems": 50,
-                        "type": "array"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "baseRevision",
-                  "contentLanguage"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
       }
     },
     "/api/projects/{id}/contract-context": {
@@ -33803,6 +33727,7 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
                   "note": {
                     "maxLength": 1000,
@@ -33840,7 +33765,11 @@
                 "required": [
                   "round"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "the answer is required: send optionId or text",
+                  "send optionId or text, never both"
+                ]
               }
             }
           },

@@ -4,6 +4,7 @@
 // not know.
 
 import { z } from "zod";
+import { REASON_PARAGRAPH_MAX, REASON_SENTENCE_MAX } from "./reason-text.js";
 import type {
 	DataEgressRefusalCode,
 	SensitiveDataLevel,
@@ -152,7 +153,7 @@ export const questionnaireItemSchema = z.strictObject({
 	inferredDefault: itemId.optional(),
 	placeholder: z.string().max(120).optional(),
 	/** Why we ask, in a sentence or two. */
-	why: z.string().trim().min(3).max(600),
+	why: z.string().trim().min(3).max(REASON_SENTENCE_MAX),
 	/** `file:symbol`, or a Forge record citation (REQ-1 BC-6, ISS-4, FB-2, a design step). */
 	evidence: z.array(z.string().trim().min(3).max(300)).min(1).max(5),
 	/** The designs it shapes, by workflow id or flow slug. */
@@ -193,7 +194,7 @@ export const SUBMIT_ANSWERS_SHAPE =
 	"{ answers: [{ itemId, choice? | choices? | text? | decision?: accept | reject }], skip? }";
 
 export const reanalyzeRequestSchema = z.strictObject({
-	reason: z.string().trim().max(2_000).optional(),
+	reason: z.string().trim().max(REASON_PARAGRAPH_MAX).optional(),
 });
 export const REANALYZE_SHAPE = "{ reason? }";
 

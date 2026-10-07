@@ -120,7 +120,7 @@ export async function beginPatRequest(
       userId: principal.userId,
       agency: principal.agency,
       onBehalfOf: principal.onBehalfOf,
-      grant: principal.permissions ?? null,
+      grant: principal.permissions,
       scopes: principal.scopes,
     },
   };
@@ -168,7 +168,7 @@ export function assertMayMintFullCredential(c: Context): void {
   throw new HTTPException(403, {
     message:
       `${c.req.path} mints a credential granted '${PAT_PERMISSION_ALL}', and this token holds ` +
-      `less: ${(principal.permissions ?? []).join(', ') || 'the legacy grant'}. Use a session, or ` +
+      `less: ${principal.permissions.join(', ')}. Use a session, or ` +
       `a token granted '${PAT_PERMISSION_ALL}'.`,
     cause: { code: 'PAT_MINT_NEEDS_FULL_GRANT' },
   });
@@ -190,7 +190,7 @@ function assertGranted(
   wanted: PatPermission | null,
 ): void {
   if (patGrantCovers(principal.permissions, wanted)) return;
-  const held = principal.permissions ?? [];
+  const held = principal.permissions;
   throw new HTTPException(403, {
     message:
       `this token was not granted '${wanted}', which is the permission ` +

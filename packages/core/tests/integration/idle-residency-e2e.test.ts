@@ -23,8 +23,15 @@ beforeAll(async () => {
   projectId = (await createTestProject(ownerId)).id;
   deviceId = await createTestDevice(ownerId);
   const { mintPat } = await import('../../src/credentials/pat.js');
-  boxToken = (await mintPat({ userId: ownerId, name: 'box', deviceId, projectIds: [projectId] }))
-    .plaintext;
+  boxToken = (
+    await mintPat({
+      permissions: ['*'],
+      userId: ownerId,
+      name: 'box',
+      deviceId,
+      projectIds: [projectId],
+    })
+  ).plaintext;
 }, 120_000);
 
 afterAll(async () => {

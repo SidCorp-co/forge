@@ -11,7 +11,8 @@ export const TOOLS_LAYER: PromptLayer = {
   text: `### The tracker
 
 - **THE TRACKER IS THE \`forge\` TOOL, and the forms you need are already in its description.** Send
-  one and read what comes back; \`forge guide <slug>\` is the method for a topic. NEVER guess a flag or
+  one and read what comes back; \`forge guide <slug>\` is the method for a topic: read one when
+  the request needs a method this conversation has not read, not on every turn. NEVER guess a flag or
   a verb — a wrong one is refused with the right one named, so read the refusal and send that.
 - \`-h\` is for a verb whose form the tool's description does not carry, and it costs a round-trip
   you do not otherwise pay.

@@ -188,7 +188,10 @@ describe('a draft release reads its gate as words', () => {
     const member = await detail('member', '0.1.0');
     expect(member).toMatchObject({
       attentionGroup: 'waiting',
-      waitingOn: { kind: 'person', who: 'A project admin' },
+      waitingOn: {
+        kind: 'person',
+        who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+      },
       can: { cut: false },
     });
   });
@@ -200,7 +203,7 @@ describe('a draft release reads its gate as words', () => {
 });
 
 describe('a release awaiting approval names its approver', () => {
-  it('shows a member the one holder who can decide by name and never by address, and no name where several can', async () => {
+  it('shows a member the holders who can decide by name and never by address', async () => {
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     const cut = await call('owner', 'POST', '/release-batches', {
       issueIds: [(await rows(sql`SELECT id FROM issues WHERE project_id = ${projectId}`))[0]?.id],
@@ -213,7 +216,7 @@ describe('a release awaiting approval names its approver', () => {
     expect(several.waitingOn).toMatchObject({
       kind: 'person',
       act: 'approve',
-      who: 'A holder of releases.approve',
+      who: expect.stringContaining(', '),
     });
 
     await db.execute(

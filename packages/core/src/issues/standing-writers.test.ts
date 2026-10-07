@@ -38,6 +38,7 @@ const input = (
   releaseNoted: true,
   viewer,
   writers,
+  admins: [],
   withheld: null,
   now,
 });
@@ -55,17 +56,47 @@ describe("a person's turn names who can take it", () => {
     ).toBe('Ana, Bo, Chi +2');
   });
 
-  it('says no person holds write, and where an admin grants it, when nobody does', () => {
+  it('says no person holds write, and where it is granted, when nobody does', () => {
     const s = deriveIssueStanding(input('draft', []));
     expect(s.attentionGroup).toBe('stuck');
     expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
     expect(s.waitingOn.act).toBe(
-      'take on or drop: no person on this project can write until a project admin grants write under Settings → Members',
+      'take on or drop: no person on this project holds project.write until it is granted under Settings → Members',
     );
   });
 
   it('still addresses a viewer who can write as You', () => {
     const s = deriveIssueStanding(input('draft', [], { userId: 'u1', canWrite: true }));
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You' });
+  });
+});
+
+// R-12: every draft behind a live blocks edge read "You · take on or drop", inflating Waiting on you
+describe('a draft behind a live blocker', () => {
+  const blocker = {
+    id: 'b1',
+    key: 'ISS-3',
+    title: 'The blocker',
+    status: 'in_progress' as const,
+    merged: false,
+    step: null,
+    holds: true,
+  };
+
+  it('waits on its blocker, never on a person, even for a viewer who can write', () => {
+    const s = deriveIssueStanding({
+      ...input('draft', ['Ana'], { userId: 'u1', canWrite: true }),
+      blockedBy: [blocker],
+    });
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.waitingOn).toMatchObject({ kind: 'issue', who: 'ISS-3', ref: 'ISS-3' });
+  });
+
+  it('is the person’s turn again once the blocker no longer holds', () => {
+    const s = deriveIssueStanding({
+      ...input('draft', ['Ana']),
+      blockedBy: [{ ...blocker, holds: false }],
+    });
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana', act: 'take on or drop' });
   });
 });

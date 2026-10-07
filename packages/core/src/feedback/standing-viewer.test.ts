@@ -6,6 +6,7 @@ const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
   canTriage: false,
   canApproveRelease: false,
   canWrite: false,
+  canAdmin: false,
   ...over,
 });
 
@@ -46,36 +47,50 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
 });
 
 describe('an item planned on an issue at the release gate names who releases it', () => {
-  const planned = (release: 'none' | 'approval' | 'manual' | 'automatic', v = viewer()) =>
+  const planned = (
+    release: 'none' | 'approval' | 'manual' | 'automatic',
+    v = viewer(),
+    releaseHolders: readonly string[] = ['Ana', 'Bo'],
+  ) =>
     feedbackStandingOf('planned', 'issue', ['ISS-9'], 'Reporter', v, null, {
       masterOwesTriage: false,
       carrierRelease: release,
+      releaseHolders,
     });
 
-  it('says a person releases it where the project declares no release model', () => {
+  it('names the writers who release it where the project declares no release model', () => {
     const s = planned('none');
-    expect(s.waitingOn.kind).toBe('person');
-    expect(s.waitingOn.who).not.toBe('ISS-9');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'Ana, Bo' });
     expect(s.waitingOn.act).toContain('ISS-9');
     expect(s.waitingOn.rule).toContain('no release model');
     expect(planned('none', viewer({ canWrite: true })).waitingOn.who).toBe('You');
   });
 
-  it('names the release approver where the project requires a release approval', () => {
+  it('names the release approvers where the project requires a release approval', () => {
     expect(planned('approval').waitingOn).toMatchObject({
       kind: 'person',
-      who: 'A release approver',
+      who: 'Ana, Bo',
       act: 'Approve the release that carries it',
     });
     expect(planned('approval', viewer({ canApproveRelease: true })).waitingOn.who).toBe('You');
   });
 
-  it('names a project writer cutting the release where production does not deploy on land', () => {
+  it('names the admins cutting the release where production does not deploy on land, theirs alone', () => {
     expect(planned('manual').waitingOn).toMatchObject({
       kind: 'person',
-      who: 'A project writer',
+      who: 'Ana, Bo',
       act: 'cut the release that carries ISS-9',
     });
+    expect(planned('manual', viewer({ canWrite: true })).waitingOn.who).toBe('Ana, Bo');
+    expect(planned('manual', viewer({ canAdmin: true })).waitingOn.who).toBe('You');
+  });
+
+  it('says nobody holds the permission, and where it is granted, when nobody does', () => {
+    const s = planned('manual', viewer(), []);
+    expect(s.waitingOn).toMatchObject({ kind: 'none', who: 'Nobody' });
+    expect(s.waitingOn.act).toBe(
+      'cut the release that carries ISS-9: no person on this project holds project.admin until it is granted under Settings → Members',
+    );
   });
 
   it('still waits on the issue where the automatic release carries it', () => {

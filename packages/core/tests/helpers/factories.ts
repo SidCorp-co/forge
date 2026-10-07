@@ -8,11 +8,14 @@ export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
   return (await db.execute(query)) as unknown as T[];
 }
 
-/** Empties every table the migrations made, keeping the schema and drizzle's own journal. */
+/** Tables whose rows a migration seeds as part of the schema (`schema-outbox.ts:outboxEventTypes`). */
+const SEEDED_BY_MIGRATIONS = ['outbox_event_types'];
+
+/** Empties every table the migrations made, keeping the schema, its seeded rows and drizzle's journal. */
 export async function truncateAll(): Promise<void> {
   const tables = await rows<{ name: string }>(sql`
     SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables
-     WHERE schemaname = 'public'
+     WHERE schemaname = 'public' AND tablename NOT IN ${SEEDED_BY_MIGRATIONS}
   `);
   if (tables.length === 0) return;
   await db.execute(

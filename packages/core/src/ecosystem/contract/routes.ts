@@ -1,3 +1,4 @@
+import { REASON_NOTE_MAX } from '@forge/contracts/comments';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../../db/client.js';
@@ -59,7 +60,7 @@ const uploadSchema = z.strictObject({
   semantic: z
     .strictObject({
       classification: z.enum(['breaking', 'non-breaking', 'unknown']),
-      reason: z.string().trim().min(1).max(1000),
+      reason: z.string().trim().min(1).max(REASON_NOTE_MAX),
       elements: z.array(z.string().min(1).max(200)).min(1).max(50),
     })
     .optional(),

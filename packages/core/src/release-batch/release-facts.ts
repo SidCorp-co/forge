@@ -16,7 +16,6 @@ import {
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
-import { holdersOf } from '../permissions/index.js';
 import { standingsOf } from '../requirements/index.js';
 import type { CompletionFacts } from './release-view.js';
 
@@ -195,13 +194,4 @@ export async function loadReleaseFacts(
     }
   }
   return { issues: byIssue, requirements: reqs, cutters };
-}
-
-export async function approversOf(projectId: string): Promise<ReleasePerson[]> {
-  const ids = (await holdersOf('releases.approve', [projectId])).get(projectId) ?? [];
-  const people = await peopleOf(ids);
-  return ids.flatMap((id) => {
-    const p = people.get(id);
-    return p ? [{ id, ...p }] : [];
-  });
 }

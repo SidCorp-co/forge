@@ -1,3 +1,4 @@
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -25,7 +26,7 @@ import { refuseLegacyStatusFields } from './status-input.js';
 const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
-    reason: z.string().trim().min(1).max(2000).optional(),
+    reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
     awaitsDesign: z

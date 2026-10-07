@@ -276,7 +276,7 @@ export function ProjectIntegrationsPanel({
   const time = useTimeFormat();
   const cards = useMemo(() => status.data?.cards ?? [], [status.data]);
   const bindings = useMemo(
-    () => new Map((list.data?.bindings ?? []).map((b) => [b.id, b])),
+    () => new Map((list.data?.items ?? []).map((b) => [b.id, b])),
     [list.data],
   );
   const rows = useMemo(

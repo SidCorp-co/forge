@@ -16,6 +16,9 @@ import type { SuggestionTarget } from './target.js';
 export interface SuggestionActor {
   userId: string;
   agency: ActorAgency;
+  /** The paired box whose credential made the call, or null for an account's own: the issues an
+   *  accepted breakdown files carry it as a REST create does (`createdByDeviceId`). */
+  deviceId?: string | null;
 }
 
 export function suggestionKernelActor(actor: SuggestionActor): KernelActor {

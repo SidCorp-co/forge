@@ -27,6 +27,82 @@ export function replyLanguageOf(text: string | null | undefined): ReplyLanguage 
   return marked / words.length >= VIETNAMESE_SHARE ? 'vi' : 'en';
 }
 
+// words Vietnamese typed without its marks still carries, none of them an English word
+const VIETNAMESE_BARE: ReadonlySet<string> = new Set([
+  'cho',
+  'nha',
+  'nhe',
+  'roi',
+  'thi',
+  'vay',
+  'kia',
+  'nhung',
+  'luon',
+  'toi',
+  'minh',
+  'giup',
+  'xin',
+  'duoc',
+  'khong',
+  'chua',
+  'nay',
+  'cua',
+]); // i18n-allow: unmarked Vietnamese function words
+const ENGLISH_FUNCTION: ReadonlySet<string> = new Set([
+  'the',
+  'is',
+  'are',
+  'was',
+  'what',
+  'how',
+  'why',
+  'when',
+  'where',
+  'which',
+  'please',
+  'can',
+  'could',
+  'you',
+  'to',
+  'of',
+  'and',
+  'for',
+  'this',
+  'that',
+  'with',
+  'it',
+  'do',
+  'does',
+  'did',
+  'will',
+  'should',
+  'have',
+  'has',
+  'not',
+  'in',
+  'on',
+  'my',
+  'we',
+  'our',
+  'be',
+  'a',
+  'an',
+]);
+
+/**
+ * The language a text is written in when it can be told with confidence, else null: the check a
+ * reply's language is held to judges only what it can tell, so a short or mixed text is passed.
+ */
+export function confidentLanguageOf(text: string | null | undefined): ReplyLanguage | null {
+  const words = ((text ?? '').match(WORD) ?? []).map((w) => w.toLowerCase());
+  if (words.length < 3) return null;
+  const vi = words.filter((w) => VIETNAMESE_LETTER.test(w) || VIETNAMESE_BARE.has(w)).length;
+  if (vi / words.length >= VIETNAMESE_SHARE) return 'vi';
+  if (vi / words.length > 0.05) return null;
+  const en = words.filter((w) => ENGLISH_FUNCTION.has(w)).length;
+  return en / words.length >= 0.15 ? 'en' : null;
+}
+
 /** A project's content language as one of the languages these lines are written in. */
 export function replyLanguageOfTag(tag: string): ReplyLanguage {
   return tag === 'vi' || tag.startsWith('vi-') ? 'vi' : 'en';
@@ -82,6 +158,67 @@ const FAILED: Record<TurnFailureCode, Line> = {
     vi: (name) => `${name} không gọi được mô hình nên chưa gửi gì — bạn hỏi lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
   },
 };
+
+/**
+ * What a turn that ran past its first ceiling posts while it keeps working: what it did, what it
+ * read, and that the rest follows in this same thread. `seconds` is how long the person has waited.
+ */
+const PARTIAL: Record<
+  ReplyLanguage,
+  {
+    head: (name: string, seconds: number) => string;
+    did: string;
+    read: (n: number) => string;
+    nothingYet: string;
+  }
+> = {
+  en: {
+    head: (name, seconds) =>
+      `${name} has not finished this after ${seconds} seconds, so here is what it has so far — still working… the rest will be posted in this conversation.`,
+    did: 'Done so far:',
+    read: (n) => `Read so far (${n}):`,
+    nothingYet: 'Nothing is finished yet; it is still reading the project.',
+  },
+  vi: {
+    head: (name, seconds) =>
+      `${name} chưa xong yêu cầu này sau ${seconds} giây nên gửi trước phần đã có — đang làm tiếp… phần còn lại sẽ được gửi ngay trong cuộc trò chuyện này.`, // i18n-allow: user-facing channel reply
+    did: 'Đã làm:', // i18n-allow: user-facing channel reply
+    read: (n) => `Đã đọc (${n}):`, // i18n-allow: user-facing channel reply
+    nothingYet: 'Chưa có việc nào xong; đang đọc dữ liệu dự án.', // i18n-allow: user-facing channel reply
+  },
+};
+
+export const partialReplyWords = (lang: ReplyLanguage) => PARTIAL[lang];
+
+/** What the thread is told when the work that kept going after a partial reply did not finish. */
+const CONTINUATION_ENDED: Record<TurnFailureCode, Line> = {
+  ASSISTANT_TURN_TIMED_OUT: {
+    en: (name) =>
+      `${name} stopped before it finished the rest of this; what it did is listed above. Ask again for what is still missing, one thing at a time.`,
+    vi: (name) =>
+      `${name} đã dừng trước khi làm xong phần còn lại; những gì đã làm có ở tin nhắn trên. Bạn hỏi lại phần còn thiếu, từng việc một nhé.`, // i18n-allow: user-facing channel reply
+  },
+  ASSISTANT_TURN_FAILED: {
+    en: (name) =>
+      `${name} could not reach its model while finishing the rest of this; what it did is listed above. Please ask again in a few minutes.`,
+    vi: (name) =>
+      `${name} không gọi được mô hình khi làm nốt phần còn lại; những gì đã làm có ở tin nhắn trên. Bạn hỏi lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
+  },
+};
+
+const NOTHING_MORE: Line = {
+  en: (name) => `${name} finished; there is nothing to add to what is above.`,
+  vi: (name) => `${name} đã làm xong; không có gì thêm ngoài phần ở trên.`, // i18n-allow: user-facing channel reply
+};
+
+export const continuationEndedReply = (
+  name: string,
+  lang: ReplyLanguage,
+  failure: TurnFailureCode,
+): string => CONTINUATION_ENDED[failure][lang](name);
+
+export const nothingMoreReply = (name: string, lang: ReplyLanguage): string =>
+  NOTHING_MORE[lang](name);
 
 export const isTurnFailureCode = isAssistantTurnFailureCode;
 
