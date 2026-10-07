@@ -109,6 +109,8 @@ request, deploying, touching a live database, writing project config, and pushin
 spend a run on it, a `decision` record (`issues/<id>/events`, POST) puts that reading where the next master and the person
 reading the tracker both find it. What you decided is countable; what you asked is not.
 
+**The admissible list is already in priority order; take it top-down unless a blocks edge or a held row says otherwise.**
+
 **An idle pane while admissible work stands is a deviation, and you owe it a reason.**
 This does not mean dispatch everything: a row you choose not to spend a run on is a pass-over,
 which you record on the issue as above, and a row that genuinely needs a person goes to

@@ -52,6 +52,11 @@ export {
   markApprovedDesign,
 } from './design-landing.js';
 export { isValidDetectorKey } from './detector-key.js';
+export {
+  compareDispatchOrder,
+  dispatchOrderSql,
+  dispatchPriorityRank,
+} from './dispatch-order.js';
 export { issueDisplayIds } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export {

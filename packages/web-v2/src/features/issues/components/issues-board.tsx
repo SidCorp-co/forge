@@ -39,6 +39,7 @@ import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
 import { priorityLabel, statusesFromParam, statusLabel } from "../derive";
 import { issueBadge, issueRowView } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
+import { useProjectForecast } from "@/features/forecast/hooks";
 
 type BoardMode = "attention" | "module" | "waves";
 
@@ -358,7 +359,9 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
   );
   const allKeys = useMemo(() => (q.data?.issues ?? []).map((r) => r.key), [q.data]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => issueRowView(project.slug), [project.slug]);
+  const forecastQ = useProjectForecast(project.projectId);
+  const forecasts = useMemo(() => new Map((forecastQ.data?.issues ?? []).map((i) => [i.key, i.forecast])), [forecastQ.data]);
+  const row = useMemo(() => issueRowView(project.slug, (k) => forecasts.get(k)), [project.slug, forecasts]);
   const openFull = useCallback(
     (k: string) => {
       rememberListOrigin(ISSUES_LIST);
@@ -405,7 +408,7 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
             }
           </QueryBoundary>
         </div>
-        {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
+        {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} forecast={forecasts.get(openRow.key)} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
       </div>
     </div>
   );

@@ -9,6 +9,8 @@
 import type { IssueMove } from "@forge/contracts/issue-machine";
 import type { ComponentProps } from "react";
 import { Avatar, Button, EnumBadge, MonoTag, Stat, StatusBadge, StatusChip } from "@/design";
+import { ForecastLine } from "@/features/forecast/components/forecast-line";
+import { useIssueForecast } from "@/features/forecast/hooks";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
@@ -213,6 +215,7 @@ export function PropertiesRail({
   park,
   moves,
 }: PropertiesRailProps) {
+  const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -251,6 +254,11 @@ export function PropertiesRail({
           park={park}
         />
       </Row>
+      {forecast && forecast.kind !== "landed" && forecast.kind !== "ended" && (
+        <Row label="Forecast">
+          <ForecastLine forecast={forecast} />
+        </Row>
+      )}
       {runChip && (
         <Row label="Run">
           <StatusChip status={runChip} size="sm" domain="session" />

@@ -20,6 +20,7 @@ import {
   blockedByUnsettledSql,
   contractWaitUnsettledSql,
   designUnapprovedSql,
+  dispatchOrderSql,
   issueWorkInFlightSql,
 } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -168,7 +169,8 @@ export async function readAdmissibleIssues(args: {
           projectId: sql`i.project_id`,
           issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
         })}
-      ORDER BY i.created_at ASC
+      -- priority first, then oldest (issues/dispatch-order.ts), the order a master takes it top-down
+      ORDER BY ${dispatchOrderSql('i')}
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 

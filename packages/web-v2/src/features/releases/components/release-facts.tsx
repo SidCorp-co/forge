@@ -1,5 +1,6 @@
 "use client";
 
+import type { ScopeForecast } from "@forge/contracts/forecast";
 import { RELEASE_PROOF_LABELS } from "@forge/contracts/releases";
 import {
   ActorChip,
@@ -11,6 +12,7 @@ import {
   StatusBadge,
   Tooltip,
 } from "@/design";
+import { ScopeForecastLine } from "@/features/forecast/components/forecast-line";
 import { formatRelativeTime, formatStamp } from "@/lib/utils/format";
 import type { ReleaseApprovalView, ReleaseDetail } from "../types";
 import { shortSha } from "./release-bits";
@@ -69,7 +71,7 @@ function ApprovalFacts({ r }: { r: ReleaseDetail }) {
   );
 }
 
-export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
+export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: ScopeForecast | undefined }) {
   const c = r.criteria;
   const a = r.approval;
   return (
@@ -123,6 +125,11 @@ export function ReleaseFacts({ r }: { r: ReleaseDetail }) {
             <span className="text-muted">None yet</span>
           )}
         </Fact>
+        {r.state === "draft" && forecast?.forecast ? (
+          <Fact label="Forecast" testId="facts-release-forecast">
+            <ScopeForecastLine scope={forecast} />
+          </Fact>
+        ) : null}
         {r.state === "draft" ? <FactsEmpty>Not cut yet: no run holds these issues.</FactsEmpty> : null}
       </FactsGroup>
 

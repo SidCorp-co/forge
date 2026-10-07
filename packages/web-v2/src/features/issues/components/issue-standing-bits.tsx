@@ -4,6 +4,7 @@
 // list row, whose turn as the shared WaitingOn and banner, the step bar, the criteria bar, and the
 // facts the peek and the full page's rail show. Nothing here decides whose turn it is.
 
+import type { Forecast } from "@forge/contracts/forecast";
 import {
   ISSUE_ATTENTION_LABELS,
   type IssueStanding,
@@ -28,6 +29,8 @@ import {
   WaitBanner,
   WaitingOn,
 } from "@/design";
+import { ForecastLine } from "@/features/forecast/components/forecast-line";
+import { forecastText } from "@/features/forecast/text";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
 import { formatAge, formatRelativeTime, formatStamp } from "@/lib/utils/format";
@@ -37,8 +40,8 @@ export const issueBadge = (r: Pick<IssueStandingRow, "status" | "standing">) => 
   <StatusBadge family="issue" value={r.status} step={r.standing.step} tone={r.standing.tone} />
 );
 
-/** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing. */
-function factsLine(r: IssueStandingRow): string[] {
+/** The secondary line: module, the requirement and its criteria, a high priority, where it came from, criteria passing, the forecast range. */
+function factsLine(r: IssueStandingRow, forecast: Forecast | undefined): string[] {
   const s = r.standing;
   const parts: string[] = [];
   if (s.module) parts.push(s.module.path);
@@ -46,16 +49,18 @@ function factsLine(r: IssueStandingRow): string[] {
   if (r.priority === "high" || r.priority === "critical") parts.push(`${r.priority === "critical" ? "Critical" : "High"} priority`);
   if (s.feedback[0]) parts.push(`From ${s.feedback[0]}`);
   if (s.criteria.total > 0) parts.push(`Passing ${s.criteria.passing}/${s.criteria.total}`);
+  // a paused row already says whom it waits on in its own column, so only a range is added here
+  if (forecast?.kind === "forecast") parts.push(forecastText(forecast).line);
   return parts;
 }
 
 export const issueRowView =
-  (slug: string) =>
+  (slug: string, forecastOf: (key: string) => Forecast | undefined = () => undefined) =>
   (r: IssueStandingRow): ListRowView => ({
     key: r.key,
     href: issueHref(slug, r.key),
     title: r.title,
-    facts: factsLine(r),
+    facts: factsLine(r, forecastOf(r.key)),
     state: issueBadge(r),
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
@@ -165,7 +170,7 @@ export function IssueStrip({ standing }: { standing: IssueStanding }) {
 /** The peek's facts, each once and each beside where it comes from: whom it waits on, the
  *  requirement it serves, its module, its branch, its owner. State and whose turn are the head's
  *  and the banner's, so they are not repeated here. */
-export function IssuePeekFacts({ row, slug }: { row: IssueStandingRow; slug: string }) {
+export function IssuePeekFacts({ row, slug, forecast }: { row: IssueStandingRow; slug: string; forecast?: Forecast | undefined }) {
   const s = row.standing;
   const sub = (t: ReactNode) => <span className="mt-0.5 block text-12 text-subtle">{t}</span>;
   return (
@@ -176,6 +181,11 @@ export function IssuePeekFacts({ row, slug }: { row: IssueStandingRow; slug: str
             <WaitingOn w={s.waitingOn} />
             {s.waitingOn.rule ? sub(s.waitingOn.rule.charAt(0).toUpperCase() + s.waitingOn.rule.slice(1)) : null}
           </span>
+        </Fact>
+      ) : null}
+      {forecast && forecast.kind !== "landed" && forecast.kind !== "ended" ? (
+        <Fact label="Forecast" testId="issue-peek-forecast">
+          <ForecastLine forecast={forecast} />
         </Fact>
       ) : null}
       {s.requirement ? (

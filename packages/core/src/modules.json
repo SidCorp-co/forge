@@ -365,6 +365,12 @@
         "feedback-triage#dedup"
       ]
     },
+    "forecast": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": ["activityLog", "issues", "requirements"],
+      "serves": ["REQ-11"]
+    },
     "guides": {
       "kind": "domain",
       "context": "knowledge",
@@ -1135,6 +1141,9 @@
         "feedback-triage#verify",
         "feedback-triage#verify-ask"
       ]
+    },
+    "forecast": {
+      "serves": ["REQ-11"]
     },
     "guides": {
       "serves": ["REQ-23"]
