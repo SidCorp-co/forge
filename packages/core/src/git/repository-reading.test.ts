@@ -188,6 +188,18 @@ describe('a name longer than the repository names a commit by', () => {
       why: overlong(name).replace(/\. Mark with .*$/, ''),
     });
   });
+
+  it('is refused by its length before the host is asked, so an unreachable host does not hide it', async () => {
+    const nowhere = `file://${join(root, 'nowhere.git')}`;
+    const r = reader(nowhere);
+    const name = `${sha.merge}a`;
+    const why = overlong(name)
+      .replace(/\. Mark with .*$/, '')
+      .replace(remote, nowhere);
+    expect(await r.carriage(sha.judged as string, name)).toEqual({ kind: 'unread', why });
+    expect(await r.range('production', name)).toEqual({ why });
+    expect(await r.contains(name, 'main')).toEqual({ why });
+  });
 });
 
 describe('branchHead and contains', () => {

@@ -313,6 +313,8 @@ class GitReading {
 }
 
 async function carriageIn(g: GitReading, judged: string, served: string): Promise<Carriage> {
+  const overlong = (await g.overlong(judged)) ?? (await g.overlong(served));
+  if (overlong) return { kind: 'unread', why: overlong };
   const j = await g.resolve(judged);
   if (!j.ok) return { kind: 'unread', why: j.why };
   const s = await g.resolve(served);
@@ -342,6 +344,8 @@ async function changedIn(g: GitReading, landing: string): Promise<ChangedPaths> 
 }
 
 async function rangeIn(g: GitReading, base: string, headRef: string): Promise<RangeRead> {
+  const overlong = await g.overlong(headRef);
+  if (overlong) return { why: overlong };
   const tip = await g.head(base);
   if ('why' in tip) return { why: tip.why };
   const to = await g.resolve(headRef);
