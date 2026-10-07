@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.114] - 2026-10-07
+
+Needs-you page reads each input once per project, opening large projects fast
+
+### Fixed
+
+- **Needs you answers far faster on a large project.** Design health, storefront drafts and dispatch-gate reasons are read once per project, not once per row: one request on HOP drops from 919 queries to 238.
+
 ## [0.4.0-dev.113] - 2026-10-07
 
 A release that failed after deploying no longer strands its issues
