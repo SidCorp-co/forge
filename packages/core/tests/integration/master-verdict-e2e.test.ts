@@ -189,7 +189,11 @@ describe('POST /api/devices/me/master-session/verdict', () => {
     const outdated = facts({
       pane: 'alive',
       capability: 'current',
-      placement: { placed: { skill: 'aaaaaaaaaaaa' }, unreadable: null, now: { skill: 'ffffffffffff' } },
+      placement: {
+        placed: { skill: 'aaaaaaaaaaaa' },
+        unreadable: null,
+        now: { skill: 'ffffffffffff' },
+      },
       holding: {
         kind: 'these',
         runs: [{ name: 'r7 (FB-89)', subagent: { kind: 'resumed', silentMs: 0 } }],

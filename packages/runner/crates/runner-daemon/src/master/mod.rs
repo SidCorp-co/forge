@@ -91,10 +91,6 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 
 const WAKE_FLOOR: Duration = Duration::from_secs(5);
 
-/// How often core asks a limited master again (`@forge/contracts/master-verdict`
-/// `MASTER_NUDGE_REFRESH_SECONDS`), which bounds how fresh a limit record must be.
-pub(crate) const NUDGE_REFRESH: Duration = Duration::from_secs(5 * 60);
-
 pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 fn standing_prompt(

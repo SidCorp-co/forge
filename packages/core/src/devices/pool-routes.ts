@@ -6,6 +6,7 @@
  * only through its daemon, so there is one holder of the device token.
  */
 
+import { masterLimitRecordSchema } from '@forge/contracts/master-verdict';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -69,7 +70,7 @@ import { type ResolvedLeaseKey, readDeviceIssueLease, resolveLeaseKey } from '..
 import { releaseHoldsOf, releaseJobHold } from '../jobs/index.js';
 import { RefusalError } from '../lib/refusal.js';
 import { assertMasterSessionHeld, prepareJobForMaster, startJobForMaster } from './claim.js';
-import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
+import { clearMasterLimit, judgeMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import { devicesPorts } from './ports.js';
@@ -344,6 +345,17 @@ devicePoolRoutes.post(
     });
     if (!stamped) throw notFound('claude-code runner for this device');
     return c.json({ runnerId: stamped.runnerId });
+  },
+);
+
+devicePoolRoutes.post(
+  '/me/limit/record',
+  requireDevice(),
+  zValidator('json', z.strictObject({ record: masterLimitRecordSchema })),
+  async (c) => {
+    const judged = await judgeMasterLimit(c.get('device').id, c.req.valid('json').record);
+    if (!judged) throw notFound('claude-code runner for this device');
+    return c.json(judged);
   },
 );
 

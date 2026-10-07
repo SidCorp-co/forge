@@ -10,6 +10,12 @@ export const MASTER_IDLE_BEFORE_RETIRE_SECONDS = 60 * 60;
 /** How long after a nudge the same work, or a limited master, is asked again. */
 export const MASTER_NUDGE_REFRESH_SECONDS = 5 * 60;
 
+/**
+ * How old, either way, a refusal in a master's conversation may be and still speak for the account
+ * (twice the limited master's poll and its nudge refresh).
+ */
+export const MASTER_LIMIT_FRESH_SECONDS = 2 * (5 * 60 + MASTER_NUDGE_REFRESH_SECONDS);
+
 const AGE_MAX = 10 * 365 * 24 * 60 * 60;
 const COUNT_MAX = 100_000;
 const TEXT_MAX = 1000;
@@ -225,3 +231,34 @@ export interface MasterVerdictAnswer {
 	verdict: MasterVerdict;
 	work: MasterWork;
 }
+
+/** The newest decisive record a box read in its masters' conversations, as it wrote it; the age is the box's own clock's. */
+export const masterLimitRecordSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("refused"),
+		/** Seconds since the record was written; negative where the box's clock reads it ahead. */
+		agoSeconds: z.number().int().min(-AGE_MAX).max(AGE_MAX),
+		reason: z.enum(MASTER_ACCOUNT_REFUSALS),
+		/** Seconds until the account is expected back; null for `auth` and for a quota window the record gives no reset for. */
+		resetsInSeconds: z.number().int().min(0).max(7 * 24 * 60 * 60).nullable(),
+		detail: z.string().trim().min(1).max(200),
+	}),
+	z.strictObject({
+		kind: z.literal("worked"),
+		agoSeconds: z.number().int().min(-AGE_MAX).max(AGE_MAX),
+	}),
+	/** A refusal this build was not taught to read, named by its slug. */
+	z.strictObject({ kind: z.literal("unreadable"), slug: text }),
+]);
+export type MasterLimitRecord = z.infer<typeof masterLimitRecordSchema>;
+
+/** What core did with a record: `reported` and `cleared` changed the runner rows, the rest left them. */
+export const MASTER_LIMIT_OUTCOMES = [
+	"reported",
+	"held",
+	"stale",
+	"cleared",
+	"nothing",
+	"unreadable",
+] as const;
+export type MasterLimitOutcome = (typeof MASTER_LIMIT_OUTCOMES)[number];

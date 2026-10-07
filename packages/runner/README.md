@@ -286,7 +286,7 @@ Windows             ─▶ refused by name: no download is taken and a re-login 
   master wire version (`master_build::MASTER_WIRE`, bumped only when the
   box-master protocol changes). The box sends core the digests as placed and as
   it would hand them now with every master verdict; whether the pane is
-  outdated is core's reading (`masters/verdict.ts:outdatedWhy`). A pane is
+  outdated is core's reading (`packages/core/src/masters/verdict.ts:outdatedWhy`). A pane is
   outdated where one of them differs, and the verdict names it; a rebuild that
   changes none of them leaves every pane current. A pane with no record of
   them, or one this build cannot read, is outdated by name. An outdated

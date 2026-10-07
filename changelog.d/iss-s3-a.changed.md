@@ -1,1 +1,1 @@
-**The runner box no longer judges whether a master pane is outdated, and its ledger sheds what nothing reads.** Core reads the placed and current inputs the box now sends in `placement`; an older runner's facts are refused with a 400 until it updates, so deploy core first.
+**Core now judges a master's account limit and whether its pane is outdated; the runner box only reports.** The box posts its newest account record to `/api/devices/me/limit/record` and a pane's inputs as `placement`. Deploy core first.

@@ -279,12 +279,7 @@ async fn record_heard(
 async fn tend(t: &Turn<'_>, found: &mut Found) {
     let shared = t.sw.shared;
     report_pane_dialog(t.sw.client, shared.masters, shared.activity, t.project_id()).await;
-    if let Some(said) = t
-        .seen
-        .last_said
-        .as_ref()
-        .filter(|d| master_limit::is_fresh(d, t.sw.now_unix))
-    {
+    if let Some(said) = t.seen.last_said.as_ref() {
         found.account_said.push(said.clone());
     }
 }

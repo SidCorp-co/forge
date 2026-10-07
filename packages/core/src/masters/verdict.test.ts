@@ -182,7 +182,13 @@ describe('retire: an idle master', () => {
 });
 
 describe('outdated: replace once nothing it holds is working', () => {
-  const outdated = { placement: { placed: { skill: 'aaaaaaaaaaaa' }, unreadable: null, now: { skill: 'ffffffffffff' } } };
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
 
   it('replaces, resuming its conversation, and names the runs its successor inherits', () => {
     const v = masterVerdict(alive({ ...outdated, holding: holds([], ['r1 (ISS-1)']) }), online);
@@ -229,7 +235,13 @@ describe('outdated: replace once nothing it holds is working', () => {
 // back, so every sweep found it holding a run; "left running, not nudged" for two hours while FB-86..91
 // sat untriaged. Being outdated decides replacement only: a kept pane is driven like a current one.
 describe('outdated: kept and driven while it holds runs, draining toward its replacement', () => {
-  const outdated = { placement: { placed: { skill: 'aaaaaaaaaaaa' }, unreadable: null, now: { skill: 'ffffffffffff' } } };
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
   const busy = {
     ...outdated,
     work: { ...noWork, owed: 6 },
@@ -292,7 +304,13 @@ describe('outdated: kept and driven while it holds runs, draining toward its rep
 });
 
 describe('holding: whether a held run is over is read by core from its subagent evidence', () => {
-  const outdated = { placement: { placed: { skill: 'aaaaaaaaaaaa' }, unreadable: null, now: { skill: 'ffffffffffff' } } };
+  const outdated = {
+    placement: {
+      placed: { skill: 'aaaaaaaaaaaa' },
+      unreadable: null,
+      now: { skill: 'ffffffffffff' },
+    },
+  };
   const held = (subagent: {
     kind: 'turn_ended' | 'awaiting_reply' | 'no_turn_end';
     silentMs: number;

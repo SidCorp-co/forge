@@ -85,7 +85,6 @@ pub async fn run(
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
-    let mut account_limit_said: Option<String> = None;
     let mut ledger = match Ledger::default_path().and_then(|p| Ledger::open(&p)) {
         Ok(l) => Some(l),
         Err(e) => {
@@ -114,7 +113,7 @@ pub async fn run(
             }
             _ = &mut sweep_due => {
                 dialogs.pass(&client).await;
-                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref())
                     .await;
                 last_sweep = Instant::now();
                 sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
@@ -126,7 +125,7 @@ pub async fn run(
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
                 dialogs.pass(&client).await;
-                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref())
                     .await;
                 last_sweep = Instant::now();
                 sweep_due.as_mut().reset(tokio::time::Instant::now() + delay);
@@ -170,7 +169,6 @@ pub(crate) async fn sweep(
     adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
-    account_limit_said: &mut Option<String>,
 ) -> Duration {
     let Some(served) = read_served(client, shared.masters).await else {
         return POLL_INTERVAL;
@@ -201,14 +199,7 @@ pub(crate) async fn sweep(
         sweep_project(&sw, ledger, runner, &mut found).await;
     }
     report_deaf_fleet(shared.masters, &found.deaf);
-    report_account_limit(
-        client,
-        &served,
-        &found.account_said,
-        account_limit_said,
-        now_unix,
-    )
-    .await;
+    report_account_limit(client, &found.account_said, now_unix).await;
     report_job_capacity(cfg, shared.job_panes, shared.activity);
     settle_runs(client, shared, cfg, &served, ledger).await;
     delay
