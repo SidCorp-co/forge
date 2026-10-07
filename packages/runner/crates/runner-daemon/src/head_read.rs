@@ -9,12 +9,15 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use runner_platform::clock;
 use runner_platform::config::{Binding, Config};
 use runner_platform::git::{git_line, origin_url, strip_userinfo};
-use runner_transport::{checkout_head, CoreClient};
+use runner_transport::CoreClient;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::process::Command;
+
+use crate::checkout_frame::{serve, Channel, Frame};
 
 /// A remote that does not answer is a failed read, never a held frame.
 const LS_REMOTE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -33,62 +36,47 @@ struct HeadReadFrame {
     repo_path: Option<String>,
 }
 
-pub(crate) async fn handle(client: &CoreClient, data: Value) {
-    let frame: HeadReadFrame = match serde_json::from_value(data.clone()) {
-        Ok(f) => f,
-        Err(e) => return answer_undecodable(client, &data, &e).await,
-    };
-    let body = match answer(&frame.project_id, frame.repo_path.as_deref(), &frame.branch).await {
-        Ok((sha, origin)) => json!({
-            "projectId": frame.project_id,
-            "sha": sha,
-            "ref": format!("refs/heads/{}", frame.branch),
-            "readAt": rfc3339_utc(runner_platform::clock::now_secs()),
-            "via": "runner-checkout",
-            "origin": strip_userinfo(&origin),
-        }),
-        Err(error) => {
-            let error = strip_userinfo(&error);
-            tracing::warn!(
-                "[head] project={} runner={}: {error}",
-                frame.project_id,
-                frame.runner_id.as_deref().unwrap_or("-")
-            );
-            json!({ "projectId": frame.project_id, "error": error })
-        }
-    };
-    post(client, &frame.request_id, &frame.project_id, &body).await;
-}
-
-async fn post(client: &CoreClient, request_id: &str, project_id: &str, body: &Value) {
-    if let Err(e) = checkout_head::answer(client, request_id, body).await {
-        tracing::warn!("[head] project={project_id}: the answer did not reach core: {e}");
+impl Frame for HeadReadFrame {
+    fn request_id(&self) -> &str {
+        &self.request_id
+    }
+    fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    fn runner_id(&self) -> Option<&str> {
+        self.runner_id.as_deref()
     }
 }
 
-/// A frame this build cannot read is answered, naming what failed to decode, so core settles it
-/// with that and not with its wait's "this runner is older than core". Only a frame without the
-/// `requestId` and `projectId` an answer is filed under goes unanswered, and that is said here.
-async fn answer_undecodable(client: &CoreClient, data: &Value, e: &serde_json::Error) {
-    let field = |name: &str| data.get(name).and_then(Value::as_str).map(str::to_string);
-    let (Some(request_id), Some(project_id)) = (field("requestId"), field("projectId")) else {
-        tracing::warn!(
-            "[head] undecodable checkout.head.read with no requestId and projectId to answer it under, so core waits it out: {e}"
-        );
-        return;
-    };
-    let error = format!(
-        "the checkout.head.read frame could not be decoded by forge-runner {}: {e} — this core sends a frame this runner does not read",
-        runner_update::CURRENT_VERSION
-    );
-    tracing::warn!("[head] project={project_id}: {error}");
-    post(
+pub(crate) async fn handle(client: &CoreClient, data: Value) {
+    serve(
         client,
-        &request_id,
-        &project_id,
-        &json!({ "projectId": project_id, "error": error }),
+        Channel::Head,
+        data,
+        async |frame: &HeadReadFrame| {
+            let (sha, origin) =
+                answer(&frame.project_id, frame.repo_path.as_deref(), &frame.branch).await?;
+            Ok(success_body(
+                &frame.project_id,
+                &frame.branch,
+                &sha,
+                &origin,
+                clock::now_secs(),
+            ))
+        },
     )
     .await;
+}
+
+fn success_body(project_id: &str, branch: &str, sha: &str, origin: &str, now: i64) -> Value {
+    json!({
+        "projectId": project_id,
+        "sha": sha,
+        "ref": format!("refs/heads/{branch}"),
+        "readAt": rfc3339_utc(now),
+        "via": "runner-checkout",
+        "origin": strip_userinfo(origin),
+    })
 }
 
 /// The binding is read from the config file now, not from the daemon's start:
@@ -444,73 +432,25 @@ mod tests {
         assert_eq!(origin, bare, "origin as `git remote get-url` resolves it");
     }
 
-    /// A fake core taking every POST, recording path and body.
-    async fn fake_core() -> (
-        CoreClient,
-        std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
-    ) {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let log = seen.clone();
-        tokio::spawn(async move {
-            while let Ok((mut sock, _)) = listener.accept().await {
-                let mut buf = Vec::new();
-                let mut chunk = [0u8; 4096];
-                loop {
-                    let n = sock.read(&mut chunk).await.unwrap_or(0);
-                    if n == 0 {
-                        break;
-                    }
-                    buf.extend_from_slice(&chunk[..n]);
-                    let text = String::from_utf8_lossy(&buf).to_string();
-                    if let Some((head, body)) = text.split_once("\r\n\r\n") {
-                        let len = head
-                            .lines()
-                            .find_map(|l| {
-                                l.to_ascii_lowercase()
-                                    .strip_prefix("content-length:")
-                                    .map(|v| v.trim().parse::<usize>().unwrap_or(0))
-                            })
-                            .unwrap_or(0);
-                        if body.len() >= len {
-                            let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
-                            log.lock().unwrap().push((path, body.to_string()));
-                            break;
-                        }
-                    }
-                }
-                let reply = "{\"settled\":true}";
-                let head = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                    reply.len()
-                );
-                let _ = sock.write_all(head.as_bytes()).await;
-                let _ = sock.write_all(reply.as_bytes()).await;
-                let _ = sock.shutdown().await;
-            }
-        });
-        (CoreClient::new(format!("http://{addr}"), "token"), seen)
-    }
-
-    #[tokio::test]
-    async fn an_undecodable_frame_is_answered_naming_the_field() {
-        let (client, seen) = fake_core().await;
-        handle(
-            &client,
-            json!({ "requestId": "r-1", "projectId": "p-1", "branch": null }),
-        )
-        .await;
-        let seen = seen.lock().unwrap().clone();
-        assert_eq!(seen.len(), 1, "one answer posted: {seen:?}");
-        assert_eq!(seen[0].0, "/api/devices/me/checkout-heads/r-1");
-        let body: Value = serde_json::from_str(&seen[0].1).unwrap();
-        assert_eq!(body["projectId"], "p-1");
-        let error = body["error"].as_str().unwrap_or_default();
-        assert!(
-            error.contains("could not be decoded") && error.contains("string"),
-            "{error}"
+    #[test]
+    fn the_success_body_keeps_its_wire_shape() {
+        let body = success_body(
+            "p-1",
+            "dev",
+            "0123456789012345678901234567890123456789",
+            &format!("https://x-access-token:{SECRET}@host/org/repo.git"),
+            1_818_633_600,
+        );
+        assert_eq!(
+            body,
+            json!({
+                "projectId": "p-1",
+                "sha": "0123456789012345678901234567890123456789",
+                "ref": "refs/heads/dev",
+                "readAt": "2027-08-19T00:00:00Z",
+                "via": "runner-checkout",
+                "origin": "https://host/org/repo.git",
+            })
         );
     }
 

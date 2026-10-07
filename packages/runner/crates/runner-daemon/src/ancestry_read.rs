@@ -11,13 +11,15 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::Duration;
 
+use runner_platform::clock;
 use runner_platform::config::Config;
 use runner_platform::git::{git, git_line, origin_url, strip_userinfo};
-use runner_transport::{checkout_ancestry, CoreClient};
+use runner_transport::CoreClient;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::process::Command;
 
+use crate::checkout_frame::{serve, Channel, Frame};
 use crate::head_read::{bound_checkout, rfc3339_utc};
 
 /// Core waits thirty seconds for the answer; a fetch that has not finished well before that is
@@ -55,64 +57,43 @@ pub(crate) struct Reading {
     pub answers: Vec<(Pair, Verdict)>,
 }
 
-pub(crate) async fn handle(client: &CoreClient, data: Value) {
-    let frame: AncestryFrame = match serde_json::from_value(data.clone()) {
-        Ok(f) => f,
-        Err(e) => return answer_undecodable(client, &data, &e).await,
-    };
-    let body = match answer(&frame).await {
-        Ok(reading) => json!({
-            "projectId": frame.project_id,
-            "origin": reading.origin,
-            "readAt": rfc3339_utc(runner_platform::clock::now_secs()),
-            "via": "runner-checkout",
-            "fetched": reading.fetched,
-            "answers": reading.answers.iter().map(|(pair, verdict)| match verdict {
-                Verdict::Ancestor(yes) => json!({ "commit": pair.commit, "release": pair.release, "ancestor": yes }),
-                Verdict::Unreadable(why) => json!({ "commit": pair.commit, "release": pair.release, "error": strip_userinfo(why) }),
-            }).collect::<Vec<_>>(),
-        }),
-        Err(error) => {
-            let error = strip_userinfo(&error);
-            tracing::warn!(
-                "[ancestry] project={} runner={}: {error}",
-                frame.project_id,
-                frame.runner_id.as_deref().unwrap_or("-")
-            );
-            json!({ "projectId": frame.project_id, "error": error })
-        }
-    };
-    post(client, &frame.request_id, &frame.project_id, &body).await;
-}
-
-async fn post(client: &CoreClient, request_id: &str, project_id: &str, body: &Value) {
-    if let Err(e) = checkout_ancestry::answer(client, request_id, body).await {
-        tracing::warn!("[ancestry] project={project_id}: the answer did not reach core: {e}");
+impl Frame for AncestryFrame {
+    fn request_id(&self) -> &str {
+        &self.request_id
+    }
+    fn project_id(&self) -> &str {
+        &self.project_id
+    }
+    fn runner_id(&self) -> Option<&str> {
+        self.runner_id.as_deref()
     }
 }
 
-/// A frame this build cannot read is answered naming what failed to decode, so core settles it with
-/// that rather than waiting it out. Only a frame with no `requestId` and `projectId` goes unanswered.
-async fn answer_undecodable(client: &CoreClient, data: &Value, e: &serde_json::Error) {
-    let field = |name: &str| data.get(name).and_then(Value::as_str).map(str::to_string);
-    let (Some(request_id), Some(project_id)) = (field("requestId"), field("projectId")) else {
-        tracing::warn!(
-            "[ancestry] undecodable checkout.ancestry.read with no requestId and projectId to answer it under, so core waits it out: {e}"
-        );
-        return;
-    };
-    let error = format!(
-        "the checkout.ancestry.read frame could not be decoded by forge-runner {}: {e} — this core sends a frame this runner does not read",
-        runner_update::CURRENT_VERSION
-    );
-    tracing::warn!("[ancestry] project={project_id}: {error}");
-    post(
+pub(crate) async fn handle(client: &CoreClient, data: Value) {
+    serve(
         client,
-        &request_id,
-        &project_id,
-        &json!({ "projectId": project_id, "error": error }),
+        Channel::Ancestry,
+        data,
+        async |frame: &AncestryFrame| {
+            let reading = answer(frame).await?;
+            Ok(success_body(&frame.project_id, &reading, clock::now_secs()))
+        },
     )
     .await;
+}
+
+fn success_body(project_id: &str, reading: &Reading, now: i64) -> Value {
+    json!({
+        "projectId": project_id,
+        "origin": reading.origin,
+        "readAt": rfc3339_utc(now),
+        "via": "runner-checkout",
+        "fetched": reading.fetched,
+        "answers": reading.answers.iter().map(|(pair, verdict)| match verdict {
+            Verdict::Ancestor(yes) => json!({ "commit": pair.commit, "release": pair.release, "ancestor": yes }),
+            Verdict::Unreadable(why) => json!({ "commit": pair.commit, "release": pair.release, "error": strip_userinfo(why) }),
+        }).collect::<Vec<_>>(),
+    })
 }
 
 async fn answer(frame: &AncestryFrame) -> Result<Reading, String> {
@@ -475,5 +456,36 @@ mod tests {
             .await
             .unwrap_err();
         assert!(why.contains("does not exist"), "{why}");
+    }
+
+    #[test]
+    fn the_success_body_keeps_its_wire_shape() {
+        let a = "a".repeat(40);
+        let b = "b".repeat(40);
+        let reading = Reading {
+            origin: "https://host/org/repo.git".into(),
+            fetched: true,
+            answers: vec![
+                (pair(&a, &b), Verdict::Ancestor(false)),
+                (
+                    pair(&b, &a),
+                    Verdict::Unreadable("https://u:tok@host/x failed".into()),
+                ),
+            ],
+        };
+        assert_eq!(
+            success_body("p-1", &reading, 1_818_633_600),
+            json!({
+                "projectId": "p-1",
+                "origin": "https://host/org/repo.git",
+                "readAt": "2027-08-19T00:00:00Z",
+                "via": "runner-checkout",
+                "fetched": true,
+                "answers": [
+                    { "commit": a, "release": b, "ancestor": false },
+                    { "commit": b, "release": a, "error": "https://host/x failed" },
+                ],
+            })
+        );
     }
 }

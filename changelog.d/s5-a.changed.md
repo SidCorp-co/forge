@@ -1,0 +1,1 @@
+**The runner's two checkout read frames share one frame helper.** `checkout.head.read` and `checkout.ancestry.read` decode, refuse and post through one module, wire unchanged. ADR 0009 now names the pass-open and release-retry decisions the box takes.
