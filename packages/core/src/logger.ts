@@ -109,7 +109,10 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   return [first, ...rest];
 }
 
-/** What `serializeError` returned, which pino hands straight back to it as the `err` serializer. */
+/**
+ * What `serializeError` built, which pino hands straight back to it as the `err` serializer. Only a
+ * new object goes in: a caller's own one, returned unchanged, may change before it is logged again.
+ */
 const serialized = new WeakSet<object>();
 
 /**
@@ -129,7 +132,7 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
   } else {
     out = redactQueryParams(withErrorsSerialized(err), hints.length > 0 ? hints : undefined);
   }
-  if (typeof out === 'object' && out !== null) serialized.add(out);
+  if (typeof out === 'object' && out !== null && out !== err) serialized.add(out);
   return out;
 }
 
