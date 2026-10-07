@@ -5,6 +5,7 @@
 
 import { PeekHead, PeekPanel, type PeekState, rememberListOrigin, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useRequirement } from "../hooks";
 import { REQUIREMENTS_LIST } from "@/lib/routes/requirements";
 import { PrimaryActions } from "./requirement-actions";
@@ -24,19 +25,20 @@ export function RequirementPeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   const q = useRequirement(projectId, reqKey);
   const d = q.data;
   const s = d?.standing;
   const banner = s && (s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none"));
   return (
-    <PeekPanel peek={peek} listLabel="Requirements" noun="Requirement" onOpenFull={onOpenFull} testId="requirement-peek">
-      <QueryBoundary query={q} loadingLabel="loading requirement…">
+    <PeekPanel peek={peek} listLabel={t("requirements.title")} noun={t("requirements.noun")} onOpenFull={onOpenFull} testId="requirement-peek">
+      <QueryBoundary query={q} loadingLabel={t("requirements.loadingOne")}>
         {(d) => {
           const s = d.standing;
           return (
             <>
               <PeekHead
-                noun="Requirement"
+                noun={t("requirements.noun")}
                 itemKey={d.key}
                 badge={<StatusBadge family="requirement" value={s.state} />}
                 title={d.title}

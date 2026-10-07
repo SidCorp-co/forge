@@ -3,20 +3,17 @@
 // The full page's views below the facts: the criteria with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
-import type { IssueStatus } from "@forge/contracts/issue-machine";
-import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark } from "@/design";
-import { formatRelativeTime, formatStamp as stamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { copyOr, type Copy, type ProductCopyKey } from "@/lib/i18n/product-copy";
+import { historyText, historyWho } from "@/lib/i18n/standing-copy";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
-import { diffColours } from "./standing-bits";
-
-const issueWord = (s: string) => ISSUE_STATUS_LABELS[s as IssueStatus] ?? s;
-
+import { agreedTitle, diffColours } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -56,7 +53,7 @@ function listDiff(label: string, before: string[] = [], after: string[] = []) {
   );
 }
 
-function criteriaDiff(before: RequirementCriterion[], after: RequirementCriterion[]) {
+function criteriaDiff(label: string, before: RequirementCriterion[], after: RequirementCriterion[]) {
   const rows: ReactNode[] = [];
   const codes = [...new Set([...before.map((c) => c.code), ...after.map((c) => c.code)])].sort(
     (a, b) => Number(a.slice(3)) - Number(b.slice(3)),
@@ -78,7 +75,7 @@ function criteriaDiff(before: RequirementCriterion[], after: RequirementCriterio
   if (rows.length === 0) return null;
   return (
     <div key="criteria">
-      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">Business criteria</h4>
+      <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{label}</h4>
       {rows}
     </div>
   );
@@ -86,32 +83,33 @@ function criteriaDiff(before: RequirementCriterion[], after: RequirementCriterio
 
 /** What the open revision changes against the one it was written on: added green, removed struck. */
 export function RevisionDiff({ base, next }: { base: RequirementRevision | undefined; next: RequirementRevision }) {
+  const t = useCopy();
   const a = base?.spec ?? {};
   const b = next.spec;
   const parts = [
     a.goal !== b.goal ? (
       <div key="goal">
-        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">Goal and problem</h4>
+        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.diff.goal")}</h4>
         <p className="grid gap-1 text-14">
           {a.goal ? <Del>{a.goal}</Del> : null}
           {b.goal ? <Ins>{b.goal}</Ins> : null}
         </p>
       </div>
     ) : null,
-    listDiff("Persona", a.personas, b.personas),
-    listDiff("In scope", a.scopeIn, b.scopeIn),
-    listDiff("Out of scope", a.scopeOut, b.scopeOut),
-    criteriaDiff(base?.criteria ?? [], next.criteria),
+    listDiff(t("requirements.overview.persona"), a.personas, b.personas),
+    listDiff(t("requirements.overview.inScope"), a.scopeIn, b.scopeIn),
+    listDiff(t("requirements.overview.outOfScope"), a.scopeOut, b.scopeOut),
+    criteriaDiff(t("requirements.criteria.heading"), base?.criteria ?? [], next.criteria),
   ].filter(Boolean);
-  if (parts.length === 0) return <p className="text-12-5 text-subtle">The wording is unchanged; only the reason differs.</p>;
+  if (parts.length === 0) return <p className="text-12-5 text-subtle">{t("requirements.diff.unchanged")}</p>;
   return <div data-testid="revision-diff">{parts}</div>;
 }
 
-const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, string> = {
-  pass: "Pass",
-  short: "Short",
-  fail: "Fail",
-  skipped: "Skipped",
+const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey> = {
+  pass: "requirements.verdict.pass",
+  short: "requirements.verdict.short",
+  fail: "requirements.verdict.fail",
+  skipped: "requirements.verdict.skipped",
 };
 
 /** One line per issue, however many of its criteria trace here, with each criterion's evidence. */
@@ -124,8 +122,10 @@ function byIssue(links: CoverageIssue[]) {
 /** Each business criterion once: its wording, its verdict, the issues tracing to it inline, and the
  *  per-criterion evidence behind an expander. */
 export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const cov = d.standing.coverage;
-  if (cov.length === 0) return <p className="py-1.5 text-13 text-subtle">No criteria yet. Readiness needs at least one testable criterion.</p>;
+  if (cov.length === 0) return <p className="py-1.5 text-13 text-subtle">{t("requirements.criteria.empty")}</p>;
   const shown = d.standing.shownRevision;
   const wording = new Map(d.criteria.map((c) => [c.code, c]));
   return (
@@ -135,7 +135,7 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
         const issues = byIssue(c.issues);
         return (
           <li key={c.code} className="grid grid-cols-[52px_minmax(0,1fr)_auto] gap-x-3 border-b border-line-subtle py-3" data-testid="criterion-row">
-            <span className="pt-0.5 font-mono text-12 font-semibold text-muted" title={crit ? `Since r${crit.sinceRevision}` : undefined}>
+            <span className="pt-0.5 font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined}>
               {c.code}
             </span>
             <div className="min-w-0">
@@ -145,11 +145,11 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                 <p className="text-14 leading-relaxed">{c.body}</p>
               )}
               {crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
-                <span className="mt-1 inline-block text-12 text-muted">Changed in r{shown}</span>
+                <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-12-5">
                 {issues.length === 0 ? (
-                  <span className="text-subtle">{d.standing.facts.issuesTotal === 0 ? "Not broken down into issues yet" : "No issue traces here yet"}</span>
+                  <span className="text-subtle">{t(d.standing.facts.issuesTotal === 0 ? "requirements.criteria.notBrokenDown" : "requirements.criteria.noTrace")}</span>
                 ) : (
                   issues.map(({ i, stale }) => (
                     <span key={i.issueId} className="inline-flex min-w-0 items-center gap-1.5">
@@ -158,21 +158,21 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                       </Link>
                       <span className="font-mono text-12 text-subtle">{i.displayId}</span>
                       <StatusBadge family="issue" value={i.status} tone={i.tone} />
-                      {stale ? <span className="text-subtle">Earlier wording</span> : null}
+                      {stale ? <span className="text-subtle">{t("requirements.criteria.earlierWording")}</span> : null}
                     </span>
                   ))
                 )}
               </div>
               {c.issues.length > 0 ? (
                 <details className="mt-1.5 text-12-5" data-testid="criterion-evidence">
-                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">What the evidence says · {c.issues.length}</summary>
+                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence", { n: c.issues.length })}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
                       links.map((l) => (
                         <li key={`${i.issueId}-${l.criterion}`} className="text-muted" data-testid="criterion-evidence-row">
-                          <span className="font-medium text-fg">{l.verdict ? VERDICT_WORD[l.verdict] : "Not judged yet"}</span>
-                          {l.verdictAt ? <span title={stamp(l.verdictAt)}> · {formatRelativeTime(l.verdictAt)}</span> : null} · {i.title}
-                          {l.stale ? " · traces to an earlier wording" : ""}{" "}
+                          <span className="font-medium text-fg">{t(l.verdict ? VERDICT_WORD[l.verdict] : "requirements.criteria.notJudged")}</span>
+                          {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null} · {i.title}
+                          {l.stale ? t("requirements.criteria.tracesEarlier") : ""}{" "}
                           <Link href={issueHref(slug, i.displayId)} className="font-mono text-12 text-subtle hover:underline">
                             {i.displayId}
                           </Link>
@@ -201,6 +201,7 @@ type Check = { check?: unknown; passed?: unknown; detail?: unknown };
  * nothing rather than a line that reads as work somebody owes.
  */
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
+  const t = useCopy();
   const r = suggestions.find((s) => s.kind === "readiness");
   const raw = (r?.payload as { checks?: unknown } | null | undefined)?.checks;
   const checks = (Array.isArray(raw) ? raw : []) as Check[];
@@ -210,8 +211,10 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
     <>
     <span aria-hidden>·</span>
     <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
-      <span title={`Checked by the BA assistant before the requirement was agreed\n${checks.map((c) => `${c.passed === true ? "Met" : "Not met"} · ${String(c.check ?? "")}`).join("\n")}`}>
-        Readiness <b className="font-semibold text-fg">{met} of {checks.length}</b> checks met
+      <span
+        title={[t("requirements.readiness.title"), ...checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: String(c.check ?? "") }))].join("\n")}
+      >
+        {t("requirements.readiness.lead")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: met, b: checks.length })}</b> {t("requirements.readiness.met")}
       </span>
       <span className="inline-flex gap-0.5">
         {checks.map((c) => (
@@ -223,7 +226,7 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
           />
         ))}
       </span>
-      {r.baseRevision !== null ? <span className="text-subtle">on r{r.baseRevision}</span> : null}
+      {r.baseRevision !== null ? <span className="text-subtle">{t("requirements.readiness.onR", { r: r.baseRevision })}</span> : null}
     </span>
     </>
   );
@@ -231,7 +234,9 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
 
 /** Every revision newest first, as rows: number, state, author, what it changed, when. */
 export function RevisionList({ d }: { d: RequirementDetail }) {
-  if (d.revisions.length === 0) return <p className="text-13 text-subtle">No revision yet.</p>;
+  const t = useCopy();
+  const time = useTimeFormat();
+  if (d.revisions.length === 0) return <p className="text-13 text-subtle">{t("requirements.revision.none")}</p>;
   const agreed = new Map(d.baselines.map((b) => [b.revision, b]));
   return (
     <ul className="border-t border-line-subtle" data-testid="revision-list">
@@ -245,19 +250,19 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge family="revision" value={r.state} />
                 {signed ? (
-                  <span className="text-12 text-muted" title={`Agreed ${stamp(signed.agreedAt)}${signed.agreedByName ? ` by ${signed.agreedByName}` : ""}`}>
-                    Agreed
+                  <span className="text-12 text-muted" title={agreedTitle(t, time.dateTime(signed.agreedAt), signed.agreedByName)}>
+                    {t("requirements.revision.agreed")}
                   </span>
                 ) : null}
                 <span className="text-12 text-muted">
-                  <ActorChip name={r.authorName ?? "Its author"} kind={r.authorKind} size={16} />
+                  <ActorChip name={r.authorName ?? t("standing.who.itsAuthor")} kind={r.authorKind} size={16} />
                 </span>
               </div>
               <p className="mt-1 text-13-5">{r.changeSummary ?? r.reason}</p>
-              {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">Returned: {r.returnReason}</p> : null}
+              {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
             </div>
-            <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={stamp(at)}>
-              {formatRelativeTime(at)}
+            <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={time.dateTime(at)}>
+              {time.relative(at)}
             </span>
           </li>
         );
@@ -266,14 +271,9 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
   );
 }
 
-const SOURCES: { value: "all" | HistorySource; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "person", label: "People" },
-  { value: "agent", label: "Agents" },
-  { value: "system", label: "System" },
-];
+const SOURCES: ("all" | HistorySource)[] = ["all", "person", "agent", "system"];
 
-function entryText(e: RequirementHistoryEntry): ReactNode {
+function entryText(e: RequirementHistoryEntry, issueWord: (s: string) => string, language: string): ReactNode {
   if (e.move) {
     return (
       <>
@@ -285,18 +285,28 @@ function entryText(e: RequirementHistoryEntry): ReactNode {
   return (
     <>
       {e.issue ? <span className="mr-1 font-mono text-12 text-subtle">{e.issue}</span> : null}
-      {e.text}
+      {historyText(e.text, language)}
     </>
   );
 }
 
+/** The record's kind ("Decision", "Question") in the interface language; a kind the locale file lacks reads as core named it. */
+const kindWord = (kind: string, language: string) => copyOr(language, `requirements.history.kind.${kind}`, kind);
+
+const sourceLabel = (t: Copy, s: "all" | HistorySource) => t(`requirements.history.source.${s}` as ProductCopyKey);
+
 /** Who did what, newest first, filtered by source. */
 export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
+  const t = useCopy();
+  const label = useLabel();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const [source, setSource] = useState<"all" | HistorySource>("all");
   const count = (s: "all" | HistorySource) => (s === "all" ? entries.length : entries.filter((e) => e.source === s).length);
-  const options = SOURCES.filter((o) => count(o.value) > 0).map((o) => ({ ...o, count: count(o.value) }));
+  const options = SOURCES.filter((s) => count(s) > 0).map((s) => ({ value: s, label: sourceLabel(t, s), count: count(s) }));
   const shown = entries.filter((e) => source === "all" || e.source === source);
-  if (entries.length === 0) return <p className="py-1.5 text-13 text-subtle">Nothing recorded yet.</p>;
+  const issueWord = (s: string) => label("issueStatus", s);
+  if (entries.length === 0) return <p className="py-1.5 text-13 text-subtle">{t("requirements.history.empty")}</p>;
   return (
     <div data-testid="requirement-history">
       <div className="mb-3">
@@ -312,15 +322,15 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
               style={question ? { background: AGENT_TINT.bg, borderLeft: `3px solid ${AGENT_TINT.dot}`, paddingLeft: 6 } : undefined}
             >
               <span className="pt-px">
-                <WhoMark kind={e.source} who={e.who} size={18} />
+                <WhoMark kind={e.source} who={historyWho(e.who, language)} size={18} />
               </span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
-                  <b className="text-13 font-semibold text-fg">{e.who}</b>
-                  <span className="text-12 font-medium text-muted">{e.kind}</span>
-                  <span title={stamp(e.at)}>{formatRelativeTime(e.at)}</span>
+                  <b className="text-13 font-semibold text-fg">{historyWho(e.who, language)}</b>
+                  <span className="text-12 font-medium text-muted">{kindWord(e.kind, language)}</span>
+                  <span title={time.dateTime(e.at)}>{time.relative(e.at)}</span>
                 </div>
-                <div className="mt-0.5 break-words">{entryText(e)}</div>
+                <div className="mt-0.5 break-words">{entryText(e, issueWord, language)}</div>
               </div>
             </li>
           );

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import product from "./product-copy.json";
-import { localizeWaiting, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
+import { historyText, historyWho, localizeWaiting, STANDING_RULES, standingAct, standingEffect, standingRead, standingWho } from "./standing-copy";
 
 // One sentence core really writes for each pattern: in en it is returned as core wrote it, in vi it
 // is a Vietnamese sentence with the names, keys, versions and numbers carried over untouched.
@@ -58,5 +58,48 @@ describe("the standing words, mapped by the shape of core's English", () => {
     const w = { kind: "you", who: "You", act: "cut 0.1.0", rule: "an admin cuts the version", ref: null, dueAt: null };
     expect(localizeWaiting(w, "vi")).toMatchObject({ kind: "you", rule: w.rule, who: vi["standing.who.you"], act: (vi["standing.act.cut"] as string).replace("{v}", "0.1.0").replace("{more}", "") });
     expect(localizeWaiting(w, "en")).toBe(w);
+  });
+});
+
+// One record per pattern `requirements/history-read.ts` writes; what a person typed after the colon is
+// carried over as written.
+const HISTORY = [
+  "Wrote r2: Tighten the totals", "Wrote r3 (an accepted suggestion): Tighten the totals", "Proposed r2", "Accepted r2", "Accepted r2: the BA agreed",
+  "Returned r2: unclear scope", "Deferred out of the current release (for Q4): waits on finance", "Deferred out of the current release: waits on finance",
+  "Undeferred", "Undeferred: finance is ready", "Agreed r1", "Agreed r1: signed off in the review", "Re-pinned r1 onto the approved designs",
+  "Re-pinned r1 onto the approved designs: checkout moved", "Accepted the delivery", "Accepted the delivery: all good", "Dropped: not needed",
+  "Suggested a revision", "Suggested a readiness check", "Accepted a breakdown", "Accepted a breakdown: fine", "Rejected a duplicate", "Rejected a change: too broad",
+];
+const HISTORY_WHO = ["Someone", "A signer", "An agent", "BA assistant"];
+
+describe("a requirement's history, mapped by the shape of core's record", () => {
+  it("reads each record back unchanged in en, and as written where the language is English", () => {
+    for (const h of HISTORY) {
+      expect(standingRead("history", h, "en"), h).toBe(h);
+      expect(historyText(h, "en")).toBe(h);
+    }
+    for (const w of HISTORY_WHO) expect(standingRead("historyWho", w, "en"), w).toBe(w);
+  });
+
+  it("reads each record in vi, keeping the revision and what the person wrote", () => {
+    for (const h of HISTORY) {
+      const read = historyText(h, "vi");
+      expect(read, h).not.toBe(h);
+      for (const token of h.match(/\br\d+\b/g) ?? []) expect(read, `${h} -> ${read}`).toContain(token);
+      const typed = h.split(": ")[1];
+      if (typed) expect(read, `${h} -> ${read}`).toContain(typed);
+    }
+    for (const w of HISTORY_WHO) expect(historyWho(w, "vi"), w).not.toBe(w);
+    expect(historyWho("Lan", "vi")).toBe("Lan");
+    expect(historyWho("You", "vi")).toBe(vi["standing.who.you"]);
+  });
+
+  it("leaves a record it does not know as core wrote it", () => {
+    expect(historyText("Re-pinned r1 onto the approved designs (ready)", "vi")).toBe("Re-pinned r1 onto the approved designs (ready)");
+    expect(historyText("", "vi")).toBe("");
+  });
+
+  it("holds one record to every history pattern", () => {
+    for (const rule of STANDING_RULES.history) expect(HISTORY.some((h) => rule.re.test(h)), String(rule.re)).toBe(true);
   });
 });
