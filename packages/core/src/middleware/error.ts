@@ -1,7 +1,8 @@
+import { redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { activeChildUnderTerminalRun, withoutQueryParams } from '../lib/db-errors.js';
+import { activeChildUnderTerminalRun } from '../lib/db-errors.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { getLogger } from '../lib/logger.js';
 import {
@@ -122,7 +123,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     message: 'Internal Server Error',
   };
   if (!isProd && err instanceof Error) {
-    body.details = withoutQueryParams(
+    body.details = redactQueryParams(
       { name: err.name, message: err.message, stack: err.stack },
       err,
     );

@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type JobWithMetadata } from 'pg-boss';
 import { db } from '../db/client.js';
@@ -43,7 +44,7 @@ async function runDelivery(consumerName: string, job: JobWithMetadata<DeliveryJo
       logger.warn({ deliveryId: job.id, consumer: consumerName }, err.message);
       throw err;
     }
-    const error = err instanceof Error ? err.message : String(err);
+    const error = redactQueryParams(err instanceof Error ? err.message : String(err), err);
     const died = job.retryCount >= job.retryLimit;
     logger.error(
       { err, deliveryId: job.id, eventId: job.data.eventId, type, consumer: consumerName },

@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 /**
  * ISS-604 (P2a) — transport-agnostic tool-calling turn loop: one assistant turn,
  * executing and feeding back tools for as long as the model asks for them, up to
@@ -107,7 +108,7 @@ async function safeExecute(toolset: ChatToolset, tc: CollectedToolCall): Promise
   try {
     return await toolset.execute(tc.name, tc.arguments);
   } catch (err) {
-    return toolError(err instanceof Error ? err.message : String(err));
+    return toolError(redactQueryParams(err instanceof Error ? err.message : String(err), err));
   }
 }
 
@@ -132,7 +133,7 @@ async function executeToolRound(
         const held = gate
           ? await gate(call, completed()).catch((err: unknown) =>
               toolError(
-                `pre-call gate failed: ${err instanceof Error ? err.message : String(err)}`,
+                `pre-call gate failed: ${redactQueryParams(err instanceof Error ? err.message : String(err), err)}`,
               ),
             )
           : null;
@@ -218,7 +219,7 @@ export async function* runTurnEvents(
       yield* feedToolRound(args, turn, offered, round);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
     yield { type: 'error', message };
     return result('error', '', message);
   }

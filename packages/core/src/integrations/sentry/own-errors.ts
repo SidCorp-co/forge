@@ -1,6 +1,5 @@
-import { scrubSentryEvent } from '@forge/observability';
+import { redactQueryParams, scrubSentryEvent } from '@forge/observability';
 import * as Sentry from '@sentry/node';
-import { withoutQueryParams } from '../../lib/db-errors.js';
 import { provideErrorTracker } from '../../lib/error-tracking.js';
 import { sourceCommit } from '../../lib/source-commit.js';
 
@@ -11,7 +10,7 @@ function sentryBeforeSend<E extends Parameters<typeof scrubSentryEvent>[0]>(
   event: E,
   hint: { originalException?: unknown },
 ): E {
-  return scrubSentryEvent(withoutQueryParams(event, hint.originalException));
+  return scrubSentryEvent(redactQueryParams(event, hint.originalException));
 }
 
 /**

@@ -1,0 +1,1 @@
+**Failed-query values stay out of logs, and the device router no longer guards every /api route.** Logs, error bodies, Sentry, the outbox and tool errors redact bound params (ISS-1383); each device-owner route carries its own guard (ISS-1373).

@@ -1,3 +1,4 @@
+import { redactQueryParams } from '@forge/observability';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -25,7 +26,7 @@ import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { MCP_TOOLS } from './registry.js';
 
 function classifyError(err: unknown): { code: AuditResultCode; message: string } {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = redactQueryParams(err instanceof Error ? err.message : String(err), err);
   if (err instanceof HTTPException && err.status === 404) return { code: 'not_found', message };
   if (err instanceof HTTPException && err.status === 403) return { code: 'forbidden', message };
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
