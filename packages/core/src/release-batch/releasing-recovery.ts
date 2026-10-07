@@ -96,11 +96,10 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
 function failureMessage(err: unknown): string {
   const driver = pgDriverError(err);
   if (driver) {
-    // The database's quoting texts lose their value first; then any bound value still anywhere in
-    // the text, however short, sends it to the SQLSTATE's description instead.
+    // Quoted values go first; any bound value left, or a message the seal withheld whole, falls
+    // back to the SQLSTATE's class.
     const unquoted = redactQueryParams(driver.message);
     const leaks = pgBoundValues(err).some((v) => unquoted.includes(v));
-    // A message the query-error seal withheld whole says nothing; its class still does.
     const withheld = unquoted.trim() === REDACTED;
     const reason = leaks || withheld ? pgErrorClassDescription(driver.code) : unquoted;
     return `the database refused the write (${driver.code}): ${reason}`;
