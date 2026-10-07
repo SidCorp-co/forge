@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.128] - 2026-10-07
+
+A design decision now releases the run parked waiting on it
+
+### Fixed
+
+- **A decision park now waits on the design drawn under its issue.** The approval answers it; Approve says why it is off and which designs it strands, in your language; undefer asks why; early approvals are recorded as landings.
+
 ## [0.4.0-dev.127] - 2026-10-07
 
 Stable issue ordering and one progress vocabulary across every screen

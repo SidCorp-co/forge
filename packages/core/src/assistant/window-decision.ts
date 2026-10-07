@@ -440,7 +440,13 @@ async function takeTurn(
 function routedOutcome(outcome: TurnOutcome): RoutedWindow {
   switch (outcome.kind) {
     case 'delivered':
-      return { decision: 'answered', detail: { messageId: outcome.messageId } };
+      return {
+        decision: 'answered',
+        detail: {
+          messageId: outcome.messageId,
+          ...(outcome.continuation ? { continuing: true } : {}),
+        },
+      };
     case 'declined':
       return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
     case 'failed':

@@ -29,7 +29,10 @@ import { holds, type PermissionFacts } from '../permissions/index.js';
 import {
   type AwaitedDesign,
   awaitedDesignFault,
+  designsPendingUnder,
+  linkedDesignLine,
   neededFor,
+  type PendingDesign,
   voidSupersededDesignQuestions,
 } from './design-wait.js';
 import { resolveAskOrigin } from './origin.js';
@@ -207,13 +210,22 @@ export async function askParkQuestion(
     prompt: string;
     needed?: string | undefined;
     awaitsDesign?: AwaitedDesign | undefined;
+    /** Core linked `awaitsDesign` itself, as the one revision proposed under this issue: the question says so. */
+    linkedUnderIssue?: boolean | undefined;
   },
 ) {
   let needed = input.needed?.trim() ?? '';
+  let prompt = input.prompt;
   if (input.awaitsDesign) {
     const awaited = await awaitedDesignFault(executor, input.projectId, input.awaitsDesign);
     if ('fault' in awaited) throw refuseQuestion(awaited.fault.code, awaited.fault.detail);
     needed ||= neededFor(awaited.flow, input.awaitsDesign.revision);
+    if (input.linkedUnderIssue) {
+      const line = linkedDesignLine(awaited.flow, input.awaitsDesign.revision);
+      prompt = prompt.trim()
+        ? `${prompt.trim()} (${line})`
+        : `${line.charAt(0).toUpperCase()}${line.slice(1)}.`;
+    }
   }
   const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
@@ -221,11 +233,33 @@ export async function askParkQuestion(
     id: input.id,
     projectId: input.projectId,
     issueId: input.issueId,
-    prompt: input.prompt,
+    prompt,
     blockerKind: 'human',
     answer,
     ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
   });
+}
+
+/**
+ * The revision an agent's park waits on when it names none: the one revision proposed under the
+ * parking issue that still awaits its approver, which is a kernel fact rather than a reading of the
+ * park's words. None pending is null; two or more are refused by name, since which one settles the
+ * park is the agent's to say.
+ */
+export async function pendingDesignOfPark(
+  executor: QuestionExecutor,
+  projectId: string,
+  issueId: string,
+): Promise<PendingDesign | null> {
+  const pending = await designsPendingUnder(executor, projectId, issueId);
+  if (pending.length <= 1) return pending[0] ?? null;
+  const named = pending
+    .map((p) => `\`${p.flow}\` revision ${p.revision} (workflowId ${p.workflowId})`)
+    .join(', ');
+  throw refuseQuestion(
+    'QUESTION_DESIGN_AMBIGUOUS',
+    `this park names no \`awaitsDesign\`, and ${pending.length} design revisions proposed under this issue await their approver: ${named}. Core links the one revision proposed under the issue and cannot pick among several — send \`awaitsDesign: { workflowId, revision }\` naming the one whose decision settles this park; nothing was written`,
+  );
 }
 
 /**

@@ -18,6 +18,10 @@ export interface DesignRefusal {
   code: DesignRefusalCode;
   path: string;
   detail: string;
+  /** The facts a decision refusal is worded from, beside its detail, so a client words it in its own language. */
+  status?: DesignStatus | null;
+  revision?: number;
+  proposedRevision?: number;
 }
 
 /**
@@ -158,6 +162,7 @@ export function decisionRefusals(input: {
         code: 'WORKFLOW_DESIGN_NOT_PROPOSED',
         path: '/revision',
         detail: `this design is ${input.status ?? 'not in a design lifecycle'}; only a proposed design is approved or returned.`,
+        status: input.status,
       },
     ];
   }
@@ -167,6 +172,8 @@ export function decisionRefusals(input: {
       code: 'WORKFLOW_DESIGN_REVISION_STALE',
       path: '/revision',
       detail: `revision ${input.revision} is not the one awaiting a decision; revision ${input.proposedRevision} is. Read it, then decide that one.`,
+      revision: input.revision,
+      proposedRevision: input.proposedRevision,
     });
   }
   if (input.decision === 'return' && !input.reason?.trim()) {

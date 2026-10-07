@@ -56,6 +56,25 @@ export type TurnReply =
    */
   | { send: true; message: ScreenedMessage; screenReplaced: boolean; awaitsReply?: boolean };
 
+/**
+ * Where a turn that outran its first ceiling streams and records the rest: a fresh entry beside
+ * the partial reply already delivered under the first one.
+ */
+export interface ContinuedEntry {
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
+  onSettled?: ((settled: { text: string; screenReplaced: boolean }) => void) | undefined;
+  replyEntry?:
+    | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
+    | undefined;
+  close: () => Promise<void>;
+}
+
+/** How long a turn runs before it posts what it has, and the most it may run in all. */
+export interface TurnBudget {
+  partialAfterMs: number;
+  ceilingMs: number;
+}
+
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
   /** The person whose message this turn answers: whose access it reads and runs its tools under. */
@@ -139,6 +158,13 @@ export interface ConversationTurnRequest {
   externalStop?: AbortSignal | undefined;
   /** Released once the turn is over, however it ended. */
   dispose?: () => Promise<void>;
+  /**
+   * The entry the rest of a turn streams into once a partial reply went out under the first one;
+   * absent where the venue streams nothing.
+   */
+  continueEntry?: (() => ContinuedEntry) | undefined;
+  /** The turn's ceilings; the runner's defaults where absent. */
+  budget?: Partial<TurnBudget> | undefined;
   log?: Record<string, unknown>;
 }
 
@@ -146,7 +172,11 @@ export interface ConversationTurnRequest {
  * How the turn ended, in terms a reader can tell apart.
  */
 export type TurnOutcome =
-  | { kind: 'delivered'; messageId: string | null }
+  /**
+   * `continuation`: the delivered text was a partial reply, and this settles once the rest of the
+   * turn has been posted to the same thread, or the line saying why it was not.
+   */
+  | { kind: 'delivered'; messageId: string | null; continuation?: Promise<TurnOutcome> }
   | { kind: 'stopped'; reason: string }
   | { kind: 'superseded'; reason: string }
   | { kind: 'diverted'; reason: string }

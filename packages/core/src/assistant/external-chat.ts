@@ -134,23 +134,26 @@ interface TurnSetup {
 async function setUpTurn(
   args: ExternalChatTurnArgs,
 ): Promise<TurnSetup & { level: SensitiveDataLevel }> {
-  const [project] = await db
-    .select({ name: projects.name })
-    .from(projects)
-    .where(eq(projects.id, args.projectId))
-    .limit(1);
+  // the reads a turn is set up from do not depend on one another, so they go out together
+  const [[project], progress, language, turn, level] = await Promise.all([
+    db
+      .select({ name: projects.name })
+      .from(projects)
+      .where(eq(projects.id, args.projectId))
+      .limit(1),
+    computeProjectProgress(args.projectId, db),
+    readContentLanguage(args.projectId),
+    args.conversationId
+      ? openTurn({
+          projectId: args.projectId,
+          adapter: args.adapter,
+          conversationId: args.conversationId,
+          readerUserId: args.userId ?? null,
+        })
+      : null,
+    dataPolicyOf(args.projectId),
+  ]);
   if (!project) throw new Error(`project not found: ${args.projectId}`);
-  const progress = await computeProjectProgress(args.projectId, db);
-  const language = await readContentLanguage(args.projectId);
-
-  const turn = args.conversationId
-    ? await openTurn({
-        projectId: args.projectId,
-        adapter: args.adapter,
-        conversationId: args.conversationId,
-        readerUserId: args.userId ?? null,
-      })
-    : null;
   const images = args.images ?? [];
   if (turn && !args.questionInHistory) {
     appendUserMessage(turn, args.message, {
@@ -188,7 +191,6 @@ async function setUpTurn(
       speakerContext,
     },
   );
-  const level = await dataPolicyOf(args.projectId);
   const what = `conversation ${turn?.conversationId ?? 'turn'}`;
   const sent = egressAt(level, 'conversation', spoken, what);
   if (!sent.ok) throw new EgressRefused(sent.refusal);

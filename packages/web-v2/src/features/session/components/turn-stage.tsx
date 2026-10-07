@@ -64,7 +64,16 @@ export function sessionTurnStage({
 /**
  * One line, one position, for the whole turn.
  */
-export function TurnStage({ stage, elapsed }: { stage: TurnStage; elapsed?: string }) {
+export function TurnStage({
+  stage,
+  elapsed,
+  detail,
+}: {
+  stage: TurnStage;
+  elapsed?: string;
+  /** What a working turn is doing right now, said in place of the bare stage. */
+  detail?: string | null;
+}) {
   const t = useCopy();
   return (
     <div
@@ -81,7 +90,7 @@ export function TurnStage({ stage, elapsed }: { stage: TurnStage; elapsed?: stri
           <Spinner size={12} />
         )}
       </span>
-      <span>{t(LABEL[stage])}</span>
+      <span>{stage === "working" && detail ? `${detail}…` : t(LABEL[stage])}</span>
       {elapsed && <span className="font-mono">· {elapsed}</span>}
     </div>
   );

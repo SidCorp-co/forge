@@ -261,7 +261,7 @@ export type UiCallReading =
   | { kind: "action"; action: UiAction }
   | { kind: "refused"; name: string; code: string; message: string };
 
-function textOf(output: unknown): string {
+export function textOf(output: unknown): string {
   if (typeof output !== "string") return JSON.stringify(output ?? "");
   try {
     const parsed: unknown = JSON.parse(output);

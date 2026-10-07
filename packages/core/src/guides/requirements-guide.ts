@@ -98,8 +98,8 @@ it lives in numbered revisions, and each revision carries business criteria unde
 reason). It is refused while a linked issue is past draft and not closed
 (\`REQUIREMENT_HAS_LIVE_ISSUES\`, naming each): drop or unlink them, or leave them at draft, first. A
 deferred requirement waits on nobody and is not broken down; accepting, agreeing, re-pinning and
-linking an issue on it are \`REQUIREMENT_DEFERRED\`. **undefer** puts back the status it was deferred
-from.
+linking an issue on it are \`REQUIREMENT_DEFERRED\`. **undefer** \`{ reason }\` puts back the status it
+was deferred from, saying why it comes back (\`REQUIREMENT_UNDEFER_REASON_REQUIRED\` without one).
 
 ### Accepting the delivery, and dropping
 When the phase reads \`delivered\`, the project's holders of \`requirements.approve\` are notified, and

@@ -1,6 +1,11 @@
 // Composing one turn's reply: the egress gate, the transport's hooks, the model, and the screen.
 
-import { codeAuthored, recordSilence, turnFailureReason } from '../conversations/index.js';
+import {
+  codeAuthored,
+  confidentLanguageOf,
+  recordSilence,
+  turnFailureReason,
+} from '../conversations/index.js';
 import { type TurnCredential, turnAuthorityRefusalOf } from '../credentials/turn-credential.js';
 import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
@@ -14,6 +19,7 @@ import {
 import { declinedTail, declinedTurn, screenedTurnReply } from './screened-reply.js';
 import { type AwaitReplyCapture, awaitReplyCapture } from './tools/await-reply-tool.js';
 import { type ChatToolset, mergeToolsets } from './tools/mcp-adapter.js';
+import { cachedReads } from './tools/read-cache.js';
 import { type RoomSendCapture, roomSendCapture } from './tools/room-send-tool.js';
 import type {
   ConversationTurnRequest,
@@ -21,7 +27,7 @@ import type {
   TurnInputs,
   TurnReply,
 } from './turn-request.js';
-import { turnWrites } from './turn-writes.js';
+import { type TurnWrites, turnWrites } from './turn-writes.js';
 
 export interface TurnContext {
   req: ConversationTurnRequest;
@@ -29,6 +35,8 @@ export interface TurnContext {
   abort: AbortController;
   setPhase: (phase: string) => void;
   credential: () => Promise<TurnCredential>;
+  /** The turn's ledger once its toolset is built: what a partial reply names and the screen reads. */
+  writes: TurnWrites | null;
 }
 
 /** Record a silence for this turn and close it as declined under `reason`. */
@@ -130,7 +138,8 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if ('send' in inputs) return inputs;
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const asks = asksCapture(req);
-  const writes = turnWrites(inputs.tools);
+  const writes = turnWrites(cachedReads(ctx.conversationId, inputs.tools));
+  ctx.writes = writes;
 
   ctx.setPhase('turn');
   const turn: ExternalChatTurnArgs = {
@@ -197,6 +206,10 @@ async function settleFirst(
     result = { ...result, reply: captured };
   }
   result = { ...result, reply: correctFalseClaims(result.reply, first.toolCalls).text };
+  // a turn its ceiling ended is a timeout whoever may decline, never an overloaded model
+  if (result.terminal !== 'done' && ctx.abort.signal.reason === TURN_TIMED_OUT) {
+    return failed(ctx, result);
+  }
 
   if (!ctx.req.mayDecline) return result;
   if (result.terminal !== 'done') return failed(ctx, result);
@@ -240,6 +253,8 @@ async function screenReply(
     projectId: req.venue.projectId,
     handleName: req.handleName,
     language: req.replyLanguage ?? 'en',
+    askedIn: confidentLanguageOf(req.message),
+    toolResults: () => ctx.writes?.resultTexts() ?? [],
     first: result,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
