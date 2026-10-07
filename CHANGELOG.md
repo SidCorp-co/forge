@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.110] - 2026-10-07
+
+The feedback guide matches who may confirm a fix: any member or the reporter
+
+### Fixed
+
+- **The feedback machine now names the permission verify really takes.** Anyone on the project or the reporter verifies a resolved item, and the feedback guide tells of the automatic verify after the project's window.
+
 ## [0.4.0-dev.109] - 2026-10-07
 
 Integration tests apply new migrations over seeded rows, catching migrations existing data refuses
