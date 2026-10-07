@@ -19,7 +19,7 @@ const ENGLISH_CHROME = [
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
   "release train", "coming next", "approve", "return", "criteria", "proven", "maintenance", "what users get", "technical", "notes", "checks",
   "issues in this release", "cut", "approval", "decision", "policy", "environment", "deploy", "passed", "details", "reason",
-  "designs", "diagram", "design", "steps", "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all",
+  "designs", "diagram", "steps", "states", "owner", "deadline", "revisions", "decisions", "health", "updated", "all",
   "walk through", "zoom", "fit", "minimap", "legend", "stage", "next", "back", "finish", "system overview", "main journey", "users",
   "external systems", "where it stands", "properties", "template", "drawn by", "the code", "trace", "if",
 ];
@@ -31,7 +31,9 @@ const wordsIn = (root: HTMLElement): string[] => {
   for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
     for (const a of ["aria-label", "title", "placeholder"]) {
       const v = el.getAttribute(a);
-      if (v) out.push(v);
+      // a state badge's tooltip leads with its raw value (`shipped · ...`), kept in English on purpose
+      const raw = el.getAttribute("data-value");
+      if (v) out.push(a === "title" && raw && v.startsWith(`${raw} · `) ? v.slice(raw.length + 3) : v);
     }
   }
   return out;

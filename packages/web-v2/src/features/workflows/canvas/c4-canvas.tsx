@@ -16,7 +16,7 @@ import { C4_EDGE_TYPES, C4_NODE_TYPES, type C4BoxData, type C4FrameData, type C4
 import { HEALTH_MARKER_KINDS } from "@forge/contracts/workflow-health";
 import { HealthBar } from "./controls";
 import { Frame } from "./frame";
-import { readCanvas } from "./model";
+import { useCanvasModel } from "./model";
 import { hue } from "./style";
 import { focusChrome, useStepFocus } from "./step-focus";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
@@ -45,8 +45,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   const wrap = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
   const graph = read.data ?? null;
-  const t = useCopy();
-  const c = useMemo(() => readCanvas(doc, template, t), [doc, template, t]);
+  const c = useCanvasModel(doc, template);
   const f = useStepFocus(c);
   const { step, edge, focus, hits, setSelection } = f;
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);

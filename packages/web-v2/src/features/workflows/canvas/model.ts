@@ -5,6 +5,8 @@ import {
   type TemplateNodeType,
   type WorkflowTemplate,
 } from "@forge/contracts/workflow-templates";
+import { useMemo } from "react";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { WorkflowBody, WorkflowEdgeContract, WorkflowStep } from "../types";
 
@@ -66,6 +68,12 @@ export function templateFor(
   if (doc.version !== 2) return null;
   const ref = doc.template ?? LEGACY_V2_TEMPLATE;
   return templates.find((t) => t.id === ref.id && t.version === ref.version) ?? null;
+}
+
+/** `readCanvas` in the interface language, read again only when the design, its template or the language changes. */
+export function useCanvasModel(doc: Canvas["doc"], template: WorkflowTemplate | null): Canvas {
+  const t = useCopy();
+  return useMemo(() => readCanvas(doc, template, t), [doc, template, t]);
 }
 
 export function readCanvas(doc: Canvas["doc"], template: WorkflowTemplate | null, t: Copy): Canvas {
