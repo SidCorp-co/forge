@@ -5,6 +5,7 @@
 //! `process::exit` is a decision nothing can test.
 
 use crate::api::exit::is_json;
+use crate::api::field::json_body;
 use crate::api::form::{parse_field, FormField};
 use crate::api::request::{Body, Request};
 
@@ -13,6 +14,11 @@ pub struct RequestSpec<'a> {
     pub path: &'a str,
     pub method: Option<&'a str>,
     pub data: Option<&'a str>,
+    /// `-f` arguments: each `name=value`, `name=@path` or `name=@-`, sent as one JSON object of
+    /// string fields.
+    pub fields: &'a [String],
+    /// What stdin held, read once by the caller where a `-f name=@-` reads it.
+    pub stdin: Option<&'a str>,
     /// `-F` arguments: each `name=@path` or `name=value`, sent as one `multipart/form-data` body.
     pub form: &'a [String],
     pub project: Option<&'a str>,
@@ -41,11 +47,23 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
                 .to_string(),
         );
     }
+    if !spec.fields.is_empty() && (spec.data.is_some() || !spec.form.is_empty()) {
+        return Err(
+            "-f builds the JSON body itself, so it goes without --data and -F: a request carries one body"
+                .to_string(),
+        );
+    }
     let form = spec
         .form
         .iter()
         .map(|arg| parse_field(arg))
         .collect::<Result<Vec<FormField>, String>>()?;
+    let fields = if spec.fields.is_empty() {
+        None
+    } else {
+        Some(json_body(spec.fields, spec.stdin)?)
+    };
+    let data = spec.data.or(fields.as_deref());
 
     let mut headers = Vec::new();
     for h in spec.headers {
@@ -69,14 +87,14 @@ pub fn build(spec: &RequestSpec<'_>, slugs: &SlugSources<'_>) -> Result<Request,
     }
 
     let method = spec.method.map(str::to_string).unwrap_or_else(|| {
-        if spec.data.is_some() || !form.is_empty() {
+        if data.is_some() || !form.is_empty() {
             "POST"
         } else {
             "GET"
         }
         .to_string()
     });
-    let body = match (spec.data, form.is_empty()) {
+    let body = match (data, form.is_empty()) {
         (Some(json), _) => Some(Body::Json(json.to_string())),
         (None, false) => Some(Body::Form(form)),
         (None, true) => None,
@@ -126,6 +144,8 @@ mod tests {
             method: None,
             data,
             form,
+            fields: &[],
+            stdin: None,
             project: None,
             headers: &[],
             include: false,
@@ -164,6 +184,38 @@ mod tests {
         let form = vec!["file=@shot.png".to_string(), "shot.png".to_string()];
         let why = build(&spec(None, &form), &NO_SLUG).unwrap_err();
         assert!(why.contains("`shot.png`"), "{why}");
+    }
+
+    #[test]
+    fn text_fields_are_a_json_post_and_go_alone() {
+        let fields = vec!["body=@-".to_string()];
+        let req = build(
+            &RequestSpec {
+                fields: &fields,
+                stdin: Some("It's \"done\"\nnext\n"),
+                ..spec(None, &[])
+            },
+            &NO_SLUG,
+        )
+        .unwrap();
+        assert_eq!(req.method, "POST");
+        assert_eq!(
+            req.body,
+            Some(Body::Json(r#"{"body":"It's \"done\"\nnext"}"#.into()))
+        );
+        let form = vec!["file=@shot.png".to_string()];
+        for (data, form) in [(Some("{}"), &[][..]), (None, &form[..])] {
+            let why = build(
+                &RequestSpec {
+                    fields: &fields,
+                    stdin: Some("x"),
+                    ..spec(data, form)
+                },
+                &NO_SLUG,
+            )
+            .unwrap_err();
+            assert!(why.contains("-f builds the JSON body itself"), "{why}");
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@ use clap::Args as ClapArgs;
 use runner_platform::config::Config;
 use runner_platform::cred_store;
 use runner_transport::api::{
-    build, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
+    build, reads_stdin, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
 };
 use runner_transport::CoreClient;
 use serde_json::Value;
@@ -23,13 +23,21 @@ pub struct Args {
     /// Endpoint path. `issues`, `/issues` and `/api/issues` are the same.
     pub path: String,
 
-    /// HTTP method (default GET, or POST when --data or -F is given).
+    /// HTTP method (default GET, or POST when --data, -f or -F is given).
     #[arg(short = 'X', long)]
     pub method: Option<String>,
 
     /// JSON request body. `-` reads stdin.
     #[arg(short = 'd', long)]
     pub data: Option<String>,
+
+    /// A string field of a JSON body this command builds and escapes, repeatable: `name=value`,
+    /// `name=@path` reads the text from a file, `name=@-` from stdin, each less one final line
+    /// break. Prose goes through a quoted heredoc and needs no quoting by hand:
+    /// `forge-runner api issues/<id>/comments -f body=@- <<'FORGE_TEXT'`, the text, then a line
+    /// reading `FORGE_TEXT`. Not with --data or -F.
+    #[arg(short = 'f', long = "field")]
+    pub fields: Vec<String>,
 
     /// A `multipart/form-data` field, repeatable: `name=@path` sends a file, `name=@path;type=<mime>`
     /// claims its media type, `name=value` sends text. An attachment route reads `file`:
@@ -92,17 +100,17 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     };
     let cfg = Config::load()?;
 
-    let stdin_body = match args.data.as_deref() {
-        Some("-") => {
-            let mut s = String::new();
-            std::io::stdin().read_to_string(&mut s)?;
-            Some(s)
-        }
-        _ => None,
+    let data_reads_stdin = args.data.as_deref() == Some("-");
+    let stdin_text = if data_reads_stdin || reads_stdin(&args.fields) {
+        let mut s = String::new();
+        std::io::stdin().read_to_string(&mut s)?;
+        Some(s)
+    } else {
+        None
     };
-    let data = match (&stdin_body, args.data.as_deref()) {
-        (Some(s), _) => Some(s.as_str()),
-        (None, d) => d,
+    let data = match (data_reads_stdin, args.data.as_deref()) {
+        (true, _) => stdin_text.as_deref(),
+        (false, d) => d,
     };
 
     let env_slug = std::env::var("FORGE_PROJECT_SLUG").ok();
@@ -111,6 +119,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         path: &args.path,
         method: args.method.as_deref(),
         data,
+        fields: &args.fields,
+        stdin: stdin_text.as_deref(),
         form: &args.form,
         project: args.project.as_deref(),
         headers: &args.headers,
@@ -235,7 +245,7 @@ mod tests {
             .render_help()
             .to_string();
         assert!(
-            help.contains("POST when --data or -F is given"),
+            help.contains("POST when --data, -f or -F is given"),
             "the help for -X does not say what -F does to the method:\n{help}"
         );
     }

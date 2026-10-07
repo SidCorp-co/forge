@@ -122,6 +122,9 @@ pub enum Issue {
 pub struct Facts<'a> {
     pub run_id: &'a str,
     pub tree: &'a Path,
+    /// The `forge-runner` a hint names: the binary judging the stop, so the
+    /// hint runs as written where `forge-runner` is not on PATH.
+    pub runner: &'a str,
     /// Each declared issue by key, with what it read as.
     pub issues: Vec<(String, Issue)>,
     /// The tree's uncommitted paths, or why they could not be read.
@@ -161,6 +164,9 @@ pub struct Verdict {
     pub unread: Vec<String>,
 }
 
+/// The dirty hint stages the paths the gate saw, every one of them and by
+/// name: a bare `git add -A` stages whatever else the tree holds, and the
+/// plugin's bash guard refuses it (`stage-everything`) where a pane has it.
 fn dirty_line(tree: &Path, paths: &[String]) -> String {
     let shown = paths.iter().take(PATHS_SHOWN).cloned().collect::<Vec<_>>();
     let more = paths.len().saturating_sub(PATHS_SHOWN);
@@ -170,12 +176,38 @@ fn dirty_line(tree: &Path, paths: &[String]) -> String {
         String::new()
     };
     let quoted = sh_quote(&tree.display().to_string());
+    let staged = paths
+        .iter()
+        .map(|p| sh_quote(p))
+        .collect::<Vec<_>>()
+        .join(" ");
     format!(
         "{} has uncommitted changes: {}{more}.\n  Clear it: first delete what the run made and no \
-         longer needs (scratch files, logs, output), then commit what is left on the run's branch \
-         (`git -C {quoted} add -A && git -C {quoted} commit -m '<what the commit holds>'`).",
+         longer needs (scratch files, logs, output) and take those paths out of the `git add` line \
+         below; then run the lines below, with the commit message in place of the middle line. \
+         {}\ngit -C {quoted} add -A -- {staged} && git -C {quoted} commit -F - <<'{TEXT_END}'\n\
+         {COMMIT_TEXT}\n{TEXT_END}",
         tree.display(),
-        shown.join(", ")
+        shown.join(", "),
+        as_written()
+    )
+}
+
+/// The line that ends a hint's heredoc: the run's text is everything above it.
+pub const TEXT_END: &str = "FORGE_TEXT";
+/// The line of the held hint a run replaces with where its work stands.
+pub const HELD_TEXT: &str = "<where the work stands>";
+/// The line of the dirty hint a run replaces with its commit message.
+pub const COMMIT_TEXT: &str = "<what the commit holds>";
+
+/// What a hint says about the text a run puts in it. The text travels in a
+/// quoted heredoc, so neither the shell nor JSON is the run's to quote: the
+/// hints of 75c90007e wrapped it in single quotes, and an apostrophe, a double
+/// quote or a line break broke them (ISS-297).
+fn as_written() -> String {
+    format!(
+        "Write it as it reads: apostrophes, quotes and line breaks need no escaping, and only a \
+         line reading {TEXT_END} alone ends it."
     )
 }
 
@@ -219,22 +251,25 @@ fn standing_line(tree: &Path, standing: &[Standing]) -> String {
     )
 }
 
-fn held_line(key: &str, id: &str) -> String {
+fn held_line(key: &str, id: &str, runner: &str) -> String {
     format!(
         "{key} is in_progress under this run, and nothing has been written on it since it was \
-         taken.\n  Clear it: write where the work stands on it — a comment \
-         (`forge-runner api issues/{id}/comments -d '{{\"body\":\"<where the work stands>\"}}'`, \
-         the body a JSON string), a record, or its `workState` — or move it on."
+         taken.\n  Clear it: write where the work stands on it as a comment: run the lines below as \
+         they are, with your own words in place of the middle line. {}\n\
+         {runner} api issues/{id}/comments -f body=@- <<'{TEXT_END}'\n{HELD_TEXT}\n{TEXT_END}\n  \
+         A record or its `workState` counts as written too; or move the issue on.",
+        as_written()
     )
 }
 
 pub fn decide(f: &Facts<'_>) -> Verdict {
     let mut lines: Vec<(Condition, String)> = Vec::new();
     let mut unread = Vec::new();
+    let runner = sh_quote(f.runner);
     for (key, issue) in &f.issues {
         match issue {
             Issue::HeldUnwritten { id } => {
-                lines.push((Condition::HeldUnwritten, held_line(key, id)));
+                lines.push((Condition::HeldUnwritten, held_line(key, id, &runner)));
             }
             Issue::Unread(why) => unread.push(format!("{key}: {why}")),
             Issue::NotHeld | Issue::HeldWritten => {}
