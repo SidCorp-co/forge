@@ -9,7 +9,9 @@
 
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, type JobStatus, jobs, users } from '../db/schema.js';
+import { devices, type JobStatus, jobs } from '../db/schema.js';
+import { actorKey } from '../issues/actor-identity.js';
+import { resolveActors } from '../issues/actor-resolution.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { readAbortStamp } from './abort-stamp.js';
@@ -113,14 +115,10 @@ async function whyWaiting(projectId: string): Promise<{ reason: WaitingReason; w
   };
 }
 
-/** Who a person is, as a sentence names them: the label they chose, else their email. */
+/** Who a person is, as a sentence names them, rendered by the module that owns the label (ISS-1003). */
 export async function personLabel(userId: string): Promise<string> {
-  const [row] = await db
-    .select({ displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row?.displayName ?? row?.email ?? 'a person no longer on this workspace';
+  const resolved = await resolveActors([{ type: 'user', id: userId }]);
+  return resolved.get(actorKey('user', userId))?.displayName ?? 'Unknown';
 }
 
 /** The newest `release_batch` job under the run, with the name of the device that took it. */
