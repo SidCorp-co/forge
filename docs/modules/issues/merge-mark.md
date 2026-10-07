@@ -99,12 +99,15 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   `packages/core/src/release-batch/landing-surfaces.ts:FORGE_CORE_SURFACES` ships. A project
   declaring no map has its paths shown unclassified,
   never sorted by a guess; a mark with no observed commit has no paths to read.
-- **A design approval** writes the revision's `design` artifact on either shape (below).
+- **A design approval** writes the revision's `design` artifact on either shape (below). On git, an
+  observed commit on the same issue is still read, and its artifacts are named beside the revision.
 
 The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
 `changes`: per surface its artifacts and the issues touching each, `design` marked as shipping
 nothing, and a risk where the data says so — a `data` artifact removed or changed, an `api` artifact
-removed. Rows marked before 0433 are not backfilled: their prose landings read `unclassified` with
+removed. An issue whose landing leaves anything unnamed — all of it, a commit not read, or paths no
+rule claims — is listed under `unclassified` with why, so the summary never reads complete when it
+is not. Rows marked before 0433 are not backfilled: their prose landings read `unclassified` with
 why, an amnesty that ends as each of those issues releases.
 
 ## What a design approval writes

@@ -80,6 +80,45 @@ describe("a git landing's surfaces, read from its changed paths", () => {
     });
   });
 
+  it('reads the commit of a git issue whose design approval named a revision, and keeps both', async () => {
+    const facts = [
+      {
+        id: 'd',
+        marked: true,
+        landing: null,
+        artifacts: [{ surface: 'design' as const, ref: 'intake@rev2', change: 'changed' as const }],
+        commitSha: 'd'.repeat(40),
+      },
+    ];
+    const readings = await readLandingReadings('p', facts, {
+      document: async () => gitDocument('github.com/SidCorp-co/forge-core'),
+      host: async () =>
+        hostWith('SidCorp-co/forge-core#design', [
+          { path: 'packages/core/src/issues/merge-routes.ts', change: 'changed' },
+        ]),
+    });
+    const reading = readings.get('d');
+    expect(reading).toMatchObject({ kind: 'named', unread: null });
+    const changes = releaseChangesOf([{ key: 'ISS-9', reading: reading as never }]);
+    expect(changes.surfaces.map((s) => s.surface)).toEqual(['api', 'design']);
+    expect(changes.shipsNothing).toBe(false);
+
+    const unread = await readLandingReadings('p', facts, {
+      document: async () => gitDocument('github.com/SidCorp-co/forge-core'),
+      host: async () =>
+        ({
+          fullName: 'SidCorp-co/forge-core#unread',
+          commitFiles: async () => ({ why: '300 or more files differ' }),
+        }) as unknown as SourceHost,
+    });
+    expect(unread.get('d')).toMatchObject({ kind: 'named', unread: '300 or more files differ' });
+    const partly = releaseChangesOf([{ key: 'ISS-9', reading: unread.get('d') as never }]);
+    expect(partly.shipsNothing).toBe(false);
+    expect(partly.unclassified).toEqual([
+      { key: 'ISS-9', why: '300 or more files differ', paths: [] },
+    ]);
+  });
+
   it('refuses a map naming a surface no path can be, by name', () => {
     const parsed = releaseRuleSchema.safeParse({
       approval: { required: false },
@@ -98,6 +137,7 @@ describe('what a release changes together', () => {
         reading: {
           kind: 'named',
           unmappedPaths: [],
+          unread: null,
           artifacts: [
             { surface: 'data', ref: 'table:cases', change: 'changed' },
             { surface: 'api', ref: 'DELETE /cases/:id', change: 'removed' },
@@ -107,9 +147,28 @@ describe('what a release changes together', () => {
       },
     ]);
     expect(changes.risks.map((r) => r.risk)).toEqual(['api_removed', 'data_changed']);
+    expect(changes.unclassified).toEqual([]);
     expect(changes.surfaces.map((s) => [s.surface, s.count])).toEqual([
       ['api', 2],
       ['data', 1],
+    ]);
+  });
+
+  it('lists paths no rule claims beside a classified landing, so the summary never reads complete', () => {
+    const changes = releaseChangesOf([
+      {
+        key: 'ISS-2',
+        reading: {
+          kind: 'named',
+          unmappedPaths: ['db/schema.sql'],
+          unread: null,
+          artifacts: [{ surface: 'ui', ref: 'web/app.tsx', change: 'changed' }],
+        },
+      },
+    ]);
+    expect(changes.surfaces.map((s) => s.surface)).toEqual(['ui']);
+    expect(changes.unclassified).toEqual([
+      { key: 'ISS-2', why: expect.stringMatching(/claimed by no rule/), paths: ['db/schema.sql'] },
     ]);
   });
 });

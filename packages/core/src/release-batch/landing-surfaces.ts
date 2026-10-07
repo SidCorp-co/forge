@@ -142,32 +142,29 @@ interface Deps {
   document?: (projectId: string) => Promise<ProjectDocument | null>;
 }
 
-/** The reading of a landing that needs no repository: named artifacts, a design revision, or why not. */
-export function namedReading(f: LandingFacts): IssueLandingReading | null {
-  if (f.artifacts && f.artifacts.length > 0) {
-    return { kind: 'named', artifacts: f.artifacts, unmappedPaths: [] };
-  }
+/** What a landing names of its own: stored artifacts, or a design revision its text names. */
+function ownArtifacts(f: LandingFacts): LandingArtifact[] | null {
+  if (f.artifacts && f.artifacts.length > 0) return f.artifacts;
   const design = designLandingRef(f.landing);
-  if (design) return { kind: 'named', artifacts: [designArtifact(design)], unmappedPaths: [] };
-  return null;
+  return design ? [designArtifact(design)] : null;
 }
 
-async function gitReading(
-  f: LandingFacts,
+const named = (
+  artifacts: LandingArtifact[],
+  unmappedPaths: string[] = [],
+  unread: string | null = null,
+): IssueLandingReading => ({ kind: 'named', artifacts, unmappedPaths, unread });
+
+/** The commit's own reading: its classified artifacts, or why they cannot be named. */
+async function commitReading(
+  commitSha: string,
   map: SurfaceMap | null,
   reader: () => Promise<Reader>,
   spend: () => string | null,
 ): Promise<IssueLandingReading> {
-  if (!f.commitSha) {
-    return {
-      kind: 'unclassified',
-      why: 'its mark records no commit Forge observed, so the paths it changed cannot be read',
-      paths: [],
-    };
-  }
   const read = await reader();
   if ('why' in read) return { kind: 'unclassified', why: read.why, paths: [] };
-  const files = await changedFilesOf(read.host, f.commitSha, spend);
+  const files = await changedFilesOf(read.host, commitSha, spend);
   if (files.kind === 'unread') return { kind: 'unclassified', why: files.why, paths: [] };
   if (!map) {
     return {
@@ -187,10 +184,36 @@ async function gitReading(
       paths: unmapped,
     };
   }
-  return { kind: 'named', artifacts, unmappedPaths: unmapped };
+  return named(artifacts, unmapped);
 }
 
-/** Each issue's landing reading, a repository read only for a git landing that names nothing itself. */
+/**
+ * A git landing: what its observed commit changed, beside what the row names of its own (a design
+ * revision its approval wrote). A commit that cannot be read leaves the own artifacts standing with
+ * why the rest is unread, never an answer that the commit changed nothing.
+ */
+async function gitReading(
+  f: LandingFacts,
+  own: LandingArtifact[] | null,
+  map: SurfaceMap | null,
+  reader: () => Promise<Reader>,
+  spend: () => string | null,
+): Promise<IssueLandingReading> {
+  if (!f.commitSha) {
+    if (own) return named(own);
+    return {
+      kind: 'unclassified',
+      why: 'its mark records no commit Forge observed, so the paths it changed cannot be read',
+      paths: [],
+    };
+  }
+  const commit = await commitReading(f.commitSha, map, reader, spend);
+  if (!own) return commit;
+  if (commit.kind === 'named') return named([...own, ...commit.artifacts], commit.unmappedPaths);
+  return named(own, commit.paths, commit.why);
+}
+
+/** Each issue's landing reading, a repository read only for a git landing's observed commit. */
 export async function readLandingReadings(
   projectId: string,
   facts: readonly LandingFacts[],
@@ -199,8 +222,8 @@ export async function readLandingReadings(
   const out = new Map<string, IssueLandingReading>();
   const pending: LandingFacts[] = [];
   for (const f of facts) {
-    const named = namedReading(f);
-    if (named) out.set(f.id, named);
+    const own = ownArtifacts(f);
+    if (own && !f.commitSha) out.set(f.id, named(own));
     else pending.push(f);
   }
   if (pending.length === 0) return out;
@@ -221,8 +244,11 @@ export async function readLandingReadings(
   };
   const spend = budget();
   for (const f of pending) {
+    const own = ownArtifacts(f);
     if (!f.marked) out.set(f.id, { kind: 'unclassified', why: UNMARKED, paths: [] });
-    else if (git && !f.landing) out.set(f.id, await gitReading(f, map, readerOnce, spend));
+    else if (git && !f.landing) {
+      out.set(f.id, await gitReading(f, own, map, readerOnce, spend));
+    } else if (own) out.set(f.id, named(own));
     else out.set(f.id, { kind: 'unclassified', why: f.landing ? PROSE : NO_LANDING, paths: [] });
   }
   return out;
@@ -230,6 +256,19 @@ export async function readLandingReadings(
 
 async function readDocument(projectId: string): Promise<ProjectDocument | null> {
   return (await readProjectDocument(projectId))?.document ?? null;
+}
+
+/** What a reading leaves unnamed, or null where it names everything its landing changed. */
+export function gapOf(reading: IssueLandingReading): { why: string; paths: string[] } | null {
+  if (reading.kind === 'unclassified') return { why: reading.why, paths: reading.paths };
+  if (reading.unread) return { why: reading.unread, paths: reading.unmappedPaths };
+  if (reading.unmappedPaths.length > 0) {
+    return {
+      why: `${reading.unmappedPaths.length} path(s) it changed are claimed by no rule of \`release.surfaces\`, so they are shown as they are`,
+      paths: reading.unmappedPaths,
+    };
+  }
+  return null;
 }
 
 const ORDER = new Map<LandingSurface, number>(LANDING_SURFACES.map((s, i) => [s, i]));
@@ -265,10 +304,9 @@ export function releaseChangesOf(
   >();
   const unclassified: ReleaseChanges['unclassified'] = [];
   for (const { key, reading } of issues) {
-    if (reading.kind === 'unclassified') {
-      unclassified.push({ key, why: reading.why, paths: reading.paths });
-      continue;
-    }
+    const gap = gapOf(reading);
+    if (gap) unclassified.push({ key, ...gap });
+    if (reading.kind === 'unclassified') continue;
     for (const a of reading.artifacts) {
       const held = bySurface.get(a.surface) ?? new Map();
       const id = `${a.change}\u0000${a.ref}`;

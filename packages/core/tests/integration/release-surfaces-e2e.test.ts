@@ -49,7 +49,12 @@ const releaseOf = async (version: string) => {
   const r = await api(token, 'GET', `/api/projects/${projectId}/releases/${version}`);
   expect(r.status, JSON.stringify(r.body)).toBe(200);
   return r.body.release as {
-    issues: Array<{ key: string; surfaces: string[]; landing: { kind: string; why?: string } }>;
+    issues: Array<{
+      key: string;
+      surfaces: string[];
+      unclassified: boolean;
+      landing: { kind: string; why?: string };
+    }>;
     changes: {
       surfaces: Array<{
         surface: string;
@@ -128,6 +133,7 @@ describe('outside git, a landing names what it changed', () => {
       'ISS-3': ['design'],
       'ISS-4': [],
     });
+    expect(release.issues.filter((i) => i.unclassified).map((i) => i.key)).toEqual(['ISS-4']);
   });
 
   it('reads a release of design revisions alone as shipping nothing', async () => {

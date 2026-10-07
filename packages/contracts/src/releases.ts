@@ -231,6 +231,8 @@ export interface ReleaseIssueView {
 	/** The surfaces its landing touches, in `LANDING_SURFACES` order; empty where none is named. */
 	surfaces: LandingSurface[];
 	landing: IssueLandingReading;
+	/** True where some of what its landing changed is named by no surface (core `landing-surfaces.ts:gapOf`). */
+	unclassified: boolean;
 }
 
 /**
@@ -244,6 +246,8 @@ export type IssueLandingReading =
 			kind: "named";
 			artifacts: LandingArtifact[];
 			unmappedPaths: string[];
+			/** Why the commit's paths were not read, beside artifacts the row names of its own. */
+			unread: string | null;
 	  }
 	| { kind: "unclassified"; why: string; paths: string[] };
 
@@ -283,7 +287,7 @@ export interface ReleaseChangeRiskView {
 export interface ReleaseChanges {
 	surfaces: ReleaseSurfaceChanges[];
 	risks: ReleaseChangeRiskView[];
-	/** Issues whose landing names no artifact, with why. */
+	/** Issues whose landing leaves something unnamed — all of it, or paths no surface claims — with why. */
 	unclassified: { key: string; why: string; paths: string[] }[];
 	/** True where every classified artifact ships nothing and nothing is unclassified. */
 	shipsNothing: boolean;

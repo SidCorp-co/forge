@@ -126,7 +126,7 @@ const UNCLASSIFIED = "unclassified" as const;
 type SurfaceFilter = LandingSurface | typeof UNCLASSIFIED;
 
 const matchesSurface = (i: ReleaseIssueView, f: SurfaceFilter | null) =>
-  f === null || (f === UNCLASSIFIED ? i.landing.kind === "unclassified" : i.surfaces.includes(f));
+  f === null || (f === UNCLASSIFIED ? i.unclassified : i.surfaces.includes(f));
 
 export function IssuesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const fold = useGroupFold(`web-v2:release-issues-fold:${r.key}`);
@@ -139,7 +139,7 @@ export function IssuesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const row = useMemo(() => issueRow(slug), [slug]);
   const filters: { value: SurfaceFilter; label: string; count: number }[] = [
     ...LANDING_SURFACES.map((s) => ({ value: s, label: LANDING_SURFACE_LABELS[s], count: r.issues.filter((i) => i.surfaces.includes(s)).length })),
-    { value: UNCLASSIFIED, label: "Unclassified", count: r.issues.filter((i) => i.landing.kind === "unclassified").length },
+    { value: UNCLASSIFIED, label: "Unclassified", count: r.issues.filter((i) => i.unclassified).length },
   ].filter((f) => f.count > 0);
   return (
     <div className="pb-16" data-testid="view-issues">

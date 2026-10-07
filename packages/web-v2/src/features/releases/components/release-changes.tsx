@@ -136,7 +136,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
       ) : null}
       {changes.unclassified.length > 0 ? (
         <div>
-          <FieldLabel>Unclassified — its landing names no artifact</FieldLabel>
+          <FieldLabel>Unclassified — what no surface names</FieldLabel>
           <Unclassified items={changes.unclassified} slug={slug} />
         </div>
       ) : null}

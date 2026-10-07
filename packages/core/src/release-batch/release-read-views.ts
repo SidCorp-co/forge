@@ -17,7 +17,7 @@ import type {
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
-import { releaseChangesOf, surfacesOf } from './landing-surfaces.js';
+import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
@@ -240,6 +240,7 @@ function issueViews(
         waitingOn: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
         surfaces: surfacesOf(landing),
         landing,
+        unclassified: gapOf(landing) !== null,
       },
     ];
   });
