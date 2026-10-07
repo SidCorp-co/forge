@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.111] - 2026-10-07
+
+The workspace shell and feedback forecast rows read in Vietnamese
+
+### Fixed
+
+- **The workspace shell reads in the interface language you chose.** Navigation, command palette, Ask Agent, notifications, account preferences, shared badges and release gates show Vietnamese; the feedback rail's two forecast rows read distinctly, and step-bar labels wrap instead of truncating.
+
 ## [0.4.0-dev.110] - 2026-10-07
 
 The feedback guide matches who may confirm a fix: any member or the reporter
