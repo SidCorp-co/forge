@@ -21,7 +21,7 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 	feedback: "Feedback",
 	issues: "Issues",
 	contracts: "Contracts",
-	designs: "Designs",
+	designs: "Workflows",
 	automation: "Automation",
 };
 
