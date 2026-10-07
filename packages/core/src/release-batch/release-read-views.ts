@@ -212,6 +212,7 @@ const UNREAD: IssueLandingReading = {
   kind: 'unclassified',
   why: 'what its landing changed was not read',
   paths: [],
+  source: null,
 };
 
 function issueViews(

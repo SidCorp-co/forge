@@ -1,10 +1,13 @@
 use std::io::Read;
 
+mod mark_paths;
+
 use clap::Args as ClapArgs;
 use runner_platform::config::Config;
 use runner_platform::cred_store;
 use runner_transport::api::{
-    build, reads_stdin, run as run_api, usage_failure, RequestSpec, SlugSources, EXIT_TAXONOMY,
+    build, reads_stdin, run as run_api, usage_failure, Body, RequestSpec, SlugSources,
+    EXIT_TAXONOMY,
 };
 use runner_transport::CoreClient;
 use serde_json::Value;
@@ -130,10 +133,17 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         env: env_slug.as_deref(),
         bindings: &bindings,
     };
-    let req = match build(&spec, &sources) {
+    let mut req = match build(&spec, &sources) {
         Ok(r) => r,
         Err(message) => return usage(&message),
     };
+    if let (Some(Body::Json(json)), Ok(here)) = (&req.body, std::env::current_dir()) {
+        match mark_paths::attach(&req.method, &req.path, json, &here) {
+            mark_paths::Attach::Sent(with_paths) => req.body = Some(Body::Json(with_paths)),
+            mark_paths::Attach::Skipped(note) => eprintln!("{note}"),
+            mark_paths::Attach::Untouched => {}
+        }
+    }
 
     let resp = run_api(&client, &req).await;
     {

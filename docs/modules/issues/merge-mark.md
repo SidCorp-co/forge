@@ -93,12 +93,23 @@ no `merged_at`, or one that is empty or not an array. NULL is a landing naming n
   `ARTIFACTS_NOT_DESIGN`: a revision deploys nothing. Artifacts sent over a standing mark that names
   others are `MARK_ALREADY_STANDS`, as a landing is.
 - **On git** the mark refuses `artifacts` (`ARTIFACTS_NOT_THIS_SHAPE`): what a git landing changed is
-  read from its observed commit's changed paths (`changedFilesOf`, against its first parent) through
-  the project document's `release.surfaces` — ordered `rules` of globs per surface, first match
-  wins, and `ignore` for paths that ship nothing — or, for the forge-core repository, the map
-  `packages/core/src/release-batch/landing-surfaces.ts:FORGE_CORE_SURFACES` ships. A project
-  declaring no map has its paths shown unclassified,
-  never sorted by a guess; a mark with no observed commit has no paths to read.
+  its commit's changed paths against its first parent, sorted by the project document's `surfaces` —
+  ordered `rules` of globs per surface, first match wins, and `ignore` for paths that ship nothing.
+  forge-core's own map is `packages/core/tests/fixtures/forge-core-surfaces.json`, which a project
+  on that tree copies into its document; no repository name brings a map. A project declaring none
+  has its paths shown unclassified, never sorted by a guess. The paths come from one of two readers,
+  and the release read names which:
+  - `host` — Forge observed the merge (`merged_commit_sha`), and the source host lists the commit's
+    files (`changedFilesOf`).
+  - `box` — the project has no source host Forge can read, so `forge-runner api`, carrying a mark that
+    names a `commit` its checkout holds, adds `changedPaths` (`git diff --name-status <first parent>
+    <commit>`, paths only). The mark stores them in `merged_paths` labelled `read: 'box'`
+    (`markReadPaths`, `recordReadPaths`): the box's reading of its own checkout, not a merge Forge
+    observed. Paths read at another commit than the mark names are `CHANGED_PATHS_UNMATCHED`, paths
+    outside git `CHANGED_PATHS_NOT_THIS_SHAPE`, and paths over a standing reading of another commit
+    `MARK_ALREADY_STANDS`.
+
+  A mark with neither has no paths to read.
 - **A design approval** writes the revision's `design` artifact on either shape (below). On git, an
   observed commit on the same issue is still read, and its artifacts are named beside the revision.
 

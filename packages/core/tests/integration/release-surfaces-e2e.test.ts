@@ -5,6 +5,7 @@
  * Postgres. A surface outside the closed set is refused by name.
  */
 
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -20,12 +21,20 @@ let token: string;
 
 const fx = releaseWorld(() => ({ projectId, ownerId }));
 
-async function declare(source: Parameters<typeof seedProjectDocument>[2]['source']) {
+const FORGE_CORE_SURFACES = JSON.parse(
+  readFileSync(new URL('../fixtures/forge-core-surfaces.json', import.meta.url), 'utf8'),
+);
+
+async function declare(
+  source: Parameters<typeof seedProjectDocument>[2]['source'],
+  surfaces?: unknown,
+) {
   await seedProjectDocument(projectId, ownerId, {
     environments: {
       live: { tier: 'production', deployment: { mode: 'external' } },
     },
     ...(source ? { source } : {}),
+    ...(surfaces ? { extra: { surfaces } as never } : {}),
   });
 }
 
@@ -65,6 +74,7 @@ const releaseOf = async (version: string) => {
       }>;
       risks: Array<{ risk: string; surface: string; ref: string; issues: string[] }>;
       unclassified: Array<{ key: string; why: string }>;
+      boxRead: string[];
       shipsNothing: boolean;
     };
   };
@@ -198,5 +208,87 @@ describe('on git, artifacts come from the commit, never by hand', () => {
       kind: 'unclassified',
       why: expect.stringMatching(/no commit Forge observed/),
     });
+  });
+});
+
+const SHA = 'c0ffee1234567890c0ffee1234567890c0ffee12';
+const BOX_PATHS = {
+  commit: SHA,
+  changes: [
+    {
+      path: 'packages/web-v2/src/features/releases/components/release-changes.tsx',
+      change: 'added',
+    },
+    { path: 'packages/core/drizzle/migrations/0433_a.sql', change: 'added' },
+    { path: 'packages/core/drizzle/migrations/0101_old.sql', change: 'removed' },
+    { path: 'docs/modules/issues/merge-mark.md', change: 'changed' },
+  ],
+};
+
+describe('on git with no source host, the paths a box read are classified and labelled box-read', () => {
+  beforeEach(() =>
+    declare(
+      {
+        type: 'git',
+        git: { repository: 'github.com/SidCorp-co/forge', defaultBranch: 'dev', branches: ['dev'] },
+      },
+      FORGE_CORE_SURFACES,
+    ),
+  );
+
+  it("records the box's paths with the mark and reads them by the project's map as box-read", async () => {
+    const issue = await fx.insertIssue('awaiting_release', NOTE, false);
+    await markOk(issue, { target: 'dev', commit: SHA.slice(0, 12), changedPaths: BOX_PATHS });
+    const [row] = [
+      ...(await db.execute(sql`SELECT merged_paths FROM issues WHERE id = ${issue}`)),
+    ] as Array<{ merged_paths: { read: string; commit: string } | null }>;
+    expect(row?.merged_paths).toMatchObject({ read: 'box', commit: SHA });
+
+    const release = await releaseOf('0.1.0');
+    expect(release.issues[0]?.landing).toMatchObject({ kind: 'named', source: 'box' });
+    expect(release.issues[0]?.surfaces).toEqual(['ui', 'data']);
+    expect(release.changes.boxRead).toEqual([release.issues[0]?.key]);
+    expect(release.changes.risks).toEqual([
+      expect.objectContaining({
+        risk: 'data_removed',
+        ref: 'packages/core/drizzle/migrations/0101_old.sql',
+      }),
+    ]);
+
+    const again = await mark(issue, { target: 'dev', commit: SHA, changedPaths: BOX_PATHS });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const other = await mark(issue, {
+      target: 'dev',
+      commit: 'a'.repeat(40),
+      changedPaths: { ...BOX_PATHS, commit: 'a'.repeat(40) },
+    });
+    expect(other.status, JSON.stringify(other.body)).toBe(422);
+    expect(JSON.stringify(other.body)).toContain('MARK_ALREADY_STANDS');
+  });
+
+  it('refuses paths read at another commit than the mark names, by name, and marks nothing', async () => {
+    const issue = await fx.insertIssue('awaiting_release', NOTE, false);
+    const r = await mark(issue, { target: 'dev', commit: 'a'.repeat(40), changedPaths: BOX_PATHS });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(JSON.stringify(r.body)).toContain('CHANGED_PATHS_UNMATCHED');
+    const [row] = [
+      ...(await db.execute(sql`SELECT merged_at FROM issues WHERE id = ${issue}`)),
+    ] as Array<{ merged_at: unknown }>;
+    expect(row?.merged_at).toBeNull();
+  });
+});
+
+describe('outside git, changed paths are not a landing', () => {
+  beforeEach(() => declare({ type: 'none' }));
+
+  it('refuses changedPaths by name', async () => {
+    const issue = await fx.insertIssue('awaiting_release', NOTE, false);
+    const r = await mark(issue, {
+      landing: 'https://hop.example.test/cases',
+      commit: SHA,
+      changedPaths: BOX_PATHS,
+    });
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    expect(JSON.stringify(r.body)).toContain('CHANGED_PATHS_NOT_THIS_SHAPE');
   });
 });

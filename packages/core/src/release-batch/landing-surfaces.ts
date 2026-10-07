@@ -3,21 +3,22 @@
  * the "What changes" a release's approver reads before the notes.
  *
  * A landing that names its artifacts (`issues.merged_artifacts`: a mark outside git, a design
- * approval) is read as named. A git landing names none of its own: its commit's changed paths are
- * read through the source host and classified by the project document's `release.surfaces`, or by
- * the map shipped for forge-core's own tree where the repository is forge-core. A project declaring
- * no map has its paths shown unclassified, never guessed, and a prose landing written before
+ * approval) is read as named. A git landing names none of its own: its commit's changed paths —
+ * read through the source host where Forge observed the merge, else as a box read them from its
+ * checkout and sent them with the mark (labelled box-read) — are classified by the project
+ * document's `surfaces`. A project declaring no map has its paths shown unclassified, never
+ * guessed, and a prose landing written before
  * artifacts existed reads unclassified with why: docs/modules/issues/merge-mark.md.
  */
 
 import { posix } from 'node:path';
-import { parseRepository } from '@forge/contracts/git-repository';
 import {
   designArtifact,
   designLandingRef,
   LANDING_SURFACES,
   type LandingArtifact,
   type LandingSurface,
+  type ReadPaths,
   SHIPS_NOTHING,
 } from '@forge/contracts/landing-artifacts';
 import type {
@@ -35,59 +36,11 @@ import {
 import { type ProjectDocument, readProjectDocument } from '../project-config/index.js';
 import { changedFilesOf } from './carriage.js';
 
-export type SurfaceMap = NonNullable<NonNullable<ProjectDocument['release']>['surfaces']>;
+export type SurfaceMap = NonNullable<ProjectDocument['surfaces']>;
 
-/** forge-core's own tree, for the project whose repository is forge-core and declares no map. */
-export const FORGE_CORE_SURFACES: SurfaceMap = {
-  rules: [
-    { surface: 'data', paths: ['packages/core/drizzle/**'] },
-    {
-      surface: 'api',
-      paths: [
-        'packages/core/src/**/*routes.ts',
-        'packages/core/contracts/**',
-        'packages/contracts/src/**',
-      ],
-    },
-    { surface: 'ui', paths: ['packages/web-v2/**'] },
-    { surface: 'runner', paths: ['packages/runner/**'] },
-    {
-      surface: 'config',
-      paths: [
-        '.forge/**',
-        '.github/**',
-        'scripts/**',
-        'package.json',
-        'pnpm-workspace.yaml',
-        'pnpm-lock.yaml',
-        'turbo.json',
-        'packages/*/package.json',
-        'packages/*/Dockerfile',
-      ],
-    },
-    { surface: 'logic', paths: ['packages/core/src/**', 'packages/observability/**'] },
-  ],
-  ignore: [
-    'docs/**',
-    'changelog.d/**',
-    '**/*.md',
-    '**/*.test.ts',
-    '**/*.test.tsx',
-    'packages/core/tests/**',
-  ],
-};
-
-const FORGE_CORE_REPOSITORY = 'sidcorp-co/forge-core';
-
-/** The map a project's git landings are classified by, or null where it declares none. */
+/** The map a project's git landings are classified by: its document's own, or none. */
 export function surfaceMapOf(document: ProjectDocument | null): SurfaceMap | null {
-  if (!document) return null;
-  const declared = document.release?.surfaces;
-  if (declared) return declared;
-  if (document.source.type !== 'git') return null;
-  const ref = parseRepository(document.source.git.repository);
-  const path = ref.kind === 'local' ? '' : ref.path.replace(/\.git$/, '').toLowerCase();
-  return path === FORGE_CORE_REPOSITORY ? FORGE_CORE_SURFACES : null;
+  return document?.surfaces ?? null;
 }
 
 const matches = (globs: readonly string[], path: string) =>
@@ -115,6 +68,8 @@ export interface LandingFacts {
   landing: string | null;
   artifacts: LandingArtifact[] | null;
   commitSha: string | null;
+  /** The paths a box read for the landing commit from its checkout, where it sent them. */
+  readPaths: ReadPaths | null;
 }
 
 const PROSE =
@@ -149,46 +104,65 @@ function ownArtifacts(f: LandingFacts): LandingArtifact[] | null {
   return design ? [designArtifact(design)] : null;
 }
 
+type Source = 'mark' | 'host' | 'box';
+type PathSource = Exclude<Source, 'mark'>;
+
 const named = (
   artifacts: LandingArtifact[],
+  source: Source,
   unmappedPaths: string[] = [],
   unread: string | null = null,
-): IssueLandingReading => ({ kind: 'named', artifacts, unmappedPaths, unread });
+): IssueLandingReading => ({ kind: 'named', artifacts, unmappedPaths, unread, source });
 
-/** The commit's own reading: its classified artifacts, or why they cannot be named. */
-async function commitReading(
+const unclassified = (
+  why: string,
+  source: PathSource | null,
+  paths: string[] = [],
+): IssueLandingReading => ({ kind: 'unclassified', why, paths, source });
+
+/** A commit's changed files, whoever read them, sorted by the project's map. */
+export function classifiedReading(
+  changes: readonly HostFileChange[],
+  map: SurfaceMap | null,
+  source: PathSource,
+): IssueLandingReading {
+  if (!map) {
+    return unclassified(
+      'the project document declares no `surfaces`, so its changed paths are shown as they are and not sorted by surface',
+      source,
+      [...new Set(changes.map((c) => c.path))].sort(),
+    );
+  }
+  const { artifacts, unmapped } = classifyChanges(map, changes);
+  if (artifacts.length === 0) {
+    return unclassified(
+      unmapped.length > 0
+        ? 'no rule of `surfaces` claims any path it changed'
+        : 'every path it changed is one `surfaces` ignores',
+      source,
+      unmapped,
+    );
+  }
+  return named(artifacts, source, unmapped);
+}
+
+/** The observed commit's reading through the source host, or why it was not read. */
+async function hostReading(
   commitSha: string,
   map: SurfaceMap | null,
   reader: () => Promise<Reader>,
   spend: () => string | null,
 ): Promise<IssueLandingReading> {
   const read = await reader();
-  if ('why' in read) return { kind: 'unclassified', why: read.why, paths: [] };
+  if ('why' in read) return unclassified(read.why, 'host');
   const files = await changedFilesOf(read.host, commitSha, spend);
-  if (files.kind === 'unread') return { kind: 'unclassified', why: files.why, paths: [] };
-  if (!map) {
-    return {
-      kind: 'unclassified',
-      why: 'the project document declares no `release.surfaces`, so its changed paths are shown as they are and not sorted by surface',
-      paths: [...files.paths],
-    };
-  }
-  const { artifacts, unmapped } = classifyChanges(map, files.changes);
-  if (artifacts.length === 0) {
-    return {
-      kind: 'unclassified',
-      why:
-        unmapped.length > 0
-          ? 'no rule of `release.surfaces` claims any path it changed'
-          : 'every path it changed is one `release.surfaces` ignores',
-      paths: unmapped,
-    };
-  }
-  return named(artifacts, unmapped);
+  if (files.kind === 'unread') return unclassified(files.why, 'host');
+  return classifiedReading(files.changes, map, 'host');
 }
 
 /**
- * A git landing: what its observed commit changed, beside what the row names of its own (a design
+ * A git landing: what its commit changed — read by the source host where Forge observed the merge,
+ * else as the box read it from its checkout — beside what the row names of its own (a design
  * revision its approval wrote). A commit that cannot be read leaves the own artifacts standing with
  * why the rest is unread, never an answer that the commit changed nothing.
  */
@@ -199,18 +173,22 @@ async function gitReading(
   reader: () => Promise<Reader>,
   spend: () => string | null,
 ): Promise<IssueLandingReading> {
-  if (!f.commitSha) {
-    if (own) return named(own);
-    return {
-      kind: 'unclassified',
-      why: 'its mark records no commit Forge observed, so the paths it changed cannot be read',
-      paths: [],
-    };
+  let commit: IssueLandingReading | null = null;
+  if (f.commitSha) commit = await hostReading(f.commitSha, map, reader, spend);
+  else if (f.readPaths) commit = classifiedReading(f.readPaths.changes, map, 'box');
+  if (!commit) {
+    if (own) return named(own, 'mark');
+    return unclassified(
+      'its mark records no commit Forge observed and no paths a box read, so what it changed cannot be named',
+      null,
+    );
   }
-  const commit = await commitReading(f.commitSha, map, reader, spend);
   if (!own) return commit;
-  if (commit.kind === 'named') return named([...own, ...commit.artifacts], commit.unmappedPaths);
-  return named(own, commit.paths, commit.why);
+  const source = commit.source ?? 'mark';
+  if (commit.kind === 'named') {
+    return named([...own, ...commit.artifacts], source, commit.unmappedPaths);
+  }
+  return named(own, source, commit.paths, commit.why);
 }
 
 /** Each issue's landing reading, a repository read only for a git landing's observed commit. */
@@ -223,7 +201,7 @@ export async function readLandingReadings(
   const pending: LandingFacts[] = [];
   for (const f of facts) {
     const own = ownArtifacts(f);
-    if (own && !f.commitSha) out.set(f.id, named(own));
+    if (own && !f.commitSha && !f.readPaths) out.set(f.id, named(own, 'mark'));
     else pending.push(f);
   }
   if (pending.length === 0) return out;
@@ -245,11 +223,11 @@ export async function readLandingReadings(
   const spend = budget();
   for (const f of pending) {
     const own = ownArtifacts(f);
-    if (!f.marked) out.set(f.id, { kind: 'unclassified', why: UNMARKED, paths: [] });
+    if (!f.marked) out.set(f.id, unclassified(UNMARKED, null));
     else if (git && !f.landing) {
       out.set(f.id, await gitReading(f, own, map, readerOnce, spend));
-    } else if (own) out.set(f.id, named(own));
-    else out.set(f.id, { kind: 'unclassified', why: f.landing ? PROSE : NO_LANDING, paths: [] });
+    } else if (own) out.set(f.id, named(own, 'mark'));
+    else out.set(f.id, unclassified(f.landing ? PROSE : NO_LANDING, null));
   }
   return out;
 }
@@ -302,10 +280,12 @@ export function releaseChangesOf(
     LandingSurface,
     Map<string, { ref: string; change: LandingArtifact['change']; issues: Set<string> }>
   >();
-  const unclassified: ReleaseChanges['unclassified'] = [];
+  const gaps: ReleaseChanges['unclassified'] = [];
+  const boxRead: string[] = [];
   for (const { key, reading } of issues) {
+    if (reading.source === 'box') boxRead.push(key);
     const gap = gapOf(reading);
-    if (gap) unclassified.push({ key, ...gap });
+    if (gap) gaps.push({ key, ...gap });
     if (reading.kind === 'unclassified') continue;
     for (const a of reading.artifacts) {
       const held = bySurface.get(a.surface) ?? new Map();
@@ -351,8 +331,8 @@ export function releaseChangesOf(
   return {
     surfaces,
     risks,
-    unclassified,
-    shipsNothing:
-      unclassified.length === 0 && surfaces.length > 0 && surfaces.every((s) => s.shipsNothing),
+    unclassified: gaps,
+    boxRead,
+    shipsNothing: gaps.length === 0 && surfaces.length > 0 && surfaces.every((s) => s.shipsNothing),
   };
 }

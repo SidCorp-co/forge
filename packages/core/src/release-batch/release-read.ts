@@ -174,6 +174,7 @@ export async function readRelease(
               landing: i.merged.landing,
               artifacts: i.merged.artifacts,
               commitSha: i.merged.commitSha,
+              readPaths: i.merged.readPaths,
             },
           ]
         : [];

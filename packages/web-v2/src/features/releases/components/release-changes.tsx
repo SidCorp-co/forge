@@ -105,6 +105,12 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         <p className="text-13-5" data-testid="release-changes-sentence">
           {changesSentence(changes)}
         </p>
+        {changes.boxRead.length > 0 ? (
+          <p className="mt-1 flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="release-box-read">
+            <span>Paths read from a box&apos;s checkout, not a merge Forge observed:</span>
+            <IssueKeys keys={changes.boxRead} slug={slug} />
+          </p>
+        ) : null}
       </div>
       {changes.risks.length > 0 ? (
         <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks">

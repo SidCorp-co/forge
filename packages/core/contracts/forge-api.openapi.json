@@ -11712,6 +11712,47 @@
                     "minItems": 1,
                     "type": "array"
                   },
+                  "changedPaths": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "changes": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "change": {
+                              "enum": [
+                                "added",
+                                "changed",
+                                "removed"
+                              ],
+                              "type": "string"
+                            },
+                            "path": {
+                              "maxLength": 1000,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "change"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 2000,
+                        "type": "array"
+                      },
+                      "commit": {
+                        "pattern": "^[0-9a-f]{7,64}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "commit",
+                      "changes"
+                    ],
+                    "type": "object"
+                  },
                   "commit": {
                     "pattern": "^[0-9a-f]{7,64}$",
                     "type": "string"
@@ -11830,6 +11871,47 @@
                     "maxItems": 200,
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "changedPaths": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "changes": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "change": {
+                              "enum": [
+                                "added",
+                                "changed",
+                                "removed"
+                              ],
+                              "type": "string"
+                            },
+                            "path": {
+                              "maxLength": 1000,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "change"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 2000,
+                        "type": "array"
+                      },
+                      "commit": {
+                        "pattern": "^[0-9a-f]{7,64}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "commit",
+                      "changes"
+                    ],
+                    "type": "object"
                   },
                   "commit": {
                     "pattern": "^[0-9a-f]{7,64}$",

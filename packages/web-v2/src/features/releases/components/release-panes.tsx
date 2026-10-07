@@ -113,6 +113,7 @@ const issueRow =
             </span>,
           ]
         : []),
+      ...(i.landing.source === "box" ? ["Paths read by a box"] : []),
       ...(i.section ? [i.section] : []),
       i.criteria.total === 0 ? RELEASE_PROOF_LABELS.unrecorded : `Criteria ${i.criteria.proven} of ${i.criteria.total} proven`,
     ],

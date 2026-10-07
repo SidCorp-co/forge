@@ -11,6 +11,7 @@ import {
   designArtifact,
   designLandingRef,
   type LandingArtifact,
+  type ReadPaths,
 } from '@forge/contracts/landing-artifacts';
 import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -199,6 +200,44 @@ export function markArtifacts(args: {
     };
   }
   return { ok: true, artifacts: sent && sent.length > 0 ? [...sent] : [designArtifact(design)] };
+}
+
+/**
+ * The paths a box read sent with a mark, as the row stores them, or the refusal. They describe a
+ * commit, so they belong to a project that lands in git, and to the commit the mark names.
+ */
+export function markReadPaths(args: {
+  shape: LandingShape;
+  commit: string | null;
+  sent: { commit: string; changes: ReadPaths['changes'] } | null;
+}):
+  | { ok: true; paths: ReadPaths | null }
+  | {
+      ok: false;
+      code: 'CHANGED_PATHS_NOT_THIS_SHAPE' | 'CHANGED_PATHS_UNMATCHED';
+      detail: string;
+    } {
+  const { shape, commit, sent } = args;
+  if (!sent) return { ok: true, paths: null };
+  if (shape !== 'git') {
+    return {
+      ok: false,
+      code: 'CHANGED_PATHS_NOT_THIS_SHAPE',
+      detail:
+        "`changedPaths` are a commit's changed files, and this project's work lands outside git, so " +
+        'nothing was marked. Name what landed with `artifacts` beside `landing` instead.',
+    };
+  }
+  const read = sent.commit.toLowerCase();
+  const named = (commit ?? '').toLowerCase();
+  if (!named || !(read.startsWith(named) || named.startsWith(read))) {
+    return {
+      ok: false,
+      code: 'CHANGED_PATHS_UNMATCHED',
+      detail: `\`changedPaths\` were read at ${sent.commit}, and the mark names ${commit ? `commit ${commit}` : 'no commit'}, so nothing was marked. Send them with the \`commit\` they were read at.`,
+    };
+  }
+  return { ok: true, paths: { commit: sent.commit, read: 'box', changes: sent.changes } };
 }
 
 /** Artifacts the stamp did not record because a mark already stands, or `null` where it did. */

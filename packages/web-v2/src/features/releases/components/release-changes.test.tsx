@@ -39,6 +39,7 @@ const changes: ReleaseChanges = {
     },
   ],
   unclassified: [{ key: "ISS-4", why: "its landing is text that names no artifact", paths: [] }],
+  boxRead: ["ISS-1"],
   shipsNothing: false,
 };
 
@@ -56,6 +57,7 @@ describe("What changes", () => {
     const apart = screen.getByTestId("release-ships-nothing");
     expect(within(apart).getByTestId("release-surface").getAttribute("data-surface")).toBe("design");
     expect(screen.getByTestId("release-unclassified").textContent).toContain("ISS-4");
+    expect(screen.getByTestId("release-box-read").textContent).toContain("ISS-1");
   });
 
   it("opens a surface's artifacts with what became of each", () => {
@@ -71,7 +73,7 @@ describe("What changes", () => {
   it("says a release of design revisions alone ships nothing", () => {
     const design = changes.surfaces[2];
     if (!design) throw new Error("fixture lost its design surface");
-    expect(changesSentence({ surfaces: [design], risks: [], unclassified: [], shipsNothing: true })).toBe(
+    expect(changesSentence({ surfaces: [design], risks: [], unclassified: [], boxRead: [], shipsNothing: true })).toBe(
       "Ships nothing: every change in it is a design revision.",
     );
   });

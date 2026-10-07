@@ -78,6 +78,51 @@ export const landingArtifactsSchema = z
 		`artifacts names at most ${LANDING_ARTIFACTS_MAX}`,
 	);
 
+export const CHANGED_PATHS_MAX = 2000;
+
+/** One file a commit changed and what became of it; a rename is its old path removed and new added. */
+export interface FileChange {
+	path: string;
+	change: ArtifactChange;
+}
+
+/**
+ * The paths a commit changed, read by the box from its own checkout (`git diff <first parent>
+ * <commit> --name-status`) and sent with a mark by `forge-runner api`, for a project whose source
+ * host Forge cannot read. Core classifies them by the project's `surfaces` and labels them box-read:
+ * the box's reading, not a merge Forge observed.
+ */
+export const changedPathsSchema = z.strictObject({
+	commit: z
+		.string()
+		.trim()
+		.regex(
+			/^[0-9a-f]{7,64}$/i,
+			"changedPaths.commit is the git sha the paths were read at",
+		),
+	changes: z
+		.array(
+			z.strictObject({
+				path: z.string().min(1).max(1000),
+				change: z.enum(ARTIFACT_CHANGES, {
+					error: (issue) =>
+						`change ${JSON.stringify(issue.input)} is not a file change: it is one of ${oneOf(ARTIFACT_CHANGES)}`,
+				}),
+			}),
+		)
+		.max(
+			CHANGED_PATHS_MAX,
+			`changedPaths names at most ${CHANGED_PATHS_MAX} files`,
+		),
+});
+
+/** What `issues.merged_paths` holds: the paths, the commit they were read at, and who read them. */
+export interface ReadPaths {
+	commit: string;
+	read: "box";
+	changes: FileChange[];
+}
+
 const DESIGN_TOKEN = /^forge-workflow:([^\s@()]+@rev\d+)/;
 const DESIGN_SENTENCE = /^workflow design `([^`]+)` revision (\d+), approved$/;
 

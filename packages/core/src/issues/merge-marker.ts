@@ -1,5 +1,5 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
-import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
+import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
@@ -11,6 +11,7 @@ import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,
   markArtifacts,
+  markReadPaths,
   markTargetRequired,
   readLandingShape,
   SOURCE_UNDECLARED,
@@ -26,6 +27,7 @@ import {
   observedMergeForIssue,
   recordIssueMerge,
   recordMergeTarget,
+  recordReadPaths,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { contractDrift, postIssueNotice } from './ports.js';
@@ -95,6 +97,8 @@ type MergeMarkArgs = {
   landing?: string | undefined;
   /** What the landing changed, by surface; whether this shape takes a list is `landing-evidence.ts`'s. */
   artifacts?: readonly LandingArtifact[] | undefined;
+  /** The paths the named commit changed, as the box read them from its checkout (`forge-runner api`). */
+  changedPaths?: { commit: string; changes: FileChange[] } | undefined;
   mergedAt?: Date | null;
   /** The contract versions the landed work implemented, `<project>/<contract>@<version>` each. */
   contracts?: readonly string[] | undefined;
@@ -158,6 +162,12 @@ async function stampMark(
   const named = markArtifacts({ shape, landing, sent });
   if (!named.ok) throw refuse(named.code, named.detail, '/artifacts');
   const artifacts = named.artifacts;
+  const read = markReadPaths({
+    shape,
+    commit: args.commit ?? null,
+    sent: args.changedPaths ?? null,
+  });
+  if (!read.ok) throw refuse(read.code, read.detail, '/changedPaths');
   let stamp: Stamp;
   if (observed) {
     const claimed = args.commit ?? null;
@@ -234,8 +244,25 @@ async function stampMark(
   if (standingArtifacts) {
     throw refuse(standingArtifacts.code, standingArtifacts.detail, '/artifacts');
   }
+  if (read.paths) await recordStampPaths(tx, issueId, read.paths, args.actor.hookActor);
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
   return stamp;
+}
+
+/** The box's reading of the landing commit, or the refusal where the row already holds another's. */
+async function recordStampPaths(
+  tx: Tx,
+  issueId: string,
+  paths: NonNullable<Extract<ReturnType<typeof markReadPaths>, { ok: true }>['paths']>,
+  actor: Actor,
+): Promise<void> {
+  const { wrote, held } = await recordReadPaths(tx, { issueId, paths, actor });
+  if (wrote || !held || held.commit.toLowerCase() === paths.commit.toLowerCase()) return;
+  throw refuse(
+    'MARK_ALREADY_STANDS',
+    `this issue's mark already holds the paths read at ${held.commit}, and the first reading stands, so the paths read at ${paths.commit} were not recorded and nothing changed. To change them, \`unmark\`, then mark again naming the commit that landed.`,
+    '/changedPaths',
+  );
 }
 
 /**

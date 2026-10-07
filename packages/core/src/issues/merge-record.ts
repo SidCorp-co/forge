@@ -1,4 +1,4 @@
-import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
+import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
@@ -256,6 +256,40 @@ export async function recordDesignLanding(
   };
 }
 
+/**
+ * The paths a box read for the landing commit from its own checkout, written onto a stamped row that
+ * holds none: the first reading stands, as the first stamp does. Called in the mark's transaction
+ * after the stamp, so a mark refused later drops it too: docs/modules/issues/merge-mark.md.
+ */
+export async function recordReadPaths(
+  executor: Tx,
+  args: { issueId: string; paths: ReadPaths; actor: OutboxActor },
+): Promise<{ wrote: boolean; held: ReadPaths | null }> {
+  const [wrote] = await executor
+    .update(issues)
+    .set({ mergedPaths: args.paths, updatedAt: sql`now()` })
+    .where(and(eq(issues.id, args.issueId), isNotNull(issues.mergedAt), isNull(issues.mergedPaths)))
+    .returning({ projectId: issues.projectId });
+  if (wrote) {
+    await emitEvent(executor, 'issue.updated', {
+      issueId: args.issueId,
+      projectId: wrote.projectId,
+      actor: args.actor,
+      fields: ['mergedPaths'],
+      via: 'mark',
+      before: { mergedPaths: null },
+      after: { mergedPaths: args.paths },
+    });
+    return { wrote: true, held: args.paths };
+  }
+  const [row] = await executor
+    .select({ mergedPaths: issues.mergedPaths })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  return { wrote: false, held: row?.mergedPaths ?? null };
+}
+
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
  *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
@@ -270,6 +304,7 @@ export async function clearIssueMerge(
       mergedCommitSha: null,
       mergedLanding: null,
       mergedArtifacts: null,
+      mergedPaths: null,
       mergedTarget: null,
       updatedAt: sql`now()`,
     })

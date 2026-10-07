@@ -1,0 +1,59 @@
+{
+  "rules": [
+    {
+      "surface": "data",
+      "paths": [
+        "packages/core/drizzle/**"
+      ]
+    },
+    {
+      "surface": "api",
+      "paths": [
+        "packages/core/src/**/*routes.ts",
+        "packages/core/contracts/**",
+        "packages/contracts/src/**"
+      ]
+    },
+    {
+      "surface": "ui",
+      "paths": [
+        "packages/web-v2/**"
+      ]
+    },
+    {
+      "surface": "runner",
+      "paths": [
+        "packages/runner/**"
+      ]
+    },
+    {
+      "surface": "config",
+      "paths": [
+        ".forge/**",
+        ".github/**",
+        "scripts/**",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "pnpm-lock.yaml",
+        "turbo.json",
+        "packages/*/package.json",
+        "packages/*/Dockerfile"
+      ]
+    },
+    {
+      "surface": "logic",
+      "paths": [
+        "packages/core/src/**",
+        "packages/observability/**"
+      ]
+    }
+  ],
+  "ignore": [
+    "docs/**",
+    "changelog.d/**",
+    "**/*.md",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "packages/core/tests/**"
+  ]
+}

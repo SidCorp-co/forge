@@ -1,4 +1,4 @@
-import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
+import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
@@ -35,6 +35,7 @@ interface IssueFact {
     landing: string | null;
     artifacts: LandingArtifact[] | null;
     commitSha: string | null;
+    readPaths: ReadPaths | null;
   };
 }
 
@@ -148,6 +149,7 @@ export async function loadReleaseFacts(
             mergedLanding: issues.mergedLanding,
             mergedArtifacts: issues.mergedArtifacts,
             mergedCommitSha: issues.mergedCommitSha,
+            mergedPaths: issues.mergedPaths,
           })
           .from(issues)
           .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
@@ -179,6 +181,7 @@ export async function loadReleaseFacts(
           landing: r.mergedLanding,
           artifacts: r.mergedArtifacts ?? null,
           commitSha: r.mergedCommitSha?.trim() ? r.mergedCommitSha.trim() : null,
+          readPaths: r.mergedPaths ?? null,
         },
       },
     ]),

@@ -20,7 +20,7 @@
  */
 
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
-import { landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
+import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -41,6 +41,7 @@ const mergeMarkerBodySchema = z
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
     artifacts: landingArtifactsSchema.optional(),
+    changedPaths: changedPathsSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
     contracts: z
       .array(
@@ -71,6 +72,7 @@ async function runMergeMarker(
     ...(body.commit ? { commit: body.commit } : {}),
     ...(body.landing ? { landing: body.landing } : {}),
     ...(body.artifacts ? { artifacts: body.artifacts } : {}),
+    ...(body.changedPaths ? { changedPaths: body.changedPaths } : {}),
     ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
     ...(body.contracts ? { contracts: body.contracts } : {}),
     actor: {

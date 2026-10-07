@@ -1,19 +1,26 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { SourceHost } from '../integrations/source-host/index.js';
 import type { ProjectDocument } from '../project-config/index.js';
-import { releaseRuleSchema } from '../project-config/release-rule-schema.js';
+import { surfacesSchema } from '../project-config/surfaces-schema.js';
 import {
   classifyChanges,
-  FORGE_CORE_SURFACES,
   readLandingReadings,
   releaseChangesOf,
   surfaceMapOf,
 } from './landing-surfaces.js';
 
+/** forge-core's own map, the documented example a project carries in its document's `surfaces`. */
+const FORGE_CORE_SURFACES = surfacesSchema.parse(
+  JSON.parse(
+    readFileSync(new URL('../../tests/fixtures/forge-core-surfaces.json', import.meta.url), 'utf8'),
+  ),
+);
+
 const gitDocument = (repository: string, surfaces?: unknown) =>
   ({
     source: { type: 'git', git: { repository, defaultBranch: 'main', branches: ['main'] } },
-    ...(surfaces ? { release: { approval: { required: false }, surfaces } } : {}),
+    ...(surfaces ? { surfaces } : {}),
   }) as unknown as ProjectDocument;
 
 const CHANGES = [
@@ -49,25 +56,34 @@ describe("a git landing's surfaces, read from its changed paths", () => {
     expect(unmapped).toEqual(['LICENSE']);
   });
 
-  it('ships the default map only for the forge-core repository, and a declared map wins over it', () => {
-    expect(surfaceMapOf(gitDocument('github.com/SidCorp-co/forge-core'))).toBe(FORGE_CORE_SURFACES);
-    expect(surfaceMapOf(gitDocument('github.com/acme/shop'))).toBeNull();
-    const declared = { rules: [{ surface: 'ui', paths: ['web/**'] }] };
-    expect(surfaceMapOf(gitDocument('github.com/SidCorp-co/forge-core', declared))).toEqual(
-      declared,
+  it('reads the map from the project document alone: no repository name brings one', () => {
+    expect(surfaceMapOf(gitDocument('github.com/SidCorp-co/forge-core'))).toBeNull();
+    expect(surfaceMapOf(gitDocument('github.com/SidCorp-co/forge', FORGE_CORE_SURFACES))).toEqual(
+      FORGE_CORE_SURFACES,
     );
     expect(surfaceMapOf(null)).toBeNull();
   });
 
   it('reads an observed commit through the host into named artifacts, and an unmapped project as unclassified paths', async () => {
     const facts = [
-      { id: 'a', marked: true, landing: null, artifacts: null, commitSha: 'a'.repeat(40) },
+      {
+        id: 'a',
+        marked: true,
+        landing: null,
+        artifacts: null,
+        commitSha: 'a'.repeat(40),
+        readPaths: null,
+      },
     ];
     const core = await readLandingReadings('p', facts, {
-      document: async () => gitDocument('github.com/SidCorp-co/forge-core'),
+      document: async () => gitDocument('github.com/SidCorp-co/forge-core', FORGE_CORE_SURFACES),
       host: async () => hostWith('SidCorp-co/forge-core', CHANGES),
     });
-    expect(core.get('a')).toMatchObject({ kind: 'named', unmappedPaths: ['LICENSE'] });
+    expect(core.get('a')).toMatchObject({
+      kind: 'named',
+      unmappedPaths: ['LICENSE'],
+      source: 'host',
+    });
 
     const other = await readLandingReadings('p', facts, {
       document: async () => gitDocument('github.com/acme/shop'),
@@ -75,7 +91,7 @@ describe("a git landing's surfaces, read from its changed paths", () => {
     });
     expect(other.get('a')).toMatchObject({
       kind: 'unclassified',
-      why: expect.stringMatching(/declares no `release.surfaces`/),
+      why: expect.stringMatching(/declares no `surfaces`/),
       paths: expect.arrayContaining(['LICENSE', 'packages/core/src/issues/merge-routes.ts']),
     });
   });
@@ -88,10 +104,11 @@ describe("a git landing's surfaces, read from its changed paths", () => {
         landing: null,
         artifacts: [{ surface: 'design' as const, ref: 'intake@rev2', change: 'changed' as const }],
         commitSha: 'd'.repeat(40),
+        readPaths: null,
       },
     ];
     const readings = await readLandingReadings('p', facts, {
-      document: async () => gitDocument('github.com/SidCorp-co/forge-core'),
+      document: async () => gitDocument('github.com/SidCorp-co/forge-core', FORGE_CORE_SURFACES),
       host: async () =>
         hostWith('SidCorp-co/forge-core#design', [
           { path: 'packages/core/src/issues/merge-routes.ts', change: 'changed' },
@@ -104,7 +121,7 @@ describe("a git landing's surfaces, read from its changed paths", () => {
     expect(changes.shipsNothing).toBe(false);
 
     const unread = await readLandingReadings('p', facts, {
-      document: async () => gitDocument('github.com/SidCorp-co/forge-core'),
+      document: async () => gitDocument('github.com/SidCorp-co/forge-core', FORGE_CORE_SURFACES),
       host: async () =>
         ({
           fullName: 'SidCorp-co/forge-core#unread',
@@ -119,10 +136,40 @@ describe("a git landing's surfaces, read from its changed paths", () => {
     ]);
   });
 
+  it('classifies paths a box read from its checkout, with no source host at all, and says the box read them', async () => {
+    const facts = [
+      {
+        id: 'b',
+        marked: true,
+        landing: null,
+        artifacts: null,
+        commitSha: null,
+        readPaths: { commit: 'b'.repeat(40), read: 'box' as const, changes: [...CHANGES] },
+      },
+    ];
+    const readings = await readLandingReadings('p', facts, {
+      document: async () => gitDocument('github.com/SidCorp-co/forge', FORGE_CORE_SURFACES),
+      host: async () => {
+        throw new Error('a box-read landing asked the source host');
+      },
+    });
+    const reading = readings.get('b');
+    expect(reading).toMatchObject({ kind: 'named', source: 'box', unmappedPaths: ['LICENSE'] });
+    const changes = releaseChangesOf([{ key: 'ISS-5', reading: reading as never }]);
+    expect(changes.boxRead).toEqual(['ISS-5']);
+    expect(changes.surfaces.map((s) => s.surface)).toEqual([
+      'ui',
+      'api',
+      'logic',
+      'data',
+      'config',
+      'runner',
+    ]);
+  });
+
   it('refuses a map naming a surface no path can be, by name', () => {
-    const parsed = releaseRuleSchema.safeParse({
-      approval: { required: false },
-      surfaces: { rules: [{ surface: 'design', paths: ['docs/**'] }] },
+    const parsed = surfacesSchema.safeParse({
+      rules: [{ surface: 'design', paths: ['docs/**'] }],
     });
     expect(parsed.success).toBe(false);
     expect(JSON.stringify(parsed.error?.issues)).toContain('cannot be mapped from a path');
@@ -138,6 +185,7 @@ describe('what a release changes together', () => {
           kind: 'named',
           unmappedPaths: [],
           unread: null,
+          source: 'mark',
           artifacts: [
             { surface: 'data', ref: 'table:cases', change: 'changed' },
             { surface: 'api', ref: 'DELETE /cases/:id', change: 'removed' },
@@ -162,6 +210,7 @@ describe('what a release changes together', () => {
           kind: 'named',
           unmappedPaths: ['db/schema.sql'],
           unread: null,
+          source: 'host',
           artifacts: [{ surface: 'ui', ref: 'web/app.tsx', change: 'changed' }],
         },
       },

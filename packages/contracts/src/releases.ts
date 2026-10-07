@@ -248,8 +248,22 @@ export type IssueLandingReading =
 			unmappedPaths: string[];
 			/** Why the commit's paths were not read, beside artifacts the row names of its own. */
 			unread: string | null;
+			source: LandingReadingSource;
 	  }
-	| { kind: "unclassified"; why: string; paths: string[] };
+	| {
+			kind: "unclassified";
+			why: string;
+			paths: string[];
+			/** Who read the paths shown, where any were read. */
+			source: Exclude<LandingReadingSource, "mark"> | null;
+	  };
+
+/**
+ * Who named what a landing changed: `mark` — the mark or a design approval named it; `host` — the
+ * source host's record of the observed commit; `box` — a box read the commit's paths from its own
+ * checkout and sent them with the mark, which is the box's reading, not a merge Forge observed.
+ */
+export type LandingReadingSource = "mark" | "host" | "box";
 
 export interface ReleaseChangeArtifact {
 	ref: string;
@@ -289,6 +303,8 @@ export interface ReleaseChanges {
 	risks: ReleaseChangeRiskView[];
 	/** Issues whose landing leaves something unnamed — all of it, or paths no surface claims — with why. */
 	unclassified: { key: string; why: string; paths: string[] }[];
+	/** Issues whose paths a box read from its checkout rather than Forge observing the merge. */
+	boxRead: string[];
 	/** True where every classified artifact ships nothing and nothing is unclassified. */
 	shipsNothing: boolean;
 }
