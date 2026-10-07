@@ -8,7 +8,8 @@
 import { FORECAST_WINDOW_DAYS } from '@forge/contracts/forecast';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { idList, rowsOf } from '../db/raw-sql.js';
+import { rowsOf } from '../db/raw-sql.js';
+import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { approversOf, nextDraftVersion } from '../release-batch/index.js';
 import type { ReleaseFacts, Shipped } from './delivery.js';
@@ -42,25 +43,10 @@ async function readReleaseLags(projectId: string, now: Date): Promise<number[]> 
   return rows.map((r) => Number(r.minutes));
 }
 
-/** The version that shipped each of `issueIds` and when, the latest ship where several carried it. */
+/** The version that shipped each of `issueIds` and when: `pipeline/release-runs.ts:shippedReleasesOf`. */
 export async function readShipped(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, Shipped>> {
-  if (issueIds.length === 0) return new Map();
-  const rows = rowsOf<{ issue_id: string; version: string; at: string }>(
-    await db.execute(sql`
-      SELECT DISTINCT ON (m.issue_id) m.issue_id, r.release_version AS version, r.release_released_at AS at
-        FROM pipeline_runs r
-        CROSS JOIN LATERAL jsonb_array_elements_text(
-          CASE WHEN jsonb_typeof(r.metadata -> 'issueIds') = 'array' THEN r.metadata -> 'issueIds' ELSE '[]'::jsonb END
-        ) AS m(issue_id)
-       WHERE r.project_id = ${projectId}
-         AND r.release_released_at IS NOT NULL
-         AND m.issue_id IN (${idList(issueIds)})
-       ORDER BY m.issue_id, r.release_released_at DESC`),
-  );
-  return new Map(
-    rows.map((r) => [r.issue_id, { version: r.version, at: new Date(r.at).toISOString() }]),
-  );
+  return shippedReleasesOf(projectId, issueIds);
 }

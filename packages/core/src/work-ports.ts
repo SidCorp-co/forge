@@ -84,6 +84,7 @@ import {
   closeOpenRunForIssue,
   getIssueContexts,
   providePipelinePorts,
+  shippedReleasesOf,
   triggerPipelineStepManual,
 } from './pipeline/index.js';
 import {
@@ -229,6 +230,8 @@ export function provideWorkPorts(): void {
     settlingContractVersion,
     proposesWorkflowOf,
     requirementOfIssue,
+    shippedReleaseOf: async (projectId, issueId) =>
+      (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
     plannedRevisionFor,
     approvalRequired,
     policyGapsOf,

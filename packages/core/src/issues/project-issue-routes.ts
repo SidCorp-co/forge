@@ -22,7 +22,13 @@ import { serializeRestListRow } from './list-projection.js';
 import { listIssues } from './list-service.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { buildsWorkflowOf, fireOfCaller, proposesWorkflowOf, requirementOfIssue } from './ports.js';
+import {
+  buildsWorkflowOf,
+  fireOfCaller,
+  proposesWorkflowOf,
+  requirementOfIssue,
+  shippedReleaseOf,
+} from './ports.js';
 import type { IssueRow } from './read-service.js';
 import { issueCreateSchema, issueFiltersSchema } from './request-schemas.js';
 import { withheldAmong } from './standing-withheld-read.js';
@@ -46,6 +52,7 @@ export async function issueDetailOf(issue: IssueRow) {
     contractWait: await contractWaitHoldOf(issue.projectId, issue.id),
     proposesWorkflow: await proposesWorkflowOf(issue.id),
     requirement: await requirementOfIssue(issue.id),
+    shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
     labels: await listIssueLabels(issue.id),
     comments: [],
     activity: [],

@@ -196,6 +196,11 @@ interface IssuePorts {
   ) => Promise<string | null>;
   proposesWorkflowOf: (issueId: string) => Promise<object | null>;
   requirementOfIssue: (issueId: string) => Promise<object | null>;
+  /** The release that shipped the issue, by version and when; null while none has. */
+  shippedReleaseOf: (
+    projectId: string,
+    issueId: string,
+  ) => Promise<{ version: string; at: string } | null>;
   plannedRevisionFor: (
     tx: Tx,
     issueId: string,
@@ -311,6 +316,7 @@ export const buildsWorkflowOf = port('buildsWorkflowOf');
 export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowOf = port('proposesWorkflowOf');
 export const requirementOfIssue = port('requirementOfIssue');
+export const shippedReleaseOf = port('shippedReleaseOf');
 export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');
 export const policyGapsOf = port('policyGapsOf');

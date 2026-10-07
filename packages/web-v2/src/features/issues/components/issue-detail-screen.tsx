@@ -78,6 +78,7 @@ import {
   ISSUE_TABS,
   OverviewTab,
   RunsTab,
+  runsTabCount,
 } from "./detail/issue-tabs";
 
 interface IssueDetailScreenProps {
@@ -186,7 +187,7 @@ export function IssueDetailScreen({
   const tabs = [
     { value: "overview" as const, label: "Overview" },
     { value: "criteria" as const, label: "Criteria", count: criteriaQ.data?.criteria.length ?? checklist.length },
-    { value: "runs" as const, label: "Runs", count: stepOutcomes.length },
+    { value: "runs" as const, label: "Runs", count: runsTabCount(issue.agentSessions ?? [], stepOutcomes) },
     { value: "mockups" as const, label: "Mockups", count: mockupsQ.data?.returned },
     { value: "activity" as const, label: "Activity", count: commentsQ.data?.totalCount },
   ];
@@ -281,6 +282,7 @@ export function IssueDetailScreen({
             issue={issue}
             canonicalId={canonicalId}
             projectId={projectId}
+            slug={slug}
             canWrite={canWrite}
             criteria={{ hasCriteriaRows, checklist }}
             standingQ={standingQ}
@@ -308,6 +310,7 @@ function IssueTabBody({
   issue,
   canonicalId,
   projectId,
+  slug,
   canWrite,
   criteria,
   standingQ,
@@ -318,6 +321,7 @@ function IssueTabBody({
   issue: NonNullable<ReturnType<typeof useIssue>["data"]>;
   canonicalId: string | undefined;
   projectId: string;
+  slug: string;
   canWrite: boolean;
   criteria: { hasCriteriaRows: boolean; checklist: ReturnType<typeof keyedChecklist> };
   standingQ: ReturnType<typeof useIssueStandingOf>;
@@ -339,6 +343,7 @@ function IssueTabBody({
       ) : null}
       {tab === "runs" ? (
         <RunsTab
+          slug={slug}
           sessions={issue.agentSessions ?? []}
           standingQ={standingQ}
           stepOutcomes={standingQ.data?.stepOutcomes ?? []}

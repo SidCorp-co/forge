@@ -32,6 +32,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type Person, peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import { type ShippedRelease, shippedReleasesOf } from '../pipeline/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { tracesOf } from './criterion-traces.js';
@@ -306,6 +307,7 @@ function issueViews(
   changedTraced: Map<string, ChangedTrace[]>,
   prefix: string | null,
   releaseApproval: boolean,
+  shipped: ReadonlyMap<string, ShippedRelease>,
 ) {
   return linked.map((i) => ({
     issueId: i.id,
@@ -320,7 +322,14 @@ function issueViews(
       currentRevision: row.currentRevision,
       changedTraced: changedTraced.get(i.id) ?? [],
     }),
+    shippedIn: shipped.get(i.id) ?? null,
   }));
+}
+
+/** Each release that shipped one of its issues, once, oldest ship first. */
+function releasesOf(shipped: ReadonlyMap<string, ShippedRelease>): ShippedRelease[] {
+  const byVersion = new Map([...shipped.values()].map((r) => [r.version, r]));
+  return [...byVersion.values()].sort((a, b) => a.at.localeCompare(b.at));
 }
 
 export async function detailOf(
@@ -359,7 +368,7 @@ export async function detailOf(
     ),
     requestViewOf(row),
   ]);
-  const [people, standings, changedTraced] = await Promise.all([
+  const [people, standings, changedTraced, shipped] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -374,6 +383,10 @@ export async function detailOf(
     }),
     changedTracedOf(
       db,
+      linked.map((i) => i.id),
+    ),
+    shippedReleasesOf(
+      row.projectId,
       linked.map((i) => i.id),
     ),
   ]);
@@ -393,7 +406,8 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval),
+    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval, shipped),
+    releases: releasesOf(shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
     standing,
     history,
