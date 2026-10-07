@@ -1,1 +1,0 @@
-**A release note carrying a commit sha, issue key, rule code or "Technical note" label is now flagged before release.** The write warns, the draft release counts such notes above "What users get", and masters are nudged; nothing is refused.
