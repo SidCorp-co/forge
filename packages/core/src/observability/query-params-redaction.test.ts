@@ -138,6 +138,7 @@ describe('redactQueryParams', () => {
       `date/time field value out of range: ${REDACTED}`,
     ],
     ['value "99999999999" is out of range for type integer', `value ${REDACTED}`],
+    ['invalid value "zq9f" for "YYYY"', `invalid value ${REDACTED}`],
   ])("redacts a value the database's own text quotes, with no error to read: %s", (text, kept) => {
     const out = redactQueryParams({ reason: `refused: ${text}` });
     expect(out.reason).toBe(`refused: ${kept}`);
@@ -240,5 +241,118 @@ describe("redactQueryParams over a driver error's own fields", () => {
     ],
   ])("redacts the value %s's text quotes, with no error to read", (_, text, kept) => {
     expect(redactQueryParams({ reason: `refused: ${text}` }).reason).toBe(`refused: ${kept}`);
+  });
+});
+
+/** Each way a value's text reaches a serializer through what it calls, not a field it holds. */
+const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
+  ['its own toJSON', (text) => ({ toJSON: () => text })],
+  ['a toJSON it inherits', (text) => Object.create({ toJSON: () => text })],
+  ['a toJSON on a function', (text) => Object.assign(() => 'ordinary', { toJSON: () => text })],
+  [
+    'a getter',
+    (text) => Object.defineProperty({}, 'reason', { get: () => text, enumerable: true }),
+  ],
+  [
+    "a boxed string's Symbol.toPrimitive",
+    (text) => Object.assign(new String('ordinary'), { [Symbol.toPrimitive]: () => text }),
+  ],
+  [
+    "a boxed string's toString",
+    (text) => Object.assign(new String('ordinary'), { toString: () => text }),
+  ],
+  ['a field of a tagged object', (text) => ({ [Symbol.toStringTag]: 'Reading', reason: text })],
+  [
+    'a field of a class instance',
+    (text) =>
+      new (class Reading {
+        reason = text;
+      })(),
+  ],
+];
+
+/** Whether `value` is a primitive's box, which a serializer renders through its toPrimitive. */
+function boxed(value: object): boolean {
+  for (const unbox of [String, Number, Boolean, BigInt, Symbol]) {
+    try {
+      unbox.prototype.valueOf.call(value);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+/** Whether a serializer renders `value` without calling any code of the caller's. */
+function inert(value: unknown): boolean {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return true;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.toJSON === 'function' || boxed(obj)) return false;
+  if (typeof value === 'function') return true;
+  return Object.keys(obj).every((key) => {
+    const d = Object.getOwnPropertyDescriptor(obj, key);
+    return d !== undefined && 'value' in d && inert(d.value);
+  });
+}
+
+describe('redactQueryParams, given a value whose text only a serializer renders', () => {
+  describe.each(SERIALIZER_HOOKS)('through %s', (_, hook) => {
+    it.each([
+      ['a failed query', () => duplicate().message],
+      ['a value the database quotes', () => 'invalid input syntax for type uuid: "zq9"'],
+    ])('hands back what renders none of %s, and calls nothing when rendered', (_, text) => {
+      for (const value of [hook(text()), { reading: hook(text()) }, [hook(text())]]) {
+        const out = redactQueryParams(value);
+        expect(inert(out)).toBe(true);
+        const rendered = JSON.stringify(out) ?? '';
+        expect(rendered).not.toContain(HASH);
+        expect(rendered).not.toContain(EMAIL);
+        expect(rendered).not.toContain('zq9');
+      }
+    });
+
+    it('withholds a driver message read against the error beside it', () => {
+      const pg = pgRefusal('relation "zq" does not exist', { code: '42P01' }, ['zq']);
+      const out = redactQueryParams({ error: pg, reading: hook(pg.message) });
+      expect(inert(out)).toBe(true);
+      expect(JSON.stringify(out)).not.toContain('zq');
+    });
+  });
+
+  it('renders what a serializer would once, so a hook that answers twice is not asked again', () => {
+    const text = duplicate().message;
+    let reads = 0;
+    const getter = Object.defineProperty({}, 'reason', {
+      get: () => (++reads === 1 ? 'ordinary' : text),
+      enumerable: true,
+    });
+    let calls = 0;
+    const later = { toJSON: () => (++calls === 1 ? 'ordinary' : text) };
+    const rendered = JSON.stringify(redactQueryParams({ getter, later }));
+    expect(rendered).not.toContain(HASH);
+    expect(rendered).toBe('{"getter":{"reason":"ordinary"},"later":"ordinary"}');
+  });
+
+  it('asks toJSON for the key a serializer passes it', () => {
+    const text = duplicate().message;
+    const value = { reading: { toJSON: (key: string) => (key === 'reading' ? text : 'ordinary') } };
+    const rendered = JSON.stringify(redactQueryParams(value));
+    expect(rendered).not.toContain(HASH);
+    expect(rendered).toContain(STATEMENT.slice(0, 12));
+  });
+
+  it('keeps what a hook renders when it carries nothing to redact', () => {
+    const when = new Date(Date.UTC(2026, 9, 7));
+    const value = {
+      when,
+      reading: { toJSON: () => 'a reading' },
+      name: new String('a name'),
+      tagged: { [Symbol.toStringTag]: 'Reading', reason: 'ordinary' },
+    };
+    expect(JSON.stringify(redactQueryParams(value))).toBe(JSON.stringify(value));
+  });
+
+  it('still hands back the same data where there is nothing to redact', () => {
+    const value = { reason: 'ordinary', nested: [{ id: 1 }] };
+    expect(redactQueryParams(value)).toBe(value);
   });
 });

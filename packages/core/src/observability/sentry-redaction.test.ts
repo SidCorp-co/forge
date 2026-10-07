@@ -1,11 +1,15 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { gunzipSync } from 'node:zlib';
+import { scrubSentryEvent } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c3ludGhldGlj$c2VudHJ5LWhhc2g';
 const EMAIL = 'dup@example.test';
+/** Kept up here: the real client sends the source lines around each frame, the test's own among them. */
+const QUOTED = 'zq9';
+const QUOTED_REFUSAL = `invalid input syntax for type uuid: "${QUOTED}"`;
 
 /** A stand-in Sentry ingest on loopback, holding every envelope the real client sends it. */
 let ingest: Server;
@@ -54,5 +58,65 @@ describe('the Sentry client core starts', () => {
     expect(sent).toContain('users_email_unique');
     expect(sent).not.toContain(HASH);
     expect(sent).not.toContain(EMAIL);
+  });
+});
+
+function failedInsert(): DrizzleQueryError {
+  const driver = Object.assign(new Error('duplicate key value violates unique constraint "u"'), {
+    code: '23505',
+    severity: 'ERROR',
+  });
+  return new DrizzleQueryError('insert into "users" values ($1, $2)', [EMAIL, HASH], driver);
+}
+
+/** Each way a value's text reaches an event through what a serializer calls, not a field it holds. */
+const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
+  ['its own toJSON', (text) => ({ toJSON: () => text })],
+  ['a toJSON it inherits', (text) => Object.create({ toJSON: () => text })],
+  [
+    'a getter',
+    (text) => Object.defineProperty({}, 'reason', { get: () => text, enumerable: true }),
+  ],
+  [
+    "a boxed string's Symbol.toPrimitive",
+    (text) => Object.assign(new String('ordinary'), { [Symbol.toPrimitive]: () => text }),
+  ],
+  [
+    "a boxed string's toString",
+    (text) => Object.assign(new String('ordinary'), { toString: () => text }),
+  ],
+  ['a field of a tagged object', (text) => ({ [Symbol.toStringTag]: 'Reading', reason: text })],
+];
+
+describe.each(SERIALIZER_HOOKS)('a Sentry event holding a value rendered through %s', (_, hook) => {
+  it.each([
+    ['a failed query', () => failedInsert().message],
+    ['a value the database quotes', () => QUOTED_REFUSAL],
+  ])('is scrubbed of %s wherever the value sits', (_, text) => {
+    const event = {
+      extra: { reading: hook(text()) },
+      contexts: { reading: { value: hook(text()) } },
+      breadcrumbs: [{ message: 'read', data: { reading: hook(text()) } }],
+    };
+    const sent = JSON.stringify(scrubSentryEvent(event));
+    expect(sent).not.toContain(HASH);
+    expect(sent).not.toContain(EMAIL);
+    expect(sent).not.toContain(QUOTED);
+  });
+
+  it("sends none of a failed query's bound params through the real client", async () => {
+    const { initSentry, Sentry } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const before = envelopes.length;
+    Sentry.captureException(new Error('unrelated'), {
+      extra: { reading: hook(failedInsert().message) },
+      contexts: { reading: { value: hook(QUOTED_REFUSAL) } },
+    });
+    expect(await Sentry.flush(5000)).toBe(true);
+    const sent = envelopes.slice(before).join('\n');
+    expect(sent).toContain('unrelated');
+    expect(sent).not.toContain(HASH);
+    expect(sent).not.toContain(EMAIL);
+    expect(sent).not.toContain(QUOTED);
   });
 });

@@ -82,6 +82,15 @@ describe("core's database client, given a statement the database refuses", () =>
     expect(err.message).toMatch(/^Failed query: select \$1::\w+\nparams: \[Redacted\]$/);
   });
 
+  it.each([
+    ['to_date', sql`select to_date(${VALUE}, 'YYYY')`],
+    ['to_timestamp', sql`select to_timestamp(${VALUE}, 'YYYY')`],
+  ])('seals a %s refusal that quotes only the start of its value', async (_, statement) => {
+    const err = await caught(() => db.execute(statement));
+    expect(everyCopy(err)).not.toContain('zq9');
+    expect((err.cause as Error).message).toBe(`invalid value ${REDACTED}`);
+  });
+
   it('seals a unique violation and still reads it as one, inside a transaction', async () => {
     await db.execute(
       sql`create unique index if not exists seal_probe_now on seal_probe (lower(v))`,

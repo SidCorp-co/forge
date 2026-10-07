@@ -342,3 +342,110 @@ describe('the core logger, at the finished line', () => {
     }
   });
 });
+
+/** Each way a value's text reaches a line through what a serializer calls, not a field it holds. */
+const SERIALIZER_HOOKS: [string, (text: string) => unknown][] = [
+  ['its own toJSON', (text) => ({ toJSON: () => text })],
+  ['a toJSON it inherits', (text) => Object.create({ toJSON: () => text })],
+  [
+    'a getter',
+    (text) => Object.defineProperty({}, 'reason', { get: () => text, enumerable: true }) as unknown,
+  ],
+  [
+    "a boxed string's Symbol.toPrimitive",
+    (text) => Object.assign(new String('ordinary'), { [Symbol.toPrimitive]: () => text }),
+  ],
+  [
+    "a boxed string's toString",
+    (text) => Object.assign(new String('ordinary'), { toString: () => text }),
+  ],
+  ['a field of a tagged object', (text) => ({ [Symbol.toStringTag]: 'Reading', reason: text })],
+];
+
+/** A driver message only the error beside it can tell holds a bound value: no anchor names it. */
+function relationRefusal(): Error {
+  return refusal('relation "zq" does not exist', { code: '42P01' }, ['zq']);
+}
+
+describe('the core logger, given a value whose text only a serializer renders', () => {
+  describe.each(SERIALIZER_HOOKS)('through %s', (_, hook) => {
+    it.each([
+      ['a failed query', () => failedInsert().message],
+      ['a value the database quotes', () => 'invalid input syntax for type uuid: "zq9"'],
+    ])('writes none of %s under err, with no error in the call', (_, text) => {
+      const { lines, log } = capture();
+      log.warn({ err: hook(text()) }, 'read');
+      log.warn({ err: hook(text()) });
+      log.child({ err: hook(text()) }).warn('bound');
+      log.child({ requestId: 'r1' }).warn({ err: hook(text()) }, 'child');
+      expect(lines).toHaveLength(4);
+      for (const line of lines) {
+        JSON.parse(line);
+        expect(line).not.toContain(EMAIL);
+        expect(line).not.toContain(HASH);
+        expect(line).not.toContain('zq9');
+      }
+    });
+
+    it.each([
+      ['err', 'err'],
+      ['a plain key', 'reading'],
+    ])('withholds a driver message under %s, read against the error beside it', (_, key) => {
+      const { lines, log } = capture();
+      const pg = relationRefusal();
+      log.warn({ error: pg, [key]: hook(pg.message) }, 'read');
+      log.child({ error: pg, [key]: hook(pg.message) }).warn('bound');
+      log.child({ requestId: 'r1' }).warn({ error: pg, [key]: hook(pg.message) }, 'child');
+      const rebound = log.child({ requestId: 'r2' });
+      rebound.setBindings({ error: pg, [key]: hook(pg.message) });
+      rebound.warn('rebound');
+      expect(lines).toHaveLength(4);
+      for (const line of lines) {
+        expect(JSON.parse(line).error.sqlstate).toBe('42P01');
+        expect(line).not.toContain('zq');
+      }
+    });
+  });
+
+  it.each([
+    ['its toString', (text: string) => ({ toString: () => text })],
+    ['its Symbol.toPrimitive', (text: string) => ({ [Symbol.toPrimitive]: () => text })],
+  ])('writes none of a driver message a format argument renders through %s', (_, hook) => {
+    const { lines, log } = capture();
+    const pg = relationRefusal();
+    log.warn({ error: pg }, 'read %s', hook(pg.message));
+    log.child({ requestId: 'r1' }).warn({ error: pg }, 'child %s', hook(pg.message));
+    log.warn(
+      { err: hook('invalid input syntax for type uuid: "zq9"') as never },
+      'blind %s',
+      hook('invalid input syntax for type uuid: "zq9"'),
+    );
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).not.toContain('zq');
+      expect(line).not.toContain('[object Object]');
+    }
+  });
+
+  it.each([
+    ['its toString', (text: string) => ({ toString: () => text })],
+    ['its Symbol.toPrimitive', (text: string) => ({ [Symbol.toPrimitive]: () => text })],
+  ])(
+    "writes none of a driver message a child's msgPrefix joins to a message rendered by %s",
+    (_, hook) => {
+      const { lines, log } = capture();
+      const pg = relationRefusal();
+      const prefixed = log.child({}, { msgPrefix: 'read: ' });
+      prefixed.warn({ error: pg }, hook(pg.message) as never);
+      prefixed.child({ requestId: 'r1' }).warn({ error: pg }, hook(pg.message) as never);
+      expect(lines).toHaveLength(2);
+      for (const line of lines) expect(line).not.toContain('zq');
+    },
+  );
+
+  it('keeps what a format argument renders when it carries nothing to redact', () => {
+    const { lines, log } = capture();
+    log.warn('read %s and %s', { toString: () => 'a reading' }, new URL('https://example.test/x'));
+    expect(JSON.parse(lines[0] ?? '').msg).toBe('read a reading and https://example.test/x');
+  });
+});
