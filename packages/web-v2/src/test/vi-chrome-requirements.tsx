@@ -106,9 +106,10 @@ export const reqDetail: RequirementDetail = {
     },
   ],
   issues: [
-    { issueId: "i1", displayId: "ISS-1", title: "Viec mot", status: "closed", tone: "done", plannedRevision: 1, changedSincePlan: false },
-    { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", plannedRevision: 1, changedSincePlan: true },
+    { issueId: "i1", displayId: "ISS-1", title: "Viec mot", status: "closed", tone: "done", plannedRevision: 1, changedSincePlan: false, shippedIn: { version: "0.1.0", at: "2026-10-01T00:00:00.000Z" } },
+    { issueId: "i2", displayId: "ISS-2", title: "Viec hai", status: "in_progress", tone: "run", plannedRevision: 1, changedSincePlan: true, shippedIn: null },
   ],
+  releases: [{ version: "0.1.0", at: "2026-10-01T00:00:00.000Z" }],
   canSignOff: true,
   history: [
     { id: "h1", at, source: "person", who: "Lan", kind: "Revision", text: "Proposed r2", issue: null, move: null },
