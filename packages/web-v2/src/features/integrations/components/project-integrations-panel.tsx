@@ -180,7 +180,7 @@ function RepositoryAction({
     );
   }
   return (
-    <Link href="?tab=repo" className="text-13 font-semibold text-accent hover:underline">
+    <Link href="?tab=delivery#repository" className="text-13 font-semibold text-accent hover:underline">
       {t("integrations.panel.setRepo")}
     </Link>
   );

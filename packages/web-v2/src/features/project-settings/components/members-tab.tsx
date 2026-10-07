@@ -26,6 +26,8 @@ import {
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import {
   useDirectAddMember,
   useInvitations,
@@ -37,15 +39,16 @@ import {
 } from "../hooks";
 import type { ProjectRole } from "../types";
 
-const ROLE_OPTIONS: SelectOption[] = [
-  { value: "viewer", label: "Viewer" },
-  { value: "member", label: "Member" },
-  { value: "admin", label: "Admin" },
+const roleOptions = (t: Copy): SelectOption[] => [
+  { value: "viewer", label: t("settings.project.people.role.viewer") },
+  { value: "member", label: t("settings.project.people.role.member") },
+  { value: "admin", label: t("settings.project.people.role.admin") },
 ];
 
 const ROW = "flex items-center justify-between gap-3 py-2";
 
 export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+  const t = useCopy();
   const membersQ = useMembers(projectId);
   const remove = useRemoveMember(projectId);
   const updateRole = useUpdateMemberRole(projectId);
@@ -56,7 +59,8 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-4">Members</SectionTitle>
+        <SectionTitle className="fg-h3 mb-1 text-accent-text!">{t("settings.project.people.members")}</SectionTitle>
+        <p className="fg-body-sm mb-4 max-w-[68ch] text-muted">{t("settings.project.people.rolesLead")}</p>
         {membersQ.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-9 w-full rounded-md" />
@@ -72,7 +76,8 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
                 <span className="flex shrink-0 items-center gap-2">
                   {canEdit ? (
                     <Select
-                      options={ROLE_OPTIONS}
+                      options={roleOptions(t)}
+                      aria-label={t("settings.project.people.roleOf", { email: m.email })}
                       value={m.role}
                       onChange={(v) => updateRole.mutate({ userId: m.userId, role: v as ProjectRole })}
                       disabled={updateRole.isPending}
@@ -83,7 +88,7 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
                   {canEdit && (
                     <IconButton
                       icon="trash"
-                      aria-label={`Remove ${m.email}`}
+                      aria-label={t("settings.project.people.remove", { email: m.email })}
                       onClick={() => remove.mutate(m.userId)}
                       disabled={remove.isPending}
                     />
@@ -107,7 +112,7 @@ export function MembersTab({ projectId, canEdit }: { projectId: string; canEdit:
 
 function Subsection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="mt-4 space-y-3 border-t border-line pt-4">
+    <div className="mt-6 space-y-3 border-t border-line pt-4">
       <PageSectionTitle className="fg-label text-fg">{title}</PageSectionTitle>
       {children}
     </div>
@@ -115,28 +120,29 @@ function Subsection({ title, children }: { title: string; children: ReactNode })
 }
 
 function PendingInvitations({ projectId }: { projectId: string }) {
+  const t = useCopy();
   const invitationsQ = useInvitations(projectId);
   const revoke = useRevokeInvitation(projectId);
   const invitations = invitationsQ.data ?? [];
   return (
-    <Subsection title="Pending invitations">
+    <Subsection title={t("settings.project.people.pending")}>
       {invitationsQ.isLoading ? (
         <Skeleton className="h-9 w-full rounded-md" />
       ) : invitationsQ.isError ? (
         <ErrorState message={formatApiError(invitationsQ.error)} onRetry={() => invitationsQ.refetch()} />
       ) : invitations.length === 0 ? (
-        <p className="fg-body-sm text-subtle">No pending invitations.</p>
+        <p className="fg-body-sm text-subtle">{t("settings.project.people.noPending")}</p>
       ) : (
         <ul className="divide-y divide-line-subtle">
           {invitations.map((inv) => (
             <li key={inv.email} className={ROW}>
               <span className="min-w-0 truncate text-fg">{inv.email}</span>
               <span className="flex shrink-0 items-center gap-2">
-                {inv.expired && <Badge tone="amber">Expired</Badge>}
+                {inv.expired && <Badge tone="amber">{t("settings.project.people.expired")}</Badge>}
                 <EnumBadge family="role" value={inv.role} />
                 <IconButton
                   icon="trash"
-                  aria-label={`Cancel invitation for ${inv.email}`}
+                  aria-label={t("settings.project.people.cancelInvitation", { email: inv.email })}
                   onClick={() => revoke.mutate(inv.email)}
                   disabled={revoke.isPending}
                 />
@@ -151,12 +157,13 @@ function PendingInvitations({ projectId }: { projectId: string }) {
 
 /** The two add forms share one shape: who, at which role, and the button that sends it. */
 function AddRow({ who, role, onRole, action }: { who: ReactNode; role: ProjectRole; onRole: (r: ProjectRole) => void; action: ReactNode }) {
+  const t = useCopy();
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
       <div className="flex-1">{who}</div>
       <div className="sm:w-40">
-        <Field label="Role">
-          <Select options={ROLE_OPTIONS} value={role} onChange={(v) => onRole(v as ProjectRole)} />
+        <Field label={t("settings.project.people.roleLabel")}>
+          <Select options={roleOptions(t)} value={role} onChange={(v) => onRole(v as ProjectRole)} />
         </Field>
       </div>
       {action}
@@ -165,6 +172,7 @@ function AddRow({ who, role, onRole, action }: { who: ReactNode; role: ProjectRo
 }
 
 function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId: string; memberIds: string[] }) {
+  const t = useCopy();
   const orgMembersQ = useOrgMembers(orgId);
   const directAdd = useDirectAddMember(projectId);
   const [userId, setUserId] = useState("");
@@ -172,15 +180,15 @@ function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId:
   const candidates = (orgMembersQ.data ?? []).filter((m) => !memberIds.includes(m.userId));
   if (candidates.length === 0) return null;
   return (
-    <Subsection title="Add from organization">
+    <Subsection title={t("settings.project.people.addFromOrg")}>
       <AddRow
         who={
-          <Field label="Org member">
+          <Field label={t("settings.project.people.orgMember")}>
             <Select
               options={candidates.map((m) => ({ value: m.userId, label: m.email }))}
               value={userId}
               onChange={setUserId}
-              placeholder="Select an org member…"
+              placeholder={t("settings.project.people.orgMemberPlaceholder")}
             />
           </Field>
         }
@@ -195,7 +203,7 @@ function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId:
             onClick={() => directAdd.mutate({ userId, role }, { onSuccess: () => setUserId("") })}
             className="min-h-11"
           >
-            Add
+            {t("settings.project.people.add")}
           </Button>
         }
       />
@@ -204,6 +212,7 @@ function AddFromOrg({ projectId, orgId, memberIds }: { projectId: string; orgId:
 }
 
 function InviteByEmail({ projectId }: { projectId: string }) {
+  const t = useCopy();
   const invite = useInviteMember(projectId);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ProjectRole>("member");
@@ -212,10 +221,10 @@ function InviteByEmail({ projectId }: { projectId: string }) {
     if (trimmed) invite.mutate({ email: trimmed, role }, { onSuccess: () => setEmail("") });
   }
   return (
-    <Subsection title="Invite by email (outside the org)">
+    <Subsection title={t("settings.project.people.invite")}>
       <AddRow
         who={
-          <Field label="Email">
+          <Field label={t("settings.project.people.email")}>
             <Input
               type="email"
               value={email}
@@ -238,7 +247,7 @@ function InviteByEmail({ projectId }: { projectId: string }) {
             onClick={send}
             className="min-h-11"
           >
-            Invite
+            {t("settings.project.people.inviteAct")}
           </Button>
         }
       />

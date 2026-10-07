@@ -75,7 +75,7 @@ function AddConnection({ projects }: { projects: Array<{ id: string; slug: strin
             {projects.map((p) => (
               <li key={p.id}>
                 <Link
-                  href={`/projects/${p.slug}/settings?tab=integrations`}
+                  href={`/projects/${p.slug}/settings?tab=connections#integrations`}
                   className="block py-2 text-13 font-semibold text-fg hover:text-accent"
                   onClick={() => setOpen(false)}
                 >

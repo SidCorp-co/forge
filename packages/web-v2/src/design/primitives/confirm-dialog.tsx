@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/design/primitives/button";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -32,6 +33,7 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
+  const t = useCopy();
   return (
     <AlertDialog
       open={open}
@@ -48,7 +50,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter className="m-0 flex-row justify-end gap-2.5 border-0 bg-transparent p-0 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             type="button"

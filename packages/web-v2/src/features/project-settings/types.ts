@@ -1,3 +1,5 @@
+import type { ReleaseGateView } from "@forge/contracts/releases";
+
 /** Patch body accepted by `PATCH /api/projects/:id`.
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
@@ -133,6 +135,8 @@ export interface ReleaseReadiness {
 	blockers: ReleaseBlocker[];
 	/** What changes how the release runs without stopping it. */
 	warnings: ReleaseWarning[];
+	/** `blockers` then `warnings` as a person reads them (core `release-gates.ts:gateViews`). */
+	gates: ReleaseGateView[];
 	gaps: (
 		| "build-commands"
 		| "test-commands"

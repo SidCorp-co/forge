@@ -95,7 +95,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
         </button>
         <button
           type="button"
-          onClick={() => router.push(`/projects/${slug}/settings?tab=runners`)}
+          onClick={() => router.push(`/projects/${slug}/settings?tab=connections#runners`)}
           className="fg-caption inline-flex items-center gap-1 text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           {t("overview.runners.title")}

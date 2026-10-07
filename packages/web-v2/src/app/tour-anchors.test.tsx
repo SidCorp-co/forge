@@ -18,7 +18,7 @@ import { TOURS } from "@/features/tours/registry";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/projects/forge/settings",
-  useSearchParams: () => new URLSearchParams("tab=integrations"),
+  useSearchParams: () => new URLSearchParams("tab=connections"),
 }));
 
 const CHANGES: ReleaseChanges = {
@@ -79,7 +79,7 @@ const PAGES: Record<TourId, { route: string; draw: () => ReactElement; renders: 
     ready: () => screen.findByTestId("release-users-get"),
   },
   integrations: {
-    route: "/projects/:slug/settings?tab=integrations",
+    route: "/projects/:slug/settings?tab=connections",
     draw: () => <IntegrationsTab projectId="p1" canEdit />,
     renders: (ui) => {
       serveCore();

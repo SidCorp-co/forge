@@ -328,7 +328,7 @@ function ProjectsSection({
               <li key={b.id}>
                 {project && !archived ? (
                   <Link
-                    href={`/projects/${project.slug}/settings?tab=integrations`}
+                    href={`/projects/${project.slug}/settings?tab=connections#integrations`}
                     onClick={onNavigate}
                     className="flex items-center gap-3 py-2 transition-colors hover:bg-hover"
                   >

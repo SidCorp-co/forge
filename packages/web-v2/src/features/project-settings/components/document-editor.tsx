@@ -16,7 +16,9 @@ import {
 	setAt,
 	STALE_BASE,
 } from "@/features/project-config/document-edit";
-import { DocumentFields } from "./document-fields";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { DocumentFields, PROJECT_IDENTITY } from "./document-fields";
 
 interface Held {
 	revision: number | null;
@@ -31,10 +33,21 @@ const seed = (read: V1Read, template: V1Document): Held =>
 
 const pretty = (doc: unknown) => JSON.stringify(doc, null, 2);
 
-const MODES = [
-	{ value: "fields", label: "Fields" },
-	{ value: "json", label: "JSON" },
-];
+/** The value at a JSON pointer, or `undefined` where nothing stands there. */
+function at(document: unknown, pointer: string): unknown {
+	let cursor = document;
+	for (const segment of pointer.slice(1).split("/")) {
+		if (cursor === null || typeof cursor !== "object") return undefined;
+		cursor = (cursor as Record<string, unknown>)[segment.replaceAll("~1", "/").replaceAll("~0", "~")];
+	}
+	return cursor;
+}
+
+/** The first fixed key `next` changes or removes from `held`, dotted as a reader names it. */
+export function fixedChanged(held: unknown, next: unknown, fixed: readonly string[]): string | null {
+	const moved = fixed.find((p) => at(held, p) !== undefined && JSON.stringify(at(held, p)) !== JSON.stringify(at(next, p)));
+	return moved ? moved.slice(1).replaceAll("/", ".") : null;
+}
 
 function MovedNotice({
 	held,
@@ -47,23 +60,19 @@ function MovedNotice({
 	onReapply: () => void;
 	onReload: () => void;
 }) {
+	const t = useCopy();
 	const moved = movedSince(held.read ?? {}, fresh.document ?? {}, held.draft);
-	const stored = fresh.declared ? `revision ${fresh.revision}` : "no document";
+	const revision = (r: number | null) => (r === null ? t("settings.project.raw.noDocument") : t("settings.project.raw.revision", { revision: r }));
 	return (
 		<Banner tone="attention">
 			<div className="space-y-2">
-				<p>
-					This document moved since you read it: you read{" "}
-					{held.revision === null ? "no document" : `revision ${held.revision}`}, and it now holds {stored}.
-					Nothing of yours was written.
-				</p>
+				<p>{t("settings.project.raw.moved", { read: revision(held.revision), stored: revision(fresh.declared ? fresh.revision : null) })}</p>
 				{moved.length > 0 && (
-					<ul aria-label="What moved" className="list-disc pl-5">
+					<ul aria-label={t("settings.project.raw.whatMoved")} className="list-disc pl-5">
 						{moved.map((m) => (
 							<li key={m.path}>
-								<code>{m.path}</code>: you read <code>{canonicalJson(m.read)}</code>, it now holds{" "}
-								<code>{canonicalJson(m.stored)}</code>
-								{m.contested ? " — you edited this too; re-applying keeps your value" : ""}
+								{t("settings.project.raw.movedValue", { path: m.path, read: canonicalJson(m.read), stored: canonicalJson(m.stored) })}
+								{m.contested ? ` ${t("settings.project.raw.contested")}` : ""}
 							</li>
 						))}
 					</ul>
@@ -71,11 +80,11 @@ function MovedNotice({
 				<div className="flex flex-wrap gap-2">
 					{fresh.declared && (
 						<Button variant="primary" size="sm" onClick={onReapply}>
-							Re-apply my edits on revision {fresh.revision}
+							{t("settings.project.raw.reapply", { revision: fresh.revision })}
 						</Button>
 					)}
 					<Button variant="secondary" size="sm" onClick={onReload}>
-						Reload, discarding my edits
+						{t("settings.project.raw.reload")}
 					</Button>
 				</div>
 			</div>
@@ -88,7 +97,7 @@ function RefusalList({ refusals }: { refusals: readonly Refusal[] }) {
 		<ul className="list-disc pl-5">
 			{refusals.map((r) => (
 				<li key={`${r.code}:${r.path}`}>
-					<code>{r.code}</code> at <code>{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
+					<code translate="no">{r.code}</code> <code translate="no">{readRefusal(r).where ?? "/"}</code>: {readRefusal(r).sentence}
 				</li>
 			))}
 		</ul>
@@ -98,7 +107,7 @@ function RefusalList({ refusals }: { refusals: readonly Refusal[] }) {
 type Write = UseMutationResult<V1Written, Error, V1Write>;
 
 /** The draft held against the revision it was read at, and the edits, save and reseeds over it. */
-function useHeldDocument(read: V1Read, template: V1Document, write: Write, onReload: () => unknown) {
+function useHeldDocument(read: V1Read, template: V1Document, write: Write, onReload: () => unknown, fixed: readonly string[], t: Copy) {
 	const [held, setHeld] = useState<Held>(() => seed(read, template));
 	const [text, setText] = useState<string | null>(null);
 	const [invalid, setInvalid] = useState<string | null>(null);
@@ -117,13 +126,18 @@ function useHeldDocument(read: V1Read, template: V1Document, write: Write, onRel
 		try {
 			const value: unknown = JSON.parse(next);
 			if (value === null || typeof value !== "object" || Array.isArray(value)) {
-				setInvalid("The document is a JSON object. The fields keep the last object that parsed.");
+				setInvalid(t("settings.project.raw.notObject"));
+				return;
+			}
+			const changed = fixedChanged(held.read ?? template, value, fixed);
+			if (changed) {
+				setInvalid(t("settings.project.raw.fixedChanged", { key: changed }));
 				return;
 			}
 			setInvalid(null);
 			edit(value as V1Document);
 		} catch (err) {
-			setInvalid(`Not valid JSON (${err instanceof Error ? err.message : String(err)}). The fields keep the last object that parsed.`);
+			setInvalid(t("settings.project.raw.notJson", { error: err instanceof Error ? err.message : String(err) }));
 		}
 	}
 
@@ -153,18 +167,19 @@ function useHeldDocument(read: V1Read, template: V1Document, write: Write, onRel
 }
 
 function RefusedNotice({ write, mode }: { write: Write; mode: string }) {
+	const t = useCopy();
 	const refusals = documentRefusals(write.error);
 	const stale = refusals.filter((r) => r.code === STALE_BASE);
 	return (
 		<Banner tone="danger" onDismiss={() => write.reset()}>
 			<div className="space-y-1">
-				<p>Refused, nothing written.</p>
+				<p>{t("settings.project.raw.refused")}</p>
 				{stale.length > 0 && <RefusalList refusals={stale} />}
 				{refusals.length === 0 && <p>{formatApiError(write.error)}</p>}
 				{mode === "json" && refusals.length > stale.length && (
 					<RefusalList refusals={refusals.filter((r) => r.code !== STALE_BASE)} />
 				)}
-				{mode === "fields" && refusals.length > stale.length && <p>Each other refusal is shown at the field it names.</p>}
+				{mode === "fields" && refusals.length > stale.length && <p>{t("settings.project.raw.refusedAtFields")}</p>}
 			</div>
 		</Banner>
 	);
@@ -179,7 +194,10 @@ export function DocumentEditor({
 	write,
 	onReload,
 	actions,
+	fixed = PROJECT_IDENTITY,
 }: {
+	/** Pointers no edit here changes or removes: who the document is. */
+	fixed?: readonly string[];
 	title: string;
 	description?: ReactNode;
 	read: V1Read;
@@ -189,20 +207,25 @@ export function DocumentEditor({
 	onReload: () => unknown;
 	actions?: ReactNode;
 }) {
+	const t = useCopy();
 	const [mode, setMode] = useState("fields");
-	const { held, text, invalid, dirty, moved, edit, editText, save, reseed } = useHeldDocument(read, template, write, onReload);
+	const { held, text, invalid, dirty, moved, edit, editText, save, reseed } = useHeldDocument(read, template, write, onReload, fixed, t);
+	const modes = [
+		{ value: "fields", label: t("settings.project.raw.fields") },
+		{ value: "json", label: "JSON" },
+	];
 	const placed = placeRefusals(held.draft, write.isError ? documentRefusals(write.error) : []);
 
 	return (
 		<section aria-label={title} className="mt-6 border-t border-line pt-5">
 			<div className="flex flex-wrap items-center gap-2">
 				<PageSectionTitle className="fg-label text-fg">{title}</PageSectionTitle>
-				<MonoTag>{read.declared ? `revision ${read.revision}` : "not declared"}</MonoTag>
+				<MonoTag>{read.declared ? t("settings.project.raw.revision", { revision: read.revision }) : t("settings.project.raw.notDeclared")}</MonoTag>
 				{actions}
 			</div>
 			{description && <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div>}
 			{!read.declared && (
-				<Banner tone="attention">Not declared yet. The fields below start from a template; saving writes revision 1.</Banner>
+				<Banner tone="attention">{t("settings.project.raw.fromTemplate")}</Banner>
 			)}
 			{moved && (
 				<MovedNotice
@@ -220,7 +243,7 @@ export function DocumentEditor({
 			)}
 			{write.isError && <RefusedNotice write={write} mode={mode} />}
 			<div className="mt-3">
-				<Tabs tabs={MODES} value={mode} onChange={setMode} />
+				<Tabs tabs={modes} value={mode} onChange={setMode} />
 			</div>
 			<div className="mt-3">
 				{mode === "fields" ? (
@@ -228,12 +251,14 @@ export function DocumentEditor({
 						document={held.draft}
 						placed={placed}
 						canEdit={canEdit}
+						fixed={fixed}
 						onSet={(segments, value) => edit(setAt(held.draft, segments, value) as V1Document)}
 					/>
 				) : (
 					<>
 						<Textarea
 							aria-label={`${title} (JSON)`}
+							translate="no"
 							value={text ?? pretty(held.draft)}
 							rows={18}
 							readOnly={!canEdit}
@@ -253,11 +278,11 @@ export function DocumentEditor({
 						onClick={save}
 						className="min-h-11"
 					>
-						Save {title.toLowerCase()}
+						{t("settings.project.raw.save", { title: title.toLowerCase() })}
 					</Button>
 					{dirty && (
 						<Button variant="ghost" onClick={() => reseed(seed(read, template))} className="min-h-11">
-							Discard edits
+							{t("settings.project.raw.discard")}
 						</Button>
 					)}
 				</div>

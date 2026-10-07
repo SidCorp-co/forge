@@ -63,7 +63,7 @@ describe("IntegrationsScreen", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Integrations");
     await userEvent.click(screen.getByRole("button", { name: "Add connection" }));
     const link = await screen.findByRole("link", { name: "Forge" });
-    expect(link.getAttribute("href")).toBe("/projects/forge/settings?tab=integrations");
+    expect(link.getAttribute("href")).toBe("/projects/forge/settings?tab=connections#integrations");
   });
 
   it("stands every app open, so a lone connection's health and status are in view without a click", async () => {

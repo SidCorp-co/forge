@@ -1,7 +1,7 @@
 "use client";
 
 // Project-centric Runners screen. Rendered as the Project Settings → Runners
-// tab (`/projects/[slug]/settings?tab=runners`, `embedded`). The project is the
+// tab (`/projects/[slug]/settings?tab=connections#runners`, `embedded`). The project is the
 // primary control surface: assign devices,
 // and watch each device's workspace provision (clone → skills → mcp) as a live
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /

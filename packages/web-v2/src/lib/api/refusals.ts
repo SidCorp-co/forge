@@ -76,7 +76,7 @@ const READINGS: Record<string, { label?: string; sentence?: string }> = {
     sentence: "Only the sender or a recipient of the conversation holds it.",
   },
   SECRET_NOT_FOUND: {
-    sentence: "This secret is not stored in this project. Store it under Secrets on the Config tab, then save again.",
+    sentence: "This secret is not stored in this project. Store it under Secrets in Advanced settings, then save again.",
   },
 };
 

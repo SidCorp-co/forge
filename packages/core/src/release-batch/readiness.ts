@@ -1,4 +1,5 @@
 import { selectAllSlugsFromKnowledge } from '../knowledge/index.js';
+import type { ReleaseGateView } from '@forge/contracts/releases';
 import type { DeploymentTrigger, Promotion } from '../project-config/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { missingProjectKnowledge } from '../projects/index.js';
@@ -9,6 +10,7 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
+import { gateViews } from './release-gates.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 import { readWeighingNow } from './runtime-weighing.js';
 import { readServingNow } from './serving-reading.js';
@@ -63,6 +65,9 @@ interface ReleaseReadiness {
   blockers: ReleaseBlocker[];
   /** What will change how the release runs without stopping it. */
   warnings: ReleaseWarning[];
+  /** `blockers` then `warnings` as a person reads them: a title, a sentence and who owes the act,
+   *  the same reading a release's own page carries, so settings words a reason no differently. */
+  gates: ReleaseGateView[];
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
@@ -117,6 +122,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     gaps,
     blockers,
     warnings: report.warnings,
+    gates: gateViews(blockers, report.warnings),
   };
 }
 
