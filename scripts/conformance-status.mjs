@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mergeTarget } from './lib/base-branch.mjs';
 import { baseRevision, ratchetFault } from './lib/baseline-ratchet.mjs';
-import { readManifest } from './lib/debt-ratchet.mjs';
+import { readManifest } from './lib/checker-config.mjs';
 import { ROOT } from './lib/gate.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 

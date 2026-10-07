@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import process from 'node:process';
-import { checkerConfig } from './lib/debt-ratchet.mjs';
+import { checkerConfig } from './lib/checker-config.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs

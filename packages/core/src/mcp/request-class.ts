@@ -63,7 +63,7 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
  * What in one envelope makes it write-class, named as the caller wrote it
  * (`forge_issues action=update`, a method), so a refusal says which call.
  */
-export function writeCallsOf(envelope: unknown): string[] {
+function writeCallsOf(envelope: unknown): string[] {
   if (Array.isArray(envelope)) return envelope.flatMap(writeCallsOf);
   if (classifyMcpEnvelope(envelope) === 'read') return [];
   if (!envelope || typeof envelope !== 'object')

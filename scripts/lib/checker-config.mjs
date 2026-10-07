@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function manifestPath(root) {
@@ -50,57 +50,6 @@ export function tunedConfig(root, key, defaults) {
   const { manifest, error } = readManifest(root, { required: false });
   if (error) return { error };
   return { config: { ...defaults, ...(manifest?.checkers?.[key] ?? {}) } };
-}
-
-/** @returns the parsed doc, `{}` when the file does not exist, `null` when it exists and will not parse */
-export function loadBaseline(path) {
-  if (!existsSync(path)) return {};
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-export function writeBaseline(path, doc) {
-  writeFileSync(path, `${JSON.stringify(doc, null, 2)}\n`);
-}
-
-/**
- * Freeze: no file may hold more of a metric than its baseline allows.
- *
- * `scope` limits which files are judged (pre-commit's staged set); null judges all.
- * `metrics[i]` names the metric `reasons[i]` refuses.
- */
-export function freezeFaults(measured, baseline, scope = null) {
-  const faults = [];
-  for (const [file, now] of Object.entries(measured)) {
-    if (scope && !scope.has(file)) continue;
-    const was = baseline[file] ?? {};
-    const reasons = [];
-    const metrics = [];
-    for (const [metric, count] of Object.entries(now)) {
-      const allowed = was[metric] ?? 0;
-      if (count > allowed) {
-        reasons.push(`${metric}: ${count} (baseline allowed ${allowed})`);
-        metrics.push(metric);
-      }
-    }
-    if (reasons.length) faults.push({ file, reasons, metrics });
-  }
-  return faults;
-}
-
-/** Stable key order, both levels, so a re-freeze diffs as the counts that moved. */
-export function sortDeep(files) {
-  return Object.fromEntries(
-    Object.entries(files)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([file, metrics]) => [
-        file,
-        Object.fromEntries(Object.entries(metrics).sort(([a], [b]) => a.localeCompare(b))),
-      ]),
-  );
 }
 
 /** @returns `{mode}` for a recognised mode, `{error}` otherwise — the caller exits 2. */

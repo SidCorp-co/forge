@@ -41,14 +41,10 @@
       }
     },
     "behaviour": {
-      "level": 2,
+      "level": 3,
       "gate": "check-test-signal + check-test-reachability",
       "owns": "whether a test asserts behaviour or restates a declaration; whether every tracked test file is collected by a runner at all",
-      "baseline": {
-        "path": ".forge/test-signal-baseline.json",
-        "keyBy": "path",
-        "improves": "down"
-      }
+      "baseline": null
     },
     "language": {
       "level": 3,

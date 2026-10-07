@@ -9,27 +9,16 @@
 //      flagged: cascade-vs-restrict is a consequence, not a restatement.
 //   2. mock-interaction assertions — only that a mock was called.
 //
-// Baselined: today's offenders are frozen, a file fails only
-// when it gets worse or a new one appears. The ratchet around that is
-// lib/debt-ratchet.mjs; what stays here is the analyzer.
+// Zero tolerance: no baseline, so a file over a ratio fails. An exemption would be a priced entry in
+// .forge/conformance.json, not a frozen count.
 //
-// Modes: --all (CI) · --staged (pre-commit) · --update-baseline
+// Modes: --all (CI) · --staged (pre-commit)
 // Exit: 0 clean, 1 violations, 2 invalid invocation.
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import {
-  freezeFaults,
-  loadBaseline,
-  parseMode,
-  sortDeep,
-  stagedFiles,
-  tunedConfig,
-  writeBaseline,
-} from './lib/debt-ratchet.mjs';
+import { parseMode, stagedFiles, tunedConfig } from './lib/checker-config.mjs';
 import { ROOT } from './lib/gate.mjs';
-
-const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
 
 const DEFAULTS = {
   scanRoots: [
@@ -127,11 +116,7 @@ function collectStaged() {
     .filter((f) => existsSync(f));
 }
 
-const parsed = parseMode(
-  process.argv,
-  ['--all', '--staged', '--update-baseline'],
-  'check-test-signal.mjs',
-);
+const parsed = parseMode(process.argv, ['--all', '--staged'], 'check-test-signal.mjs');
 if (parsed.error) {
   console.error(parsed.error);
   process.exit(2);
@@ -147,37 +132,15 @@ if (mode !== '--staged' && files.length === 0) {
   process.exit(2);
 }
 
-const doc = loadBaseline(BASELINE_PATH);
-if (doc === null) {
-  console.error(
-    `check-test-signal: ${BASELINE_PATH} is unreadable — fix or delete it. This will not\n` +
-      'guess what was frozen, and --update-baseline will not overwrite what it could not read.',
-  );
-  process.exit(2);
-}
-const baseline = doc.files ?? {};
-
-const current = {};
+const failures = [];
 for (const file of files) {
-  const rel = relative(ROOT, file);
-  const score = scoreFile(readFileSync(file, 'utf8'));
-  if (violationsFor(score).length === 0) continue;
-  current[rel] = { declaration: score.declaration, mock: score.mock };
+  if (violationsFor(scoreFile(readFileSync(file, 'utf8'))).length > 0) {
+    failures.push({ file: relative(ROOT, file) });
+  }
 }
-
-if (mode === '--update-baseline') {
-  writeBaseline(BASELINE_PATH, {
-    generatedAt: new Date().toISOString(),
-    files: sortDeep(current),
-  });
-  console.log(`test-signal baseline written: ${Object.keys(current).length} file(s) frozen`);
-  process.exit(0);
-}
-
-const failures = freezeFaults(current, baseline);
 
 if (failures.length === 0) {
-  console.log(`test-signal: ${files.length} test file(s) checked, no new low-signal tests`);
+  console.log(`test-signal: ${files.length} test file(s) checked, no low-signal tests`);
   process.exit(0);
 }
 
@@ -185,19 +148,10 @@ for (const { file } of failures) {
   console.error(`\n${file}`);
   const score = scoreFile(readFileSync(join(ROOT, file), 'utf8'));
   for (const r of violationsFor(score)) console.error(`  ${r}`);
-  const was = baseline[file];
-  if (was) {
-    console.error(
-      `  baseline allowed declaration=${was.declaration} mock=${was.mock}; ` +
-        `now declaration=${score.declaration} mock=${score.mock} — it got worse`,
-    );
-  }
 }
 console.error(
   `\n${failures.length} file(s) failed the test-signal check.\n` +
     'Assert on BEHAVIOUR (what breaks for a user) instead of on the declaration.\n' +
-    'FK cascade/restrict assertions are exempt — they encode a consequence.\n' +
-    'If a file is legitimately at this ratio, re-freeze it:\n' +
-    '  node scripts/check-test-signal.mjs --update-baseline\n',
+    'FK cascade/restrict assertions are exempt — they encode a consequence.\n',
 );
 process.exit(1);

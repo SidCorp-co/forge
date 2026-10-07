@@ -96,9 +96,8 @@ jobs:
       # 3df9a8e9 removed 1,034 lines of it inside a commit about docs pointers and all twelve
       # gates passed — every axis owned a property of the code and none owned the record.
       - run: node scripts/check-release-record.mjs
-      # Test-signal guard: fails only when a test file gets MORE
-      # declaration-restating or mock-only assertions than its frozen baseline
-      # (.forge/test-signal-baseline.json).
+      # Test-signal guard: fails a test file that is mostly declaration-restating or
+      # mock-only assertions. No baseline: nothing was frozen when it was removed.
       - run: node scripts/check-test-signal.mjs --all
       # Honest costs: docs/VISION.md and every proposal must say what adopting
       # them takes from whoever adopts it. The convention existed nowhere and

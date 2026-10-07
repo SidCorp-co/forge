@@ -105,7 +105,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
             trigger: deployment.trigger,
           }
         : null,
-    promotions: gated?.path.crossings ?? [],
+    promotions: gated?.path.crossing ? [gated.path.crossing] : [],
     targetUndeclared: decl?.kind === 'undeclared-target',
     targetUndeclaredReason: decl?.kind === 'undeclared-target' ? decl.reason : null,
     providers: channels.map((c) => c.provider),

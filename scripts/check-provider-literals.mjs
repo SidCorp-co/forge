@@ -2,7 +2,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseMode, readManifest } from './lib/debt-ratchet.mjs';
+import { parseMode, readManifest } from './lib/checker-config.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 import {
   allowedFaults,

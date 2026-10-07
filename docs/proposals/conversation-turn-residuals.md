@@ -1,7 +1,7 @@
 # What the conversation surface still loses around a turn
 
-**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, the
-fallback reply follows the room's language, and the person-stop and dock-draft questions are
+**Removed when:** a turn abandoned at its timeout writes its own `timed-out` window decision, and the
+person-stop and dock-draft questions are
 answered on that issue, which dev ISS-129 carries. The change that lands it deletes this file.
 
 ISS-1146's independent judge, at deployment `5adef4c`, recorded three losses. None of them fails a
@@ -62,8 +62,8 @@ carry them.
 - **Taking 1 either keeps unchecked text or drops it.** An answer cut short before the reply check
   can be stored with a mark saying it was not checked, kept on screen only, or dropped as today.
   Each choice gives up something the other two keep.
-- **Leaving 2 keeps a state-lie on the thread.** A turn core gave up on reads as the agent choosing
-  silence, which is the sentence ISS-1146 removed for a person's stop.
+- **Leaving 2 keeps the window's decision short of the cause.** A turn core gave up on records no
+  `timed-out` decision, so a reader of the window cannot tell it from another failure.
 - **Taking 2 costs a migration.** A new window decision widens a CHECK constraint, and its `when`
   has to be read off `scripts/check-migration-order.mjs` against every open branch.
 - **Leaving 3 costs a draft at every deliberate close.** Escape no longer causes that loss. The close

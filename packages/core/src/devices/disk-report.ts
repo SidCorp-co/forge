@@ -44,7 +44,7 @@ const diskReportSchema = z
 export type DiskReport = z.infer<typeof diskReportSchema>;
 type DiskRoot = z.infer<typeof rootSchema>;
 
-export const diskVerdicts = ['clear', 'unmeasurable', 'tight', 'critical'] as const;
+const diskVerdicts = ['clear', 'unmeasurable', 'tight', 'critical'] as const;
 export type DiskVerdict = (typeof diskVerdicts)[number];
 
 /** One root as every surface shows it: the box's figures and core's reading of them. */
