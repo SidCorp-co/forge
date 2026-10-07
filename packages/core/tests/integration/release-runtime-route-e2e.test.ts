@@ -9,6 +9,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { atUtcMinute } from '../../src/release-batch/blocker-sentences.js';
 import { loadReleaseReadiness } from '../../src/release-batch/readiness.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
 import { readServingNow, servedCommits } from '../../src/release-batch/serving-reading.js';
@@ -308,7 +309,7 @@ describe('a reason every waiting row shares is one blocker on the card (judge fi
     await sweep();
     expect((await holdOf(oldest))?.code).toBe('NO_RUNNER_ONLINE');
     expect((await holdOf(oldest))?.reason).toContain(
-      `held until its next try at ${reset.toISOString()}`,
+      `held until its next try at ${atUtcMinute(reset.toISOString())}`,
     );
     reset.setUTCMilliseconds(375);
     await rateLimited(reset.toISOString());

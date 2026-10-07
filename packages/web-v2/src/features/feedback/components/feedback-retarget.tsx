@@ -1,14 +1,11 @@
 "use client";
 
-import { FEEDBACK_TARGET_TYPES } from "@forge/contracts/feedback";
 import { useState } from "react";
-import { Button, enumLabel, Field, Input, NativeSelect } from "@/design";
+import { Button, enumLabel, Field, Input } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useFeedbackAction } from "../hooks";
-import type { FeedbackTargetType, FeedbackView } from "../types";
-
-type Movable = Exclude<FeedbackTargetType, "contract">;
-const MOVABLE = FEEDBACK_TARGET_TYPES.filter((t): t is Movable => t !== "contract");
+import type { FeedbackView } from "../types";
+import { type PickableTarget, TARGET_HINT, TargetPicker } from "./target-picker";
 
 const about = (t: FeedbackView["target"]) => `${enumLabel("feedbackTarget", t.type).toLowerCase()} ${t.key}`;
 
@@ -20,7 +17,7 @@ const about = (t: FeedbackView["target"]) => `${enumLabel("feedbackTarget", t.ty
 export function RetargetForm({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
   const [open, setOpen] = useState(false);
-  const [type, setType] = useState<Movable>("requirement");
+  const [type, setType] = useState<PickableTarget>("requirement");
   const [target, setTarget] = useState("");
   const [reason, setReason] = useState("");
   const moved = act.data?.feedback.target;
@@ -49,16 +46,8 @@ export function RetargetForm({ projectId, f }: { projectId: string; f: FeedbackV
     <section className="grid gap-3" data-testid="feedback-retarget">
       <h3 className="text-12 font-semibold text-muted">What it is about</h3>
       <p className="text-12 text-muted">Now {about(f.target)}. Its route and phase stay as they are; the move is kept in its history.</p>
-      <Field label="Move it to" hint="REQ-3, ISS-12, a release version, a workflow flow, or a screen name">
-        <span className="flex gap-2">
-          <NativeSelect
-            aria-label="Target type"
-            value={type}
-            onChange={(e) => setType(e.target.value as Movable)}
-            options={MOVABLE.map((t) => ({ value: t, label: enumLabel("feedbackTarget", t) }))}
-          />
-          <Input aria-label="Target" value={target} onChange={(e) => setTarget(e.target.value)} />
-        </span>
+      <Field label="Move it to" hint={TARGET_HINT}>
+        <TargetPicker projectId={projectId} type={type} onType={setType} value={target} onValue={setTarget} />
       </Field>
       <Field label="Why (optional)">
         <Input aria-label="Why" value={reason} onChange={(e) => setReason(e.target.value)} />

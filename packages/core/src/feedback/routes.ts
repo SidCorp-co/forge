@@ -9,6 +9,7 @@ import {
   FEEDBACK_RETARGET_SHAPE,
   FEEDBACK_TRIAGE_SHAPE,
   FEEDBACK_VERIFY_SHAPE,
+  type FeedbackEndpointsResponse,
   type FeedbackResponse,
   feedbackAttachmentRequestSchema,
   feedbackClarificationRequestSchema,
@@ -30,6 +31,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
+import { servedEndpointsAs } from './endpoints.js';
 import { listFeedbackAs } from './list-read.js';
 import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor } from './read.js';
@@ -133,6 +135,14 @@ feedbackRoutes.post(
     return c.json({ feedback: out.feedback, effect: out.effect }, 201);
   },
 );
+
+// before `/:fb`, which would read `endpoints` as an item key
+feedbackRoutes.get('/:id/feedback/endpoints', projectParam, async (c) => {
+  const body: FeedbackEndpointsResponse = {
+    endpoints: await servedEndpointsAs(actorOf(c), c.req.valid('param').id),
+  };
+  return c.json(body);
+});
 
 feedbackRoutes.get('/:id/feedback/:fb', itemParam, async (c) => {
   const { id, fb } = c.req.valid('param');

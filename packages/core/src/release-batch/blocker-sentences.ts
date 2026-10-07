@@ -160,6 +160,18 @@ const INTEGRATIONS_TAB = 'Settings → Integrations';
 const CONNECTIONS_DIRECTORY = 'Integrations in the workspace rail';
 
 /**
+ * A hold's time as the sentence around it reads (ISS-279): `16:23 UTC on 2026-10-06`, to the
+ * minute, never the raw ISO stamp the reading carries. A value that is not a time is kept as
+ * written rather than read as one.
+ */
+export function atUtcMinute(stamp: string): string {
+  const at = new Date(stamp);
+  if (Number.isNaN(at.getTime())) return stamp;
+  const iso = at.toISOString();
+  return `${iso.slice(11, 16)} UTC on ${iso.slice(0, 10)}`;
+}
+
+/**
  * What clears this reading, per reading. Every one of them answers: a reading with no
  * act is correct about the state and silent about what to do with it. Where nobody can
  * act — a rate limit, a quarantine, a provision in flight — the clause says what is
@@ -178,9 +190,9 @@ const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = 
   auth: () =>
     `had its agent credential rejected, so it is taking nothing. Re-authenticate the agent on that box; ${RUNNERS_TAB} shows the detail it reported.`,
   'rate-limited': (h) =>
-    `was refused by its account and is held until its next try at ${h.detail ?? 'the next nudge'}. A turn the account answers clears it sooner.${h.printedReset ? ` The account printed a reset at ${h.printedReset}: its claim, not when work resumes.` : ''} Wait for the next try, or bring another box up.`,
+    `was refused by its account and is held until its next try at ${h.detail ? atUtcMinute(h.detail) : 'the next nudge'}. A turn the account answers clears it sooner.${h.printedReset ? ` The account printed a reset at ${atUtcMinute(h.printedReset)}: its claim, not when work resumes.` : ''} Wait for the next try, or bring another box up.`,
   quarantined: (h) =>
-    `is quarantined until ${h.detail ?? 'it clears'} after repeated failures. Wait it out, or clear the quarantine under ${RUNNERS_TAB}.`,
+    `is quarantined until ${h.detail ? atUtcMinute(h.detail) : 'it clears'} after repeated failures. Wait it out, or clear the quarantine under ${RUNNERS_TAB}.`,
   provisioning: (h) =>
     `has not finished provisioning its workspace (\`${h.detail ?? 'in progress'}\`). Watch it under ${RUNNERS_TAB}; a provision that is stuck is re-run from there.`,
   'below-floor': (h) =>

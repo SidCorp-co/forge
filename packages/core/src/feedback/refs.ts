@@ -19,6 +19,8 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix, isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { runWearingVersion } from '../pipeline/index.js';
+import { endpointIn } from './endpoint-rules.js';
+import { servedEndpointsOf } from './endpoints.js';
 import { type Row, rowIn } from './read.js';
 import type { TargetFields } from './rules.js';
 
@@ -28,6 +30,8 @@ interface ResolvedTarget {
   issueId: string | null;
   releaseRunId: string | null;
   workflowId: string | null;
+  /** A route or tool the project serves, as its contract's current version names it. */
+  endpoint: { contractSlug: string; contractVersion: string; element: string } | null;
   screen: string | null;
 }
 
@@ -165,6 +169,7 @@ export async function resolveTarget(
     issueId: null,
     releaseRunId: null,
     workflowId: null,
+    endpoint: null,
     screen: null,
   };
   if (fields.requirement) {
@@ -183,6 +188,16 @@ export async function resolveTarget(
     const r = await workflowRefIn(projectId, fields.workflow, '/workflow');
     return isRefusal(r) ? r : { ...empty, type: 'workflow', workflowId: r.id };
   }
+  if (fields.endpoint) {
+    const r = endpointIn(await servedEndpointsOf(projectId), fields.endpoint, '/endpoint');
+    return isRefusal(r)
+      ? r
+      : {
+          ...empty,
+          type: 'endpoint',
+          endpoint: { contractSlug: r.contract, contractVersion: r.version, element: r.element },
+        };
+  }
   return { ...empty, type: 'screen', screen: fields.screen ?? '' };
 }
 
@@ -199,4 +214,6 @@ export const targetTypeOf = (r: Row): FeedbackTargetType =>
           ? 'workflow'
           : r.contractVersion
             ? 'contract'
-            : 'screen';
+            : r.endpointElement
+              ? 'endpoint'
+              : 'screen';

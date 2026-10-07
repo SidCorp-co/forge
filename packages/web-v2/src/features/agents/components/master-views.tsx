@@ -63,6 +63,8 @@ function doing(m: MasterStanding): string {
 // pass that ran after refusals is the real recovery, and says so
 const refusalLabel = (r: NonNullable<MasterClosedPass["refused"]>) => enumLabel("masterPassRefusal", r.reason).toLowerCase();
 
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function recoveryText(r: NonNullable<MasterClosedPass["recovers"]>): string {
   const passes = `${r.refusedPasses} refused pass${r.refusedPasses === 1 ? "" : "es"}`;
   return `the account answered again after ${passes} since ${formatRelativeTime(r.refusedSince)}`;
@@ -268,15 +270,17 @@ export function PassesTable({ items, hasMore, slug }: { items: readonly MasterPa
                   <EnumBadge family="masterVerb" value={p.verb} />
                   {p.trigger === "unprompted" ? <span className="ml-1.5 text-12-5 text-muted" title="A turn the runner did not nudge: a person at the pane, or a task notification">unprompted</span> : null}
                   {c?.recovers ? (
-                    <span className="ml-1.5 text-12 font-semibold text-link" title={`Recovered: ${recoveryText(c.recovers)}`}>
-                      recovered
-                    </span>
+                    <>
+                      <span className="ml-1.5 text-12 font-semibold text-link">recovered</span>
+                      <span className="mt-0.5 block text-12 text-muted">{capitalize(recoveryText(c.recovers))}</span>
+                    </>
                   ) : null}
                 </TD>
                 <TD>
                   {c?.refused ? (
-                    <span className="text-12-5 text-muted" title={`The account said: ${c.refused.detail}`}>
-                      Refused before it ran: {refusalLabel(c.refused)}; next try at the next nudge
+                    <span className="grid gap-0.5 text-12-5 text-muted">
+                      <span>Refused before it ran: {refusalLabel(c.refused)}; next try at the next nudge</span>
+                      <span className="text-12 break-words">The account said: “{c.refused.detail}”</span>
                     </span>
                   ) : c ? (
                     keyList(slug, c.dispatched)

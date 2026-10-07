@@ -138,7 +138,7 @@ builds. The link is the one signal Forge holds of what an issue delivers — the
 build link is read as a design issue. Measured on dev.87, 2026-10-07: HOP ISS-69, building
 `hop-product-tour`, carried `merged_at` from the approval of `hop-attention-queue-ux` revision 1 while open
 and unbuilt; the forecast read it landed, and its build's own landing would have met
-`MARK_ALREADY_STANDS`. Migration 0434 clears the marks an approval wrote on an unreleased build issue,
+`MARK_ALREADY_STANDS`. Migration 0435 clears the marks an approval wrote on an unreleased build issue,
 attributing each by the approval's notice at its stamp, and aborts naming any it cannot attribute. On a
 design issue the table below holds:
 

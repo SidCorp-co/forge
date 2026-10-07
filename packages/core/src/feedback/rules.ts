@@ -44,26 +44,27 @@ export interface TargetFields {
   issue?: string | undefined;
   release?: string | undefined;
   workflow?: string | undefined;
+  endpoint?: string | undefined;
   screen?: string | undefined;
   node?: NodeRef | undefined;
 }
 
 // an item is about exactly one target (FEEDBACK_TARGET_NOT_ONE): a requirement, an issue,
-// a release, a workflow, or a screen named in words
+// a release, a workflow, a route or tool the project serves, or a screen named in words
 export function targetCountRefusal(
   fields: TargetFields,
   whereSeen: string | undefined,
 ): FeedbackRefusal | null {
-  const named = (['requirement', 'issue', 'release', 'workflow', 'screen'] as const).filter(
-    (k) => fields[k] !== undefined,
-  );
+  const named = (
+    ['requirement', 'issue', 'release', 'workflow', 'endpoint', 'screen'] as const
+  ).filter((k) => fields[k] !== undefined);
   if (named.length !== 1) {
     return refusal(
       'FEEDBACK_TARGET_NOT_ONE',
       named.length ? `/${named[1]}` : '',
       named.length
-        ? `an item is about one target, and this names ${named.join(' and ')}; name exactly one of requirement, issue, release, workflow or screen.`
-        : 'an item is about one target; name exactly one of requirement, issue, release, workflow or screen.',
+        ? `an item is about one target, and this names ${named.join(' and ')}; name exactly one of requirement, issue, release, workflow, endpoint or screen.`
+        : 'an item is about one target; name exactly one of requirement, issue, release, workflow, endpoint or screen.',
     );
   }
   if (named[0] === 'screen' && whereSeen?.trim()) {
@@ -114,7 +115,7 @@ export function retargetRefusal(f: RetargetFacts): FeedbackRefusal | null {
     return refusal(
       'FEEDBACK_ALREADY_REDACTED',
       '/screen',
-      `${f.key}'s reporter data was deleted, and a screen named in words is reporter data; retarget it to a requirement, issue, release or workflow instead.`,
+      `${f.key}'s reporter data was deleted, and a screen named in words is reporter data; retarget it to a requirement, issue, release, workflow or endpoint instead.`,
     );
   }
   if (f.revision && f.revision.revises !== f.revision.nextRequirement) {

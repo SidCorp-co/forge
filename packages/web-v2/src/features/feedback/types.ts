@@ -4,6 +4,8 @@ import type { FeedbackRetargetRequest, FeedbackTriage } from "@forge/contracts/f
 export type {
   CreateFeedbackRequest,
   FeedbackDedup,
+  FeedbackEndpointsResponse,
+  FeedbackEndpointView,
   FeedbackKind,
   FeedbackListResponse,
   FeedbackPhase,

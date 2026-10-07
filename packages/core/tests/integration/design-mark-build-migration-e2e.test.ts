@@ -1,5 +1,5 @@
 /**
- * Migration 0434, run by drizzle's own migrator over the rows a design approval left: the merged mark
+ * Migration 0435, run by drizzle's own migrator over the rows a design approval left: the merged mark
  * it wrote on an issue linked as the build of a workflow is cleared, with a notice saying why; a design
  * issue's mark, another writer's mark and a released issue's mark stay; and a row whose mark it cannot
  * attribute aborts the deploy naming it.
@@ -13,7 +13,7 @@ import {
   type MigrationGround,
 } from '../helpers/migration-ground.js';
 
-const TAG = '0434_a_design_approval_does_not_land_a_build';
+const TAG = '0435_a_design_approval_does_not_land_a_build';
 const STAMP = new Date('2026-10-07T02:12:37.455Z');
 
 let ground: MigrationGround;

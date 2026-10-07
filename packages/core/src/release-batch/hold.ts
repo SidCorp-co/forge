@@ -36,16 +36,10 @@ function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
 
-/** A runner's next try or quarantine end to the minute: its milliseconds move each heartbeat while the hold stands. */
-function withoutResetDrift(text: string): string {
-  return text.replace(
-    /(is held until its next try at|is quarantined until) (\d{4}-\d{2}-\d{2}T\d{2}:\d{2})[\d:.]*Z/g,
-    '$1 $2Z',
-  );
-}
-
+// a runner's next try or quarantine end is written to the minute (`blocker-sentences.ts:atUtcMinute`),
+// so its milliseconds moving each heartbeat while the hold stands never reach the words compared here
 function comparable(text: string): string {
-  return withoutResetDrift(withoutReadingTimes(text));
+  return withoutReadingTimes(text);
 }
 
 /** Whether two holds say the same thing; `heldAt` is when it was written, never what it says. */
