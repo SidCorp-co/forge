@@ -39,7 +39,7 @@ const SETTLES: Readonly<
   },
   SHIPPED_EARLIER_NO_COMMIT: {
     reason:
-      "Its mark names no commit, and a connected box can only place a named commit, so no box settles it. Once this project's repository can be read through a source host binding, the next sweep places it by the commits declaring it; or, once its mark names the commit that landed it (`unmark`, then `forge_issues` `action=mark` with `commit=<sha>`), the next sweep asks which release holds that commit and, where one does, closes it against that release with nobody acting.",
+      "Its mark names no commit, so only the commits declaring it can place it, and only a source host reads those. Once this project's repository can be read through a source host binding, the next sweep places it by the commits declaring it; or, once its mark names the commit that landed it (`unmark`, then `forge_issues` `action=mark` with `commit=<sha>`), the next sweep asks which release holds that commit and, where one does, closes it against that release with nobody acting.",
     waitingFor:
       "a source host binding this project's repository can be read through, or its mark naming the commit that landed it (`unmark`, then mark again with `commit=<sha>`)",
   },
