@@ -58,6 +58,7 @@ pub struct Args {
 }
 
 /// What `top --help` says of the keys, under its options (judge w10).
+#[cfg(unix)]
 pub const KEYS_HELP: &str = "\
 Keys, on a terminal whose stdin is the terminal:
   ↑ ↓ or j k move the selection in the table
@@ -69,6 +70,16 @@ Keys, on a terminal whose stdin is the terminal:
   q quits
 Ctrl-C and Ctrl-\\ end the view and Ctrl-Z stops it until `fg`; each gives the
 terminal back the modes it had.";
+
+/// What `top --help` says of the keys where none is read: the view reads
+/// keys on a unix terminal alone, and Windows has no signal for Ctrl-\\ or
+/// Ctrl-Z, so the help says what each does there rather than what it does
+/// on unix (judge w10, finding 3).
+#[cfg(not(unix))]
+pub const KEYS_HELP: &str = "\
+Keys are read on a unix terminal only. On Windows the view reads no key and
+redraws every interval. Ctrl-C ends the view; Ctrl-\\ and Ctrl-Z do nothing,
+as Windows has no signal for either.";
 
 /// What the refusal of a bad `--interval` says. clap's own range message is
 /// Rust's `1..=3600`, which is not a sentence an operator reads as a range
@@ -156,15 +167,16 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                         carry = back;
                         break s;
                     }
-                    heard = interrupt.heard() => {
-                        if heard == Heard::End {
-                            return ended();
+                    heard = interrupt.heard() => match heard {
+                        Heard::End => return ended(),
+                        #[cfg(unix)]
+                        Heard::Stop => {
+                            stopped(&mut keys)?;
+                            if let Some(s) = last.as_ref() {
+                                draw(s, &mut view, &keys)?;
+                            }
                         }
-                        stopped(&mut keys)?;
-                        if let Some(s) = last.as_ref() {
-                            draw(s, &mut view, &keys)?;
-                        }
-                    }
+                    },
                     key = next_key(&mut keys) => {
                         let Some(s) = last.as_ref() else {
                             if key.is_none() {
@@ -195,14 +207,15 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         loop {
             let key = tokio::select! {
                 _ = tokio::time::sleep_until(due) => break,
-                heard = interrupt.heard() => {
-                    if heard == Heard::End {
-                        return ended();
+                heard = interrupt.heard() => match heard {
+                    Heard::End => return ended(),
+                    #[cfg(unix)]
+                    Heard::Stop => {
+                        stopped(&mut keys)?;
+                        draw(&snapshot, &mut view, &keys)?;
+                        continue;
                     }
-                    stopped(&mut keys)?;
-                    draw(&snapshot, &mut view, &keys)?;
-                    continue;
-                }
+                },
                 key = next_key(&mut keys) => key,
             };
             match answered(key, &snapshot, &mut view, &mut keys) {
@@ -323,6 +336,7 @@ fn ended() -> anyhow::Result<()> {
 /// Ctrl-Z: the terminal is given back the modes it had, the view stops as a
 /// stopped job does, and once continued it takes the input again. The
 /// listener has replaced SIGTSTP's own stop, so the view stops itself.
+#[cfg(unix)]
 fn stopped(keys: &mut Result<keys::Keys, String>) -> anyhow::Result<()> {
     if let Ok(k) = keys.as_mut() {
         k.suspend();
@@ -332,7 +346,6 @@ fn stopped(keys: &mut Result<keys::Keys, String>) -> anyhow::Result<()> {
         write!(out, "\r\n")?;
         out.flush()?;
     }
-    #[cfg(unix)]
     // SAFETY: raise on this process, with a signal that has no handler.
     unsafe {
         libc::raise(libc::SIGSTOP);
@@ -352,7 +365,9 @@ fn stopped(keys: &mut Result<keys::Keys, String>) -> anyhow::Result<()> {
 enum Heard {
     /// Ctrl-C, Ctrl-\\ or SIGTERM: the view ends.
     End,
-    /// Ctrl-Z: the view stops until it is continued.
+    /// Ctrl-Z: the view stops until it is continued. Unix alone: Windows
+    /// has no stop signal, and its view says Ctrl-Z does nothing there.
+    #[cfg(unix)]
     Stop,
 }
 
@@ -416,6 +431,39 @@ mod tests {
     struct Top {
         #[command(flatten)]
         args: Args,
+    }
+
+    fn said(text: &str) -> String {
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// ISS-1341 finding (3) where no key is read: `--help`, and the footer
+    /// that stands in for the keys, say what Ctrl-C, Ctrl-\\ and Ctrl-Z do
+    /// on Windows, never what they do on unix.
+    #[cfg(not(unix))]
+    #[test]
+    fn off_unix_the_terminal_keys_are_said_as_they_act_here() {
+        for text in [said(KEYS_HELP), said(keys::NOT_READ)] {
+            assert!(text.contains("Ctrl-C ends the view"), "{text}");
+            assert!(
+                text.contains("Ctrl-\\ and Ctrl-Z do nothing, as Windows has no signal for either"),
+                "{text}"
+            );
+            assert!(!text.contains("Ctrl-Z stops"), "{text}");
+            assert!(!text.contains("`fg`"), "{text}");
+        }
+        assert!(said(KEYS_HELP).contains("reads no key"), "{KEYS_HELP}");
+    }
+
+    /// The same finding on unix, where the keys are read: Ctrl-\\ ends the
+    /// view and Ctrl-Z stops it, which the binary proves in `box_view`.
+    #[cfg(unix)]
+    #[test]
+    fn on_unix_the_terminal_keys_are_said_as_they_act_here() {
+        let text = said(KEYS_HELP);
+        assert!(text.contains("Ctrl-C and Ctrl-\\ end the view"), "{text}");
+        assert!(text.contains("Ctrl-Z stops it until `fg`"), "{text}");
+        assert!(!text.contains("do nothing"), "{text}");
     }
 
     fn parsed(given: &[&str]) -> Result<u64, String> {
