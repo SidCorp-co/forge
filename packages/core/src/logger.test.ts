@@ -305,13 +305,28 @@ describe("the core logger's child bindings", () => {
     }
   });
 
-  it('withhold a driver message bound beside the error that names its value, which no catalog names', () => {
+  it.each([
+    ['bound on a child', (log: Logger, pg: Error) => log.child({ error: pg, reason: pg.message })],
+    [
+      'rebound with setBindings',
+      (log: Logger, pg: Error) => {
+        const rebound = log.child({ requestId: 'r1' });
+        rebound.setBindings({ error: pg, reason: pg.message });
+        return rebound;
+      },
+    ],
+    [
+      "prefixed to a child's every message",
+      (log: Logger, pg: Error) => log.child({ error: pg }, { msgPrefix: `${pg.message}: ` }),
+    ],
+  ])('withhold a driver message %s beside the error that names its value', (_, make) => {
     const pg = refusal('relation "zq" does not exist', { code: '42P01' }, ['zq']);
     const { lines, log } = capture();
-    log.child({ error: pg, reason: pg.message }).warn('bound');
+    make(log, pg).warn('bound');
     expect(lines).toHaveLength(1);
-    expect(lines[0]).not.toMatch(/"zq"/);
-    expect(lines[0]).toContain('42P01');
+    const line = JSON.parse(lines[0] ?? '');
+    expect(JSON.stringify([line.reason, line.msg])).not.toContain('zq');
+    expect(line.error.sqlstate).toBe('42P01');
   });
 });
 
