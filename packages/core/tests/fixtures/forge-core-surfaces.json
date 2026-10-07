@@ -2,9 +2,7 @@
   "rules": [
     {
       "surface": "data",
-      "paths": [
-        "packages/core/drizzle/**"
-      ]
+      "paths": ["packages/core/drizzle/**"]
     },
     {
       "surface": "api",
@@ -16,15 +14,11 @@
     },
     {
       "surface": "ui",
-      "paths": [
-        "packages/web-v2/**"
-      ]
+      "paths": ["packages/web-v2/**"]
     },
     {
       "surface": "runner",
-      "paths": [
-        "packages/runner/**"
-      ]
+      "paths": ["packages/runner/**"]
     },
     {
       "surface": "config",
@@ -42,10 +36,7 @@
     },
     {
       "surface": "logic",
-      "paths": [
-        "packages/core/src/**",
-        "packages/observability/**"
-      ]
+      "paths": ["packages/core/src/**", "packages/observability/**"]
     }
   ],
   "ignore": [
