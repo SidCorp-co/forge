@@ -177,6 +177,12 @@ impl ClaudeCodeRunner {
         })
     }
 
+    /// Whether this runner holds a session under `id` at all, resident or closed. A session it
+    /// does not hold is one it can say nothing about, which is not the same as one that ended.
+    pub async fn holds(&self, id: &SessionId) -> bool {
+        self.sessions.lock().await.contains_key(id)
+    }
+
     pub async fn send_resident(
         &self,
         id: &SessionId,
