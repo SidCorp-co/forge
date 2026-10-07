@@ -1,1 +1,0 @@
-**Each person picks the interface language.** Account preferences offer Project default, English or Tiếng Việt; the Dashboard, navigation, lists, status labels and forecast lines follow it, with dates and times in the same language.

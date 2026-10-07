@@ -5,19 +5,14 @@
 // row reads core's standing (`requirements/standing.ts`); nothing here derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
-import {
-  REQUIREMENT_ATTENTION_GROUPS,
-  REQUIREMENT_ATTENTION_LABELS,
-  REQUIREMENT_STATE_LABELS,
-  REQUIREMENT_STATE_TONES,
-  REQUIREMENT_STATES,
-} from "@forge/contracts/requirements";
+import { REQUIREMENT_ATTENTION_GROUPS, REQUIREMENT_ATTENTION_LABELS, REQUIREMENT_STATE_TONES, REQUIREMENT_STATES } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { AcceptStep, ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, sortGroupsBy, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { formatAge, formatStamp } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { acceptConsequence, PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
 import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecision } from "@/features/suggestions/hooks";
@@ -32,7 +27,8 @@ import type { RequirementSummary } from "../types";
 import { RequirementPeek } from "./requirement-peek";
 import { revisionText } from "./standing-bits";
 
-function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
+export function CreateRequirementForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
+  const t = useCopy();
   const create = useCreateRequirement(projectId);
   const [title, setTitle] = useState("");
   const [reason, setReason] = useState("");
@@ -53,77 +49,87 @@ function CreateForm({ projectId, onDone }: { projectId: string; onDone: (key: st
         );
       }}
     >
-      <Field label="Title" required>
+      <Field label={t("requirements.form.title")} required>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
-      <Field label="Reason" hint="Why this requirement is being written">
+      <Field label={t("requirements.form.reason")} hint={t("requirements.form.reasonHint")}>
         <Input value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
-      <Field label="Criteria" hint="One criterion per line">
+      <Field label={t("requirements.form.criteria")} hint={t("requirements.form.criteriaHint")}>
         <Textarea value={criteria} onChange={(e) => setCriteria(e.target.value)} rows={4} />
       </Field>
       <RefusalLine error={create.error} />
       <div className="flex gap-2">
         <Button type="submit" variant="primary" size="sm" loading={create.isPending} disabled={!title.trim()}>
-          Create requirement
+          {t("requirements.form.create")}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")}>
-          Cancel
+          {t("common.cancel")}
         </Button>
       </div>
     </form>
   );
 }
 
-const GROUP_MODES = [
-  { value: "attention" as const, label: "Attention", title: "Grouped by whose turn it is" },
-  { value: "status" as const, label: "Status", title: "Grouped by lifecycle state" },
+/** The grouping modes in the interface language; the URL carries only their values. */
+const modesIn = (t: Copy) => [
+  { value: "attention" as const, label: t("requirements.mode.attention"), title: t("requirements.mode.attentionTitle") },
+  { value: "status" as const, label: t("requirements.mode.status"), title: t("requirements.mode.statusTitle") },
 ];
-type GroupMode = (typeof GROUP_MODES)[number]["value"];
+type GroupMode = ReturnType<typeof modesIn>[number]["value"];
 
-function groupsOf(rows: RequirementSummary[], mode: GroupMode): ListGroup<RequirementSummary>[] {
+type Label = ReturnType<typeof useLabel>;
+
+function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label): ListGroup<RequirementSummary>[] {
   if (mode === "status") {
     return REQUIREMENT_STATES.map((s) => ({
       id: `status:${s}`,
-      label: REQUIREMENT_STATE_LABELS[s],
+      label: label("requirementState", s),
       tone: REQUIREMENT_STATE_TONES[s],
       collapsed: s === "accepted" || s === "dropped",
       rows: rows.filter((r) => r.standing.state === s),
     }));
   }
-  return REQUIREMENT_ATTENTION_GROUPS.map((g) => ({
-    id: g,
-    ...REQUIREMENT_ATTENTION_LABELS[g],
-    rows: rows.filter((r) => r.standing.attentionGroup === g),
-  }));
+  return REQUIREMENT_ATTENTION_GROUPS.map((g) => {
+    const own = REQUIREMENT_ATTENTION_LABELS[g];
+    return {
+      id: g,
+      ...own,
+      label: label("requirementAttention", g),
+      hint: own.hint ? label("requirementAttentionHint", g) : own.hint,
+      rows: rows.filter((r) => r.standing.attentionGroup === g),
+    };
+  });
 }
 
 /** The secondary line: revision, coverage, issues — label-first counts. */
-function factsLine(r: RequirementSummary): string[] {
+function factsLine(t: Copy, r: RequirementSummary): string[] {
   const f = r.standing.facts;
-  const parts = [revisionText(r.currentRevision, r.standing)];
-  if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? `Criteria ${f.criteria}` : "No criteria");
-  else parts.push(`Passing ${f.passing}/${f.criteria}`);
-  parts.push(f.issuesTotal === 0 ? "Not broken down" : `Issues done ${f.issuesDone}/${f.issuesTotal}`);
+  const parts = [revisionText(t, r.currentRevision, r.standing)];
+  if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? t("requirements.row.criteria", { n: f.criteria }) : t("requirements.row.noCriteria"));
+  else parts.push(t("requirements.row.passing", { a: f.passing, b: f.criteria }));
+  parts.push(f.issuesTotal === 0 ? t("requirements.row.notBrokenDown") : t("requirements.row.issuesDone", { a: f.issuesDone, b: f.issuesTotal }));
   return parts;
 }
 
+type TimeFormat = ReturnType<typeof useTimeFormat>;
+
 const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: TimeFormat) =>
   (r: RequirementSummary): ListRowView => ({
     key: r.key,
     href: requirementHref(slug, r.key),
     title: r.title,
-    facts: factsLine(r),
+    facts: factsLine(t, r),
     eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,
     state: <StatusBadge family="requirement" value={r.standing.state} />,
     waitingOn: <WaitingOn w={r.standing.waitingOn} />,
     owner: r.standing.owner ? (
-      <ActorChip name={r.standing.owner.name ?? "Unknown"} kind={r.standing.owner.kind} size={20} />
+      <ActorChip name={r.standing.owner.name ?? t("requirements.unknown")} kind={r.standing.owner.kind} size={20} />
     ) : (
-      <span className="text-subtle">No owner</span>
+      <span className="text-subtle">{t("requirements.noOwner")}</span>
     ),
-    age: { text: formatAge(r.standing.touchedAt), title: `Last touched ${formatStamp(r.standing.touchedAt)}` },
+    age: { text: time.relative(r.standing.touchedAt, clock.now), title: t("requirements.row.lastTouched", { at: time.dateTime(r.standing.touchedAt) }) },
     dim: r.standing.attentionGroup === "done",
   });
 
@@ -136,6 +142,7 @@ function AssistantStrip({
   rows: RequirementSummary[];
   onPeek: (key: string) => void;
 }) {
+  const t = useCopy();
   const q = useProjectWaitingSuggestions(projectId);
   const byId = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows]);
   const open = (q.data?.suggestions ?? []).filter((s) => s.target.type === "requirement" && byId.has(s.target.id));
@@ -144,14 +151,14 @@ function AssistantStrip({
     <section
       className="border-l-[3px] py-2 pl-[17px] pr-5 text-12-5"
       style={{ background: AGENT_TINT.bg, borderColor: AGENT_TINT.dot }}
-      aria-label="BA assistant suggestions"
+      aria-label={t("requirements.assistant.label")}
       data-testid="assistant-strip"
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-semibold" style={{ color: AGENT_TINT.fg }}>
-          BA assistant
+          {t("requirements.assistant.name")}
         </span>
-        <span className="text-subtle">Suggestions {open.length} · never applied on its own</span>
+        <span className="text-subtle">{t("requirements.assistant.count", { n: open.length })}</span>
       </div>
       {open.map((s) => {
         const r = byId.get(s.target.id) as RequirementSummary;
@@ -162,26 +169,28 @@ function AssistantStrip({
 }
 
 function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSummary; projectId: string; onPeek: (k: string) => void }) {
+  const t = useCopy();
+  const lang = useInterfaceLanguage();
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, r.key));
   const [accepting, setAccepting] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2 py-[3px]" data-testid="assistant-strip-row">
       <span className="font-mono text-11-5 font-semibold text-link">{r.key}</span>
       <StatusBadge family="requirement" value={r.standing.state} />
-      <span className="min-w-0 truncate">{summaryOf(s)}</span>
+      <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />
       <PendingBadge />
       <Button type="button" size="sm" disabled={decide.isPending} onClick={() => setAccepting((v) => !v)} aria-expanded={accepting}>
-        Accept
+        {t("requirements.assistant.accept")}
       </Button>
       <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>
-        Review
+        {t("requirements.assistant.review")}
       </Button>
       {accepting ? (
         <div className="basis-full">
           <AcceptStep
-            confirmLabel="Accept"
-            consequence={acceptConsequence(s)}
+            confirmLabel={t("requirements.assistant.accept")}
+            consequence={acceptConsequence(s, lang)}
             loading={decide.isPending}
             onCancel={() => setAccepting(false)}
             onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setAccepting(false) })}
@@ -198,10 +207,14 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
 }
 
 export function RequirementsScreen({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const time = useTimeFormat();
+  const modes = useMemo(() => modesIn(t), [t]);
   const q = useRequirements(projectId);
   const router = useRouter();
   const [params, setParams] = useUrlParams();
-  const [mode, setMode] = useViewMode(GROUP_MODES);
+  const [mode, setMode] = useViewMode(modes);
   const text = params.get("q") ?? "";
   const [creating, setCreating] = useState(false);
   const fold = useGroupFold("web-v2:requirements-fold");
@@ -217,13 +230,13 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => etaOfScope(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {
-    const plain = groupsOf(rows, mode);
+    const plain = groupsOf(rows, mode, label);
     return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, mode, etaSorted, etaOf]);
+  }, [rows, mode, etaSorted, etaOf, label]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);
-  const row = useMemo(() => rowOf(slug, etaOf, clock), [slug, etaOf, clock]);
+  const row = useMemo(() => rowOf(slug, etaOf, clock, t, time), [slug, etaOf, clock, t, time]);
 
   const openFull = useCallback(
     (key: string) => {
@@ -236,21 +249,21 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
 
   const title = (
     <>
-      <PageTitle after={<ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="header" />}>Requirements</PageTitle>
+      <PageTitle after={<ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="header" />}>{t("requirements.title")}</PageTitle>
       <TopBarActions>
         <Button type="button" variant="primary" size="sm" icon="plus" onClick={() => setCreating(true)} disabled={creating}>
-          Requirement
+          {t("requirements.new")}
         </Button>
       </TopBarActions>
     </>
   );
   return (
-    <QueryBoundary query={q} loadingLabel="loading requirements…" title={title} height="60vh" retry="always">
+    <QueryBoundary query={q} loadingLabel={t("requirements.loadingList")} title={title} height="60vh" retry="always">
       {() => (
         <div className="grid min-h-full content-start bg-app" data-testid="requirements-screen">
           {title}
           {creating ? (
-            <CreateForm
+            <CreateRequirementForm
               projectId={projectId}
               onDone={(key) => {
                 setCreating(false);
@@ -261,24 +274,24 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-                <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
-                <ListSearch noun="requirements" value={text} onChange={(q) => setParams({ q: q || null })} />
+                <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
+                <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(q) => setParams({ q: q || null })} />
               </div>
               <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
               {all.length === 0 ? (
                 <div className="px-5 py-10">
-                  <EmptyState title="No requirement has been written" message="A requirement says what is wanted and how anyone can tell it is done." />
+                  <EmptyState title={t("requirements.emptyTitle")} message={t("requirements.emptyMessage")} />
                 </div>
               ) : (
                 <GroupedList
-                  ariaLabel="Requirements"
+                  ariaLabel={t("requirements.title")}
                   groups={groups}
                   fold={fold}
                   row={row}
                   eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                   selected={peek.open}
                   onPeek={(k) => peek.set(k === peek.open ? null : k)}
-                  empty="Nothing matches this search."
+                  empty={t("requirements.noMatch")}
                 />
               )}
             </div>

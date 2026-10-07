@@ -10,6 +10,7 @@ import {
   connectionUpdateSchema,
   createConnection,
   defaultConnectionDisplayName,
+  effectiveConfig,
   findConnectionById,
   type IntegrationConnectionRow,
   listBindingsByConnectionIds,
@@ -18,6 +19,7 @@ import {
   notFound,
   notifyConnectionChanged,
   raceWithTimeout,
+  reportedBindingIdentities,
   softDeleteConnection,
   summarizeBinding,
   summarizeConnection,
@@ -68,9 +70,19 @@ integrationConnectionsRoutes.get('/', async (c) => {
   );
   const environmentOf = (b: { id: string; projectId: string }) =>
     deployMaps.get(b.projectId)?.environments.get(b.id)?.name ?? null;
+  const reported = await reportedBindingIdentities(
+    rows.flatMap((connection) =>
+      (bindings.get(connection.id) ?? []).map((binding) => ({
+        id: binding.id,
+        provider: binding.provider,
+        config: effectiveConfig({ binding, connection }),
+        connection,
+      })),
+    ),
+  );
   return c.json({
     items: rows.map((r) =>
-      summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [], environmentOf),
+      summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [], environmentOf, reported),
     ),
   });
 });

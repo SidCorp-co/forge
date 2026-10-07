@@ -1,5 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import type { QueryKey } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
 import { FeedbackBanner, FeedbackFacts } from "@/features/feedback/components/feedback-facts";
 import { FeedbackHistory } from "@/features/feedback/components/feedback-detail";
@@ -11,6 +11,7 @@ import { RetargetEditor } from "@/features/feedback/components/feedback-retarget
 import { FeedbackScreen } from "@/features/feedback/components/feedback-screen";
 import { AcceptForm, DeclineForm, DuplicateForm, SnoozeForm } from "@/features/feedback/components/feedback-verbs";
 import type { FeedbackSummary, FeedbackView } from "@/features/feedback/types";
+import { Seeded as SeededQueries } from "./vi-chrome-requirements";
 
 // The Feedback screens for the vi walking test, filled from a seeded query cache so they draw at once.
 // Fixture content (titles, names, bodies) carries no English chrome word; core's sentences (whom an item
@@ -96,20 +97,17 @@ const SUGGESTIONS = {
   ],
 };
 
-function Seeded({ children }: { children: ReactNode }) {
-  const [client] = useState(() => {
-    const c = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } } });
-    c.setQueryData(["feedback", P], { feedback: ROWS, counts: {}, sensitive: false });
-    c.setQueryData(["feedback-item", P, ITEM.key], { feedback: ITEM });
-    c.setQueryData(feedbackForecastKey(P), { projectId: P, items: [] });
-    c.setQueryData(["suggestions", P, { feedback: ITEM.id }], SUGGESTIONS);
-    c.setQueryData(["mockups", P, "feedback", ITEM.key], { mockups: [], returned: 0 });
-    c.setQueryData(["feedback-choices", P, "requirement"], [{ key: "REQ-1", title: "Dang nhap" }]);
-    c.setQueryData(["projects"], [{ id: P, role: "admin" }]);
-    return c;
-  });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-}
+const SEED: [QueryKey, unknown][] = [
+  [["feedback", P], { feedback: ROWS, counts: {}, sensitive: false }],
+  [["feedback-item", P, ITEM.key], { feedback: ITEM }],
+  [feedbackForecastKey(P), { projectId: P, items: [] }],
+  [["suggestions", P, { feedback: ITEM.id }], SUGGESTIONS],
+  [["mockups", P, "feedback", ITEM.key], { mockups: [], returned: 0 }],
+  [["feedback-choices", P, "requirement"], [{ key: "REQ-1", title: "Dang nhap" }]],
+  [["projects"], [{ id: P, role: "admin" }]],
+];
+
+const Seeded = ({ children }: { children: ReactNode }) => <SeededQueries data={SEED}>{children}</SeededQueries>;
 
 const peek = { open: ITEM.key, position: { at: 2, of: 7 }, set: () => {}, move: () => {} };
 

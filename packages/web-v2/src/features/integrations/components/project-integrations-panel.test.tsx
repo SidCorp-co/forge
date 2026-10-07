@@ -72,7 +72,22 @@ describe("ProjectIntegrationsPanel", () => {
     expect(within(row).getAllByText("Not connected").length).toBeGreaterThan(0);
     expect(within(row).queryByText("Connected")).toBeNull();
     expect(within(row).getAllByText(/cannot tell what already shipped/).length).toBeGreaterThan(0);
-    expect(within(row).getByRole("button", { name: "Connect GitHub to reach github.com/SidCorp-co/forge" })).toBeTruthy();
+    const link = within(row).getByRole("link", { name: "Connect GitHub on its row below to reach github.com/SidCorp-co/forge" });
+    expect(link.getAttribute("href")).toBe("#integration-github");
+  });
+
+  it("offers connecting GitHub in one place only: the GitHub row owns the act, the repository row links to it", async () => {
+    serve([UNREACHED_REPOSITORY, GITHUB_OPEN]);
+    renderWithQuery(<ProjectIntegrationsPanel projectId="p1" />);
+    const repository = (await screen.findAllByText("Repository"))[0]?.closest("tr") as HTMLElement;
+    expect(within(repository).queryAllByRole("button")).toEqual([]);
+    const connects = screen.getAllByRole("button", { name: /^Connect GitHub/ });
+    expect(connects).toHaveLength(1);
+    const owner = connects[0]?.closest("tr") as HTMLElement;
+    expect(owner.id).toBe("integration-github");
+    expect(owner.querySelector("[data-tour=int-connect]")).not.toBeNull();
+    await userEvent.click(within(repository).getByRole("link", { name: /^Connect GitHub on its row below/ }));
+    expect(document.activeElement).toBe(connects[0]);
   });
 
   it("offers the GitHub connect act on a github.com project, and it opens the GitHub drawer", async () => {

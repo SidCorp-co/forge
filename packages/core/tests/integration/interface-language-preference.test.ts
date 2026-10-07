@@ -4,6 +4,7 @@
  * refused by name with nothing written. Against real Postgres, through the route and the column.
  */
 
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -55,5 +56,42 @@ describe('the interface language preference', () => {
       .execute(sql`UPDATE user_preferences SET language = 'fr' WHERE user_id = ${userId}`)
       .catch((e: unknown) => e);
     expect(pgConstraintName(err)).toBe('user_preferences_language_chk');
+  });
+});
+
+/**
+ * Migration 0442 against a table that holds a row, which a throwaway database never has: the reset
+ * to null ran before NOT NULL was dropped and was refused on forge-dev, so core never started (the
+ * dev.103 deploy). Replayed on the pre-0442 shape inside a transaction that is rolled back.
+ */
+describe('migration 0442 on a table that holds a row', () => {
+  const statements = readFileSync(
+    new URL(
+      '../../drizzle/migrations/0442_each_person_picks_the_interface_language.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  ).split('--> statement-breakpoint');
+  const replayed = Symbol('replayed');
+
+  it("resets a stored 'en' to null instead of refusing the row", async () => {
+    await patch({ theme: 'dark' });
+    const outcome = await db
+      .transaction(async (tx) => {
+        await tx.execute(
+          sql`ALTER TABLE user_preferences DROP CONSTRAINT user_preferences_language_chk`,
+        );
+        await tx.execute(sql`UPDATE user_preferences SET language = 'en'`);
+        await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET NOT NULL`);
+        await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET DEFAULT 'en'`);
+        for (const statement of statements) await tx.execute(sql.raw(statement));
+        const rows = await tx.execute(
+          sql`SELECT language FROM user_preferences WHERE user_id = ${userId}`,
+        );
+        expect(rows[0]?.language).toBeNull();
+        throw replayed;
+      })
+      .catch((e: unknown) => e);
+    expect(outcome).toBe(replayed);
   });
 });

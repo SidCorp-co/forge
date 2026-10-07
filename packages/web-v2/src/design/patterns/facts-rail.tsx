@@ -128,7 +128,7 @@ export function StepBar({ steps, caption }: { steps: readonly StepView[]; captio
     <div data-testid="step-bar">
       <ol className="flex gap-[3px]" aria-label={t("common.lifecycle")}>
         {steps.map((s) => (
-          <li key={s.key} className="min-w-0 flex-1" aria-current={s.state === "now" ? "step" : undefined} title={`${s.label} · ${t(s.state === "done" ? "common.step.done" : s.state === "now" ? "common.step.now" : "common.step.next")}`}>
+          <li key={s.key} className="min-w-0 flex-1" aria-current={s.state === "now" ? "step" : undefined} title={t(s.state === "done" ? "common.stepDone" : s.state === "now" ? "common.stepNow" : "common.stepNext", { label: s.label })}>
             <span
               aria-hidden
               className="block h-1.5 rounded-pill"

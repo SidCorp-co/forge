@@ -16,8 +16,8 @@ export function ListSearch({ noun, value, onChange }: ListSearchProps) {
       <Icon name="search" size={14} />
       <input
         type="search"
-        aria-label={t("common.search", { noun })}
-        placeholder={t("common.searchPlaceholder", { noun })}
+        aria-label={t("common.searchNounLabel", { noun })}
+        placeholder={t("common.searchNoun", { noun })}
         defaultValue={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-full min-w-0 border-0 bg-transparent text-fg outline-none"

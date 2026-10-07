@@ -84,7 +84,7 @@ export function FeedbackPicker({
               <span className="font-mono text-12 text-muted">{f.key}</span>
               <span className="truncate">{f.title}</span>
               <Combobox.ChipRemove
-                aria-label={t("feedback.picker.clear", { key: f.key })}
+                aria-label={t("feedback.picker.remove", { key: f.key })}
                 className="flex size-5 flex-none items-center justify-center rounded-sm text-subtle hover:bg-hover hover:text-fg"
               >
                 <Icon name="x" size={12} />

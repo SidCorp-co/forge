@@ -13,10 +13,13 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
-  "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "accept", "reopen", "severity", "carried by", "sent",
-  "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered", "confirm",
-  "what happened", "promote", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of", "original",
-  "until", "subject", "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send", "reject", "suggested",
+  "criteria", "proposal", "owner", "coverage", "summary", "scope", "accept", "reject", "defer", "drop", "created", "updated",
+  "suggestions", "activity", "evidence", "persona", "wording", "assistant", "pending", "promote", "retry", "step", "ago",
+  "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "reopen", "severity", "carried by", "sent",
+  "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered",
+  "confirm", "what happened", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of",
+  "original", "until", "subject", "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send",
+  "suggested",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -37,7 +40,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      if (new RegExp(`[^\\p{L}]${w.trim()}[^\\p{L}]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`) is an identifier the tooltip names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_]${w.trim()}[^\\p{L}_]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

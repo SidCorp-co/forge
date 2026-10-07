@@ -71,7 +71,7 @@ export function DetailHeader({ back, itemKey, title, badge, action, keyTitle, tr
               {back.label}
             </Link>
             {trail?.length ? (
-              <nav aria-label="Ancestors" className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
+              <nav aria-label={t("common.ancestors")} className="flex min-w-0 flex-none items-center gap-1.5 text-13 max-md:hidden" data-testid="detail-trail">
                 {trail.map((t) => (
                   <span key={t.href} className="flex items-center gap-1.5">
                     <span aria-hidden className="text-subtle">

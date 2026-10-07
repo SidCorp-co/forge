@@ -36,8 +36,8 @@ export function AcceptStep({ confirmLabel, consequence, loading = false, onConfi
       {consequence ? <p className="text-12 text-muted">{consequence}</p> : null}
       <span className="flex flex-wrap items-center gap-2">
         <Input
-          aria-label={t("common.acceptWhy")}
-          placeholder={t("common.acceptWhyPlaceholder")}
+          aria-label={t("common.acceptWhyLabel")}
+          placeholder={t("common.acceptWhy")}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           className="min-w-[16rem] flex-1"
