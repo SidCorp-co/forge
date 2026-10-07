@@ -511,13 +511,18 @@ impl Ledger {
         Ok(())
     }
 
+    /// Bind open run `run_id` to subagent `agent_id`, which answers to no
+    /// other open run. A run it answered to that has ended does not stop it:
+    /// a master resumes a subagent it already ran for the next declaration,
+    /// and that resume is the subagent taking the new run (ISS-1378).
     pub fn bind_agent(&self, run_id: &str, agent_id: &str) -> Result<bool> {
         let n = self
             .conn
             .execute(
                 "UPDATE runs SET agent_id = ?2
-                  WHERE run_id = ?1 AND agent_id IS NULL
-                    AND NOT EXISTS (SELECT 1 FROM runs o WHERE o.agent_id = ?2)",
+                  WHERE run_id = ?1 AND agent_id IS NULL AND ended_by IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM runs o
+                                     WHERE o.agent_id = ?2 AND o.ended_by IS NULL)",
                 params![run_id, agent_id],
             )
             .map_err(sql_err)?;

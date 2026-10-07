@@ -71,6 +71,11 @@ export const runFactsSchema = z.strictObject({
 	liveMasterInProject: z.boolean(),
 	/** Whether the run was declared under this boot. */
 	thisBoot: z.boolean(),
+	/**
+	 * Whether the boot the run was declared under is known to have ended: the box read its own boot
+	 * and the run's, and they differ. A box that cannot read its boot says false, which ends nothing.
+	 */
+	bootEnded: z.boolean(),
 	/** Whether a subagent bound the declaration with its first hook. */
 	bound: z.boolean(),
 	/** The run's own process: none recorded, alive, or read gone. */
@@ -129,7 +134,7 @@ export const runVerdictRequestSchema = z.strictObject({
 	facts: runFactsSchema,
 });
 export const RUN_VERDICT_SHAPE =
-	"{ projectId: uuid | null, facts: { issueKeys, parkedOnHuman, master, liveMasterInProject, thisBoot, bound, process, ledgerDead, host, hostEnded, ended, declaredAgoMs, checkoutGone, hasSession, activity, sessionOverForMs, subagent, transcript, releaseDecided, releaseRefused, close } } — see @forge/contracts/run-verdict runFactsSchema";
+	"{ projectId: uuid | null, facts: { issueKeys, parkedOnHuman, master, liveMasterInProject, thisBoot, bootEnded, bound, process, ledgerDead, host, hostEnded, ended, declaredAgoMs, checkoutGone, hasSession, activity, sessionOverForMs, subagent, transcript, releaseDecided, releaseRefused, close } } — see @forge/contracts/run-verdict runFactsSchema";
 
 /** Why a run the close loop could not finish this sweep still stands. */
 export const RUN_STANDINGS = [

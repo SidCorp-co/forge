@@ -1450,6 +1450,7 @@ dependencies = [
  "reqwest",
  "runner-platform",
  "serde",
+ "serde_json",
  "sha2",
  "tokio",
  "tracing",

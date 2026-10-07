@@ -45,6 +45,13 @@ pub enum Error {
         code: String,
     },
 
+    /// A checkout refused because a live agent's process is living in it: the
+    /// checkout is that agent's work for as long as it lives, so a release
+    /// retries it rather than deciding it (ISS-1390). Typed so the release can
+    /// tell it from a refusal no retry gets past.
+    #[error("{0}")]
+    AgentInTree(String),
+
     #[error("{0}")]
     Other(String),
 }

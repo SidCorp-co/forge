@@ -89,6 +89,9 @@ pub(crate) fn dispatch_gate_reply(
         }
     };
     let mut memory = ctl.promises.lock().expect("promises poisoned");
+    if let Some(read) = roles.as_ref() {
+        memory.last_roles = Some(read.clone());
+    }
 
     // A tool call this daemon has already answered gets that answer again, whether
     // or not its declaration has since been bound.
@@ -100,7 +103,7 @@ pub(crate) fn dispatch_gate_reply(
 
     let promised = pending
         .as_deref()
-        .and_then(|run| memory.promised.get(run).cloned());
+        .and_then(|run| memory.promised.get(run).map(|p| p.tool_use.clone()));
     let verdict = decide(
         &d,
         &Facts {
@@ -114,7 +117,9 @@ pub(crate) fn dispatch_gate_reply(
         Verdict::Replay { .. } => gate_allows(None),
         Verdict::Covered { run_id } => {
             if let Some(tool_use) = d.tool_use_id.clone() {
-                memory.promised.insert(run_id.clone(), tool_use.clone());
+                memory
+                    .promised
+                    .insert(run_id.clone(), Promise::to(&d, tool_use.clone()));
                 memory.allowed.insert(tool_use);
             }
             tracing::info!("[control] run {run_id} is promised to this dispatch");
@@ -132,26 +137,12 @@ pub(crate) fn dispatch_gate_reply(
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
                 return refused;
             }
-            // Failing open for a run declared before the drain admits nothing
-            // new only while that run is spent once, so while draining the
-            // promise is recorded the way `Covered` records it, and a second
-            // tool call against the same run is refused.
-            if let (Some(run), Some(cause)) = (pending.as_deref(), ctl.drain.draining_for()) {
-                // a dispatch carrying no tool call id cannot be limited here: nothing
-                // names it to promise the run to or to tell a second hand-off from a replay, so
-                // that case still fails open once per call, and the drain counts only the one row.
-                if let Some(tool_use) = d.tool_use_id.clone() {
-                    if let Some(spent) = memory.promised.get(run).filter(|t| **t != tool_use) {
-                        tracing::warn!(
-                            "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
-                        );
-                        return ClaimReply::refused(format!(
-                            "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
-                        ));
-                    }
-                    memory.promised.insert(run.to_string(), tool_use.clone());
-                    memory.allowed.insert(tool_use);
-                }
+            if let Some(refused) = promise_while_draining(ctl, &mut memory, &d, pending.as_deref())
+            {
+                return refused;
+            }
+            if roles.is_none() {
+                promise_unread(&mut memory, &d, pending.as_deref());
             }
             if let Some(dir) = dir.as_deref() {
                 // The registry answered here, so the run this dispatch belonged
@@ -177,6 +168,75 @@ pub(crate) fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// Failing open for a run declared before the drain admits nothing new only
+/// while that run is spent once, so while draining the promise is recorded the
+/// way `Covered` records it, and a second tool call against the same run is
+/// refused.
+fn promise_while_draining(
+    ctl: &Arc<Control>,
+    memory: &mut GateMemory,
+    d: &runner_core::dispatch_gate::Dispatch,
+    pending: Option<&str>,
+) -> Option<ClaimReply> {
+    let (Some(run), Some(cause)) = (pending, ctl.drain.draining_for()) else {
+        return None;
+    };
+    // a dispatch carrying no tool call id cannot be limited here: nothing
+    // names it to promise the run to or to tell a second hand-off from a replay, so
+    // that case still fails open once per call, and the drain counts only the one row.
+    let tool_use = d.tool_use_id.clone()?;
+    if let Some(spent) = memory
+        .promised
+        .get(run)
+        .map(|p| p.tool_use.as_str())
+        .filter(|t| *t != tool_use)
+    {
+        tracing::warn!(
+            "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
+        );
+        return Some(ClaimReply::refused(format!(
+            "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
+        )));
+    }
+    memory
+        .promised
+        .insert(run.to_string(), Promise::to(d, tool_use.clone()));
+    memory.allowed.insert(tool_use);
+    None
+}
+
+/// With the inventory unread, the run is promised to this dispatch as
+/// `Covered` promises it, naming its role, so the subagent that starts as that
+/// role binds it rather than being ended at 60m as never bound (ISS-1390). Only
+/// a dispatch that could be the run's takes it: a role the last inventory read
+/// whole names, or, with none ever read, a plugin's namespaced role, which no
+/// built-in helper is; otherwise the first helper sent would take the run.
+fn promise_unread(
+    memory: &mut GateMemory,
+    d: &runner_core::dispatch_gate::Dispatch,
+    pending: Option<&str>,
+) {
+    let eligible =
+        d.subagent_type
+            .as_deref()
+            .is_some_and(|role| match memory.last_roles.as_ref() {
+                Some(known) => runner_core::dispatch_gate::shipped(known, role).is_some(),
+                None => role
+                    .split_once(':')
+                    .is_some_and(|(plugin, name)| !plugin.is_empty() && !name.is_empty()),
+            });
+    let (Some(run), Some(tool_use), true) = (pending, d.tool_use_id.clone(), eligible) else {
+        return;
+    };
+    if memory.promised.contains_key(run) {
+        return;
+    }
+    memory
+        .promised
+        .insert(run.to_string(), Promise::to(d, tool_use.clone()));
+    memory.allowed.insert(tool_use);
 }
 
 /// The gate's answer when this box's registry of declared runs cannot say
@@ -357,7 +417,16 @@ pub(crate) fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
     }
 }
 
-pub(crate) fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Option<&str>) {
+/// A subagent of a shipped role that no declared run takes. `declared` is the
+/// run its master did declare and why this subagent is not that run's, where
+/// there was one: the master then took the step, and the journal says what
+/// did not match rather than that nothing was declared.
+pub(crate) fn undeclared_child(
+    ctl: &Arc<Control>,
+    child: &str,
+    agent_type: Option<&str>,
+    declared: Option<&(String, String)>,
+) {
     let Some(role) = agent_type else {
         tracing::debug!("[control] subagent {child} answers to no declared run");
         return;
@@ -366,16 +435,28 @@ pub(crate) fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Opti
     let ships_it = dir
         .as_deref()
         .and_then(runner_core::dispatch_gate::shipped_roles)
-        .is_some_and(|roles| roles.contains(role));
+        .is_some_and(|roles| runner_core::dispatch_gate::shipped(&roles, role).is_some());
     if !ships_it {
         tracing::debug!("[control] subagent {child} ({role}) answers to no declared run");
         return;
     }
-    let detail = format!("subagent {child} started as `{role}` with nothing declared for it");
+    let (detail, owed) = match declared {
+        None => (
+            format!("subagent {child} started as `{role}` with nothing declared for it"),
+            "The master was required to run `forge-runner run declare` first.".to_string(),
+        ),
+        Some((run_id, why)) => (
+            format!(
+                "subagent {child} started as `{role}`, and the run its master declared, {run_id}, is not its: {why}"
+            ),
+            format!(
+                "The master did declare run {run_id}; it was for another dispatch, and it stays unbound for that one."
+            ),
+        ),
+    };
     tracing::error!(
         "[control] UNDECLARED HAND-OFF: {detail} — this box holds no row for that work, so nothing \
-         will reap it, the load count is short, and those issues will never be offered again. The \
-         master was required to run `forge-runner run declare` first."
+         will reap it, the load count is short, and those issues will never be offered again. {owed}"
     );
     if let Some(dir) = dir.as_deref() {
         runner_core::degraded::mark(
@@ -384,7 +465,10 @@ pub(crate) fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Opti
                 runner_core::degraded::Kind::Undeclared,
                 runner_core::degraded::Source::Daemon,
                 &detail,
-                runner_core::degraded::Run::Unknown("nothing was declared for it"),
+                runner_core::degraded::Run::Unknown(match declared {
+                    None => "nothing was declared for it",
+                    Some(_) => "the one run its master declared was for another dispatch",
+                }),
             )
             .by_child(child, Some(role)),
         );
@@ -412,5 +496,169 @@ pub(crate) fn note_master_pane(
         &ctl.boot_id,
     ) {
         tracing::warn!("[control] cannot record {project_id}'s master pane: {e}");
+    }
+}
+
+/// A master's subagents as Claude Code names them, bound against a plugin copy
+/// as this daemon syncs one (ISS-1378, ported to the split crates).
+#[cfg(test)]
+mod role_tests {
+    use super::*;
+    use runner_core::ledger::{Ledger, NewRun};
+
+    const BOOT: &str = "boot-1";
+    const MASTER: &str = "sess-a";
+
+    /// A box whose one plugin copy, named `forge` by its manifest, ships `roles`.
+    fn a_box(roles: &[&str]) -> (Arc<Control>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("forge-roles-{}", uuid::Uuid::new_v4()));
+        let plugin = dir.join("marketplaces/SidCorp-co__forge-plugin/plugin");
+        std::fs::create_dir_all(plugin.join("agents")).unwrap();
+        std::fs::create_dir_all(plugin.join(".claude-plugin")).unwrap();
+        std::fs::write(
+            plugin.join(".claude-plugin/plugin.json"),
+            r#"{"name": "forge", "version": "1"}"#,
+        )
+        .unwrap();
+        for role in roles {
+            std::fs::write(plugin.join("agents").join(format!("{role}.md")), "---\n").unwrap();
+        }
+        let ledger = Ledger::open(&dir.join("ledger.db")).unwrap();
+        let ctl = Arc::new(Control {
+            tokens: crate::session_tokens::SessionTokens::at(dir.join("tokens.json")),
+            activity: Arc::new(runner_core::agent_activity::Activities::new()),
+            masters: Arc::new(crate::master::Masters::default()),
+            ledger: Arc::new(std::sync::Mutex::new(Some(ledger))),
+            boot_id: BOOT.into(),
+            config_dir: Some(dir.clone()),
+            promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::drain::Drain::new(None)),
+            hosts: Arc::new(runner_platform::subagent_host::ProcHosts::system()),
+            core: None,
+        });
+        (ctl, dir)
+    }
+
+    fn declare(ctl: &Arc<Control>, run_id: &str) {
+        let mut held = ctl.ledger.lock().unwrap();
+        held.as_mut()
+            .unwrap()
+            .create_run_group(NewRun {
+                run_id: run_id.into(),
+                project_id: "proj-1".into(),
+                master_session_id: MASTER.into(),
+                worktree_path: format!("/w/{run_id}").into(),
+                boot_id: BOOT.into(),
+                issue_keys: vec![format!("ISS-{}", run_id.trim_start_matches("run-"))],
+            })
+            .unwrap();
+    }
+
+    fn bound(ctl: &Arc<Control>, run_id: &str) -> Option<String> {
+        let held = ctl.ledger.lock().unwrap();
+        held.as_ref()
+            .unwrap()
+            .run(run_id)
+            .unwrap()
+            .unwrap()
+            .agent_id
+    }
+
+    fn end(ctl: &Arc<Control>, run_id: &str) {
+        let held = ctl.ledger.lock().unwrap();
+        held.as_ref()
+            .unwrap()
+            .end_run(run_id, "master", "done")
+            .unwrap();
+    }
+
+    fn started(ctl: &Arc<Control>, child: &str, role: &str) {
+        bind_declared(ctl, Some(child), Some(role), MASTER, 0, None);
+    }
+
+    fn dispatch(role: &str, tool_use: &str) -> runner_core::dispatch_gate::Dispatch {
+        runner_core::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some(role.into()),
+            tool_use_id: Some(tool_use.into()),
+        }
+    }
+
+    /// Claude Code sends `forge:runner`, and a dispatch to it with nothing
+    /// declared is refused; the bare stem is the same role by the same rule.
+    #[test]
+    fn a_dispatch_to_a_shipped_role_by_its_namespaced_name_is_gated() {
+        let (ctl, dir) = a_box(&["runner", "reviewer"]);
+        for role in ["forge:runner", "runner"] {
+            let reply = dispatch_gate_reply(&ctl, dispatch(role, "toolu_1"), MASTER);
+            assert!(
+                !reply.ok,
+                "`{role}` with nothing declared went through the gate: {reply:?}"
+            );
+        }
+        let helper = dispatch_gate_reply(&ctl, dispatch("Explore", "toolu_2"), MASTER);
+        assert!(helper.ok, "a helper is not the gate's subject");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A helper the master starts before the run's subagent leaves the run
+    /// for the subagent dispatched for it.
+    #[test]
+    fn a_helper_started_first_does_not_take_the_run() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        started(&ctl, "helper-1", "Explore");
+        assert_eq!(bound(&ctl, "run-1"), None, "a helper took the run");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A subagent its master resumes for a new declaration, after the run it
+    /// answered to was closed, binds that declaration.
+    #[test]
+    fn a_resumed_subagent_binds_the_run_its_master_declared_for_it() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        end(&ctl, "run-1");
+        declare(&ctl, "run-2");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(
+            bound(&ctl, "run-2").as_deref(),
+            Some("agent-1"),
+            "the resumed subagent was refused the run its master declared for it"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// With the inventory unread the gate lets a dispatch through and
+    /// promises the run only to one that could be the run's, so the worker
+    /// binds it and a helper sent first does not (ISS-1390).
+    #[test]
+    fn with_no_inventory_the_promised_plugin_role_binds_and_a_helper_does_not() {
+        let (ctl, dir) = a_box(&["runner"]);
+        std::fs::remove_dir_all(dir.join("marketplaces")).unwrap();
+        declare(&ctl, "run-1");
+        assert!(dispatch_gate_reply(&ctl, dispatch("general-purpose", "toolu_h"), MASTER).ok);
+        assert!(dispatch_gate_reply(&ctl, dispatch("forge:runner", "toolu_1"), MASTER).ok);
+        started(&ctl, "helper-1", "general-purpose");
+        assert_eq!(bound(&ctl, "run-1"), None, "a helper took the promise");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-1").as_deref(), Some("agent-1"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A subagent still answering to an open run does not take a second.
+    #[test]
+    fn a_resumed_subagent_still_on_an_open_run_does_not_take_a_second() {
+        let (ctl, dir) = a_box(&["runner"]);
+        declare(&ctl, "run-1");
+        started(&ctl, "agent-1", "forge:runner");
+        declare(&ctl, "run-2");
+        started(&ctl, "agent-1", "forge:runner");
+        assert_eq!(bound(&ctl, "run-2"), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

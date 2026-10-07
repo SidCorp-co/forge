@@ -438,6 +438,101 @@ fn parent_of(proc_root: &Path, pid: u32) -> Option<u32> {
         .and_then(|v| v.trim().parse::<u32>().ok())
 }
 
+/// What the walk up from a resident found above it.
+#[derive(Debug, PartialEq, Eq)]
+enum Above {
+    /// A Claude Code process, by pid: the resident is in a live agent's tree.
+    Agent(u32),
+    /// The top of the table, the walk's own ancestry, or a process that went
+    /// while it was read: no agent is running it.
+    Nobody,
+    /// A step that should have been readable and was not.
+    Unreadable(String),
+}
+
+/// How far up a walk goes. A gate is a handful of processes below its shell,
+/// and a table deeper than this is not one a reading should guess about.
+const MAX_WALK: usize = 64;
+
+/// The Claude Code process `pid` runs beneath, where one does.
+///
+/// An agent's own work — the gate its shell started, a server it runs in the
+/// background — is a descendant of its Claude Code process for as long as that
+/// agent can still act on it. A process orphaned from an agent's shell is
+/// handed to the box's subreaper and is nobody's, which is the population
+/// ISS-1271 ends. A Claude Code process in `ours` — the reaper's own ancestry,
+/// which is where a test run from an agent's shell stands — is not an agent
+/// living in the checkout, and the walk stops there. An ancestor whose
+/// arguments cannot be read is one nobody can say is not an agent, so it is
+/// unreadable rather than nobody (ISS-1378 ecbc228dc).
+fn agent_above(proc_root: &Path, pid: u32, ours: &BTreeSet<u32>) -> Above {
+    let mut at = pid;
+    for _ in 0..MAX_WALK {
+        if ours.contains(&at) {
+            return Above::Nobody;
+        }
+        match runner_platform::subagent_host::claude_at(proc_root, at) {
+            Ok(true) => return Above::Agent(at),
+            Ok(false) => {}
+            Err(why) => return Above::Unreadable(why),
+        }
+        let dir = proc_root.join(at.to_string());
+        let status = match std::fs::read_to_string(dir.join("status")) {
+            Ok(s) => s,
+            Err(e) if the_pid_went(&e) && !dir.exists() => return Above::Nobody,
+            Err(e) if e.raw_os_error() == Some(ESRCH) => return Above::Nobody,
+            Err(e) => {
+                return Above::Unreadable(format!(
+                    "what pid {at} runs beneath could not be read ({e})"
+                ))
+            }
+        };
+        let parent = status
+            .lines()
+            .find_map(|l| l.strip_prefix("PPid:"))
+            .and_then(|v| v.trim().parse::<u32>().ok());
+        match parent {
+            Some(p) if p > 1 => at = p,
+            Some(_) => return Above::Nobody,
+            None => {
+                return Above::Unreadable(format!(
+                    "pid {at}'s status names no parent, so what it runs beneath cannot be read"
+                ))
+            }
+        }
+    }
+    Above::Unreadable(format!(
+        "pid {pid}'s ancestry runs deeper than {MAX_WALK} processes"
+    ))
+}
+
+/// Residents beneath a live agent, each with that agent's pid, and everybody
+/// else living beside them.
+type ByAgent = (Vec<(Resident, u32)>, Vec<Resident>);
+
+/// Split `residents` into those beneath a live agent and everybody else, or
+/// say which one could not be told apart.
+fn by_agent(
+    proc_root: &Path,
+    residents: Vec<Resident>,
+    ours: &BTreeSet<u32>,
+) -> std::result::Result<ByAgent, String> {
+    let mut agents = Vec::new();
+    let mut others = Vec::new();
+    for r in residents {
+        match agent_above(proc_root, r.pid, ours) {
+            Above::Agent(agent) => agents.push((r, agent)),
+            Above::Nobody => others.push(r),
+            Above::Unreadable(why) => {
+                return Err(format!(
+                    "{why}, so whether {r} is a live agent's work cannot be told"
+                ))
+            }
+        }
+    }
+    Ok((agents, others))
+}
+
 /// Give the checkout's residents back to the box, and say what is left.
 ///
 /// `SIGTERM` to every resident this box may signal, the first grace, `SIGKILL`
@@ -616,7 +711,23 @@ impl Clearing<'_> {
                 not_asked,
             } => {
                 let ours = ancestry(self.proc_root, std::process::id());
-                match end_residents(residents, not_asked, &ours, self.grace, self.hand).await {
+                // A resident in a live agent's tree is that agent's work, and
+                // the ledger calling its run over does not make it anybody's
+                // to end: a gate killed under a live run reads to that run as
+                // a red in its own code (ISS-1378). So it, and the checkout,
+                // are left whole, and nobody else in it is signalled either.
+                let (agents, others) = match by_agent(self.proc_root, residents, &ours) {
+                    Ok(split) => split,
+                    Err(why) => return Ending::Unreadable(why),
+                };
+                if !agents.is_empty() {
+                    return Ending::Live {
+                        agents,
+                        others,
+                        not_asked,
+                    };
+                }
+                match end_residents(others, not_asked, &ours, self.grace, self.hand).await {
                     Ending::Clear { ended, .. } => ended,
                     standing => return standing,
                 }
@@ -649,3 +760,6 @@ impl Clearing<'_> {
         deleted_residents_under(self.proc_root, roots)
     }
 }
+
+#[cfg(test)]
+mod live_agent_tests;

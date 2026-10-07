@@ -12,6 +12,8 @@ use serde::Deserialize;
 
 use runner_platform::error::{Error, Result};
 
+pub mod probation;
+
 /// This build's identity, all three fixed by build.rs.
 ///
 /// `CURRENT_VERSION` is the RELEASED version — the one the release tag carried,
@@ -74,6 +76,21 @@ pub struct Asset {
 pub struct UpdateOutcome {
     pub from: String,
     pub to: String,
+}
+
+/// What an update check came to.
+pub enum Applied {
+    /// The release is not newer than this build.
+    UpToDate,
+    /// The release was installed.
+    Installed(UpdateOutcome),
+    /// The release is the build an earlier probation put back, so it was not
+    /// downloaded (ISS-1378).
+    HeldBack {
+        rejected: probation::Rejected,
+        /// The install path the record stands beside.
+        exe: std::path::PathBuf,
+    },
 }
 
 /// Resolve the manifest URL: an explicit config value wins, else derive it from
@@ -158,13 +175,28 @@ fn precedence(v: &str) -> ((u64, u64, u64), bool, Vec<Ident>) {
 pub const DOWNLOAD_BOUND: Duration = Duration::from_secs(10 * 60);
 
 /// Download the matching asset, verify its sha256, and atomically replace the
-/// running executable. Returns Ok(None) when already up to date.
-pub async fn apply(
-    manifest: &Manifest,
-    keep: Option<&ServedBuild>,
-) -> Result<Option<UpdateOutcome>> {
+/// running executable, unless the release is not newer or is the build a
+/// probation put back.
+///
+/// Every update route comes through here, the daemon's check and a hand
+/// `forge-runner update` alike, so the record a put-back leaves is read in one
+/// place, before anything is downloaded.
+pub async fn apply(manifest: &Manifest, keep: Option<&ServedBuild>) -> Result<Applied> {
     if !is_newer(&manifest.version, CURRENT_VERSION) {
-        return Ok(None);
+        return Ok(Applied::UpToDate);
+    }
+    // Resolved rather than taken raw, because this is the second update in a
+    // process that never restarted after the first: `/proc/self/exe` then reads
+    // `<path> (deleted)`, and renaming over THAT writes a file called
+    // `forge-runner (deleted)` while the binary everything invokes stays at the
+    // build it was (ISS-1200).
+    let own = runner_platform::exe::own()?;
+    let claim = Claim::of(manifest);
+    if let Some(rejected) = held_back(&own.path, &claim)? {
+        return Ok(Applied::HeldBack {
+            rejected,
+            exe: own.path,
+        });
     }
     let asset = manifest
         .assets
@@ -195,12 +227,6 @@ pub async fn apply(
         }
     }
 
-    // Resolved rather than taken raw, because this is the second update in a
-    // process that never restarted after the first: `/proc/self/exe` then reads
-    // `<path> (deleted)`, and renaming over THAT writes a file called
-    // `forge-runner (deleted)` while the binary everything invokes stays at the
-    // build it was (ISS-1200).
-    let own = runner_platform::exe::own()?;
     if let Some(was) = &own.replaced_from {
         tracing::warn!(
             "[update] this process started on {} which was replaced while it ran — installing over {}, the build standing there now",
@@ -208,12 +234,25 @@ pub async fn apply(
             own.path.display()
         );
     }
-    install(&own.path, &bytes, &Claim::of(manifest), keep).await?;
+    install(&own.path, &bytes, &claim, keep).await?;
 
-    Ok(Some(UpdateOutcome {
+    Ok(Applied::Installed(UpdateOutcome {
         from: CURRENT_VERSION.to_string(),
         to: manifest.version.clone(),
     }))
+}
+
+/// The build an earlier probation put back from `exe`, where it is the one
+/// `claim` names. A record that cannot be read refuses the update rather than
+/// letting the build it may name through.
+pub fn held_back(exe: &std::path::Path, claim: &Claim) -> Result<Option<probation::Rejected>> {
+    match probation::rejected(exe) {
+        Ok(Some(r)) if r.names(claim) => Ok(Some(r)),
+        Ok(_) => Ok(None),
+        Err(why) => Err(Error::Other(format!(
+            "not installed: the record of a build an earlier probation put back is unreadable, and read as absent it would let that build be installed again — {why}"
+        ))),
+    }
 }
 
 /// The asset's bytes, within [`DOWNLOAD_BOUND`]; a stall past it is an error
@@ -313,6 +352,19 @@ impl ServedBuild {
             return Ok(());
         }
         let at = kept_path(exe);
+        // A build still on probation is no fallback: it has not stayed up.
+        // Where one stands at `exe` and a kept build stands beside it, that
+        // kept build is the one a failure goes back to, so it stays — a hand
+        // update run from a build the daemon installed and has not yet
+        // confirmed would otherwise replace the build the box last served
+        // with one nothing has shown to start (ISS-1378).
+        if probation::path(exe).is_file() && at.is_file() {
+            *kept = Some(Kept {
+                exe: exe.to_path_buf(),
+                at,
+            });
+            return Ok(());
+        }
         let mut beside = at.as_os_str().to_os_string();
         beside.push(".tmp");
         let beside = std::path::PathBuf::from(beside);
@@ -407,9 +459,36 @@ pub async fn install_within(
             }
         }
     }
+    // The kept build is what a build that will not stay up is put back to, so
+    // the probation is written only where one is kept (ISS-1378).
+    #[cfg(unix)]
+    if keep.is_some() {
+        if let Err(e) = probation::begin(exe, &claim.version) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(Error::Other(format!(
+                "refused to install over {}: the probation the new build would serve on could not be written at {} ({e}), and without it a build that dies at start is restarted into for ever",
+                exe.display(),
+                probation::path(exe).display()
+            )));
+        }
+    }
     #[cfg(not(unix))]
-    let _ = (claim, keep, bound);
+    let _ = (keep, bound);
     std::fs::rename(&tmp, exe)?;
+    // Another release stands at the install path now, so a build an earlier
+    // probation put back holds nothing back any more.
+    if let Ok(Some(r)) = probation::rejected(exe) {
+        if !r.names(claim) {
+            if let Err(e) = probation::clear_rejected(exe) {
+                tracing::warn!(
+                    "[update] {} is installed and the record holding {} back could not be removed from {} ({e})",
+                    claim.version,
+                    r.version,
+                    probation::rejected_path(exe).display()
+                );
+            }
+        }
+    }
     Ok(())
 }
 
@@ -493,5 +572,157 @@ fn excerpt(text: &str) -> String {
     match text.char_indices().nth(MOST) {
         Some((at, _)) => format!("{}…", &text[..at]),
         None => text.to_string(),
+    }
+}
+
+#[cfg(all(test, unix))]
+mod probation_install_tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    struct Scratch(PathBuf);
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn script(version: &str, commit: &str) -> Vec<u8> {
+        format!("#!/bin/sh\necho 'forge-runner {version} ({commit})'\n").into_bytes()
+    }
+
+    /// An install path holding a build that runs and says it is 0.1.0.
+    fn a_box(tag: &str) -> (Scratch, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-update-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let exe = dir.join("forge-runner");
+        std::fs::write(&exe, script("0.1.0", "served0")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (Scratch(dir), exe)
+    }
+
+    fn claim(version: &str) -> Claim {
+        Claim {
+            version: version.into(),
+            commit: None,
+        }
+    }
+
+    fn says(exe: &Path) -> String {
+        let out = std::process::Command::new(exe)
+            .arg("--version")
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// ISS-1378: a build an update installed serves on probation, beside the
+    /// build it replaced, so one that never stays up can be put back.
+    #[tokio::test]
+    async fn an_installed_build_serves_on_probation_beside_the_build_it_replaced() {
+        let (_dir, exe) = a_box("begin");
+        install(
+            &exe,
+            &script("0.2.0", "new0000"),
+            &claim("0.2.0"),
+            Some(&ServedBuild::new()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(says(&exe), "forge-runner 0.2.0 (new0000)");
+        let mut name = exe.as_os_str().to_os_string();
+        name.push(".probation");
+        assert!(
+            PathBuf::from(name).is_file(),
+            "the installed build serves on no probation, so one that dies at start is restarted into for ever"
+        );
+        for n in 1..=probation::LIMIT {
+            assert_eq!(
+                probation::enter(&exe, "0.2.0"),
+                probation::Entered::Counted { starts: n }
+            );
+        }
+        assert_eq!(
+            probation::enter(&exe, "0.2.0"),
+            probation::Entered::PutBack {
+                starts: probation::LIMIT
+            },
+            "a build that never stayed up is put back past the limit"
+        );
+        probation::put_back(&exe).unwrap();
+        assert_eq!(says(&exe), "forge-runner 0.1.0 (served0)");
+    }
+
+    /// A build installed and not yet confirmed is no fallback: a later
+    /// install in another process keeps the build kept before it.
+    #[tokio::test]
+    async fn an_install_over_a_build_still_on_probation_keeps_the_build_before_it() {
+        let (_dir, exe) = a_box("unconfirmed");
+        install(
+            &exe,
+            &script("0.2.0", "new0000"),
+            &claim("0.2.0"),
+            Some(&ServedBuild::new()),
+        )
+        .await
+        .unwrap();
+        let by_hand = ServedBuild::new();
+        install(
+            &exe,
+            &script("0.3.0", "later00"),
+            &claim("0.3.0"),
+            Some(&by_hand),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            says(&kept_path(&exe)),
+            "forge-runner 0.1.0 (served0)",
+            "the build the box last served stays kept, not the unconfirmed 0.2.0"
+        );
+        assert_eq!(
+            probation::enter(&exe, "0.3.0"),
+            probation::Entered::Counted { starts: 1 }
+        );
+        by_hand.restore().unwrap();
+        assert_eq!(says(&exe), "forge-runner 0.1.0 (served0)");
+    }
+
+    /// A release a probation put back is held back until another release is
+    /// installed, and a record nobody can read refuses rather than lets it by.
+    #[tokio::test]
+    async fn a_put_back_build_is_held_back_until_another_release_is_installed() {
+        let (_dir, exe) = a_box("held");
+        let rejected = probation::Rejected {
+            version: "0.2.0".into(),
+            commit: None,
+            starts: probation::LIMIT,
+            at_ms: 1,
+        };
+        probation::reject(&exe, &rejected).unwrap();
+        assert_eq!(held_back(&exe, &claim("0.2.0")).unwrap(), Some(rejected));
+        assert_eq!(held_back(&exe, &claim("0.3.0")).unwrap(), None);
+        install(
+            &exe,
+            &script("0.3.0", "later00"),
+            &claim("0.3.0"),
+            Some(&ServedBuild::new()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(probation::rejected(&exe), Ok(None), "lifted by the install");
+        std::fs::write(probation::rejected_path(&exe), "{").unwrap();
+        let why = held_back(&exe, &claim("0.2.0"))
+            .expect_err("an unreadable hold is never read as none")
+            .to_string();
+        assert!(why.contains("unreadable"), "{why}");
     }
 }

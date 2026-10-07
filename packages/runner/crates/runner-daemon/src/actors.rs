@@ -107,7 +107,12 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                 );
             } else if auto {
                 match runner_update::apply(&m, Some(&carry.served)).await {
-                    Ok(Some(o)) => {
+                    Ok(runner_update::Applied::HeldBack { rejected, exe }) => tracing::warn!(
+                        "[update] {} is not installed: {}",
+                        rejected.version,
+                        rejected.why(&exe)
+                    ),
+                    Ok(runner_update::Applied::Installed(o)) => {
                         // The new binary is already swapped on disk; this
                         // process hands over to it once its own in-process
                         // work has ended.
@@ -154,7 +159,7 @@ async fn check_update(u: &Updates, checked_at: tokio::time::Instant) {
                             }
                         }
                     }
-                    Ok(None) => {}
+                    Ok(runner_update::Applied::UpToDate) => {}
                     Err(e) => tracing::warn!("[update] apply failed: {e}"),
                 }
             }

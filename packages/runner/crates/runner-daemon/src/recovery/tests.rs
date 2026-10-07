@@ -209,3 +209,55 @@ async fn a_keep_without_a_beat_beats_nothing() {
     assert_eq!((facts.master, facts.process), ("gone", "none"));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// ISS-1390 (three rows on 2026-10-06): a run declared before the box
+/// rebooted is reported to core as of a boot that ended, so core can end it;
+/// a box that cannot read its own boot claims no ending.
+#[tokio::test]
+async fn a_run_of_an_ended_boot_is_reported_so_and_an_unread_boot_claims_nothing() {
+    let keep = || {
+        Ok(Verdict::Keep {
+            beat: false,
+            reparent: false,
+            say_kept: false,
+            because: "b".into(),
+        })
+    };
+    let (mut ledger, dir) = ledger_with_one_run();
+    let core = Core::answering(vec![keep()]);
+    assert!(sweep(&mut ledger, &core).await.is_empty());
+    let asked = core.asked.lock().unwrap()[0].clone();
+    assert!(
+        asked.this_boot && !asked.boot_ended,
+        "its own boot did not end"
+    );
+
+    for (boot, ended) in [("boot-2", true), ("", false)] {
+        let core = Core::answering(vec![keep()]);
+        let world = World;
+        reconcile(
+            &mut ledger,
+            boot,
+            &Masters(MasterPresence::Gone),
+            &Procs,
+            Closing {
+                sessions: &world,
+                leases: &world,
+                roots: &world,
+            },
+            RunWatch {
+                core: &core,
+                idle: &Quiet,
+            },
+        )
+        .await
+        .unwrap();
+        let asked = core.asked.lock().unwrap()[0].clone();
+        assert_eq!(
+            (asked.this_boot, asked.boot_ended),
+            (false, ended),
+            "swept under boot {boot:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
