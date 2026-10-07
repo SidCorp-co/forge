@@ -86,6 +86,8 @@ const ACT: Rule[] = [
   { re: new RegExp("^Running (?<a>\\d+) of (?<b>\\d+)$"), key: "standing.act.running", vars: (g) => ({ a: g.a ?? "", b: g.b ?? "" }) },
   { re: new RegExp("^Shipped (?<a>\\d+) of (?<b>\\d+)$"), key: "standing.act.shippedOf", vars: (g) => ({ a: g.a ?? "", b: g.b ?? "" }) },
   { re: new RegExp("^Confirm the answer$"), key: "standing.act.confirmAnswer" },
+  { re: new RegExp("^tell (?<who>.+) that it shipped in (?<v>\\S+)$"), key: "standing.act.tellShippedIn", vars: (g) => ({ who: g.who ?? "", v: g.v ?? "" }) },
+  { re: new RegExp("^tell (?<who>.+) that it shipped$"), key: "standing.act.tellShipped", vars: (g) => ({ who: g.who ?? "" }) },
   { re: new RegExp("^verify the fix shipped in (?<v>.+)$"), key: "standing.act.verifyFixIn", vars: (g) => ({ v: g.v ?? "" }) },
   { re: new RegExp("^verify the fix$"), key: "standing.act.verifyFix" },
   { re: new RegExp("^release it by hand and close it$"), key: "standing.act.releaseItByHand" },

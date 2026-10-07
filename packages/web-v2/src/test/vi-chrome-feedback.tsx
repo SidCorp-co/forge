@@ -153,7 +153,7 @@ export const feedbackFacts = () => (
         sensitive: true,
       } as never)}
     />
-    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, reason: "Verified automatically after 14 days with no reply" }, shipNotice: { state: "told", at: AT, release: "0.2.0" }, route: null })} />
+    <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, reason: "Verified automatically after 14 days with no reply" }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" } }, route: null })} />
     <FeedbackFacts slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null }, autoVerify: null })} />
     <FeedbackFacts slug="hop" f={view({ verified: { at: AT, how: "person", by: "u2", byName: null, byReporter: false, reason: null }, shipNotice: { state: "not_told", reason: "No release carries it, so none told the reporter: tell them yourself.", shipped: { at: null, release: null }, beforeNotices: false } })} />
     <FeedbackBanner slug="hop" f={view({ phase: "verified", attentionGroup: "done", waitingOn: { kind: "none", who: "Nobody", act: "", rule: "r", ref: null } as never })} />

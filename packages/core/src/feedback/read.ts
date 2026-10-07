@@ -142,6 +142,7 @@ function messageViewsOf(
     sentAgency: m.sentAgency,
     sentAt: m.createdAt.toISOString(),
     recipients: m.recipients.map((id) => ({ id, name: names.get(id) ?? null })),
+    relayed: m.audience !== 'internal' && m.recipients.length === 0,
   }));
 }
 
@@ -312,7 +313,8 @@ export async function detailAs(
           }
         : null,
       openSuggestions: open?.n ?? 0,
-      shipNotice: await shipNoticeOf(row.id, {
+      shipNotice: await shipNoticeOf({
+        id: row.id,
         route: row.route,
         phase: summary.phase,
         reporterAgency: row.reporterAgency,

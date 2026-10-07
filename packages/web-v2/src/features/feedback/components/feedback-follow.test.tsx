@@ -66,7 +66,7 @@ describe("feedback follows its work to the release", () => {
   });
 
   it("says when the reporter was told, and for which release", () => {
-    const f = view({ shipNotice: { state: "told", at: at(-5), release: "0.1.0" } });
+    const f = view({ shipNotice: { state: "told", how: "notice", at: at(-5), release: "0.1.0", by: null, shipped: { at: at(-6), release: "0.1.0" } } });
     renderWithQuery(<FeedbackFacts f={f} slug="hop" />);
     const fact = screen.getByTestId("facts-ship-notice");
     expect(fact.textContent).toContain("Reporter told");

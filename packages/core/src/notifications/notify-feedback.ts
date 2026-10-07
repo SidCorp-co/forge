@@ -1,15 +1,17 @@
 // feedback-triage `verify-ask`: an ask to verify a resolved item reaches its reporter's bell, and the
 // verify or reopen of that item settles it. A decline, a merge into an original and a triager's
 // message each reach their reporters as one notice, the text the event carries. The release that ships the work of an item tells its
-// reporter, naming the release and what it changed for them, once per item and release.
+// reporter in their language, naming the release and what it changed for them, once per item: a
+// second release or a redelivery carrying the same item tells nobody twice.
 
 import { feedbackKey } from '@forge/contracts/feedback';
-import { feedbackShippedKey } from '@forge/contracts/notifications';
+import { feedbackShippedKey, feedbackShippedPrefix } from '@forge/contracts/notifications';
 import type { OutboxEventPayload as Payload } from '@forge/contracts/outbox-events';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, notifications } from '../db/schema.js';
 import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
+import { noticeCopy, reporterLanguageOf } from '../feedback/index.js';
 import { logger } from '../lib/logger.js';
 import { consume } from '../outbox/index.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -18,12 +20,13 @@ import { emitNotification } from './emit.js';
 const verifyKey = (feedbackId: string) => `feedback-verify:${feedbackId}`;
 
 async function asked(p: Payload<'feedback.verifyAsked'>, eventId: string): Promise<void> {
+  const language = await reporterLanguageOf(p.reporter, p.projectId);
   await emitNotification({
     recipients: [p.reporter],
     projectId: p.projectId,
     type: 'feedback_verify_asked',
-    title: `${p.key} is resolved: ${p.title}`,
-    body: 'The work your feedback asked for has shipped. Verify the fix, or reopen the item saying what it does not answer.',
+    title: noticeCopy(language, 'verifyAsk.title', { key: p.key, title: p.title }),
+    body: noticeCopy(language, 'verifyAsk.body', {}),
     resolutionKey: verifyKey(p.feedbackId),
     dedupeKey: `feedback-verify-ask:${eventId}`,
   });
@@ -73,9 +76,10 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
   for (const item of items) {
     const key = feedbackKey(item.seq);
     if (item.agency !== 'human') {
-      logger.warn(
+      // not skipped: the item reads not told, and its triagers owe the relay (`feedback/standing.ts`)
+      logger.info(
         { feedback: key, project: p.projectId, release: p.version },
-        'feedback: a shipped release closed an item whose reporter is an agent, which has no bell to tell',
+        'feedback: a shipped release closed an item whose reporter is an agent; its triagers owe the relay',
       );
       continue;
     }
@@ -83,7 +87,6 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       .select({
         id: issues.id,
         status: issues.status,
-        title: issues.title,
         notes: issues.releaseNotes,
       })
       .from(feedbackRouteIssues)
@@ -91,19 +94,31 @@ async function shipped(p: Payload<'release.shipped'>): Promise<void> {
       .where(eq(feedbackRouteIssues.feedbackId, item.id));
     const stillOwed = carriers.filter((c) => c.status !== 'dropped' && c.status !== 'closed');
     if (stillOwed.length > 0) continue;
-    const here = carriers.filter((c) => p.issueIds.includes(c.id));
-    const said = here
-      .map((c) => c.notes?.userFacing ?? c.title)
+    const [already] = await db
+      .select({ id: notifications.id })
+      .from(notifications)
+      .where(like(notifications.dedupeKey, `${feedbackShippedPrefix(item.id)}%`))
+      .limit(1);
+    if (already) continue;
+    // what changed for them is the release note's user-facing line, never an issue's own title
+    const said = carriers
+      .filter((c) => p.issueIds.includes(c.id))
+      .map((c) => c.notes?.userFacing?.trim())
       .filter((t): t is string => Boolean(t));
+    const language = await reporterLanguageOf(item.reporter, p.projectId);
     await emitNotification({
       recipients: [item.reporter],
       projectId: p.projectId,
       type: 'feedback_shipped',
-      title: `${key} shipped in ${p.version}: ${item.title}`,
+      title: noticeCopy(language, 'shipped.title', {
+        key,
+        version: p.version,
+        title: item.title,
+      }),
       body:
         said.length > 0
           ? said.join('\n')
-          : `${p.version} carries the work your feedback asked for.`,
+          : noticeCopy(language, 'shipped.body', { version: p.version }),
       dedupeKey: feedbackShippedKey(item.id, p.runId),
     });
   }

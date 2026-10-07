@@ -14,7 +14,7 @@ const ACT = [
   "revise returned r2, then propose or drop it", "revise returned r2", "propose or drop r2", "propose r2", "finish draft", "agree it", "agree r2", "propose design Staff shell", "approve design Staff shell",
   "Update to the approved design: Staff shell (revision 3)", "Update to the current version of orders-api (1.4.0)", "check BC-1, BC-2 against the traceability matrix, overdue since 2026-10-05",
   "check BC-1 against the traceability matrix, due 2026-10-09", "judge BC-3, BC-5 on ISS-1, ISS-2", "fix BC-3, failing on ISS-2", "trace BC-5 to an issue criterion", "re-plan ISS-4, ISS-5", "break down, due 2026-10-09", "break down", "Review how this requirement is split into work",
-  "promote 2 draft issues", "promote 1 draft issue", "Running 2 of 5", "Shipped 1 of 5", "Confirm the answer", "verify the fix shipped in 0.1.0", "verify the fix", "release ISS-7 by hand and close it",
+  "promote 2 draft issues", "promote 1 draft issue", "Running 2 of 5", "Shipped 1 of 5", "Confirm the answer", "tell Minh that it shipped in 0.1.0", "tell Minh that it shipped", "verify the fix shipped in 0.1.0", "verify the fix", "release ISS-7 by hand and close it",
   "release it by hand and close it", "Approve release 0.1.0", "Approve the release that carries it", "cut the release that carries ISS-7", "cut 0.1.0, then approve it", "cut 0.1.0", "cut 0.1.0 and 2 more",
   "ship", "be agreed and delivered", "be resolved", "be accepted", "be delivered", "ask for approval", "approve or return 0.1.0", "approve", "answer the return", "deploying",
   "verifying", "starting", "declare a production environment", "declare where releases land", "cut the issues that are waiting", "bring an issue to the release gate", "split this release into smaller releases",

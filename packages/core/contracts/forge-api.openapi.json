@@ -20318,6 +20318,9 @@
                     ],
                     "type": "string"
                   },
+                  "relayed": {
+                    "type": "boolean"
+                  },
                   "text": {
                     "maxLength": 4000,
                     "type": "string"
@@ -20391,6 +20394,9 @@
                       "internal"
                     ],
                     "type": "string"
+                  },
+                  "relayed": {
+                    "type": "boolean"
                   },
                   "text": {
                     "maxLength": 4000,

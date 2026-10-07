@@ -108,7 +108,7 @@ export function useSendMessage(projectId: string, key: string) {
   const qc = useQueryClient();
   const invalidate = useInvalidate(projectId);
   return useMutation({
-    mutationFn: (body: { audience: FeedbackMessageAudience; text: string }) => feedbackApi.sendMessage(projectId, key, body),
+    mutationFn: (body: { audience: FeedbackMessageAudience; text: string; relayed?: boolean }) => feedbackApi.sendMessage(projectId, key, body),
     onSuccess: (r: FeedbackResponse) => qc.setQueryData(["feedback-item", projectId, key], r),
     onSettled: invalidate,
   });

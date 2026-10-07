@@ -299,6 +299,7 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_SNOOZE_REASON_REQUIRED",
 	"FEEDBACK_MESSAGE_EMPTY",
 	"FEEDBACK_MESSAGE_NO_RECIPIENT",
+	"FEEDBACK_RELAY_NOT_TO_REPORTERS",
 	"FEEDBACK_STATUS_INVALID",
 	"FEEDBACK_NOT_RESOLVED",
 	"FEEDBACK_VERIFY_ASK_SELF",
@@ -465,12 +466,17 @@ export const FEEDBACK_MESSAGE_AUDIENCES = [
 export type FeedbackMessageAudience =
 	(typeof FEEDBACK_MESSAGE_AUDIENCES)[number];
 
-/** `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing. */
+/**
+ * `POST …/feedback/:fb/messages` sends; `…/messages/preview` answers what it would send, writing nothing.
+ * `relayed` records what a person told reporters outside Forge (one no bell reaches, an agent, or a
+ * person who turned the notice off): it is kept on the thread and sends no notice.
+ */
 export const feedbackMessageRequestSchema = z.strictObject({
 	audience: z.enum(FEEDBACK_MESSAGE_AUDIENCES),
 	text: z.string().max(FEEDBACK_LIMITS.message),
+	relayed: z.boolean().optional(),
 });
-export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text }`;
+export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text, relayed?: boolean }`;
 
 export const feedbackEmptyRequestSchema = z.strictObject({});
 export const FEEDBACK_EMPTY_SHAPE = "{}";
@@ -574,8 +580,10 @@ export interface FeedbackMessageView {
 	sentByName: string | null;
 	sentAgency: "human" | "agent";
 	sentAt: string;
-	/** The reporters it was addressed to; empty for an internal note, which reaches no one. */
+	/** The reporters it was addressed to; empty for an internal note, which reaches no one, and for a relay. */
 	recipients: { id: string; name: string | null }[];
+	/** A person told the reporters outside Forge and recorded what they said; no bell carried it. */
+	relayed: boolean;
 }
 
 /** The exact notice a send would deliver, as its reporters will read it, and who gets it. */
@@ -650,12 +658,25 @@ export interface FeedbackSummary
 	updatedAt: string;
 }
 
+/** How the reporter heard the work shipped: the release's own notice, a message to reporters, or a relay a person recorded. */
+export const FEEDBACK_TOLD_HOWS = ["notice", "message", "relayed"] as const;
+export type FeedbackToldHow = (typeof FEEDBACK_TOLD_HOWS)[number];
+
 /**
- * Whether the reporter was told the work shipped: the notice a release sent, when and for which
- * release; or why nobody was told, so a reporter Forge cannot reach is named, never skipped.
+ * Whether the reporter was told the work shipped: how, when and for which release; or why nobody was
+ * told, so a reporter Forge cannot reach is named, never skipped.
  */
 export type FeedbackShipNotice =
-	| { state: "told"; at: string; release: string | null }
+	| {
+			state: "told";
+			how: FeedbackToldHow;
+			at: string;
+			release: string | null;
+			/** Who sent the message or recorded the relay; null for the release's own notice. */
+			by: string | null;
+			/** When and in which release the work shipped, as the not-told reading names it. */
+			shipped: { at: string | null; release: string | null };
+	  }
 	| {
 			state: "not_told";
 			reason: string;

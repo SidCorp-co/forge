@@ -1,19 +1,49 @@
 // "Feedback answered": the feedback items a release's issues carry, read for the release page, each
-// with whether the release told its reporter (the notice `notify-feedback.ts` wrote for this run).
+// with whether the release told its reporter (the notice `notify-feedback.ts` wrote for this run), or
+// a person did once it shipped: a message to reporters, or a relay recorded for one no bell reaches.
 
 import type { FeedbackRoute } from '@forge/contracts/feedback';
 import { feedbackKey } from '@forge/contracts/feedback';
 import { feedbackShippedKey } from '@forge/contracts/notifications';
 import type { ReleaseFeedbackView } from '@forge/contracts/releases';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notificationDeliveryMembers, notifications } from '../db/schema.js';
-import { feedback, feedbackRouteIssues } from '../db/schema-feedback.js';
+import { notificationDeliveryMembers, notifications, pipelineRuns } from '../db/schema.js';
+import { feedback, feedbackMessages, feedbackRouteIssues } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import { feedbackEgress, WITHHELD } from './egress.js';
 
 const ISSUE_ROUTE: FeedbackRoute = 'issue';
+
+/** The latest message or relay to each item's reporters sent since the release shipped. */
+async function toldByPeople(
+  runId: string,
+  items: readonly { id: string }[],
+): Promise<Map<string, Date>> {
+  const [run] = await db
+    .select({ at: pipelineRuns.releaseReleasedAt })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId));
+  if (!run?.at) return new Map();
+  const rows = await db
+    .select({ id: feedbackMessages.feedbackId, at: feedbackMessages.createdAt })
+    .from(feedbackMessages)
+    .where(
+      and(
+        inArray(
+          feedbackMessages.feedbackId,
+          items.map((i) => i.id),
+        ),
+        ne(feedbackMessages.audience, 'internal'),
+        gte(feedbackMessages.createdAt, run.at),
+      ),
+    )
+    .orderBy(desc(feedbackMessages.createdAt));
+  const out = new Map<string, Date>();
+  for (const r of rows) if (!out.has(r.id)) out.set(r.id, r.at);
+  return out;
+}
 
 /**
  * Every feedback item routed onto an issue of the release. `runId` is null for a draft: nothing has
@@ -65,12 +95,18 @@ export async function feedbackAnsweredBy(
           )
       : [];
   const told = new Map(sent.map((n) => [n.key, n]));
+  const relayed =
+    release.shipped && release.runId
+      ? await toldByPeople(release.runId, items)
+      : new Map<string, Date>();
   return items.map((i) => {
     const key = feedbackKey(i.seq);
     const notice = release.runId ? told.get(feedbackShippedKey(i.id, release.runId)) : undefined;
+    const byNotice = notice && notice.delivered > 0 ? notice.at : null;
+    const at = byNotice ?? relayed.get(i.id) ?? null;
     const state: ReleaseFeedbackView['told'] = !release.shipped
       ? 'on_ship'
-      : notice && notice.delivered > 0
+      : at
         ? 'told'
         : 'not_told';
     return {
@@ -79,7 +115,7 @@ export async function feedbackAnsweredBy(
       reporter: names.get(i.reporter) ?? 'The reporter',
       agency: i.agency,
       told: state,
-      toldAt: state === 'told' && notice ? notice.at.toISOString() : null,
+      toldAt: state === 'told' && at ? at.toISOString() : null,
     };
   });
 }

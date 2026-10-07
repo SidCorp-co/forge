@@ -183,6 +183,11 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
               </Link>
             </>
           ) : null}
+          {notice.how !== "notice" ? (
+            <span className="block text-12-5 text-muted" data-testid="ship-notice-how">
+              {t(notice.how === "relayed" ? "feedback.fact.toldRelayed" : "feedback.fact.toldMessage", { by: notice.by ?? t("feedback.fact.aMember") })}
+            </span>
+          ) : null}
         </span>
       </Fact>
     );

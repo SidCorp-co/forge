@@ -1,0 +1,14 @@
+{
+  "en": {
+    "shipped.title": "{key} shipped in {version}: {title}",
+    "shipped.body": "{version} carries the work your feedback asked for.",
+    "verifyAsk.title": "{key} is resolved: {title}",
+    "verifyAsk.body": "The work your feedback asked for has shipped. Verify the fix, or reopen the item saying what it does not answer."
+  },
+  "vi": {
+    "shipped.title": "{key} đã được phát hành trong bản {version}: {title}",
+    "shipped.body": "Bản {version} có phần việc mà phản hồi của bạn yêu cầu.",
+    "verifyAsk.title": "{key} đã được giải quyết: {title}",
+    "verifyAsk.body": "Phần việc mà phản hồi của bạn yêu cầu đã được phát hành. Hãy xác nhận bản sửa, hoặc mở lại mục này và nói rõ điều gì chưa được giải quyết."
+  }
+}

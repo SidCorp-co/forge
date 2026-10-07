@@ -79,7 +79,7 @@ export const feedbackApi = {
   /** The exact notice a send would deliver, and to whom; nothing is written. */
   previewMessage: (projectId: string, key: string, body: { audience: Exclude<FeedbackMessageAudience, "internal">; text: string }) =>
     apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),
-  sendMessage: (projectId: string, key: string, body: { audience: FeedbackMessageAudience; text: string }) =>
+  sendMessage: (projectId: string, key: string, body: { audience: FeedbackMessageAudience; text: string; relayed?: boolean }) =>
     apiClient<FeedbackResponse>(`${one(projectId, key)}/messages`, post(body)),
   /** Each file in turn, so a refusal names the one core would not keep; the item reads as the last kept left it. */
   attach: async (projectId: string, key: string, files: readonly File[]): Promise<FeedbackResponse | null> => {

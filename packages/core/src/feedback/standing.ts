@@ -145,6 +145,10 @@ export interface StandingFacts {
   snoozedUntil?: string | null;
   /** While it reads resolved and a sweep has dated it: when Forge verifies it if nobody has. */
   autoVerifyAt?: string | null;
+  /** It reads resolved and nothing told its reporter the work shipped (`ship-notice.ts`): a person relays it. */
+  relayOwed?: boolean;
+  /** Who holds feedback.approve, by name: those who owe the relay. */
+  relayHolders?: readonly string[];
 }
 
 const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null };
@@ -238,6 +242,7 @@ function waitingOf(
           yours: viewer.isReporter,
         };
       }
+      if (facts.relayOwed) return relayWait(reporter, viewer, facts);
       return {
         wait: wait(
           'person',
@@ -254,6 +259,28 @@ function waitingOf(
     default:
       return theirs(wait('none', 'Nothing', '', `${phase}: nothing is owed`));
   }
+}
+
+// no notice reached the reporter (an agent, a person off Forge's bell, a notice turned off, or work
+// no release carried), so the holders of feedback.approve tell them, and it is on their Needs you
+// until a message or a recorded relay does (Linear's customer requests reopen the support
+// conversation for a person to answer in the same way: the requester is outside the tracker)
+function relayWait(reporter: string, viewer: StandingViewer, facts: StandingFacts): Owed {
+  const act = facts.carrierVersion
+    ? `tell ${reporter} that it shipped in ${facts.carrierVersion}`
+    : `tell ${reporter} that it shipped`;
+  const rule =
+    'resolved: no notice told the reporter the work shipped, so a holder of feedback.approve tells them, by a message to reporters or by recording what they told them outside Forge';
+  const extra = { ref: facts.carrierVersion ?? null };
+  const holders = facts.relayHolders ?? [];
+  const yours = viewer.canTriage && !viewer.isReporter;
+  if (holders.length === 0 && !yours) {
+    return {
+      wait: wait('none', holdersWho(holders), nobodyHoldsAct(act, 'feedback.approve'), rule, extra),
+      yours: false,
+    };
+  }
+  return { wait: wait('person', holdersWho(holders), act, rule, extra), yours };
 }
 
 // a carrier at the release gate waits on whoever makes that release, by name: never a bare "ship"

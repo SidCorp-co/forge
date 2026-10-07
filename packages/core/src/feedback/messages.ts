@@ -2,7 +2,9 @@
  * Messages from a feedback item. To reporters: pick the audience (this reporter, or every reporter
  * merged into the item), preview the exact notice, send; it is one `feedback.reporterTold` event, the
  * same text the preview showed. An internal note is a row for project members and nothing else: it
- * emits no event, and its row cannot hold a recipient (feedback_messages_internal_chk).
+ * emits no event, and its row cannot hold a recipient (feedback_messages_internal_chk). A relay is what a
+ * person told reporters outside Forge: a reporters row with no recipient, which emits no event either,
+ * and which `ship-notice.ts` reads as the reporter told.
  */
 
 import type {
@@ -91,8 +93,10 @@ export async function sendMessage(input: {
   actor: FeedbackActor;
   audience: FeedbackMessageAudience;
   text: string;
+  relayed?: boolean;
 }): Promise<{ ok: true; feedback: FeedbackView } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor, audience } = input;
+  const relayed = input.relayed === true;
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const facts = await roleFacts(actor, projectId);
   const forbidden =
@@ -104,10 +108,10 @@ export async function sendMessage(input: {
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const row = await rowIn(tx, projectId, first.id, true);
-    if (audience === 'internal') {
+    if (audience === 'internal' || relayed) {
       const level = await dataPolicyOf(projectId);
       const note = storedText(level, input.text.trim()).text;
-      const refused = messageRefusal('internal', note, 0);
+      const refused = messageRefusal(audience, note, 0, relayed);
       if (refused) return [refused];
       await tx.insert(feedbackMessages).values({
         projectId,

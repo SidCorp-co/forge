@@ -1,0 +1,1 @@
+**A reporter hears their feedback shipped**: one notice per item, in their language, saying what changed; a reporter no bell reaches is owed a recorded relay on triagers' Needs you; the page leads with state, ETA and release.
