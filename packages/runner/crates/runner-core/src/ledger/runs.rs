@@ -545,7 +545,7 @@ impl Ledger {
             .conn
             .prepare(&format!(
                 "{SELECT_RUN} WHERE boot_id = ?1 AND ended_by IS NOT NULL AND session_id IS NOT NULL
-                   AND session_terminal_at IS NULL ORDER BY created_at"
+                   AND session_terminal_at IS NULL AND close_refused_at IS NULL ORDER BY created_at"
             ))
             .map_err(sql_err)?;
         let rows = stmt.query_map(params![boot_id], map_run).map_err(sql_err)?;

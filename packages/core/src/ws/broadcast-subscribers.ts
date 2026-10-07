@@ -57,6 +57,24 @@ export function registerWsBroadcastSubscribers(): void {
     });
   });
 
+  on('question.asked', (p) => {
+    frame(projectRoom(p.projectId), 'question.changed', {
+      questionId: p.questionId,
+      projectId: p.projectId,
+      issueId: p.issueId,
+      change: 'asked',
+    });
+  });
+
+  on('question.transitioned', (p) => {
+    frame(projectRoom(p.projectId), 'question.changed', {
+      questionId: p.id,
+      projectId: p.projectId,
+      issueId: p.issueId,
+      change: p.to,
+    });
+  });
+
   on('issue.created', (p) => {
     frame(projectRoom(p.projectId), 'issue.created', {
       issueId: p.issueId,

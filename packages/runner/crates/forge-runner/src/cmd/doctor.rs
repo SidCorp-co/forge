@@ -550,10 +550,8 @@ enum Pane {
 
 /// What this box's session file holds against what core resolves.
 ///
-/// `session_matches` answers one bool, and a file it cannot read answers the same as one that is
-/// not there — which over an empty declaration reads as a tick nobody established. Doctor is the
-/// surface making the claim, so it separates the states here rather than teaching the daemon's own
-/// comparison a third one. `Unparseable` is separate from `Differs` for the same reason: a pane
+/// Doctor is the surface making the claim, so it names the states here, finer than the daemon's
+/// `read_session_config` (which folds Absent, Unparseable and a differing map into `Differs`). `Unparseable` is separate from `Differs` for the same reason: a pane
 /// started from a document nothing can parse carries no servers, which is not "something else".
 enum SessionFile {
     Absent,
@@ -599,7 +597,7 @@ fn write_obstruction(path: &std::path::Path) -> Option<String> {
 /// Classify the file at `path` — from the bytes THIS function read, never from a second read.
 ///
 /// The master sweep rewrites that file on every pass for a live pane, so reading it here and
-/// handing the path to `session_matches` to read again lets the two reads answer about two
+/// handing the path to `read_session_config` to read again lets the two reads answer about two
 /// different files (ISS-1191).
 fn session_file(
     path: &std::path::Path,

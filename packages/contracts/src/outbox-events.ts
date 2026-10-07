@@ -17,6 +17,8 @@ export const OUTBOX_EVENT_TYPES = [
 	"comment.deleted",
 	"comment.mentioned",
 	"question.answered",
+	"question.asked",
+	"question.transitioned",
 	"notification.created",
 	"notification.read",
 	"user.preferencesChanged",
@@ -118,6 +120,7 @@ export const TRANSITION_EVENTS = {
 	issue: "every",
 	job: ["done", "failed"],
 	run: "every",
+	question: ["answered", "void", "expired"],
 } as const satisfies {
 	readonly [E in MachineEntity]?: "every" | readonly StateOf<E>[];
 };
@@ -212,6 +215,13 @@ export interface OutboxEventPayloads {
 	"issue.transitioned": TransitionEvent<"issue">;
 	"job.transitioned": TransitionEvent<"job">;
 	"run.transitioned": TransitionEvent<"run">;
+	"question.transitioned": TransitionEvent<"question">;
+	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */
+	"question.asked": {
+		questionId: string;
+		projectId: string;
+		issueId: string | null;
+	};
 	"comment.created": {
 		issueId: string;
 		projectId: string;

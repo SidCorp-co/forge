@@ -36,13 +36,23 @@ pub mod status;
 pub mod ws;
 
 /// How long one call to core may take before it is a failed call rather than a
-/// wait. [`CoreClient`] carries no deadline of its own, so a peer that accepts
+/// wait. Before [`DEFAULT_DEADLINE`] a [`CoreClient`] carried none, so a peer that accepts
 /// the connection and never answers held the call, and the sweep behind it, for
 /// as long as the socket stayed open: nothing was recorded, and every heartbeat
 /// in the meantime told core the box had read cleanly (ISS-1234, ISS-1233).
 /// Shorter than the heartbeat's 30s, so the beat after a hung call already
 /// carries it.
 pub const CALL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// The bound every request through a [`CoreClient`] carries unless its route
+/// names another: the client is built with it, so a new route inherits a
+/// deadline instead of having to remember one. Whole-request, body included.
+pub const DEFAULT_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The longer bound a route that moves a payload names for itself (skill and
+/// plugin bundles, attachments, an `api` upload): a bundle on a slow link is
+/// not a hung peer. Applied with `.timeout(LONG_DEADLINE)` on the request.
+pub const LONG_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// Shared HTTP client + auth context for the REST surface.
 #[derive(Clone)]
@@ -54,10 +64,23 @@ pub struct CoreClient {
 
 impl CoreClient {
     pub fn new(core_url: impl Into<String>, device_token: impl Into<String>) -> Self {
+        Self::with_deadline(core_url, device_token, DEFAULT_DEADLINE)
+    }
+
+    /// A client whose requests carry `deadline` unless the route names its own.
+    pub fn with_deadline(
+        core_url: impl Into<String>,
+        device_token: impl Into<String>,
+        deadline: std::time::Duration,
+    ) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(deadline)
+            .build()
+            .expect("a reqwest client with only a timeout set always builds");
         Self {
             base: core_url.into().trim_end_matches('/').to_string(),
             device_token: device_token.into(),
-            http: reqwest::Client::new(),
+            http,
         }
     }
 
@@ -98,5 +121,55 @@ impl CoreClient {
 
     pub fn delete(&self, path: &str) -> reqwest::RequestBuilder {
         self.request(reqwest::Method::DELETE, path)
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::TcpListener;
+
+    /// A peer that accepts the connection and never answers.
+    async fn silent_peer() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf).await;
+                held.push(sock);
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn a_request_that_names_no_deadline_gives_up_on_a_peer_that_never_answers() {
+        let client =
+            CoreClient::with_deadline(silent_peer().await, "t", Duration::from_millis(200));
+        let outcome = tokio::time::timeout(Duration::from_secs(10), client.get("/x").send())
+            .await
+            .expect("CoreClient request carries no deadline of its own: the call outlived 10s");
+        assert!(outcome.unwrap_err().is_timeout());
+    }
+
+    #[tokio::test]
+    async fn a_route_naming_its_own_deadline_overrides_the_client_default() {
+        let client = CoreClient::with_deadline(silent_peer().await, "t", Duration::from_secs(60));
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            client.get("/x").timeout(Duration::from_millis(200)).send(),
+        )
+        .await
+        .expect("the route's own deadline did not replace the client's");
+        assert!(outcome.unwrap_err().is_timeout());
+    }
+
+    #[test]
+    fn the_long_deadline_is_longer_than_the_default() {
+        assert!(LONG_DEADLINE > DEFAULT_DEADLINE && DEFAULT_DEADLINE > CALL_DEADLINE);
     }
 }

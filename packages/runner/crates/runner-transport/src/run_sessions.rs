@@ -202,7 +202,16 @@ pub async fn close(
     if resp.status().as_u16() == 404 {
         return no_such_session(resp, "run-session close").await;
     }
-    status::checked(resp, "run-session close").await?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        // Classified so the sweep re-sending a close can tell a refusal of the
+        // bytes from a refusal of the moment.
+        return Err(status::refusal("run-session close", code, &text));
+    }
     Ok(())
 }
 

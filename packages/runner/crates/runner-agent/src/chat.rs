@@ -160,6 +160,7 @@ async fn stage_attachments(
             .http()
             .get(&url)
             .bearer_auth(client.device_token())
+            .timeout(runner_transport::LONG_DEADLINE)
             .send()
             .await
         {

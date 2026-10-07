@@ -187,8 +187,15 @@ export function useSendMessage() {
  */
 export function useUploadAttachment() {
   return useMutation({
-    mutationFn: ({ conversationId, file }: { conversationId: string; file: File }) =>
-      conversationsApi.upload(conversationId, file),
+    mutationFn: ({
+      conversationId,
+      file,
+      operationId,
+    }: {
+      conversationId: string;
+      file: File;
+      operationId: string;
+    }) => conversationsApi.upload(conversationId, file, operationId),
   });
 }
 

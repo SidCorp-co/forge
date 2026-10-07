@@ -10,7 +10,8 @@
 //! heartbeat to core, which holds the thresholds and says what they mean on the
 //! device's page (`devices/disk-report.ts`, ADR 0009). This module reclaims
 //! nothing: [`crate::worktree_reap`] removes only checkouts under a repository
-//! and older than its `MIN_AGE`.
+//! and older than its `MIN_AGE`, and [`crate::scratch_reap`] sweeps the
+//! daemon's own scratch root.
 
 use runner_proto::disk::{Reading, Root};
 use std::path::{Path, PathBuf};

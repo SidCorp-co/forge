@@ -1,12 +1,11 @@
 # What ISS-1191 could not reach
 
-**Removed when:** the master sweep's session-config read tells unreadable from absent and acts on it
-by name, and the direct-mcp authority question is answered on that issue, which dev ISS-122 carries.
-The change that lands it deletes this file.
+**Removed when:** the direct-mcp authority question is answered on that issue, which dev ISS-122
+carries. The change that lands it deletes this file.
 
-ISS-1191 made one surface report every source of an agent's MCP servers. Two things it met are not
-that change, and neither is a new issue — the rules refuse filing a residual as one. They are here
-so the next reader finds them attached to evidence rather than rediscovering them.
+ISS-1191 made one surface report every source of an agent's MCP servers. One thing it met is not
+that change, and is not a new issue — the rules refuse filing a residual as one. It is here so the
+next reader finds it attached to evidence rather than rediscovering it.
 
 ## A direct-MCP grant is readable and writable only by an org admin
 
@@ -32,30 +31,9 @@ escalation stands and the product instead has to make the org admin's attention 
 
 It is a decision about credential authority, so it is a person's and not a diff's.
 
-## An unreadable session file and an absent one are one answer
-
-`session_matches` in `packages/runner/crates/runner-workspace/src/mcp/config/session.rs` reads the session
-config with `read_to_string(&path).ok()`, so a file it cannot read — a permission fault, bytes that
-are not UTF-8 — arrives as `None`, the same value an absent file produces. Over an empty
-declaration that pair maps to `true`: the box reports agreement with a file it never established
-the contents of.
-
-`forge-runner doctor` no longer relies on that (ISS-1191 gave its MCP row four states of its own —
-absent, unreadable, matching, differing — and an unreadable file is a cross naming the reason), but
-the conflation is still there for its other caller, the daemon's master sweep, which reads it to
-decide whether a live pane's config still says what core says now.
-
-It was not fixed at the source because the sweep's behaviour on that answer lives in
-`packages/runner/crates/runner-daemon/src/master/`, which another run held uncommitted
-while ISS-1191 was being worked. What a sweep should do with a file it cannot read is also a real
-question — rewrite it, refuse the pane, or report and leave it — and it is not one a change about
-reporting should settle on the way past.
-
 ## Honest costs
 
 | Choice | What it costs, and who pays |
 |---|---|
 | Leaving a `direct-mcp` grant at `org-admin` | The people who run these projects cannot fix the thing they will most often need to fix. Every Sentry binding on this box is ungranted and the person who could change that is not the person who notices. ISS-1191 buys them a surface that says so, which turns a silent failure into a visible one they still cannot act on. |
 | Moving that grant to project admin | An escalation that exists for a reason goes. A project admin could then export a credential an org admin provisioned onto a runner box, and the audit trail becomes the only thing between that and a leak. |
-| Leaving `session_matches` conflating unreadable with absent | The daemon's sweep keeps the blindness doctor just stopped having: a pane whose config cannot be read reads as agreeing. Narrow — the file is written by the user that reads it — and paid by whoever debugs the pane that carries the wrong servers. |
-| Carrying the four-state read in doctor alone | One more place knows the session file's shape. The alternative is a behaviour change to the master loop, deciding what a sweep does with a file it cannot read, which is not a reporting change. |

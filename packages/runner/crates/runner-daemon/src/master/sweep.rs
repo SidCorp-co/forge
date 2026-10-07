@@ -100,7 +100,7 @@ pub async fn run(
         );
     }
     let mut dialogs = crate::standing_dialogs::BoxDialogs::new();
-    dialogs.pass().await;
+    dialogs.pass(&client).await;
     let mut passes = tokio::time::interval(master_pass::TICK);
     passes.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let sweep_due = tokio::time::sleep(delay);
@@ -113,7 +113,7 @@ pub async fn run(
                 }
             }
             _ = &mut sweep_due => {
-                dialogs.pass().await;
+                dialogs.pass(&client).await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
@@ -125,7 +125,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                dialogs.pass().await;
+                dialogs.pass(&client).await;
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();

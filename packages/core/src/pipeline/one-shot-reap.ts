@@ -1,7 +1,7 @@
 // Reaping one-shot runs nothing will finish.
 
 import { MASTER_SESSION_KIND, RUN_SESSION_KIND } from '@forge/contracts/agent-sessions';
-import { oneShotRunOutcome } from '@forge/contracts/run-machine';
+import { LIVE_PIPELINE_RUN_STATUSES, oneShotRunOutcome } from '@forge/contracts/run-machine';
 import { SESSION_SILENCE_REAP_MS } from '@forge/contracts/run-standing';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -92,7 +92,10 @@ export async function reapOrphanedOneShotRuns(
           .select({ id: pipelineRuns.id })
           .from(pipelineRuns)
           .where(
-            and(eq(pipelineRuns.id, row.id), inArray(pipelineRuns.status, ['running', 'paused'])),
+            and(
+              eq(pipelineRuns.id, row.id),
+              inArray(pipelineRuns.status, LIVE_PIPELINE_RUN_STATUSES),
+            ),
           )
           .for('update');
         if (!open) return false;

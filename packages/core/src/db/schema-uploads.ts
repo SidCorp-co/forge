@@ -1,4 +1,14 @@
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { users } from './schema-auth.js';
 import { devices } from './schema-devices.js';
 import { projects } from './schema-projects.js';
@@ -27,9 +37,16 @@ export const uploadTickets = pgTable(
     maxBytes: integer('max_bytes').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    /** The id the caller minted for this upload; a second mint of it returns this ticket. NULL only on a ticket minted before the column. */
+    operationId: text('operation_id'),
+    /** What the PUT that consumed the ticket answered, so a replay of that PUT answers the same. */
+    result: jsonb('result'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
+    operationUnique: uniqueIndex('upload_tickets_operation_unique')
+      .on(t.uploaderId, t.targetType, t.targetId, t.operationId)
+      .where(sql`operation_id IS NOT NULL`),
     targetIdx: index('upload_tickets_target_idx').on(t.targetType, t.targetId),
     expiresIdx: index('upload_tickets_expires_at_idx').on(t.expiresAt),
   }),

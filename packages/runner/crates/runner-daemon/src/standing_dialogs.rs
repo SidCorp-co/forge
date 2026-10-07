@@ -16,6 +16,9 @@
 //! A dialog is acted on only when it reads the same twice, [`SETTLE`] apart,
 //! so one the hook is answering at that moment is never keyed over.
 
+mod usage_limit;
+pub use usage_limit::{LimitReporter, NoCore};
+
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -46,6 +49,12 @@ pub enum Outcome {
         why: String,
         said_now: bool,
     },
+    /// The account's usage-limit list: reported to core (`reported_resets_in`
+    /// is the printed reset in seconds where it was readable) and dismissed.
+    UsageLimit {
+        pane: String,
+        resets_in_seconds: Option<u64>,
+    },
     /// It changed or went within [`SETTLE`], so nothing was pressed.
     Moved { pane: String },
 }
@@ -66,7 +75,12 @@ impl DialogSweep {
 
     /// Answer what stands on every session of `tmux`, recording each answer
     /// beside `config_dir`'s `config.toml`.
-    pub async fn pass(&mut self, tmux: &Tmux, config_dir: Option<&Path>) -> Vec<Outcome> {
+    pub async fn pass(
+        &mut self,
+        tmux: &Tmux,
+        config_dir: Option<&Path>,
+        limit: &impl LimitReporter,
+    ) -> Vec<Outcome> {
         let names = match tmux.sessions().await {
             Ok(names) => {
                 self.said.remove("");
@@ -111,6 +125,9 @@ impl DialogSweep {
                     "its No row is already open for text, so somebody may be typing there".into(),
                 ),
                 Standing::Permission(p) => self.answer(tmux, config_dir, pane, &p).await,
+                Standing::UsageLimit { reset, .. } => {
+                    self.usage_limit(tmux, limit, pane, reset).await
+                }
                 Standing::Other { highlighted, why } => self.cannot(pane, highlighted, why),
                 Standing::Nothing => continue,
             });
@@ -152,6 +169,64 @@ impl DialogSweep {
                         "[dialog] {pane}: a permission dialog is standing on this pane (\u{ab}{}\u{bb}) and the box could not answer it: {why}. It is tried again next sweep; until then the pane waits on a person",
                         p.question
                     ),
+                );
+                Outcome::Stopped { pane, why }
+            }
+        }
+    }
+
+    async fn usage_limit(
+        &mut self,
+        tmux: &Tmux,
+        limit: &impl LimitReporter,
+        pane: String,
+        reset: Option<String>,
+    ) -> Outcome {
+        let resets_in_seconds = match &reset {
+            Some(text) => {
+                usage_limit::resets_in_seconds(text, runner_platform::clock::now_secs()).await
+            }
+            None => None,
+        };
+        let detail = match (&reset, resets_in_seconds) {
+            (Some(text), Some(_)) => format!("Claude Code usage-limit list on {pane}; it resets at {text}"),
+            (Some(text), None) => format!(
+                "Claude Code usage-limit list on {pane}; its printed reset \u{ab}{text}\u{bb} could not be read"
+            ),
+            (None, _) => format!("Claude Code usage-limit list on {pane}; it printed no reset"),
+        };
+        // Core first: the list is not dismissed until the limit is on record,
+        // so a failed report leaves it standing and the next sweep tries again.
+        if let Err(e) = limit.usage_limit(resets_in_seconds, &detail).await {
+            let why = format!("core was not told the account is capped: {e}");
+            self.say(
+                &pane,
+                &why,
+                &format!("[dialog] {pane}: the account usage-limit list stands and {why} — it is left standing and tried again next sweep"),
+            );
+            return Outcome::Stopped { pane, why };
+        }
+        match tmux.dismiss_usage_limit(&pane).await {
+            Ok(()) => {
+                self.said.remove(&pane);
+                tracing::warn!(
+                    "[dialog] {pane}: the account's usage-limit list was standing; core was told ({}), and the list was dismissed with Escape — no option was chosen",
+                    match resets_in_seconds {
+                        Some(s) => format!("resets in {s}s"),
+                        None => "no readable reset, so core applies its own cooldown".into(),
+                    }
+                );
+                Outcome::UsageLimit {
+                    pane,
+                    resets_in_seconds,
+                }
+            }
+            Err(stopped) => {
+                let why = stopped.to_string();
+                self.say(
+                    &pane,
+                    &why,
+                    &format!("[dialog] {pane}: the account usage-limit list stands and Escape did not dismiss it: {why}"),
                 );
                 Outcome::Stopped { pane, why }
             }
@@ -205,12 +280,12 @@ impl BoxDialogs {
         }
     }
 
-    pub async fn pass(&mut self) {
+    pub async fn pass(&mut self, core: &impl LimitReporter) {
         let Some(tmux) = &self.tmux else {
             return;
         };
         let dir = runner_platform::config::config_dir();
-        self.sweep.pass(tmux, dir.as_deref()).await;
+        self.sweep.pass(tmux, dir.as_deref(), core).await;
     }
 }
 

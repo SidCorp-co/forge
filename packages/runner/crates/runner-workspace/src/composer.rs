@@ -110,8 +110,37 @@ pub enum Standing {
     Nothing,
     /// A tool-permission dialog the box can refuse with a reason.
     Permission(Permission),
+    /// Claude Code's account usage-limit choice list ("Stop and wait for limit
+    /// to reset" / "Wait here, then continue automatically at <time>" / ...).
+    /// It is the account's, not a tool's: the box dismisses it with Escape and
+    /// never chooses a numbered option, and the printed reset time, where one
+    /// is readable, is what core is told.
+    UsageLimit {
+        highlighted: String,
+        /// The text after "continue automatically at", exactly as drawn.
+        reset: Option<String>,
+    },
     /// A choice list that is not one, and why.
     Other { highlighted: String, why: String },
+}
+
+const LIMIT_STOP: &str = "Stop and wait for limit to reset";
+const LIMIT_AUTO: &str = "continue automatically";
+const LIMIT_AT: &str = "continue automatically at ";
+
+/// The usage-limit choice list's printed reset, where `options` is that list.
+/// Both signature rows must be present, so no other dialog is taken for it.
+fn usage_limit_reset(options: &[String]) -> Option<Option<String>> {
+    options
+        .iter()
+        .any(|o| o.starts_with(LIMIT_STOP))
+        .then_some(())?;
+    let auto = options.iter().find(|o| o.contains(LIMIT_AUTO))?;
+    Some(
+        auto.split_once(LIMIT_AT)
+            .map(|(_, at)| at.trim().to_string())
+            .filter(|t| !t.is_empty()),
+    )
 }
 
 const NO: &str = "No";
@@ -135,6 +164,12 @@ pub fn standing(capture: &str) -> Standing {
     let Some(list) = numbered(&lines, at) else {
         return other("its options are not numbered, which no tool-permission dialog draws");
     };
+    if let Some(reset) = usage_limit_reset(&list.options) {
+        return Standing::UsageLimit {
+            highlighted: excerpt(&highlighted, 200),
+            reset,
+        };
+    }
     let nos: Vec<usize> = (0..list.options.len())
         .filter(|i| list.options[*i] == NO || list.options[*i].starts_with(NO_AMENDED))
         .collect();

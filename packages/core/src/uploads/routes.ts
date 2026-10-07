@@ -9,7 +9,12 @@ import { invalid, rawBody, zValidator } from '../middleware/zod-validator.js';
 import { loadAttachment, readAttachmentBytes } from './attachment-lookup.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
 import { persistUpload } from './persist-upload.js';
-import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
+import {
+  claimUploadTicket,
+  recordUploadResult,
+  releaseUploadTicket,
+  replayOfUsedTicket,
+} from './ticket-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -51,7 +56,11 @@ uploadRoutes.put(
     const { uploadId } = c.req.valid('param');
 
     const ticket = await claimUploadTicket(uploadId);
-    if (!ticket) throw goneOrNotFound();
+    if (!ticket) {
+      const replay = await replayOfUsedTicket(uploadId);
+      if (!replay) throw goneOrNotFound();
+      return c.json(replay.result, 200);
+    }
 
     try {
       const bytes = Buffer.from(await c.req.arrayBuffer());
@@ -59,6 +68,7 @@ uploadRoutes.put(
         throw refuse('EMPTY_FILE', 'the body holds no bytes; PUT the file itself');
 
       const persisted = await persistUpload(ticket, bytes);
+      await recordUploadResult(uploadId, persisted);
       return c.json(persisted, 201);
     } catch (err) {
       await releaseUploadTicket(uploadId);

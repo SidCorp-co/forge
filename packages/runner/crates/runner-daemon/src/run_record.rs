@@ -206,6 +206,23 @@ pub async fn close_ended_runs(
                     run.run_id
                 ),
             },
+            // The close's bytes are the row's and nothing between sweeps changes
+            // them, so a constraint answer is final for them. Core has no door
+            // for a device to report this through, so it is recorded on the
+            // row (which takes it out of this sweep) and named here once.
+            Err(runner_platform::error::Error::Malformed { said, named }) => {
+                let why = named.join("; ");
+                match led.mark_close_refused(&run.run_id, &why) {
+                    Ok(()) => tracing::error!(
+                        "[run-record] run {}: {said} — core refused this close as malformed and will refuse it again unchanged ({why}). The close is not re-sent; the run's session stays open at core until core closes it",
+                        run.run_id
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[run-record] run {}: {said}; the refusal could not be written onto the row: {e} — the next sweep sends it again",
+                        run.run_id
+                    ),
+                }
+            }
             Err(e) => tracing::warn!(
                 "[run-record] run {}: core would not take the close: {e} — the next sweep tries again",
                 run.run_id
@@ -244,5 +261,94 @@ impl SessionCloser for CoreSessions<'_> {
             checkpoint,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod close_refusal_tests {
+    use super::*;
+    use runner_core::ledger::NewRun;
+    use runner_platform::error::Error;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct Closer {
+        sent: AtomicUsize,
+        answer: fn() -> runner_platform::error::Result<()>,
+    }
+
+    impl SessionCloser for Closer {
+        async fn close(
+            &self,
+            _session_id: &str,
+            _detail: &str,
+            _checkpoint: Option<serde_json::Value>,
+        ) -> runner_platform::error::Result<()> {
+            self.sent.fetch_add(1, Ordering::SeqCst);
+            (self.answer)()
+        }
+    }
+
+    fn ended_run() -> (Option<Ledger>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("forge-close-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut led = Ledger::open(&dir.join("ledger.db")).unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: dir.join("tree"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "session-1").unwrap();
+        led.end_run("run-1", "test", "done").unwrap();
+        (Some(led), dir)
+    }
+
+    fn malformed() -> runner_platform::error::Result<()> {
+        Err(Error::Malformed {
+            said: "run-session close 400".into(),
+            named: vec!["checkpoint: too big".into()],
+        })
+    }
+
+    #[tokio::test]
+    async fn a_close_core_refuses_as_malformed_is_sent_once_and_the_refusal_is_on_the_row() {
+        let (mut led, dir) = ended_run();
+        let closer = Closer {
+            sent: AtomicUsize::new(0),
+            answer: malformed,
+        };
+        for _ in 0..3 {
+            close_ended_runs(&closer, &mut led, "boot-1").await;
+        }
+        assert_eq!(
+            closer.sent.load(Ordering::SeqCst),
+            1,
+            "a close core refused as malformed was re-sent on a later sweep"
+        );
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert!(run.close_refused_at.is_some());
+        assert_eq!(run.close_refusal.as_deref(), Some("checkpoint: too big"));
+        assert!(
+            run.session_terminal_at.is_none(),
+            "a close core refused was recorded as a session core closed"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_close_that_fails_for_the_moment_is_sent_again() {
+        let (mut led, dir) = ended_run();
+        let closer = Closer {
+            sent: AtomicUsize::new(0),
+            answer: || Err(Error::Other("run-session close 503".into())),
+        };
+        for _ in 0..3 {
+            close_ended_runs(&closer, &mut led, "boot-1").await;
+        }
+        assert_eq!(closer.sent.load(Ordering::SeqCst), 3);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

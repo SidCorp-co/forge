@@ -59,6 +59,13 @@ export interface WsFramePayloads extends JobFrames {
 	};
 	"issue.pipelineHealth.changed": { issueId?: string; projectId?: string };
 	"issue.unblockCascade": UnblockCascadeFrame;
+	/** A question was asked, answered, voided or expired: screens showing questions, or the marker a question leaves, refetch. */
+	"question.changed": {
+		questionId: string;
+		projectId: string;
+		issueId: string | null;
+		change: "asked" | StateOf<"question">;
+	};
 	dependencyChanged: { fromIssueId: string; toIssueId: string };
 	"comment.created": CommentFrame;
 	"comment.updated": CommentFrame;

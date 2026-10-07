@@ -290,9 +290,11 @@ pub(crate) async fn provision_sweep(
     }
 }
 
-/// Reclaim finished runs' checkouts the ledger no longer holds.
+/// Reclaim finished runs' checkouts the ledger no longer holds, and start the
+/// scratch-root sweep beside it.
 pub(crate) async fn worktree_reap(cfg: Arc<Config>, mut cancel_rx: watch::Receiver<bool>) {
     use runner_workspace::worktree_reap::{SweepClock, SWEEP_PERIOD};
+    tokio::spawn(scratch::scratch_reap(cancel_rx.clone()));
     let mut clock = SweepClock::default();
     let mut wait = std::time::Duration::ZERO;
     loop {
@@ -769,3 +771,5 @@ fn heartbeat_conditions(
 
 #[cfg(all(test, unix))]
 mod cancel_tests;
+
+mod scratch;

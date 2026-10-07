@@ -41,7 +41,9 @@ CREATE TABLE IF NOT EXISTS runs (
   host_ended_by       TEXT,
   host_pid            INTEGER,
   host_start          TEXT,
-  refusal_wrote_ending INTEGER
+  refusal_wrote_ending INTEGER,
+  close_refused_at    INTEGER,
+  close_refusal       TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -110,6 +112,8 @@ CREATE TABLE IF NOT EXISTS master_authority (
 /// an older binary gains them on open, so an upgraded box reads rather than
 /// fails.
 pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
+    ("runs", "close_refused_at", "INTEGER"),
+    ("runs", "close_refusal", "TEXT"),
     ("runs", "project_id", "TEXT"),
     ("runs", "claim_owner", "TEXT"),
     ("runs", "claim_generation", "INTEGER NOT NULL DEFAULT 0"),

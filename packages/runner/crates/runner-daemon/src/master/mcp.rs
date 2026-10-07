@@ -58,16 +58,21 @@ pub(crate) enum PaneConfig {
     Current,
     /// The pane cannot carry what core resolves now: an operator must end it.
     Stale,
+    /// The session file exists and cannot be read, so whether the pane carries
+    /// what core resolves is not known. Neither current nor rewritten over.
+    Unreadable(String),
 }
 
 pub(crate) fn pane_config(
     asked: Option<&mcp_servers::ProjectMcpServers>,
-    on_disk_matches: bool,
+    on_disk: Option<runner_workspace::mcp::config::SessionConfigRead>,
 ) -> PaneConfig {
-    match asked {
-        None => PaneConfig::Unknown,
-        Some(_) if on_disk_matches => PaneConfig::Current,
-        Some(_) => PaneConfig::Stale,
+    use runner_workspace::mcp::config::SessionConfigRead as Read;
+    match (asked, on_disk) {
+        (None, _) | (Some(_), None) => PaneConfig::Unknown,
+        (Some(_), Some(Read::Matches)) => PaneConfig::Current,
+        (Some(_), Some(Read::Differs)) => PaneConfig::Stale,
+        (Some(_), Some(Read::Unreadable(why))) => PaneConfig::Unreadable(why),
     }
 }
 
@@ -78,16 +83,23 @@ pub(crate) fn report_stale_pane_config(
     slug: &str,
     asked: Option<&mcp_servers::ProjectMcpServers>,
 ) {
-    let on_disk_matches = asked
-        .map(|d| runner_workspace::mcp::config::session_matches(slug, &d.mcp_servers))
-        .unwrap_or(false);
-    let declared = match pane_config(asked, on_disk_matches) {
+    let on_disk =
+        asked.map(|d| runner_workspace::mcp::config::read_session_config(slug, &d.mcp_servers));
+    let declared = match pane_config(asked, on_disk) {
         PaneConfig::Unknown => return,
         PaneConfig::Current => {
             if let Some(d) = asked {
                 let _ = runner_workspace::mcp::config::write_session(slug, &d.mcp_servers);
             }
             masters.clear_mcp_stale(project_id);
+            return;
+        }
+        PaneConfig::Unreadable(why) => {
+            if masters.claim_mcp_stale(project_id) {
+                tracing::error!(
+                    "[master] {slug}: the resident session {name}'s MCP session file cannot be read ({why}), so whether its runs carry the servers core resolves is NOT known and the file is left as it is. Fix the file's permissions or remove it, or end the pane with `forge-runner master kill {slug}`."
+                );
+            }
             return;
         }
         PaneConfig::Stale => asked.expect("Stale is only reachable with an answer"),
@@ -103,4 +115,28 @@ pub(crate) fn report_stale_pane_config(
             declared.resolved_names.join(", ")
         }
     );
+}
+
+#[cfg(test)]
+mod pane_config_tests {
+    use super::*;
+    use runner_workspace::mcp::config::SessionConfigRead as Read;
+
+    #[test]
+    fn an_unreadable_session_file_is_never_current() {
+        let asked = mcp_servers::ProjectMcpServers::default();
+        assert_eq!(
+            pane_config(Some(&asked), Some(Read::Unreadable("denied".into()))),
+            PaneConfig::Unreadable("denied".into())
+        );
+        assert_eq!(
+            pane_config(Some(&asked), Some(Read::Matches)),
+            PaneConfig::Current
+        );
+        assert_eq!(
+            pane_config(Some(&asked), Some(Read::Differs)),
+            PaneConfig::Stale
+        );
+        assert_eq!(pane_config(None, None), PaneConfig::Unknown);
+    }
 }

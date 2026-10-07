@@ -34,6 +34,7 @@ pub mod record_file;
 pub mod refresh;
 pub mod repo_cred;
 pub mod salvage;
+pub mod scratch_reap;
 pub mod skill_sync;
 pub mod terminal;
 pub mod terminate;

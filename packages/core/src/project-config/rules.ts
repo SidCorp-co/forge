@@ -4,6 +4,7 @@ import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import type { PolicyDocument } from './policy-schema.js';
+import { MAX_PERFORMED_CROSSINGS, releaseCrossingsOf } from './promotion-path.js';
 import {
   type BindingRole,
   type DeploymentTrigger,
@@ -156,6 +157,14 @@ function checkBranches(doc: ProjectDocument): ConfigRefusal[] {
       code: 'PROMOTION_CYCLE',
       path: pointer('promotions'),
       detail: `promotions form a cycle: ${cycle.join(' -> ')}.`,
+    });
+  }
+  const crossings = cycle ? null : releaseCrossingsOf(doc);
+  if (crossings && crossings.length > MAX_PERFORMED_CROSSINGS) {
+    out.push({
+      code: 'PROMOTION_CHAIN_UNSUPPORTED',
+      path: pointer('promotions'),
+      detail: `a change landing on "${defaultBranch}" crosses ${crossings.length} promotions to reach the branch production deploys from (${crossings.map((p) => `${p.from} -> ${p.to}`).join(', ')}), and a release performs at most ${MAX_PERFORMED_CROSSINGS}; nothing carries the middle of a longer chain, so it would be skipped at the first release. Declare one promotion into the production branch, or deploy production from a nearer branch.`,
     });
   }
   return out;

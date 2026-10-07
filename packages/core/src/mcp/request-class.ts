@@ -60,6 +60,24 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
 }
 
 /**
+ * What in one envelope makes it write-class, named as the caller wrote it
+ * (`forge_issues action=update`, a method), so a refusal says which call.
+ */
+export function writeCallsOf(envelope: unknown): string[] {
+  if (Array.isArray(envelope)) return envelope.flatMap(writeCallsOf);
+  if (classifyMcpEnvelope(envelope) === 'read') return [];
+  if (!envelope || typeof envelope !== 'object')
+    return ['a request that is not a JSON-RPC envelope'];
+  const { method, params } = envelope as { method?: unknown; params?: unknown };
+  if (typeof method !== 'string') return ['a request with no method'];
+  if (method !== 'tools/call') return [method];
+  const call = (params ?? {}) as { name?: unknown; arguments?: unknown };
+  if (typeof call.name !== 'string') return ['tools/call with no tool name'];
+  const action = ((call.arguments ?? {}) as { action?: unknown }).action;
+  return [typeof action === 'string' ? `${call.name} action=${action}` : call.name];
+}
+
+/**
  * Classify the request and hand the answer to `requirePat`.
  *
  * Mounted on `/mcp` ABOVE `requirePat`, which is the whole of the coupling:
@@ -73,10 +91,14 @@ export function mcpRequestClass(): MiddlewareHandler<{ Variables: PrincipalVars 
       return;
     }
     let requestClass: PatRequestClass = 'write';
+    let calls: string[] = ['a body that is not JSON'];
     try {
-      requestClass = classifyMcpEnvelope(await c.req.raw.clone().json());
+      const envelope = await c.req.raw.clone().json();
+      requestClass = classifyMcpEnvelope(envelope);
+      calls = writeCallsOf(envelope);
     } catch {}
     c.set('patRequestClass', requestClass);
+    c.set('patRequestWrites', calls);
     await next();
   };
 }
