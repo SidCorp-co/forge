@@ -167,6 +167,24 @@ describe('the core logger', () => {
 
 describe('the core logger, given what is not an Error', () => {
   it.each([
+    ['a failed query', () => failedInsert().message],
+    ['a value the database quotes', () => 'invalid input syntax for type uuid: "zq9"'],
+  ])('reads an object under err again when it carries %s after a harmless line', (_, text) => {
+    const { lines, log } = capture();
+    const payload = { message: 'ordinary failure' };
+    log.warn({ err: payload }, 'first');
+    payload.message = text();
+    log.warn({ err: payload }, 'second');
+    log.child({ err: payload }).warn('third');
+    expect(lines).toHaveLength(3);
+    for (const line of lines.slice(1)) {
+      expect(line).not.toContain(HASH);
+      expect(line).not.toContain(EMAIL);
+      expect(line).not.toContain('zq9');
+    }
+  });
+
+  it.each([
     ['its message', (log: Logger, err: Error) => log.warn({ err: err.message, id: 'm1' }, 'g')],
     ['the message with no msg', (log: Logger, err: Error) => log.warn({ err: err.message })],
     ['String(err)', (log: Logger, err: Error) => log.warn({ err: String(err) }, 'h')],
