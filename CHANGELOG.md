@@ -121,6 +121,8 @@
 
 ### Added
 
+- **`forge-runner top` shows what each project spent.** Tokens and estimated cost over 24 hours and 7 days, the master's share apart, priced by `[rates]` in `config.toml`; a model without a rate is named, never priced as zero.
+
 - **An issue can say its work lands outside git, even in a git project.** A change that touches
   no file, such as a deployment's settings, is marked with where it lands instead of a commit it
   never made.
@@ -3141,6 +3143,7 @@
 
 ### Fixed
 
+- **`top`'s keys behave.** A page `n` or `p` shows is not turned straight away, `--help` lists every key, and on unix Ctrl-\\ and Ctrl-Z work as in any terminal program; on Windows the view says they do nothing.
 - **A release says, before you press it, which issues it could not close.** Each shows why and
   what clears it, cannot be selected, and is left off automatic and scheduled releases instead of
   being shipped and handed back (ISS-1337).

@@ -70,6 +70,9 @@ pub struct Master {
     pub project_id: String,
     pub pane_name: String,
     pub session_id: Option<String>,
+    /// The Claude Code conversation the pane resumes, whose transcript is the
+    /// master's own (ISS-1375).
+    pub conversation_id: Option<String>,
     pub boot_id: String,
     pub cold_started_at: i64,
     pub last_seen_at: i64,
@@ -130,6 +133,7 @@ pub const READS: &[(&str, &[&str])] = &[
             "project_id",
             "pane_name",
             "session_id",
+            "conversation_id",
             "boot_id",
             "cold_started_at",
             "last_seen_at",
@@ -230,15 +234,16 @@ fn read_runs(conn: &Connection) -> rusqlite::Result<Vec<Run>> {
 fn read_masters(conn: &Connection) -> rusqlite::Result<HashMap<String, Master>> {
     let judged = has_column(conn, "masters", "outdated")?;
     let mut stmt = conn.prepare(if judged {
-        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, outdated FROM masters"
+        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, outdated, conversation_id FROM masters"
     } else {
-        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, NULL FROM masters"
+        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, NULL, conversation_id FROM masters"
     })?;
     let rows = stmt.query_map([], |r| {
         Ok(Master {
             project_id: r.get(0)?,
             pane_name: r.get(1)?,
             session_id: r.get(2)?,
+            conversation_id: r.get(7)?,
             boot_id: r.get(3)?,
             cold_started_at: r.get(4)?,
             last_seen_at: r.get(5)?,

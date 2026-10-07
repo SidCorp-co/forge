@@ -23,6 +23,7 @@ use super::panes::{self, Sessions};
 use super::people::{self, Jobs, ProjectCore};
 use super::skill::{self, Skill};
 use super::source::{Read, Unreadable};
+use super::spend::{read::Reader, sum, Spend};
 use super::tree_age::{self, TreeAge};
 use crate::cmd::Ctx;
 
@@ -80,6 +81,7 @@ pub struct Snapshot {
     pub gate_source: String,
     pub pool: Vec<String>,
     pub pool_source: String,
+    pub spend: Spend,
 }
 
 type HeldExe = ((u32, String), Read<Arc<Vec<u8>>>);
@@ -99,9 +101,13 @@ pub struct Carry {
     trees: HashMap<PathBuf, (i64, TreeAge)>,
     /// The daemon executable last read, under the pid and link it was read at.
     exe: Option<HeldExe>,
+    /// The transcripts read so far, each from where its last read ended.
+    spend: Reader,
 }
 
-pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
+/// One frame. `spend_budget` bounds the transcript bytes this frame reads
+/// (`spend::BUDGET_BYTES` on a live view); `None` reads every one.
+pub async fn frame(ctx: &Ctx, carry: &mut Carry, spend_budget: Option<u64>) -> Snapshot {
     let now_ms = forge_runner_core::daemon::agent_activity::now_ms();
     let config_path = Config::path()
         .map(|p| p.display().to_string())
@@ -156,6 +162,7 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
         .and_then(|d| people::jobs(&d));
 
     let core = core_reads(ctx, config.as_ref().ok(), &projects, carry, now_ms).await;
+    let spend = read_spend(carry, &projects, &ledger, &config, now_ms, spend_budget).await;
 
     let (gate, gate_source, pool, pool_source) = match (&config_dir, config.as_ref()) {
         (Some(d), cfg) => {
@@ -208,9 +215,91 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
         gate_source,
         pool,
         pool_source,
+        spend,
     }
 }
 
+/// What every transcript under `~/.claude/projects` says was spent, summed
+/// by the bound project whose checkout holds each response's cwd.
+async fn read_spend(
+    carry: &mut Carry,
+    projects: &[Project],
+    ledger: &Read<ledger_ro::View>,
+    config: &Read<Config>,
+    now_ms: i64,
+    budget: Option<u64>,
+) -> Spend {
+    let Some(home) = dirs_next::home_dir() else {
+        return Spend::Unreadable(Unreadable::new(
+            "~/.claude/projects",
+            "no home directory resolves on this box",
+        ));
+    };
+    let root = home.join(".claude").join("projects");
+    let mut reader = std::mem::take(&mut carry.spend);
+    let at = root.clone();
+    let read = tokio::task::spawn_blocking(move || {
+        let pass = reader.pass(&at, now_ms, budget);
+        (reader, pass)
+    })
+    .await;
+    let pass = match read {
+        Err(e) => {
+            return Spend::Unreadable(Unreadable::new(
+                root.display().to_string(),
+                format!("the read did not finish: {e}"),
+            ))
+        }
+        Ok((reader, pass)) => {
+            carry.spend = reader;
+            pass
+        }
+    };
+    let pass = match pass {
+        Err(u) => return Spend::Unreadable(u),
+        Ok(p) => p,
+    };
+    if !pass.complete {
+        return Spend::Reading {
+            root,
+            read: pass.done,
+            outstanding: pass.outstanding,
+            files: pass.files,
+        };
+    }
+    let (rates, rates_unread) = match config {
+        Ok(c) => (sum::rates(&c.rates), None),
+        Err(e) => (Default::default(), Some(e.reason.clone())),
+    };
+    let owners: Vec<sum::Owner> = projects
+        .iter()
+        .map(|p| sum::Owner {
+            key: &p.key,
+            repo: p.repo.as_deref(),
+            master: ledger.as_ref().ok().map(|v| {
+                p.project_id
+                    .as_deref()
+                    .and_then(|id| v.masters.get(id))
+                    .and_then(|m| m.conversation_id.as_deref())
+            }),
+        })
+        .collect();
+    let totals = sum::totals(
+        carry.spend.responses(),
+        sum::Context {
+            root: &root,
+            now_ms,
+            files: pass.files,
+            owners: &owners,
+            rates: &rates,
+            rates_unread,
+            unreadable: pass.unreadable,
+            bad: pass.bad,
+            unkeyed: pass.unkeyed,
+        },
+    );
+    Spend::Read(Box::new(totals))
+}
 fn daemon_exe(carry: &mut Carry, daemon: Option<&Daemon>) -> Read<Arc<Vec<u8>>> {
     let Some(d) = daemon else {
         return Err(Unreadable::new(

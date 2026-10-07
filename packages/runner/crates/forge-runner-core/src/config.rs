@@ -56,6 +56,14 @@ pub struct Config {
     /// project-slug -> local repo binding. One runner is registered per binding.
     #[serde(default)]
     pub bindings: HashMap<String, Binding>,
+
+    /// Per-model prices `forge-runner top` estimates spend with, keyed by a
+    /// transcript's `message.model`: `input`, `output`, `cache_write` and
+    /// `cache_read`, in US dollars per million tokens (ISS-1375). Kept as
+    /// TOML here and read by `top` alone, so an entry it cannot price is
+    /// named there and never stops the daemon reading this file.
+    #[serde(default, skip_serializing_if = "toml::Table::is_empty")]
+    pub rates: toml::Table,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -667,8 +675,9 @@ mod tests {
             ),
             (
                 "forge-runner/src/cmd/top/gather.rs",
-                3,
-                "prints the path, and hands home to cli_config_dir",
+                5,
+                "prints the path, hands home to cli_config_dir, and reads the transcripts under \
+                 home's .claude/projects for SPEND (ISS-1375), a read",
             ),
             (
                 "forge-runner/tests/config_isolation.rs",

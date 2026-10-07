@@ -306,6 +306,13 @@ pub(crate) fn decide(
     }
 }
 
+/// A transcript's `timestamp` (`2026-10-01T12:59:39.343Z`) in ms since the
+/// epoch, by the rule the records above are read with; `None` for any other
+/// shape.
+pub fn unix_ms(ts: &str) -> Option<i64> {
+    Some(unix_seconds(ts)? * 1000 + i64::from(subsecond_millis(ts)))
+}
+
 fn unix_seconds(ts: &str) -> Option<i64> {
     let bytes = ts.as_bytes();
     if bytes.len() < 20

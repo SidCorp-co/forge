@@ -16,6 +16,7 @@ use super::ledger_ro::Run;
 use super::people::lanes_route;
 use super::render;
 use super::source::{ago, span, Read, Unreadable};
+use super::spend;
 
 /// One row of the screen, before colour.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,9 +92,23 @@ const ATT_W: usize = 3;
 const PANE_W: usize = 5;
 const RUNS_W: usize = 4;
 const LANE_W: usize = 4;
+/// The 24-hour cost: `$12.3K+` at its widest (ISS-1375).
+const SPEND_W: usize = 7;
 /// Every cell but the name, NOW and CHANGE, and the spaces between cells.
-const FIXED: usize =
-    1 + ATT_W + 1 + 1 + PANE_W + 1 + RUNS_W + 5 * (1 + LANE_W) + 1 + VERDICT_W + 1 + 1;
+const FIXED: usize = 1
+    + ATT_W
+    + 1
+    + 1
+    + PANE_W
+    + 1
+    + RUNS_W
+    + 5 * (1 + LANE_W)
+    + 1
+    + SPEND_W
+    + 1
+    + VERDICT_W
+    + 1
+    + 1;
 
 struct Widths {
     name: usize,
@@ -108,6 +123,8 @@ struct Cells {
     pane: String,
     runs: String,
     lanes: [String; 5],
+    /// The last 24 hours' estimated cost.
+    spend: String,
     verdict: &'static str,
     now: String,
     change: String,
@@ -138,7 +155,12 @@ impl Cells {
 
 pub fn build(s: &Snapshot, o: &Opts) -> Table {
     let boxed = box_cells(s);
-    let rows: Vec<(Cells, Assessment)> = s.projects.iter().map(|p| project_cells(s, p)).collect();
+    let rows: Vec<(Cells, Assessment)> = s
+        .projects
+        .iter()
+        .enumerate()
+        .map(|(i, p)| project_cells(s, i, p))
+        .collect();
     let w = widths(
         o.cols,
         std::iter::once(&boxed.0).chain(rows.iter().map(|(c, _)| c)),
@@ -261,12 +283,13 @@ fn heading(w: &Widths) -> String {
         .map(|(n, _)| pad(n, LANE_W, true))
         .collect();
     format!(
-        " {} {} {} {} {} {} {} {}",
+        " {} {} {} {} {} {} {} {} {}",
         pad("!", ATT_W, true),
         pad("PROJECT", w.name, false),
         pad("PANE", PANE_W, false),
         pad("RUNS", RUNS_W, true),
         names.join(" "),
+        pad("$24H", SPEND_W, true),
         pad("VERDICT", VERDICT_W, false),
         pad("NOW", w.now, false),
         pad("CHANGE", w.change, false),
@@ -276,13 +299,14 @@ fn heading(w: &Widths) -> String {
 fn laid_out(c: &Cells, w: &Widths, selected: bool) -> String {
     let lanes: Vec<String> = c.lanes.iter().map(|l| pad(l, LANE_W, true)).collect();
     format!(
-        "{}{} {} {} {} {} {} {} {}",
+        "{}{} {} {} {} {} {} {} {} {}",
         if selected { ">" } else { " " },
         pad(&c.att, ATT_W, true),
         pad(&c.name, w.name, false),
         pad(&c.pane, PANE_W, false),
         pad(&c.runs, RUNS_W, true),
         lanes.join(" "),
+        pad(&c.spend, SPEND_W, true),
         pad(c.verdict, VERDICT_W, false),
         pad(&c.now, w.now, false),
         c.change_cell(w.change),
@@ -318,7 +342,7 @@ pub fn lanes_before<'a>(s: &'a Snapshot, p: &Project) -> Option<(i64, &'a Counts
     Some((*at, c))
 }
 
-fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
+fn project_cells(s: &Snapshot, index: usize, p: &Project) -> (Cells, Assessment) {
     let a = attention::project(s, p);
     let runs = attention::runs_of(s, p);
     let parked = attention::parked_of(s, p);
@@ -370,6 +394,7 @@ fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
         pane: pane.cell().into(),
         runs: runs_cell,
         lanes,
+        spend: spend::lines::cell(&s.spend, Some(index)),
         verdict: a.verdict(idle),
         now,
         change,
@@ -433,6 +458,7 @@ fn box_cells(s: &Snapshot) -> (Cells, Assessment) {
         pane,
         runs,
         lanes,
+        spend: spend::lines::cell(&s.spend, None),
         verdict: a.verdict(false),
         now: printable(&now),
         change,
@@ -619,6 +645,7 @@ fn legend(form: Legend) -> Vec<String> {
                     .iter()
                     .map(|(n, statuses)| format!("{n} {}", statuses.join(" "))),
             );
+            out.push("$24H estimated cost, 24h; + a model unpriced".into());
             out.push("VERDICT the row's worst finding:".into());
             out.extend(
                 attention::WORDS
@@ -630,6 +657,7 @@ fn legend(form: Legend) -> Vec<String> {
                     "NOW what is running, or the box's worst finding",
                     "CHANGE status counts moved since core's previous reading",
                     "? could not be read",
+                    "… not read yet",
                     "· none",
                     "— no earlier reading, or nothing running",
                 ]
@@ -647,9 +675,8 @@ fn legend(form: Legend) -> Vec<String> {
                     "QUE queued",
                     "BLK blocked",
                     "DRF draft",
+                    "$24H cost, 24h",
                     "NOW running now",
-                    "? unread",
-                    "· none",
                 ]
                 .map(String::from),
             );
@@ -664,6 +691,8 @@ fn legend(form: Legend) -> Vec<String> {
             out.push("CHANGE since core's last reading".into());
             out.push("— no earlier reading".into());
             out.push(format!("{} no finding", fine.join(" or ")));
+            out.push("? unread".into());
+            out.push("· none".into());
         }
     }
     out
@@ -971,8 +1000,8 @@ mod tests {
         let a = &rows[1].text;
         let words: Vec<&str> = a.split_whitespace().collect();
         assert_eq!(
-            &words[..10],
-            &["4", "alpha", "up", "3", "1", "·", "2", "·", "1", "ASKS"],
+            &words[..11],
+            &["4", "alpha", "up", "3", "1", "·", "2", "·", "1", "$4.50", "ASKS"],
             "{a}"
         );
         assert!(a.contains("3 runs: ISS-1 ISS-1 ISS-1"), "{a}");
@@ -980,8 +1009,8 @@ mod tests {
         let b = &rows[2].text;
         let words: Vec<&str> = b.split_whitespace().collect();
         assert_eq!(
-            &words[..10],
-            &["·", "beta", "none", "·", "·", "·", "·", "·", "·", "idle"],
+            &words[..11],
+            &["·", "beta", "none", "·", "·", "·", "·", "·", "·", "·", "idle"],
             "{b}"
         );
         assert_eq!(rows[2].tone, Tone::Dim);
@@ -1207,7 +1236,8 @@ mod tests {
     fn the_legend_names_every_column_and_every_verdict_word() {
         let s = a_fine_box(false);
         let columns = [
-            "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE",
+            "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "$24H", "VERDICT", "NOW",
+            "CHANGE",
         ];
         let words = [
             "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "AGEING", "DOWN", "WAITS", "GATE",

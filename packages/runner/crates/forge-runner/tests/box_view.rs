@@ -927,6 +927,25 @@ fn on_a_terminal_with(
     keys: bool,
     env: &[(&str, &str)],
 ) -> Pty {
+    spawn_on_a_pty(b, cols, rows, args, keys, env, false)
+}
+
+/// As `on_a_terminal_reading` with keys, and the pty is the child's
+/// controlling terminal, its session's foreground: Ctrl-C, Ctrl-\ and Ctrl-Z
+/// typed on it are the signals a shell's terminal sends.
+fn on_its_controlling_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
+    spawn_on_a_pty(b, cols, rows, args, true, &[], true)
+}
+
+fn spawn_on_a_pty(
+    b: &PlantedBox,
+    cols: u16,
+    rows: u16,
+    args: &[&str],
+    keys: bool,
+    env: &[(&str, &str)],
+    controlling: bool,
+) -> Pty {
     use std::os::fd::FromRawFd;
     // SAFETY: plain libc calls on descriptors this test opens and owns; the
     // secondary's name is copied out of the buffer ptsname_r fills.
@@ -954,7 +973,21 @@ fn on_a_terminal_with(
     };
     let modes_before = modes(&secondary);
     let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
-    let child = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_forge-runner"));
+    if controlling {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid and ioctl are async-signal-safe, and stdin is the
+        // secondary by the time pre_exec runs.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() < 0 || libc::ioctl(0, libc::TIOCSCTTY, 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    let child = cmd
         .arg("top")
         .args(args)
         .env_clear()
@@ -1288,6 +1321,33 @@ fn an_interval_out_of_range_is_refused_naming_the_range_in_words() {
 }
 
 /// Criterion 39: `--help` says the range in the same words.
+/// ISS-1341 r5, criterion 42 (judge w10): `--help` names every key the view
+/// reads and what it does, and the terminal keys that end or stop it.
+#[test]
+fn help_names_every_key() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let out = top(&b, &["--help"]);
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{help}");
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    for said in [
+        "↑ ↓ or j k move the selection",
+        "Enter opens the selected row's detail",
+        "Esc returns to the table",
+        "s shows each row's sources",
+        "l switches the legend",
+        "q quits",
+        "space holds the page shown, or lets pages turn again",
+        "n shows the next page",
+        "p shows the previous page",
+        "Ctrl-C and Ctrl-\\ end the view",
+        "Ctrl-Z stops it",
+    ] {
+        assert!(words.contains(said), "{said:?} not in: {help}");
+    }
+}
+
 #[test]
 fn help_says_the_interval_range_in_words() {
     let core = fake_core("200 OK");
@@ -1558,6 +1618,19 @@ impl Pty {
         }
     }
 
+    /// When the first screen after the first `after` whose page row opens
+    /// with `what` was drawn.
+    fn drawn_at(&self, after: usize, what: &str) -> Option<std::time::Instant> {
+        let text = self.text();
+        let stamps = self.cleared.lock().unwrap().clone();
+        text.split("\x1b[H\x1b[2J")
+            .skip(1)
+            .enumerate()
+            .skip(after)
+            .find(|(_, screen)| screen.split("\r\n").any(|r| r.starts_with(what)))
+            .and_then(|(k, _)| stamps.get(k).copied())
+    }
+
     fn type_keys(&mut self, keys: &str) {
         self.keyboard.write_all(keys.as_bytes()).unwrap();
         self.keyboard.flush().unwrap();
@@ -1775,10 +1848,10 @@ fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
     assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
 }
 
-/// Consult on the r4 head, F1, and the whole-set read at 2b6a996, F1:
-/// SIGTERM and SIGQUIT each end a view reading keys through its loop, so the
-/// terminal is given back the modes it had; and while it runs, Ctrl-\\ and
-/// Ctrl-Z send nothing, and Ctrl-C is still the interrupt.
+/// Consult on the r4 head, F1: SIGTERM and SIGQUIT each end a view reading
+/// keys through its loop, so the terminal is given back the modes it had; and
+/// while it runs, Ctrl-C, Ctrl-\\ and Ctrl-Z are the terminal's own keys still
+/// (ISS-1341 r5, judge w10's third finding).
 #[test]
 fn a_view_ended_by_a_signal_gives_the_terminal_back() {
     let core = fake_core("200 OK");
@@ -1788,13 +1861,16 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
         first_page_count(&mut pty);
         let taken = modes(&pty.secondary);
         assert_eq!(taken.c_lflag & libc::ICANON, 0, "the view took the input");
-        assert_eq!(taken.c_cc[libc::VQUIT], 0, "Ctrl-\\ still quits");
-        assert_eq!(taken.c_cc[libc::VSUSP], 0, "Ctrl-Z still stops");
-        assert_eq!(
-            taken.c_cc[libc::VINTR],
-            pty.modes_before.c_cc[libc::VINTR],
-            "Ctrl-C is no longer the interrupt"
-        );
+        for (cc, key) in [
+            (libc::VINTR, "Ctrl-C"),
+            (libc::VQUIT, "Ctrl-\\"),
+            (libc::VSUSP, "Ctrl-Z"),
+        ] {
+            assert_eq!(
+                taken.c_cc[cc], pty.modes_before.c_cc[cc],
+                "{key} is no longer the terminal's own key"
+            );
+        }
         // SAFETY: a signal to the child this test spawned and still holds.
         assert_eq!(
             unsafe { libc::kill(pty.child.id() as libc::pid_t, signal) },
@@ -1808,6 +1884,158 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
             "signal {signal}"
         );
     }
+}
+
+/// ISS-1341 r5, criteria 43: Ctrl-\\ typed on the view's controlling
+/// terminal ends it, and the terminal has the modes it had before.
+#[test]
+fn ctrl_backslash_ends_the_view_and_gives_the_terminal_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_its_controlling_terminal(&b, 100, 20, &["--interval", "1"]);
+    first_page_count(&mut pty);
+    pty.type_keys("\x1c");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "Ctrl-\\: {st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new()
+    );
+}
+
+/// The state letter `/proc/<pid>/stat` gives the child: `T` is stopped.
+fn state_of(child: &Child) -> char {
+    let stat = std::fs::read_to_string(format!("/proc/{}/stat", child.id())).unwrap_or_default();
+    stat.rsplit_once(") ")
+        .and_then(|(_, rest)| rest.chars().next())
+        .unwrap_or('?')
+}
+
+fn becomes(child: &Child, state: char, within: std::time::Duration) -> bool {
+    let until = std::time::Instant::now() + within;
+    while std::time::Instant::now() < until {
+        if state_of(child) == state {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    false
+}
+
+/// ISS-1341 r5, criteria 44 and 45: Ctrl-Z typed on the view's controlling
+/// terminal stops it with the terminal given back its modes; continued, it
+/// takes the input again, draws its screen and answers keys.
+#[test]
+fn ctrl_z_stops_the_view_with_the_terminal_given_back_and_fg_resumes_it() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_its_controlling_terminal(&b, 100, 20, &["--interval", "60"]);
+    let pages = first_page_count(&mut pty);
+    assert_eq!(modes(&pty.secondary).c_lflag & libc::ICANON, 0, "taken");
+    pty.type_keys("\x1a");
+    assert!(
+        becomes(&pty.child, 'T', std::time::Duration::from_secs(5)),
+        "Ctrl-Z did not stop the view: state {}",
+        state_of(&pty.child)
+    );
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new(),
+        "stopped with the view's modes on the terminal"
+    );
+    let at = pty.screens_drawn();
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGCONT) },
+        0
+    );
+    let second = std::time::Duration::from_secs(2);
+    assert!(
+        pty.draws_page(at, "page 1 of ", second),
+        "continued, no screen drawn: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert_eq!(
+        modes(&pty.secondary).c_lflag & libc::ICANON,
+        0,
+        "taken again"
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    assert!(
+        pty.draws_page(at, &format!("page 2 of {pages} "), second),
+        "continued, n unanswered: {:?}",
+        pty.page_rows_after(at)
+    );
+    pty.type_keys("q");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "{st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new()
+    );
+}
+
+/// ISS-1341 r5, criteria 34 and 41 (judge w10, reopen 4): `n` pressed just
+/// before a redraw that was already due shows the next page, and that
+/// redraw does not turn it; the page turns only once a whole interval has
+/// passed since the key.
+#[test]
+fn n_just_before_a_redraw_is_not_turned_by_it() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let interval = 3.0;
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "3"], true);
+    let pages = first_page_count(&mut pty);
+    assert!(pages > 4, "{pages}");
+    // A redraw turned the page: the next is due an interval after it.
+    let at = pty.screens_drawn();
+    assert!(
+        pty.draws_page(at, "page 2 of ", std::time::Duration::from_secs(8)),
+        "the box's detail did not turn: {:?}",
+        pty.page_rows_after(at)
+    );
+    let turned_at = *pty.cleared.lock().unwrap().last().unwrap();
+    let key_at = turned_at + std::time::Duration::from_secs_f64(interval - 0.4);
+    std::thread::sleep(key_at.saturating_duration_since(std::time::Instant::now()));
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    let keyed = std::time::Instant::now();
+    assert!(
+        pty.draws_page(
+            at,
+            &format!("page 3 of {pages} "),
+            std::time::Duration::from_secs(1)
+        ),
+        "n: {:?}",
+        pty.page_rows_after(at)
+    );
+    // Past the redraw that was due, short of an interval since the key.
+    std::thread::sleep(
+        (keyed + std::time::Duration::from_secs_f64(interval - 0.6))
+            .saturating_duration_since(std::time::Instant::now()),
+    );
+    let since = pty.page_rows_after(at);
+    assert!(
+        since
+            .iter()
+            .all(|r| r.starts_with(&format!("page 3 of {pages} "))),
+        "the redraw due when n was pressed turned its page: {since:?}"
+    );
+    let next = format!("page 4 of {pages} ");
+    assert!(
+        pty.draws_page(at, &next, std::time::Duration::from_secs(6)),
+        "the page never turned again: {:?}",
+        pty.page_rows_after(at)
+    );
+    // Whole-set read at 07832d1f4 (box_view, F1): the page turns no sooner
+    // than a whole interval after the key, give or take a frame's write.
+    let turned = pty.drawn_at(at, &next).expect("its screen was drawn");
+    let held = turned.duration_since(keyed).as_secs_f64();
+    assert!(
+        held >= interval - 0.15,
+        "n's page was turned {held:.2}s after the key"
+    );
 }
 
 /// The box_view flake (ISS-1341 comments fba234f3 and 046ff8a6): the planted
@@ -2201,4 +2429,223 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
     let pty = on_a_terminal_reading(&b, 170, 50, &["--interval", "5"], true);
     let f = pty.first_table().join("\r\n");
     assert!(full(&f) && fits(&f, 170, 50), "{f}");
+}
+
+/// One assistant line as Claude Code writes it, `message.content` carrying
+/// `said` so a frame that printed content would be caught.
+fn usage_line(
+    at_ms: i64,
+    cwd: &Path,
+    ids: (&str, &str),
+    model: &str,
+    counts: [u64; 4],
+    said: &str,
+) -> String {
+    let ts = rfc3339(at_ms);
+    serde_json::json!({
+        "type": "assistant",
+        "timestamp": ts,
+        "cwd": cwd.display().to_string(),
+        "sessionId": "s",
+        "requestId": ids.1,
+        "message": {
+            "id": ids.0,
+            "model": model,
+            "role": "assistant",
+            "content": [{"type": "text", "text": said}],
+            "usage": {
+                "input_tokens": counts[0],
+                "output_tokens": counts[1],
+                "cache_creation_input_tokens": counts[2],
+                "cache_read_input_tokens": counts[3],
+            },
+        },
+    })
+    .to_string()
+}
+
+const SECRET: &str = "SECRET-MARKER-1375-do-not-print";
+
+/// `ms` since the epoch as Claude Code writes a transcript's `timestamp`.
+fn rfc3339(ms: i64) -> String {
+    let (secs, milli) = (ms.div_euclid(1000), ms.rem_euclid(1000));
+    let (days, rest) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    // Howard Hinnant's civil_from_days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{milli:03}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
+/// ISS-1375's proof fixture: a master conversation whose one response is
+/// written on two content-block lines with growing output, a response three
+/// days old, one eight days old, one straddling the 24h line, a subagent on
+/// an unpriced model in a worktree, a job pane in beta, and a session under no
+/// bound checkout. Returns the transcript files, for their bytes and times.
+fn plant_transcripts(b: &PlantedBox) -> Vec<PathBuf> {
+    let now = now_secs() * 1000;
+    let (h, d) = (3_600_000, 86_400_000);
+    let (alpha, beta) = (b.root.join("repos/alpha"), b.root.join("repos/beta"));
+    let projects = b.root.join("h/.claude/projects");
+    let conv = projects.join("-repos-alpha/conv-alpha.jsonl");
+    let sub = projects.join("-repos-alpha/conv-alpha/subagents/agent-x.jsonl");
+    let job = projects.join("-repos-beta/job-1.jsonl");
+    let tmp = projects.join("-tmp-scratch/s-1.jsonl");
+    let m = 1_000_000;
+    let files: Vec<(&PathBuf, Vec<String>)> = vec![
+        (
+            &conv,
+            vec![
+                format!("{{\"type\":\"user\",\"cwd\":\"{}\",\"message\":{{\"role\":\"user\",\"content\":\"{SECRET} what is the usage\"}}}}", alpha.display()),
+                usage_line(now - h, &alpha, ("msg_1", "req_1"), "model-a", [m, 100_000, 2 * m, 10 * m], SECRET),
+                usage_line(now - h + 900, &alpha, ("msg_1", "req_1"), "model-a", [m, m, 2 * m, 10 * m], SECRET),
+                usage_line(now - 3 * d, &alpha, ("msg_2", "req_2"), "model-a", [2 * m, 0, 0, 0], SECRET),
+                usage_line(now - 8 * d, &alpha, ("msg_3", "req_3"), "model-a", [7_777, 0, 0, 0], SECRET),
+                // Straddles the 24h line: its later line, inside the window,
+                // carries the larger output, and its time is the earlier one.
+                usage_line(now - d - 60_000, &alpha, ("msg_4", "req_4"), "model-a", [m, 100, 0, 0], SECRET),
+                usage_line(now - d + 60_000, &alpha, ("msg_4", "req_4"), "model-a", [m, 200_000, 0, 0], SECRET),
+            ],
+        ),
+        (
+            &sub,
+            vec![usage_line(now - 2 * h, &alpha.join(".claude/worktrees/iss-1"), ("msg_5", "req_5"), "model-b", [3_000, 30_000, 0, 0], SECRET)],
+        ),
+        (
+            &job,
+            vec![usage_line(now - h, &beta, ("msg_6", "req_6"), "model-a", [2 * m, 0, 0, 0], SECRET)],
+        ),
+        (
+            &tmp,
+            vec![usage_line(now - h, Path::new("/tmp/scratch-x"), ("msg_7", "req_7"), "model-a", [4 * m, 0, 0, 0], SECRET)],
+        ),
+    ];
+    let mut out = Vec::new();
+    for (path, lines) in files {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, lines.join("\n") + "\n").unwrap();
+        out.push(path.clone());
+    }
+    // The master's conversation, as the daemon records it, and rates for
+    // model-a alone.
+    let boot = forge_runner_core::runner::inflight::boot_identity().unwrap_or_default();
+    Ledger::open(&b.ledger)
+        .unwrap()
+        .note_master(
+            ALPHA,
+            "forge-master-alpha",
+            Some("conv-alpha"),
+            Some("sess-now"),
+            &boot,
+        )
+        .unwrap();
+    let cfg = b.root.join("c/forge-runner/config.toml");
+    let mut body = std::fs::read_to_string(&cfg).unwrap();
+    body.push_str(
+        "\n[rates.model-a]\ninput = 3\noutput = 15\ncache_write = 3.75\ncache_read = 0.3\n",
+    );
+    std::fs::write(&cfg, body).unwrap();
+    out
+}
+
+/// ISS-1375, criteria 1–8, 11, 13 and 14: `--once` prints each project's 24h
+/// and 7d tokens and cost, its master's conversation apart; each response
+/// once at its largest counts and earliest time; windows exclude what falls
+/// before them; the unmapped cwd is named; the unpriced model's tokens are
+/// named and left out of every cost said to leave them out; no content
+/// reaches the frame; and the transcripts are left as they were.
+#[test]
+fn spend_counts_each_response_once_by_project_window_and_rate() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let files = plant_transcripts(&b);
+    let before: Vec<_> = files.iter().map(|f| stamp(f)).collect();
+    let out = top(&b, &["--once"]);
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(out.status.success(), "{text}");
+    assert!(!text.contains(SECRET), "content reached the frame:\n{text}");
+    let spend = section(&text, "SPEND");
+    let words = spend.split_whitespace().collect::<Vec<_>>().join(" ");
+    let under = |p: &str| {
+        format!(
+            "{p} ← every response written from a cwd under {}: its master, job panes and subagent runs 24h",
+            b.root.join("repos").join(p).display()
+        )
+    };
+    let alpha = format!(
+        "{} in 1.0M · out 1.0M · cache-write 2.0M · cache-read 10.0M · $28.50 + model-b unpriced",
+        under("alpha")
+    );
+    let beta = format!(
+        "{} in 2.0M · out 0 · cache-write 0 · cache-read 0 · $6.00",
+        under("beta")
+    );
+    for said in [
+        // alpha: msg_1 at its largest (out 1.0M, not 1.1M) and the subagent.
+        alpha.as_str(),
+        // 7d adds msg_2 and msg_4 (its larger output), never msg_3.
+        "7d in 4.0M · out 1.2M · cache-write 2.0M · cache-read 10.0M · $40.50 + model-b unpriced",
+        "master conversation conv-alpha",
+        "master 24h in 1.0M · out 1.0M · cache-write 2.0M · cache-read 10.0M · $28.50",
+        "master 7d in 4.0M · out 1.2M · cache-write 2.0M · cache-read 10.0M · $40.50",
+        beta.as_str(),
+        "unattributed ← every response written from /tmp/scratch-x, under no bound checkout 24h in 4.0M · out 0 · cache-write 0 · cache-read 0 · $12.00",
+        "model-b has no rate",
+    ] {
+        assert!(words.contains(said), "{said:?} not in:\n{spend}");
+    }
+    assert!(
+        !words.contains("7,777") && !words.contains("7.8K"),
+        "msg_3 counted:\n{spend}"
+    );
+    assert!(
+        spend.contains("config.toml [rates]") && spend.contains(".claude/projects"),
+        "the section names what it read:\n{spend}"
+    );
+    for (f, was) in files.iter().zip(before) {
+        assert_eq!(stamp(f), was, "{} was written", f.display());
+    }
+}
+
+/// ISS-1375, criterion 10: a transcript root that cannot be read is said to
+/// be, never shown as no spend.
+#[test]
+fn an_unreadable_transcript_root_is_unreadable_and_never_no_spend() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let root = b.root.join("h/.claude/projects");
+    std::fs::create_dir_all(root.parent().unwrap()).unwrap();
+    std::fs::write(&root, "not a directory").unwrap();
+    let out = top(&b, &["--once"]);
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    let spend = section(&text, "SPEND");
+    assert!(
+        spend.contains("UNREADABLE") && spend.contains(&root.display().to_string()),
+        "{spend}"
+    );
+    assert!(!spend.contains("nothing"), "{spend}");
+}
+
+/// ISS-1375, criterion 15: there is no `usage` subcommand.
+#[test]
+fn there_is_no_usage_subcommand() {
+    let out = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+        .arg("usage")
+        .env_clear()
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("unrecognized subcommand 'usage'"), "{err}");
 }

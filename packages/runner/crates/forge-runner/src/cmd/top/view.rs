@@ -27,6 +27,8 @@ pub enum Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Act {
     Redraw,
+    /// `n` or `p` turned a detail's page: it stays a whole interval.
+    Turned,
     Quit,
 }
 
@@ -79,8 +81,8 @@ impl View {
                 // The box's detail turns as the whole frame always did; a
                 // project's is opened to be read, so it holds until space.
                 self.paging = Paging {
-                    page: 0,
                     held: i != 0,
+                    ..Paging::default()
                 };
                 self.shown = None;
             }
@@ -95,6 +97,9 @@ impl View {
             (Mode::Detail(_), k @ (Key::Hold | Key::Next | Key::Previous)) => {
                 if let Some(shown) = &self.shown {
                     self.paging.pressed(k, shown);
+                    if k != Key::Hold {
+                        return Act::Turned;
+                    }
                 }
             }
             _ => {}
@@ -102,8 +107,15 @@ impl View {
         Act::Redraw
     }
 
+    /// The redraw timer started again at a key that turned a page, so the
+    /// interval that ends next is a whole one from the key and turns it.
+    pub fn timer_restarted(&mut self) {
+        self.paging.keyed = false;
+    }
+
     /// A redraw's interval is over: a detail turns to its next page unless
-    /// one is held; the table stays where the selection put it.
+    /// one is held or a key turned to it during the interval; the table
+    /// stays where the selection put it.
     pub fn turned(&mut self) {
         if let (Mode::Detail(_), Some(shown)) = (self.mode, &self.shown) {
             self.paging.turned(shown);
@@ -548,6 +560,11 @@ mod tests {
         // Keys are not read in a unit test, so the page row says so rather
         // than HELD; the hold is read off the paging itself.
         v.turned();
+        assert_eq!(
+            v.paging.page, 1,
+            "the interval running when n was pressed leaves its page (ISS-1341 r5)"
+        );
+        v.turned();
         assert_eq!(v.paging.page, 2, "an interval turns an unheld page");
         v.draw(&s, screen(100, 12), &keys);
         v.pressed(Key::Previous, &s);
@@ -610,7 +627,8 @@ mod tests {
         );
         assert_eq!(legend_for(None, &narrow, None, true), Legend::Full);
         // The short form costs fewer rows than the full one at 80, and fewer
-        // than the 9 the legend, keys and footer took at e3617a0.
+        // than the 9 the legend, keys and footer took at e3617a0; the $24H
+        // column's own item (ISS-1375) costs it a seventh.
         let short = table::build(
             &s,
             &Opts {
@@ -623,10 +641,11 @@ mod tests {
             },
         );
         assert!(
-            short.foot.len() <= 6 && short.foot.len() < narrow.foot.len(),
-            "{} short rows, {} full",
+            short.foot.len() <= 7 && short.foot.len() < narrow.foot.len(),
+            "{} short rows, {} full: {:#?}",
             short.foot.len(),
-            narrow.foot.len()
+            narrow.foot.len(),
+            short.foot.iter().map(|l| &l.text).collect::<Vec<_>>()
         );
     }
 
