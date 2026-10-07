@@ -1,1 +1,0 @@
-**A storefront release closes on what its provider publishes, and an approval wakes its run.** Finish checks each issue's landed Autoflow draft against the published graph, refusing by issue and identity; a decided approval reaches the release session.
