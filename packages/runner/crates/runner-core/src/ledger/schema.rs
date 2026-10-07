@@ -18,11 +18,6 @@ CREATE TABLE IF NOT EXISTS runs (
   session_terminal_at INTEGER,
   worktree_gone_at    INTEGER,
   released_as         TEXT,
-  claim_owner         TEXT,
-  claim_generation    INTEGER NOT NULL DEFAULT 0,
-  claim_expires_at    INTEGER,
-  revival_token       TEXT,
-  revival_deadline_at INTEGER,
   ended_by            TEXT,
   ended_reason        TEXT,
   created_at          INTEGER NOT NULL,
@@ -50,18 +45,6 @@ CREATE TABLE IF NOT EXISTS run_issues (
   issue_key         TEXT NOT NULL,
   lease_returned_at INTEGER,
   PRIMARY KEY (run_id, issue_key)
-);
-CREATE TABLE IF NOT EXISTS questions (
-  question_id TEXT PRIMARY KEY,
-  run_id      TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
-  round       INTEGER NOT NULL,
-  asked_at    INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS decisions (
-  decision_id TEXT PRIMARY KEY,
-  session_id  TEXT NOT NULL,
-  verb        TEXT NOT NULL,
-  decided_at  INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS masters (
   project_id      TEXT PRIMARY KEY,
@@ -115,11 +98,6 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "close_refused_at", "INTEGER"),
     ("runs", "close_refusal", "TEXT"),
     ("runs", "project_id", "TEXT"),
-    ("runs", "claim_owner", "TEXT"),
-    ("runs", "claim_generation", "INTEGER NOT NULL DEFAULT 0"),
-    ("runs", "claim_expires_at", "INTEGER"),
-    ("runs", "revival_token", "TEXT"),
-    ("runs", "revival_deadline_at", "INTEGER"),
     ("runs", "ended_by", "TEXT"),
     ("runs", "ended_reason", "TEXT"),
     ("runs", "agent_id", "TEXT"),
@@ -216,11 +194,26 @@ impl Ledger {
             .map_err(sql_err)?;
         let carried = Self::set_aside_the_one_row_standing(&tx)?;
         tx.execute_batch(SCHEMA).map_err(sql_err)?;
+        Self::drop_the_tables_nothing_reads(&tx)?;
         Self::add_missing_columns(&tx)?;
         Self::carry_the_old_mark_forward(&tx)?;
         Self::carry_the_refusal_ending_forward(&tx)?;
         Self::carry_the_standing_forward(&tx, carried)?;
         tx.commit().map_err(sql_err)
+    }
+
+    /// `questions` and `decisions` were created by every build and read or written
+    /// by none, so a ledger an older build wrote still holds both. Dropping them
+    /// needs no data carried anywhere; the five claim/revival columns on `runs`
+    /// that went the same way stay on an old ledger as inert columns, since
+    /// SQLite would rewrite the table to remove them and nothing selects them.
+    pub(crate) fn drop_the_tables_nothing_reads(conn: &Connection) -> Result<()> {
+        conn.execute_batch("DROP TABLE IF EXISTS questions; DROP TABLE IF EXISTS decisions;")
+            .map_err(|e| {
+                Error::Other(format!(
+                    "ledger: an unread table could not be dropped ({e})"
+                ))
+            })
     }
 
     /// Move a pre-ISS-1238 `master_standing` out of the way, so `SCHEMA`'s
@@ -366,5 +359,47 @@ impl Ledger {
         )
         .map_err(sql_err)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A ledger an older build wrote: the two tables nothing reads and the five
+    /// claim/revival columns on `runs`, one row filled in every column that is
+    /// read back by index after the five were left out of `SELECT_RUN`.
+    #[test]
+    fn an_old_ledger_loses_the_unread_tables_and_still_reads_its_runs() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runs (run_id TEXT PRIMARY KEY, project_id TEXT, master_session_id TEXT NOT NULL,
+               session_id TEXT, worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+               incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT, waiting_on TEXT, resume_id TEXT, session_terminal_at INTEGER, worktree_gone_at INTEGER, released_as TEXT,
+               claim_owner TEXT, claim_generation INTEGER NOT NULL DEFAULT 0, claim_expires_at INTEGER,
+               revival_token TEXT, revival_deadline_at INTEGER, ended_by TEXT, ended_reason TEXT,
+               created_at INTEGER NOT NULL, close_refusal TEXT);
+             CREATE TABLE questions (question_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, round INTEGER NOT NULL, asked_at INTEGER NOT NULL);
+             CREATE TABLE decisions (decision_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, verb TEXT NOT NULL, decided_at INTEGER NOT NULL);
+             INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id, incarnation, work, claim_owner,
+               claim_generation, revival_token, ended_by, ended_reason, created_at, close_refusal)
+             VALUES ('r1', 'm', '/w', 'b', 'live', 'runnable', 'someone', 7, 'tok', 'the-ender', 'the-reason', 1234, 'the-refusal');",
+        )
+        .unwrap();
+        let ledger = Ledger::from_conn(conn).unwrap();
+        for t in ["questions", "decisions"] {
+            assert!(
+                Ledger::column_names(&ledger.conn, t).unwrap().is_empty(),
+                "{t} is still in the ledger"
+            );
+        }
+        let run = ledger
+            .run("r1")
+            .unwrap()
+            .expect("the run survives the upgrade");
+        assert_eq!(run.ended_by.as_deref(), Some("the-ender"));
+        assert_eq!(run.ended_reason.as_deref(), Some("the-reason"));
+        assert_eq!(run.created_at, 1234);
+        assert_eq!(run.close_refusal.as_deref(), Some("the-refusal"));
     }
 }

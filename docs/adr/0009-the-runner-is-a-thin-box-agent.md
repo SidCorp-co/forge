@@ -149,9 +149,6 @@ saw and judges none of it:
   enough to report the account's limit to core is judged against `packages/runner/crates/runner-daemon/src/master_limit.rs:FRESH_WITHIN`,
   which still derives from a hand copy of core's `MASTER_NUDGE_REFRESH_SECONDS` until
   `/api/devices/me/limit` takes the raw record.
-- **The ledger keeps columns nothing writes any more** (claims, revivals, questions). Dropping them
-  is an on-disk migration on every box, so it waits for the same condition as any other promotion
-  carry-over.
 - **The cost.** The crate split holds the dependency rule; the 23 `Mutex` sites left after ISS-216
   are per-component memos (a registry, a latch, a sink), kept because an actor per memo would add
   a message type and a handle each, and grow the code the simplify phase exists to shrink.
