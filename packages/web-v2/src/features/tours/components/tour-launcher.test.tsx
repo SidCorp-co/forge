@@ -35,7 +35,6 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/projects/forge/releases/0.4.0-dev.87?tab=overview&tour=release-what-changes");
   calls = fakeCore((call) => {
     if (call.path === "/me/product-state") return { body: { items: [] } };
-    if (call.path.startsWith("/me/whats-new")) return { status: 503, body: { code: "WHATS_NEW_PLATFORM_UNSET" } };
     if (call.method === "POST" && call.path === "/me/tour-events") return { status: 201, body: { act: "recorded", id: "e" } };
     if (call.method === "PUT" && call.path.startsWith("/me/product-state/tour:")) return { body: { key: "tour:release-what-changes", value: call.body, updatedAt: "" } };
     return undefined;

@@ -53,12 +53,6 @@ const EnvSchema = z.object({
   EMBEDDINGS_FALLBACK_MODEL: z.string().min(1).optional(),
   EMBEDDINGS_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   ADMIN_EMAILS: z.string().optional(),
-  /** The project whose releases are Forge's own: What's new reads its released notes for every person. */
-  FORGE_PLATFORM_PROJECT_ID: z
-    .uuid({
-      error: "FORGE_PLATFORM_PROJECT_ID is the uuid of the project whose releases are Forge's own",
-    })
-    .optional(),
   UPLOADS_DIR: z.string().default('./uploads'),
   UPLOADS_MAX_BYTES: z.coerce
     .number()

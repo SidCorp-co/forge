@@ -1,4 +1,6 @@
 import {
+  DIGEST,
+  DIGEST_WORD_BUDGET,
   FRAGMENT_DIR,
   fragmentFiles,
   fragmentPath,
@@ -53,6 +55,7 @@ export function parseRecord(text) {
   const orphans = new Map();
   const unreleased = [];
   const sectionOf = new Map();
+  const subsectionOf = new Map();
   let inSection = false;
   let subsectionTitle = null;
   let open = null;
@@ -66,6 +69,7 @@ export function parseRecord(text) {
       entries.add(normalised);
       last = normalised;
       sectionOf.set(normalised, sections.at(-1));
+      subsectionOf.set(normalised, subsectionTitle);
       if (sections.at(-1) === UNRELEASED)
         unreleased.push({ entry: normalised, section: subsectionTitle });
     }
@@ -116,7 +120,7 @@ export function parseRecord(text) {
   }
   flush();
 
-  return { sections, entries, repeatedSubsections, orphans, unreleased, sectionOf };
+  return { sections, entries, repeatedSubsections, orphans, unreleased, sectionOf, subsectionOf };
 }
 
 /** Amnesty entries are matched after the same normalisation the record gets, or they never match. */
@@ -158,12 +162,13 @@ function lostEntries(removed, edited, pardons) {
  * Words an added entry may spend: the budget, or — where this change EDITS a published entry — the
  * larger of the budget and what that entry already held, so a correction is never the cheaper way.
  */
-function overBudgetEntries(added, edited) {
+function overBudgetEntries(added, edited, digests) {
   const over = [];
   for (const entry of added) {
     const before = edited.get(entry);
     const corrects = before === undefined ? 0 : wordCount(before);
-    const ceiling = Math.max(ENTRY_WORD_BUDGET, corrects);
+    const budget = digests.has(entry) ? DIGEST_WORD_BUDGET : ENTRY_WORD_BUDGET;
+    const ceiling = Math.max(budget, corrects);
     const words = wordCount(entry);
     if (words > ceiling) over.push({ entry, words, ceiling, corrects });
   }
@@ -213,7 +218,9 @@ function fragmentViolations(fragments) {
       detail:
         `\`${f.path}\` ${f.problems.join('; ')}. A fragment is \`${FRAGMENT_DIR}/<name>.<section>.md\` ` +
         `(section one of ${SECTIONS.map((x) => x.toLowerCase()).join(', ')}) holding one entry: a bold ` +
-        `lead and at most ${ENTRY_WORD_BUDGET} words, with no bullet marker and no heading.`,
+        `lead and at most ${ENTRY_WORD_BUDGET} words, with no bullet marker and no heading. A week's ` +
+        `digest is \`${FRAGMENT_DIR}/digest-<year>-w<nn>.digest.md\` and may spend ${DIGEST_WORD_BUDGET}; an entry may ` +
+        `close with one line \`tour: <id>\` to offer a product tour.`,
     }));
 }
 
@@ -314,7 +321,11 @@ export function judge({ head, base, amnesty, fragments = {}, fragmentName = '<yo
     });
   }
 
-  const overBudget = overBudgetEntries(added, edited);
+  const digests = new Set([
+    ...nowFragments.filter((f) => f.section === DIGEST).map((f) => f.entry),
+    ...[...now.subsectionOf].filter(([, title]) => title === DIGEST).map(([entry]) => entry),
+  ]);
+  const overBudget = overBudgetEntries(added, edited, digests);
   if (overBudget.length > 0) {
     violations.push({
       rule: 'entry-budget',

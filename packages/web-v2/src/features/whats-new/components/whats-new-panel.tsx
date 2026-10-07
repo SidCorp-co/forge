@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { FilterChip, SlideOver } from "@/design";
 import { type Copy, copyLocale, productCopy } from "@/lib/i18n/product-copy";
-import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 import { entriesByKey, sectionsOf, type WhatsNewSection } from "../group";
 import type { WhatsNewDigestView, WhatsNewEntry, WhatsNewFeed, WhatsNewKind } from "../types";
@@ -20,11 +18,11 @@ function shortDate(at: string | Date, locale: string): string {
  * What an entry offers beside its version, handed in by whoever composes the panel: a feature
  * that acts on entries (a tour's "Show me") sits above this one and may not be imported here.
  */
-export type WhatsNewEntryAction = (entry: WhatsNewEntry, slug: string | null) => ReactNode;
+export type WhatsNewEntryAction = (entry: WhatsNewEntry) => ReactNode;
 
 const EntryActionContext = createContext<WhatsNewEntryAction | null>(null);
 
-function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: string | null }) {
+function EntryRow({ entry, t }: { entry: WhatsNewEntry; t: Copy }) {
   const action = useContext(EntryActionContext);
   return (
     <li className="grid grid-cols-[76px_minmax(0,1fr)] gap-x-2.5 gap-y-1 border-b border-line py-2.5" data-testid="whats-new-entry">
@@ -36,22 +34,19 @@ function EntryRow({ entry, t, slug }: { entry: WhatsNewEntry; t: Copy; slug: str
       >
         {t(`whatsNew.kind.${entry.kind}`)}
       </span>
-      <span className="text-13-5 text-fg">{entry.text}</span>
+      <span className="text-13-5 text-fg">
+        <span className="font-semibold">{entry.title}</span>
+        {entry.body && <> {entry.body}</>}
+      </span>
       <span className="col-start-2 flex items-center gap-2.5 text-12 text-subtle">
-        {action?.(entry, slug)}
-        {slug ? (
-          <Link href={releaseHref(slug, entry.version)} className="font-mono hover:text-fg">
-            {entry.version}
-          </Link>
-        ) : (
-          <span className="font-mono">{entry.version}</span>
-        )}
+        {action?.(entry)}
+        <span className="font-mono">{entry.version}</span>
       </span>
     </li>
   );
 }
 
-function FixesRow({ entries, t, slug }: { entries: WhatsNewEntry[]; t: Copy; slug: string | null }) {
+function FixesRow({ entries, t }: { entries: WhatsNewEntry[]; t: Copy }) {
   const [open, setOpen] = useState(false);
   if (entries.length === 0) return null;
   return (
@@ -65,38 +60,32 @@ function FixesRow({ entries, t, slug }: { entries: WhatsNewEntry[]; t: Copy; slu
           </button>
         </span>
       </li>
-      {open && entries.map((e) => <EntryRow key={e.key} entry={e} t={t} slug={slug} />)}
+      {open && entries.map((e) => <EntryRow key={e.key} entry={e} t={t} />)}
     </>
   );
 }
 
-function Digest({ digest, t, locale }: { digest: WhatsNewDigestView; t: Copy; locale: string }) {
-  const date = shortDate(digest.writtenAt, locale);
+function Digest({ digest }: { digest: WhatsNewDigestView }) {
   return (
     <div className="mt-2.5 rounded-md bg-sunken px-3 py-2.5 text-13-5 text-fg" data-testid="whats-new-digest">
-      <span className="font-semibold">{t("whatsNew.digest.title")}</span> — {digest.body}
-      <div className="mt-1 text-12 text-subtle">
-        {digest.author.agency === "human" && digest.author.name
-          ? t("whatsNew.digest.byPerson", { name: digest.author.name, date })
-          : t("whatsNew.digest.byAgent", { date })}
-      </div>
+      <span className="font-semibold">{digest.title}</span> {digest.body}
     </div>
   );
 }
 
-function Section({ section, t, locale, slug, collapseFixes }: { section: WhatsNewSection; t: Copy; locale: string; slug: string | null; collapseFixes: boolean }) {
+function Section({ section, t, locale, collapseFixes }: { section: WhatsNewSection; t: Copy; locale: string; collapseFixes: boolean }) {
   const label = t(section.label.key, section.label.date ? { date: shortDate(section.label.date, locale) } : undefined);
   const shown = collapseFixes ? section.entries.filter((e) => e.kind !== "fixed") : section.entries;
   const fixes = collapseFixes ? section.entries.filter((e) => e.kind === "fixed") : [];
   return (
     <section data-testid={`whats-new-section-${section.key}`}>
       <h3 className="mt-4 border-b border-line pb-1.5 text-11-5 font-semibold uppercase tracking-[0.06em] text-subtle">{label}</h3>
-      {section.digest && <Digest digest={section.digest} t={t} locale={locale} />}
+      {section.digest && <Digest digest={section.digest} />}
       <ul>
         {shown.map((e) => (
-          <EntryRow key={e.key} entry={e} t={t} slug={slug} />
+          <EntryRow key={e.key} entry={e} t={t} />
         ))}
-        <FixesRow entries={fixes} t={t} slug={slug} />
+        <FixesRow entries={fixes} t={t} />
       </ul>
     </section>
   );
@@ -116,7 +105,7 @@ function SinceLine({ feed, t, locale }: { feed: WhatsNewFeed; t: Copy; locale: s
   );
 }
 
-function AwaySummary({ feed, t, locale, slug }: { feed: WhatsNewFeed; t: Copy; locale: string; slug: string | null }) {
+function AwaySummary({ feed, t, locale }: { feed: WhatsNewFeed; t: Copy; locale: string }) {
   const away = feed.away;
   const byKey = useMemo(() => entriesByKey(feed), [feed]);
   if (!away) return null;
@@ -126,7 +115,7 @@ function AwaySummary({ feed, t, locale, slug }: { feed: WhatsNewFeed; t: Copy; l
       <p className="pb-1.5 pt-3 text-13 font-semibold text-fg">
         {t("whatsNew.away", {
           date: shortDate(away.since, locale),
-          screens: away.counts.screens,
+          new: away.counts.new,
           improved: away.counts.improved,
           fixed: away.counts.fixed,
         })}
@@ -136,7 +125,7 @@ function AwaySummary({ feed, t, locale, slug }: { feed: WhatsNewFeed; t: Copy; l
       </h3>
       <ul>
         {highlights.map((e) => (
-          <EntryRow key={e.key} entry={e} t={t} slug={slug} />
+          <EntryRow key={e.key} entry={e} t={t} />
         ))}
       </ul>
     </div>
@@ -148,7 +137,7 @@ export interface WhatsNewPanelProps {
   onClose: () => void;
   /** The feed as it stood when the panel opened, so the since-line still counts what was unread. */
   feed: WhatsNewFeed | undefined;
-  failure: "unavailable" | "failed" | null;
+  failure: "failed" | null;
   entryAction?: WhatsNewEntryAction;
   now?: Date;
 }
@@ -157,8 +146,8 @@ export interface WhatsNewPanelProps {
 export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now = new Date() }: WhatsNewPanelProps) {
   const [kind, setKind] = useState<WhatsNewKind | null>(null);
   const [showRest, setShowRest] = useState(false);
-  const t = productCopy(feed?.contentLanguage);
-  const locale = copyLocale(feed?.contentLanguage);
+  const t = productCopy();
+  const locale = copyLocale();
   const sections = useMemo(() => (feed ? sectionsOf(feed, now, kind) : []), [feed, now, kind]);
   const total = feed ? feed.days.reduce((n, d) => n + d.entries.length, 0) : 0;
   const countOf = (k: WhatsNewKind) => (feed ? feed.days.reduce((n, d) => n + d.entries.filter((e) => e.kind === k).length, 0) : 0);
@@ -169,10 +158,10 @@ export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now =
     <SlideOver open={open} onClose={onClose} title={t("whatsNew.title")} width={440}>
       <EntryActionContext.Provider value={entryAction ?? null}>
       <div className="-mt-3" data-testid="whats-new-panel">
-        {failure && <p className="pt-3 text-13 text-muted">{t(failure === "unavailable" ? "whatsNew.unavailable" : "whatsNew.failed")}</p>}
+        {failure && <p className="pt-3 text-13 text-muted">{t("whatsNew.failed")}</p>}
         {feed && (
           <>
-            {away ? <AwaySummary feed={feed} t={t} locale={locale} slug={feed.projectSlug} /> : <SinceLine feed={feed} t={t} locale={locale} />}
+            {away ? <AwaySummary feed={feed} t={t} locale={locale} /> : <SinceLine feed={feed} t={t} locale={locale} />}
             <div className="flex flex-wrap gap-1 pb-1.5 pt-2">
               <FilterChip on={kind === null} onToggle={() => setKind(null)} count={total} testId="whats-new-filter-all">
                 {t("whatsNew.filter.all")}
@@ -191,7 +180,7 @@ export function WhatsNewPanel({ open, onClose, feed, failure, entryAction, now =
               <p className="pt-4 text-13 text-muted">{t("whatsNew.empty")}</p>
             ) : (
               sections.map((s) => (
-                <Section key={s.key} section={s} t={t} locale={locale} slug={feed.projectSlug} collapseFixes={kind !== "fixed"} />
+                <Section key={s.key} section={s} t={t} locale={locale} collapseFixes={kind !== "fixed"} />
               ))
             )}
           </>

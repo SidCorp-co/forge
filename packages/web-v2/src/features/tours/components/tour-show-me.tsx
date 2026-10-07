@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import type { WhatsNewEntryAction } from "@/features/whats-new/components/whats-new-panel";
-import { useTourCopy } from "../hooks";
-import { tourHref } from "../links";
+import { useTourCopy, useTourTarget } from "../hooks";
 import { tourById } from "../registry";
 
-/** An entry's "Show me": a link to the page its tour runs on, `?tour=` set, so the page opens it. */
-function TourShowMe({ tourId, slug, version }: { tourId: string; slug: string | null; version: string }) {
+/** An entry's "Show me": a link to the page of the open project its tour runs on, `?tour=` set, so the page opens it. */
+function TourShowMe({ tourId }: { tourId: string }) {
   const t = useTourCopy();
+  const target = useTourTarget();
   const tour = tourById(tourId);
-  const href = tour ? tourHref(tour, slug, { version }) : null;
+  const href = tour ? target(tour) : null;
   if (!tour || !href) return null;
   return (
     <Link href={href} className="text-13 font-semibold text-accent-text hover:underline" data-testid="whats-new-tour-link">
@@ -19,6 +19,5 @@ function TourShowMe({ tourId, slug, version }: { tourId: string; slug: string | 
   );
 }
 
-/** What's new hands each entry here; one an issue's tour belongs to offers that tour. */
-export const tourShowMe: WhatsNewEntryAction = (entry, slug) =>
-  entry.tour ? <TourShowMe tourId={entry.tour.id} slug={slug} version={entry.version} /> : null;
+/** What's new hands each entry here; one a changelog `tour:` line names offers that tour. */
+export const tourShowMe: WhatsNewEntryAction = (entry) => (entry.tour ? <TourShowMe tourId={entry.tour.id} /> : null);

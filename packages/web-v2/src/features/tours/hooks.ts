@@ -3,9 +3,11 @@
 import type { TourStateValue } from "@forge/contracts/product-state";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useCurrentProject } from "@/features/projects/current-project";
 import { productCopy } from "@/lib/i18n/product-copy";
-import { useWhatsNew } from "@/features/whats-new/hooks";
 import { toursApi } from "./api";
+import { tourHref } from "./links";
+import { useTourRelease } from "./release-context";
 import type { TourDefinition } from "./registry";
 import { runTour } from "./run-tour";
 import { tourStatesOf } from "./state";
@@ -25,9 +27,19 @@ export function useSaveTourState() {
   });
 }
 
-/** The chrome language tours speak: the platform project's content language, English beneath. */
+/** The chrome tours speak. */
 export function useTourCopy() {
-  return productCopy(useWhatsNew().data?.contentLanguage);
+  return productCopy();
+}
+
+/** Where a tour opens: a page of the open project, a release of it for the release tour; null where none is open. */
+export function useTourTarget() {
+  const project = useCurrentProject();
+  const latest = useTourRelease() ?? undefined;
+  return (tour: TourDefinition) =>
+    tour.id === "release-what-changes"
+      ? tourHref(tour, project?.slug, { version: latest })
+      : tourHref(tour, project?.slug);
 }
 
 /** Start a tour on the page in front of the person, recording what happens and storing how it ended. */

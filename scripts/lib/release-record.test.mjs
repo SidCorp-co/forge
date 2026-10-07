@@ -126,3 +126,29 @@ describe('a fragment that is not one is refused by path', () => {
     expect(rules(at('a.fixed.md', words(41)))).toEqual(['entry-budget']);
   });
 });
+
+describe("the two forms What's new reads", () => {
+  const at = (file, text) =>
+    judge({
+      head: RECORD,
+      base: RECORD,
+      fragments: { head: [fragment(file, text)], base: [] },
+    });
+  const words = (n) => `**Title.** ${Array.from({ length: n - 1 }, () => 'w').join(' ')}`;
+
+  it('a digest may spend 120 words where an entry spends 40, and 121 is refused', () => {
+    expect(at('digest-2026-w41.digest.md', words(120)).code).toBe(0);
+    expect(rules(at('digest-2026-w41.digest.md', words(121)))).toEqual(['entry-budget']);
+    expect(rules(at('a.fixed.md', words(41)))).toEqual(['entry-budget']);
+  });
+
+  it('a digest not named for its week is refused by path', () => {
+    const verdict = at('weekly.digest.md', '**Week.** Things.');
+    expect(rules(verdict)).toEqual(['fragment-shape']);
+    expect(verdict.violations[0].detail).toContain('changelog.d/weekly.digest.md');
+  });
+
+  it('a tour line is not part of the entry, so the entry keeps its words', () => {
+    expect(at('a.added.md', '**New screen.** It opens.\ntour: integrations').code).toBe(0);
+  });
+});

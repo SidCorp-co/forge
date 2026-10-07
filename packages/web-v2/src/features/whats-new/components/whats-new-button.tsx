@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Icon } from "@/design";
-import { ApiError } from "@/lib/api/client";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useMarkWhatsNewSeen, useWhatsNew } from "../hooks";
@@ -20,13 +19,8 @@ export function WhatsNewButton({ compact = false, entryAction }: { compact?: boo
   const [shown, setShown] = useState<WhatsNewFeed | undefined>(undefined);
   const feed = query.data;
   const unread = feed?.unread ?? 0;
-  const t = productCopy(feed?.contentLanguage);
-  const failure =
-    query.error instanceof ApiError && query.error.code === "WHATS_NEW_PLATFORM_UNSET"
-      ? "unavailable"
-      : query.error
-        ? "failed"
-        : null;
+  const t = productCopy();
+  const failure = query.error ? "failed" : null;
 
   function openPanel() {
     setShown(feed);

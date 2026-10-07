@@ -26,7 +26,6 @@ const at = "2026-10-07T09:00:00Z";
 function serve(items: unknown[]): Call[] {
   return fakeCore((call) => {
     if (call.method === "GET" && call.path === "/me/product-state") return { body: { items } };
-    if (call.path.startsWith("/me/whats-new")) return { status: 503, body: { code: "WHATS_NEW_PLATFORM_UNSET" } };
     if (call.method === "PUT") return { body: { key: call.path.split("/").pop(), value: call.body, updatedAt: at } };
     return undefined;
   });
