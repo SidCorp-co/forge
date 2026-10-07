@@ -1,4 +1,6 @@
 import type { OnboardingView } from '@forge/contracts/onboarding';
+import { say, verbatim } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import { QUESTIONNAIRE_DUE_DAYS } from '@forge/contracts/onboarding';
 import { describe, expect, it } from 'vitest';
 import { liveOf } from '../runs/standing-live.js';
@@ -72,14 +74,11 @@ describe('project-onboarding checkout: a queued job names the run read model wai
     const h = hintOf(
       view({
         job: job({
-          waitingOn: {
-            kind: 'person',
-            who: 'A project writer',
-            act: 'bind a checkout on the box',
-            rule: 'r',
-            ref: null,
-            dueAt: null,
-          },
+          waitingOn: waitingOn('person', {
+            who: say('standing.who.named', { name: 'A project writer' }),
+            act: say('runs.act.bindCheckout'),
+            rule: verbatim('r'),
+          }),
         }),
       }),
       'none',

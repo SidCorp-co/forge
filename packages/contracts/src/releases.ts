@@ -3,6 +3,7 @@
 // peek and page draw them, so a state keeps one badge and nobody derives whom a release waits on in
 // the browser.
 
+import type { Said } from "./said.js";
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ArtifactChange,
@@ -337,6 +338,8 @@ export interface ReleaseChangeRiskView {
 	ref: string;
 	issues: string[];
 	sentence: string;
+	/** `sentence` as said (`said.ts`). */
+	says: { sentence: Said };
 }
 
 /** "What changes": per surface, what the release's landings name, and what the data flags. */
@@ -411,6 +414,8 @@ export interface ReleaseGateOwner {
 	act: string;
 	/** What doing the act changes, where the act's own words leave that open. */
 	effect?: string;
+	/** `who`, `act` and `effect` as said (`said.ts`). */
+	says: { who: Said; act: Said; effect?: Said };
 }
 
 export interface ReleaseGateView {
@@ -421,6 +426,8 @@ export interface ReleaseGateView {
 	detail: string;
 	issues: string[];
 	owner: ReleaseGateOwner;
+	/** `title` and `sentence` as said (`said.ts`). */
+	says: { title: Said; sentence: Said };
 }
 
 export interface ReleaseApprovalView {

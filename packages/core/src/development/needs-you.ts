@@ -9,6 +9,7 @@ import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
 import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackPhase } from '@forge/contracts/feedback';
 import {
   NEEDS_YOU_AREAS,
+  type NeedsYouAct,
   type NeedsYouArea,
   type NeedsYouAreaKey,
   type NeedsYouEntity,
@@ -46,14 +47,15 @@ interface Row {
 }
 
 function areaOf(rows: readonly Row[]): NeedsYouArea {
-  const tally = new Map<string, number>();
+  // Tallied by what core said, not by its English, so two acts that read alike stay two.
+  const tally = new Map<string, NeedsYouAct>();
   for (const row of rows) {
-    const act = row.standing.waitingOn.act;
-    tally.set(act, (tally.get(act) ?? 0) + 1);
+    const w = row.standing.waitingOn;
+    const id = JSON.stringify(w.says.act);
+    const seen = tally.get(id);
+    tally.set(id, seen ? { ...seen, count: seen.count + 1 } : { act: w.act, count: 1, says: { act: w.says.act } });
   }
-  const acts = [...tally]
-    .map(([act, count]) => ({ act, count }))
-    .sort((a, b) => b.count - a.count || a.act.localeCompare(b.act));
+  const acts = [...tally.values()].sort((a, b) => b.count - a.count || a.act.localeCompare(b.act));
   return { you: rows.length, acts };
 }
 

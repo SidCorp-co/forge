@@ -1,6 +1,15 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { runStandingOf } from './standing.js';
+import { runStandingOf as runStandingOf_ } from './standing.js';
 import type { RunFacts, StandingContext } from './standing-types.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const runStandingOf = ((...a: Parameters<typeof runStandingOf_>) => checked(runStandingOf_(...a))) as typeof runStandingOf_;
+
 
 // epod 2026-10-06: the master claimed ISS-1 from its own checkout, a builder run declared over ISS-1
 // in .claude/worktrees/ISS-1 and committed there, and runs/standing served the run stuck because the

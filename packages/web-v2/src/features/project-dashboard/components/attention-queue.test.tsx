@@ -1,3 +1,4 @@
+import { RULE, say, waitingOn } from "@/test/said";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AttentionQueue } from "./attention-queue";
@@ -6,7 +7,14 @@ import type { NeedsYouItem } from "@/features/needs-you/types";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
-const you = { kind: "you", who: "You", act: "approve or return revision 3", rule: "r", ref: null, dueAt: null } as const;
+const you = waitingOn("you", { who: say("standing.who.you"), act: say("designs.act.approveOrReturn", { r: 3 }), rule: RULE });
+const follows = (n: number) =>
+  waitingOn("you", {
+    who: say("standing.who.you"),
+    act: say("standing.act.updateToDesign", { design: `Design ${n}`, r: 2 }),
+    rule: RULE,
+    effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: `Design ${n}`, r: 2 })] }),
+  });
 const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ area: "requirements", entity: "requirement", key: "REQ-1", title: "T", waitingOn: you, touchedAt: null, ...over });
 
 describe("the dashboard's Needs you", () => {
@@ -25,7 +33,7 @@ describe("the dashboard's Needs you", () => {
       item({
         key: `REQ-${n}`,
         title: `Requirement ${n}`,
-        waitingOn: { ...you, act: `Update to the approved design: Design ${n} (revision 2)`, effect: `Records that this requirement follows Design ${n} revision 2 from now on.` },
+        waitingOn: follows(n),
       });
     const items = [...[1, 2, 3, 4, 5, 6, 7].map(follow), item({ key: "REQ-90", title: "Agree the checkout" })];
     render(<AttentionQueue items={items} slug="hop" />);
@@ -39,7 +47,7 @@ describe("the dashboard's Needs you", () => {
   });
 
   it("leaves a single such act where it is, as a row", () => {
-    const one = item({ key: "REQ-1", waitingOn: { ...you, act: "Update to the approved design: Design 1 (revision 2)" } });
+    const one = item({ key: "REQ-1", waitingOn: follows(1) });
     render(<AttentionQueue items={[one]} slug="hop" />);
     expect(screen.queryByTestId("follow-design-fold")).toBeNull();
     expect(screen.getAllByTestId("list-row")).toHaveLength(1);

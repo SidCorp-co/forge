@@ -1,5 +1,14 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { feedbackStandingOf, type StandingViewer } from './standing.js';
+import { feedbackStandingOf as feedbackStandingOf_, type StandingViewer } from './standing.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const feedbackStandingOf = ((...a: Parameters<typeof feedbackStandingOf_>) => checked(feedbackStandingOf_(...a))) as typeof feedbackStandingOf_;
+
 
 const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
   isReporter: false,

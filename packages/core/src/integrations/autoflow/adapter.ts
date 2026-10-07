@@ -1,4 +1,5 @@
 import { logger } from '../../lib/logger.js';
+import { say } from '@forge/contracts/said';
 import {
   declareIntegration,
   findConnectionById,
@@ -262,7 +263,7 @@ export const autoflowIntegration = declareIntegration<AutoflowConfig, AutoflowSe
   presentation: {
     label: 'Autoflow',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail: 'never test-connected',
+    neverCheckedDetail: say('integrations.detail.neverTested'),
     cardMeta: (config) => {
       const cfg = config as AutoflowConfig;
       return { shop: cfg.shop ?? null, storeName: cfg.storeName ?? null };

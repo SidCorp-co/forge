@@ -1,6 +1,7 @@
 import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import type { Said } from "@forge/contracts/said";
 import { formatDateTime } from "@/lib/i18n/format";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said, saysKey } from "@/lib/i18n/said";
 import { type EtaClock, doneDayText, partsOf, whenText } from "./clock";
 import { ETA_COPY } from "./eta-copy";
 import { deliveryText, forecastText, spanText, statusWord } from "./text";
@@ -14,26 +15,34 @@ export { doneDayText, whenText } from "./clock";
 
 /** A person who still cuts the release once the work has landed. */
 interface EtaTail {
-  who: string;
-  act: string;
+  who: Said;
+  act: Said;
 }
 
 export type Eta =
   | { kind: "range"; p50At: string; p85At: string; tail: EtaTail | null; detail: string }
-  | { kind: "waits"; who: string; act: string; detail: string }
+  | { kind: "waits"; who: Said; act: Said; detail: string }
   | { kind: "done"; at: string | null; tail: EtaTail | null; detail: string }
   /** Landed and not yet in people's hands: no tick and no date in the cell, only who releases it (JU-7). */
   | { kind: "landed"; at: string | null; tail: EtaTail | null; detail: string }
   | { kind: "none"; detail: string };
 
 /** The release a person still owes after the landing, the viewer's own as "then you cut it". */
-const thenCuts = (who: string, lang: EtaClock["lang"]) => (who === "You" ? ETA_COPY[lang].thenYouCut : ETA_COPY[lang].thenCuts(shortWho(who, lang)));
+const thenCuts = (who: Said, lang: EtaClock["lang"]) => (saysKey(who, "standing.who.you") ? ETA_COPY[lang].thenYouCut : ETA_COPY[lang].thenCuts(shortWho(who, lang)));
 
-/** "project writer" from "A project writer", the box from "Whoever can reach box-1": who, short. */
-function shortWho(who: string, lang: EtaClock["lang"]): string {
-  const w = lang === "en" ? who.replace(/^Whoever can reach /, "").replace(/^(A|An|The) /, "") : standingWho(who, lang);
+/** Who, short: the box itself for "Whoever can reach box-1", and English drops its leading article ("project writer"). */
+function shortWho(who: Said, lang: EtaClock["lang"]): string {
+  const device = saysKey(who, "forecast.who.whoeverReaches") ? who.vars?.device : undefined;
+  const words = typeof device === "string" ? device : said(who, lang);
+  const w = lang === "en" ? words.replace(/^(A|An|The) /, "") : words;
   return w.length > 24 ? `${w.slice(0, 23)}…` : w;
 }
+
+/** "Who — act. Reason.": a forecast wait as one tooltip line, its act left out where core names none. */
+const waitDetail = (s: { who: Said; act: Said; reason: Said }, lang: EtaClock["lang"]) => {
+  const act = said(s.act, lang);
+  return `${said(s.who, lang)}${act ? ` — ${act}` : ""}. ${said(s.reason, lang)}`;
+};
 
 const minutesUntil = (iso: string, now: number) => Math.max(0, (Date.parse(iso) - now) / 60_000);
 
@@ -48,7 +57,7 @@ function rangeHead(span: Pick<ForecastSpan, "p50At" | "p85At">, asOf: string, c:
   return ETA_COPY[c.lang].within(spanText(low, c.lang), spanText(high, c.lang), clockOf(asOf, c));
 }
 
-const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (leg?.kind === "person" ? { who: leg.who, act: leg.act } : null);
+const tailOf = (leg: ReleaseLeg | null): EtaTail | null => (leg?.kind === "person" ? { who: leg.says.who, act: leg.says.act } : null);
 
 /** An issue's own landing. */
 export function etaOfForecast(f: Forecast, c: EtaClock): Eta {
@@ -58,7 +67,7 @@ export function etaOfForecast(f: Forecast, c: EtaClock): Eta {
     case "forecast":
       return { kind: "range", p50At: f.p50At, p85At: f.p85At, tail: null, detail: `${rangeHead(f, f.asOf, c)} ${said}` };
     case "paused":
-      return { kind: "waits", who: f.who, act: f.act, detail: `${standingWho(f.who, c.lang)}${f.act ? ` — ${standingAct(f.act, c.lang)}` : ""}. ${f.reason}` };
+      return { kind: "waits", who: f.says.who, act: f.says.act, detail: waitDetail(f.says, c.lang) };
     case "not_enough_history":
       return { kind: "none", detail: copy.notEnoughHistory(f.n, f.floor) };
     case "landed":
@@ -94,7 +103,7 @@ export function etaOfScope(s: ScopeForecast | undefined, c: EtaClock): Eta | nul
 /** A feedback row: who triages it while untriaged, else its linked work's delivery; null where nothing ships. */
 export function etaOfFeedback(f: FeedbackForecast | undefined, c: EtaClock): Eta | null {
   if (!f) return null;
-  if (f.triage) return { kind: "waits", who: f.triage.who, act: f.triage.act, detail: `${standingWho(f.triage.who, c.lang)} — ${standingAct(f.triage.act, c.lang)}. ${f.triage.reason}` };
+  if (f.triage) return { kind: "waits", who: f.triage.says.who, act: f.triage.says.act, detail: waitDetail(f.triage.says, c.lang) };
   return f.delivery ? etaOfDelivery(f.delivery, c) : null;
 }
 

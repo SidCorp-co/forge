@@ -9,7 +9,7 @@ import { GroupedList, type ListGroup, type ListRowView, useGroupFold, WaitingOn 
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { standingEffect } from "@/lib/i18n/standing-copy";
+import { saidOrNull } from "@/lib/i18n/said";
 import { formatAge } from "@/lib/utils/format";
 import { needsYouHref, needsYouPeekHref } from "../routes";
 import { NEEDS_YOU_AREAS, type NeedsYouItem } from "../types";
@@ -22,7 +22,7 @@ const rowView =
     href: needsYouHref(slug, n),
     title: n.title,
     facts: [label("needsYouArea", n.area)],
-    note: n.waitingOn.effect ? standingEffect(n.waitingOn.effect, lang) : null,
+    note: saidOrNull(n.waitingOn.says.effect, lang),
     state: null,
     waitingOn: <WaitingOn w={n.waitingOn} />,
     owner: null,

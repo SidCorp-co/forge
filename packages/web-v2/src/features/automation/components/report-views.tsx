@@ -37,7 +37,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { formatRefusal } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { baseOf, copyOr } from "@/lib/i18n/product-copy";
-import { standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { useAutomationStanding, useReportDetail } from "../hooks";
 import { feedbackDraftOf } from "../report-feedback";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
@@ -101,9 +101,9 @@ function ReportBanner({ r, className }: { r: ReportStanding; className?: string 
   return (
     <WaitBanner
       tone={w.kind === "you" ? "you" : "blocked"}
-      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) })}
+      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: said(w.says.who, language) })}
       body={t("schedules.report.bannerBody")}
-      rule={r.waitingOn.rule}
+      rule={said(w.says.rule, language)}
       className={className}
       testId="report-banner"
     />

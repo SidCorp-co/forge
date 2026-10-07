@@ -1,14 +1,26 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
+import { say, verbatim } from '@forge/contracts/said';
 import {
   type CycleSample,
   concurrencyOf,
   type History,
   percentile,
-  runForecast,
-  scopeForecast,
+  runForecast as runForecast_,
+  scopeForecast as scopeForecast_,
   type Wait,
   type WorkItem,
+  waitOn,
 } from './model.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const runForecast = ((...a: Parameters<typeof runForecast_>) => checked(runForecast_(...a))) as typeof runForecast_;
+const scopeForecast = ((...a: Parameters<typeof scopeForecast_>) => checked(scopeForecast_(...a))) as typeof scopeForecast_;
+
 
 const NOW = new Date('2026-10-07T12:00:00Z');
 const MINUTE = 60_000;
@@ -40,12 +52,14 @@ function item(over: Partial<WorkItem> = {}): WorkItem {
   };
 }
 
-const person: Wait = {
-  who: 'A project writer',
-  act: 'answer a question',
-  reason: 'parked at needs_info',
-  ref: null,
-};
+const person: Wait = waitOn(
+  {
+    who: say('standing.who.named', { name: 'A project writer' }),
+    act: say('issues.standing.act.answer'),
+    reason: verbatim('parked at needs_info'),
+  },
+  null,
+);
 
 const run = (items: WorkItem[], h: History = history(20), projectWait: Wait | null = null) =>
   runForecast({ now: NOW, items, history: h, projectWait, writers: ['Ana'], seed: 7 });
@@ -83,12 +97,14 @@ describe('forecast honesty', () => {
   });
 
   it('pauses every open issue on a project-wide outage, and leaves the landed ones landed', () => {
-    const outage: Wait = {
-      who: 'Whoever can reach box-1',
-      act: 'wait for the usage limit to reset',
-      reason: 'no runner can take work: box-1 is rate-limited',
-      ref: 'box-1',
-    };
+    const outage: Wait = waitOn(
+      {
+        who: say('forecast.who.whoeverReaches', { device: 'box-1' }),
+        act: say('forecast.act.waitUsage'),
+        reason: verbatim('no runner can take work: box-1 is rate-limited'),
+      },
+      'box-1',
+    );
     const open = item();
     const done = item({ landed: true, landedAt: new Date(NOW.getTime() - MINUTE) });
     const read = run([open, done], history(20), outage).forecasts;

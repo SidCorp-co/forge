@@ -4,6 +4,7 @@
  * matching row, naming its rule, reason and source.
  */
 
+import { say } from '@forge/contracts/said';
 import type {
   HealthNode,
   MarkerAspect,
@@ -23,6 +24,7 @@ import {
   OPEN_ISSUE,
   type PlannedTarget,
   planned,
+  ruleCode,
   short,
   targetKey,
   wait,
@@ -51,8 +53,8 @@ export function outdatedMarkers(
           href: link.requirement(c.requirementKey),
         },
         waitingOn: masterOwes(
-          'revise the design to the new wording',
-          'outdated.criterion_reworded',
+          say('workflows.act.reviseToWording'),
+          ruleCode('outdated.criterion_reworded'),
         ),
         since: iso(c.sinceAcceptedAt),
       });
@@ -71,7 +73,10 @@ export function outdatedMarkers(
             key: `${c.provider}/${c.slug}@${pin.newestBreaking.version}`,
             href: link.contract(c.provider),
           },
-          waitingOn: masterOwes('revise the design to the contract', 'outdated.contract_breaking'),
+          waitingOn: masterOwes(
+            say('workflows.act.reviseToContract'),
+            ruleCode('outdated.contract_breaking'),
+          ),
           since: iso(pin.newestBreaking.recordedAt),
         });
       }
@@ -97,7 +102,10 @@ export function outdatedMarkers(
             key: `${b.issueKey} r${j.revision}`,
             href: link.issue(b.issueKey),
           },
-          waitingOn: masterOwes('repair the build to the approved design', 'outdated.built_behind'),
+          waitingOn: masterOwes(
+            say('workflows.act.repairToDesign'),
+            ruleCode('outdated.built_behind'),
+          ),
           since: iso(j.at),
         });
       }
@@ -117,7 +125,7 @@ export function outdatedMarkers(
       rule: 'outdated.drift',
       reason: `the code moved under this step at ${short(obs.atSha)}: ${obs.document.drift.reason}`,
       source: { type: 'workflow_observation', key: obs.atSha, href: link.observation() },
-      waitingOn: masterOwes('observe the workflow again', 'outdated.drift'),
+      waitingOn: masterOwes(say('workflows.act.observeAgain'), ruleCode('outdated.drift')),
       since: iso(obs.createdAt),
     });
   }
@@ -143,7 +151,10 @@ export function needsUpdateMarkers(f: HealthFacts, out: Markers, diff: DesignDif
       rule: 'needs_update.suggestion_accepted',
       reason: s.reason,
       source: { type: 'suggestion', key: s.id, href: null },
-      waitingOn: masterOwes('propose a design revision', 'needs_update.suggestion_accepted'),
+      waitingOn: masterOwes(
+        say('workflows.act.proposeRevision'),
+        ruleCode('needs_update.suggestion_accepted'),
+      ),
       since: iso(s.decidedAt),
     });
   }
@@ -197,7 +208,7 @@ export function problemMarkers(
         problems.set(key, [...(problems.get(key) ?? []), { issue: b.issueKey, at }]);
       }
     };
-    const repair = masterOwes('repair the build', 'has_problem');
+    const repair = masterOwes(say('workflows.act.repairBuild'), ruleCode('has_problem'));
     for (const v of b.failing) {
       out.add(targets, {
         kind: 'has_problem',
@@ -231,7 +242,10 @@ export function problemMarkers(
         rule: run.state === 'stuck' ? 'has_problem.run_stuck' : 'has_problem.run_failed',
         reason: run.rule,
         source: { type: 'run', key: run.id, href: link.run(run.id) },
-        waitingOn: masterOwes(`recover the ${run.state} run`, `has_problem.run_${run.state}`),
+        waitingOn: masterOwes(
+          say('workflows.act.recoverRun', { state: run.state }),
+          ruleCode(`has_problem.run_${run.state}`),
+        ),
         since: run.since,
       });
       record(run.since ? new Date(run.since) : f.now);
@@ -295,9 +309,9 @@ export function removeMarkers(
       source: { type: 'suggestion', key: s.id, href: null },
       waitingOn: wait(
         'person',
-        'A holder of suggestions.approve',
-        'accept or reject the suggestion',
-        'remove_proposed.suggestion',
+        say('standing.who.holderOf', { perm: 'suggestions.approve' }),
+        say('workflows.act.decideSuggestion'),
+        ruleCode('remove_proposed.suggestion'),
       ),
       since: iso(s.createdAt),
     });
@@ -377,7 +391,7 @@ export function provenanceOf(
     href: link.observation(),
   };
   const since = iso(obs.createdAt);
-  const placeholder = masterOwes('', 'provenance');
+  const placeholder = masterOwes(say('standing.act.none'), ruleCode('provenance'));
   const match = matchLayers(shown, obs.document);
   for (const id of match.plannedOnlySteps) {
     out.add([{ kind: 'step', step: id, layer: 'planned' }], {

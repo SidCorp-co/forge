@@ -1,3 +1,4 @@
+import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { holdReleasesItself } from '../jobs/index.js';
 import { describePause } from '../pipeline/index.js';
@@ -8,6 +9,7 @@ import {
   NO_WAIT,
   RUN_NEED_PERMISSION,
   type RunFacts,
+  gateWait,
   type RunPersonNeed,
   runWait,
   type StandingContext,
@@ -20,8 +22,8 @@ type Need = RunPersonNeed;
 function personWait(
   ctx: StandingContext,
   need: Need,
-  act: string,
-  rule: string,
+  act: Said,
+  rule: Said,
   ref: string | null,
 ) {
   const v = ctx.viewer;
@@ -30,7 +32,7 @@ function personWait(
     : need === 'admin'
       ? v?.isAdmin
       : v?.canWrite);
-  if (isViewer) return runWait('you', 'You', act, rule, { ref });
+  if (isViewer) return runWait('you', say('standing.who.you'), act, rule, { ref });
   const holders = ctx.holders[need];
   if (holders.length === 0) {
     return runWait(
@@ -50,11 +52,11 @@ function person(
   ctx: StandingContext,
   w: {
     need: Need;
-    act: string;
-    ref: string;
+    act: Said;
+    ref: Said;
     issueKey?: string | null;
     since: Date | null;
-    rule: string;
+    rule: Said;
   },
 ): Derived {
   return {
@@ -62,22 +64,23 @@ function person(
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: personWait(ctx, w.need, w.act, `${w.rule} (${w.ref})`, w.issueKey ?? null),
+    waitingOn: personWait(
+      ctx,
+      w.need,
+      w.act,
+      say('runs.rule.withRef', { rule: w.rule, ref: w.ref }),
+      w.issueKey ?? null,
+    ),
   };
 }
 
-function gate(w: {
-  gate: string;
-  resumesAt: Date | null;
-  since: Date | null;
-  rule: string;
-}): Derived {
+function gate(w: { gate: string; resumesAt: Date | null; since: Date | null; rule: Said }): Derived {
   return {
     state: 'waiting_gate',
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: { kind: 'gate', gate: w.gate, resumesAt: iso(w.resumesAt), rule: w.rule },
+    waitingOn: gateWait(w.gate, iso(w.resumesAt), w.rule),
   };
 }
 
@@ -95,15 +98,25 @@ export function lockAheadOf(f: RunFacts): LockRefusal | null {
   );
 }
 
-function refusalRule(r: LockRefusal): string {
+function refusalRule(r: LockRefusal): Said {
   if (!r.holderRunId) {
-    return `DEPLOY_ENVIRONMENT_LOCKED: this release's deploy was refused the ${r.environment} environment at ${r.refusedAt.toISOString()} while another acquisition was in flight and uncommitted; no holder or deadline was readable, so none is served`;
+    return say('runs.rule.lockNoHolder', {
+      environment: r.environment,
+      at: r.refusedAt.toISOString(),
+    });
   }
-  const since = r.holderAcquiredAt ? ` since ${r.holderAcquiredAt.toISOString()}` : '';
-  const until = r.refusedUntil
-    ? `until that deploy ends or its hold expires at ${r.refusedUntil.toISOString()}, when the next deploy reclaims it`
-    : 'until that deploy ends';
-  return `DEPLOY_ENVIRONMENT_LOCKED: this release's deploy was refused at ${r.refusedAt.toISOString()}: pipeline run ${r.holderRunId} holds the ${r.environment} environment, deploying ${r.holderSubject ?? 'an unnamed subject'}${since}; refused ${until}`;
+  return say('runs.rule.lockHeld', {
+    at: r.refusedAt.toISOString(),
+    run: r.holderRunId,
+    environment: r.environment,
+    subject: r.holderSubject ? verbatim(r.holderSubject) : say('runs.rule.lockUnnamedSubject'),
+    since: r.holderAcquiredAt
+      ? say('runs.rule.lockSince', { at: r.holderAcquiredAt.toISOString() })
+      : null,
+    until: r.refusedUntil
+      ? say('runs.rule.lockUntilExpiry', { at: r.refusedUntil.toISOString() })
+      : say('runs.rule.lockUntilEnds'),
+  });
 }
 
 function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
@@ -111,20 +124,22 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   if (f.question) {
     return person(ctx, {
       need: f.question.admin ? 'admin' : 'write',
-      act: 'answer the question',
-      ref: `question ${f.question.id}${f.question.issueKey ? ` on ${f.question.issueKey}` : ''} (blocker_kind human)`,
+      act: say('runs.act.answerQuestion'),
+      ref: f.question.issueKey
+        ? say('runs.ref.questionOn', { id: f.question.id, key: f.question.issueKey })
+        : say('runs.ref.question', { id: f.question.id }),
       issueKey: f.question.issueKey,
       since: f.question.createdAt,
-      rule: 'an open question with blocker_kind human: only a person can answer it',
+      rule: say('runs.rule.question'),
     });
   }
   if (f.approval) {
     return person(ctx, {
       need: 'approve',
-      act: 'Approve release on Releases',
-      ref: 'release_approvals: no decision (RELEASE_AWAITING_APPROVAL)',
+      act: say('issues.standing.act.approveOnReleases'),
+      ref: say('runs.ref.approval'),
       since: f.approval.requestedAt,
-      rule: 'the release waits on a pending approval, which a holder of releases.approve decides',
+      rule: say('runs.rule.approval'),
     });
   }
   if (f.run.status === 'paused') {
@@ -132,36 +147,41 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
     if (pause.resumer === 'operator') {
       return person(ctx, {
         need: 'write',
-        act: 'resume the run',
-        ref: f.run.pauseReason ? `pauseReason ${f.run.pauseReason}` : 'paused by a person',
+        act: say('runs.act.resumeRun'),
+        ref: f.run.pauseReason
+          ? say('runs.ref.pauseReason', { reason: f.run.pauseReason })
+          : say('runs.ref.pausedByPerson'),
         since: f.run.updatedAt,
-        rule: 'the run is paused, and only a person resumes this pause',
+        rule: say('runs.rule.personPause'),
       });
     }
     return gate({
       gate: pause.kind ?? 'paused',
       resumesAt: null,
       since: f.run.updatedAt,
-      rule: `the run is paused (${f.run.pauseReason}); the ${pause.resumer} resumes it, and no deadline is recorded`,
+      rule: say('runs.rule.pausedBy', {
+        reason: String(f.run.pauseReason),
+        resumer: pause.resumer,
+      }),
     });
   }
   const job = f.job;
   if (job?.status === 'held' && job.hold && !holdReleasesItself(job.hold)) {
     return person(ctx, {
       need: 'write',
-      act: 'resume the job',
-      ref: `job held: ${job.hold.reason}`,
+      act: say('runs.act.resumeJob'),
+      ref: say('runs.ref.jobHeld', { reason: job.hold.reason }),
       since: new Date(job.hold.heldAt),
-      rule: `the job is held (${job.hold.reason}), a hold that does not resume itself`,
+      rule: say('runs.rule.jobHeld', { reason: job.hold.reason }),
     });
   }
   if (job?.status === 'queued' && ctx.queuedGates.get(job.id) === 'checkout_unbound') {
     return person(ctx, {
       need: 'write',
-      act: 'bind a checkout on the box',
-      ref: 'pipeline health reads checkout_unbound (POOL_CHECKOUT_UNBOUND)',
+      act: say('runs.act.bindCheckout'),
+      ref: say('runs.ref.checkoutUnbound'),
       since: job.queuedAt,
-      rule: "every box serving this project is bound with no checkout, so its claim is refused: `forge-runner bind <slug> --path <dir>` on the box, or PATCH the runner's repoPath, and dispatch takes it",
+      rule: say('runs.rule.checkoutUnbound'),
     });
   }
   if (
@@ -172,32 +192,40 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
   ) {
     return person(ctx, {
       need: 'write',
-      act: `answer the dialog ${f.master.name ?? 'its master pane'} is stopped on: "${f.master.dialog.text}"`,
-      ref: `master session ${f.master.sessionId} metadata.paneDialog`,
+      act: say('runs.act.answerDialog', {
+        pane: f.master.name
+          ? say('standing.who.named', { name: f.master.name })
+          : say('runs.act.itsMasterPane'),
+        text: f.master.dialog.text,
+      }),
+      ref: say('runs.ref.masterDialog', { id: f.master.sessionId }),
       issueKey: key,
       since: f.master.dialog.seenAt,
-      rule: 'MASTER_PANE_DIALOG: the master pane this run works in is stopped on a dialog, and nothing in it moves until a person answers',
+      rule: say('runs.rule.masterDialog'),
     });
   }
   if (f.ledger?.work === 'blocked' && f.ledger.blockerKind === 'human') {
     return person(ctx, {
       need: 'write',
-      act: f.ledger.waitingOn ?? 'answer the run',
-      ref: 'run ledger: work blocked, blockerKind human',
+      act: f.ledger.waitingOn ? verbatim(f.ledger.waitingOn) : say('runs.act.answerRun'),
+      ref: say('runs.ref.ledgerBlocked'),
       since: f.ledger.observedAt,
-      rule: 'the box reports the run blocked on a person',
+      rule: say('runs.rule.ledgerBlocked'),
     });
   }
   if (key && f.issue && (f.issue.status === 'needs_info' || f.issue.status === 'on_hold')) {
     return person(ctx, {
       need: 'write',
-      act: f.issue.status === 'needs_info' ? 'answer a question' : 'resume it',
-      ref: `${key} at ${f.issue.status}`,
+      act: say(
+        f.issue.status === 'needs_info' ? 'issues.standing.act.answer' : 'issues.standing.act.resume',
+      ),
+      ref: say('runs.ref.issueAt', { key, status: f.issue.status }),
       issueKey: key,
       since: f.issue.statusSince,
-      rule: `the issue is parked at ${f.issue.status} while its run is live; a person moves it next${
-        f.issue.statusSince ? '' : ' (no kernel transition records when it moved there)'
-      }`,
+      rule: say('runs.rule.issueParked', {
+        status: f.issue.status,
+        unrecorded: f.issue.statusSince ? null : say('runs.rule.noTransition'),
+      }),
     });
   }
   return null;
@@ -205,13 +233,11 @@ function personWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
 
 /** The dispatch barriers pipeline health names that clear without a person (agent-run-standing,
  *  `waiting_gate`): the issue's other work ends, or a fresh, new-enough box comes online. */
-const DISPATCH_GATES: Record<string, string> = {
-  issue_busy: 'another session or job is live on this issue: dispatch takes this one once it ends',
-  contract_wait_unsettled:
-    'CONTRACT_WAIT_UNSETTLED: the issue waits on a contract version no approved version reaches yet: the approval releases it',
-  runner_stale: 'no box serving this project has beaten recently: dispatch takes it once one does',
-  runner_too_old:
-    'no box serving this project runs a build that can take it: dispatch takes it once one is updated',
+const DISPATCH_GATES: Record<string, Said> = {
+  issue_busy: say('runs.gate.issueBusy'),
+  contract_wait_unsettled: say('runs.gate.contractWait'),
+  runner_stale: say('runs.gate.runnerStale'),
+  runner_too_old: say('runs.gate.runnerTooOld'),
 };
 
 function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
@@ -222,9 +248,9 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       gate: job.hold.reason,
       resumesAt: job.retryAfterAt,
       since: heldAt,
-      rule: job.retryAfterAt
-        ? `held ${job.hold.reason}: the release sweep retries it once jobs.retry_after_at has passed`
-        : `held ${job.hold.reason}: it re-queues when its condition clears, which has no deadline`,
+      rule: say(job.retryAfterAt ? 'runs.rule.heldRetry' : 'runs.rule.heldClears', {
+        reason: job.hold.reason,
+      }),
     });
   }
   if (
@@ -236,16 +262,17 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       gate: 'retry_cooldown',
       resumesAt: job.retryAfterAt,
       since: job.queuedAt,
-      rule: 'jobs.retry_after_at is in the future: dispatch skips the job until then',
+      rule: say('runs.rule.retryCooldown'),
     });
   }
   const barrier = job?.status === 'queued' ? ctx.queuedGates.get(job.id) : undefined;
-  if (job && barrier && DISPATCH_GATES[barrier]) {
+  const why = barrier ? DISPATCH_GATES[barrier] : undefined;
+  if (job && barrier && why) {
     return gate({
       gate: barrier,
       resumesAt: null,
       since: job.queuedAt,
-      rule: `pipeline health reads ${barrier}: ${DISPATCH_GATES[barrier]}, which has no deadline`,
+      rule: say('runs.rule.dispatchGate', { gate: barrier, why }),
     });
   }
   const refusal = lockAheadOf(f);
@@ -262,7 +289,10 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
       gate: `blocked_on_${f.ledger.blockerKind}`,
       resumesAt: null,
       since: f.ledger.observedAt,
-      rule: `the box reports the run blocked on ${f.ledger.blockerKind}${f.ledger.waitingOn ? ` (${f.ledger.waitingOn})` : ''}, which no person clears`,
+      rule: say('runs.rule.blockedOn', {
+        kind: f.ledger.blockerKind,
+        on: f.ledger.waitingOn ? say('runs.rule.paren', { text: f.ledger.waitingOn }) : null,
+      }),
     });
   }
   return null;
@@ -272,44 +302,53 @@ function gateWaitOf(f: RunFacts, ctx: StandingContext): Derived | null {
 function declaredBehindOf(f: RunFacts): Derived | null {
   const refused = f.run.declarationRefusal;
   if (!refused || f.session?.status !== 'queued') return null;
-  const rule = `the box declared this run and core refuses to admit it (${refused.code}, ${refused.attempts} attempt(s), last ${refused.at.toISOString()}): ${refused.detail}`;
+  const rule = say('runs.rule.declarationRefused', {
+    code: refused.code,
+    attempts: refused.attempts,
+    at: refused.at.toISOString(),
+    detail: refused.detail,
+  });
   return {
     state: 'queued',
     since: f.session.createdAt,
     rule,
     outcome: null,
-    waitingOn: { kind: 'gate', gate: refused.gate, resumesAt: null, rule },
+    waitingOn: gateWait(refused.gate, null, rule),
   };
 }
+
+/** The run's master by name, else the master. */
+export const masterWho = (f: RunFacts): Said =>
+  f.master?.name ? say('standing.who.named', { name: f.master.name }) : say('standing.who.master');
 
 export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
   const waited = declaredBehindOf(f) ?? personWaitOf(f, ctx) ?? gateWaitOf(f, ctx);
   if (waited) return waited;
   const job = f.job;
   const s = f.session;
-  const running = (since: Date | null, rule: string): Derived => ({
+  const running = (since: Date | null, rule: Said): Derived => ({
     state: 'running',
     since,
     rule,
     outcome: null,
-    waitingOn: NO_WAIT('running: its holder is working it'),
+    waitingOn: NO_WAIT(say('runs.rule.running')),
   });
-  const claimed = (since: Date | null, rule: string): Derived => ({
+  const claimed = (since: Date | null, rule: Said): Derived => ({
     state: 'claimed',
     since,
     rule,
     outcome: null,
-    waitingOn: NO_WAIT('claimed: its holder has not started it'),
+    waitingOn: NO_WAIT(say('runs.rule.claimed')),
   });
   if (job?.status === 'dispatched' && job.sessionStatus === 'running')
     return running(
       job.sessionStartedAt ?? job.ackedAt ?? job.dispatchedAt,
-      'jobs.status dispatched and its agent session running',
+      say('runs.live.dispatchedRunning'),
     );
   if (job?.status === 'dispatched')
-    return claimed(job.dispatchedAt, 'jobs.status dispatched: a box took it and has not acked');
+    return claimed(job.dispatchedAt, say('runs.live.notAcked'));
   if (job?.status === 'queued' && job.heldBy) {
-    return claimed(job.heldAt, 'jobs.held_by: a master prepared it and has not started it');
+    return claimed(job.heldAt, say('runs.live.heldByMaster'));
   }
   if (job?.status === 'queued' || (s?.status === 'queued' && !job)) {
     const since = job?.queuedAt ?? s?.createdAt ?? f.run.startedAt;
@@ -317,21 +356,21 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
     return {
       state: 'queued',
       since,
-      rule: 'admitted, and no box or master has taken it',
+      rule: say('runs.live.admitted'),
       outcome: null,
       waitingOn:
         full && ctx.slots
           ? runWait(
               'machine',
-              'Machine',
-              `no free slot (${ctx.slots.inUse} of ${ctx.slots.max} in use)`,
-              `no free slot: ${ctx.slots.inUse} of ${ctx.slots.max} in use (masters/standing.slots)`,
+              say('runs.who.machine'),
+              say('runs.act.noSlot', { inUse: ctx.slots.inUse, max: ctx.slots.max }),
+              say('runs.rule.noSlot', { inUse: ctx.slots.inUse, max: ctx.slots.max }),
             )
           : runWait(
               'master',
-              f.master?.name ?? 'Master',
-              'dispatch it',
-              'queued: the project master takes it in a pass',
+              masterWho(f),
+              say('runs.act.dispatchIt'),
+              say('runs.rule.queuedMaster'),
             ),
     };
   }
@@ -339,27 +378,27 @@ export function liveOf(f: RunFacts, ctx: StandingContext): Derived {
     if (s.runtimeState === 'starting' || f.ledger?.incarnation === 'starting') {
       return claimed(
         s.startedAt ?? s.createdAt,
-        'the run session is starting (runtimeState or ledger incarnation starting)',
+        say('runs.live.starting'),
       );
     }
-    return running(s.startedAt ?? s.createdAt, `the run session is ${s.status}`);
+    return running(s.startedAt ?? s.createdAt, say('runs.live.sessionIs', { status: s.status }));
   }
   if (!job && !s) {
     return {
       state: 'queued',
       since: f.run.startedAt,
-      rule: 'the run is open and nothing has been dispatched on it yet',
+      rule: say('runs.live.openNothing'),
       outcome: null,
       waitingOn: runWait(
         'master',
-        f.master?.name ?? 'Master',
-        'dispatch it',
-        'queued: nothing is dispatched on the run',
+        masterWho(f),
+        say('runs.act.dispatchIt'),
+        say('runs.rule.queuedNothing'),
       ),
     };
   }
   return running(
     f.run.startedAt,
-    `the pipeline run is ${f.run.status} with ${f.liveJobs} live job(s) and no live session; ISS-109 decides whether that is stuck`,
+    say('runs.live.noSession', { status: f.run.status, n: f.liveJobs }),
   );
 }

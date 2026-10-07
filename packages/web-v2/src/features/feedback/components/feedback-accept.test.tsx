@@ -5,6 +5,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
+import { verbatim } from "@/test/said";
 import type { FeedbackView } from "../types";
 import { Proposals } from "./feedback-actions";
 import { FeedbackHistory } from "./feedback-detail";
@@ -66,6 +67,7 @@ describe("a decision an accepted suggestion wrote, in the History", () => {
     route: "issue",
     carrier: "ISS-4",
     reason: "Same as the board crash",
+    says: { reason: verbatim("Same as the board crash") },
     decidedBy: "u1",
     decidedByName: "Ana",
     decidedAgency: "human",

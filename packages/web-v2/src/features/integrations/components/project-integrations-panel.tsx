@@ -27,7 +27,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { integrationDetail } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { useIntegrationsList, useIntegrationsStatus } from "../hooks";
 import { cardProvider, deriveDirectoryStatus, isProviderCard } from "../derive";
 import { connectionTargetFor, providerIcon, providerLabel } from "../providers/registry";
@@ -61,7 +61,7 @@ function bindingName(card: StatusCard): string | null {
 /** Core's sentence on the binding's health in the reader's words, then when it last synced. */
 function healthText(card: StatusCard, words: RowWords): string | null {
   if (!card.configured && !isRepositoryCard(card)) return null;
-  const detail = integrationDetail(card.detail, words.language);
+  const detail = said(card.says.detail, words.language);
   const synced = words.relative(card.lastSyncAt);
   return synced ? `${detail} · ${synced}` : detail;
 }

@@ -1,7 +1,17 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { liveOf } from './standing-live.js';
-import { stuckOf } from './standing-stuck.js';
+import { liveOf as liveOf_ } from './standing-live.js';
+import { stuckOf as stuckOf_ } from './standing-stuck.js';
 import type { RunFacts, StandingContext } from './standing-types.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const liveOf = ((...a: Parameters<typeof liveOf_>) => checked(liveOf_(...a))) as typeof liveOf_;
+const stuckOf = ((...a: Parameters<typeof stuckOf_>) => checked(stuckOf_(...a))) as typeof stuckOf_;
+
 
 const now = new Date('2026-10-05T12:00:00Z');
 const minutes = (n: number) => new Date(now.getTime() + n * 60_000);
@@ -67,6 +77,7 @@ describe('agent-run-standing waiting_gate: a deploy lock this release was refuse
       gate: 'deploy_locked',
       resumesAt: minutes(5).toISOString(),
       rule: expect.stringContaining('pipeline run run-holder holds the production environment'),
+      says: { rule: expect.objectContaining({ key: 'runs.rule.lockHeld' }) },
     });
   });
 
@@ -144,7 +155,7 @@ describe('agent-run-standing waiting_gate: the wait shape {kind, gate, resumesAt
       queuedAt: minutes(-1),
     };
     const d = liveOf(release({ run: { ...release().run, releaseVersion: null }, job }), ctx);
-    expect(Object.keys(d.waitingOn).sort()).toEqual(['gate', 'kind', 'resumesAt', 'rule']);
+    expect(Object.keys(d.waitingOn).sort()).toEqual(['gate', 'kind', 'resumesAt', 'rule', 'says']);
     expect(d.waitingOn).toMatchObject({
       gate: 'retry_cooldown',
       resumesAt: minutes(2).toISOString(),
@@ -171,6 +182,7 @@ describe('agent-run-standing waiting_gate: the wait shape {kind, gate, resumesAt
       gate: 'runner_stale',
       resumesAt: null,
       rule: expect.stringContaining('runner_stale'),
+      says: { rule: expect.objectContaining({ key: 'runs.rule.dispatchGate' }) },
     });
   });
 });

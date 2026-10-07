@@ -5,6 +5,7 @@
  * own stored vector with its project's, so reading it sends nothing to a provider.
  */
 
+import { say, sayEn } from '@forge/contracts/said';
 import {
   type FeedbackDedup,
   feedbackKey,
@@ -57,11 +58,10 @@ export async function nearestFeedbackOf(
 ): Promise<FeedbackDedup> {
   const own = await itemEmbeddingOf({ feedbackId });
   if (own?.status !== 'embedded' || !own.embedding || !own.model) {
-    return {
-      ran: false,
-      nearest: null,
-      why: `triage without dedup: the item's vector is ${own ? own.status : 'not written yet'}`,
-    };
+    const why = own
+      ? say('feedback.notice.noDedup', { status: own.status })
+      : say('feedback.notice.noDedupUnwritten');
+    return { ran: false, nearest: null, why: sayEn(why), says: { why } };
   }
   const [near] = await nearestItems({
     projectId,

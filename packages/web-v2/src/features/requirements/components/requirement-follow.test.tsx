@@ -1,5 +1,6 @@
 // A requirement follows its work to the release: its progress line names who owes the cut and links the release.
 
+import { forecastWait, say } from "@/test/said";
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -12,9 +13,7 @@ const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
 const approval = {
   kind: "person" as const,
   mode: "approval" as const,
-  who: "Dana Lee",
-  act: "cut 0.1.0, then approve it",
-  reason: "a holder approves",
+  ...forecastWait(say("standing.who.named", { name: "Dana Lee" }), say("standing.act.cutThenApprove", { v: "0.1.0" }), say("forecast.reason.approval", { holders: null })),
   version: "0.1.0",
   holders: [{ id: "u1", name: "Dana Lee", kind: "human" as const }],
 };

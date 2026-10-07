@@ -12,6 +12,7 @@ import {
   type WorkflowHealth,
   type WorkflowReconciliation,
 } from '@forge/contracts/workflow-health';
+import { say, sayEn } from '@forge/contracts/said';
 import { type DesignDiff, designDiff, edgeKey } from './design-diff.js';
 import {
   approvedDocumentOf,
@@ -183,20 +184,27 @@ function reconciliationOf(
     proven: f.criteria.filter((c) => c.proof === 'pass').length,
   };
   const why = !f.observation
-    ? 'the code has not been observed against this design'
+    ? say('workflows.reconcile.unobserved')
     : undecided > 0
-      ? `${undecided} marked node(s) wait on a keep, rewrite or delete decision`
+      ? say('workflows.reconcile.undecided', { n: undecided })
       : cleaning > 0
-        ? `${cleaning} decided node(s) wait on their build issue to close`
+        ? say('workflows.reconcile.cleaning', { n: cleaning })
         : unbuilt > 0
-          ? `${unbuilt} decided node(s) have no build issue linked after the decision, and no approved revision adopting a kept one was observed`
+          ? say('workflows.reconcile.unbuilt', { n: unbuilt })
           : builds.length === 0
             ? latestDecision.size === 0
-              ? 'no node is marked or decided, so nothing waits on a reconciliation'
+              ? say('workflows.reconcile.nothingMarked')
               : null
             : unreleased.length > 0
-              ? `${unreleased.map((b) => b.issueKey).join(', ')} is not in a released version yet`
+              ? say('workflows.reconcile.unreleased', {
+                  keys: unreleased.map((b) => b.issueKey).join(', '),
+                })
               : null;
+  const rule =
+    why ??
+    (version
+      ? say('workflows.reconcile.carried', { v: version.version })
+      : say('workflows.reconcile.kept'));
   const reconciled =
     f.observation !== null &&
     undecided === 0 &&
@@ -210,11 +218,8 @@ function reconciliationOf(
     issues: builds.map((b) => b.issueKey).sort(),
     version,
     criteria,
-    rule:
-      why ??
-      (version
-        ? `every marked node is decided and ${version.version} carried its builds`
-        : 'every decided node is kept by an approved revision the code was observed to match'),
+    rule: sayEn(rule),
+    says: { rule },
   };
 }
 
@@ -245,9 +250,9 @@ function decisionView(d: HealthFacts['decisions'][number]): HealthNodeDecision {
 }
 
 const VERDICT_ACT = {
-  keep: 'propose a revision that adopts the code, or build it to the plan',
-  rewrite: 'break the rewrite into issues',
-  delete: 'break the deletion into issues',
+  keep: say('workflows.act.keep'),
+  rewrite: say('workflows.act.rewrite'),
+  delete: say('workflows.act.delete'),
 } as const;
 
 export function deriveHealth(f: HealthFacts): WorkflowHealth {
@@ -326,23 +331,23 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
       if (decision) {
         m.waitingOn = masterOwes(
           VERDICT_ACT[decision.node.verdict],
-          `the node is decided ${decision.node.verdict}`,
+          say('workflows.rule.decided', { verdict: decision.node.verdict }),
         );
       } else if (m.kind === 'not_in_design' || rule) {
         m.waitingOn = personDecides(
           m.kind === 'not_in_design'
-            ? 'code the design does not hold waits on a decision: keep, rewrite or delete'
-            : `the node is due a rewrite (${rule}); keeping it is a recorded decision against the default`,
+            ? say('workflows.rule.notInDesign')
+            : say('workflows.rule.rewriteDue', { rule: String(rule) }),
         );
       } else if (m.kind === 'upcoming') {
         m.waitingOn = masterOwes(
-          'build it to the plan',
-          'a planned node no code builds yet is built to the plan',
+          say('workflows.act.buildToPlan'),
+          say('workflows.rule.upcoming'),
         );
       } else {
         m.waitingOn = masterOwes(
-          'decide keep or rewrite in the decision round',
-          'an undecided Wrong node below the rewrite threshold waits on the orchestrator, not on a person',
+          say('workflows.act.decideInRound'),
+          say('workflows.rule.belowThreshold'),
         );
       }
     }

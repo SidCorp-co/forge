@@ -1,4 +1,5 @@
 import { traceStep } from '../../../lib/error-tracking.js';
+import { say } from '@forge/contracts/said';
 import { logger } from '../../../lib/logger.js';
 import {
   type AdapterContext,
@@ -364,7 +365,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     label: 'Coolify',
     // Coolify is environment-split by design, so even a single binding keys by environment.
     alwaysEnvironmentKeyed: true,
-    neverCheckedDetail: 'never health-checked',
+    neverCheckedDetail: say('integrations.row.neverChecked'),
     bindingIdentity: (config) => {
       const apps = (Array.isArray(config.targets) ? config.targets : []).flatMap((t) =>
         t &&

@@ -1,13 +1,24 @@
+import { saidDisagreements } from '@forge/contracts/said';
 // A draft whose only blocker is RELEASE_ROSTER_OVERSIZE read `can.cut: false` and told "A project
 // admin" to split it, with nothing on the page to split it with (HOP 0.1.0, 2026-10-07: the admin
 // posted the ids by hand). The read now offers the admin the act the gate's effect names — the
 // oldest RELEASE_ROSTER_LIMIT merged issues, cut as this release — and only where that is the one
 // reason the cut is refused.
 
+import { say, verbatim } from '@forge/contracts/said';
 import { RELEASE_ROSTER_LIMIT, type ReleaseGateView } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import type { ReleaseFacts } from './release-facts.js';
-import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
+import { detailOf as detailOf_, type Part, type Shared, summaryOf as summaryOf_ } from './release-read-views.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const detailOf = ((...a: Parameters<typeof detailOf_>) => checked(detailOf_(...a))) as typeof detailOf_;
+const summaryOf = ((...a: Parameters<typeof summaryOf_>) => checked(summaryOf_(...a))) as typeof summaryOf_;
+
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 9, 1);
@@ -48,7 +59,12 @@ const gate = (code: string): ReleaseGateView => ({
     kind: 'person',
     who: 'Ada',
     act: 'split this release into smaller releases',
+    says: {
+      who: say('standing.who.named', { name: 'Ada' }),
+      act: say('standing.act.splitRelease'),
+    },
   },
+  says: { title: verbatim(code), sentence: verbatim(code) },
 });
 
 function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft'): Part {

@@ -8,7 +8,8 @@ import { Fact, FactsEmpty, FactsGroup, StatusBadge } from "@/design";
 import { DisclosureToggle } from "@/features/releases/components/release-bits";
 import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
-import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
@@ -98,6 +99,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
 function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   const r = health.reconciliation;
   return (
     <FactsGroup title={t("workflows.facts.reconciliation")} testId="facts-reconciliation">
@@ -105,7 +107,7 @@ function ReconciliationGroup({ health, slug }: { health: WorkflowHealth; slug: s
         <span className="flex-none">
           <StatusBadge family="reconciliation" value={r.state} />
         </span>
-        <span className="min-w-0">{r.rule.charAt(0).toUpperCase() + r.rule.slice(1)}.</span>
+        <span className="min-w-0">{sentenceOf(said(r.says.rule, language))}</span>
       </p>
       <Fact label={t("workflows.facts.version")} testId="reconciliation-version">
         {r.version ? (
@@ -168,15 +170,19 @@ function Requirements({ d, slug }: { d: WorkflowDesign; slug: string }) {
   );
 }
 
+/** A rule as a sentence: capitalised, with its full stop. */
+const sentenceOf = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}.`;
+
 function BuildGate({ d, slug }: { d: WorkflowDesign; slug: string }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
     <FactsGroup title={t("workflows.facts.buildGate")} count={d.builds.length ? t("workflows.facts.issues", { n: d.builds.length }) : undefined} testId="facts-build-gate">
       <p className="mb-2 flex min-w-0 items-start gap-2 text-12-5 text-muted" data-testid="build-gate" data-open={d.gate.open}>
         <span className="flex-none">
           <StatusBadge family="buildGate" value={d.gate.open ? "open" : "held"} />
         </span>
-        <span className="min-w-0">{d.gate.rule.charAt(0).toUpperCase() + d.gate.rule.slice(1)}.</span>
+        <span className="min-w-0">{sentenceOf(said(d.gate.says.rule, language))}</span>
       </p>
       {d.builds.length === 0 ? (
         <FactsEmpty>{t("workflows.facts.noBuild")}</FactsEmpty>

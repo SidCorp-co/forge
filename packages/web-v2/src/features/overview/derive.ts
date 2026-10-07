@@ -27,15 +27,6 @@ export function ageText(seconds: number | null, t: Copy): string | null {
   return seconds === Number.MAX_SAFE_INTEGER ? t("overview.neverRan") : formatElapsed(seconds, t);
 }
 
-/** A record's detail as core words it (`me/pulse-actions.ts`), in the interface language; a title or a slug reads as written. */
-export function recordDetail(detail: string, t: Copy): string {
-  const waiting = /^(\d+) issues? waiting$/.exec(detail);
-  if (waiting) return waiting[1] === "1" ? t("overview.record.waitingOne") : t("overview.record.waiting", { n: Number(waiting[1]) });
-  const notOnLive = /^(.+) · ([0-9a-f]{8}) not on (\S+)$/.exec(detail);
-  if (notOnLive) return t("overview.record.notOnLive", { title: notOnLive[1] ?? "", sha: notOnLive[2] ?? "", branch: notOnLive[3] ?? "" });
-  return detail;
-}
-
 export type SilenceMark = "calm" | "warn" | "alarm";
 
 /**

@@ -4,7 +4,8 @@
  * kind and target.
  */
 
-import { WAITING_KIND_MARKS, type WaitingOn } from '@forge/contracts/standing';
+import { type Said, say } from '@forge/contracts/said';
+import { WAITING_KIND_MARKS, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { VERDICT_VALUES } from '@forge/contracts/verdict-identity';
 import {
   type HealthMarker,
@@ -116,22 +117,19 @@ export interface HealthFacts {
 export const OPEN_ISSUE = (status: string) => status !== 'closed' && status !== 'dropped';
 export const PROVENANCE: ReadonlySet<HealthMarkerKind> = new Set(PROVENANCE_MARKER_KINDS);
 
-export const wait = (
-  kind: WaitingOn['kind'],
-  who: string,
-  act: string,
-  rule: string,
-): WaitingOn => ({
-  kind,
-  who,
-  act,
-  rule,
-  ref: null,
-  dueAt: null,
-});
-export const masterOwes = (act: string, rule: string) => wait('master', 'Master', act, rule);
-export const personDecides = (rule: string) =>
-  wait('person', 'A holder of workflow-designs.approve', 'decide keep, rewrite or delete', rule);
+export const wait = (kind: WaitingOn['kind'], who: Said, act: Said, rule: Said): WaitingOn =>
+  waitingOn(kind, { who, act, rule });
+export const masterOwes = (act: Said, rule: Said) =>
+  wait('master', say('standing.who.master'), act, rule);
+export const personDecides = (rule: Said) =>
+  wait(
+    'person',
+    say('standing.who.holderOf', { perm: 'workflow-designs.approve' }),
+    say('workflows.act.decideNode'),
+    rule,
+  );
+/** A marker's rule code (`outdated.drift`) as its wait's rule. */
+export const ruleCode = (code: string) => say('workflows.rule.code', { code });
 export const waitsOnPerson = (w: WaitingOn) => {
   const mark = WAITING_KIND_MARKS[w.kind];
   return mark === 'you' || mark === 'person';

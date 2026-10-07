@@ -2,6 +2,7 @@
 // and the Ecosystem group, the project tier its needs-you counts, and the one switcher both rail
 // widths open lists pinned projects first.
 
+import { say } from "@/test/said";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { isNavGroup } from "@/design";
@@ -40,7 +41,7 @@ describe("the nav model", () => {
   });
 
   it("badges Workflows with the same designs rows the Dashboard draws", () => {
-    const needsYou = { areas: { designs: { you: 1, acts: [{ act: "approve or return revision 3", count: 1 }] } } } as never;
+    const needsYou = { areas: { designs: { you: 1, acts: [{ act: "approve or return revision 3", count: 1, says: { act: say("designs.act.approveOrReturn", { r: 3 }) } }] } } } as never;
     const wf = projectMenu({ needsYou }).flatMap((e) => (isNavGroup(e) ? e.items : [e])).find((it) => it.key === "proj-workflows");
     expect(wf).toMatchObject({ badge: 1 });
   });

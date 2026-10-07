@@ -1,3 +1,5 @@
+import type { Said } from "@forge/contracts/said";
+import { RULE, say, sentence, verbatim, waitingOn } from "./said";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import type { RequirementDetail, RequirementSummary } from "@/features/requirements/types";
@@ -10,10 +12,14 @@ import type { SuggestionView } from "@/features/suggestions/types";
 export const REQ_PROJECT = "p-vi";
 const at = "2026-10-06T10:00:00Z";
 
+const LAN = say("standing.who.named", { name: "Lan" });
+/** A history row as core sends it: who and what in English beside what it said. */
+const h = (id: string, source: string, who: Said, kind: string, text: Said, over: Record<string, unknown> = {}) => ({ id, at, source, who: sentence(who), kind, text: sentence(text), issue: null, move: null, says: { who, text }, ...over });
+
 const standing = {
   state: "agreed",
   attentionGroup: "needs_you",
-  waitingOn: { kind: "you", who: "You", act: "accept r2", rule: "r", ref: null, dueAt: null, effect: undefined },
+  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.acceptR", { r: 2 }), rule: RULE }),
   delivery: { phase: "agreed", liveIssues: 2, startedIssues: 1, closedIssues: 1, criteriaCoverage: { criteria: 3, passing: 1, judged: 2 } },
   facts: {
     passing: 1,
@@ -111,21 +117,21 @@ export const reqDetail: RequirementDetail = {
   releases: [{ version: "0.1.0", at: "2026-10-01T00:00:00.000Z" }],
   canSignOff: true,
   history: [
-    { id: "h1", at, source: "person", who: "Lan", kind: "Revision", text: "Proposed r2", issue: null, move: null },
-    { id: "h2", at, source: "person", who: "Lan", kind: "Revision", text: "Wrote r2: Thay doi 2", issue: null, move: null },
-    { id: "h3", at, source: "person", who: "Lan", kind: "Decision", text: "Accepted r1: Dong y", issue: null, move: null },
-    { id: "h4", at, source: "person", who: "Lan", kind: "Returned", text: "Returned r1: Chua ro", issue: null, move: null },
-    { id: "h5", at, source: "person", who: "Lan", kind: "Agreed", text: "Agreed r1", issue: null, move: null },
-    { id: "h6", at, source: "agent", who: "BA assistant", kind: "Suggestion", text: "Suggested a revision", issue: null, move: null },
-    { id: "h7", at, source: "person", who: "Lan", kind: "Decision", text: "Rejected a breakdown: Qua lon", issue: null, move: null },
-    { id: "h8", at, source: "person", who: "Lan", kind: "Decision", text: "Deferred out of the current release (for Q4): Cho", issue: null, move: null },
-    { id: "h9", at, source: "person", who: "Lan", kind: "Decision", text: "Undeferred", issue: null, move: null },
-    { id: "h10", at, source: "person", who: "Lan", kind: "Decision", text: "Accepted the delivery: Tot", issue: null, move: null },
-    { id: "h11", at, source: "person", who: "Lan", kind: "Decision", text: "Dropped: Bo", issue: null, move: null },
-    { id: "h12", at, source: "person", who: "Lan", kind: "Agreed", text: "Re-pinned r1 onto the approved designs", issue: null, move: null },
-    { id: "h13", at, source: "agent", who: "An agent", kind: "Question", text: "Hoi gi", issue: "ISS-2", move: null },
-    { id: "h14", at, source: "person", who: "Someone", kind: "Answer", text: "Tra loi", issue: "ISS-2", move: null },
-    { id: "h15", at, source: "system", who: "Forge", kind: "Status", text: "", issue: "ISS-2", move: { from: "open", to: "in_progress" } },
+    h("h1", "person", LAN, "Revision", say("requirements.history.text.proposed", { r: 2 })),
+    h("h2", "person", LAN, "Revision", say("requirements.history.text.wrote", { r: 2, rest: "Thay doi 2" })),
+    h("h3", "person", LAN, "Decision", say("requirements.history.text.acceptedWhy", { r: 1, rest: "Dong y" })),
+    h("h4", "person", LAN, "Returned", say("requirements.history.text.returned", { r: 1, rest: "Chua ro" })),
+    h("h5", "person", LAN, "Agreed", say("requirements.history.text.agreed", { r: 1 })),
+    h("h6", "agent", say("requirements.history.who.assistant"), "Suggestion", say("requirements.history.text.suggested", { what: say("requirements.history.what.revision_diff") })),
+    h("h7", "person", LAN, "Decision", say("requirements.history.text.rejectedSuggestionWhy", { what: say("requirements.history.what.breakdown"), rest: "Qua lon" })),
+    h("h8", "person", LAN, "Decision", say("requirements.history.text.deferredFor", { phase: "Q4", rest: "Cho" })),
+    h("h9", "person", LAN, "Decision", say("requirements.history.text.undeferred")),
+    h("h10", "person", LAN, "Decision", say("requirements.history.text.deliveryAcceptedWhy", { rest: "Tot" })),
+    h("h11", "person", LAN, "Decision", say("requirements.history.text.dropped", { rest: "Bo" })),
+    h("h12", "person", LAN, "Agreed", say("requirements.history.text.repinned", { r: 1 })),
+    h("h13", "agent", say("requirements.history.who.agent"), "Question", verbatim("Hoi gi"), { issue: "ISS-2" }),
+    h("h14", "person", say("requirements.history.who.someone"), "Answer", verbatim("Tra loi"), { issue: "ISS-2" }),
+    h("h15", "system", say("requirements.history.who.forge"), "Status", say("standing.empty"), { issue: "ISS-2", move: { from: "open", to: "in_progress" } }),
   ],
   readiness: null,
   dedup: null,

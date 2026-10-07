@@ -1,6 +1,7 @@
 import type { DesignRevisionState, DesignStatus } from "./design-status.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
+import type { Said } from "./said.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
 import type { WorkflowHealthSummary } from "./workflow-health.js";
 
@@ -101,6 +102,8 @@ export interface DesignRequirementLink {
 export interface DesignBuildGate {
 	open: boolean;
 	rule: string;
+	/** `rule` as said (`said.ts`). */
+	says: { rule: Said };
 }
 
 /** What a revision changes against the one before it: the steps by the words the design gives them, the lines by count. */

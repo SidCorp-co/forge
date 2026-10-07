@@ -7,6 +7,7 @@
  * reopen or a re-route starts the count again; a reporter who says "not fixed" reopens it as before.
  */
 
+import { say, sayEn } from '@forge/contracts/said';
 import { feedbackKey } from '@forge/contracts/feedback';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { and, eq } from 'drizzle-orm';
@@ -36,7 +37,7 @@ async function verifyIn(rowId: string, projectId: string, days: number): Promise
     if (row.status !== 'triaged') return null;
     const linked = await linkedOf(projectId, [row]);
     if (phaseIn(row, linked) !== 'resolved') return null;
-    const reason = `Verified automatically after ${days} days with no reply`;
+    const reason = sayEn(say('feedback.notice.autoVerified', { n: days }));
     movedRow(
       await transition(tx, FEEDBACK_MACHINE, {
         to: 'verified',

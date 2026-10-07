@@ -9,7 +9,8 @@ import {
 } from '@forge/contracts/development-overview';
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
-import { slotsNoteOf } from '@forge/contracts/master-standing';
+import { slotsNoteOf, slotsNoteSaid } from '@forge/contracts/master-standing';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { modulePaths } from '@forge/contracts/modules';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -34,10 +35,9 @@ const terminalSessions = sql.join(
   sql`, `,
 );
 
-const CI_UNAVAILABLE =
-  'Core stores check runs for pull requests only, never for a branch head, so it holds no reading of dev itself.';
-const POST_MERGE_UNAVAILABLE =
-  'A push to a gated branch carries its post-merge jobs on GitHub; core receives no event for them and stores none.';
+const unavailable = (reason: Said) => ({ available: false as const, reason: sayEn(reason), says: { reason } });
+const CI_UNAVAILABLE = say('overview.signal.ciNote');
+const POST_MERGE_UNAVAILABLE = say('overview.signal.postMergeNote');
 
 async function laneFacts(
   projectId: string,
@@ -144,6 +144,7 @@ async function masterSignal(projectId: string): Promise<OverviewMasterSignal> {
     state: standing.state,
     slots: standing.slots,
     slotsNote: slotsNoteOf(standing),
+    says: { slotsNote: slotsNoteSaid(standing) },
   };
 }
 
@@ -238,8 +239,8 @@ export async function readDevelopmentOverview(
   return {
     generatedAt: now.toISOString(),
     signals: {
-      ci: { available: false, reason: CI_UNAVAILABLE },
-      postMerge: { available: false, reason: POST_MERGE_UNAVAILABLE },
+      ci: unavailable(CI_UNAVAILABLE),
+      postMerge: unavailable(POST_MERGE_UNAVAILABLE),
       contracts: contractsSignal(changes, proposed),
       master,
     },

@@ -1,3 +1,4 @@
+import { forecastWait, RULE, say, verbatim, waitingOn } from "@/test/said";
 import type { ForecastBasis, ForecastLate, ForecastPaused, ForecastRange, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
 import type { NeedsYouItem } from "@/features/needs-you/types";
@@ -10,7 +11,7 @@ const stamp = { label: "forecast" as const, asOf: new Date(NOW).toISOString() };
 const basis: ForecastBasis = { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 1, concurrency: 1, concurrencyBasis: "t" };
 
 const range = (p50: string, late: ForecastLate | null = null): ForecastRange => ({ ...stamp, kind: "forecast", p50At: p50, p85At: p50, p50Minutes: 1, p85Minutes: 1, ahead: 0, aheadKeys: [], waitsOn: [], basis, late });
-const paused = (late: ForecastLate | null): ForecastPaused => ({ ...stamp, kind: "paused", who: "A project writer", act: "answer", reason: "r", ref: null, since: null, late });
+const paused = (late: ForecastLate | null): ForecastPaused => ({ ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("issues.standing.act.answer"), RULE), ref: null, since: null, late });
 
 const scope = (key: string, forecast: ForecastRange | ForecastPaused): ScopeForecast => ({
   ...stamp, scope: "requirement", key, progress: { total: 2, shipped: 0, awaitingRelease: 0, toDo: 2 }, forecast, next: null, title: `Title ${key}`,
@@ -37,17 +38,18 @@ describe("the BA dashboard", () => {
     const rows = planRows(inputs(reqs(scope("REQ-3", paused(late)), scope("REQ-4", range("2026-10-08T10:00:00Z", { reason: "p85_passed", since: "x", byMinutes: 90 })))), clock);
     expect(landsThisWeek(rows, clock).map((r) => r.key)).toEqual(["REQ-4"]);
     expect(lateRows(rows).map((r) => [r.key, r.late?.byMinutes])).toEqual([["REQ-3", 360], ["REQ-4", 90]]);
-    expect(rows.find((r) => r.key === "REQ-3")?.eta).toMatchObject({ kind: "waits", who: "A project writer" });
+    expect(rows.find((r) => r.key === "REQ-3")?.eta).toMatchObject({ kind: "waits", who: say("standing.who.holderOf", { perm: "project.write" }) });
   });
 
   it("reads the release an item waits on, and who cuts it, from its delivery forecast", () => {
     const f = range("2026-10-08T10:00:00Z");
-    const leg = { kind: "person" as const, mode: "approval" as never, who: "A release approver", act: "cut 0.1.0, then approve it", reason: "r", version: "0.1.0", holders: [] };
+    const approver = say("standing.who.holderOf", { perm: "releases.approve" });
+    const leg = { kind: "person" as const, mode: "approval" as never, ...forecastWait(approver, say("standing.act.cutThenApprove", { v: "0.1.0" }), RULE), version: "0.1.0", holders: [] };
     const base = scope("REQ-1", f);
     const waits: ScopeForecast = { ...base, delivery: base.delivery && { ...base.delivery, release: leg } };
     const free = scope("REQ-2", f);
     const rows = planRows(inputs(reqs(waits, free)), clock);
-    expect(rows.find((r) => r.key === "REQ-1")?.release).toEqual({ version: "0.1.0", who: "A release approver" });
+    expect(rows.find((r) => r.key === "REQ-1")?.release).toEqual({ version: "0.1.0", who: approver });
     expect(rows.find((r) => r.key === "REQ-2")?.release).toBeNull();
   });
 
@@ -56,7 +58,7 @@ describe("the BA dashboard", () => {
   });
 
   it("keeps issue, contract and automation rows off the dashboard's Needs you, and the workflow approval on it", () => {
-    const wait = { kind: "you" as const, who: "You", act: "a", rule: "r", ref: null, dueAt: null };
+    const wait = waitingOn("you", { who: say("standing.who.you"), act: verbatim("a"), rule: RULE });
     const item = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: key, waitingOn: wait, touchedAt: null });
     const kept = baNeedsYou([
       item("issues", "issue", "ISS-120"),

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { EnumBadge, FieldLabel, LEGEND, ViewHeading } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
-import { riskSentence } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { DisclosureToggle } from "./release-bits";
@@ -145,7 +145,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
               <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
-              <span className="min-w-0 flex-1">{riskSentence(k.sentence, language)}</span>
+              <span className="min-w-0 flex-1">{said(k.says.sentence, language)}</span>
               <IssueKeys keys={k.issues} slug={slug} />
             </li>
           ))}

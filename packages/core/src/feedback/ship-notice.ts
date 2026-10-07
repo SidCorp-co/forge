@@ -1,6 +1,7 @@
 // "Reporter told": whether the release that shipped an item's work told its reporter, read off the
 // notice `notifications/notify-feedback.ts` wrote, never off a flag that could drift from it.
 
+import { say, sayEn } from '@forge/contracts/said';
 import type { FeedbackPhase, FeedbackShipNotice } from '@forge/contracts/feedback';
 import { feedbackShippedPrefix } from '@forge/contracts/notifications';
 import { desc, eq, like, sql } from 'drizzle-orm';
@@ -71,17 +72,19 @@ export async function shipNoticeOf(
     const shipped = await shippedOf(feedbackId);
     const before =
       !notice && item.reporterAgency === 'human' && (await beforeNoticesBegan(shipped.at));
+    const reason = notice
+      ? say('feedback.notice.turnedOff')
+      : item.reporterAgency === 'agent'
+        ? say('feedback.notice.agent')
+        : before
+          ? say('feedback.notice.before')
+          : shipped.release
+            ? say('feedback.notice.silent', { release: shipped.release })
+            : say('feedback.notice.noRelease');
     return {
       state: 'not_told',
-      reason: notice
-        ? 'The reporter has turned this notice off, so it reached nobody: tell them yourself.'
-        : item.reporterAgency === 'agent'
-          ? 'The reporter is an agent, which has no bell: tell it where it listens.'
-          : before
-            ? 'It shipped before Forge told reporters when a release shipped.'
-            : shipped.release
-              ? `${shipped.release} shipped it and sent the reporter no notice.`
-              : 'No release carries it, so none told the reporter: tell them yourself.',
+      reason: sayEn(reason),
+      says: { reason },
       shipped: { at: shipped.at?.toISOString() ?? null, release: shipped.release },
       beforeNotices: before,
     };

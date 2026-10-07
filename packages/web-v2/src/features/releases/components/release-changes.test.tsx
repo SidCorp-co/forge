@@ -1,5 +1,6 @@
 // A release's approver reads what it changes before its notes: per surface, risks first, design apart.
 
+import { say } from "@/test/said";
 import type { ReleaseChanges } from "@forge/contracts/releases";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -38,6 +39,7 @@ const changes: ReleaseChanges = {
       ref: "table:hop_attention",
       issues: ["ISS-2"],
       sentence: "table:hop_attention is removed: data it held does not come back with a rollback",
+      says: { sentence: say("standing.risk.dataRemoved", { ref: "table:hop_attention" }) },
     },
   ],
   unclassified: [{ key: "ISS-4", why: "its landing is text that names no artifact", paths: [] }],

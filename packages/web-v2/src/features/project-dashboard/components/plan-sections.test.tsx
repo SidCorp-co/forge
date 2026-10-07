@@ -1,3 +1,4 @@
+import { say } from "@/test/said";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { PlanRow } from "../ba-derive";
@@ -13,7 +14,7 @@ describe("the dashboard's plan sections", () => {
         clock={clock}
         rows={[
           row({ late: { reason: "p85_passed", since: "x", byMinutes: 150 } }),
-          row({ key: "FB-2", kind: "feedback", late: { reason: "waiting_over_day", since: "x", byMinutes: 360 }, eta: { kind: "waits", who: "A holder of feedback.approve", act: "triage it", detail: "d" } }),
+          row({ key: "FB-2", kind: "feedback", late: { reason: "waiting_over_day", since: "x", byMinutes: 360 }, eta: { kind: "waits", who: say("standing.who.holderOf", { perm: "feedback.approve" }), act: say("standing.act.triageIt"), detail: "d" } }),
         ]}
       />,
     );
@@ -23,10 +24,10 @@ describe("the dashboard's plan sections", () => {
 
   it("groups what waits on one release cut under that release, and names who cuts it", () => {
     const waiting = (key: string): PlanRow =>
-      row({ key, title: `Title ${key}`, release: { version: "0.1.0", who: "A release approver" }, eta: { kind: "range", p50At: "2026-10-08T10:00:00Z", p85At: "2026-10-08T12:00:00Z", tail: null, detail: "d" } });
+      row({ key, title: `Title ${key}`, release: { version: "0.1.0", who: say("standing.who.holderOf", { perm: "releases.approve" }) }, eta: { kind: "range", p50At: "2026-10-08T10:00:00Z", p85At: "2026-10-08T12:00:00Z", tail: null, detail: "d" } });
     render(<LandsThisWeek slug="hop" rows={[waiting("REQ-1"), waiting("REQ-2"), waiting("REQ-3"), row({ key: "REQ-9" })]} clock={clock} />);
     const group = screen.getByTestId("lands-when-cut");
-    expect(group).toHaveTextContent("3 land when 0.1.0 is cut — waits on A release approver");
+    expect(group).toHaveTextContent("3 land when 0.1.0 is cut — waits on A holder of releases.approve");
     expect(within(group).getByRole("link", { name: "0.1.0" })).toHaveAttribute("href", "/projects/hop/releases/0.1.0");
     expect(within(group).getAllByTestId("plan-row")).toHaveLength(3);
     expect(screen.getAllByTestId("plan-row")).toHaveLength(4);

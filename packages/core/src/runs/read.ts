@@ -2,6 +2,7 @@ import {
   LIVE_PIPELINE_RUN_STATUSES,
   TERMINAL_PIPELINE_RUN_STATUSES,
 } from '@forge/contracts/run-machine';
+import { say, sayEn } from '@forge/contracts/said';
 import {
   RUN_EVENTS_MAX,
   RUN_LIVE_STATES,
@@ -39,8 +40,7 @@ const SCOPE_SQL: Record<RunStandingScope, SQL> = {
   all: sql`true`,
 };
 
-const SCOPE_RULE =
-  'scope reads the pipeline run status: live is running or paused, finished is completed, failed or cancelled; a run whose own status is still live while its root ended is served under live as stuck, rule disagreement (run-live-root-ended)';
+const SCOPE_RULE = sayEn(say('runs.list.scopeRule'));
 
 async function baseRuns(
   projectId: string,
@@ -114,6 +114,7 @@ export async function listRunStanding(
     projectId,
     scope: opts.scope,
     scopeRule: SCOPE_RULE,
+    says: { scopeRule: say('runs.list.scopeRule') },
     items,
     total,
     limit: opts.limit,
@@ -130,12 +131,14 @@ export async function listRunStanding(
       {
         what: 'interactive',
         count: counts.interactive,
-        rule: "a chat's one-shot run is a conversation with a person, not an agent run",
+        rule: sayEn(say('runs.list.excludedChat')),
+        says: { rule: say('runs.list.excludedChat') },
       },
       {
         what: 'master',
         count: counts.masters,
-        rule: "a resident master's own run is the master; `master` beside the list serves it from masters/standing",
+        rule: sayEn(say('runs.list.excludedMaster')),
+        says: { rule: say('runs.list.excludedMaster') },
       },
     ],
     master,

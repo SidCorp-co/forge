@@ -4,7 +4,7 @@
 // inline unified diff (collapsible); reads/searches/runs render a compact
 // labeled row. Kit-only: imports from @/design, semantic tokens, no hex.
 import { Icon, type IconName } from "@/design";
-import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useDisclosure } from "../disclosure";
 import { formatResultBody, summarizeResult } from "../result-summary";
 import { buildFileDiff, splitHunk, type FileDiff } from "../derive";

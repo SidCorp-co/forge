@@ -1,4 +1,5 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
+import { say } from '@forge/contracts/said';
 import type { BindingRole } from '../../db/schema.js';
 import {
   type AdapterContext,
@@ -308,8 +309,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   presentation: {
     label: 'GitHub',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail:
-      'Never checked — run Test connection to probe the App installation and the repository.',
+    neverCheckedDetail: say('integrations.detail.neverGithub'),
     cardMeta: (config) => ({
       host: githubHostOf(config),
       ...(typeof config.owner === 'string' && typeof config.repo === 'string'

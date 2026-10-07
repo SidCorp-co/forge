@@ -1,5 +1,6 @@
 // A BA reads what an act changes before pressing it, and on a phone sees progress before the long content.
 
+import { forecastWait, RULE, say, waitingOn } from "@/test/said";
 import type { ScopeForecast } from "@forge/contracts/forecast";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -10,7 +11,7 @@ const NOW = Date.parse("2026-10-07T12:00:00Z");
 const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const stamp = { label: "forecast" as const, asOf: at(0) };
 const landed = { ...stamp, kind: "landed" as const, landedAt: at(-30) };
-const approval = { kind: "person" as const, mode: "approval" as const, who: "Dana Lee", act: "cut 0.1.0, then approve it", reason: "r", version: "0.1.0", holders: [] };
+const approval = { kind: "person" as const, mode: "approval" as const, ...forecastWait(say("standing.who.named", { name: "Dana Lee" }), say("standing.act.cutThenApprove", { v: "0.1.0" }), RULE), version: "0.1.0", holders: [] };
 const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: { ...stamp, landing: landed, release: approval, inHands: null, shipped: null } };
 
 describe("what a requirement's act changes", () => {
@@ -18,14 +19,14 @@ describe("what a requirement's act changes", () => {
     const standing = {
       state: "agreed",
       attentionGroup: "needs_you",
-      waitingOn: { kind: "you", who: "You", act: "Update to the approved design: Order handling (revision 4)", rule: "r", effect: "Records that this requirement follows Order handling revision 4 from now on.", ref: null, dueAt: null },
+      waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Order handling", r: 4 }), rule: RULE, effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: "Order handling", r: 4 })] }) }),
     };
     render(<RequirementBanner standing={standing as never} />);
     expect(within(screen.getByTestId("wait-banner")).getByTestId("wait-effect")).toHaveTextContent("Records that this requirement follows Order handling revision 4 from now on.");
   });
 
   it("draws no effect line where core gave none", () => {
-    const standing = { state: "agreed", attentionGroup: "needs_you", waitingOn: { kind: "you", who: "You", act: "agree r2", rule: "r", ref: null, dueAt: null } };
+    const standing = { state: "agreed", attentionGroup: "needs_you", waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.agreeR", { r: 2 }), rule: RULE }) };
     render(<RequirementBanner standing={standing as never} />);
     expect(screen.queryByTestId("wait-effect")).toBeNull();
   });

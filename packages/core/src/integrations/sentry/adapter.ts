@@ -1,4 +1,5 @@
 import { logger } from '../../lib/logger.js';
+import { say } from '@forge/contracts/said';
 import {
   declareIntegration,
   type HealthCheckResult,
@@ -132,7 +133,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   presentation: {
     label: 'Sentry',
     alwaysEnvironmentKeyed: false,
-    neverCheckedDetail: 'never test-connected',
+    neverCheckedDetail: say('integrations.detail.neverTested'),
     // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle;
     // a config in the retired shape is shown as its refusal, never as zero targets.
     cardMeta: (config) => {

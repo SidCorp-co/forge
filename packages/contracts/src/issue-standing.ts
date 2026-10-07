@@ -1,4 +1,5 @@
 import type { IssueMove, IssueStatus } from "./issue-machine.js";
+import type { Said } from "./said.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
 import type {
 	Standing,
@@ -255,6 +256,13 @@ export interface IssueBlocker {
 	/** Live blockers still holding it back. */
 	blockingRefs: IssueEdgeRef[];
 	detail: string | null;
+	/** `reason`, `whoMustAct`, the act's label and `detail` as said (`said.ts`); `act` is null where no act is offered. */
+	says: {
+		reason: Said;
+		whoMustAct: Said;
+		act: Said | null;
+		detail: Said | null;
+	};
 }
 
 export const ISSUE_STEP_STATES = ["done", "running", "failed"] as const;

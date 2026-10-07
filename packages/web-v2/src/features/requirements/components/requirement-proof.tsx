@@ -9,7 +9,7 @@ import { type ReactNode, useState } from "react";
 import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { copyOr, type Copy, type ProductCopyKey } from "@/lib/i18n/product-copy";
-import { historyText, historyWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
@@ -285,7 +285,7 @@ function entryText(e: RequirementHistoryEntry, issueWord: (s: string) => string,
   return (
     <>
       {e.issue ? <span className="mr-1 font-mono text-12 text-subtle">{e.issue}</span> : null}
-      {historyText(e.text, language)}
+      {said(e.says.text, language)}
     </>
   );
 }
@@ -322,11 +322,11 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
               style={question ? { background: AGENT_TINT.bg, borderLeft: `3px solid ${AGENT_TINT.dot}`, paddingLeft: 6 } : undefined}
             >
               <span className="pt-px">
-                <WhoMark kind={e.source} who={historyWho(e.who, language)} size={18} />
+                <WhoMark kind={e.source} who={said(e.says.who, language)} size={18} />
               </span>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
-                  <b className="text-13 font-semibold text-fg">{historyWho(e.who, language)}</b>
+                  <b className="text-13 font-semibold text-fg">{said(e.says.who, language)}</b>
                   <span className="text-12 font-medium text-muted">{kindWord(e.kind, language)}</span>
                   <span title={time.dateTime(e.at)}>{time.relative(e.at)}</span>
                 </div>

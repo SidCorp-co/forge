@@ -1,4 +1,5 @@
 import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
+import type { Said } from '@forge/contracts/said';
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { z } from 'zod';
 import type { Tx } from '../db/client.js';
@@ -317,7 +318,7 @@ interface IntegrationPresentation {
    *  drill-in's bookmark working. */
   alwaysEnvironmentKeyed: boolean;
   /** What the card says when the connection has never been health-checked. */
-  neverCheckedDetail: string;
+  neverCheckedDetail: Said;
   /** Non-secret config fields this provider's card surfaces. Never a credential. */
   cardMeta?: (config: Record<string, unknown>) => Record<string, unknown>;
   /** What one binding points at, read where two of a role on one project share every other name. */

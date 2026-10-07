@@ -1,3 +1,4 @@
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { resolveFailureCause } from '@forge/contracts/failure-causes';
 import type {
   RunActor,
@@ -31,7 +32,7 @@ const NOT_AN_OUTCOME: readonly string[] = [
   'draft',
 ];
 
-function actorOf(flip: KernelFlip | null, missing: string): RunActor | RunNone {
+function actorOf(flip: KernelFlip | null, missing: Said): RunActor | RunNone {
   if (!flip) return none(missing);
   return {
     type: flip.actorType,
@@ -55,14 +56,14 @@ function failedOutcome(f: RunFacts, raw: string | null, detail: string | null): 
     since: at,
     rule:
       cause === 'unclassified'
-        ? 'failed, and no FAILURE_CAUSES cause was recorded on the session or the job, so it reads unclassified'
-        : `failed: ${cause}`,
+        ? say('runs.final.unclassified')
+        : say('runs.final.failed', { cause }),
     outcome: { kind: 'failed', at: iso(at), cause, classified: cause !== 'unclassified', detail },
-    waitingOn: NO_WAIT('finished'),
+    waitingOn: NO_WAIT(say('runs.rule.finished')),
   };
 }
 
-function cancelledOutcome(f: RunFacts, flip: KernelFlip | null, rule: string): Derived {
+function cancelledOutcome(f: RunFacts, flip: KernelFlip | null, rule: Said): Derived {
   const at = finished(f);
   return {
     state: 'cancelled',
@@ -71,18 +72,18 @@ function cancelledOutcome(f: RunFacts, flip: KernelFlip | null, rule: string): D
     outcome: {
       kind: 'cancelled',
       at: iso(at),
-      by: actorOf(flip, 'no kernel_transitions row records who stopped it'),
+      by: actorOf(flip, say('runs.final.noStopRecord')),
     },
-    waitingOn: NO_WAIT('finished'),
+    waitingOn: NO_WAIT(say('runs.rule.finished')),
   };
 }
 
 // a merge mark inside the run with no move to an outcome after it: the work landed and the issue was
 // never moved on (epod ISS-1 2026-10-06, its CLI's moves refused), which the reader is told rather than
 // left to read as work given back unfinished
-function landedNote(f: RunFacts, key: string): string {
+function landedNote(f: RunFacts, key: string): Said | null {
   const at = f.landedAt[key];
-  return at ? ` (it landed at ${at.toISOString()}, and no move to an outcome followed)` : '';
+  return at ? say('runs.final.landedNote', { at: at.toISOString() }) : null;
 }
 
 // a run-session run is done when every issue it carried left it at a status no run owes from where it
@@ -98,41 +99,59 @@ function sessionClose(f: RunFacts, close: RunHandbackClose | null): Derived {
     if (end === opened || NOT_AN_OUTCOME.includes(end)) missed.push({ issueKey: key, status: end });
   }
   const read = f.issues.filter((k) => f.endStatuses[k]).length;
-  const closeWord = close ?? 'an unrecorded close';
+  const closeWord = close ? say('runs.final.close', { close }) : say('runs.final.unrecordedClose');
   if (close === 'ended' || close === null) {
     if (missed.length === 0 && read > 0) {
       return {
         state: 'done',
         since: at,
-        rule: `the box closed the session (${closeWord}) with every issue it carried moved on to an outcome`,
+        rule: say('runs.final.closedDone', { close: closeWord }),
         outcome: {
           kind: 'done',
           at: iso(at),
-          by: actorOf(f.sessionFlip, 'no kernel_transitions row records the close of this session'),
+          by: actorOf(f.sessionFlip, say('runs.final.noCloseRecord')),
         },
-        waitingOn: NO_WAIT('finished'),
+        waitingOn: NO_WAIT(say('runs.rule.finished')),
       };
     }
   }
   const detail =
     read === 0
-      ? `the session closed (${closeWord}) and none of ${f.issues.join(', ') || 'its issues'} can be read back, so no outcome is credited`
+      ? f.issues.length > 0
+        ? say('runs.final.unreadable', { close: closeWord, keys: f.issues.join(', ') })
+        : say('runs.final.unreadableNone', { close: closeWord })
       : missed.length === 0
-        ? `the session closed ${closeWord}: the box gave the work back before its outcome`
-        : `the session closed (${closeWord}) with ${missed.map((m) => `${m.issueKey} at ${m.status}${landedNote(f, m.issueKey)}`).join(', ')}, short of an outcome`;
+        ? say('runs.final.gaveBack', { close: closeWord })
+        : say('runs.final.shortOf', {
+            close: closeWord,
+            missed: missed.map((m) =>
+              say('runs.final.missed', {
+                key: m.issueKey,
+                status: m.status,
+                landed: landedNote(f, m.issueKey),
+              }),
+            ),
+          });
   return {
     state: 'handed_back',
     since: at,
     rule: detail,
-    outcome: { kind: 'handed_back', at: iso(at), close, returnedTo: missed, detail },
-    waitingOn: NO_WAIT('finished'),
+    outcome: {
+      kind: 'handed_back',
+      at: iso(at),
+      close,
+      returnedTo: missed,
+      detail: sayEn(detail),
+      says: { detail },
+    },
+    waitingOn: NO_WAIT(say('runs.rule.finished')),
   };
 }
 
 export function finalOf(f: RunFacts): Derived | null {
   const s = f.session;
   if (f.run.status === 'cancelled') {
-    return cancelledOutcome(f, f.runFlip ?? f.sessionFlip, 'the pipeline run is cancelled');
+    return cancelledOutcome(f, f.runFlip ?? f.sessionFlip, say('runs.final.runCancelled'));
   }
   const sessionEnded = s !== null && TERMINAL_SESSION.includes(s.status);
   if (s && sessionEnded) {
@@ -140,7 +159,11 @@ export function finalOf(f: RunFacts): Derived | null {
       CANCELLED_AGENT_SESSION_STATUSES.includes(s.status as AgentSessionStatus) ||
       CANCEL_CAUSES.includes(s.failureReason ?? '')
     ) {
-      return cancelledOutcome(f, f.sessionFlip, `its session ended ${s.failureReason ?? s.status}`);
+      return cancelledOutcome(
+        f,
+        f.sessionFlip,
+        say('runs.final.sessionEnded', { why: s.failureReason ?? s.status }),
+      );
     }
   }
   if (f.run.rawLane === 'run_session' && s && sessionEnded) {
@@ -159,13 +182,13 @@ export function finalOf(f: RunFacts): Derived | null {
     return {
       state: 'done',
       since: at,
-      rule: 'the pipeline run completed',
+      rule: say('runs.final.completed'),
       outcome: {
         kind: 'done',
         at: iso(at),
-        by: actorOf(f.runFlip, 'no kernel_transitions row records the completion of this run'),
+        by: actorOf(f.runFlip, say('runs.final.noCompletionRecord')),
       },
-      waitingOn: NO_WAIT('finished'),
+      waitingOn: NO_WAIT(say('runs.rule.finished')),
     };
   }
   if (f.run.status === 'failed') {

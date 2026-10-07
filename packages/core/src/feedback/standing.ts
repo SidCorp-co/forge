@@ -12,11 +12,13 @@ import type {
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
 import { RELEASE_ACT_PERMISSION, type ReleaseMode } from '@forge/contracts/forecast';
+import { type Said, say } from '@forge/contracts/said';
 import {
   holdersWho,
   nobodyHoldsAct,
   type Standing,
   type WaitingOn,
+  waitingOn,
 } from '@forge/contracts/standing';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 
@@ -103,18 +105,13 @@ export function revisionStageOf(
 
 const wait = (
   kind: FeedbackWaitingKind,
-  who: string,
-  act: string,
-  rule: string,
+  who: Said,
+  act: Said,
+  rule: Said,
   extra: { ref?: string | null; dueAt?: string | null } = {},
-): FeedbackWaitingOn => ({
-  kind,
-  who,
-  act,
-  rule,
-  ref: extra.ref ?? null,
-  dueAt: extra.dueAt ?? null,
-});
+): FeedbackWaitingOn => waitingOn(kind, { who, act, rule }, extra);
+
+const named = (name: string) => say('standing.who.named', { name });
 
 /** What the viewer's own permissions let them do to an item, by the checks its `can` reads. */
 export interface StandingViewer {
@@ -151,12 +148,14 @@ const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null 
 
 type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
-const TRIAGER = 'A holder of feedback.approve';
+const TRIAGER = say('standing.who.holderOf', { perm: 'feedback.approve' });
 
 /** Several carriers named in one phrase: `ISS-1`, `ISS-1 and ISS-2`, `ISS-1, ISS-2 and ISS-3`. */
-export function carriersPhrase(keys: readonly string[]): string | null {
-  if (keys.length <= 1) return keys[0] ?? null;
-  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`;
+export function carriersPhrase(keys: readonly string[]): Said | null {
+  const last = keys[keys.length - 1];
+  if (last === undefined) return null;
+  if (keys.length === 1) return named(last);
+  return say('standing.keysAnd', { keys: keys.slice(0, -1).join(', '), last });
 }
 
 /** Who or what an item waits on, and whether that act is one the viewer holds. */
@@ -178,8 +177,8 @@ function waitingOf(
           wait(
             'person',
             TRIAGER,
-            `triage it once the snooze ends, ${facts.snoozedUntil.slice(0, 10)}`,
-            `${phase}: snoozed until ${facts.snoozedUntil}, when it returns to New for a holder of feedback.approve`,
+            say('feedback.act.triageAfterSnooze', { date: facts.snoozedUntil.slice(0, 10) }),
+            say('feedback.rule.snoozed', { phase, until: facts.snoozedUntil }),
             { dueAt: facts.snoozedUntil },
           ),
         );
@@ -188,17 +187,17 @@ function waitingOf(
         return theirs(
           wait(
             'agent',
-            "The project's master",
-            'triage it',
-            `${phase}: untriaged feedback owes the project's master a triage; a holder of feedback.approve may triage it first`,
+            say('standing.who.projectMaster'),
+            say('standing.act.triageIt'),
+            say('feedback.rule.masterOwes', { phase }),
           ),
         );
       return {
         wait: wait(
           'person',
           TRIAGER,
-          'triage it',
-          `${phase}: a holder of feedback.approve triages it`,
+          say('standing.act.triageIt'),
+          say('feedback.rule.triagerTriages', { phase }),
         ),
         yours: viewer.canTriage,
       };
@@ -208,8 +207,8 @@ function waitingOf(
           wait: wait(
             'person',
             TRIAGER,
-            'route it to work',
-            'triaged: it was accepted with no route yet, so a holder of feedback.approve routes it',
+            say('feedback.act.route'),
+            say('feedback.rule.noRoute'),
           ),
           yours: viewer.canTriage,
         };
@@ -218,8 +217,8 @@ function waitingOf(
         wait: wait(
           'person',
           TRIAGER,
-          'triage it again',
-          "triaged: the route's carrier is gone, so a holder of feedback.approve routes it anew",
+          say('standing.act.triageAgain'),
+          say('feedback.rule.carrierGone'),
         ),
         yours: viewer.canTriage,
       };
@@ -231,9 +230,9 @@ function waitingOf(
         return {
           wait: wait(
             'person',
-            reporter,
-            'Confirm the answer',
-            'resolved: the question was answered, and the reporter confirms the answer settled it',
+            named(reporter),
+            say('standing.act.confirmAnswer'),
+            say('feedback.rule.answered'),
           ),
           yours: viewer.isReporter,
         };
@@ -241,18 +240,25 @@ function waitingOf(
       return {
         wait: wait(
           'person',
-          reporter,
+          named(reporter),
           facts.carrierVersion
-            ? `verify the fix shipped in ${facts.carrierVersion}`
-            : 'verify the fix',
-          'resolved: anyone on the project, or the reporter, may confirm the fix, and Forge verifies it when nobody has within the project’s verify window',
+            ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
+            : say('standing.act.verifyFix'),
+          say('feedback.rule.verify'),
           { ref: facts.carrierVersion ?? null, dueAt: facts.autoVerifyAt ?? null },
         ),
         // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it
         yours: false,
       };
     default:
-      return theirs(wait('none', 'Nothing', '', `${phase}: nothing is owed`));
+      return theirs(
+        wait(
+          'none',
+          say('standing.who.nothing'),
+          say('standing.act.none'),
+          say('feedback.rule.nothingOwed', { phase }),
+        ),
+      );
   }
 }
 
@@ -265,7 +271,7 @@ function issueWait(
   facts: StandingFacts,
 ): Owed {
   const carrier = carriersPhrase(carriers);
-  const issue = carrier ?? 'the linked issue';
+  const issue = carrier ?? say('feedback.who.theLinkedIssue');
   const ref = { ref: carriers[0] ?? null };
   const waits = carriers.length > 1 ? 'wait' : 'waits';
   const release = facts.carrierRelease;
@@ -273,9 +279,9 @@ function issueWait(
     return {
       wait: wait(
         'issue',
-        carrier ?? 'The linked issue',
-        'ship',
-        carriers.length > 1 ? 'planned: its issues carry it' : 'planned: its issue carries it',
+        carrier ?? say('standing.who.linkedIssue'),
+        say('standing.act.ship'),
+        say(carriers.length > 1 ? 'feedback.rule.issuesCarry' : 'feedback.rule.issueCarries'),
         ref,
       ),
       yours: false,
@@ -284,20 +290,22 @@ function issueWait(
   const version = facts.carrierVersion ?? null;
   const owed = {
     none: {
-      act: `release ${issue} by hand and close it`,
-      rule: `planned: ${issue} ${waits} at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
+      act: say('standing.act.releaseByHand', { what: issue }),
+      rule: say('feedback.rule.noReleaseModel', { issue, waits }),
       extra: ref,
       yours: viewer.canWrite,
     },
     approval: {
-      act: version ? `Approve release ${version}` : 'Approve the release that carries it',
-      rule: `planned: ${issue} ${waits} at awaiting_release and this project requires a holder of releases.approve to approve its release`,
+      act: version
+        ? say('standing.act.approveReleaseV', { v: version })
+        : say('standing.act.approveCarrierRelease'),
+      rule: say('feedback.rule.approvalRequired', { issue, waits }),
       extra: { ref: version },
       yours: viewer.canApproveRelease,
     },
     manual: {
-      act: `cut the release that carries ${issue}`,
-      rule: `planned: ${issue} ${waits} at awaiting_release and this project's production does not deploy on land, so a holder of project.admin cuts its release`,
+      act: say('standing.act.cutCarrierRelease', { what: issue }),
+      rule: say('feedback.rule.manualCut', { issue, waits }),
       extra: ref,
       yours: viewer.canAdmin,
     },
@@ -332,21 +340,26 @@ function plannedWait(
     case 'new_requirement':
       return wait(
         'issue',
-        carrier ?? 'The new requirement',
-        'be agreed and delivered',
-        'planned: a new requirement carries it',
+        carrier ? named(carrier) : say('standing.who.newRequirement'),
+        say('standing.act.beAgreedDelivered'),
+        say('feedback.rule.newRequirement'),
         { ref: carrier },
       );
     case 'duplicate':
       return wait(
         'issue',
-        `Its root ${carrier ?? ''}`.trim(),
-        'be resolved',
-        'planned: the root item it duplicates carries it',
+        carrier ? say('standing.who.itsRoot', { root: carrier }) : say('standing.who.itsRootUnnamed'),
+        say('standing.act.beResolved'),
+        say('feedback.rule.duplicate'),
         { ref: carrier },
       );
     default:
-      return wait('issue', 'The linked work', '', 'planned: the linked work carries it');
+      return wait(
+        'issue',
+        say('standing.who.linkedWork'),
+        say('standing.act.none'),
+        say('feedback.rule.linkedWork'),
+      );
   }
 }
 
@@ -365,40 +378,64 @@ function revisionWait(revision: RevisionStage | null): FeedbackWaitingOn {
   if (!revision || revision.stage === 'proposal') {
     return wait(
       'person',
-      'The revision proposal',
-      'be accepted',
-      'planned: a requirement revision proposal carries it, and a person decides it',
+      say('standing.who.revisionProposal'),
+      say('standing.act.beAccepted'),
+      say('feedback.rule.proposal'),
     );
   }
-  const n = revision.revision === null ? 'the revision' : `revision ${revision.revision}`;
-  const of = revision.requirement ? ` of ${revision.requirement}` : '';
   if (revision.stage === 'acceptance') {
     return wait(
       'person',
-      'BA or owner',
-      `accept ${n}${of}`,
-      'planned: the accepted suggestion proposed its revision, and a holder of requirements.approve accepts it',
+      say('standing.who.baOrOwner'),
+      revisionAct('accept', revision),
+      say('feedback.rule.acceptance'),
       { ref: revision.requirement },
     );
   }
   if (revision.stage === 'drafted') {
     return wait(
       'person',
-      'Its author',
-      `propose ${n}${of}`,
-      'planned: its revision is a draft, returned by a signer, and its author proposes it',
+      say('standing.who.itsAuthor'),
+      revisionAct('propose', revision),
+      say('feedback.rule.drafted'),
       { ref: revision.requirement },
     );
   }
   return wait(
     'issue',
     revision.requirement && revision.revision !== null
-      ? `${revision.requirement} r${revision.revision}`
-      : 'The current revision',
-    'be delivered',
-    'planned: its requirement revision is current, and the work delivering it carries it',
+      ? say('feedback.who.revision', { req: revision.requirement, r: revision.revision })
+      : say('standing.who.currentRevision'),
+    say('standing.act.beDelivered'),
+    say('feedback.rule.delivery'),
     { ref: revision.requirement },
   );
+}
+
+/** `accept revision 2 of REQ-4`, `propose the revision`: the act on a revision, by what is known of it. */
+function revisionAct(
+  verb: 'accept' | 'propose',
+  revision: { revision: number | null; requirement: string | null },
+): Said {
+  const { revision: r, requirement: req } = revision;
+  if (verb === 'accept') {
+    if (r === null) {
+      return req
+        ? say('standing.act.acceptRevisionOf', { req })
+        : say('standing.act.acceptRevision');
+    }
+    return req
+      ? say('standing.act.acceptRevisionN', { r, req })
+      : say('standing.act.acceptRevisionNum', { r });
+  }
+  if (r === null) {
+    return req
+      ? say('standing.act.proposeRevisionOf', { req })
+      : say('standing.act.proposeRevision');
+  }
+  return req
+    ? say('standing.act.proposeRevisionN', { r, req })
+    : say('standing.act.proposeRevisionNum', { r });
 }
 
 export function feedbackStandingOf(
@@ -414,6 +451,12 @@ export function feedbackStandingOf(
   const attentionGroup = groupOf(phase, owed);
   return {
     attentionGroup,
-    waitingOn: owed.yours ? { ...owed.wait, kind: 'you', who: 'You' } : owed.wait,
+    waitingOn: owed.yours
+      ? waitingOn(
+          'you',
+          { ...owed.wait.says, who: say('standing.who.you') },
+          { ref: owed.wait.ref, dueAt: owed.wait.dueAt },
+        )
+      : owed.wait,
   };
 }

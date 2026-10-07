@@ -26,7 +26,13 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
-import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
+import { type Said, say, verbatim } from '@forge/contracts/said';
+import {
+  holdersWho,
+  nobodyHoldsAct,
+  type WaitingOn,
+  waitingOn,
+} from '@forge/contracts/standing';
 import { answeredWait } from './answered-wait.js';
 import { releaseTurn } from './standing-release.js';
 import { landedWait } from './strand-rules.js';
@@ -35,19 +41,10 @@ import { landedWait } from './strand-rules.js';
 const SETTLED: readonly string[] = ISSUE_RESOLVED_STATUSES;
 const DONE: readonly string[] = ISSUE_TERMINAL_STATUSES;
 
-const STEP_WORD: Record<WorkStep, string> = {
-  triage: 'Triage',
-  clarify: 'Clarify',
-  plan: 'Plan',
-  build: 'Build',
-  test: 'Test',
-  release: 'Release',
-};
-
-const NEEDS_INFO_ACT: Record<string, string> = {
-  needs_answer: 'answer a question',
-  needs_decision: 'make a decision',
-  needs_resource: 'supply what it asks for',
+const NEEDS_INFO_ACT: Record<string, Said> = {
+  needs_answer: say('issues.standing.act.answer'),
+  needs_decision: say('issues.standing.act.decide'),
+  needs_resource: say('issues.standing.act.supply'),
 };
 
 export interface StandingEdge {
@@ -116,11 +113,16 @@ export type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
 
 const wait = (
   kind: IssueWaitingKind,
-  who: string,
-  act: string,
-  rule: string,
+  who: Said,
+  act: Said,
+  rule: Said,
   ref: string | null = null,
-): IssueWaitingOn => ({ kind, who, act, rule, ref, dueAt: null });
+): IssueWaitingOn => waitingOn(kind, { who, act, rule }, { ref });
+
+const YOU = say('standing.who.you');
+const MASTER = say('standing.who.master');
+const NOBODY = say('standing.who.nobody');
+const named = (name: string) => say('standing.who.named', { name });
 
 const minutesSince = (from: Date | null, now: Date) =>
   from ? Math.max(0, Math.round((now.getTime() - from.getTime()) / 60_000)) : null;
@@ -131,19 +133,19 @@ type People = Pick<IssueStandingInput, 'viewer' | 'writers'>;
  *  else nobody — said with where write is granted, never "A project writer" naming no one (FB-104). */
 function forPerson(
   people: People,
-  act: string,
-  rule: string,
+  act: Said,
+  rule: Said,
 ): { group: IssueAttentionGroup; waitingOn: IssueWaitingOn } {
   if (people.viewer?.canWrite)
-    return { group: 'needs_you', waitingOn: wait('you', 'You', act, rule) };
+    return { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) };
   if (people.writers.length === 0) {
     return {
       group: 'stuck',
       waitingOn: wait(
         'none',
-        'Nobody',
+        NOBODY,
         nobodyHoldsAct(act, 'project.write'),
-        `${rule}; no person holds project.write on this project`,
+        say('issues.rule.noWriter', { rule, perm: 'project.write' }),
       ),
     };
   }
@@ -175,12 +177,13 @@ const clip = (text: string, max: number) =>
 function agentParkTurn(input: IssueStandingInput): Turn | null {
   const park = input.park;
   if (!park?.byAgent) return null;
-  const why = park.reason?.trim() || 'the run named no reason';
+  const reason = park.reason?.trim();
+  const why = reason ? verbatim(reason) : say('issues.rule.noReason');
   if (input.owesAnswer) {
     const r = forPerson(
       input,
-      'answer a question',
-      `a run parked it on_hold and asked a question only a person can answer: ${why}`,
+      say('issues.standing.act.answer'),
+      say('issues.rule.parkedAsked', { why }),
     );
     return { group: 'paused', waitingOn: r.waitingOn };
   }
@@ -190,9 +193,9 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
       group: 'paused',
       waitingOn: wait(
         'issue',
-        blocker.key,
+        named(blocker.key),
         blockerAct(blocker.status),
-        `a run parked it on_hold behind ${blocker.key}, which still holds it: ${why}`,
+        say('issues.rule.parkedBehind', { key: blocker.key, why }),
         blocker.key,
       ),
     };
@@ -201,9 +204,9 @@ function agentParkTurn(input: IssueStandingInput): Turn | null {
     group: 'paused',
     waitingOn: wait(
       'master',
-      'Master',
-      `resume once: ${clip(why, 80)}`,
-      `a run parked it on_hold: ${why}; the master resumes it once that clears`,
+      MASTER,
+      say('issues.standing.act.resumeOnce', { why: reason ? verbatim(clip(reason, 80)) : why }),
+      say('issues.rule.parked', { why }),
     ),
   };
 }
@@ -214,13 +217,15 @@ function answeredParkTurn(
   people: People,
 ): Turn {
   const w = answeredWait(answered);
-  const rule = `${w.reason} ${w.who}`;
+  const rule = say('issues.rule.answered', { reason: w.reason, who: w.who });
   if (w.on === 'person') return forPerson(people, w.act, rule);
   if (w.on === 'issue' && w.ref) {
-    return { group: 'stuck', waitingOn: wait('issue', w.ref, w.act, rule, w.ref) };
+    return { group: 'stuck', waitingOn: wait('issue', named(w.ref), w.act, rule, w.ref) };
   }
-  if (w.on === 'run') return { group: 'moving', waitingOn: wait('run', 'Run', w.act, rule) };
-  return { group: 'stuck', waitingOn: wait('master', 'Master', w.act, rule) };
+  if (w.on === 'run') {
+    return { group: 'moving', waitingOn: wait('run', say('issues.standing.who.run'), w.act, rule) };
+  }
+  return { group: 'stuck', waitingOn: wait('master', MASTER, w.act, rule) };
 }
 
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
@@ -231,16 +236,20 @@ function personTurn(input: IssueStandingInput): Turn | null {
       group: 'done',
       waitingOn: wait(
         'none',
-        'Nobody',
-        status === 'closed' ? 'shipped' : 'dropped',
-        `the issue is ${status}`,
+        NOBODY,
+        say(status === 'closed' ? 'issues.standing.act.shipped' : 'issues.standing.act.dropped'),
+        say('issues.rule.ended', { status }),
       ),
     };
   }
   if (status === 'on_hold') {
     const parked = agentParkTurn(input);
     if (parked) return parked;
-    const r = forPerson(input, 'resume it', 'a person paused it; a person resumes it');
+    const r = forPerson(
+      input,
+      say('issues.standing.act.resume'),
+      say('issues.rule.personPaused'),
+    );
     return { group: 'paused', waitingOn: r.waitingOn };
   }
   if (status === 'needs_info' && !input.owesAnswer && input.answered) {
@@ -249,36 +258,43 @@ function personTurn(input: IssueStandingInput): Turn | null {
   if (status === 'needs_info') {
     return forPerson(
       input,
-      NEEDS_INFO_ACT[input.waitingKind ?? ''] ?? 'answer a question',
-      'parked at needs_info: a person owes the answer; it wakes the master',
+      NEEDS_INFO_ACT[input.waitingKind ?? ''] ?? say('issues.standing.act.answer'),
+      say('issues.rule.needsInfo'),
     );
   }
   if (input.owesAnswer) {
-    return forPerson(input, 'answer a question', 'a run asked a question only a person can answer');
+    return forPerson(input, say('issues.standing.act.answer'), say('issues.rule.runAsked'));
   }
   if (status === 'draft') {
     // a draft behind a live blocker waits on that blocker first, not on a person's Needs you
     const blocker = input.blockedBy.find((b) => b.holds);
     if (blocker) return blockerTurn(blocker);
-    return forPerson(input, 'take on or drop', 'a draft is not work until a person accepts it');
+    return forPerson(input, say('issues.standing.act.takeOnOrDrop'), say('issues.rule.draft'));
   }
   return null;
 }
 
 function runningTurn(input: IssueStandingInput): Turn {
   const leased = held(input.lease) || input.runLive;
-  const step = input.step ? STEP_WORD[input.step] : null;
+  const step = input.step;
   const mins = minutesSince(input.stepStartedAt, input.now);
-  const act = [step, mins !== null && step ? `${mins} min` : null].filter(Boolean).join(' · ');
+  const act: Said = step
+    ? mins !== null
+      ? say('issues.standing.act.stepFor', { step, n: mins })
+      : say('issues.standing.act.step', { step })
+    : say(leased ? 'issues.standing.act.working' : 'standing.act.starting');
+  const holder = input.lease?.holder ?? null;
   return {
     group: 'moving',
     waitingOn: wait(
       'run',
-      leased ? 'Run' : 'Queued run',
-      act || (leased ? 'working' : 'starting'),
+      say(leased ? 'issues.standing.who.run' : 'issues.standing.who.queuedRun'),
+      act,
       leased
-        ? `lease held by ${input.lease?.holder ?? 'a run session that has not ended'}`
-        : 'a job is queued on it and no run session holds it yet',
+        ? holder !== null
+          ? say('issues.rule.leaseHeld', { holder })
+          : say('issues.rule.leaseHeldSession')
+        : say('issues.rule.queued'),
     ),
   };
 }
@@ -290,13 +306,17 @@ function blockerTurn(blocker: StandingEdge): Turn {
     group: 'stuck',
     waitingOn: wait(
       'issue',
-      blocker.key,
-      design ? 'design approval' : judged ? LANDED_BLOCKER : blockerAct(blocker.status),
+      named(blocker.key),
       design
-        ? `a live blocks edge from ${blocker.key}, which delivers a design: ${design}; it settles once that revision is approved`
+        ? say('issues.standing.act.designApproval')
         : judged
-          ? `a live blocks edge from ${blocker.key}, which has landed and is not settled until a judge passes every criterion`
-          : `a live blocks edge from ${blocker.key}, not yet settled`,
+          ? say('issues.standing.act.landedWaitsJudge')
+          : blockerAct(blocker.status),
+      design
+        ? say('issues.rule.blockedDesign', { key: blocker.key, design })
+        : judged
+          ? say('issues.rule.blockedLanded', { key: blocker.key })
+          : say('issues.rule.blocked', { key: blocker.key }),
       blocker.key,
     ),
   };
@@ -304,26 +324,32 @@ function blockerTurn(blocker: StandingEdge): Turn {
 
 // the project document is declared by a holder of project.admin (`project-config/routes.ts`), so a
 // policy refusal names them
-const WITHHELD_ACT: Record<IssueWithheldCode, { who: string | 'admins'; act: string }> = {
-  POLICY_UNDECLARED: { who: 'admins', act: 'declare the policy' },
-  POLICY_STATE_UNDECLARED: { who: 'admins', act: 'declare its policy state' },
-  WORKFLOW_DESIGN_NOT_APPROVED: { who: 'A design approver', act: 'approve the design' },
-  CONTRACT_WAIT_UNSETTLED: { who: 'The contract provider', act: 'approve a contract version' },
+const WITHHELD_ACT: Record<IssueWithheldCode, { who: Said | 'admins'; act: Said }> = {
+  POLICY_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicy') },
+  POLICY_STATE_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicyState') },
+  WORKFLOW_DESIGN_NOT_APPROVED: {
+    who: say('issues.standing.who.designApprover'),
+    act: say('issues.standing.act.approveDesign'),
+  },
+  CONTRACT_WAIT_UNSETTLED: {
+    who: say('issues.standing.who.contractProvider'),
+    act: say('issues.standing.act.approveContract'),
+  },
 };
 
 /** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */
 function withheldTurn(withheld: IssueWithheld, admins: readonly string[]): Turn {
-  const named = WITHHELD_ACT[withheld.code];
-  const nobody = named.who === 'admins' && admins.length === 0;
-  const who = named.who === 'admins' ? holdersWho(admins) : named.who;
-  const act = nobody ? nobodyHoldsAct(named.act, 'project.admin') : named.act;
+  const owed = WITHHELD_ACT[withheld.code];
+  const nobody = owed.who === 'admins' && admins.length === 0;
+  const who = owed.who === 'admins' ? holdersWho(admins) : owed.who;
+  const act = nobody ? nobodyHoldsAct(owed.act, 'project.admin') : owed.act;
   return {
     group: 'stuck',
     waitingOn: wait(
       'person',
       who,
       act,
-      `${withheld.code}: ${withheld.detail} No master is handed it until then.`,
+      say('issues.rule.withheld', { code: withheld.code, detail: withheld.detail }),
       withheld.code,
     ),
   };
@@ -336,9 +362,9 @@ function idleTurn(status: IssueStatus): Turn {
       group: 'stuck',
       waitingOn: wait(
         'none',
-        'No holder',
-        'in progress with no live run',
-        'in_progress, but no lease is live and no job or run is in flight',
+        say('issues.standing.who.noHolder'),
+        say('issues.standing.act.noLiveRun'),
+        say('issues.rule.noHolder'),
       ),
     };
   }
@@ -347,9 +373,9 @@ function idleTurn(status: IssueStatus): Turn {
       group: 'stuck',
       waitingOn: wait(
         'master',
-        'Master',
-        're-run after reopen',
-        'sent back with a reason; a master takes it again',
+        MASTER,
+        say('issues.standing.act.rerun'),
+        say('issues.rule.reopen'),
       ),
     };
   }
@@ -357,11 +383,9 @@ function idleTurn(status: IssueStatus): Turn {
     group: 'queued',
     waitingOn: wait(
       'master',
-      'Master',
-      status === 'approved' ? 'build next' : 'dispatch a run',
-      status === 'approved'
-        ? 'the plan checkpoint holds; the next run goes straight to build'
-        : "admitted and nothing withholds it, so the project's master owes it a run; reading whether it is real is the first thing that master's pass does with it, not a gate before it",
+      MASTER,
+      say(status === 'approved' ? 'issues.standing.act.buildNext' : 'issues.standing.act.dispatch'),
+      say(status === 'approved' ? 'issues.rule.approved' : 'issues.rule.admitted'),
     ),
   };
 }
@@ -380,35 +404,36 @@ function turnOf(input: IssueStandingInput): Turn {
       group: 'queued',
       waitingOn: wait(
         'run',
-        'Next run',
-        `revise design ${returned.flow} · revision ${returned.revision} returned`,
-        `its approver returned design ${returned.flow} revision ${returned.revision}, drawn under this issue: what it owes is the revised design, which a run writes and proposes again, not a judgement of what landed`,
+        say('issues.standing.who.nextRun'),
+        say('issues.standing.act.reviseDesign', { flow: returned.flow, r: returned.revision }),
+        say('issues.rule.designReturned', { flow: returned.flow, r: returned.revision }),
         returned.flow,
       ),
     };
   }
   const landed = landedWait(input.status, { merged: input.merged, step: input.step });
   if (landed) {
-    return { group: 'queued', waitingOn: wait('judge', landed.who, landed.act, landed.reason) };
+    return {
+      group: 'queued',
+      waitingOn: wait('judge', landed.says.who, landed.says.act, landed.says.rule),
+    };
   }
   const withheld = withheldOf(input);
   if (withheld) return withheldTurn(withheld, input.admins);
   return idleTurn(input.status);
 }
 
-const LANDED_BLOCKER = 'landed, waits on a judge';
-
 const withheldOf = (input: IssueStandingInput): IssueWithheld | null =>
   TAKEABLE_STATUSES.includes(input.status) ? input.withheld : null;
 
 const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
 
-function blockerAct(status: IssueStatus): string {
-  if (status === 'in_progress') return 'running';
-  if (status === 'needs_info' || status === 'draft') return 'needs a person';
-  if (status === 'on_hold') return 'paused';
-  if (status === 'reopen') return 'came back';
-  return 'not started';
+function blockerAct(status: IssueStatus): Said {
+  if (status === 'in_progress') return say('issues.standing.act.running');
+  if (status === 'needs_info' || status === 'draft') return say('issues.standing.act.needsPerson');
+  if (status === 'on_hold') return say('issues.standing.act.paused');
+  if (status === 'reopen') return say('issues.standing.act.cameBack');
+  return say('issues.standing.act.notStarted');
 }
 
 export function deriveIssueStanding(

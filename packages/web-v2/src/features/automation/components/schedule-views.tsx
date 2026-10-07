@@ -36,7 +36,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { statusReading } from "@/design/vocabulary";
 import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
 import { formatRefusal } from "@/lib/api/error";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useScheduleDetail } from "../hooks";
@@ -118,17 +118,17 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
   const language = useInterfaceLanguage();
   if (s.waitingOn.kind === "none") return null;
   const w = s.waitingOn;
-  const head = w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) });
+  const head = w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: said(w.says.who, language) });
   return (
     <WaitBanner
       tone={s.state === "failing" ? "err" : "you"}
       head={`${statusReading("scheduleStanding", s.state, language).label} · ${head}`}
-      body={standingAct(w.act, language)}
-      rule={s.waitingOn.rule}
+      body={said(w.says.act, language)}
+      rule={said(w.says.rule, language)}
       className={className}
       testId="schedule-banner"
     >
-      <span className="text-12-5 text-muted">{s.rule}</span>
+      <span className="text-12-5 text-muted">{said(s.says.rule, language)}</span>
     </WaitBanner>
   );
 }
@@ -136,6 +136,7 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
 export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; slug: string; failStreak?: number }) {
   const t = useCopy();
   const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   return (
     <>
       <FactsGroup title={t("schedules.facts.standing")}>
@@ -143,7 +144,7 @@ export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; sl
           <StatusBadge family="scheduleStanding" value={s.state} />
         </Fact>
         <Fact label={t("schedules.facts.streak")}>
-          <span title={s.rule}>
+          <span title={said(s.says.rule, language)}>
             {s.streak}
             {failStreak ? <span className="text-subtle"> {t("schedules.facts.ofToFailing", { n: failStreak })}</span> : null}
           </span>

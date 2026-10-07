@@ -28,7 +28,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { useFireDetail } from "../hooks";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
@@ -90,9 +90,9 @@ function FireBanner({ f, className }: { f: FireStanding; className?: string }) {
   return (
     <WaitBanner
       tone="you"
-      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) })}
-      body={standingAct(w.act, language)}
-      rule={f.waitingOn.rule}
+      head={w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: said(w.says.who, language) })}
+      body={said(w.says.act, language)}
+      rule={said(w.says.rule, language)}
       className={className}
       testId="fire-banner"
     />

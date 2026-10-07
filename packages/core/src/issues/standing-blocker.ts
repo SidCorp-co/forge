@@ -1,42 +1,45 @@
 // The one verdict on why an issue is not moving, and what would move it.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
-import type { IssueBlocker, IssueEdgeRef } from '@forge/contracts/issue-standing';
-import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import type { IssueBlocker, IssueBlockerAct, IssueEdgeRef } from '@forge/contracts/issue-standing';
 import type { IssuePark, ParkOwes } from '@forge/contracts/park';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { answeredWait } from './answered-wait.js';
 import type { PipelineReading } from './pipeline-health-types.js';
 
-const PARK_OWES: Record<ParkOwes, { reason: string; who: string }> = {
+const PARK_OWES: Record<ParkOwes, { reason: Said; who: Said }> = {
   information: {
-    reason: 'This issue is waiting for information — an answer to a question.',
-    who: 'Anyone on the project can answer it; the question is below.',
+    reason: say('issues.blocker.owesInformation'),
+    who: say('issues.blocker.whoInformation'),
   },
   decision: {
-    reason: 'This issue is waiting for a decision — a judgement only a person can make.',
-    who: 'Whoever owns the call decides, then resumes it where it stopped.',
+    reason: say('issues.blocker.owesDecision'),
+    who: say('issues.blocker.whoDecision'),
   },
   resource: {
-    reason:
-      'This issue is waiting for something only a person can supply — an account, a credential, or data.',
-    who: 'Supply it, then resume it where it stopped.',
+    reason: say('issues.blocker.owesResource'),
+    who: say('issues.blocker.whoResource'),
   },
 };
 
 const ANSWERED = {
-  reason: 'The question this issue asked has an answer on the thread.',
-  who: 'Resume it where it stopped once the answer is enough to go on.',
+  reason: say('issues.blocker.answered'),
+  who: say('issues.blocker.whoAnswered'),
 };
 
-const NOTHING_TO_RESUME_AT =
-  'Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.';
-const NOTHING_TO_RESUME_FROM_HOLD =
-  'Nothing says where this issue picks up again — the status menu lists every status it may return to.';
+const NOTHING_TO_RESUME_AT = say('issues.blocker.noResumeAt');
+const NOTHING_TO_RESUME_FROM_HOLD = say('issues.blocker.noResumeFromHold');
 
-const NO_ACT = { label: '', kind: 'none' } as const;
-const OPEN_BLOCKER = { label: 'Open blocking issue', kind: 'open_blocker' } as const;
-const resumeAct = (at: IssueStatus) =>
-  ({ label: `Resume at ${ISSUE_STATUS_LABELS[at]}`, kind: 'resume_park' }) as const;
+interface Act {
+  kind: IssueBlockerAct;
+  label: Said | null;
+}
+const NO_ACT: Act = { label: null, kind: 'none' };
+const OPEN_BLOCKER: Act = { label: say('issues.blocker.actOpenBlocker'), kind: 'open_blocker' };
+const resumeAct = (at: IssueStatus): Act => ({
+  label: say('issues.blocker.actResumeAt', { status: at }),
+  kind: 'resume_park',
+});
 
 interface IssueBlockerInput {
   status: IssueStatus;
@@ -48,15 +51,32 @@ interface IssueBlockerInput {
   blockedBy: readonly IssueEdgeRef[];
 }
 
-const blocker = (
-  b: Pick<IssueBlocker, 'tone' | 'reason' | 'whoMustAct' | 'act'> & Partial<IssueBlocker>,
-  blockingRefs: readonly IssueEdgeRef[],
-): IssueBlocker => ({
-  runId: null,
-  resumeAt: null,
-  detail: null,
-  ...b,
+interface BlockerSaid {
+  tone: IssueBlocker['tone'];
+  reason: Said;
+  whoMustAct: Said;
+  act: Act;
+  detail?: Said;
+  runId?: string | null;
+  resumeAt?: IssueStatus | null;
+}
+
+/** A blocker from what it says: its English sentences rendered from `says`, never written beside it. */
+const blocker = (b: BlockerSaid, blockingRefs: readonly IssueEdgeRef[]): IssueBlocker => ({
+  tone: b.tone,
+  reason: sayEn(b.reason),
+  whoMustAct: sayEn(b.whoMustAct),
+  act: { label: b.act.label ? sayEn(b.act.label) : '', kind: b.act.kind },
+  runId: b.runId ?? null,
+  resumeAt: b.resumeAt ?? null,
   blockingRefs: [...blockingRefs],
+  detail: b.detail ? sayEn(b.detail) : null,
+  says: {
+    reason: b.reason,
+    whoMustAct: b.whoMustAct,
+    act: b.act.label,
+    detail: b.detail ?? null,
+  },
 });
 
 function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlocker {
@@ -67,7 +87,7 @@ function parkBlocker(park: IssuePark, refs: readonly IssueEdgeRef[]): IssueBlock
         tone: 'attention',
         reason: copy.reason,
         whoMustAct: PARK_OWES.information.who,
-        act: { label: 'Answer it', kind: 'provide_info' },
+        act: { label: say('issues.blocker.actAnswer'), kind: 'provide_info' },
       },
       refs,
     );
@@ -119,11 +139,14 @@ function blocksBlocker(refs: readonly IssueEdgeRef[]): IssueBlocker {
   const keys = refs.map((r) => r.key).join(', ');
   const one = refs.length === 1;
   if (refs.every((r) => r.designHold)) {
+    const holds = refs.map((r) => r.designHold).join('; ');
     return blocker(
       {
         tone: 'info',
-        reason: `Blocked by ${keys}, which ${one ? 'delivers a design' : 'deliver designs'} not yet approved: ${refs.map((r) => r.designHold).join('; ')}.`,
-        whoMustAct: `The design approver decides the revision ${keys} ${one ? 'delivers' : 'deliver'}; this issue is released once it is approved.`,
+        reason: say(one ? 'issues.blocker.designOne' : 'issues.blocker.designMany', { keys, holds }),
+        whoMustAct: say(one ? 'issues.blocker.whoDesignOne' : 'issues.blocker.whoDesignMany', {
+          keys,
+        }),
         act: OPEN_BLOCKER,
       },
       refs,
@@ -133,8 +156,10 @@ function blocksBlocker(refs: readonly IssueEdgeRef[]): IssueBlocker {
     return blocker(
       {
         tone: 'info',
-        reason: `Blocked by ${keys}, which ${one ? 'has' : 'have'} landed and ${one ? 'waits' : 'wait'} on a judge.`,
-        whoMustAct: `A judge records a verdict on each criterion of ${keys}; this issue is released once ${one ? 'it passes' : 'they pass'}.`,
+        reason: say(one ? 'issues.blocker.landedOne' : 'issues.blocker.landedMany', { keys }),
+        whoMustAct: say(one ? 'issues.blocker.whoLandedOne' : 'issues.blocker.whoLandedMany', {
+          keys,
+        }),
         act: OPEN_BLOCKER,
       },
       refs,
@@ -143,8 +168,10 @@ function blocksBlocker(refs: readonly IssueEdgeRef[]): IssueBlocker {
   return blocker(
     {
       tone: 'info',
-      reason: `Blocked by ${refs.length} open issue${one ? '' : 's'}.`,
-      whoMustAct: 'Finish the blocking issue(s) first.',
+      reason: one
+        ? say('issues.blocker.openOne')
+        : say('issues.blocker.openMany', { n: refs.length }),
+      whoMustAct: say('issues.blocker.finishBlockers'),
       act: OPEN_BLOCKER,
     },
     refs,
@@ -162,9 +189,11 @@ export function issueBlockerOf(input: IssueBlockerInput): IssueBlocker | null {
     return blocker(
       {
         tone: r.needsAction ? 'attention' : 'info',
-        reason: r.detail,
-        whoMustAct: r.who,
-        act: r.needsAction ? { label: 'Resume run', kind: 'resume_run' } : NO_ACT,
+        reason: r.says.detail,
+        whoMustAct: r.says.who,
+        act: r.needsAction
+          ? { label: say('issues.blocker.actResumeRun'), kind: 'resume_run' }
+          : NO_ACT,
         runId: r.needsAction ? paused.runId : null,
       },
       refs,
@@ -175,8 +204,8 @@ export function issueBlockerOf(input: IssueBlockerInput): IssueBlocker | null {
     return blocker(
       {
         tone: 'attention',
-        reason: 'This issue is stopped until a person acts.',
-        whoMustAct: 'What it waits on could not be read — read the thread.',
+        reason: say('issues.blocker.stopped'),
+        whoMustAct: say('issues.blocker.unreadable'),
         act: NO_ACT,
       },
       refs,
@@ -185,8 +214,8 @@ export function issueBlockerOf(input: IssueBlockerInput): IssueBlocker | null {
   if (input.status === 'on_hold') {
     const base = {
       tone: 'info' as const,
-      reason: 'The issue is paused.',
-      whoMustAct: 'An operator can resume it when the work is wanted again.',
+      reason: say('issues.blocker.paused'),
+      whoMustAct: say('issues.blocker.whoPaused'),
     };
     return input.leftStatus
       ? blocker({ ...base, act: resumeAct(input.leftStatus), resumeAt: input.leftStatus }, refs)
@@ -197,8 +226,8 @@ export function issueBlockerOf(input: IssueBlockerInput): IssueBlocker | null {
     return blocker(
       {
         tone: r.needsAction ? 'attention' : 'info',
-        reason: r.detail,
-        whoMustAct: r.who,
+        reason: r.says.detail,
+        whoMustAct: r.says.who,
         act: refs.length ? OPEN_BLOCKER : NO_ACT,
       },
       refs,

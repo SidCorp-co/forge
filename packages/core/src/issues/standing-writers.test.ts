@@ -1,10 +1,19 @@
+import { saidDisagreements } from '@forge/contracts/said';
 // FB-104: a draft read "Waits on A project writer" — dev's ISS-146..148 and REQ-17 — naming nobody,
 // so a reader could not tell who that was or whether anyone was. A person's turn now names the
 // project's writers, or says that no person holds write and where an admin grants it.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { describe, expect, it } from 'vitest';
-import { deriveIssueStanding, type IssueStandingInput } from './standing.js';
+import { deriveIssueStanding as deriveIssueStanding_, type IssueStandingInput } from './standing.js';
+
+/** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
+const checked = <T>(v: T): T => {
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+};
+const deriveIssueStanding = ((...a: Parameters<typeof deriveIssueStanding_>) => checked(deriveIssueStanding_(...a))) as typeof deriveIssueStanding_;
+
 
 const now = new Date('2026-10-07T10:00:00Z');
 

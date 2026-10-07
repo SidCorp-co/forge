@@ -20,7 +20,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
-import { feedbackNote } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { useEtaClock, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
@@ -84,7 +84,7 @@ export function FeedbackHistory({ f }: { f: FeedbackView }) {
               {d.decidedAgency === "agent" ? t("feedback.history.agent") : ""} · <span title={time.dateTime(d.decidedAt)}>{time.relative(d.decidedAt)}</span>
             </span>
           </span>
-          {d.reason ? <span className="text-muted">{feedbackNote(d.reason, language)}</span> : null}
+          {d.says.reason ? <span className="text-muted">{said(d.says.reason, language)}</span> : null}
           {d.acceptReason ? <span className="text-muted">{t("feedback.history.accepted", { reason: d.acceptReason })}</span> : null}
         </li>
       ))}

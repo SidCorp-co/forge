@@ -2,14 +2,14 @@ import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastPaused, Fore
 import { formatClock, formatDateTime, formatNumber } from "@/lib/i18n/format";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
-import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import { said } from "@/lib/i18n/said";
 import { type EtaClock, partsOf, rangeText } from "./clock";
 import { ETA_COPY } from "./eta-copy";
 import { progressText } from "./progress";
 
 // The forecast sentences a screen reads: a line, and the tooltip behind it. Their words are the
 // `fc.*` keys of the locale file, drawn in the clock's language; the names, keys and versions in
-// them are core's, and the `reason` a forecast carries is core's English and stays so.
+// them are core's, and who, act and reason are read from what core said (`@forge/contracts/said`).
 
 type Lang = EtaClock["lang"];
 
@@ -52,9 +52,10 @@ const PAUSED_KEYS = {
   waitingOn: ["fc.waitingOn", "fc.waitingOnTo"],
 } as const;
 const pausedBody = (t: Copy, p: ForecastPaused, c: EtaClock, head: keyof typeof PAUSED_KEYS) => {
-  const who = standingWho(p.who, c.lang);
+  const who = said(p.says.who, c.lang);
+  const act = said(p.says.act, c.lang);
   const [bare, withAct] = PAUSED_KEYS[head];
-  return p.act ? t(withAct, { who, act: standingAct(p.act, c.lang) }) : t(bare, { who });
+  return act ? t(withAct, { who, act }) : t(bare, { who });
 };
 const pausedText = (p: ForecastPaused, c: EtaClock) => pausedBody(productCopy(c.lang), p, c, "paused");
 
@@ -102,7 +103,7 @@ export function forecastText(f: Forecast, c: EtaClock, opts: TextOpts = {}): { l
       };
     }
     case "paused":
-      return { line: pausedText(f, c), detail: f.reason };
+      return { line: pausedText(f, c), detail: said(f.says.reason, c.lang) };
     case "not_enough_history":
       return { line: t("fc.notEnoughLine", { n: f.n, floor: f.floor }), detail: t("fc.notEnoughDetail", { n: f.n, floor: f.floor }) };
     case "landed":
@@ -129,7 +130,7 @@ export function scopeText(s: ScopeForecast, c: EtaClock, opts: { next?: boolean 
         : inHands
           ? t("fc.forecastLiveInline", { when: when(inHands, c) })
           : "";
-    const detail = s.next?.reason ?? (s.delivery ? deliveryText(s.delivery, c).detail : own.detail);
+    const detail = (s.next ? said(s.next.says.reason, c.lang) : null) ?? (s.delivery ? deliveryText(s.delivery, c).detail : own.detail);
     const by = s.forecast.landedAt ? t("fc.landedBy", { day: dayOf(s.forecast.landedAt, c) }) : "";
     return { line: t("fc.allLanded", { total: s.progress.total, by, next }), detail };
   }
@@ -145,12 +146,12 @@ const legDetail = (leg: ReleaseLeg, c: EtaClock): string => {
     case "not_enough_history":
       return t("fc.legNotEnough", { n: leg.n, floor: leg.floor });
     case "person":
-      return t("fc.legPerson", { who: standingWho(leg.who, c.lang), act: standingAct(leg.act, c.lang), reason: leg.reason });
+      return t("fc.legPerson", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang), reason: said(leg.says.reason, c.lang) });
   }
 };
 
 const waitsOnText = (leg: Extract<ReleaseLeg, { kind: "person" }>, c: EtaClock) =>
-  productCopy(c.lang)("fc.waitsOnTo", { who: standingWho(leg.who, c.lang), act: standingAct(leg.act, c.lang) });
+  productCopy(c.lang)("fc.waitsOnTo", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang) });
 
 /**
  * Done as a person means it — in their hands, not merged — as one line and its tooltip: shipped in a
@@ -187,7 +188,7 @@ export function deliveryText(d: DeliveryForecast, c: EtaClock, opts: TextOpts = 
 
 /** A feedback item's line: untriaged, who triages it; else its linked work's delivery; null where nothing ships. */
 export function feedbackForecastText(f: FeedbackForecast, c: EtaClock): Said | null {
-  if (f.triage) return { line: productCopy(c.lang)("fc.waitingTriage", { who: standingWho(f.triage.who, c.lang), act: standingAct(f.triage.act, c.lang) }), detail: f.triage.reason };
+  if (f.triage) return { line: productCopy(c.lang)("fc.waitingTriage", { who: said(f.triage.says.who, c.lang), act: said(f.triage.says.act, c.lang) }), detail: said(f.triage.says.reason, c.lang) };
   return f.delivery ? deliveryText(f.delivery, c) : null;
 }
 
