@@ -374,6 +374,22 @@ mod tests {
         }
     }
 
+    /// A note written in the wrong language reaches the project's users as two languages on one release,
+    /// so the skill tells the master which language and where to read it.
+    #[test]
+    fn the_skill_tells_a_master_a_release_note_is_in_the_content_language() {
+        for word in [
+            "content language",
+            "`releaseNotes.userFacing`",
+            "/content-language",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer names {word}, so a master writes a release note in whatever language the issue was"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

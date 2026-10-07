@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { contentLanguageName } from '@forge/contracts/content-language';
 import type { MasterWork } from '@forge/contracts/master-verdict';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { mastersPorts } from './ports.js';
@@ -21,6 +22,8 @@ interface Owed {
   documents: { id: string; number: string | null }[];
   builderRuns: { id: string; ecosystem: string }[];
   releaseNotes: { issueId: string; key: string }[];
+  /** The project's content language tag, which a release note is written in. */
+  contentLanguage: string;
 }
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
@@ -42,7 +45,8 @@ function returnedLine(owed: Owed): string {
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
   let line = returnedLine(owed);
-  const { breakdowns, triages, comments, documents, builderRuns, releaseNotes } = owed;
+  const { breakdowns, triages, comments, documents, builderRuns, releaseNotes, contentLanguage } =
+    owed;
   if (breakdowns.length > 0) {
     const keys = breakdowns.map((b) => (b.overdue ? `${b.key} overdue` : b.key));
     line += ` ${breakdowns.length} agreed requirement${plural(breakdowns.length, ' has', 's have')} no breakdown yet (${keys.join(', ')}): read each (\`forge-runner api projects/<id>/requirements/<key>\`) and propose its breakdown as a suggestion; an overdue one is past its breakdown SLA.`;
@@ -65,13 +69,14 @@ export function owedLine(owed: Owed): string {
   }
   if (releaseNotes.length > 0) {
     const keys = releaseNotes.map((r) => `${r.key} ${r.issueId}`);
-    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","userFacing":"<the one plain line a user would read>"}}'\`, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
+    line += ` ${releaseNotes.length} issue${plural(releaseNotes.length, ' waits', 's wait')} at the release gate with no release note (${keys.join(', ')}), so the next release refuses to carry ${plural(releaseNotes.length, 'it', 'them')} (\`RELEASE_RECORD_MISSING\`): read each issue and what it shipped, then write its note (\`forge-runner api issues/<id> -X PATCH -d '{"releaseNotes":{"section":"Added","userFacing":"<the one plain line a user would read, in ${contentLanguageName(contentLanguage)}>"}}'\`; the project's content language is ${contentLanguageName(contentLanguage)} (\`${contentLanguage}\`), so the line is written in it whatever language the issue or its commits are in, section one of Added, Changed, Fixed, Removed, Security, or \`{"section":"Skip","userFacing":"-"}\` when the change has no user-facing half).`;
   }
   return line;
 }
 
 function count(owed: Owed): number {
-  return Object.values(owed).reduce((n, items) => n + items.length, 0);
+  const { contentLanguage: _language, ...lists } = owed;
+  return Object.values(lists).reduce((n, items) => n + items.length, 0);
 }
 
 /** One line per thing a master is owed, so the digest moves exactly when the work does. */
@@ -126,17 +131,27 @@ export function masterWork(admissible: Admissible[], owed: Owed): MasterWork {
  */
 export async function readMasterWork(deviceId: string, projectId: string): Promise<MasterWork> {
   const ports = mastersPorts();
-  const [admissible, comments, channel, breakdowns, revisions, triages, designs, releaseNotes] =
-    await Promise.all([
-      readAdmissibleIssues({ deviceId, projectId }),
-      readOwedComments(projectId),
-      ports.channelOwed(projectId),
-      ports.breakdownsOwed(projectId),
-      ports.revisionsOwed(projectId),
-      ports.triagesOwed(projectId),
-      ports.designsOwed(projectId),
-      ports.releaseNotesOwed(projectId),
-    ]);
+  const [
+    admissible,
+    comments,
+    channel,
+    breakdowns,
+    revisions,
+    triages,
+    designs,
+    releaseNotes,
+    contentLanguage,
+  ] = await Promise.all([
+    readAdmissibleIssues({ deviceId, projectId }),
+    readOwedComments(projectId),
+    ports.channelOwed(projectId),
+    ports.breakdownsOwed(projectId),
+    ports.revisionsOwed(projectId),
+    ports.triagesOwed(projectId),
+    ports.designsOwed(projectId),
+    ports.releaseNotesOwed(projectId),
+    ports.contentLanguageOf(projectId),
+  ]);
   return masterWork(admissible.items, {
     designs,
     revisions,
@@ -146,5 +161,6 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     documents: channel.documents,
     builderRuns: channel.builderRuns,
     releaseNotes,
+    contentLanguage,
   });
 }

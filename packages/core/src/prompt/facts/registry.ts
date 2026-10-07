@@ -1,3 +1,4 @@
+import { contentLanguageName } from '@forge/contracts/content-language';
 import type { IssueStatus, JobType } from '../../db/schema.js';
 import { guideRef } from '../../guides/index.js';
 import { STEP_TOOL_REFERENCE_TEXT } from './drive-rules.js';
@@ -21,6 +22,8 @@ export interface FactRenderContext {
   /** The project's `kind='module'` labels, resolved by `./resolve.ts`. Empty
    *  or absent means the project has no taxonomy. */
   modules?: readonly ProjectModuleFact[];
+  /** The project's content language tag (`vi`), which prose it stores in Forge is written in. */
+  contentLanguage?: string;
 }
 
 export interface ProjectModuleFact {
@@ -173,11 +176,15 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     scope: 'global',
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
-    version: 6,
+    version: 7,
     render: (ctx) => `## Release-notes shape
 Seed \`releaseNotes\` via \`forge-runner api issues/<id> -X PATCH\` as \`{ section, userFacing, technical }\`:
 - \`section\` ∈ \`Added | Changed | Fixed | Removed | Security | Skip\` (\`Skip\` = internal-only, no changelog line).
-- \`userFacing\` — one plain-language line for end users.
+- \`userFacing\` — one plain-language line for end users, written in ${
+      ctx?.contentLanguage
+        ? `this project's content language, ${contentLanguageName(ctx.contentLanguage)} (\`${ctx.contentLanguage}\`)`
+        : "this project's content language (its `## Content language` block names it)"
+    } — never in the language of the issue's code or commits.
 - \`technical\` — optional implementation detail.
 ${
   ctx?.stage === 'drive'

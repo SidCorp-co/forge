@@ -13,6 +13,7 @@ const none = {
   documents: [],
   builderRuns: [],
   releaseNotes: [],
+  contentLanguage: 'en',
 };
 
 function issue(issueId: string, status = 'open', blocker: string | null = null) {
@@ -117,6 +118,15 @@ describe('workDigest: the same work digests the same, and changed work does not'
     expect(workDigest([issue('a', 'in_progress')], none)).not.toBe(base);
     expect(workDigest([issue('a', 'open', 'open')], none)).not.toBe(base);
     expect(workDigest([issue('a')], { ...none, triages: [{ key: 'FB-1' }] })).not.toBe(base);
+  });
+
+  it("names the project's content language in the release-note nudge, so a vi project is asked for Vietnamese", () => {
+    const owed = { ...none, releaseNotes: [{ issueId: 'u6', key: 'ISS-6' }] };
+    const vi = owedLine({ ...owed, contentLanguage: 'vi' });
+    expect(vi).toContain('content language is Vietnamese (`vi`)');
+    expect(vi).toContain('in Vietnamese>');
+    expect(owedLine(owed)).toContain('content language is English (`en`)');
+    expect(workDigest([], { ...owed, contentLanguage: 'vi' })).toBe(workDigest([], owed));
   });
 
   it('keys an owed release note on its issue, so the same gate digests the same on every sweep', () => {

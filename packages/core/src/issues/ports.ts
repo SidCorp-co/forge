@@ -26,6 +26,8 @@ export interface IssueProjectDocument {
   };
   delivery?: Parameters<typeof verdictsRequiredOf>[0];
   plan?: { approval: { required: boolean } } | undefined;
+  /** The language the project writes the prose it stores in Forge in; absent means `en`. */
+  contentLanguage?: string | undefined;
 }
 
 /** Whether the issue's requirement moved since its plan was written; null when it delivers none. */

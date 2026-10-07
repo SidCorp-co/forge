@@ -1,3 +1,4 @@
+import { contentLanguageScriptWarning } from '@forge/contracts/content-language';
 import { diffFieldValue } from '@forge/contracts/field-changes';
 import { Hono } from 'hono';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -35,7 +36,7 @@ export {
 
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
-import { deleteMemory, issueDeleteRefusal } from './ports.js';
+import { deleteMemory, issueDeleteRefusal, readProjectDocument } from './ports.js';
 
 export { bodyRoutes } from '../body/routes.js';
 
@@ -157,9 +158,19 @@ issueRoutes.patch(
       await activeIssuePrefix(issue.projectId),
       await readLandingShape(issue.projectId),
     );
-    return c.json(
-      collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
-    );
+    const warnings = [...collected.warnings];
+    const note = patch.releaseNotes;
+    if (note && note.section !== 'Skip') {
+      const held = await readProjectDocument(issue.projectId);
+      const language = held?.document.contentLanguage ?? 'en';
+      const mismatch = contentLanguageScriptWarning(
+        language,
+        note.userFacing,
+        'releaseNotes.userFacing',
+      );
+      if (mismatch) warnings.push(mismatch);
+    }
+    return c.json(warnings.length > 0 ? { ...patched, warnings } : patched);
   },
 );
 
