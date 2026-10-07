@@ -163,12 +163,16 @@ describe('pgObjectNames', () => {
       table: 'not-a-driver-field',
     });
 
-    expect(pgObjectNames(wrapped)).toEqual(['gj_closed_needs_ledger', 'issues', 'public']);
+    expect(pgObjectNames(wrapped).map((o) => [o.words[0], o.name])).toEqual([
+      ['constraint', 'gj_closed_needs_ledger'],
+      ['relation', 'issues'],
+      ['schema', 'public'],
+    ]);
   });
 
   it('reads node-postgres spellings, and nothing where the driver named no object', () => {
     const named = Object.assign(new Error('x'), { code: '23503', constraint: 'fk_a', table: 't' });
-    expect(pgObjectNames(named)).toEqual(['fk_a', 't']);
+    expect(pgObjectNames(named).map((o) => o.name)).toEqual(['fk_a', 't']);
     expect(pgObjectNames(Object.assign(new Error('raised'), { code: 'P0001' }))).toEqual([]);
   });
 });

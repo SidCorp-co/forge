@@ -321,6 +321,20 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).toContain('"x_(a value of this write, withheld)_rule"');
   });
 
+  it('puts back a name only where the message quotes it as that object, never a look-alike', () => {
+    const failed = sealedClose('constraint "x_closed_rule" rejected label "x_releasing_rule"', {
+      code: 'P0001',
+      constraint_name: 'x_closed_rule',
+    });
+
+    const text = closeFailureText(closeRefusalOf(failed));
+
+    expect(text).toContain('constraint "x_closed_rule" rejected label');
+    expect(text).toContain('label "x_(a value of this write, withheld)_rule"');
+    expect(text).not.toContain('x_releasing_rule');
+    expect(text.match(/x_closed_rule/g)).toHaveLength(1);
+  });
+
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {
     const failed = sealedClose('refund hook is still releasing funds', { code: 'P0001' });
 

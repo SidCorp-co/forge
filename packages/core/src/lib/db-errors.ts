@@ -54,34 +54,43 @@ export function pgDriverError(err: unknown): { code: string; message: string } |
   return found;
 }
 
-/** The fields a driver error names a schema object in, as postgres-js and node-postgres spell them. */
-const OBJECT_NAME_FIELDS = [
-  'constraint_name',
-  'constraint',
-  'table_name',
-  'table',
-  'column_name',
-  'column',
-  'schema_name',
-  'schema',
-  'data_type_name',
-  'dataType',
-] as const;
+/** A schema object the driver's error names, by the word Postgres puts before it in a message. */
+export interface PgObjectName {
+  /** `constraint "…"`, `relation "…"` or `table "…"`, `column "…"`, `schema "…"`, `type "…"`. */
+  words: readonly string[];
+  name: string;
+}
+
+/** The fields a driver error names a schema object in, as postgres-js and node-postgres spell
+ *  them, with the words a Postgres message quotes that object after. */
+const OBJECT_NAME_FIELDS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['constraint_name', ['constraint']],
+  ['constraint', ['constraint']],
+  ['table_name', ['relation', 'table']],
+  ['table', ['relation', 'table']],
+  ['column_name', ['column']],
+  ['column', ['column']],
+  ['schema_name', ['schema']],
+  ['schema', ['schema']],
+  ['data_type_name', ['type']],
+  ['dataType', ['type']],
+];
 
 /**
- * The names of the schema objects the driver's error names — constraint, table, column, schema,
- * type — longest first. They are the schema's own text, never a value of the statement.
+ * The schema objects the driver's error names — constraint, table, column, schema, type — longest
+ * name first. A name is the schema's own text, never a value of the statement.
  */
-export function pgObjectNames(err: unknown): string[] {
-  const names = new Set<string>();
+export function pgObjectNames(err: unknown): PgObjectName[] {
+  const found = new Map<string, PgObjectName>();
   for (const link of causeChain(err)) {
     if (typeof link.code !== 'string' || !SQLSTATE.test(link.code)) continue;
-    for (const field of OBJECT_NAME_FIELDS) {
+    for (const [field, words] of OBJECT_NAME_FIELDS) {
       const name = link[field];
-      if (typeof name === 'string' && name !== '') names.add(name);
+      if (typeof name === 'string' && name !== '')
+        found.set(`${words[0]}:${name}`, { words, name });
     }
   }
-  return [...names].sort((a, b) => b.length - a.length);
+  return [...found.values()].sort((a, b) => b.name.length - a.name.length);
 }
 
 /** Every value bound to a failed statement on the chain, as text, empty ones left out. */

@@ -18,6 +18,10 @@ Two acts a person might expect are not in the product:
   screen calls it, and the status menu's withdraw prompt opens only on a terminal move the menu
   offers, which from the gate is `dropped`.
 
+Meanwhile the banner says such an issue is "not shipped yet"
+(`awaiting-release-banner.tsx`), though its code is live with the release that returned it: the
+roster carries no reading of which release served it.
+
 The choice nobody has made: give the person one of these acts at the gate, or keep the gate's only
 exit a release. Widening the transition is a kernel change (`VISION: kernel-hard-policy-soft`) and
 the owner's to decide.
