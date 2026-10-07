@@ -7,7 +7,9 @@ import { useFeedbackAction } from "../hooks";
 import type { FeedbackView } from "../types";
 import { type PickableTarget, TARGET_HINT, TargetPicker } from "./target-picker";
 
-const about = (t: FeedbackView["target"]) => `${enumLabel("feedbackTarget", t.type).toLowerCase()} ${t.key}`;
+/** A target label mid-sentence: a leading ordinary word lower-cased ("requirement"), an acronym kept ("API route or tool"). */
+const inSentence = (label: string) => (/^[A-Z][a-z]/.test(label) ? `${label.charAt(0).toLowerCase()}${label.slice(1)}` : label);
+const about = (t: FeedbackView["target"]) => `${inSentence(enumLabel("feedbackTarget", t.type))} ${t.key}`;
 
 /**
  * Correct what an item is about (ISS-264), at any phase: an item filed about a screen moves to the

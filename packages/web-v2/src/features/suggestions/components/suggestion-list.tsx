@@ -6,6 +6,7 @@ import { RefusalLine } from "@/lib/api/refusal-line";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
+import { BreakdownSlices } from "./breakdown-slices";
 
 export const KIND_LABEL: Record<SuggestionKind, string> = {
   requirement_draft: "Requirement draft",
@@ -61,7 +62,6 @@ function detailLines(s: Suggestion): string[] {
   if (s.kind === "readiness") {
     return list(p.checks).map((c) => `${c.passed === true ? "Pass" : "Fail"} · ${str(c.check) ?? ""}${str(c.detail) ? ` — ${str(c.detail)}` : ""}`);
   }
-  if (s.kind === "breakdown") return list(p.issues).map((i) => str(i.title) ?? "");
   return [];
 }
 
@@ -111,16 +111,20 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
         </span>
       </div>
       <p className="text-13-5">{summaryOf(s)}</p>
-      {details.length > 0 ? (
+      {details.length > 0 || s.kind === "breakdown" ? (
         <details className="text-12 text-muted">
           <summary className="cursor-pointer select-none font-semibold" style={{ color: AGENT_TINT.fg }}>
             Show details
           </summary>
-          <ul className="mt-1 grid gap-0.5">
-            {[...new Set(details)].map((d) => (
-              <li key={d}>{d}</li>
-            ))}
-          </ul>
+          {s.kind === "breakdown" ? (
+            <BreakdownSlices read={s.breakdown} />
+          ) : (
+            <ul className="mt-1 grid gap-0.5">
+              {[...new Set(details)].map((d) => (
+                <li key={d}>{d}</li>
+              ))}
+            </ul>
+          )}
         </details>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 pt-0.5">

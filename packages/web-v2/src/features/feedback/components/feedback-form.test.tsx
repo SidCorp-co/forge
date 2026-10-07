@@ -42,6 +42,25 @@ describe("the feedback About picker", () => {
     expect(screen.getByLabelText("Target").getAttribute("list")).toBe(list.id);
   });
 
+  // ISS-279's judge: on a project serving nothing the refusal came only after Send, in API terms
+  it("says before Send that a project serving nothing has no route or tool to name, and to file it as a Screen", async () => {
+    const calls = fakeCore(() => ({ body: { endpoints: [] } }));
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
+    const note = await screen.findByTestId("feedback-endpoints-none");
+    expect(note).toHaveTextContent("This project publishes no API routes or tools, so there is none to name here. File it as a Screen instead.");
+    expect(note.textContent).not.toMatch(/\/api|interface|endpoint/i);
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
+  });
+
+  it("says nothing of the kind where the project serves routes or tools", async () => {
+    fakeCore(() => ({ body: SERVED }));
+    renderWithQuery(<FeedbackForm projectId="p1" onDone={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
+    await screen.findByTestId("feedback-endpoints");
+    expect(screen.queryByTestId("feedback-endpoints-none")).toBeNull();
+  });
+
   it("sends the name typed as the item's endpoint", async () => {
     const calls = fakeCore((c) => {
       if (c.method === "GET") return { body: SERVED };

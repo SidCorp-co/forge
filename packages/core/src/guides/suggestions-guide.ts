@@ -105,7 +105,10 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 
 ### Reading them
 \`GET …/suggestions\` takes \`?requirement=\`, \`issue\`, \`feedback\` or \`workflow\`, and \`status\` (comma-separated);
-it answers each suggestion whole, and \`view=summary\` leaves the payloads out. Statuses: \`proposed\` (waits on a decision),
+it answers each suggestion whole, and \`view=summary\` leaves the payloads out. A \`proposed\` breakdown
+also carries \`breakdown\`: each slice as its accept would file it at the requirement's head — criteria
+by BC code, the pinned design and the revision the baseline pins it at, each \`blockedBy\` resolved — with
+the accept's refusal where it would refuse, and \`unreadable\` naming why a stored payload no longer parses. Statuses: \`proposed\` (waits on a decision),
 \`accepted\`, \`rejected\`, \`stale\`, \`withdrawn\`. Requirement revisions themselves are in
 ${guideRef('requirement-lifecycle')}.`,
 };

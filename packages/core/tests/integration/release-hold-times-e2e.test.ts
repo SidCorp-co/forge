@@ -65,7 +65,8 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
       await sweep();
       const held = await holdOf(id);
       expect(held?.code).toBe('NO_RUNNER_ONLINE');
-      expect(held?.reason).toContain(`${says} 12:34 UTC on 2099-01-01`);
+      // rounded up to the minute (ISS-278): 12:34:10 and 12:34:50 both read 12:35, 12:35:10 reads 12:36
+      expect(held?.reason).toContain(`${says} 12:35 UTC on 2099-01-01`);
       expect(await holdHistory(id)).toHaveLength(1);
 
       await resetTo(SAME_MINUTE);
@@ -74,7 +75,7 @@ describe('a runner reset drifting inside its minute is one reason (criterion 17)
 
       await resetTo(NEXT_MINUTE);
       await sweep();
-      expect((await holdOf(id))?.reason).toContain(`${says} 12:35 UTC on 2099-01-01`);
+      expect((await holdOf(id))?.reason).toContain(`${says} 12:36 UTC on 2099-01-01`);
       expect(await holdHistory(id)).toHaveLength(2);
     },
   );
