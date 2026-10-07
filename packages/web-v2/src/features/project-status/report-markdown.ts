@@ -7,6 +7,7 @@ import type { ProjectStatus, RoadmapItem, StatusWait } from "@forge/contracts/pr
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import type { WaitingOn } from "@forge/contracts/standing";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
+import { needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
 import { spanText } from "@/features/forecast/text";
 import { formatDateTime } from "@/lib/i18n/format";
@@ -45,7 +46,7 @@ function roadmapLine(i: RoadmapItem, w: ReportWords): string {
 }
 
 function waitLine(x: StatusWait, s: ProjectStatus, w: ReportWords): string {
-  return `- **${x.key}** ${x.title} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
+  return `- **${needsYouKeyLabel(x, (a) => w.label("needsYouArea", a))}** ${x.title} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
 }
 
 export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {

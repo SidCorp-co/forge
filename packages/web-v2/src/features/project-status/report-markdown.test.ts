@@ -24,6 +24,14 @@ describe("the status report as Markdown", () => {
     expect(md).not.toMatch(/— You —/);
   });
 
+  it("calls a harness report by the area it waits in, never by the id no reader knows", () => {
+    const id = "b4e9546d-5dad-4dec-b7c6-9a0becf852c0";
+    const report = { area: "automation" as const, entity: "report" as const, key: id, title: "Harness run failed", touchedAt: AT, waitingOn: { kind: "writers" as const, who: "Harness triage", act: "triage a report", rule: "", ref: null, dueAt: null } };
+    const md = statusMarkdown({ ...STATUS, waits: { ...STATUS.waits, people: [report], peopleCount: 1 } }, words("en"));
+    expect(md).not.toContain(id);
+    expect(md).toContain(`**${labelCopy("en")("needsYouArea", "automation")}** Harness run failed`);
+  });
+
   it("says what each shipped release verified and dates each section", () => {
     const md = statusMarkdown(STATUS, words("en"));
     expect(md).toContain("Partly verified: 1 of 2 criteria proven, and the deploy checked by the production probes");

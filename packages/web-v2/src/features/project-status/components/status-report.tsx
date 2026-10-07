@@ -16,6 +16,7 @@ import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
+import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
 import { statusMarkdown } from "../report-markdown";
 
@@ -200,7 +201,9 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
           <ul className={LIST}>
             {s.waits.people.map((x) => (
               <li key={`${x.area}:${x.key}`} className={ROW}>
-                <MonoTag>{x.key}</MonoTag>
+                <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
+                  {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
+                </Link>
                 <span className="min-w-0 flex-1">{x.title}</span>
                 <WaitingOn w={x.waitingOn} />
               </li>

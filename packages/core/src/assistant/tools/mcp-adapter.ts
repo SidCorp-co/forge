@@ -110,7 +110,13 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     assertToolDeclaresAccess(tool);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue;
-    const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
+    const schema = tool.inputSchema as { properties?: Record<string, unknown> } & Record<string, unknown>;
+    const props = schema.properties;
+    const union = ['oneOf', 'anyOf', 'allOf'].find((k) => k in schema);
+    if (!props && union)
+      throw new Error(
+        `chat tool "${tool.name}" declares its input as a union (${union} at the top, no properties): the session's projectId is pinned, and undeclared keys dropped, by the top-level properties — declare one object with an \`action\` enum and refuse a field the action does not take by name`,
+      );
     const hasProjectId = !!props && 'projectId' in props;
     bySanitized.set(name, { spec, tool, hasProjectId });
     const readNote = spec.allowedActions

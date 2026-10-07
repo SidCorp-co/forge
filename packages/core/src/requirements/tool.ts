@@ -4,14 +4,25 @@ import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
 
-const input = z.discriminatedUnion('action', [
-  z.strictObject({ action: z.literal('list'), projectId: z.uuid() }),
-  z.strictObject({
-    action: z.literal('get'),
+// One object, not a union: the chat adapter pins the session's projectId and drops undeclared keys
+// by the schema's top-level properties (assistant/tools/mcp-adapter.ts:buildToolset), which a union
+// has none of. Which fields an action takes is refused by name below instead.
+const input = z
+  .strictObject({
+    action: z.enum(['list', 'get']),
     projectId: z.uuid(),
-    requirement: z.string().regex(/^REQ-\d+$/),
-  }),
-]);
+    requirement: z
+      .string()
+      .regex(/^REQ-\d+$/, 'a requirement is named by its key, REQ-n')
+      .optional()
+      .describe('action "get" only: the requirement key, e.g. REQ-12'),
+  })
+  .superRefine((v, ctx) => {
+    if (v.action === 'get' && v.requirement === undefined)
+      ctx.addIssue({ code: 'custom', path: ['requirement'], message: 'action "get" reads one requirement: name it, e.g. REQ-12' });
+    if (v.action === 'list' && v.requirement !== undefined)
+      ctx.addIssue({ code: 'custom', path: ['requirement'], message: 'action "list" takes no `requirement`; use action "get" to read one' });
+  });
 
 export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirements',
@@ -46,7 +57,7 @@ export const forgeRequirementsTool: ContextScopedMcpToolFactory = (ctx) => ({
         })),
       };
     }
-    const r = await readRequirementAs(actor, parsed.projectId, parsed.requirement, MCP_DOOR);
+    const r = await readRequirementAs(actor, parsed.projectId, parsed.requirement as string, MCP_DOOR);
     const current = r.revisions.find((v) => v.revision === r.currentRevision) ?? r.revisions[0];
     return {
       key: r.key,

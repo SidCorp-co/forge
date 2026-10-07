@@ -8,15 +8,25 @@ import { listReleases, readRelease } from './release-read.js';
 
 const RELEASES_LIST_MAX = 50;
 
-const input = z.discriminatedUnion('action', [
-  z.strictObject({
-    action: z.literal('list'),
+// One object, not a union: the chat adapter pins the session's projectId and drops undeclared keys
+// by the schema's top-level properties (assistant/tools/mcp-adapter.ts:buildToolset), which a union
+// has none of. Which fields an action takes is refused by name below instead.
+const input = z
+  .strictObject({
+    action: z.enum(['list', 'get']),
     projectId: z.uuid(),
-    state: z.enum(RELEASE_STATES).optional(),
-    limit: z.number().int().min(1).max(RELEASES_LIST_MAX).optional(),
-  }),
-  z.strictObject({ action: z.literal('get'), projectId: z.uuid(), version: z.string().min(1) }),
-]);
+    version: z.string().min(1).optional().describe('action "get" only: the release version, e.g. 0.3.0'),
+    state: z.enum(RELEASE_STATES).optional().describe('action "list" only'),
+    limit: z.number().int().min(1).max(RELEASES_LIST_MAX).optional().describe('action "list" only'),
+  })
+  .superRefine((v, ctx) => {
+    if (v.action === 'get' && v.version === undefined)
+      ctx.addIssue({ code: 'custom', path: ['version'], message: 'action "get" reads one release: name its `version`, e.g. 0.3.0' });
+    if (v.action === 'list' && v.version !== undefined)
+      ctx.addIssue({ code: 'custom', path: ['version'], message: 'action "list" takes no `version`; use action "get" to read one release' });
+    if (v.action === 'get' && (v.state !== undefined || v.limit !== undefined))
+      ctx.addIssue({ code: 'custom', path: [v.state !== undefined ? 'state' : 'limit'], message: 'action "get" takes only `version`; `state` and `limit` filter action "list"' });
+  });
 
 export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_releases',
@@ -37,7 +47,7 @@ export const forgeReleasesTool: ContextScopedMcpToolFactory = (ctx) => ({
       mayApprove: holds(access, 'releases.approve'),
     };
     if (parsed.action === 'get') {
-      const r = await readRelease(parsed.projectId, parsed.version, viewer);
+      const r = await readRelease(parsed.projectId, parsed.version as string, viewer);
       return {
         version: r.version,
         state: r.state,
