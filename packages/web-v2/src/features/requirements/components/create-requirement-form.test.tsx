@@ -2,12 +2,10 @@
 // answers the create, not when the requirement list or the waiting-on-you counts have been read
 // again, and two submits in one tick send one create.
 
-import { useQuery } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NEEDS_YOU_ROOT } from "@/features/needs-you/hooks";
-import { apiClient } from "@/lib/api/client";
 import { createQueryClient } from "@/providers/query-provider";
+import { NeedsYouCounts } from "@/test/needs-you-counts";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { useRequirements } from "../hooks";
 import { CreateRequirementForm } from "./requirements-screen";
@@ -17,8 +15,7 @@ afterEach(() => vi.unstubAllGlobals());
 /** The list and the menu's counts, mounted beside the form the way the screen and the shell mount them. */
 function Reads() {
   useRequirements("p1");
-  useQuery({ queryKey: [...NEEDS_YOU_ROOT, "p1"], queryFn: () => apiClient("/projects/p1/needs-you") });
-  return null;
+  return <NeedsYouCounts projectId="p1" />;
 }
 
 /** Each read answers once, then never again; the create answers at once, or never with `hold`. */

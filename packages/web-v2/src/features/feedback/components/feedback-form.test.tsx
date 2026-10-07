@@ -2,13 +2,11 @@
 // Autoflow's MCP tool save_backend_workflow was filed as a Screen. About now offers "API route or
 // tool", suggests what the project serves, and sends the name as `endpoint` for core to check.
 
-import { useQuery } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NEEDS_YOU_ROOT } from "@/features/needs-you/hooks";
-import { apiClient } from "@/lib/api/client";
 import { createQueryClient } from "@/providers/query-provider";
+import { NeedsYouCounts } from "@/test/needs-you-counts";
 import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { FeedbackForm } from "./feedback-form";
 
@@ -154,10 +152,6 @@ describe("the feedback About picker", () => {
 // The filing form shares the New issue form's shape (HOP ISS-125): it is done when core answers, not
 // when the waiting-on-you counts have been read again, and two submits in one tick file one item.
 describe("filing feedback", () => {
-  function Counts() {
-    useQuery({ queryKey: [...NEEDS_YOU_ROOT, "p1"], queryFn: () => apiClient("/projects/p1/needs-you") });
-    return null;
-  }
   function file(hold: boolean) {
     let counts = 0;
     const calls = core((c) =>
@@ -174,7 +168,7 @@ describe("filing feedback", () => {
     const onDone = vi.fn();
     renderWithQuery(
       <>
-        <Counts />
+        <NeedsYouCounts projectId="p1" />
         <FeedbackForm projectId="p1" onDone={onDone} />
       </>,
       createQueryClient(),

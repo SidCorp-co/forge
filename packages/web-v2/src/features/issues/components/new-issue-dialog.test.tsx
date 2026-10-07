@@ -4,12 +4,10 @@
 // it; a second submit while the first is in flight sends nothing, and the drawer cannot be closed
 // and reopened to send one.
 
-import { useQuery } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NEEDS_YOU_ROOT } from "@/features/needs-you/hooks";
-import { apiClient } from "@/lib/api/client";
 import { createQueryClient } from "@/providers/query-provider";
+import { NeedsYouCounts } from "@/test/needs-you-counts";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { NewIssueDialog } from "./new-issue-dialog";
 
@@ -33,12 +31,6 @@ afterEach(() => {
   Range.prototype.getClientRects = rangeRects;
 });
 
-/** The menu's counts, mounted beside the form the way the shell mounts them. */
-function Counts() {
-  useQuery({ queryKey: [...NEEDS_YOU_ROOT, "p1"], queryFn: () => apiClient("/projects/p1/needs-you") });
-  return null;
-}
-
 /** Core answers the create at once (or never, with `hold`); the counts answer once, then never again. */
 function core({ hold = false } = {}) {
   let counts = 0;
@@ -52,7 +44,7 @@ function core({ hold = false } = {}) {
 function mount(onClose = vi.fn()) {
   renderWithQuery(
     <>
-      <Counts />
+      <NeedsYouCounts projectId="p1" />
       <NewIssueDialog open onClose={onClose} scope={scope} />
     </>,
     createQueryClient(),
