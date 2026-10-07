@@ -109,17 +109,10 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   return [first, ...rest];
 }
 
-/**
- * What `serializeError` built, which pino hands straight back to it as the `err` serializer. Only a
- * new object goes in: a caller's own one, returned unchanged, may change before it is logged again.
- */
+/** Objects `serializeError` built; never a caller's own, which may change before its next line. */
 const serialized = new WeakSet<object>();
 
-/**
- * pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`.
- * Whatever else sits under `err` (its message, `String(err)`, an object or array holding either)
- * is redacted as any other value is, so no shape a caller logs there passes through.
- */
+/** pino's own, redacted, plus the SQLSTATE and constraint; any non-Error under `err` is redacted too. */
 function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unknown {
   if (typeof err === 'object' && err !== null && serialized.has(err)) return err;
   let out: unknown;
