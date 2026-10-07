@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.85] - 2026-10-07
+
+Runner keeps live checkouts, closes reboot-orphaned runs, binds resumed subagents, holds crashing updates
+
+### Fixed
+
+- **Ask Agent reopens your latest conversation instead of a new chat.** A reload or project switch no longer loses the thread, and a conversation where the agent asked you something reads Waiting on you, one click away (ISS-277).
+- **A release-gate reason names who owes it, and wakes them.** A missing release note waits on the project's master by name, told once on its next pass with each issue; the release page links every issue a reason names.
+- **The runner no longer removes a checkout a live agent works in, binds resumed and namespaced subagents to their runs, ends runs a reboot orphaned, and puts back an update that never stays up.** Ports of main's ISS-1378/ISS-1390 runner fixes.
+
 ## [0.4.0-dev.84] - 2026-10-07
 
 Held release rows now say why Forge could not check they already shipped
