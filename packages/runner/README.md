@@ -284,11 +284,12 @@ Windows             ─▶ refused by name: no download is taken and a re-login 
   skill text, the hooks it writes, the pane environment (short of the
   capability token), the MCP config, the launch line, the plugin set, and the
   master wire version (`master_build::MASTER_WIRE`, bumped only when the
-  box-master protocol changes). A pane is outdated where one of them differs
-  from what the box would hand a pane now, and the verdict names it; a rebuild
-  that changes none of them leaves every pane current. A pane placed before
-  those were recorded is judged by the runner build it was placed under, and
-  one placed before that either is outdated. An outdated
+  box-master protocol changes). The box sends core the digests as placed and as
+  it would hand them now with every master verdict; whether the pane is
+  outdated is core's reading (`masters/verdict.ts:outdatedWhy`). A pane is
+  outdated where one of them differs, and the verdict names it; a rebuild that
+  changes none of them leaves every pane current. A pane with no record of
+  them, or one this build cannot read, is outdated by name. An outdated
   pane decides only its replacement: until then core keeps it and it is nudged
   as a current master is, so owed work still reaches it. It is
   ended and placed again — in the same sweep, resuming its conversation — only

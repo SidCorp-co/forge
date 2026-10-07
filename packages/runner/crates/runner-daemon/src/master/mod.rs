@@ -60,7 +60,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::dispatch::resolve_repo;
-use crate::master_build::{self, Judged};
+use crate::master_build;
 use crate::master_exit::{self, Holding};
 use crate::master_handed;
 use crate::master_limit;

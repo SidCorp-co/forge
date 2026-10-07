@@ -113,11 +113,13 @@ fn elsewhere_wire(seen: &Seen) -> &'static str {
     }
 }
 
-/// An outdated pane as the box reports it: why, the inputs behind that, and
-/// what it holds and whether its turn is over.
-pub(crate) struct OutdatedRead {
-    pub(crate) why: String,
-    pub(crate) inputs: wire::Inputs,
+/// A pane's placement as the box reports it, and what it holds and whether
+/// its turn is over, for core to judge the pane outdated or not.
+/// How much of a ledger record this build cannot read is sent as the account of it.
+const UNREADABLE_RECORD_CHARS: usize = 200;
+
+pub(crate) struct PlacementRead {
+    pub(crate) placement: wire::Placement,
     pub(crate) holding: wire::Holding,
     pub(crate) turn: wire::Turn,
 }
@@ -125,14 +127,14 @@ pub(crate) struct OutdatedRead {
 /// What a pane started for this project now would be handed, read without a
 /// word to the log: the environment [`prepare_pane`] gives one, short of its
 /// capability token, and the servers core declares for it this sweep.
-pub(crate) fn standing_now(
+pub(crate) fn inputs_now(
     project_id: &str,
     resolved: &crate::dispatch::Resolved,
     servers: Option<&ServersRead>,
-) -> master_build::Standing {
+) -> master_build::Inputs {
     let (mut env, _) = terminal::pane_env_read(project_id, &resolved.slug);
     env.extend(cli_borrow_read(&resolved.slug));
-    master_build::Standing::this_box(&master_build::Handed {
+    master_build::Inputs::of(&master_build::Handed {
         slug: &resolved.slug,
         repo: &resolved.repo_path,
         env: &env,
@@ -142,46 +144,34 @@ pub(crate) fn standing_now(
     })
 }
 
-/// What the pane's inputs, its runs and its turn say, read off the ledger and
-/// its hooks: `None` where the pane is current or cannot be judged. The
-/// ledger's `outdated` column is written to match either way.
-pub(crate) fn outdated_facts(
+/// What the pane's placement, its runs and its turn say, read off the ledger and
+/// its hooks: `None` where the ledger could not be read.
+pub(crate) fn placement_facts(
     led: &Ledger,
     masters: &Masters,
     activity: &agent_activity::Activities,
     sees: &Seen,
     resolved: &crate::dispatch::Resolved,
     project_id: &str,
-) -> Option<OutdatedRead> {
+) -> Option<PlacementRead> {
     let pane_name = sees.pane_name.as_str();
     let slug = &resolved.slug;
     let row = match led.master_for_project(project_id) {
         Ok(row) => row,
         Err(e) => {
             tracing::warn!(
-                "[master] {slug}: cannot read {pane_name}'s placement back from the ledger ({e}), so whether it is outdated is not judged this sweep"
+                "[master] {slug}: cannot read {pane_name}'s placement back from the ledger ({e}), so its placement is not reported this sweep"
             );
             return None;
         }
     };
-    let now = standing_now(project_id, resolved, sees.servers.as_ref());
-    let why = match master_build::judge(row.as_ref(), &now) {
-        Judged::Current => {
-            if row.as_ref().is_some_and(|r| r.outdated.is_some()) {
-                let _ = led.note_master_outdated(project_id, None);
-            }
-            masters.note_outdated(project_id, None);
-            return None;
-        }
-        Judged::Outdated(why) => why,
+    let now = inputs_now(project_id, resolved, sees.servers.as_ref());
+    let record = row.as_ref().and_then(|r| r.placed_inputs.as_deref());
+    let placed = record.and_then(master_build::Inputs::from_record);
+    let unreadable = match (record, &placed) {
+        (Some(record), None) => Some(record.chars().take(UNREADABLE_RECORD_CHARS).collect()),
+        _ => None,
     };
-    if row.as_ref().and_then(|r| r.outdated.as_deref()) != Some(why.as_str()) {
-        if let Err(e) = led.note_master_outdated(project_id, Some(&why)) {
-            tracing::warn!(
-                "[master] {slug}: {pane_name} is outdated ({why}) and the verdict could not be written for `forge-runner master status`: {e}"
-            );
-        }
-    }
     let served = masters.get(project_id).map(|(session, _)| session);
     let recorded = row.as_ref().and_then(|r| r.session_id.clone());
     let holding = match (served.as_deref(), recorded.as_deref()) {
@@ -204,15 +194,11 @@ pub(crate) fn outdated_facts(
                 .and_then(|r| r.conversation_id.as_deref())
                 .and_then(|c| conversation_transcript(&resolved.repo_path, c))
         });
-    let placed = row
-        .as_ref()
-        .and_then(|r| r.placed_inputs.as_deref())
-        .and_then(master_build::Inputs::from_record);
-    Some(OutdatedRead {
-        why,
-        inputs: wire::Inputs {
+    Some(PlacementRead {
+        placement: wire::Placement {
             placed: placed.map(|p| p.0),
-            now: now.inputs.0,
+            unreadable,
+            now: now.0,
         },
         holding: holding_wire(&holding),
         turn: turn_wire(turn_of(seen.as_ref(), transcript.as_deref())),
@@ -349,15 +335,15 @@ pub(crate) fn limit_facts(
 pub(crate) fn facts_of(
     seen: &Seen,
     work: &Work,
-    judged: Option<OutdatedRead>,
+    judged: Option<PlacementRead>,
     idle: wire::Idle,
     limit: wire::Limit,
     nudge: wire::NudgeFacts,
     repo: &std::path::Path,
 ) -> wire::Facts {
-    let (outdated, inputs, holding, turn) = match judged {
-        Some(read) => (Some(read.why), Some(read.inputs), read.holding, read.turn),
-        None => (None, None, wire::Holding::Nothing, wire::Turn::Unknown),
+    let (placement, holding, turn) = match judged {
+        Some(read) => (Some(read.placement), read.holding, read.turn),
+        None => (None, wire::Holding::Nothing, wire::Turn::Unknown),
     };
     wire::Facts {
         restarting: seen.restarting.clone(),
@@ -375,8 +361,7 @@ pub(crate) fn facts_of(
             transcript: transcript_wire(None, repo, seen.stored_conversation.as_deref()),
             elsewhere: elsewhere_wire(seen),
         },
-        outdated,
-        inputs,
+        placement,
         holding,
         turn,
         idle,

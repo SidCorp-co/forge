@@ -83,18 +83,20 @@ export const masterFactsSchema = z.strictObject({
 		transcript: z.enum(["present", "absent", "unlocatable"]),
 		elsewhere: z.enum(["none", "running", "unreadable"]),
 	}),
-	/** Why the pane's build or plugins are not the ones this box would place now; null when current or unjudged. */
-	outdated: text.nullable(),
 	/**
-	 * What an outdated pane was placed with and what the box would hand one now, each input by name
-	 * (`wire`, `skill`, `hooks`, `env`, `mcp`, `launch`, `plugins`) with its digest. `placed` is null
-	 * for a pane placed by a build that recorded none. Absent from a box built before inputs were
-	 * reported; null where the pane is not judged outdated.
+	 * What the pane was placed with and what this box would hand one now, each input by name
+	 * (`wire`, `skill`, `hooks`, `env`, `mcp`, `launch`, `plugins`) with its digest; whether the pane
+	 * is outdated is core's reading of the two. `placed` is null where the ledger holds no record of
+	 * what it was placed with, and `unreadable` carries a record it holds but this build cannot read
+	 * (then `placed` is null too). Null where no pane is up or the ledger could not be read.
 	 */
-	inputs: z
-		.strictObject({ placed: masterInputsSchema.nullable(), now: masterInputsSchema })
-		.nullable()
-		.optional(),
+	placement: z
+		.strictObject({
+			placed: masterInputsSchema.nullable(),
+			unreadable: text.nullable(),
+			now: masterInputsSchema,
+		})
+		.nullable(),
 	/** The runs the pane holds, each with what its subagent's own evidence says; whether it is over is core's. */
 	holding: z.discriminatedUnion("kind", [
 		z.strictObject({ kind: z.literal("nothing") }),
@@ -159,7 +161,7 @@ export const masterVerdictRequestSchema = z.strictObject({
 	facts: masterFactsSchema,
 });
 export const MASTER_VERDICT_SHAPE =
-	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, outdated, inputs?, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
+	"{ projectId: uuid, runnerId: uuid (the runner row being swept), facts: { restarting, terminal, standing, pane, capability, serversReadable, work, conversation, placement, holding, turn, idle, limit, nudge } } — see @forge/contracts/master-verdict masterFactsSchema";
 
 /** Why no pane is placed, none ended and none nudged. */
 export const MASTER_WITHHOLD_REASONS = [

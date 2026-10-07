@@ -1,1 +1,0 @@
-**The runner ledger no longer creates the `questions` and `decisions` tables or the five claim and revival columns.** Nothing read or wrote them; an upgraded box drops the two tables on open and keeps the columns inert.

@@ -193,14 +193,20 @@ function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: s
  * Why the pane is outdated, or null where it is current: outdated only where an input it was
  * placed with differs from what the box would hand a pane now, each named — a rebuild of the runner
  * that changes none of them leaves it current. An input one side could not read is no evidence of a
- * change. Only narrows the box's own reading, so a pane the box reports current is current.
+ * change. A pane with no record of what it was placed with, or one the box cannot read, is outdated
+ * by name: it was placed by a build older than any that records one, or adopted by a box that never
+ * placed it, and what it runs on is not known.
  */
-export function outdatedWhy(facts: Pick<MasterFacts, 'outdated' | 'inputs'>): string | null {
-  if (facts.outdated === null) return null;
-  const inputs = facts.inputs;
-  // cm:hack master-inputs until:every box sending master facts runs a build that reports inputs — a box built before them, or a pane placed by one, is judged by the build it was placed under, as it was before
-  if (!inputs?.placed) return facts.outdated;
-  const { placed, now } = inputs;
+export function outdatedWhy(facts: Pick<MasterFacts, 'placement'>): string | null {
+  const placement = facts.placement;
+  if (!placement) return null;
+  if (placement.unreadable !== null) {
+    return `the record of what it was placed with is not one this build reads (${placement.unreadable}), so whether it runs on what this box hands a pane now is not known`;
+  }
+  const { placed, now } = placement;
+  if (placed === null) {
+    return 'this box holds no record of what it was placed with, so whether it runs on what this box hands a pane now is not known';
+  }
   const changed = Object.keys(placed)
     .filter((name) => now[name] !== undefined && now[name] !== placed[name])
     .sort()

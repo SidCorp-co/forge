@@ -39,16 +39,15 @@ pub(crate) fn turn_of(
     }
 }
 
-/// Record that this sweep placed `pane_name` with `with`: the build, plugins
-/// and inputs it was handed, which is what a later build judges it outdated
-/// against. A placement that could not say what it handed records nothing,
+/// Record that this sweep placed `pane_name` with `with`: the inputs it was
+/// handed, which is what core judges it outdated against. A placement that could not say what it handed records nothing,
 /// and the pane is read as outdated by the next sweep.
 pub(crate) fn note_placement(
     led: &Ledger,
     project_id: &str,
     pane_name: &str,
     resolved: &crate::dispatch::Resolved,
-    with: Option<&master_build::Standing>,
+    with: Option<&master_build::Inputs>,
 ) {
     let Some(now) = with else {
         tracing::warn!(
@@ -58,13 +57,8 @@ pub(crate) fn note_placement(
         return;
     };
     let boot = runner_core::inflight::boot_identity().unwrap_or_default();
-    let inputs = now.inputs.to_record();
-    if let Err(e) = led.note_master_placed(
-        project_id,
-        pane_name,
-        &boot,
-        (&now.build, now.plugins.as_deref(), &inputs),
-    ) {
+    let inputs = now.to_record();
+    if let Err(e) = led.note_master_placed(project_id, pane_name, &boot, &inputs) {
         tracing::warn!(
             "[master] {}: {pane_name} was placed and what it was placed with could not be recorded ({e}); the next sweep will read it as outdated",
             resolved.slug

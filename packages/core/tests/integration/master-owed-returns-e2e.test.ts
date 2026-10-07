@@ -142,7 +142,7 @@ const verdictFacts = {
   serversReadable: true,
   work: { poolWaits: false, jobPanes: 0 },
   conversation: { id: null, transcript: 'absent', elsewhere: 'none' },
-  outdated: null,
+  placement: null,
   holding: { kind: 'nothing' },
   turn: { kind: 'ended' },
   idle: {

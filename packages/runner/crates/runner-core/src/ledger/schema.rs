@@ -118,10 +118,7 @@ pub(crate) const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "host_start", "TEXT"),
     ("runs", "refusal_wrote_ending", "INTEGER"),
     ("masters", "session_id", "TEXT"),
-    ("masters", "placed_build", "TEXT"),
-    ("masters", "placed_plugins", "TEXT"),
     ("masters", "placed_at", "INTEGER"),
-    ("masters", "outdated", "TEXT"),
     ("masters", "unattributed", "TEXT"),
     ("masters", "placed_inputs", "TEXT"),
 ];

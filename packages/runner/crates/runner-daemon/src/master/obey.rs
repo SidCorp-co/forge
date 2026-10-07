@@ -464,7 +464,7 @@ fn placed(
     t: &Turn<'_>,
     ledger: &mut Option<Ledger>,
     inherited: &[InheritedRun],
-    placing: (bool, Option<master_build::Standing>),
+    placing: (bool, Option<master_build::Inputs>),
     hosts: &dyn subagent_host::Hosts,
 ) {
     let (masters, project_id) = (t.masters(), t.project_id());
