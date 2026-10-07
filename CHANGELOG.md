@@ -3144,6 +3144,10 @@
 
 ### Fixed
 
+- **Typing an issue's key into the issues search finds that issue.** `ISS-1280`, `iss-1280` and
+  `1280` show that one issue rather than the issues mentioning it, and a key this project does not
+  hold is said so by name.
+
 - **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while
   chats close, says how often it paused new work, leaves new chats open, and never advises
   restarting onto an older binary (ISS-1223).

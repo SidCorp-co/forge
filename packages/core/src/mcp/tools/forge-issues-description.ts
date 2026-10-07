@@ -29,7 +29,8 @@ export function forgeIssuesDescription(refClause: string): string {
     '"follow the pattern at <path>" go stale and outrank live exploration. Body shape: guides ' +
     'pipeline-and-issue-lifecycle and writing-an-issue; mermaid fences render; ATTACH .html ' +
     'rather than pasting it.\n' +
-    'FILTERS. search: a literal substring or identifier-split token over ' +
+    'FILTERS. search: an issue key (ISS-42, 42, or a prefix this project holds) answers that ' +
+    'one row or is refused by name; anything else is a literal substring or identifier-split token over ' +
     'title/description/plan/acceptanceCriteria, with matchedFields naming which matched per ' +
     'row, so a clause cited only on a criterion is findable. label/module: a name or uuid or ' +
     'an array of either (OR); an unknown name returns an EMPTY set, and module matches MODULE ' +

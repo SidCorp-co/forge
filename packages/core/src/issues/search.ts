@@ -46,6 +46,7 @@ import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
+import { IssueSearchKeyRefused, type IssueSearchTerm, readIssueSearchTerm } from './search-term.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 export interface IssueBuckets {
@@ -143,6 +144,16 @@ const idParamSchema = z.object({ id: z.uuid() });
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+/** A key this project cannot answer is refused by name with its own code, never searched as text. */
+async function readSearchTermOrRefuse(projectId: string, raw: string): Promise<IssueSearchTerm> {
+  try {
+    return await readIssueSearchTerm(projectId, raw);
+  } catch (err) {
+    if (!(err instanceof IssueSearchKeyRefused)) throw err;
+    throw new HTTPException(err.status, { message: err.message, cause: { code: err.code } });
+  }
+}
 
 const forbidden = () =>
   new HTTPException(403, { message: 'not a project member', cause: { code: 'FORBIDDEN' } });
@@ -262,10 +273,12 @@ searchRoutes.get(
       axisFree.push(c);
     };
 
-    for (const side of issueArchiveSide(q.includeArchived)) both(side);
-    if (q.q) {
-      both(buildIssueSearchCondition(q.q));
+    const term = q.q ? await readSearchTermOrRefuse(projectId, q.q) : null;
+    for (const side of issueArchiveSide(q.includeArchived === true || term?.kind === 'key')) {
+      both(side);
     }
+    if (term?.kind === 'key') both(eq(issues.issSeq, term.issSeq));
+    if (term?.kind === 'text') both(buildIssueSearchCondition(term.text));
     if (q.orWaitingOnPerson && !q.status?.length) {
       throw badRequest({
         orWaitingOnPerson:
@@ -336,7 +349,7 @@ searchRoutes.get(
       orderBy: buildIssueOrderBy(q.sort),
       limit: q.limit,
       offset: q.offset,
-      matchedFields: q.q ? matchedSearchFieldsSql(q.q) : null,
+      matchedFields: term?.kind === 'text' ? matchedSearchFieldsSql(term.text) : null,
     });
 
     const total = Number(n);

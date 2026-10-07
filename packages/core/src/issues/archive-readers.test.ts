@@ -78,6 +78,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',
+  'issues/search-term.ts': 'whether the project holds the key a search typed, retrieval by key',
   'issues/steer-routes.ts': 'by issue id',
   'issues/transition.ts': 'dependents over edges of the issues being moved',
   'issues/update-service.ts': 'guards by issue id inside a write',

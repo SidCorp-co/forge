@@ -8,6 +8,7 @@ import {
   type IssueSearchField,
   matchedSearchFieldsSql,
 } from './search-predicate.js';
+import { readIssueSearchTerm } from './search-term.js';
 
 export type IssueListFilters = {
   status?: IssueStatus | undefined;
@@ -49,7 +50,7 @@ export type IssueListRow = {
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  /** ISS-960 — present only when the query carried `search`. */
+  /** ISS-960 — present only when the query carried a text `search`, never a key. */
   matchedFields?: IssueSearchField[];
 };
 
@@ -59,7 +60,11 @@ export async function listIssueRows(
   filters: IssueListFilters | undefined,
   limit: number,
 ): Promise<IssueListRow[]> {
-  const conds = [eq(issues.projectId, projectId), ...issueArchiveSide(filters?.includeArchived)];
+  const term = filters?.search ? await readIssueSearchTerm(projectId, filters.search) : null;
+  const conds = [
+    eq(issues.projectId, projectId),
+    ...issueArchiveSide(filters?.includeArchived === true || term?.kind === 'key'),
+  ];
   if (filters?.status) conds.push(eq(issues.status, filters.status));
   if (filters?.statusNot) conds.push(ne(issues.status, filters.statusNot));
   if (filters?.priority) conds.push(eq(issues.priority, filters.priority));
@@ -68,7 +73,8 @@ export async function listIssueRows(
   if (filters?.createdAfter) conds.push(gte(issues.createdAt, filters.createdAfter));
   if (filters?.createdBefore) conds.push(lt(issues.createdAt, filters.createdBefore));
   if (filters?.updatedAfter) conds.push(gte(issues.updatedAt, filters.updatedAfter));
-  if (filters?.search) conds.push(buildIssueSearchCondition(filters.search));
+  if (term?.kind === 'key') conds.push(eq(issues.issSeq, term.issSeq));
+  if (term?.kind === 'text') conds.push(buildIssueSearchCondition(term.text));
 
   for (const [values, resolve] of [
     [filters?.label, resolveLabelIdsTolerant],
@@ -108,9 +114,10 @@ export async function listIssueRows(
     updatedAt: issues.updatedAt,
   };
 
-  const selected = filters?.search
-    ? db.select({ ...projection, matchedFields: matchedSearchFieldsSql(filters.search) })
-    : db.select(projection);
+  const selected =
+    term?.kind === 'text'
+      ? db.select({ ...projection, matchedFields: matchedSearchFieldsSql(term.text) })
+      : db.select(projection);
 
   return selected
     .from(issues)
