@@ -1,1 +1,0 @@
-**A decision park now waits on the design drawn under its issue.** The approval answers it; Approve says why it is off and which designs it strands, in your language; undefer asks why; early approvals are recorded as landings.
