@@ -5,7 +5,8 @@
  * runs that agent revises and proposes it again, or drops it (`standing-draft.ts:draftTurn`). The
  * box carrying the master reads it on every sweep, so a return is master work whether or not its
  * requirement.returned wake was heard. A person's own returned draft waits on that person and is
- * not listed.
+ * not listed, and so is one whose requirement is deferred: it owes nothing until it is re-planned
+ * (undeferred), when it is listed again (hop REQ-3..20, returned "out of v1" and deferred).
  */
 
 import { requirementKey } from '@forge/contracts/requirements';
@@ -37,7 +38,7 @@ export async function owedRequirementRevisions(
     .where(
       and(
         eq(requirements.projectId, projectId),
-        notInArray(requirements.status, ['dropped', 'accepted']),
+        notInArray(requirements.status, ['dropped', 'accepted', 'deferred']),
         eq(requirementRevisions.state, 'draft'),
         eq(requirementRevisions.authorAgency, 'agent'),
         isNotNull(requirementRevisions.returnReason),

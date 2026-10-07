@@ -53,6 +53,13 @@ export function blockedByUnsettledSql(args: { issueId: SQL; projectId: SQL | str
   )})`;
 }
 
+/** The `iss_seq` of each blocker whose live `blocks` edge holds this issue, by the same predicate. */
+export function holdingBlockerSeqsSql(args: { issueId: SQL; projectId: SQL }): SQL {
+  return sql`ARRAY(SELECT b.iss_seq ${liveBlockingEdges(
+    sql`d.project_id = ${args.projectId} AND d.to_issue_id = ${args.issueId} AND ${blockerUnsettledSql(sql`b`)}`,
+  )} ORDER BY b.iss_seq)`;
+}
+
 /** One live `blocks` edge, both ends as they stand, and whether its blocker still holds. */
 export interface BlockingEdge {
   edgeId: string;

@@ -1,0 +1,1 @@
+**A committed move answers success, not a 500.** A design hold follows the live revision, an answer leaves an issue event and reaches the pass nudge, a blocked row names its blocker, and a deferred requirement owes no revise.

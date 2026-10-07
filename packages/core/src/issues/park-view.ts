@@ -184,10 +184,12 @@ function answerAfter(replies: readonly ParkComment[], recordAt: string): IssuePa
     return !c.byDevice && !announcesAMove(c.body) && !recordIn(c);
   });
   if (!reply) return null;
+  // an `answer` record carries its text in a field, not a body (questions/answer-record.ts)
+  const relayed = fieldsOf(reply, 'answer')?.find((f) => f.key === 'answer')?.value;
   return {
     commentId: commentOf(reply) ?? reply.id,
     postedAt: reply.createdAt.toISOString(),
-    text: reply.body,
+    text: reply.body || relayed || '',
   };
 }
 

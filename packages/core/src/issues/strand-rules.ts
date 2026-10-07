@@ -4,6 +4,7 @@
  * rather than a row falling out of the sweep — the hole ISS-1122 was filed about.
  */
 
+import { TAKEABLE_STATUSES } from '@forge/contracts/issue-machine';
 import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { IssueStatus } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
@@ -11,8 +12,12 @@ import type { LeaseReading } from './session-claim.js';
 
 type ReleaseHold = Omit<ReleaseHoldView, 'heldAt'>;
 
-/** Whose move it is for a stranded row to leave the status it is stuck at. */
-type StrandOwner = 'agent' | 'human';
+/**
+ * Whose move it is for a stranded row to leave the status it is stuck at. `blocker` is what
+ * withholds a takeable row from dispatch — a holding `blocks` edge, an unapproved design, an
+ * unsettled contract wait — whose own work moves it, never this row's.
+ */
+type StrandOwner = 'agent' | 'human' | 'blocker';
 
 type StrandRule =
   | {
@@ -102,6 +107,57 @@ export interface StrandEvidence {
   /** The automatic release's standing hold on the row, why it is not taking it (ISS-1215). */
   releaseHold?: ReleaseHold | null;
   step?: WorkStep | null;
+  /** What withholds a takeable row from dispatch, read by the admissible list's own predicates. */
+  withheld?: StrandWithheld | null;
+}
+
+/** The gates the admissible list withholds a takeable row behind, as the sweep read them. */
+export interface StrandWithheld {
+  /** Keys of the blockers whose live `blocks` edge holds it (`blocked-by.ts:blockerUnsettledSql`). */
+  blockers: readonly string[];
+  /** It builds a workflow whose design is not approved (`designUnapprovedSql`). */
+  design: boolean;
+  /** It waits on a contract version no approved version settles (`contractWaitUnsettledSql`). */
+  contract: boolean;
+}
+
+/**
+ * A takeable row the admissible list withholds is waiting on what withholds it, not on a dispatch:
+ * no master is handed it, so "the dispatch did not happen" would name a cause that is not there
+ * (hop ISS-72..76, each held by a `blocks` edge from an open ISS-71).
+ */
+export function withheldWait(
+  status: string,
+  withheld: StrandWithheld | null | undefined,
+): { waitingFor: string; owes: StrandOwner; reason: string } | null {
+  if (!withheld || !(TAKEABLE_STATUSES as readonly string[]).includes(status)) return null;
+  const { blockers, design, contract } = withheld;
+  if (blockers.length > 0) {
+    const named = blockers.join(', ');
+    const edges = blockers.length === 1 ? 'a live `blocks` edge' : 'live `blocks` edges';
+    return {
+      waitingFor: `${named} to settle (${edges} hold it)`,
+      owes: 'blocker',
+      reason: `${edges} from ${named} hold it, so no run is handed it until ${blockers.length === 1 ? 'that blocker settles' : 'those blockers settle'}: it is waiting on ${blockers.length === 1 ? 'its blocker' : 'its blockers'}, not on a dispatch`,
+    };
+  }
+  if (design) {
+    return {
+      waitingFor: 'the design of the workflow it builds to be approved',
+      owes: 'blocker',
+      reason:
+        'it builds a workflow whose design is not approved, so no run is handed it until a revision is approved: it is waiting on that approval, not on a dispatch',
+    };
+  }
+  if (contract) {
+    return {
+      waitingFor: 'an approved contract version that settles its wait',
+      owes: 'blocker',
+      reason:
+        'it waits on a contract version no approved version settles, so no run is handed it until one is approved: it is waiting on that contract, not on a dispatch',
+    };
+  }
+  return null;
 }
 
 /** Who a held `awaiting_release` row waits on: the automatic release's hold outranks the rule. */
@@ -166,6 +222,9 @@ export function strandReason(args: {
       owes: fallbackOwner,
     };
   }
+
+  const withheld = withheldWait(status, evidence.withheld);
+  if (withheld) return { reason: withheld.reason, owes: withheld.owes };
 
   if (status === 'open' && !evidence.poolHasRunner) {
     return {
