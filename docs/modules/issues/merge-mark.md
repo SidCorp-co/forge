@@ -123,11 +123,24 @@ why, an amnesty that ends as each of those issues releases.
 
 ## What a design approval writes
 
-A workflow design revision drawn under an issue is that issue's deliverable, so approving it is where
-the work landed. `decideDesignAs` (`packages/core/src/workflows/design-service.ts`) records it in the
-decision's own transaction through `markApprovedDesign` (`packages/core/src/issues/design-landing.ts`),
+A workflow design revision drawn under a design issue is that issue's deliverable, so approving it is
+where the work landed. `decideDesignAs` (`packages/core/src/workflows/design-service.ts`) records it in
+the decision's own transaction through `markApprovedDesign` (`packages/core/src/issues/design-landing.ts`),
 whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`. Where it
-writes, it also sets `merged_artifacts` to the revision's one `design` artifact, `<flow>@rev<n>`:
+writes, it also sets `merged_artifacts` to the revision's one `design` artifact, `<flow>@rev<n>`.
+
+An issue linked as the build of a workflow (`workflow_builds`, `POST …/workflows/:workflow/builds`) is a
+build issue: its deliverable is that build, so a revision drawn under it is not its landing. The
+approval writes no mark there and posts a notice naming the revision as evidence, the build it delivers
+and the mark it leaves; the decision answers `designIssue.action` `evidence`, `why` naming the workflow it
+builds. The link is the one signal Forge holds of what an issue delivers — the same link
+`WORKFLOW_DESIGN_ISSUE_IS_BUILD` keeps apart from the drawing issue of one workflow — so an issue with no
+build link is read as a design issue. Measured on dev.87, 2026-10-07: HOP ISS-69, building
+`hop-product-tour`, carried `merged_at` from the approval of `hop-attention-queue-ux` revision 1 while open
+and unbuilt; the forecast read it landed, and its build's own landing would have met
+`MARK_ALREADY_STANDS`. Migration 0435 clears the marks an approval wrote on an unreleased build issue,
+attributing each by the approval's notice at its stamp, and aborts naming any it cannot attribute. On a
+design issue the table below holds:
 
 | shape | the row holds | the approval |
 |---|---|---|
@@ -143,6 +156,10 @@ shipped and posts a notice saying so. This is the one place a mark standing
 on somebody's word is replaced rather than refused `MARK_ALREADY_STANDS`: a landing written at
 propose names a revision that was not yet approved, and the approval is better evidence than that
 word (ISS-262). Like every mark it moves no status.
+
+The forecast (`packages/core/src/forecast/`) does not read an issue landed by `merged_at` alone: it reads
+landed by status — `awaiting_release` or `closed` — so an open issue carrying a mark is forecast as work,
+holds its dependents, and is no sample of the landed history.
 
 ## What a mark does to the issue
 

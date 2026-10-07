@@ -174,6 +174,31 @@ describe('forecast read', () => {
   });
 });
 
+describe('a merged mark on an open issue is not a landing', () => {
+  it('forecasts an open issue carrying a mark as work, keeps it out of the history, and holds its dependent behind it', async () => {
+    const w = await world();
+    await landHistory(w, HISTORY);
+    const marked = await issue(w, { status: 'open', createdAt: ago(2), mergedAt: ago(1) });
+    await db.execute(sql`
+      INSERT INTO activity_log (issue_id, actor_type, actor_id, actor_agency, action, payload, created_at)
+      VALUES (${marked.id}, 'user', ${w.userId}, 'human', 'issue.statusChanged',
+              ${JSON.stringify({ from: 'open', to: 'in_progress' })}::jsonb, ${ago(1.5).toISOString()})
+    `);
+    const dependent = await issue(w, { status: 'open', createdAt: ago(1) });
+    await db.execute(sql`
+      INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
+      VALUES (${w.projectId}, ${marked.id}, ${dependent.id}, 'blocks')
+    `);
+
+    const f = (await read(w, `/issues/${marked.key}`)).forecast as Body;
+    expect(f.kind, JSON.stringify(f)).toBe('forecast');
+    expect(f.basis).toMatchObject({ n: HISTORY });
+    const held = (await read(w, `/issues/${dependent.key}`)).forecast as Body;
+    expect(held.kind, JSON.stringify(held)).toBe('forecast');
+    expect(held.waitsOn).toEqual([marked.key]);
+  });
+});
+
 describe('forecast below the history floor', () => {
   it('gives no number, only the sample size and the floor', async () => {
     const w = await world();

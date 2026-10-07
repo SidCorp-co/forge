@@ -38,7 +38,10 @@ names the workflow it builds is not dispatched while that design is not approved
    revision still owed or a deviation accepted — so read it before linking or building, and a build job is
    given it with the approved revision. An approval records the revision as the landing of the issue it was
    drawn under — its merged mark is written, or re-pointed from a revision only proposed, unless that issue
-   is already closed or dropped — and moves no status: that issue's run, or the release that claims it, takes its next move. A return reopens
+   is already closed or dropped — and moves no status: that issue's run, or the release that claims it, takes its next move.
+   An issue linked as the build of a workflow delivers that build, so a revision drawn under it is never its
+   landing: the approval posts a notice naming the revision as evidence, and the issue is marked when its
+   build lands. Draw a design that is the deliverable under an issue of its own. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflow\`, so the issue is admissible work again; a design issue standing at a park keeps
    its park and only gets the reason posted. **To park an issue until the approver decides**, park it at
