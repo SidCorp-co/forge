@@ -132,6 +132,17 @@ const EFFECT: Rule[] = [
   },
 ];
 
+/** Core's sentences on a feedback item that are not whose turn it is: why a shipped fix told nobody, the reason an automatic verify records, why triage ran with no dedup. */
+const FEEDBACK_NOTE: Rule[] = [
+  { re: new RegExp("^The reporter has turned this notice off, so it reached nobody: tell them yourself\\.$"), key: "feedback.notice.turnedOff" },
+  { re: new RegExp("^The reporter is an agent, which has no bell: tell it where it listens\\.$"), key: "feedback.notice.agent" },
+  { re: new RegExp("^It shipped before Forge told reporters when a release shipped\\.$"), key: "feedback.notice.before" },
+  { re: new RegExp("^(?<release>\\S+) shipped it and sent the reporter no notice\\.$"), key: "feedback.notice.silent", vars: (g) => ({ release: g.release ?? "" }) },
+  { re: new RegExp("^No release carries it, so none told the reporter: tell them yourself\\.$"), key: "feedback.notice.noRelease" },
+  { re: new RegExp("^Verified automatically after (?<n>\\d+) days with no reply$"), key: "feedback.notice.autoVerified", vars: (g) => ({ n: g.n ?? "" }) },
+  { re: new RegExp("^triage without dedup: the item's vector is (?<status>.+)$"), key: "feedback.notice.noDedup", vars: (g) => ({ status: g.status ?? "" }) },
+];
+
 function apply(rules: Rule[], text: string, language: string): string | null {
   for (const rule of rules) {
     const m = rule.re.exec(text);
@@ -155,6 +166,8 @@ function localize(rules: Rule[], text: string, language: string): string {
 export const standingWho = (who: string, language: string) => localize(WHO, who, language);
 export const standingAct = (act: string, language: string) => localize(ACT, act, language);
 export const standingEffect = (effect: string, language: string) => localize(EFFECT, effect, language);
+/** A feedback item's own core sentence (a ship notice's reason, an automatic verify's) in `language`; one no pattern names reads as core wrote it. */
+export const feedbackNote = (note: string, language: string) => localize(FEEDBACK_NOTE, note, language);
 
 /** A waiting-on with its `who`, `act` and `effect` in `language`; its `rule` and `kind` as core sent them. */
 export function localizeWaiting<W extends { who: string; act: string; effect?: string | undefined }>(w: W, language: string): W {
@@ -164,9 +177,9 @@ export function localizeWaiting<W extends { who: string; act: string; effect?: s
 }
 
 /** The sentence `text` reads as in `language` by a pattern, or null where none names it; English runs through its pattern too, which the round-trip test holds to core's sentence. */
-export function standingRead(kind: "who" | "act" | "effect", text: string, language: string): string | null {
+export function standingRead(kind: keyof typeof STANDING_RULES, text: string, language: string): string | null {
   return apply(STANDING_RULES[kind] as Rule[], text, language);
 }
 
 /** Every pattern of `who`, `act` and `effect` the module reads, for the test that holds a sentence to each. */
-export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT } as const;
+export const STANDING_RULES = { who: WHO, act: ACT, effect: EFFECT, feedbackNote: FEEDBACK_NOTE } as const;

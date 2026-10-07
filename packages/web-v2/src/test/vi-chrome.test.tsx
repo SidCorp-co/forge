@@ -13,6 +13,10 @@ const ENGLISH_CHROME = [
   "needs you", "nothing", "waiting", "lands", "late", "progress", "requirements", "untriaged", "overview", "dashboard", "settings",
   "sign out", "next release", "open full page", "show", "hide", "close", "cancel", "loading", "failed", "couldn't", "no ", "search",
   "waits on", "then", "forecast", "landed", "shipped", "feedback about",
+  "feedback", "triage", "funnel", "reporter", "reporters", "decline", "snooze", "accept", "reopen", "severity", "carried by", "sent",
+  "message", "internal note", "preview", "history", "mockups", "route it", "unknown", "flagged", "description", "answered", "confirm",
+  "what happened", "promote", "move it", "why", "status", "state", "sensitive", "clarification", "verifies", "duplicate of", "original",
+  "until", "subject", "attention", "back to", "group by", "facts", "lifecycle", "optional", "add note", "send", "reject", "suggested",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {

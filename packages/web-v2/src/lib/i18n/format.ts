@@ -44,3 +44,17 @@ export function formatRelative(iso: string | null | undefined, language: string,
   if (h < 24) return t("time.hoursAgo", { n: h });
   return t("time.daysAgo", { n: Math.floor(h / 24) });
 }
+
+/** `5m`, `3h`, `2d`, `4w` and their Vietnamese reading: the compact age a list's age column shows. */
+export function formatAge(iso: string | null | undefined, language: string, now: number = Date.now()): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const t = productCopy(language);
+  const s = Math.max(0, Math.round((now - then) / 1000));
+  if (s < 60) return t("common.age.now");
+  if (s < 3600) return t("common.age.minutes", { n: Math.floor(s / 60) });
+  if (s < 86_400) return t("common.age.hours", { n: Math.floor(s / 3600) });
+  if (s < 86_400 * 14) return t("common.age.days", { n: Math.floor(s / 86_400) });
+  return t("common.age.weeks", { n: Math.floor(s / (86_400 * 7)) });
+}

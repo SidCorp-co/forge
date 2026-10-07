@@ -6,6 +6,7 @@ import { LandsThisWeek, LateItems } from "@/features/project-dashboard/component
 import type { PlanRow } from "@/features/project-dashboard/ba-derive";
 import { NavRail } from "@/design/patterns/nav-rail";
 import { PROJECT_ITEMS, WORKSPACE_ITEMS } from "@/features/shell";
+import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
 // The screens the vi walking test renders. Adding a screen is one entry: a name and a function that
 // returns it filled with data that carries NO English words of its own (fixture content is not chrome).
@@ -44,4 +45,10 @@ export const CHROME_SCREENS: ChromeScreen[] = [
     name: "Navigation rail",
     render: () => <NavRail workspaceItems={WORKSPACE_ITEMS} projectItems={PROJECT_ITEMS as never} activeKey="proj-overview" />,
   },
+  { name: "Feedback list", render: feedbackList },
+  { name: "Feedback detail", render: feedbackDetail },
+  { name: "Feedback peek", render: feedbackPeek },
+  { name: "Feedback facts and history", render: feedbackFacts },
+  { name: "Feedback triage and message forms", render: feedbackForms },
+  { name: "Feedback filing form", render: feedbackFilingForm },
 ];

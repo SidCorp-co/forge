@@ -4,9 +4,10 @@ import { FEEDBACK_KINDS, FEEDBACK_SEVERITIES } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, enumLabel, Field, Input, NativeSelect, statusReading, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useCreateFeedback, usePromoteFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
-import { type PickableTarget, TARGET_HINT, TargetPicker } from "./target-picker";
+import { type PickableTarget, TargetPicker } from "./target-picker";
 
 export interface FeedbackDraft {
   kind: FeedbackKind;
@@ -30,6 +31,8 @@ export function FeedbackForm({
   agentReport?: string;
   draft?: FeedbackDraft;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const create = useCreateFeedback(projectId);
   const promote = usePromoteFeedback(projectId);
   const write = agentReport ? promote : create;
@@ -56,39 +59,39 @@ export function FeedbackForm({
         else create.mutate(request, { onSuccess: (r) => onDone(r.feedback.key) });
       }}
     >
-      <Field label="Title" required>
+      <Field label={t("feedback.form.title")} required>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[10rem_10rem_minmax(0,1fr)]">
-        <Field label="Kind">
+        <Field label={t("feedback.form.kind")}>
           <NativeSelect
             value={kind}
             onChange={(e) => setKind(e.target.value as FeedbackKind)}
-            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k) }))}
+            options={FEEDBACK_KINDS.filter((k) => k !== "contract_change").map((k) => ({ value: k, label: enumLabel("feedbackKind", k, language) }))}
           />
         </Field>
-        <Field label="Severity">
+        <Field label={t("feedback.form.severity")}>
           <NativeSelect
             value={severity}
             onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v).label }))}
+            options={FEEDBACK_SEVERITIES.map((v) => ({ value: v, label: statusReading("severity", v, language).label }))}
           />
         </Field>
-        <Field label="About" hint={TARGET_HINT}>
+        <Field label={t("feedback.form.about")} hint={t("feedback.target.hint")}>
           <TargetPicker projectId={projectId} type={targetType} onType={setTargetType} value={target} onValue={setTarget} />
         </Field>
       </div>
-      <Field label="What happened" hint="On a sensitive project personal data is scrubbed when it is saved">
+      <Field label={t("feedback.form.body")} hint={t("feedback.form.bodyHint")}>
         <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} />
       </Field>
-      {agentReport ? <p className="text-12-5 text-muted">Copied from agent report {agentReport.slice(0, 8)}. The item keeps a link to the report, and the report shows the item it became.</p> : null}
+      {agentReport ? <p className="text-12-5 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
       <RefusalLine error={write.error} />
       <div className="flex gap-2">
         <Button type="submit" variant="primary" size="sm" loading={write.isPending} disabled={!title.trim() || !target.trim()}>
-          {agentReport ? "Promote to feedback" : "Send feedback"}
+          {agentReport ? t("feedback.form.promote") : t("feedback.form.send")}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => onDone("")}>
-          Cancel
+          {t("feedback.form.cancel")}
         </Button>
       </div>
     </form>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useUrlChoice } from "../hooks/use-url-params";
 import type { IconName } from "../icons/icon";
 import { SegmentedControl } from "../primitives/segmented-control";
@@ -34,11 +35,12 @@ export function ViewModeSwitcher<T extends string>({
   /** `header` shows from 768px up (PageTitle's `after`); `toolbar` only below it. */
   placement: "header" | "toolbar";
 }) {
+  const t = useCopy();
   return (
     <span
       className={placement === "header" ? "ml-2 inline-flex max-md:hidden" : "inline-flex md:hidden"}
       data-testid={`view-mode-${placement}`}
-      title="Group by"
+      title={t("common.groupBy")}
     >
       <SegmentedControl options={modes.map((m) => ({ ...m }))} value={value} onChange={onChange} />
     </span>
