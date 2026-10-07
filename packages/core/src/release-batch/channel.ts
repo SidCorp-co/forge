@@ -1,3 +1,4 @@
+import type { ReleaseVerifiedBy } from '@forge/contracts/releases';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { effectiveConfig, getIntegration } from '../integrations/index.js';
@@ -7,6 +8,7 @@ import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   type CloseVerification,
   RELEASE_PROCEDURE_FACT,
+  type RecordedVerification,
   type ReleaseChannel,
   type ReleasePlan,
   type ReleaseRollback,
@@ -127,6 +129,25 @@ export function closeVerification(channels: readonly ReleaseChannel[]): CloseVer
   if (cfg) return { kind: 'probed', cfg };
   const provider = channels.find((c) => c.providerRecord);
   return provider ? { kind: 'provider', channel: provider } : { kind: 'deployment' };
+}
+
+/**
+ * How a release is proved, and through which provider: as its run recorded it, else as the project
+ * declares it now. `null` where neither names one: no production binding, or a probe declaration a
+ * release would refuse.
+ */
+export async function releaseVerifiedBy(
+  projectId: string,
+  recorded: RecordedVerification | null,
+): Promise<ReleaseVerifiedBy | null> {
+  const channels = await resolveReleaseChannels(projectId);
+  const channel = channels[0];
+  const provider = channel
+    ? (getIntegration(channel.provider)?.presentation?.label ?? channel.provider)
+    : null;
+  if (recorded) return { kind: recorded, provider };
+  if (!channel || refusedVerifyBindings(channels).length > 0) return null;
+  return { kind: closeVerification(channels).kind, provider };
 }
 
 /** The production binding's release runner label, or `null` where none is declared. */

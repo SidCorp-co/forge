@@ -109,6 +109,10 @@ describe('a release approval decided reaches the run that asked', () => {
     expect(inbox[0]).toMatchObject({ kind: 'answer', intent_id: approvalId });
     expect(inbox[0]?.body).toContain(`Release approval ${approvalId} was APPROVED`);
     expect(inbox[0]?.body).toContain(`release run ${runId} are allowed now`);
+    const page = await call('owner', 'GET', '/releases/0.1.0');
+    expect((page.body.release as { verifiedBy: unknown }).verifiedBy).toMatchObject({
+      kind: 'deployment',
+    });
   });
 
   it('hands a return to the release session with its reason', async () => {
