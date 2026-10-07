@@ -2383,21 +2383,29 @@ done
         let _stand_in = testing::StandIn::here(says);
         let cwd = crate::test_scratch::Scratch::new("nounit-cwd");
         let name = session_name(MASTER_PREFIX, &format!("nounit-{}", std::process::id()));
-        // The older session ends first, so the master is the last one standing when it exits.
-        let lives = if already_up {
-            let older = session_name(RUN_PREFIX, &format!("older-{}", std::process::id()));
-            let up = tmux(&["new-session", "-d", "-s", &older, "sh", "-c", "sleep 1"])
+        // The older session outlives the placement and is ended after it, so the server is up
+        // when the master is placed and the master is the last one standing when it exits.
+        let older = session_name(RUN_PREFIX, &format!("older-{}", std::process::id()));
+        if already_up {
+            let up = tmux(&["new-session", "-d", "-s", &older, "sh", "-c", "sleep 60"])
                 .await
                 .expect("the older runner's session is started");
             assert!(up.status.success(), "the server is up before the daemon");
-            "sleep 3"
-        } else {
-            "sleep 1"
-        };
-        let argv = ["sh", "-c", lives].map(String::from);
+            assert!(
+                !names_with_prefix("").await.contains(&KEEPALIVE.to_string()),
+                "the server an older runner left holds no keepalive"
+            );
+        }
+        let argv = ["sh", "-c", "sleep 2"].map(String::from);
         ensure(&name, cwd.path(), &argv, &[], None)
             .await
             .expect("the master is placed");
+        if already_up {
+            let ended = tmux(&["kill-session", "-t", &session_target(&older)])
+                .await
+                .expect("the older session is ended");
+            assert!(ended.status.success(), "the older session was still there");
+        }
         let held = names_with_prefix("").await.contains(&KEEPALIVE.to_string());
         // Read as the sweep reads, until the master's exit is read as one: a tmux slow to answer
         // under a loaded test run reads `Unanswered` for a moment, and only a server that is

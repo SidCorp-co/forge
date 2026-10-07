@@ -3265,9 +3265,9 @@
   record had its whole pool report refused; that entry is now dropped alone, and named once in
   the log (ISS-1344).
 
-- **A master's exit is recorded on a box without a user systemd manager** (macOS, containers).
-  Such a box lost the exit of a master that was its only pane, including after an upgrade from an
-  older runner; it now reads that master as gone (ISS-1344).
+- **A master's exit is recorded on a box without a user systemd manager** (macOS, containers),
+  including one upgraded from an older runner. Such a box lost the exit of a master that was its
+  only pane (ISS-1344).
 
 - **`forge-runner doctor` fails a `.claude.json` the box cannot write folder trust into**, where
   `projects` or the checkout's entry is not an object, instead of warning, and says what edit

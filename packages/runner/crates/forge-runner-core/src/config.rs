@@ -840,10 +840,7 @@ mod tests {
 
         let mut literal_seen = std::collections::BTreeMap::<String, Vec<String>>::new();
         for (rel, text) in crate_sources(&crates) {
-            for (n, line) in text.lines().enumerate() {
-                if line.trim_start().starts_with("//") {
-                    continue;
-                }
+            for (n, line) in without_comments(&text).lines().enumerate() {
                 let hits = segment_needles()
                     .iter()
                     .map(|needle| line.matches(needle.as_str()).count())
@@ -1138,6 +1135,108 @@ mod tests {
             .collect()
     }
 
+    /// `text` with every `//` and `/* */` comment blanked, strings and char
+    /// literals kept as they are, and every newline kept so a line number holds.
+    fn without_comments(text: &str) -> String {
+        let c: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0;
+        let keep_newlines = |out: &mut String, from: &[char]| {
+            out.extend(from.iter().filter(|ch| **ch == '\n'));
+        };
+        while i < c.len() {
+            let next = c.get(i + 1).copied();
+            if c[i] == '/' && next == Some('/') {
+                while i < c.len() && c[i] != '\n' {
+                    i += 1;
+                }
+            } else if c[i] == '/' && next == Some('*') {
+                let (start, mut depth) = (i, 0usize);
+                while i < c.len() {
+                    if c[i] == '/' && c.get(i + 1) == Some(&'*') {
+                        depth += 1;
+                        i += 2;
+                    } else if c[i] == '*' && c.get(i + 1) == Some(&'/') {
+                        depth -= 1;
+                        i += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                keep_newlines(&mut out, &c[start..i.min(c.len())]);
+            } else if c[i] == 'r' && matches!(next, Some('"') | Some('#')) {
+                let start = i;
+                i += 1;
+                let mut hashes = 0;
+                while c.get(i) == Some(&'#') {
+                    hashes += 1;
+                    i += 1;
+                }
+                if c.get(i) != Some(&'"') {
+                    out.extend(&c[start..i]);
+                    continue;
+                }
+                i += 1;
+                while i < c.len()
+                    && !(c[i] == '"' && (1..=hashes).all(|k| c.get(i + k) == Some(&'#')))
+                {
+                    i += 1;
+                }
+                i = (i + 1 + hashes).min(c.len());
+                out.extend(&c[start..i]);
+            } else if c[i] == '"' {
+                let start = i;
+                i += 1;
+                while i < c.len() && c[i] != '"' {
+                    i += if c[i] == '\\' { 2 } else { 1 };
+                }
+                i = (i + 1).min(c.len());
+                out.extend(&c[start..i]);
+            } else if c[i] == '\'' && (next == Some('\\') || c.get(i + 2) == Some(&'\'')) {
+                let start = i;
+                i += if next == Some('\\') { 3 } else { 2 };
+                while i < c.len() && c[i] != '\'' {
+                    i += 1;
+                }
+                i = (i + 1).min(c.len());
+                out.extend(&c[start..i]);
+            } else {
+                out.push(c[i]);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// A needle in a comment is no path segment, and one in a string is, whatever
+    /// the comment or string around it holds.
+    #[test]
+    fn the_literal_count_reads_code_and_strings_and_no_comment() {
+        let needle = &segment_needles()[0];
+        let src = format!(
+            "let a = 1; // {n}\n/* {n}\n /* nested */ {n} */ let b = 2;\n\
+             let url = \"https://x//\"; let c = {n};\nlet q = '\"'; let r = r#\"{n} // x\"#;\n\
+             let l: &'static str = {n};\n",
+            n = needle
+        );
+        let kept = without_comments(&src);
+        let at: Vec<usize> = kept
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.contains(needle.as_str()))
+            .map(|(n, _)| n + 1)
+            .collect();
+        assert_eq!(at, [4, 5, 6], "{kept}");
+        assert_eq!(
+            kept.lines().count(),
+            src.lines().count(),
+            "every line is kept"
+        );
+    }
+
     /// The path segments the literal count reads, built so this file holds none of them.
     fn segment_needles() -> [String; 4] {
         [
@@ -1214,18 +1313,21 @@ mod tests {
             own.display()
         );
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        // Every target of either crate: its lib and bin, and each test, example and bench file.
         let mut stems = vec!["forge_runner_core".to_string(), "forge_runner".to_string()];
         for krate in ["forge-runner-core", "forge-runner"] {
-            let Ok(tests) = std::fs::read_dir(crates.join(krate).join("tests")) else {
-                continue;
-            };
-            stems.extend(tests.flatten().filter_map(|e| {
-                let p = e.path();
-                if p.extension()? != "rs" {
-                    return None;
-                }
-                Some(p.file_stem()?.to_string_lossy().into_owned())
-            }));
+            for kind in ["tests", "examples", "benches"] {
+                let Ok(files) = std::fs::read_dir(crates.join(krate).join(kind)) else {
+                    continue;
+                };
+                stems.extend(files.flatten().filter_map(|e| {
+                    let p = e.path();
+                    if p.extension()? != "rs" {
+                        return None;
+                    }
+                    Some(p.file_stem()?.to_string_lossy().replace('-', "_"))
+                }));
+            }
         }
         let ours = |name: &str| {
             name.strip_suffix(".d")
@@ -1234,29 +1336,53 @@ mod tests {
                     stems.iter().any(|s| s == stem) && hash.chars().all(|c| c.is_ascii_hexdigit())
                 })
         };
-        let mut records: Vec<PathBuf> = std::fs::read_dir(deps)
-            .unwrap()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.file_name().is_some_and(|n| ours(&n.to_string_lossy())))
-            .collect();
-        if let Ok(builds) = std::fs::read_dir(deps.join("../build")) {
-            for build in builds.flatten() {
+        // The target dir's root, so a `--target` build's records and the host build scripts
+        // it compiled are read wherever cargo put them.
+        let root = deps
+            .ancestors()
+            .find(|d| d.join("CACHEDIR.TAG").is_file())
+            .expect("the target dir this test was built in");
+        let mut profiles = Vec::new();
+        for first in std::fs::read_dir(root).unwrap().flatten() {
+            let first = first.path();
+            if first.join("deps").is_dir() {
+                profiles.push(first.clone());
+            }
+            for second in std::fs::read_dir(&first).into_iter().flatten().flatten() {
+                if second.path().join("deps").is_dir() {
+                    profiles.push(second.path());
+                }
+            }
+        }
+        let listed = |dir: PathBuf| -> Vec<PathBuf> {
+            std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+                .collect()
+        };
+        let mut records: Vec<PathBuf> = Vec::new();
+        for profile in &profiles {
+            for p in listed(profile.join("deps"))
+                .into_iter()
+                .chain(listed(profile.join("examples")))
+            {
+                if p.file_name().is_some_and(|n| ours(&n.to_string_lossy())) {
+                    records.push(p);
+                }
+            }
+            for build in listed(profile.join("build")) {
                 if !build
                     .file_name()
-                    .to_string_lossy()
-                    .starts_with("forge-runner")
+                    .is_some_and(|n| n.to_string_lossy().starts_with("forge-runner"))
                 {
                     continue;
                 }
-                for f in std::fs::read_dir(build.path())
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                {
-                    let name = f.file_name().to_string_lossy().into_owned();
+                for f in listed(build) {
+                    let name = f.file_name().unwrap().to_string_lossy().into_owned();
                     if name.starts_with("build_script_build-") && name.ends_with(".d") {
-                        records.push(f.path());
+                        records.push(f);
                     }
                 }
             }

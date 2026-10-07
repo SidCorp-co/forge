@@ -50,24 +50,19 @@ pub async fn run(args: Args) {
     let Ok(token) = session_tokens::token_from_env() else {
         return;
     };
-    let Some(sock) = daemon_socket() else {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "connects to the daemon's socket beside the config"
+    )]
+    let Ok(cfg_path) = Config::path() else {
         return;
     };
+    let sock = cfg_path.with_file_name("control.sock");
     if !sock.exists() {
         return;
     }
     let names = named_in(&payload);
     let _ = control::request_agent_event(&sock, &token, &args.event, &names).await;
-}
-
-/// The daemon's socket beside the config, outside `run`, whose body admits no attribute a panic
-/// check could mistake for an `expect(`.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "connects to the daemon's socket beside the config"
-)]
-fn daemon_socket() -> Option<std::path::PathBuf> {
-    Some(Config::path().ok()?.with_file_name("control.sock"))
 }
 
 #[cfg(test)]
@@ -88,8 +83,10 @@ mod tests {
             !body.contains('?'),
             "a `?` here propagates a failure into the agent's hook exit code"
         );
+        // A lint admission is an attribute, not a call that can panic.
+        let calls = body.replace("#[expect(", "#[");
         assert!(
-            !body.contains("unwrap()") && !body.contains("expect("),
+            !calls.contains("unwrap()") && !calls.contains("expect("),
             "a panic in a hook is a non-zero exit in the agent's critical path"
         );
         assert!(
