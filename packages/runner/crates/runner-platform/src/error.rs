@@ -20,7 +20,10 @@ pub enum Error {
     /// again is a loop with no exit. A caller that sweeps a payload nothing
     /// between attempts changes matches this to fail once rather than for ever
     /// (ISS-1284). Typed for the same reason `Unauthorized` is.
-    #[error("{said}")]
+    // `said` is cut to one short line, so a refusal whose detail opens with the
+    // valid shape never reached the field that broke it; the named constraints
+    // are what a reader of the log can act on
+    #[error("{said} — refused: {}", .named.join("; "))]
     Malformed {
         /// The refusal as any other would read it, from `transport::status`.
         said: String,
@@ -33,3 +36,29 @@ pub enum Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(test)]
+mod tests {
+    use super::Error;
+
+    #[test]
+    fn a_malformed_refusal_prints_the_fields_core_named_not_only_its_cut_detail() {
+        let e = Error::Malformed {
+            said: "master-session/verdict 400 Bad Request: invalid body: { projectId: uuid, …"
+                .into(),
+            named: vec![
+                "facts/nudge: Unrecognized key: \"BOGUS\"".into(),
+                "facts/placement/now: Required".into(),
+            ],
+        };
+        let printed = e.to_string();
+        assert!(
+            printed.contains("facts/nudge: Unrecognized key"),
+            "{printed}"
+        );
+        assert!(
+            printed.contains("; facts/placement/now: Required"),
+            "{printed}"
+        );
+    }
+}
