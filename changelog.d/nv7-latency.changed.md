@@ -1,0 +1,1 @@
+**Pages wait less on the server.** The rail's Needs-you count sends half its statements and no longer crowds the page's own reads, and every API response carries a Server-Timing header naming its database time and statement count.

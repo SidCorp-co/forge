@@ -97,6 +97,9 @@ export const notifications = pgTable(
       .on(t.scheduleRunId)
       .where(sql`schedule_run_id IS NOT NULL`),
     stateIdx: index('notifications_kind_state_idx').on(t.kind, t.state),
+    firingProjectTypeIdx: index('notifications_firing_project_type_idx')
+      .on(t.projectId, t.type)
+      .where(sql`state = 'firing' AND resolved_at IS NULL`),
     signalHasNoResolveState: check(
       'notifications_signal_has_no_resolve_state',
       sql`kind <> 'signal' OR (resolution_key IS NULL AND resolved_at IS NULL)`,

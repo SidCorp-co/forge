@@ -1,5 +1,6 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { users } from '../db/schema.js';
 
 export interface Person {
@@ -13,13 +14,20 @@ export function personLabel(u: { displayName: string | null; email: string }): s
 }
 
 export async function peopleOf(ids: readonly (string | null)[]): Promise<Map<string, Person>> {
-  const unique = [...new Set(ids.filter((i): i is string => i !== null))];
+  const unique = [...new Set(ids.filter((i): i is string => i !== null))].sort();
   if (unique.length === 0) return new Map();
-  const rows = await db
-    .select({ id: users.id, displayName: users.displayName, email: users.email, kind: users.kind })
-    .from(users)
-    .where(inArray(users.id, unique));
-  return new Map(rows.map((u) => [u.id, { name: personLabel(u), kind: u.kind }]));
+  return memoizedRead(`people:${unique.join(',')}`, async () => {
+    const rows = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        kind: users.kind,
+      })
+      .from(users)
+      .where(inArray(users.id, unique));
+    return new Map(rows.map((u) => [u.id, { name: personLabel(u), kind: u.kind } as Person]));
+  });
 }
 
 export async function userNames(ids: readonly (string | null)[]): Promise<Map<string, string>> {
