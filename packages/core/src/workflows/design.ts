@@ -55,15 +55,39 @@ export function designIssueLapsedRefusal(
 }
 
 /**
+ * JSON with every object's keys sorted and arrays in their order, so the text does not depend on the
+ * order a writer sent the keys in. Built by hand: an object literal would put integer-like keys
+ * (a `mapping` field named `1`) first whatever the sort.
+ */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((v) => canonicalJson(v ?? null)).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
  * The part of a workflow its approver decides: the template it is drawn in, the steps, their order,
  * their nodes (business labels and bands included) and the edge contracts, return edges included.
  * Written defaults fingerprint as absent — an edge of the kind its endpoint types imply, a node in its
  * type's home band — so a design stored before kinds or bands keeps the fingerprint it was approved
  * at when its writer spells the default out.
+ * Hashed with every object's keys sorted, so key order never reads as a change.
  * What the code holds is an observation stored apart (observations.ts), so reading the code moves
  * none of this and needs no new approval.
  */
 export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate | null): string {
+  return createHash('sha256')
+    .update(canonicalJson(fingerprintShape(doc, template)))
+    .digest('hex');
+}
+
+/** What `designFingerprint` hashes: the design with its written defaults left out. */
+export function fingerprintShape(doc: WorkflowWrite, template: WorkflowTemplate | null) {
   const nodeShape = (
     node: NonNullable<Extract<WorkflowWrite, { version: 2 }>['steps'][number]['node']>,
   ) => {
@@ -89,7 +113,7 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
   const edges = [...(doc.edges ?? [])]
     .map(({ kind, ...e }) => (kind === undefined || kind === implied(e) ? e : { kind, ...e }))
     .sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
-  const shape = {
+  return {
     kind: doc.kind,
     title: doc.title,
     summary: doc.summary,
@@ -99,7 +123,6 @@ export function designFingerprint(doc: WorkflowWrite, template: WorkflowTemplate
     ...(doc.lanes ? { lanes: doc.lanes } : {}),
     ...(doc.basedOn ? { basedOn: doc.basedOn } : {}),
   };
-  return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
 }
 
 /** A new document on a workflow in the lifecycle: a design change after a decision is proposed again. */

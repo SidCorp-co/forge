@@ -1,15 +1,16 @@
 /**
- * Migration 0452, run by drizzle's own migrator over operational-flow@1 designs fingerprinted before the
- * hash carried the template: each such row is re-hashed to exactly what `designFingerprint` computes
- * today from its stored document, with its status, approved revision and revision untouched, so an
- * approved design is not read as changed since approval; another template's row is left alone; a row
- * whose document names no template aborts the migration naming it.
+ * Migration 0452, run by drizzle's own migrator over designs fingerprinted before the hash carried the
+ * template and sorted its keys: a row whose stored fingerprint is the old rule's for its document is
+ * re-hashed to exactly what `designFingerprint` computes today, with status, approved revision and
+ * revision untouched, so an approved design is not read as changed since approval; a row whose
+ * fingerprint is not the old rule's (the document changed after it was stamped) is left and named; a
+ * row whose document names no template aborts the migration naming it.
  */
 
 import { createHash, randomUUID } from 'node:crypto';
 import { BUILTIN_WORKFLOW_TEMPLATES } from '@forge/contracts/workflow-templates';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { designFingerprint } from '../../src/workflows/design.js';
+import { designFingerprint, fingerprintShape } from '../../src/workflows/design.js';
 import { readStoredWorkflow } from '../../src/workflows/schema.js';
 import {
   groundBefore,
@@ -122,28 +123,27 @@ function operationalDoc(flow: string): Record<string, unknown> {
   };
 }
 
-/** The fingerprint the old rule stored: the shape with no template in it. */
+/** The fingerprint the old rule stored: the writer's key order, and no template for operational-flow@1. */
 function legacyFingerprint(doc: Record<string, unknown>): string {
-  const spy = JSON.stringify;
-  let shape = '';
-  JSON.stringify = ((v: unknown, ...rest: never[]) => {
-    const s = spy(v, ...rest);
-    if (v && typeof v === 'object' && 'steps' in v && 'edges' in v) shape = s;
-    return s;
-  }) as typeof JSON.stringify;
-  try {
-    const parsed = readStoredWorkflow(doc);
-    if (!parsed) throw new Error('fixture does not parse');
-    designFingerprint(parsed, OPERATIONAL ?? null);
-  } finally {
-    JSON.stringify = spy;
-  }
-  const template = JSON.stringify(doc.template);
-  expect(shape).toContain(`,"template":${template}`);
-  return createHash('sha256')
-    .update(shape.replace(`,"template":${template}`, ''))
-    .digest('hex');
+  const parsed = readStoredWorkflow(doc);
+  if (!parsed) throw new Error('fixture does not parse');
+  const template = BUILTIN_WORKFLOW_TEMPLATES.find(
+    (t) => t.id === parsed.template.id && t.version === parsed.template.version,
+  );
+  const { template: ref, ...shape } = fingerprintShape(parsed, template ?? null);
+  const operational = ref.id === 'operational-flow' && ref.version === 1;
+  const placed = operational ? shape : { ...shape, template: ref };
+  return createHash('sha256').update(JSON.stringify(placed)).digest('hex');
 }
+
+const todayFingerprint = (doc: Record<string, unknown>): string => {
+  const parsed = readStoredWorkflow(doc);
+  if (!parsed) throw new Error('fixture does not parse');
+  const template = BUILTIN_WORKFLOW_TEMPLATES.find(
+    (t) => t.id === parsed.template.id && t.version === parsed.template.version,
+  );
+  return designFingerprint(parsed, template ?? null);
+};
 
 async function seed(
   flow: string,
@@ -172,51 +172,65 @@ const rowOf = async (id: string) =>
     >`SELECT design_status, design_fingerprint, approved_revision, revision FROM project_workflows WHERE id = ${id}`
   )[0];
 
-describe('an operational-flow@1 design fingerprinted before the hash carried its template', () => {
+describe('a design fingerprinted before the hash carried its template and sorted its keys', () => {
   it('is re-hashed to what designFingerprint computes today and stays approved at its revision', async () => {
     const doc = operationalDoc('discharge');
     const old = legacyFingerprint(doc);
     const id = await seed('discharge', doc, 'approved', 3, old);
-    const proposed = await seed(
-      'discharge-b',
-      operationalDoc('discharge-b'),
-      'proposed',
-      null,
-      legacyFingerprint(operationalDoc('discharge-b')),
-    );
-    const bare = await seed('discharge-c', operationalDoc('discharge-c'), null, null, null);
+    const draft = operationalDoc('discharge-b');
+    const proposed = await seed('discharge-b', draft, 'proposed', null, legacyFingerprint(draft));
     await m.migrate();
 
-    const stored = readStoredWorkflow(doc);
-    if (!stored) throw new Error('fixture does not parse');
-    const now = designFingerprint(stored, OPERATIONAL ?? null);
-    expect(now).not.toBe(old);
+    expect(todayFingerprint(doc)).not.toBe(old);
     expect(await rowOf(id)).toEqual({
       design_status: 'approved',
-      design_fingerprint: now,
+      design_fingerprint: todayFingerprint(doc),
       approved_revision: 3,
       revision: 3,
     });
-    const b = readStoredWorkflow(operationalDoc('discharge-b'));
-    if (!b) throw new Error('fixture does not parse');
     expect(await rowOf(proposed)).toMatchObject({
       design_status: 'proposed',
       approved_revision: null,
-      design_fingerprint: designFingerprint(b, OPERATIONAL ?? null),
+      design_fingerprint: todayFingerprint(draft),
     });
-    expect((await rowOf(bare))?.design_fingerprint).toBe(
-      designFingerprint({ ...b, flow: 'discharge-c' }, OPERATIONAL ?? null),
-    );
   });
 
-  it('leaves a design in another template as it was stored', async () => {
+  it('is re-hashed in any built-in template, its template already in the old hash', async () => {
     const doc = { ...operationalDoc('lifecycle'), template: { id: 'state-machine', version: 1 } };
-    const id = await seed('lifecycle', doc, 'approved', 3, 'a'.repeat(64));
+    const id = await seed('lifecycle', doc, 'approved', 3, legacyFingerprint(doc));
     await m.migrate();
     expect(await rowOf(id)).toMatchObject({
-      design_fingerprint: 'a'.repeat(64),
+      design_fingerprint: todayFingerprint(doc),
       design_status: 'approved',
     });
+  });
+
+  it("is left as stored, and named, when its fingerprint is not the old rule's for its document", async () => {
+    const drifted = operationalDoc('edited-after-approval');
+    const approvedAt = legacyFingerprint({ ...drifted, title: 'What was approved' });
+    const id = await seed('edited-after-approval', drifted, 'approved', 3, approvedAt);
+    const ok = operationalDoc('still-fine');
+    const fine = await seed('still-fine', ok, 'approved', 3, legacyFingerprint(ok));
+    const notices: string[] = [];
+    await m.migrate((n) => notices.push(n));
+
+    expect(await rowOf(id)).toEqual({
+      design_status: 'approved',
+      design_fingerprint: approvedAt,
+      approved_revision: 3,
+      revision: 3,
+    });
+    expect((await rowOf(fine))?.design_fingerprint).toBe(todayFingerprint(ok));
+    const named = notices.filter(
+      (n) => n.includes('left drifted') && n.includes('edited-after-approval'),
+    );
+    expect(named).toHaveLength(1);
+    expect(named[0]).toContain(`project ${projectId}`);
+    expect(named[0]).toContain('revision 3');
+    expect(notices.some((n) => n.includes('still-fine') && n.includes('left drifted'))).toBe(false);
+    expect(notices.some((n) => n.includes('re-hashed 1') && n.includes('left drifted 1'))).toBe(
+      true,
+    );
   });
 
   it('aborts naming the row whose document names no template', async () => {
