@@ -1312,23 +1312,14 @@ mod tests {
              is not being read",
             own.display()
         );
-        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        // Every target of either crate: its lib and bin, and each test, example and bench file.
-        let mut stems = vec!["forge_runner_core".to_string(), "forge_runner".to_string()];
-        for krate in ["forge-runner-core", "forge-runner"] {
-            for kind in ["tests", "examples", "benches"] {
-                let Ok(files) = std::fs::read_dir(crates.join(krate).join(kind)) else {
-                    continue;
-                };
-                stems.extend(files.flatten().filter_map(|e| {
-                    let p = e.path();
-                    if p.extension()? != "rs" {
-                        return None;
-                    }
-                    Some(p.file_stem()?.to_string_lossy().replace('-', "_"))
-                }));
-            }
-        }
+        // Every target of either crate as cargo itself names it, so a test, example or bench
+        // in a directory of its own or renamed by a `[[test]]` table is read too.
+        let stems = target_names(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+        assert!(
+            stems.iter().any(|s| s == "forge_runner_core")
+                && stems.iter().any(|s| s == "forge_runner"),
+            "cargo metadata names both crates' libs and bins: {stems:?}"
+        );
         let ours = |name: &str| {
             name.strip_suffix(".d")
                 .and_then(|n| n.rsplit_once('-'))
@@ -1413,6 +1404,48 @@ mod tests {
             ["HOME", "TMP"],
             "a value and an unset read both name their variable"
         );
+    }
+
+    /// Every target of the workspace's crates but their build scripts, by the
+    /// name its dep-info file carries (`-` read as `_`), as `cargo metadata` says.
+    fn target_names(workspace: &std::path::Path) -> Vec<String> {
+        let mut cmd = std::process::Command::new(env!("CARGO"));
+        cmd.current_dir(workspace).args([
+            "metadata",
+            "--no-deps",
+            "--locked",
+            "--format-version=1",
+        ]);
+        let out = {
+            let _env = crate::auth::cred_store::ENV_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            cmd.stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap_or_else(|e| panic!("cargo metadata could not be started: {e}"))
+        }
+        .wait_with_output()
+        .expect("cargo metadata ran");
+        assert!(
+            out.status.success(),
+            "cargo metadata: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let meta: serde_json::Value = serde_json::from_slice(&out.stdout).expect("its JSON");
+        meta["packages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|p| p["targets"].as_array().into_iter().flatten())
+            .filter(|t| {
+                !t["kind"]
+                    .as_array()
+                    .is_some_and(|k| k.iter().any(|k| k == "custom-build"))
+            })
+            .filter_map(|t| Some(t["name"].as_str()?.replace('-', "_")))
+            .collect()
     }
 
     /// The variables a dep-info record says the build read.
