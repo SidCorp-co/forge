@@ -1,6 +1,6 @@
 /**
  * The rows a forecast reads, each where it already lives: the landed history off `issues.merged_at`
- * and the first `in_progress` move in `activity_log`, and whether anything can take the project's
+ * on issues a landed status holds and the first `in_progress` move in `activity_log`, and whether anything can take the project's
  * work off the runners' dispatch liveness and its master's standing.
  */
 
@@ -37,6 +37,10 @@ export async function readHistory(projectId: string, now: Date): Promise<History
              AND al.payload ->> 'to' = 'in_progress'
         ) s ON s.started_at IS NOT NULL AND s.started_at < i.merged_at
        WHERE i.project_id = ${projectId}
+         AND i.status IN (${sql.join(
+           LANDED_STATUSES.map((st) => sql`${st}`),
+           sql`, `,
+         )})
          AND i.merged_at IS NOT NULL
          AND i.merged_at >= ${now.toISOString()}::timestamptz - (${FORECAST_WINDOW_DAYS}::int * interval '1 day')
          AND i.merged_at <= ${now.toISOString()}::timestamptz`),
@@ -175,10 +179,10 @@ export interface IssueRow {
   merged_at: string | null;
 }
 
-/** An issue outside the open set: landed, or ended without landing. */
+/** An issue outside the open set: landed by its status, or ended without landing whatever mark it carries. */
 export function settledForecast(asOf: string, row: IssueRow): Forecast {
   const stamp = { label: FORECAST_LABEL, asOf };
-  if (row.merged_at !== null || LANDED_STATUSES.includes(row.status)) {
+  if (LANDED_STATUSES.includes(row.status)) {
     return { ...stamp, kind: 'landed', landedAt: row.merged_at };
   }
   return { ...stamp, kind: 'ended', status: row.status };

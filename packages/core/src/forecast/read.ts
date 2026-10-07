@@ -60,7 +60,9 @@ export async function simulate(projectId: string, now: Date): Promise<Facts> {
   for (const s of standing.issues) {
     const row = byId.get(s.id);
     if (!row) continue;
-    const landed = row.merged_at !== null || LANDED_STATUSES.includes(row.status);
+    // landed by status alone: a merged mark on an open issue is a claim its run still judges, and a
+    // design approval's evidence is no mark at all (docs/modules/issues/merge-mark.md)
+    const landed = LANDED_STATUSES.includes(row.status);
     const inFlight = row.status === 'in_progress' || s.standing.inFlight;
     const intakeHeld =
       manualIntake && row.status === AUTONOMOUS_ENTRY_STATUS && !row.released && !inFlight;
@@ -69,13 +71,13 @@ export async function simulate(projectId: string, now: Date): Promise<Facts> {
       key: s.key,
       complexity: row.complexity,
       landed,
-      landedAt: row.merged_at ? new Date(row.merged_at) : null,
+      landedAt: landed && row.merged_at ? new Date(row.merged_at) : null,
       ended: row.status === 'dropped' ? row.status : null,
       startedAt: inFlight ? new Date(row.started_at ?? now) : null,
       rank: rankOf.get(s.id) ?? queue.length,
       // a blocker that landed frees its dependent's run, and a dropped one no longer holds it
       blockedBy: s.standing.blockedBy
-        .filter((b) => !b.landed && !LANDED_STATUSES.includes(b.status) && b.status !== 'dropped')
+        .filter((b) => !LANDED_STATUSES.includes(b.status) && b.status !== 'dropped')
         .map((b) => b.key),
       wait: waitOf(s) ?? (intakeHeld ? INTAKE_WAIT : null),
     });

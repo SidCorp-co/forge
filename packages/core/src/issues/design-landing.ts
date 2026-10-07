@@ -1,10 +1,11 @@
 /**
- * What the approval of a design revision records on the issue that drew it (ISS-262): the revision is
- * that issue's deliverable, so its approval is where the work landed. The mark is written or
- * re-pointed to the approved revision in the decision's transaction, so a mark naming a proposed
- * revision does not outlive its approval. It moves no status — recording a landing never does
- * (docs/modules/issues/merge-mark.md) and only a release closes — so the issue's run or its release
- * takes the next move, on this evidence.
+ * What the approval of a design revision records on the issue that drew it (ISS-262): where the
+ * revision is that issue's deliverable, its approval is where the work landed, and the mark is written
+ * or re-pointed to the approved revision in the decision's transaction, so a mark naming a proposed
+ * revision does not outlive its approval. An issue linked as the build of a workflow delivers that
+ * build, so a revision drawn under it is evidence its notice records, never its merged mark. Neither
+ * moves a status — recording a landing never does (docs/modules/issues/merge-mark.md) and only a
+ * release closes — so the issue's run or its release takes the next move.
  */
 
 import { designArtifact } from '@forge/contracts/landing-artifacts';
@@ -20,16 +21,20 @@ import {
 } from './merge-record.js';
 
 export interface DesignLandingOutcome {
-  /** `marked` over no mark, `repointed` over one somebody's word made, `kept` where the mark stands. */
-  action: 'marked' | 'repointed' | 'kept' | 'none';
+  /** `marked` over no mark, `repointed` over one somebody's word made, `kept` where the mark stands,
+   *  `evidence` on a build issue, whose mark the approval never writes. */
+  action: 'marked' | 'repointed' | 'kept' | 'evidence' | 'none';
   /** The mark the issue carries after the approval; null where there is no issue to read. */
   mark: MergeMarkKind | null;
   /** The issue's status, which the approval does not move; null where there is no issue to read. */
   status: string | null;
   /** The landing a re-point replaced, where it named one. */
   replaced: string | null;
-  /** Why nothing was written, where nothing was: a missing, archived, dropped or closed issue, or an undeclared source. */
+  /** Why nothing was written, where nothing was: a missing, archived, dropped or closed issue, an
+   *  undeclared source, or a build issue. */
   why: string | null;
+  /** The workflow a build issue builds, which is why the approval is evidence on it and not its mark. */
+  builds?: string;
 }
 
 /** The landing an approved design revision is: what it is and that it was approved. */
@@ -45,7 +50,14 @@ const none = (
 
 export async function markApprovedDesign(
   tx: Tx,
-  args: { issueId: string; flow: string; revision: number; actor: Actor },
+  args: {
+    issueId: string;
+    flow: string;
+    revision: number;
+    actor: Actor;
+    /** The flow of the workflow the issue is linked to build, read by the workflows module; null where it builds none. */
+    builds: string | null;
+  },
 ): Promise<DesignLandingOutcome> {
   const rows = (await tx.execute(sql`
     SELECT project_id, status, archived_at, merged_at, merged_commit_sha, merged_landing
@@ -72,6 +84,17 @@ export async function markApprovedDesign(
       kind,
       status,
     );
+  }
+  // the build is this issue's deliverable, and it has not landed because a design it waits on was approved
+  if (args.builds !== null) {
+    return {
+      action: 'evidence',
+      mark: kind,
+      status,
+      replaced: null,
+      why: `the issue builds workflow ${args.builds}, so the approval is evidence on it, not its landing`,
+      builds: args.builds,
+    };
   }
   const shape = await readLandingShape(String(row.project_id), tx);
   if (shape === null) return none(SOURCE_UNDECLARED, kind, status);
@@ -116,6 +139,13 @@ export function designLandingNotice(
         ? 'Its landing now names the approved revision.'
         : 'This project lands its work in git, where a mark names no revision, so the mark is a timestamp and this notice names the revision.';
     return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it. ${names}${was} The approval moves no status: this issue's run, or the release that claims it, takes its next move.`;
+  }
+  if (outcome.action === 'evidence') {
+    const standing =
+      outcome.mark === 'unmarked'
+        ? 'It carries no merged mark, and the approval writes none.'
+        : 'Its merged mark is left as it stood.';
+    return `${design}. This issue builds workflow \`${outcome.builds}\`, so the build is its deliverable and the approved revision is evidence for it, not its landing. ${standing} It is marked when its build lands, and the approval moves no status.`;
   }
   if (outcome.action === 'none' && outcome.status === 'closed') {
     return `${design} after this issue was closed. A closed issue has shipped, so the approval is not recorded as its landing and its merged mark stays as it shipped. To change this design again, name the issue drawing the change with \`issue\` on the write; a write that names none is refused while this issue is the last one the design was drawn under.`;

@@ -6,7 +6,9 @@
  * where it is not. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
  * an approval records the revision as that issue's landing (its merged mark), a return hands the
  * drawing back to it — reopened where its status allows, the reason posted on it — and every
- * decision wakes the project's master, which is what makes the issue admissible work again.
+ * decision wakes the project's master, which is what makes the issue admissible work again. An issue
+ * linked as the build of a workflow delivers that build, so an approval of a revision drawn under it is
+ * evidence its notice records, never its mark (docs/modules/issues/merge-mark.md).
  */
 
 import type { DesignStatus } from '@forge/contracts/design-status';
@@ -25,20 +27,23 @@ import {
 import { logger } from '../lib/logger.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';
+import { buildOfIssue, readWorkflow } from './store.js';
 
 /** What happened to the design issue, so the decision's answer says it rather than leaving it to a guess. */
 export interface DesignIssueOutcome {
   issueId: string | null;
   action: 'none' | 'reopened' | 'commented' | DesignLandingOutcome['action'];
   status: IssueStatus | null;
-  /** On an approval: the merged mark the issue carries after it, and why none was written (ISS-262). */
+  /** On an approval: the merged mark the issue carries after it, and why none was written (ISS-262) —
+   *  on a build issue, `action: 'evidence'` and the flow it builds in `why`. */
   mark?: DesignLandingOutcome['mark'];
   why?: string | null;
 }
 
 /**
  * On an approval, the design issue's merged mark records the approved revision, in the decision's
- * transaction (`issues/design-landing.ts`), with a notice on the issue saying so. Moves no status.
+ * transaction (`issues/design-landing.ts`), with a notice on the issue saying so; on an issue linked as
+ * a build the notice records it as evidence and no mark is written. Moves no status.
  */
 export async function recordApprovedDesign(
   tx: Tx,
@@ -51,11 +56,13 @@ export async function recordApprovedDesign(
 ): Promise<DesignIssueOutcome> {
   if (!input.designIssueId) return { issueId: null, action: 'none', status: null };
   const actor = { type: 'user' as const, id: input.decider.userId, agency: input.decider.agency };
+  const build = await buildOfIssue(tx, input.designIssueId);
   const landed = await markApprovedDesign(tx, {
     issueId: input.designIssueId,
     flow: input.flow,
     revision: input.revision,
     actor,
+    builds: build ? ((await readWorkflow(tx, build.workflowId))?.flow ?? build.workflowId) : null,
   });
   const body = designLandingNotice(input, landed);
   if (body) {
