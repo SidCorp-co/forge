@@ -1,8 +1,11 @@
 "use client";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { runnersApi } from "./api";
+import { deviceVersionLabel } from "./types";
 
 /**
  * The caller's own devices. Keyed `['devices','me', orgId ?? null]` — a child of
@@ -47,15 +50,16 @@ export const ORG_DEVICES_REFRESH_MS = 30_000;
 export function useRevokeDevice() {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: runnersApi.revokeDevice,
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
-			toast({ title: "Device revoked", tone: "success" });
+			toast({ title: t("runners.toast.revoked"), tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Revoke failed",
+				title: t("runners.toast.revokeFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -70,6 +74,7 @@ export function useRevokeDevice() {
 export function useSetDeviceDisabled() {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: ({ id, disabled }: { id: string; disabled: boolean }) =>
 			runnersApi.setDeviceDisabled(id, disabled),
@@ -78,13 +83,13 @@ export function useSetDeviceDisabled() {
 			qc.invalidateQueries({ queryKey: ["projects"] });
 			qc.invalidateQueries({ queryKey: ["runners"] });
 			toast({
-				title: disabled ? "Device turned off" : "Device turned on",
+				title: disabled ? t("runners.toast.turnedOff") : t("runners.toast.turnedOn"),
 				tone: "success",
 			});
 		},
 		onError: (err) =>
 			toast({
-				title: "Couldn't update device",
+				title: t("runners.toast.updateFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -94,16 +99,17 @@ export function useSetDeviceDisabled() {
 export function useRenameDevice() {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: ({ id, name }: { id: string; name: string }) =>
 			runnersApi.renameDevice(id, name),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
-			toast({ title: "Device renamed", tone: "success" });
+			toast({ title: t("runners.toast.renamed"), tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Rename failed",
+				title: t("runners.toast.renameFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -126,22 +132,21 @@ export function useDeviceRunners(deviceId: string | null) {
 export function useSetRunnerAdmission(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: ({ runnerId, admit }: { runnerId: string; admit: boolean }) =>
 			runnersApi.patchRunnerStatus(runnerId, admit ? "online" : "draining"),
 		onSuccess: (_d, v) => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
 			toast({
-				title: v.admit ? "Runner back in the pool" : "Runner drained",
-				description: v.admit
-					? undefined
-					: "Jobs already running finish. No new job is offered or claimed.",
+				title: v.admit ? t("runners.toast.backInPool") : t("runners.toast.drained"),
+				description: v.admit ? undefined : t("runners.toast.drainedBody"),
 				tone: "success",
 			});
 		},
 		onError: (err) =>
 			toast({
-				title: "Save failed",
+				title: t("runners.toast.saveFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -151,16 +156,17 @@ export function useSetRunnerAdmission(projectId: string) {
 export function useSetRunnerLabels(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: ({ runnerId, labels }: { runnerId: string; labels: string[] }) =>
 			runnersApi.patchRunner(projectId, runnerId, { labels }),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			toast({ title: "Labels saved", tone: "success" });
+			toast({ title: t("runners.toast.labelsSaved"), tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Save failed",
+				title: t("runners.toast.saveFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -214,10 +220,11 @@ export function useActiveRunners(projectId: string | null) {
  */
 function useBindRunner(
 	projectId: string,
-	copy: { success: string; failure: string },
+	copy: { success: ProductCopyKey; failure: ProductCopyKey },
 ) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: ({
 			deviceId,
@@ -226,11 +233,11 @@ function useBindRunner(
 			runnersApi.bindRunner(projectId, deviceId, repoPath),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			toast({ title: copy.success, tone: "success" });
+			toast({ title: t(copy.success), tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: copy.failure,
+				title: t(copy.failure),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -239,24 +246,25 @@ function useBindRunner(
 
 export function useAssignDeviceToProject(projectId: string) {
 	return useBindRunner(projectId, {
-		success: "Device assigned — provisioning…",
-		failure: "Assign failed",
+		success: "runners.toast.assigned",
+		failure: "runners.toast.assignFailed",
 	});
 }
 
 export function useUnassignDeviceFromProject(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: (runnerId: string) =>
 			runnersApi.unbindRunner(projectId, runnerId),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
-			toast({ title: "Device unassigned", tone: "success" });
+			toast({ title: t("runners.toast.unassigned"), tone: "success" });
 		},
 		onError: (err) =>
 			toast({
-				title: "Unassign failed",
+				title: t("runners.toast.unassignFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -271,6 +279,7 @@ export function useUnassignDeviceFromProject(projectId: string) {
 export function useClearRunnerError(projectId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
+	const t = useCopy();
 	return useMutation({
 		mutationFn: (runnerId: string) =>
 			runnersApi.clearRunnerError(projectId, runnerId),
@@ -278,13 +287,13 @@ export function useClearRunnerError(projectId: string) {
 			qc.invalidateQueries({ queryKey: ["projects", projectId, "runners"] });
 			qc.invalidateQueries({ queryKey: ["runners"] });
 			toast({
-				title: cleared ? "Error cleared — retrying" : "Nothing to clear",
+				title: cleared ? t("runners.toast.cleared") : t("runners.toast.nothingToClear"),
 				tone: "success",
 			});
 		},
 		onError: (err) =>
 			toast({
-				title: "Couldn't clear the error",
+				title: t("runners.toast.clearFailed"),
 				description: formatApiError(err),
 				tone: "error",
 			}),
@@ -294,7 +303,13 @@ export function useClearRunnerError(projectId: string) {
 /** Re-provision a device (re-bind with same path re-queues provision). */
 export function useReprovision(projectId: string) {
 	return useBindRunner(projectId, {
-		success: "Re-provisioning…",
-		failure: "Re-provision failed",
+		success: "runners.toast.reprovisioning",
+		failure: "runners.toast.reprovisionFailed",
 	});
+}
+
+/** A device's version line in the interface language, for a surface outside the Runners screens. */
+export function useDeviceVersionLabel(): (agentVersion: string | null | undefined) => string {
+	const language = useInterfaceLanguage();
+	return (agentVersion) => deviceVersionLabel(agentVersion, language);
 }

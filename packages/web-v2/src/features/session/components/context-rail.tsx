@@ -40,8 +40,8 @@ import { isJobDriven, sessionKind } from "@/features/sessions/types";
 import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
 import { formatRefusal } from "@/lib/api/error";
 import { useRun } from "@/features/pipeline/hooks";
-import { useDevices } from "@/features/runners/hooks";
-import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
+import { useDeviceVersionLabel, useDevices } from "@/features/runners/hooks";
+import { deviceHealth } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
 import { LoadedForRun } from "./loaded-for-run";
@@ -83,6 +83,7 @@ export function ContextRail({
   projectSlug?: string;
 }) {
   const router = useRouter();
+  const versionLabel = useDeviceVersionLabel();
   const stuck = useStuckRuns(session.projectId);
   const display = deriveSessionDisplayStatus(session, stuck);
   const stage = sessionStep(session.metadata) ?? undefined;
@@ -159,7 +160,7 @@ export function ContextRail({
               </div>
               <span className="fg-caption">
                 {enumLabel("platform", device.platform)}
-                {` · ${deviceVersionLabel(device.agentVersion)}`}
+                {` · ${versionLabel(device.agentVersion)}`}
               </span>
               {session.repoPath && (
                 <div className="flex items-center gap-2 overflow-hidden">

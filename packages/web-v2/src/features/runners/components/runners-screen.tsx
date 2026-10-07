@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
   PageSection,
@@ -27,6 +26,7 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useDevices, useOrgDevices, useSetDeviceDisabled } from "../hooks";
@@ -56,6 +56,7 @@ import { TopBarActions } from "@/design/primitives/top-bar-slot";
 
 export function CopyButton({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
+  const t = useCopy();
   return (
     <Button
       variant="ghost"
@@ -68,38 +69,29 @@ export function CopyButton({ value }: { value: string }) {
         });
       }}
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? t("runners.copied") : t("runners.copy")}
     </Button>
   );
 }
 
 /** Pairing panel — the CLI command the runner machine runs; it prints the code approved at /pair. */
 function PairPanel() {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionHeader>
-        <PageSectionTitle>Pair a device</PageSectionTitle>
-        <HelpButton
-          summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
-          actions={[
-            "Run `forge-runner setup` on the runner host (it prints the approval URL)",
-            "Revoke a device below to cut off its access immediately",
-          ]}
-        />
+        <PageSectionTitle>{t("runners.pair.title")}</PageSectionTitle>
+        <HelpButton summary={t("runners.pair.help")} actions={[t("runners.pair.helpRun"), t("runners.pair.helpRevoke")]} />
       </PageSectionHeader>
       <PageSectionBody>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <span className="fg-label">Run on the runner machine</span>
+            <span className="fg-label">{t("runners.pair.runOn")}</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
               <code className="font-mono text-13 text-fg">forge-runner setup</code>
               <CopyButton value="forge-runner setup" />
             </div>
-            <p className="fg-body-sm text-subtle">
-              It checks the machine can run a job, prints an approval URL, waits for you to assign
-              it a project, gets a checkout, installs the background service, and ends on a
-              verdict. `forge-runner login` does the pairing step alone.
-            </p>
+            <p className="fg-body-sm text-subtle">{t("runners.pair.body")}</p>
           </div>
         </div>
       </PageSectionBody>
@@ -117,6 +109,7 @@ function ScopeTabs({
   counts: Record<DeviceScope, DeviceCount>;
   onChange: (next: DeviceScope) => void;
 }) {
+  const t = useCopy();
   return (
     <div className="inline-flex rounded-md border border-line bg-sunken p-0.5">
       {SCOPES.map((s) => (
@@ -131,7 +124,7 @@ function ScopeTabs({
               : "rounded px-3 py-1 text-13 text-muted hover:text-fg"
           }
         >
-          {scopeName(s)} · {scopeCountLabel(counts[s])}
+          {scopeName(s, t)} · {scopeCountLabel(counts[s], t)}
         </button>
       ))}
     </div>
@@ -145,31 +138,33 @@ function ScopeTabs({
  * reachable from the device list at all (ISS-1162).
  */
 function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
-  const chip = deviceBuildChip(device);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const chip = deviceBuildChip(device, language);
   const projects = "projectNames" in device ? device.projectNames : null;
-  const missing = "binaries" in device ? deviceBinariesRead(device.binaries).missing : [];
+  const missing = "binaries" in device ? deviceBinariesRead(device.binaries, language).missing : [];
   return (
     <div className="flex flex-col">
       <span className="font-semibold text-fg">
         {device.name}
         {device.ownedByMe ? null : (
           <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken">
-            paired by another member
+            {t("runners.device.pairedByOther")}
           </span>
         )}
       </span>
       {/* Always a version line: a device that has reported nothing says so,
           because a blank one reads as a device with nothing to say (ISS-1119). */}
       <span className="fg-body-sm text-subtle">
-        {deviceVersionLabel(device.agentVersion)}
+        {deviceVersionLabel(device.agentVersion, language)}
         {chip ? <BuildChip chip={chip} className="ml-1.5 " /> : null}
       </span>
       {projects && projects.length > 0 ? (
-        <span className="fg-body-sm text-subtle">Serves {projects.join(", ")}</span>
+        <span className="fg-body-sm text-subtle">{t("runners.device.serves", { projects: projects.join(", ") })}</span>
       ) : null}
       {missing.length > 0 ? (
         <span className="fg-body-sm text-amber-700 dark:text-amber-300">
-          Panes cannot resolve {missing.map((m) => m.name).join(", ")}
+          {t("runners.device.cannotResolve", { names: missing.map((m) => m.name).join(", ") })}
         </span>
       ) : null}
     </div>
@@ -191,6 +186,8 @@ export function RunnersScreen() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const t = useCopy();
+  const time = useTimeFormat();
 
   // A query that has not answered is UNKNOWN, never zero: rendering an unanswered
   // count as 0 is the misreading this whole screen change exists to remove.
@@ -201,28 +198,22 @@ export function RunnersScreen() {
   const assignments: DeviceCount = org.isSuccess
     ? org.data.reduce((n, d) => n + d.runnerCount, 0)
     : UNKNOWN_COUNT;
-  const bridge = scope === "org" ? assignmentBridgeLine(counts.org, assignments) : null;
+  const bridge = scope === "org" ? assignmentBridgeLine(counts.org, assignments, t) : null;
 
   const active = scope === "mine" ? mine : org;
   const rows: Array<DeviceRow | OrgDeviceRow> = active.data ?? [];
   // Read off the owner list, not the visible one: Manage is offered in the own
   // scope alone, and re-deriving here keeps rename and status live in the panel.
   const detailDevice = mine.data?.find((d) => d.id === detailId) ?? null;
-  const empty = emptyState(scope, counts);
+  const empty = emptyState(scope, counts, t);
 
   return (
     <PageContainer className="flex flex-col gap-5">
-      <PageTitle hint="Paired devices that can run pipeline jobs. Status updates live.">
-          Runners &amp; devices
-      </PageTitle>
+      <PageTitle hint={t("runners.screen.hint")}>{t("runners.screen.title")}</PageTitle>
       <TopBarActions>
         <HelpButton
-          summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
-          actions={[
-            "Mine — every device you paired, whether or not it serves a project",
-            "Organisation — every device assigned to a project you can see here, whoever paired it",
-            "Turn off, revoke and rename are the device owner's alone",
-          ]}
+          summary={t("runners.screen.help")}
+          actions={[t("runners.screen.helpMine"), t("runners.screen.helpOrg"), t("runners.screen.helpOwner")]}
           docPath="pair-a-runner"
         />
       </TopBarActions>
@@ -231,12 +222,12 @@ export function RunnersScreen() {
 
       <PageSection>
         <PageSectionHeader>
-          <PageSectionTitle>Devices</PageSectionTitle>
+          <PageSectionTitle>{t("runners.screen.devices")}</PageSectionTitle>
           <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
         </PageSectionHeader>
         <PageSectionBody>
           <p className="mb-3 fg-body-sm text-muted">
-            {populationLine(scope)}
+            {populationLine(scope, t)}
             {bridge ? ` ${bridge}` : null}
           </p>
           {active.isError ? (
@@ -256,18 +247,18 @@ export function RunnersScreen() {
             <Table>
               <THead>
                 <TR>
-                  <TH>Device</TH>
-                  <TH>Status</TH>
-                  <TH>Platform</TH>
-                  <TH>Last seen</TH>
-                  <TH className="text-right">Actions</TH>
+                  <TH>{t("runners.col.device")}</TH>
+                  <TH>{t("runners.col.status")}</TH>
+                  <TH>{t("runners.col.platform")}</TH>
+                  <TH>{t("runners.col.lastSeen")}</TH>
+                  <TH className="text-right">{t("runners.col.actions")}</TH>
                 </TR>
               </THead>
               <TBody>
                 {rows.map((d) => {
                   const revoked = d.status === "revoked";
                   const disabled = !!d.disabledAt;
-                  const actionNote = rowActionNote(scope, d.ownedByMe);
+                  const actionNote = rowActionNote(scope, d.ownedByMe, t);
                   return (
                     <TR key={d.id}>
                       <TD>
@@ -277,10 +268,10 @@ export function RunnersScreen() {
                         {disabled ? (
                           <span
                             className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken"
-                            title="Turned off — ignored by every project until turned back on"
+                            title={t("runners.device.offTitle")}
                           >
                             <Icon name="pause" size={12} />
-                            Off
+                            {t("runners.device.off")}
                           </span>
                         ) : (
                           <HealthDot health={deviceHealth(d.status)} />
@@ -290,7 +281,7 @@ export function RunnersScreen() {
                         <EnumBadge family="platform" value={d.platform} />
                       </TD>
                       <TD>
-                        <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>
+                        <span className="text-muted">{time.relative(d.lastSeenAt) || t("overview.never")}</span>
                       </TD>
                       <TD className="text-right">
                         {actionNote !== null ? (
@@ -309,7 +300,7 @@ export function RunnersScreen() {
                               icon="settings"
                               onClick={() => setDetailId(d.id)}
                             >
-                              Manage
+                              {t("runners.device.manage")}
                             </Button>
                             {!revoked && (
                               <>
@@ -318,17 +309,13 @@ export function RunnersScreen() {
                                   size="sm"
                                   icon={disabled ? "play" : "pause"}
                                   loading={toggleDisabled.isPending && togglingId === d.id}
-                                  title={
-                                    disabled
-                                      ? "Turn on — let every project dispatch to this device again"
-                                      : "Turn off — ignore this device across every project (reversible, keeps it paired)"
-                                  }
+                                  title={disabled ? t("runners.device.turnOnTitle") : t("runners.device.turnOffTitle")}
                                   onClick={() => {
                                     setTogglingId(d.id);
                                     toggleDisabled.mutate({ id: d.id, disabled: !disabled });
                                   }}
                                 >
-                                  {disabled ? "Turn on" : "Turn off"}
+                                  {disabled ? t("runners.device.turnOn") : t("runners.device.turnOff")}
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -336,7 +323,7 @@ export function RunnersScreen() {
                                   icon="trash"
                                   onClick={() => setConfirmId(d.id)}
                                 >
-                                  Revoke
+                                  {t("runners.device.revoke")}
                                 </Button>
                               </>
                             )}

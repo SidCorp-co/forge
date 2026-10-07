@@ -28,6 +28,7 @@ import {
 import { useProjectDocument } from "@/features/project-config/hooks";
 import { useProject } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
@@ -62,6 +63,8 @@ function AssignDevice({
 	const assign = useAssignDeviceToProject(projectId);
 	const [deviceId, setDeviceId] = useState("");
 	const [repoPath, setRepoPath] = useState("");
+	const t = useCopy();
+	const language = useInterfaceLanguage();
 
 	const available = useMemo(
 		() =>
@@ -72,12 +75,12 @@ function AssignDevice({
 	);
 
 	const options = [
-		{ value: "", label: "Select a paired device…" },
+		{ value: "", label: t("runners.assign.select") },
 		...available.map((d) => ({
 			value: d.id,
 			// Online-ness decides whether provisioning starts now or on the
 			// device's next reconnect, so it belongs in the choice, not after it.
-			label: `${d.name} (${enumLabel("platform", d.platform)}) — ${d.status === "online" ? "online" : "offline"}`,
+			label: `${d.name} (${enumLabel("platform", d.platform, language)}) — ${d.status === "online" ? t("runners.assign.online") : t("runners.assign.offline")}`,
 		})),
 	];
 	const picked = available.find((d) => d.id === deviceId) ?? null;
@@ -85,12 +88,12 @@ function AssignDevice({
 	return (
 		<PageSection>
 			<PageSectionHeader>
-				<PageSectionTitle>Add a device</PageSectionTitle>
+				<PageSectionTitle>{t("runners.assign.title")}</PageSectionTitle>
 			</PageSectionHeader>
 			<PageSectionBody>
 				<div className="flex flex-col gap-4">
 					<div className="grid gap-3 sm:grid-cols-2">
-						<Field label="Device">
+						<Field label={t("runners.col.device")}>
 							<Select
 								options={options}
 								value={deviceId}
@@ -98,8 +101,8 @@ function AssignDevice({
 							/>
 						</Field>
 						<Field
-							label="Repo path"
-							hint="Absolute path on that device. Leave it empty and the device provisions a checkout under its own projects_root."
+							label={t("runners.assign.repoPath")}
+							hint={t("runners.assign.repoPathHint")}
 						>
 							<Input
 								value={repoPath}
@@ -114,18 +117,10 @@ function AssignDevice({
 					    the device itself), and both change what "Assign &
 					    provision" actually does. */}
 					{!hasRepository && (
-						<Banner tone="info">
-							This project&apos;s configuration declares no repository, so a device
-							assigned now gets an empty workspace instead of a checkout. Declare it on
-							the Configuration tab first, or point Repo path at a checkout that
-							already exists on the device.
-						</Banner>
+						<Banner tone="info">{t("runners.assign.noRepository")}</Banner>
 					)}
 					{picked && picked.status !== "online" && (
-						<Banner tone="info">
-							{picked.name} is offline. The assignment is saved now and the device
-							provisions the workspace on its next reconnect.
-						</Banner>
+						<Banner tone="info">{t("runners.assign.offlineNote", { name: picked.name })}</Banner>
 					)}
 
 					<div className="flex justify-end">
@@ -141,23 +136,19 @@ function AssignDevice({
 								)
 							}
 						>
-							Assign &amp; provision
+							{t("runners.assign.submit")}
 						</Button>
 					</div>
 
 					<div className="rounded-lg border border-dashed border-line-strong p-3">
-						<span className="fg-label">No device yet? Set one up</span>
+						<span className="fg-label">{t("runners.assign.noDevice")}</span>
 						<div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
 							<code className="font-mono text-13 text-fg">
 								forge-runner setup
 							</code>
 							<CopyButton value="forge-runner setup" />
 						</div>
-						<p className="fg-body-sm mt-1.5 text-subtle">
-							Run it on the device and approve the code it prints — the device
-							appears in the picker above. Assign it here while setup waits; it
-							then gets the checkout and installs the service on its own.
-						</p>
+						<p className="fg-body-sm mt-1.5 text-subtle">{t("runners.assign.setupBody")}</p>
 					</div>
 				</div>
 			</PageSectionBody>
@@ -182,6 +173,7 @@ export function ProjectRunnersScreen({
 	const repository = repositoryOf(projectDocument.data?.document);
 	const runners = useProjectRunners(projectId);
 	const active = useActiveRunners(projectId);
+	const t = useCopy();
 
 	const rows = runners.data ?? [];
 	const assignedDeviceIds = useMemo(
@@ -201,19 +193,11 @@ export function ProjectRunnersScreen({
 		<>
 			{!embedded && (
 				<>
-					<PageTitle
-						hint="Devices that run this project's pipeline jobs. Status & provisioning update live."
-					>
-						Runners
-					</PageTitle>
+					<PageTitle hint={t("runners.project.hint")}>{t("overview.runners.title")}</PageTitle>
 					<TopBarActions>
 					<HelpButton
-						summary="Assign paired devices to this project. Each gets its own checkout; with a declared repository, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
-						actions={[
-							"Declare the repository on the Configuration tab",
-							"Assign a device — watch it clone → sync skills → ready",
-							"Manage devices account-wide on the Runners page",
-						]}
+						summary={t("runners.project.help")}
+						actions={[t("runners.project.helpDeclare"), t("runners.project.helpAssign"), t("runners.project.helpManage")]}
 					/>
 					</TopBarActions>
 				</>
@@ -229,7 +213,7 @@ export function ProjectRunnersScreen({
 
 			<PageSection>
 				<PageSectionHeader>
-					<PageSectionTitle>Assigned devices</PageSectionTitle>
+					<PageSectionTitle>{t("runners.project.assigned")}</PageSectionTitle>
 				</PageSectionHeader>
 				<PageSectionBody>
 					{runners.isLoading ? (
@@ -244,8 +228,8 @@ export function ProjectRunnersScreen({
 						/>
 					) : rows.length === 0 ? (
 						<EmptyState
-							title="No devices assigned"
-							message="Assign a paired device above to start running this project's jobs."
+							title={t("runners.project.noneAssigned")}
+							message={t("runners.project.noneAssignedBody")}
 							mascot={false}
 						/>
 					) : (

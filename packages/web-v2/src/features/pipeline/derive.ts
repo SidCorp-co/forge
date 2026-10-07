@@ -234,7 +234,7 @@ export function runGateNote(gate: RunGate | null | undefined): RunGateNote | nul
         ? "This box's gate was failing open when this run opened"
         : "This box's gate had admitted undecided dispatches when this run opened",
     detail: `${c.count} dispatch(es) admitted without a decision, ${rate} over ${window}`,
-    reason: gateReasonLine(c.byReason, c.count),
+    reason: gateReasonLine(c.byReason, c.count, "en"),
   };
 }
 

@@ -1,17 +1,19 @@
 import { Banner, HealthDot, Icon } from "@/design";
-import { PROVISION_LABEL, PROVISION_STEPS, type ProjectRunner } from "../../types";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { PROVISION_STEPS, type ProjectRunner } from "../../types";
 
 /** Horizontal step row reflecting one runner's provision lifecycle. */
 export function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 	const status = runner.provisionStatus;
+	const t = useCopy();
 	if (!status) {
-		return <span className="fg-body-sm text-subtle">Not provisioned</span>;
+		return <span className="fg-body-sm text-subtle">{t("runners.row.notProvisioned")}</span>;
 	}
 	if (status === "needs_manual_setup" || status === "failed") {
 		return (
 			<Banner tone={status === "failed" ? "attention" : "info"}>
-				<span className="font-semibold">{PROVISION_LABEL[status]}.</span>{" "}
-				{runner.provisionDetail ?? "See the device logs for details."}
+				<span className="font-semibold">{t(`runners.provision.${status}`)}.</span>{" "}
+				{runner.provisionDetail ?? t("runners.row.seeLogs")}
 			</Banner>
 		);
 	}
@@ -37,7 +39,7 @@ export function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 										: "fg-caption text-subtle"
 							}
 						>
-							{PROVISION_LABEL[step]}
+							{t(`runners.provision.${step}`)}
 						</span>
 						{i < PROVISION_STEPS.length - 1 && (
 							<Icon name="arrowRight" size={11} className="text-subtle" />

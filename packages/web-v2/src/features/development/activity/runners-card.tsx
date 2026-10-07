@@ -14,8 +14,6 @@ import { enumLabel } from "@/design/vocabulary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { RunnersSummary } from "./derive";
 
-const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
-
 export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: string }) {
   const router = useRouter();
   const t = useCopy();
@@ -51,7 +49,7 @@ export function RunnersCard({ summary, slug }: { summary: RunnersSummary; slug: 
                     withLabel={false}
                   />
                   <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{r.name}</span>
-                  <span className="fg-caption flex-none text-subtle">{PLATFORM_LABEL[r.platform] ?? r.platform}</span>
+                  <span className="fg-caption flex-none text-subtle">{enumLabel("platform", r.platform, language)}</span>
                   {r.limit ? (
                     // ISS-276: why and since when, as the Runners screen says it; never a countdown to the printed reset
                     <Badge tone={r.limit.health === "down" ? "red" : "amber"}>

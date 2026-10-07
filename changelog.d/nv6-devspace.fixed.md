@@ -1,1 +1,1 @@
-**Issues and the overviews read in the interface language you chose.** Issue table, board, peek, page, rail, banners and dialogs, the Development overview and the workspace Overview show Vietnamese, including core's sentences on whom an issue waits and why.
+**Issues, the overviews and Runners read in the interface language you chose.** Issue pages and lists, the Development overview, the workspace Overview, the device fleet and project runners show Vietnamese, including core's sentences on whom an issue waits and why.

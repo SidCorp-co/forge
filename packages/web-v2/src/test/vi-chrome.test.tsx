@@ -44,6 +44,9 @@ const ENGLISH_CHROME = [
   "spend", "online", "offline", "busy", "idle", "draining", "modules", "signals", "contracts", "slots", "holder", "since", "backlog",
   "finished", "silent", "alive", "jobs", "median", "unclassified", "reopened", "dropped", "welcome", "personal", "quiet", "flow",
   "window", "healthy", "select all", "in flight", "trailing", "chart", "today", "never", "oldest", "machine", "scope", "not on",
+  "device", "devices", "paired", "pair", "revoke", "manage", "turn on", "turn off", "last seen", "provision", "labels", "pool",
+  "resident", "unassign", "copy", "repo path", "disk", "binaries", "missing", "version", "drained", "retired", "mine", "organisation",
+  "counting", "read only", "unknown device", "untitled", "remove", "heartbeat", "failed pool", "rate limited", "usage limit", "next try", "refused",
 ];
 
 const wordsIn = (root: HTMLElement): string[] => {
@@ -68,8 +71,8 @@ function englishChromeIn(root: HTMLElement): { word: string; text: string } | nu
   for (const text of wordsIn(root)) {
     const lower = ` ${text.toLowerCase()} `;
     for (const w of ENGLISH_CHROME) {
-      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`) or a field in code quotes (`persona`) is an identifier the text names on purpose, not chrome
-      if (new RegExp(`[^\\p{L}_.\`-]${w.trim()}[^\\p{L}_\`]`, "u").test(lower)) return { word: w.trim(), text };
+      // a snake_case value (`in_progress`), a dotted permission (`workflow-designs.approve`), a field in code quotes (`persona`) or a path segment (`/srv/device`) is an identifier the text names on purpose, not chrome
+      if (new RegExp(`[^\\p{L}_.\`/-]${w.trim()}[^\\p{L}_\`/]`, "u").test(lower)) return { word: w.trim(), text };
     }
   }
   return null;

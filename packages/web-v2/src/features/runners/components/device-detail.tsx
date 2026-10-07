@@ -15,7 +15,7 @@ import {
 	StatusBadge,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { formatRelativeTime } from "@/lib/utils/format";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useDeviceRunners, useRenameDevice } from "../hooks";
@@ -65,21 +65,13 @@ function MetaRow({
  * with what the box looked for. Every pane it starts fails on any listed here.
  */
 function DeviceBinaries({ device }: { device: DeviceRow }) {
-	const read = deviceBinariesRead(device.binaries);
+	const t = useCopy();
+	const read = deviceBinariesRead(device.binaries, useInterfaceLanguage());
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="fg-label">Pane binaries</span>
-			{read.state === "unreported" && (
-				<p className="fg-body-sm text-subtle">
-					Not reported. This box&rsquo;s runner build does not say which binaries
-					its panes can resolve.
-				</p>
-			)}
-			{read.state === "resolved" && (
-				<p className="fg-body-sm text-subtle">
-					forge-runner, claude and node all resolve for this box&rsquo;s panes.
-				</p>
-			)}
+			<span className="fg-label">{t("runners.detail.binaries")}</span>
+			{read.state === "unreported" && <p className="fg-body-sm text-subtle">{t("runners.detail.binariesUnreported")}</p>}
+			{read.state === "resolved" && <p className="fg-body-sm text-subtle">{t("runners.detail.binariesResolved")}</p>}
 			{read.state === "missing" && (
 				<div className="flex flex-col divide-y divide-line-subtle">
 					{read.missing.map((m) => (
@@ -87,7 +79,7 @@ function DeviceBinaries({ device }: { device: DeviceRow }) {
 							<span className="inline-flex items-center gap-2">
 								<code className="fg-body-sm font-semibold text-fg">{m.name}</code>
 								<span className="fg-caption text-amber-700 dark:text-amber-300">
-									missing
+									{t("runners.detail.missing")}
 								</span>
 							</span>
 							<span className="fg-body-sm text-subtle">{m.detail}</span>
@@ -100,13 +92,6 @@ function DeviceBinaries({ device }: { device: DeviceRow }) {
 	);
 }
 
-const DISK_VERDICT_LABEL = {
-	clear: "clear",
-	unmeasurable: "unreadable",
-	tight: "tight",
-	critical: "critical",
-} as const;
-
 /**
  * What each filesystem this box writes its runs' scratch into had left, as core
  * judged it, one hairline row per root. Under the critical threshold a run that
@@ -114,15 +99,14 @@ const DISK_VERDICT_LABEL = {
  */
 function DeviceDisk({ device }: { device: DeviceRow }) {
 	const disk = device.disk;
-	const stale = disk ? deviceDiskStale(disk) : null;
+	const t = useCopy();
+	const language = useInterfaceLanguage();
+	const stale = disk ? deviceDiskStale(disk, language) : null;
 	return (
 		<div className="flex flex-col gap-1">
-			<span className="fg-label">Scratch disk</span>
+			<span className="fg-label">{t("runners.detail.disk")}</span>
 			{disk === null ? (
-				<p className="fg-body-sm text-subtle">
-					Not reported. This box&rsquo;s runner build does not say what its scratch
-					filesystems have left.
-				</p>
+				<p className="fg-body-sm text-subtle">{t("runners.detail.diskUnreported")}</p>
 			) : (
 				<div className="flex flex-col divide-y divide-line-subtle">
 					{disk.roots.map((r) => (
@@ -138,21 +122,17 @@ function DeviceDisk({ device }: { device: DeviceRow }) {
 												: "fg-caption text-amber-700 dark:text-amber-300"
 									}
 								>
-									{DISK_VERDICT_LABEL[r.verdict]}
-									{r.axis && r.verdict !== "clear" ? ` on ${r.axis}` : ""}
+									{t(`runners.disk.verdict.${r.verdict}`)}
+									{r.axis && r.verdict !== "clear" ? ` ${t(`runners.disk.on.${r.axis}`)}` : ""}
 								</span>
 							</span>
-							<span className="fg-body-sm text-subtle">{diskRootLine(r)}</span>
+							<span className="fg-body-sm text-subtle">{diskRootLine(r, language)}</span>
 						</div>
 					))}
 				</div>
 			)}
 			{disk && disk.verdict !== "clear" && disk.verdict !== "unmeasurable" && (
-				<p className="fg-caption text-subtle">
-					Tight is under {disk.tightFreePercent}% free on either axis, critical under{" "}
-					{disk.criticalFreePercent}%. The runner sweeps its scratch hourly, removing a run's entries older than 48 hours that no
-					live run holds; a checkout with unsaved or unpushed work is kept.
-				</p>
+				<p className="fg-caption text-subtle">{t("runners.detail.diskThresholds", { tight: disk.tightFreePercent, critical: disk.criticalFreePercent })}</p>
 			)}
 			{stale && <p className="fg-caption text-subtle">{stale}.</p>}
 		</div>
@@ -166,30 +146,30 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 	const trimmed = name.trim();
 	const dirty = trimmed.length > 0 && trimmed !== device.name;
 	const revoked = device.status === "revoked";
-	const buildChip = deviceBuildChip(device);
-	const gate = deviceGateBanner(device.gate);
+	const t = useCopy();
+	const time = useTimeFormat();
+	const language = useInterfaceLanguage();
+	const buildChip = deviceBuildChip(device, language);
+	const gate = deviceGateBanner(device.gate, language);
 
 	return (
 		<div className="flex flex-col gap-4">
 			{gate && (
 				<Banner tone="attention">
 					<span>
-						<strong>This box&rsquo;s declaration gate is failing open.</strong>{" "}
-						{gate.count} dispatch(es) went through without the gate deciding,{" "}
-						{gate.rate} over {gate.window}. Each ran with the declaration requirement
-						as advice.
-						{gate.reason ? ` Commonest reason — ${gate.reason}.` : ""}
+						<strong>{t("runners.detail.gateHead")}</strong> {t("runners.detail.gateBody", { n: gate.count, rate: gate.rate, window: gate.window })}
+						{gate.reason ? ` ${t("runners.detail.gateReason", { reason: gate.reason })}` : ""}
 						{gate.stale ? ` ${gate.stale}.` : ""}
 					</span>
 				</Banner>
 			)}
 			<div className="flex items-end gap-2">
 				<div className="flex-1">
-					<Field label="Device name">
+					<Field label={t("runners.detail.name")}>
 						<Input
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							placeholder="Device name"
+							placeholder={t("runners.detail.name")}
 							maxLength={80}
 							disabled={revoked}
 						/>
@@ -202,37 +182,33 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 					disabled={!dirty || revoked}
 					onClick={() => rename.mutate({ id: device.id, name: trimmed })}
 				>
-					Save
+					{t("runners.detail.save")}
 				</Button>
 			</div>
 
 			<div className="flex flex-col divide-y divide-line-subtle">
-				<MetaRow label="Status">
+				<MetaRow label={t("runners.col.status")}>
 					<StatusBadge family="device" value={device.status} />
 				</MetaRow>
-				<MetaRow label="Platform">
+				<MetaRow label={t("runners.col.platform")}>
 					<EnumBadge family="platform" value={device.platform} />
 				</MetaRow>
-				<MetaRow label="Agent version">
+				<MetaRow label={t("runners.detail.agentVersion")}>
 					<span className="inline-flex items-center gap-2">
-						{device.agentVersion ? `v${device.agentVersion}` : "Not reported"}
+						{device.agentVersion ? `v${device.agentVersion}` : t("runners.detail.notReported")}
 						{buildChip && <BuildChip chip={buildChip} />}
 					</span>
 				</MetaRow>
 				{buildChip && (
-					<MetaRow label="Build">
+					<MetaRow label={t("runners.detail.build")}>
 						{/* The sentence itself, not only a hover: with the commit in play two
 						    boxes can share a version and still differ, and a title nobody can
 						    reach says nothing to a keyboard or a screen reader (ISS-1165). */}
 						<span className="fg-body-sm text-subtle">{buildChip.title}</span>
 					</MetaRow>
 				)}
-				<MetaRow label="Last seen">
-					{formatRelativeTime(device.lastSeenAt, { emptyLabel: "never" })}
-				</MetaRow>
-				<MetaRow label="Paired">
-					{formatRelativeTime(device.pairedAt, { emptyLabel: "never" })}
-				</MetaRow>
+				<MetaRow label={t("runners.col.lastSeen")}>{time.relative(device.lastSeenAt) || t("overview.never")}</MetaRow>
+				<MetaRow label={t("runners.detail.paired")}>{time.relative(device.pairedAt) || t("overview.never")}</MetaRow>
 			</div>
 
 			<DeviceBinaries device={device} />
@@ -283,12 +259,13 @@ export function DeviceDetail({
 }: { device: DeviceRow | null; onClose: () => void }) {
 	const runners = useDeviceRunners(device?.id ?? null);
 	const rows = runners.data ?? [];
+	const t = useCopy();
 
 	return (
 		<SlideOver
 			open={!!device}
 			onClose={onClose}
-			title={device?.name ?? "Device"}
+			title={device?.name ?? t("runners.col.device")}
 			width={560}
 		>
 			{device && (
@@ -297,18 +274,12 @@ export function DeviceDetail({
 
 					<div className="flex flex-col gap-3">
 						<div className="flex flex-col gap-0.5">
-							<span className="fg-label">Projects served</span>
-							<p className="fg-body-sm text-subtle">
-								Read-only. Assign this device, set its repo path, and watch
-								provisioning on each project&apos;s Runners page.
-							</p>
+							<span className="fg-label">{t("runners.detail.projectsServed")}</span>
+							<p className="fg-body-sm text-subtle">{t("runners.detail.projectsServedBody")}</p>
 						</div>
 
 						{device.status === "revoked" ? (
-							<Banner tone="attention">
-								This device is revoked — its runner bindings were removed and it
-								can no longer accept jobs.
-							</Banner>
+							<Banner tone="attention">{t("runners.detail.revoked")}</Banner>
 						) : runners.isLoading ? (
 							<div className="flex flex-col gap-2">
 								<Skeleton className="h-14 w-full" />
@@ -321,8 +292,8 @@ export function DeviceDetail({
 							/>
 						) : rows.length === 0 ? (
 							<EmptyState
-								title="No projects assigned"
-								message="Assign this device from a project's Runners page to give it a pool."
+								title={t("runners.detail.noProjects")}
+								message={t("runners.detail.noProjectsBody")}
 								mascot={false}
 							/>
 						) : (
