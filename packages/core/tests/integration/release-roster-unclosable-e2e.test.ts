@@ -114,6 +114,11 @@ async function fourRows() {
   return { clean, unmarked, asked, unplanned };
 }
 
+/** The same uuid with every other character upper-cased: the route accepts it and Postgres matches it. */
+function mixedCase(id: string): string {
+  return [...id].map((c, i) => (i % 2 === 0 ? c.toUpperCase() : c)).join('');
+}
+
 function get(path: string) {
   return app.request(path, { headers: { authorization: `Bearer ${token}` } });
 }
@@ -177,7 +182,7 @@ describe('a release names, before the press, the rows its finish could not close
     ]);
 
     const res = await post(`/api/projects/${projectId}/release-batches`, {
-      issueIds: [rows.clean, rows.unmarked, rows.asked, rows.unplanned],
+      issueIds: [rows.clean, rows.unmarked.toUpperCase(), mixedCase(rows.asked), rows.unplanned],
     });
 
     expect(res.status).toBe(409);
@@ -190,6 +195,26 @@ describe('a release names, before the press, the rows its finish could not close
     for (const id of Object.values(rows)) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }
+    expect(await runCount()).toBe(0);
+  });
+
+  it('refuses a press naming an unclosable row by its upper-case id, and claims nothing', async () => {
+    const rows = await fourRows();
+    const [unmarkedKey] = await fx.displayIds([rows.unmarked]);
+
+    const res = await post(`/api/projects/${projectId}/release-batches`, {
+      issueIds: [rows.clean, rows.unmarked.toUpperCase()],
+    });
+
+    expect(res.status).toBe(409);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('RELEASE_WORK_UNMERGED');
+    expect(body).toContain(String(unmarkedKey));
+    expect(await fx.stored(rows.clean)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await fx.stored(rows.unmarked)).toMatchObject({
+      status: 'awaiting_release',
+      claim: null,
+    });
     expect(await runCount()).toBe(0);
   });
 
@@ -212,7 +237,7 @@ describe('a release names, before the press, the rows its finish could not close
 
     const refusal = await recordPerformedRelease({
       projectId,
-      issueIds: [rows.clean, rows.asked],
+      issueIds: [rows.clean, mixedCase(rows.asked)],
       commit: 'a'.repeat(40),
       account: 'published the store theme by hand from the admin screen',
       userId: ownerId,
