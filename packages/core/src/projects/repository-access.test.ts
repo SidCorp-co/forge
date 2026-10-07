@@ -1,6 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it, vi } from 'vitest';
-import type { PinnedSshHost } from '../git/ssh-host-guard.js';
+import { type PinnedSshHost, pinSafeSshHost } from '../git/ssh-host-guard.js';
 import type { GitHubRepoClient } from '../integrations/github/client.js';
 import type { LiveSource } from './live-source.js';
 import { type RepositoryAccessDeps, readableThrough, withRepository } from './repository-access.js';
@@ -82,6 +82,28 @@ describe('withRepository', () => {
       {
         kind: 'refused',
         cause: `${GITLAB} cannot be read: that host resolves to a private address`,
+        unbound: false,
+        route: 'deploy_key',
+      },
+    ]);
+  });
+
+  // ISS-1398 judge j3: an unresolvable host's refusal named no act and fit none of merge-mark.md's causes.
+  it('names a host whose name does not resolve, then the URL to check, as an unreachable host is', async () => {
+    const nowhere = 'git@gitlab.qa-iss1398.invalid:sid/desk.git';
+    const got: RepositoryAccess[] = [];
+    await withRepository('p', seen(got), {
+      source: async () => ({ kind: 'deploy_key', repoUrl: nowhere, privateKey: 'k' }),
+      deployKey: (async (_key: string, url: string) => {
+        await pinSafeSshHost(url);
+      }) as unknown as RepositoryAccessDeps['deployKey'],
+    });
+    expect(got).toEqual([
+      {
+        kind: 'refused',
+        cause:
+          'the git host gitlab.qa-iss1398.invalid could not be resolved, so the deploy key was never offered',
+        clears: `check that the SSH clone URL ${nowhere}, set under the project's Settings → Runners → Git access, names the right host and that its name resolves`,
         unbound: false,
         route: 'deploy_key',
       },

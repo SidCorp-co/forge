@@ -21,6 +21,9 @@ import {
   type CommitLookup,
   type Containment,
   type FoundCommit,
+  MARK_WITH_WHOLE_SHA,
+  overlongCommitName,
+  overlongLookup,
   RANGE_COMMIT_LIMIT,
   type RangeCommit,
   type RangeRead,
@@ -43,10 +46,10 @@ import type { PinnedSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
 
-/** A whole sha is SHA-1's 40 digits or SHA-256's 64; a name of any other length is a prefix. */
-const isWholeSha = (ref: string) => ref.length === 40 || ref.length === 64;
+/** Hex digits in a whole object id, by the object format the reading's repository was made with. */
+const WHOLE_DIGITS: Record<string, number> = { sha1: 40, sha256: 64 };
 
-const COMMIT_NAME = /^[0-9a-f]{4,64}$/i;
+const COMMIT_NAME = /^[0-9a-f]{4,}$/i;
 
 /** What the host says when asked for a commit no ref it serves reaches. */
 const UNREACHABLE = /not our ref|no such remote ref|couldn't find remote ref|unadvertised object/i;
@@ -73,6 +76,7 @@ class GitReading {
   private readonly trees: string;
   private readonly env: NodeJS.ProcessEnv;
   private readonly limits: FetchLimits;
+  private made: Promise<number> | null = null;
   private historyRead: Promise<void> | null = null;
   private treesRead: Promise<void> = Promise.resolve();
   private treesMade = false;
@@ -119,9 +123,28 @@ class GitReading {
     );
   }
 
+  /** The history repository, made once, and how many hex digits name a whole commit in it. */
+  wholeDigits(): Promise<number> {
+    this.made ??= (async () => {
+      await this.git(['init', '--bare', '--quiet', this.history]);
+      const format = (
+        await this.git(['-C', this.history, 'rev-parse', '--show-object-format'])
+      ).trim();
+      const digits = WHOLE_DIGITS[format];
+      if (digits === undefined) throw new Error(`git made a repository of object format ${format}`);
+      return digits;
+    })();
+    return this.made;
+  }
+
+  /** Why `ref` names no commit here by its length alone, asked before git resolves anything. */
+  async overlong(ref: string): Promise<string | null> {
+    return overlongCommitName(ref, await this.wholeDigits(), this.remote);
+  }
+
   private ensureHistory(): Promise<void> {
     this.historyRead ??= (async () => {
-      await this.git(['init', '--bare', '--quiet', this.history]);
+      await this.wholeDigits();
       await this.fetchInto(
         this.history,
         "fetching every branch's commits from the git host",
@@ -167,23 +190,21 @@ class GitReading {
   }
 
   /** That the repository holds no commit under `ref`, as a fact. */
-  private unheld(ref: string): string {
-    return isWholeSha(ref)
+  private unheld(ref: string, whole: boolean): string {
+    return whole
       ? `${this.remote} holds no commit ${ref}`
       : `${this.remote} resolves no single commit from ${ref}: no commit on any of its branches ` +
           'starts with it, or more than one does';
   }
 
-  private absent(ref: string): Resolved {
-    const ask = isWholeSha(ref)
-      ? 'Mark with the sha the work landed at'
-      : 'Mark with the full 40-character sha the work landed at';
+  private absent(ref: string, whole: boolean): Resolved {
+    const ask = whole ? 'Mark with the sha the work landed at' : MARK_WITH_WHOLE_SHA;
     return {
       ok: false,
-      why: this.unheld(ref),
+      why: this.unheld(ref, whole),
       lookup: {
         kind: 'absent',
-        detail: `${this.unheld(ref)}. ${ask}`,
+        detail: `${this.unheld(ref, whole)}. ${ask}`,
         details: { commit: ref, repository: this.remote },
       },
     };
@@ -192,13 +213,17 @@ class GitReading {
   /** The commit `ref` names, read whole: its full sha, parents, committer date and message. */
   async resolve(ref: string): Promise<Resolved> {
     const name = ref.trim().toLowerCase();
-    if (!COMMIT_NAME.test(name)) return this.absent(ref);
+    if (!COMMIT_NAME.test(name)) return this.absent(ref, false);
+    const overlong = await this.overlong(name);
+    if (overlong)
+      return { ok: false, why: overlong, lookup: overlongLookup(ref, overlong, this.remote) };
+    const whole = name.length === (await this.wholeDigits());
     await this.ensureHistory();
     let sha = await this.verified(`${name}^{commit}`);
-    if (!sha && isWholeSha(name) && (await this.fetchSha(name))) {
+    if (!sha && whole && (await this.fetchSha(name))) {
       sha = await this.verified(`${name}^{commit}`);
     }
-    if (!sha) return this.absent(ref);
+    if (!sha) return this.absent(ref, whole);
     // `log`, not `show`: `show -s` still reads the tree, which this reading never fetched.
     const shown = await this.git([
       '-C',
@@ -379,6 +404,8 @@ export function gitRepositoryReader(
 
     async contains(sha: string, branch: string): Promise<Containment> {
       try {
+        const overlong = await g.overlong(sha);
+        if (overlong) return { why: overlong };
         const tip = await g.head(branch);
         if ('why' in tip) return tip;
         const read = await g.status(['-C', g.history, 'merge-base', '--is-ancestor', sha, tip.sha]);

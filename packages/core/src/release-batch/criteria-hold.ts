@@ -94,6 +94,9 @@ export async function criteriaHold(
     displayId: shown.value?.get(r.issueId) ?? r.issueId,
     criteria: r.unearned.map((c) => c.criterion),
   }));
+  // A failed repository read is cleared by its own act, which no verdict repairs (ISS-1398).
+  const clears = [...new Set(owing.flatMap((r) => r.unearned.flatMap((c) => c.clears ?? [])))];
+  const readable = clears.length === 0 ? {} : { clears };
   if (owing.length === waiting.length) {
     // One project-level reason, not one per row, where no run could clear any of them (ISS-1346).
     if (serving.kind === 'undeclared') {
@@ -101,14 +104,14 @@ export async function criteriaHold(
       out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing, route, held }, 'roster'));
       return;
     }
-    out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
+    out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held, ...readable }, 'roster'));
     return;
   }
   const route =
     serving.kind === 'undeclared' ? { missing: serving.missing, route: serving.route } : {};
   warnings.push({
     code: 'RELEASE_CRITERIA_HELD_BACK',
-    message: heldBackWarningSentence(held, serving),
-    details: { held, ...route },
+    message: heldBackWarningSentence(held, serving, clears),
+    details: { held, ...route, ...readable },
   });
 }

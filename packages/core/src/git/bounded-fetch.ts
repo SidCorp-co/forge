@@ -142,6 +142,14 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
   }
 }
 
+/** A host whose name did not resolve, refused in the shape of `hostRefusal`'s unreachable host. */
+export function unresolvedHostRefusal(remote: string): Refused {
+  return {
+    cause: `the git host ${hostOf(remote)} could not be resolved, so the deploy key was never offered`,
+    clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that its name resolves`,
+  };
+}
+
 export function fetchRefusal(err: GitFailure, remote: string): string {
   return saying(hostRefusal(err, remote));
 }

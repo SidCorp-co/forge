@@ -11,6 +11,9 @@ import {
   type ChangedPaths,
   type CommitLookup,
   type Containment,
+  MARK_WITH_WHOLE_SHA,
+  overlongCommitName,
+  overlongLookup,
   RANGE_COMMIT_LIMIT,
   type RangeCommit,
   type RangeRead,
@@ -25,7 +28,7 @@ export const COMPARE_FILE_CEILING = 300;
 const PAGE_SIZE = 100;
 const PAGE_LIMIT = RANGE_COMMIT_LIMIT / PAGE_SIZE;
 
-/** Long enough to be a whole sha (SHA-1, or SHA-256 at 64), which GitHub cannot read as a prefix. */
+/** GitHub serves SHA-1 repositories, so a whole sha is 40 digits and a shorter name a prefix. */
 const FULL_SHA_LENGTH = 40;
 
 const TOO_MANY = `${COMPARE_FILE_CEILING} or more files differ, and the repository names no more than that in one compare`;
@@ -88,6 +91,9 @@ function rangeCommitOf(c: CommitRead): RangeCommit | null {
 export function githubRepositoryReader(client: GitHubRepoClient): RepositoryReader {
   const repository = client.fullName;
   const commitPath = (ref: string) => `/repos/${repository}/commits/${encodeURIComponent(ref)}`;
+  /** Why a commit name GitHub would answer by its first 40 digits names no commit, or null. */
+  const overlong = (...names: string[]) =>
+    names.map((n) => overlongCommitName(n, FULL_SHA_LENGTH, repository)).find((w) => w) ?? null;
 
   /** One compare, taken only whole: a status and the full file list, or the reason it is not. */
   async function compare(base: string, head: string): Promise<Compared> {
@@ -153,6 +159,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     route: 'binding',
 
     async commit(ref: string): Promise<CommitLookup> {
+      const named = overlong(ref);
+      if (named) return overlongLookup(ref, named, repository);
       let read: CommitRead;
       try {
         read = await client.get<CommitRead>(commitPath(ref));
@@ -167,7 +175,7 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
               ? `GitHub finds no commit ${ref} in ${repository} (HTTP ${lookup}). Mark with the sha the work landed at`
               : `GitHub resolves no single commit from ${ref} in ${repository} (HTTP ${lookup}): ` +
                 'no commit there starts with it, or more than one does, and GitHub answers both ' +
-                'alike. Mark with the full 40-character sha the work landed at';
+                `alike. ${MARK_WITH_WHOLE_SHA}`;
           return { kind: 'absent', detail, details: { commit: ref, repository } };
         }
         return { kind: 'unreadable', why: why(err) };
@@ -197,6 +205,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     },
 
     async contains(sha: string, branch: string): Promise<Containment> {
+      const named = overlong(sha);
+      if (named) return { why: named };
       try {
         const cmp = await client.get<CompareRead>(
           `/repos/${repository}/compare/${encodeURIComponent(sha)}...${encodeURIComponent(branch)}`,
@@ -208,6 +218,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     },
 
     async carriage(judged: string, served: string): Promise<Carriage> {
+      const named = overlong(judged, served);
+      if (named) return { kind: 'unread', why: named };
       try {
         return await carriage(judged, served);
       } catch (err) {
@@ -219,6 +231,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     },
 
     async changedPaths(landing: string): Promise<ChangedPaths> {
+      const named = overlong(landing);
+      if (named) return { kind: 'unread', why: named };
       try {
         return await changed(landing);
       } catch (err) {
@@ -230,6 +244,8 @@ export function githubRepositoryReader(client: GitHubRepoClient): RepositoryRead
     },
 
     async range(base: string, head: string): Promise<RangeRead> {
+      const named = overlong(head);
+      if (named) return { why: named };
       try {
         return await pages(base, head);
       } catch (err) {

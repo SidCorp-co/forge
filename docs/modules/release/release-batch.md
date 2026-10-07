@@ -197,4 +197,8 @@ A read that fails on either route is a reason, never an answer: a carriage that 
 leaves the criterion weighed by equality alone, so a failed read can hold a verdict and never earn
 one. The hold names each failed read by its cause beside the criterion it holds, and says the act
 that makes the repository readable once, at the head of its remedy, ahead of recording a verdict
-(`packages/core/src/pipeline/release-hold.ts:criteriaHold`).
+(`packages/core/src/pipeline/release-hold.ts:criteriaHold`). Readiness's `RELEASE_CRITERIA_UNEARNED` and its
+`RELEASE_CRITERIA_HELD_BACK` warning lead with the same act, once, ahead of the verdicts
+(`packages/core/src/release-batch/criteria-hold.ts:criteriaHold` carries it as `details.clears`).
+A judged or served commit named by more digits than a whole sha is never read as carried: the
+carriage is unread, naming the length, before the host is asked.

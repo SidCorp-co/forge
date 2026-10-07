@@ -57,11 +57,13 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
 `COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. On the git route the cause is one of four, read from what the host said
-(`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words past any `remote:`
-banner: the host refused the key; it took the key but will not let it read that repository, or
-none is there; the host the URL names could not be reached; or the repository lacks a branch. Each
-of the first three says what clears it, and where that is access for the key it asks for write
+evidence unchecked. On the git route the cause is one of five. The first is that the name of the
+host the URL names did not resolve, which is found before any connection is made
+(`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
+what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words
+past any `remote:` banner: the host refused the key; it took the key but will not let it read that
+repository, or none is there; the host could not be reached; or the repository lacks a branch.
+Each of the first four says what clears it, and where that is access for the key it asks for write
 access, as Test connection under Git access does, since the runner pushes with the same key.
 The refusal then names two routes. The first is to mark again once the tracker can read the
 repository: through the GitHub binding where the project has one, otherwise with the deploy key
@@ -75,7 +77,12 @@ answers an abbreviated sha that no commit starts with and one that
 several commits start with alike, and git resolves a prefix only against the commits its branches
 hold, so on either route such a sha is refused `COMMIT_NOT_IN_REPOSITORY` as
 unresolved, asking for the full sha, and never reported as absent. A full sha no branch holds is
-fetched by itself on the git route, and the host serving no such commit is the absent answer.
+fetched by itself on the git route, and the host serving no such commit is the absent answer. A
+name longer than a whole sha (40 hex digits in a SHA-1 repository, which is every GitHub one) is no
+commit's sha and no prefix of one, yet git, once the commit is packed, and GitHub both answer it by
+its first 40 digits. So each reader refuses it `COMMIT_NOT_IN_REPOSITORY` by its length before the
+host is asked, naming how many digits it has
+(`packages/core/src/projects/repository-reader.ts:overlongCommitName`).
 
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
 `merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the

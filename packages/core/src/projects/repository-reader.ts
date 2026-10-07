@@ -14,6 +14,34 @@ export function saying(refused: Refused): string {
   return refused.clears === undefined ? refused.cause : `${refused.cause} — ${refused.clears}`;
 }
 
+const HEX = /^[0-9a-f]+$/i;
+
+/** The act a mark refused for its commit's name is told to take. */
+export const MARK_WITH_WHOLE_SHA = 'Mark with the full 40-character sha the work landed at';
+
+/**
+ * Why `name` names no commit in `repository`, whose commits are named by `whole` hex digits, or
+ * null. Git (once the commit is packed) and GitHub both answer a longer name by its leading digits,
+ * so every reader rules on the length before a host is asked.
+ */
+export function overlongCommitName(name: string, whole: number, repository: string): string | null {
+  const digits = name.trim().toLowerCase();
+  if (!HEX.test(digits) || digits.length <= whole) return null;
+  return (
+    `${repository} holds no commit ${digits}: it is ${digits.length} hex digits, and a commit ` +
+    `there is named by its ${whole}-digit sha or a prefix of it`
+  );
+}
+
+/** `overlongCommitName` as the absent answer a commit lookup gives. */
+export function overlongLookup(name: string, why: string, repository: string): CommitLookup {
+  return {
+    kind: 'absent',
+    detail: `${why}. ${MARK_WITH_WHOLE_SHA}`,
+    details: { commit: name, repository },
+  };
+}
+
 export interface FoundCommit {
   sha: string;
   message: string;
