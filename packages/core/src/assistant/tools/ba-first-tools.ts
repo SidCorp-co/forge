@@ -5,6 +5,7 @@
  * Accepting a suggestion is a person's act.
  */
 
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { requirementCriterionSchema, requirementSpecSchema } from '@forge/contracts/suggestions';
 import { z } from 'zod';
 import {
@@ -56,7 +57,7 @@ const findSimilar =
 const suggestRequirementInput = z.strictObject({
   journey: z.uuid().describe('The approved design (workflowId) this requirement is drawn from.'),
   title: z.string().trim().min(1).max(500),
-  reason: z.string().trim().min(1).max(4_000),
+  reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
   spec: requirementSpecSchema.optional(),
   tldr: z.string().max(4_000).nullable().optional(),
   criteria: z.array(requirementCriterionSchema).min(1).max(200),

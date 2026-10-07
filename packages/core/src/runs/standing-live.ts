@@ -1,3 +1,4 @@
+import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
 import { holdReleasesItself } from '../jobs/index.js';
 import { describePause } from '../pipeline/index.js';
 import {
@@ -5,28 +6,44 @@ import {
   iso,
   isReleaseRun,
   NO_WAIT,
+  RUN_NEED_PERMISSION,
   type RunFacts,
+  type RunPersonNeed,
   runWait,
   type StandingContext,
   TERMINAL_SESSION,
 } from './standing-types.js';
 
-type Need = 'write' | 'admin' | 'approve';
+type Need = RunPersonNeed;
 
-const NEEDED_BY: Record<Need, string> = {
-  write: 'A project writer',
-  admin: 'A project admin',
-  approve: 'A holder of releases.approve',
-};
-
-function personWho(ctx: StandingContext, need: Need) {
+/** Whose a person's act on a run is: the viewer where they hold it, else its holders by name, else nobody and where it is granted. */
+function personWait(
+  ctx: StandingContext,
+  need: Need,
+  act: string,
+  rule: string,
+  ref: string | null,
+) {
   const v = ctx.viewer;
   const isViewer = !!(need === 'approve'
     ? v?.mayApprove
     : need === 'admin'
       ? v?.isAdmin
       : v?.canWrite);
-  return { who: isViewer ? 'You' : NEEDED_BY[need], isViewer };
+  if (isViewer) return runWait('you', 'You', act, rule, { ref });
+  const holders = ctx.holders[need];
+  if (holders.length === 0) {
+    return runWait(
+      'none',
+      holdersWho(holders),
+      nobodyHoldsAct(act, RUN_NEED_PERMISSION[need]),
+      rule,
+      {
+        ref,
+      },
+    );
+  }
+  return runWait('person', holdersWho(holders), act, rule, { ref });
 }
 
 function person(
@@ -45,12 +62,7 @@ function person(
     since: w.since,
     rule: w.rule,
     outcome: null,
-    waitingOn: (() => {
-      const p = personWho(ctx, w.need);
-      return runWait(p.isViewer ? 'you' : 'person', p.who, w.act, `${w.rule} (${w.ref})`, {
-        ref: w.issueKey ?? null,
-      });
-    })(),
+    waitingOn: personWait(ctx, w.need, w.act, `${w.rule} (${w.ref})`, w.issueKey ?? null),
   };
 }
 

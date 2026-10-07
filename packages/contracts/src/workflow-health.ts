@@ -2,6 +2,7 @@
 // its id, or an edge by its from and to steps, with its label where several edges share both ends.
 
 import { z } from "zod";
+import { REASON_TEXT_MAX } from "./reason-text.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import type { WaitingOn } from "./standing.js";
 
@@ -100,7 +101,7 @@ export const designChangePayloadSchema = z
 		steps: z.array(stepId).max(40).optional(),
 		edges: z.array(edgeRefSchema).max(120).optional(),
 		change: z.enum(DESIGN_CHANGE_KINDS),
-		reason: z.string().trim().min(1).max(4_000),
+		reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
 	})
 	.refine((p) => (p.steps?.length ?? 0) + (p.edges?.length ?? 0) > 0, {
 		message: "a design_change names at least one step or edge",

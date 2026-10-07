@@ -11,8 +11,13 @@ import type {
   FeedbackStatus,
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
-import type { ReleaseMode } from '@forge/contracts/forecast';
-import type { Standing, WaitingOn } from '@forge/contracts/standing';
+import { RELEASE_ACT_PERMISSION, type ReleaseMode } from '@forge/contracts/forecast';
+import {
+  holdersWho,
+  nobodyHoldsAct,
+  type Standing,
+  type WaitingOn,
+} from '@forge/contracts/standing';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
@@ -120,6 +125,8 @@ export interface StandingViewer {
   canApproveRelease: boolean;
   /** `project.write`. */
   canWrite: boolean;
+  /** `project.admin`. */
+  canAdmin: boolean;
 }
 
 /** How the release a planned item's carrier issue waits at is made (`project-config/release-path.ts:releaseModeOf`). */
@@ -132,6 +139,8 @@ export interface StandingFacts {
   carrierRelease: CarrierRelease | null;
   /** The version of the release a carrier issue is already cut into, when one is; else null. */
   carrierVersion?: string | null;
+  /** Who holds the permission the carrier's release act takes (`RELEASE_ACT_PERMISSION`), by name. */
+  releaseHolders?: readonly string[];
   /** Set while a snooze has not run out: the item is parked out of New until then. */
   snoozedUntil?: string | null;
   /** While it reads resolved and a sweep has dated it: when Forge verifies it if nobody has. */
@@ -215,8 +224,7 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'planned':
-      if (route === 'issue')
-        return issueWait(carriers, viewer, facts.carrierRelease, facts.carrierVersion ?? null);
+      if (route === 'issue') return issueWait(carriers, viewer, facts);
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
       if (route === 'answer') {
@@ -248,65 +256,69 @@ function waitingOf(
   }
 }
 
-// a carrier at the release gate waits on whoever makes that release: never a bare "ship" in a
-// project where nothing ships it (eco round 4, #45). `carriers` are the issues still owed, every one
-// named; `ref` is the first of them
+// a carrier at the release gate waits on whoever makes that release, by name: never a bare "ship"
+// in a project where nothing ships it (eco round 4, #45), never a role naming nobody. `carriers` are
+// the issues still owed, every one named; `ref` is the first of them
 function issueWait(
   carriers: readonly string[],
   viewer: StandingViewer,
-  release: CarrierRelease | null,
-  version: string | null,
+  facts: StandingFacts,
 ): Owed {
   const carrier = carriersPhrase(carriers);
   const issue = carrier ?? 'the linked issue';
   const ref = { ref: carriers[0] ?? null };
   const waits = carriers.length > 1 ? 'wait' : 'waits';
-  switch (release) {
-    case 'none':
-      return {
-        wait: wait(
-          'person',
-          'A project writer',
-          `release ${issue} by hand and close it`,
-          `planned: ${issue} ${waits} at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
-          ref,
-        ),
-        yours: viewer.canWrite,
-      };
-    case 'approval':
-      return {
-        wait: wait(
-          'person',
-          'A release approver',
-          version ? `Approve release ${version}` : 'Approve the release that carries it',
-          `planned: ${issue} ${waits} at awaiting_release and this project requires a holder of releases.approve to approve its release`,
-          { ref: version },
-        ),
-        yours: viewer.canApproveRelease,
-      };
-    case 'manual':
-      return {
-        wait: wait(
-          'person',
-          'A project writer',
-          `cut the release that carries ${issue}`,
-          `planned: ${issue} ${waits} at awaiting_release and this project's production does not deploy on land, so a person cuts its release`,
-          ref,
-        ),
-        yours: viewer.canWrite,
-      };
-    default:
-      return {
-        wait: wait(
-          'issue',
-          carrier ?? 'The linked issue',
-          'ship',
-          carriers.length > 1 ? 'planned: its issues carry it' : 'planned: its issue carries it',
-          ref,
-        ),
-        yours: false,
-      };
+  const release = facts.carrierRelease;
+  if (release === null || release === 'automatic') {
+    return {
+      wait: wait(
+        'issue',
+        carrier ?? 'The linked issue',
+        'ship',
+        carriers.length > 1 ? 'planned: its issues carry it' : 'planned: its issue carries it',
+        ref,
+      ),
+      yours: false,
+    };
   }
+  const version = facts.carrierVersion ?? null;
+  const owed = {
+    none: {
+      act: `release ${issue} by hand and close it`,
+      rule: `planned: ${issue} ${waits} at awaiting_release and this project declares no release model (no production environment), so no release carries it and a person releases it`,
+      extra: ref,
+      yours: viewer.canWrite,
+    },
+    approval: {
+      act: version ? `Approve release ${version}` : 'Approve the release that carries it',
+      rule: `planned: ${issue} ${waits} at awaiting_release and this project requires a holder of releases.approve to approve its release`,
+      extra: { ref: version },
+      yours: viewer.canApproveRelease,
+    },
+    manual: {
+      act: `cut the release that carries ${issue}`,
+      rule: `planned: ${issue} ${waits} at awaiting_release and this project's production does not deploy on land, so a holder of project.admin cuts its release`,
+      extra: ref,
+      yours: viewer.canAdmin,
+    },
+  }[release];
+  const holders = facts.releaseHolders ?? [];
+  if (holders.length === 0 && !owed.yours) {
+    return {
+      wait: wait(
+        'none',
+        holdersWho(holders),
+        nobodyHoldsAct(owed.act, RELEASE_ACT_PERMISSION[release]),
+        owed.rule,
+        owed.extra,
+      ),
+      yours: false,
+    };
+  }
+  return {
+    wait: wait('person', holdersWho(holders), owed.act, owed.rule, owed.extra),
+    yours: owed.yours,
+  };
 }
 
 function plannedWait(

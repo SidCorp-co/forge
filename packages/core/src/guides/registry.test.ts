@@ -118,3 +118,22 @@ describe('the method guides a pane follows', () => {
     expect(guides.map((g) => g.slug)).toContain(slug);
   });
 });
+
+// R-30: a public guide cited Forge's own issue keys (ISS-54, ISS-1108, forge-plugin ISS-347), which
+// no reader of another project can open and which go stale as the issues close.
+describe('the prose a guide serves', () => {
+  /** Every issue key a body cites, bar one written as the example of a display key. */
+  const issueKeys = (body: string) =>
+    [...body.matchAll(/\bISS-\d+\b/g)]
+      .filter((m) => !/such as \\?`$/.test(body.slice(Math.max(0, (m.index ?? 0) - 10), m.index)))
+      .map((m) => m[0]);
+
+  it('finds a key cited in prose and passes one given as a key example', () => {
+    expect(issueKeys('folded into needs_info (ISS-54).')).toEqual(['ISS-54']);
+    expect(issueKeys('resolves a display key such as `ISS-42` and answers')).toEqual([]);
+  });
+
+  it.each(bodies)('$slug cites no issue key', ({ body }) => {
+    expect(issueKeys(body)).toEqual([]);
+  });
+});

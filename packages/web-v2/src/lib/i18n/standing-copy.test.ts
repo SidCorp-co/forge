@@ -7,7 +7,7 @@ import { blockerText, feedbackNote, gateSentence, gateTitle, historyText, histor
 
 // One sentence core really writes for each pattern: in en it is returned as core wrote it, in vi it
 // is a Vietnamese sentence with the names, keys, versions and numbers carried over untouched.
-const WHO = ["You", "Master", "Independent judge", "BA or owner", "Issues", "A project admin", "A project writer", "The schedule owner", "A release approver", "The project's master", "Release run", "Release gate", "No approver", "Its author", "The revision proposal", "The linked issue", "The linked work", "The new requirement", "The current revision", "Nobody", "A holder of feedback.approve", "Its root FB-3", "Run", "Queued run", "Next run", "Release", "No holder", "A design approver", "The contract provider"];
+const WHO = ["You", "Master", "Independent judge", "BA or owner", "Issues", "The schedule owner", "The project's master", "Release run", "Release gate", "Its author", "The revision proposal", "The linked issue", "The linked work", "The new requirement", "The current revision", "Nobody", "A holder of feedback.approve", "Its root FB-3", "Run", "Queued run", "Next run", "Release", "No holder", "A design approver", "The contract provider"];
 const ACT = [
   "triage a report", "fix a failing schedule", "take over a schedule whose owner is gone",
   "triage 3 feedback items", "triage it again", "triage it", "triage FB-12", "accept r3", "accept the revision of REQ-4", "accept revision 2 of REQ-4", "propose the revision of REQ-4", "propose revision 2 of REQ-4",
@@ -16,7 +16,7 @@ const ACT = [
   "check BC-1 against the traceability matrix, due 2026-10-09", "judge BC-3, BC-5 on ISS-1, ISS-2", "fix BC-3, failing on ISS-2", "trace BC-5 to an issue criterion", "re-plan ISS-4, ISS-5", "break down, due 2026-10-09", "break down", "Review how this requirement is split into work",
   "promote 2 draft issues", "promote 1 draft issue", "Running 2 of 5", "Shipped 1 of 5", "Confirm the answer", "verify the fix shipped in 0.1.0", "verify the fix", "release ISS-7 by hand and close it",
   "release it by hand and close it", "Approve release 0.1.0", "Approve the release that carries it", "cut the release that carries ISS-7", "cut 0.1.0, then approve it", "cut 0.1.0", "cut 0.1.0 and 2 more",
-  "ship", "be agreed and delivered", "be resolved", "be accepted", "be delivered", "ask for approval", "approve or return 0.1.0", "no other admin can decide", "approve", "answer the return", "deploying",
+  "ship", "be agreed and delivered", "be resolved", "be accepted", "be delivered", "ask for approval", "approve or return 0.1.0", "approve", "answer the return", "deploying",
   "verifying", "starting", "declare a production environment", "declare where releases land", "cut the issues that are waiting", "bring an issue to the release gate", "split this release into smaller releases",
   "write the release note", "mark the merge", "declare a source probe on production", "pair a runner", "bring a runner online", "a release is running", "queued behind 0.2.0", "judge the criteria still owed",
   "give production a way to be read", "a check could not run", "label a runner for releases", "verdicts not re-read",
@@ -25,8 +25,9 @@ const ACT = [
   "not started", "declare the policy", "declare its policy state", "approve the design", "approve a contract version", "in progress with no live run", "re-run after reopen",
   "build next", "dispatch a run", "revise design Staff shell · revision 3 returned", "judge it again", "Approve release on Releases", "next release", "wait on ISS-4",
   "read the answer", "read the answer back", "answer the other question", "move it on", "move it on: TRANSITION_REFUSED",
-  "approve: no person on this project can write until a project admin grants write under Settings → Members",
-  "take on or drop: no person on this project can write until a project admin grants write under Settings → Members",
+  "approve: no person on this project holds releases.approve until it is granted under Settings → Members",
+  "take on or drop: no person on this project holds project.write until it is granted under Settings → Members",
+  "cut 0.1.0: no person on this project holds project.admin until it is granted under Settings → Members",
 ];
 const EFFECT = [
   "Records that this requirement follows Staff shell revision 3 from now on. Its wording and criteria do not change, and its delivery is not offered for acceptance until then.",

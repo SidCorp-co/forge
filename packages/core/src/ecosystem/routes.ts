@@ -1,3 +1,4 @@
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
@@ -149,7 +150,7 @@ membershipRoutes.get('/:id', idParam, async (c) => {
 
 const reasonBody = zValidator(
   'json',
-  z.strictObject({ reason: z.string().trim().min(1).max(500) }),
+  z.strictObject({ reason: z.string().trim().min(1).max(REASON_LINE_MAX) }),
   invalid(
     'leaving or removing a membership says why: the body is { "reason": 1 to 500 characters }, and the reason is kept on the membership.',
     'MEMBERSHIP_REASON_REQUIRED',

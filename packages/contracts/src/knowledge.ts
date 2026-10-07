@@ -16,7 +16,7 @@ export const ALWAYS_INJECT_ENFORCEMENT_NOTE =
 	"complied, and no surface counts how often one was obeyed; what was injected is visible " +
 	"afterwards on the job, whether it was followed is recorded nowhere. No obligation on this " +
 	"deployment has a readback today: the one that did was the UX contract, whose rules carried " +
-	"ids for agents to cite back, and ISS-1068 retired it because in sixteen days of always " +
+	"ids for agents to cite back, and it was retired because in sixteen days of always " +
 	"injecting it on twelve projects it was cited back zero times. So the price is known and " +
 	"nobody is paying it: write the rule so that an agent following it leaves evidence a human " +
 	"can look at, and expect no gate to ask for that evidence.";

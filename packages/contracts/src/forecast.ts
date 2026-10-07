@@ -7,6 +7,8 @@
  * in the order its masters are handed work, its `blocks` edges and its observed concurrency.
  */
 
+import type { ProjectPermission } from "./permissions.js";
+
 /** Fewer landed issues than this in the window and no number is given. */
 export const FORECAST_HISTORY_FLOOR = 10;
 /** The days of landings the history is read from. */
@@ -171,6 +173,20 @@ const RELEASE_MODES = [
 ] as const;
 export type ReleaseMode = (typeof RELEASE_MODES)[number];
 
+/**
+ * The permission the act a release mode leaves to a person takes: approve (`releases.approve`), cut
+ * (`project.admin`, the release-batch route's check) or release by hand (`project.write`). Every read
+ * model naming who owes that act reads it here, so two screens cannot name two permissions.
+ */
+export const RELEASE_ACT_PERMISSION = {
+	approval: "releases.approve",
+	manual: "project.admin",
+	none: "project.write",
+} as const satisfies Record<
+	Exclude<ReleaseMode, "automatic">,
+	ProjectPermission
+>;
+
 /** The project's own landed→released durations the release lag was sampled from. */
 interface ReleaseLagBasis {
 	n: number;
@@ -194,13 +210,13 @@ export type ReleaseLeg =
 	| {
 			kind: "person";
 			mode: Exclude<ReleaseMode, "automatic">;
-			/** The holder named when one or two hold it, the count when more, the role when none could be resolved. */
+			/** `You` where the reader owes it, else the holders by name (`standing.ts:holdersWho`), `Nobody` where none holds it. */
 			who: string;
 			act: string;
 			reason: string;
 			/** The version the act cuts, the page its line links to; null where no cut is owed (`none`). */
 			version: string | null;
-			/** Everyone holding the permission the act takes; empty where the mode names a role only. */
+			/** Everyone holding the permission the act takes (`RELEASE_ACT_PERMISSION`); empty where nobody does. */
 			holders: ReleaseHolder[];
 	  };
 

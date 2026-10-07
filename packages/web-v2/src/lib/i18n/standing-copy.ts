@@ -25,14 +25,10 @@ const WHO: Rule[] = [
   { re: new RegExp("^Independent judge$"), key: "standing.who.independentJudge" },
   { re: new RegExp("^BA or owner$"), key: "standing.who.baOrOwner" },
   { re: new RegExp("^Issues$"), key: "standing.who.issues" },
-  { re: new RegExp("^A project admin$"), key: "standing.who.projectAdmin" },
-  { re: new RegExp("^A project writer$"), key: "standing.who.projectWriter" },
   { re: new RegExp("^The schedule owner$"), key: "standing.who.scheduleOwner" },
-  { re: new RegExp("^A release approver$"), key: "standing.who.releaseApprover" },
   { re: new RegExp("^The project's master$"), key: "standing.who.projectMaster" },
   { re: new RegExp("^Release run$"), key: "standing.who.releaseRun" },
   { re: new RegExp("^Release gate$"), key: "standing.who.releaseGate" },
-  { re: new RegExp("^No approver$"), key: "standing.who.noApprover" },
   { re: new RegExp("^Its author$"), key: "standing.who.itsAuthor" },
   { re: new RegExp("^The revision proposal$"), key: "standing.who.revisionProposal" },
   { re: new RegExp("^The linked issue$"), key: "standing.who.linkedIssue" },
@@ -106,7 +102,6 @@ const ACT: Rule[] = [
   { re: new RegExp("^be delivered$"), key: "standing.act.beDelivered" },
   { re: new RegExp("^ask for approval$"), key: "standing.act.askApproval" },
   { re: new RegExp("^approve or return (?<v>.+)$"), key: "standing.act.approveOrReturn", vars: (g) => ({ v: g.v ?? "" }) },
-  { re: new RegExp("^no other admin can decide$"), key: "standing.act.noOtherAdmin" },
   { re: new RegExp("^approve$"), key: "standing.act.approve" },
   { re: new RegExp("^answer the return$"), key: "standing.act.answerReturn" },
   { re: new RegExp("^deploying$"), key: "standing.act.deploying" },
@@ -130,12 +125,12 @@ const ACT: Rule[] = [
   { re: new RegExp("^label a runner for releases$"), key: "standing.act.labelRunner" },
   { re: new RegExp("^verdicts not re-read$"), key: "standing.act.verdictsNotReread" },
   {
-    // the act a person's turn names where no person holds write (FB-104): its own act, then where it is granted
-    re: new RegExp("^(?<act>.+): no person on this project can write until a project admin grants write under Settings → Members$"),
-    key: "standing.act.noWriter",
+    // the act a wait names where no person holds the permission it needs (FB-104, contracts `standing.ts:nobodyHoldsAct`): its own act, then where it is granted
+    re: new RegExp("^(?<act>.+): no person on this project holds (?<perm>\\S+) until it is granted under Settings → Members$"),
+    key: "standing.act.noHolder",
     vars: (g, l) => {
       const act = apply(ACT, g.act ?? "", l);
-      return act === null ? null : { act };
+      return act === null ? null : { act, perm: g.perm ?? "" };
     },
   },
   ...ISSUE_ACT,

@@ -1,5 +1,6 @@
 import type { ReleaseGateView } from '@forge/contracts/releases';
 import { selectAllSlugsFromKnowledge } from '../knowledge/index.js';
+import { holderNames } from '../permissions/index.js';
 import type { DeploymentTrigger, Promotion } from '../project-config/index.js';
 import { readDeclaredSource } from '../project-config/index.js';
 import { missingProjectKnowledge } from '../projects/index.js';
@@ -122,7 +123,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     gaps,
     blockers,
     warnings: report.warnings,
-    gates: gateViews(blockers, report.warnings),
+    gates: gateViews(blockers, report.warnings, await holderNames('project.admin', projectId)),
   };
 }
 

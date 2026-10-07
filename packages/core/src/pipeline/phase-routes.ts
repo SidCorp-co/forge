@@ -1,3 +1,4 @@
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
@@ -24,7 +25,7 @@ const endBodySchema = z
     phase: z.string().min(1).max(64),
     attempt: z.number().int().positive(),
     outcome: z.enum(phaseJournalOutcomes),
-    note: z.string().max(4000).optional(),
+    note: z.string().max(REASON_TEXT_MAX).optional(),
   })
   .strict();
 

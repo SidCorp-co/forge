@@ -8,6 +8,7 @@ import type {
 	AgentReportSeverity,
 	AgentReportTarget,
 } from "./agent-reports.js";
+import { REASON_LINE_MAX } from "./reason-text.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
@@ -399,7 +400,7 @@ export const feedbackDedupSchema = z.strictObject({
 	ran: z.boolean(),
 	nearest: z.string().nullable(),
 	similarity: z.number().min(-1).max(1).optional(),
-	why: z.string().max(500).optional(),
+	why: z.string().max(REASON_LINE_MAX).optional(),
 });
 export type FeedbackDedup = z.infer<typeof feedbackDedupSchema>;
 

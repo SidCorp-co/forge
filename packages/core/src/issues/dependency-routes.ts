@@ -6,6 +6,7 @@
  * the envelope. What stays here is transport: authz against the project role.
  */
 
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import type { DependencyRefusalCode } from '@forge/contracts/issues';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -37,7 +38,7 @@ const createBodySchema = z
   .object({
     dependsOnId: z.uuid(),
     kind: z.enum(issueDependencyKinds).default('blocks'),
-    reason: z.string().trim().min(1).max(2000).optional(),
+    reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
     validUntil: z.iso.datetime().optional(),
   })
   .strict();

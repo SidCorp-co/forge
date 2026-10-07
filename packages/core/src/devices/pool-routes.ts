@@ -6,6 +6,7 @@
  * only through its daemon, so there is one holder of the device token.
  */
 
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { masterLimitRecordSchema } from '@forge/contracts/master-verdict';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -242,7 +243,7 @@ devicePoolRoutes.post(
 );
 const masterCloseBodySchema = z.object({
   sessionId: z.string().uuid(),
-  reason: z.string().min(1).max(500),
+  reason: z.string().min(1).max(REASON_LINE_MAX),
 });
 
 /** The runner reporting a master it watched die (ISS-919 B3). */

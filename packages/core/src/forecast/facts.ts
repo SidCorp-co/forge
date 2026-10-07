@@ -18,8 +18,9 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
 import { readMasterStanding } from '../masters/index.js';
+import { holderNames } from '../permissions/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
-import { type CycleSample, type History, peakOf, type Wait } from './model.js';
+import { type CycleSample, type History, holdersWait, peakOf, type Wait } from './model.js';
 
 const DAY_MS = 86_400_000;
 export const LANDED_STATUSES: readonly IssueStatus[] = ISSUE_RESOLVED_STATUSES;
@@ -156,12 +157,13 @@ export async function projectWaitOf(projectId: string): Promise<Wait | null> {
     const held = await releaseIneligibleRunners(projectId);
     const [first] = held;
     if (!first) {
-      return {
-        who: 'A project admin',
-        act: 'pair a runner',
-        reason: 'no runner is registered for this project, so nothing can take its work',
-        ref: null,
-      };
+      return holdersWait(
+        await holderNames('project.admin', projectId),
+        'project.admin',
+        'pair a runner',
+        'no runner is registered for this project, so nothing can take its work',
+        null,
+      );
     }
     const said = held
       .map((h) => `${h.deviceName} is ${h.reason}${h.detail ? ` (${h.detail})` : ''}`)
@@ -175,11 +177,21 @@ export async function projectWaitOf(projectId: string): Promise<Wait | null> {
   }
   const master = await readMasterStanding(projectId);
   if (master.state === 'silent') {
+    const reason = `the project's master has been silent since ${master.lastBeatAt ?? 'it started'}, so nothing is dispatched`;
+    if (!master.device) {
+      return holdersWait(
+        await holderNames('project.admin', projectId),
+        'project.admin',
+        'restart the master',
+        reason,
+        null,
+      );
+    }
     return {
-      who: master.device ? `Whoever can reach ${master.device.name}` : 'A project admin',
+      who: `Whoever can reach ${master.device.name}`,
       act: 'restart the master',
-      reason: `the project's master has been silent since ${master.lastBeatAt ?? 'it started'}, so nothing is dispatched`,
-      ref: master.device?.name ?? null,
+      reason,
+      ref: master.device.name,
     };
   }
   if (master.state === 'waiting_person' && master.waitingOn) {
@@ -218,13 +230,16 @@ export function waitOf(row: IssueStandingRow): Wait | null {
   return null;
 }
 
-export const INTAKE_WAIT: Wait = {
-  who: 'A project writer',
-  act: 'release it to the master',
-  reason:
+/** An open issue a manual intake holds: a writer releases it to the master. */
+export function intakeWaitOf(writers: readonly string[]): Wait {
+  return holdersWait(
+    writers,
+    'project.write',
+    'release it to the master',
     "the project's intake is manual: an open issue reaches a master only once a person releases it",
-  ref: null,
-};
+    null,
+  );
+}
 
 export interface IssueRow {
   id: string;

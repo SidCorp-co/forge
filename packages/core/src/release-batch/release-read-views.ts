@@ -58,6 +58,8 @@ export interface Shared {
   required: boolean;
   viewer: ViewerFacts | null;
   approvers: ReleasePerson[];
+  /** Who holds project.admin, by name. */
+  admins: string[];
   facts: ReleaseFacts;
   /** The project's content language tag, which its release notes are written in. */
   contentLanguage: string;
@@ -82,6 +84,7 @@ function turnFor(p: Part, s: Shared) {
     version: p.version,
     approval: approvalFacts(p),
     approvers: s.approvers,
+    admins: s.admins,
     viewer: s.viewer,
     gates: p.gates.filter((g) => g.kind === 'blocker'),
     inFlight: inFlightStage(p.attempts),

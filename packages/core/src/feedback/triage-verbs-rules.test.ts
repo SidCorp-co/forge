@@ -11,7 +11,13 @@ import {
 
 const now = new Date('2026-10-07T00:00:00Z');
 const inDays = (n: number) => new Date(now.getTime() + n * 86_400_000);
-const viewer = { isReporter: false, canTriage: true, canApproveRelease: false, canWrite: true };
+const viewer = {
+  isReporter: false,
+  canTriage: true,
+  canApproveRelease: false,
+  canWrite: true,
+  canAdmin: false,
+};
 
 describe('accept', () => {
   it('takes new and reopened, and refuses every other phase by name', () => {

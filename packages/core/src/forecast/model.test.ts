@@ -48,7 +48,7 @@ const person: Wait = {
 };
 
 const run = (items: WorkItem[], h: History = history(20), projectWait: Wait | null = null) =>
-  runForecast({ now: NOW, items, history: h, projectWait, seed: 7 });
+  runForecast({ now: NOW, items, history: h, projectWait, writers: ['Ana'], seed: 7 });
 
 describe('forecast honesty', () => {
   it('gives no number below the history floor', () => {
@@ -210,6 +210,7 @@ describe('forecast arithmetic', () => {
       items: [big, tiny],
       history: { samples, spanDays: 60, peak: null },
       projectWait: null,
+      writers: [],
       seed: 1,
     });
     expect(read.basisOf('l')?.complexity).toBe('l');

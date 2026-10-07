@@ -1,3 +1,4 @@
+import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
@@ -78,7 +79,7 @@ const editBody = zValidator(
 const reasonBody = (code: ChannelRefusalCode, act: string) =>
   zValidator(
     'json',
-    z.strictObject({ reason: z.string().trim().min(1).max(500) }),
+    z.strictObject({ reason: z.string().trim().min(1).max(REASON_LINE_MAX) }),
     invalid(
       `${act} says why: the body is { "reason": 1 to 500 characters }, and both sides read it.`,
       code,
@@ -89,7 +90,7 @@ const supersedeBody = zValidator(
   'json',
   z.strictObject({
     by: z.string().regex(NUMBER_PATTERN),
-    reason: z.string().trim().min(1).max(500),
+    reason: z.string().trim().min(1).max(REASON_LINE_MAX),
   }),
   invalid(
     'a supersession names its replacement and says why: the body is { "by": <the number of the published replacement>, "reason": 1 to 500 characters }.',

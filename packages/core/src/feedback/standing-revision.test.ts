@@ -6,6 +6,7 @@ const reader: StandingViewer = {
   canTriage: false,
   canApproveRelease: false,
   canWrite: false,
+  canAdmin: false,
 };
 
 const planned = (stage: Parameters<typeof revisionStageOf>[0]) =>

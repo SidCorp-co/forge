@@ -57,19 +57,45 @@ describe('delivery: in people’s hands, not merged', () => {
     expect(d.inHands).toMatchObject({ p50Minutes: 150, p85Minutes: 150 });
   });
 
-  it('names the person and the act, with no date, where a person cuts the release', () => {
-    const d = deliver({ release: { mode: 'manual', nextVersion: '0.1.0', lags: lags(40) } });
-    expect(d.release).toMatchObject({ kind: 'person', who: 'A project admin', act: 'cut 0.1.0' });
+  it('names the admins and the act, with no date, where a person cuts the release', () => {
+    const d = deliver({
+      release: {
+        mode: 'manual',
+        nextVersion: '0.1.0',
+        lags: lags(40),
+        holders: [{ id: 'a', name: 'Ada', kind: 'human' }],
+      },
+    });
+    expect(d.release).toMatchObject({ kind: 'person', who: 'Ada', act: 'cut 0.1.0' });
     expect(d.inHands).toBeNull();
   });
 
   it('names the approver where the project requires an approval, even on land', () => {
-    const leg = releaseLegOf({ mode: 'approval', nextVersion: '1.4.0', lags: lags(40) });
-    expect(leg).toMatchObject({ kind: 'person', who: 'A release approver' });
+    const leg = releaseLegOf({
+      mode: 'approval',
+      nextVersion: '1.4.0',
+      lags: lags(40),
+      holders: [{ id: 'd', name: 'Dana Lee', kind: 'human' }],
+    });
+    expect(leg).toMatchObject({ kind: 'person', who: 'Dana Lee' });
     expect(leg.kind === 'person' && leg.act).toBe('cut 1.4.0, then approve it');
   });
 
-  it('names the person who holds the approval, then the count, with the version the cut takes', () => {
+  it('says nobody holds the permission, and where it is granted, for each mode a person owes', () => {
+    for (const [mode, permission] of [
+      ['approval', 'releases.approve'],
+      ['manual', 'project.admin'],
+      ['none', 'project.write'],
+    ] as const) {
+      const leg = releaseLegOf({ mode, nextVersion: '0.1.0', lags: [], holders: [] });
+      expect(leg, mode).toMatchObject({ kind: 'person', who: 'Nobody', holders: [] });
+      expect(leg.kind === 'person' && leg.act, mode).toContain(
+        `no person on this project holds ${permission} until it is granted under Settings → Members`,
+      );
+    }
+  });
+
+  it('names the people who hold the approval, three then the count, with the version the cut takes', () => {
     const h = (name: string, kind: 'human' | 'agent' = 'human') => ({ id: name, name, kind });
     const one = releaseLegOf({
       mode: 'approval',
@@ -84,17 +110,15 @@ describe('delivery: in people’s hands, not merged', () => {
       lags: [],
       holders: [h('bot', 'agent'), h('Dana Lee'), h('Sam Ng')].slice(1),
     });
-    expect(two).toMatchObject({ who: 'Dana Lee or Sam Ng' });
+    expect(two).toMatchObject({ who: 'Dana Lee, Sam Ng' });
     const many = releaseLegOf({
       mode: 'approval',
       nextVersion: '0.1.0',
       lags: [],
-      holders: [h('a'), h('b'), h('c')],
+      holders: [h('a'), h('b'), h('c'), h('d'), h('e')],
     });
-    expect(many).toMatchObject({ who: '3 release approvers' });
-    expect(many.kind === 'person' && many.reason).toContain('a, b, c');
-    const none = releaseLegOf({ mode: 'approval', nextVersion: '0.1.0', lags: [], holders: [] });
-    expect(none).toMatchObject({ who: 'A release approver', holders: [] });
+    expect(many).toMatchObject({ who: 'a, b, c +2' });
+    expect(many.kind === 'person' && many.reason).toContain('a, b, c, d, e');
   });
 
   // JU-7: hop's dashboard read 'then orchestrator cuts it' to orchestrator, beside Needs-you's 'You · cut 0.3.0'

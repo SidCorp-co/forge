@@ -116,7 +116,11 @@ describe('a release a person cuts is named, never dated', () => {
     const asMember = { ...w, token: await userToken(member.id) };
     const d = byKey((await read(asMember, '/feedback')).items as Body[], key).delivery as Body;
     expect((d.landing as Body).kind).toBe('forecast');
-    expect(d.release).toMatchObject({ kind: 'person', mode: 'manual', who: 'A project admin' });
+    expect(d.release).toMatchObject({
+      kind: 'person',
+      mode: 'manual',
+      who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
+    });
     expect((d.release as Body).act).toMatch(/^cut \d+\.\d+\.\d+/);
     expect(d.inHands).toBeNull();
     // JU-7: the admin reading it is the one who cuts, so it names them as You, never by their own name

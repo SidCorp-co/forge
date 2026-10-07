@@ -153,10 +153,20 @@ export interface RunFacts {
   attempt: { n: number; retryOf: string | null; of: string } | null;
 }
 
+/** The permission each person's act on a run takes. */
+export const RUN_NEED_PERMISSION = {
+  write: 'project.write',
+  admin: 'project.admin',
+  approve: 'releases.approve',
+} as const;
+export type RunPersonNeed = keyof typeof RUN_NEED_PERMISSION;
+
 export interface StandingContext {
   now: Date;
   /** canWrite and isAdmin address a person-only wait; mayApprove follows releases.approve, agent tokens included. */
   viewer: { canWrite: boolean; isAdmin: boolean; mayApprove: boolean } | null;
+  /** Who holds each permission a person's wait needs, by name (`permissions:namedHoldersOf`). */
+  holders: Readonly<Record<RunPersonNeed, readonly string[]>>;
   slots: { inUse: number; max: number } | null;
   stuckAfterMs: number;
   /** Why dispatch skips each queued job of the project now (`jobs:gateReasonsForQueuedJobsIn`), by job id:

@@ -21,7 +21,7 @@ import {
   type ScheduleState,
 } from '@forge/contracts/automation-standing';
 import { scheduleWritePermission } from '@forge/contracts/schedules';
-import { nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
+import { holdersWho, nobodyHoldsAct, nobodyWaits, type WaitingOn } from '@forge/contracts/standing';
 import { type LastFire, type ScheduleStreak, streakFails } from './ports.js';
 
 export interface AutomationViewer {
@@ -30,6 +30,8 @@ export interface AutomationViewer {
   canWrite: boolean;
   /** admin or above: may change any schedule, taking over one that is not theirs. */
   isAdmin: boolean;
+  /** Who a group's wait names, by name: the project's admins and writers (`permissions:namedHoldersOf`). */
+  holders: { admins: readonly string[]; writers: readonly string[] };
 }
 
 export interface ScheduleFacts {
@@ -110,7 +112,12 @@ function groupWait(
 ): AutomationWaitingOn {
   const mine = kind === 'admins' ? viewer.isAdmin : viewer.canWrite;
   if (mine) return owed('you', 'You', act, rule);
-  return owed(kind, kind === 'admins' ? 'A project admin' : 'A project writer', act, rule);
+  const holders = viewer.holders[kind];
+  if (holders.length === 0) {
+    const permission = kind === 'admins' ? 'project.admin' : 'project.write';
+    return owed('none', holdersWho(holders), act, nobodyHoldsAct(rule, permission));
+  }
+  return owed(kind, holdersWho(holders), act, rule);
 }
 
 function scheduleStateOf(
