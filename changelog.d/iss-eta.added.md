@@ -1,1 +1,0 @@
-**Forge forecasts when work lands, as a labelled range.** Issues, requirements and the draft release show a p50–p85 range from the project's own history, queue and blocks edges, or name whom the work waits on instead.

@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.87] - 2026-10-07
+
+Work-landing forecasts, priority-first dispatch, and releases that say what they change
+
+### Added
+
+- **Forge forecasts when work lands, as a labelled range.** Issues, requirements and the draft release show a p50–p85 range from the project's own history, queue and blocks edges, or name whom the work waits on instead.
+- **A release says what it changes.** Each landing names its artifacts by surface — from the mark, a design approval, or its commit's paths read by host or box — and the release page and peek open with "What changes".
+
+### Fixed
+
+- **Waiting on you now means you.** A conversation reads it when the agent ends on a question put to you, or holds a batch you may answer, never for a question it answered, quoted or wrote in code (ISS-277).
+
 ## [0.4.0-dev.86] - 2026-10-07
 
 Integrations screens tell the truth, and held-runner cards say why
