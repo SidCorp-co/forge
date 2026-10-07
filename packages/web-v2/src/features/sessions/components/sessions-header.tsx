@@ -1,4 +1,5 @@
 import { Button, PageTitle } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatDuration } from "../types";
 import type { SessionStats } from "./session-filters";
 
@@ -12,21 +13,22 @@ export function SessionsHeader({
   sweeping: boolean;
   onSweep: () => void;
 }) {
+  const t = useCopy();
   return (
     <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
       <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
-        <PageTitle className="fg-h2">Sessions</PageTitle>
+        <PageTitle className="fg-h2">{t("sessions.title")}</PageTitle>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <StatPill label="Active" value={String(stats.active)} />
-          <StatPill label="Queued" value={String(stats.queued)} />
+          <StatPill label={t("sessions.stat.active")} value={String(stats.active)} />
+          <StatPill label={t("sessions.stat.queued")} value={String(stats.queued)} />
           <StatPill
-            label="Zombie jobs"
+            label={t("sessions.stat.zombies")}
             value={String(stats.zombies)}
             tone={stats.zombies > 0 ? "alert" : "default"}
           />
           <StatPill
-            label="Median wait"
-            value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"}
+            label={t("sessions.stat.medianWait")}
+            value={stats.queued > 0 ? formatDuration(stats.medianWaitMs, t) : "—"}
           />
         </div>
       </div>
@@ -37,7 +39,7 @@ export function SessionsHeader({
         loading={sweeping}
         onClick={onSweep}
       >
-        Sweep zombies
+        {t("sessions.sweep")}
       </Button>
     </header>
   );

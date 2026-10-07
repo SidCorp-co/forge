@@ -6,6 +6,7 @@
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
 import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
@@ -43,22 +44,23 @@ const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; c
 };
 
 function TodoList({ todos }: { todos: AgentTodo[] }) {
+  const t = useCopy();
   if (todos.length === 0) return null;
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2">
-      <p className="fg-caption mb-1.5">Task list</p>
+      <p className="fg-caption mb-1.5">{t("sessions.thread.taskList")}</p>
       <ul className="space-y-1">
-        {todos.map((t, i) => {
-          const ic = TODO_ICON[t.status];
+        {todos.map((todo, i) => {
+          const ic = TODO_ICON[todo.status];
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: the agent rewrites the whole list each turn, and two todos may share a content
-            <li key={`${t.content}-${i}`} className="flex items-start gap-2">
+            <li key={`${todo.content}-${i}`} className="flex items-start gap-2">
               <Icon name={ic.name} size={13} className="mt-0.5 flex-none" style={{ color: ic.color }} />
               <span
                 className="fg-body-sm"
-                style={{ textDecoration: t.status === "completed" ? "line-through" : undefined, color: t.status === "completed" ? "var(--fg-subtle)" : undefined }}
+                style={{ textDecoration: todo.status === "completed" ? "line-through" : undefined, color: todo.status === "completed" ? "var(--fg-subtle)" : undefined }}
               >
-                {t.status === "in_progress" && t.activeForm ? t.activeForm : t.content}
+                {todo.status === "in_progress" && todo.activeForm ? todo.activeForm : todo.content}
               </span>
             </li>
           );
@@ -69,16 +71,17 @@ function TodoList({ todos }: { todos: AgentTodo[] }) {
 }
 
 function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationItem; busy?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+  const t = useCopy();
   return (
     <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
       {onRegenerate && (
         <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-          Regenerate
+          {t("sessions.thread.regenerate")}
         </Button>
       )}
       {onFork && (
         <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-          Fork
+          {t("sessions.thread.fork")}
         </Button>
       )}
     </div>
@@ -86,6 +89,7 @@ function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationI
 }
 
 function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: { item: ConversationItem; busy?: boolean; readOnly?: boolean } & ConversationActions) {
+  const t = useCopy();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
 
@@ -101,7 +105,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
             />
             <div className="flex items-center justify-end gap-1.5">
               <Button variant="ghost" size="sm" className="min-h-11 text-on-accent" onClick={() => { setEditing(false); setDraft(item.text); }}>
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 variant="secondary"
@@ -110,7 +114,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
                 disabled={busy || !draft.trim() || draft === item.text}
                 onClick={() => { onEditTurn?.(item.turnId, draft.trim(), item.editedAt); setEditing(false); }}
               >
-                Save
+                {t("sessions.thread.save")}
               </Button>
             </div>
           </div>
@@ -127,17 +131,17 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
         <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           {onEditTurn && (
             <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
-              Edit
+              {t("sessions.thread.edit")}
             </Button>
           )}
           {onRegenerate && (
             <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-              Regenerate
+              {t("sessions.thread.regenerate")}
             </Button>
           )}
           {onFork && (
             <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-              Fork
+              {t("sessions.thread.fork")}
             </Button>
           )}
         </div>
@@ -163,6 +167,7 @@ function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
 }
 
 function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+  const t = useCopy();
   const tailIdx = item.blocks.length - 1;
   const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
@@ -192,7 +197,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   }, [unfolded]);
   const fold =
     latched && folded === true && !unfolded && disclosures?.touched(item.id) !== true
-      ? foldTurn(item.blocks)
+      ? foldTurn(item.blocks, t)
       : null;
 
   const renderBlock = (block: RenderBlock, i: number) => {

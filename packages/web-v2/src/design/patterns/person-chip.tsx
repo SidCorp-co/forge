@@ -4,6 +4,7 @@
 // agent's mark in a violet square (never mistaken for a person's or a run's), and the name beside.
 
 import type { WaitingMark } from "@forge/contracts/standing";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "../icons/icon";
 import { AGENT_TINT } from "../status";
@@ -62,8 +63,9 @@ export function PersonChip({ name, size = 18, you, className }: PersonChipProps)
 
 /** An agent (the master, a BA assistant, a run), marked as one in its tooltip and its mark. */
 export function AgentChip({ name, size = 18, className }: Omit<PersonChipProps, "you">) {
+  const t = useCopy();
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)} title={`${name} · agent`} data-testid="agent-chip">
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5", className)} title={t("common.actor.agent", { name })} data-testid="agent-chip">
       <WhoMark kind="agent" who={name} size={size} />
       <span className="truncate">{name}</span>
     </span>

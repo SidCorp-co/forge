@@ -36,11 +36,13 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { statusReading } from "@/design/vocabulary";
 import { useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
 import { formatRefusal } from "@/lib/api/error";
-import { formatAge, formatStamp } from "@/lib/utils/format";
+import { standingAct, standingWho } from "@/lib/i18n/standing-copy";
+import type { Copy } from "@/lib/i18n/product-copy";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useScheduleDetail } from "../hooks";
 import { automationListHref, fireHref } from "@/lib/routes/automation";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
-import { fmtTime } from "../view";
+import { fmtTime, type RowCtx } from "../view";
 import { FireLines } from "./fire-views";
 import { ReportLines } from "./report-views";
 import { ScheduleForm } from "./schedule-form";
@@ -53,39 +55,40 @@ export interface AutomationAccess {
   canManage: boolean;
 }
 
-function whatItRuns(s: ScheduleStanding): string {
-  if (s.targetProjectSlug) return `Runs on ${s.targetProjectSlug}`;
-  return "Runs on this project";
+function whatItRuns(s: ScheduleStanding, t: Copy): string {
+  if (s.targetProjectSlug) return t("schedules.runsOn", { slug: s.targetProjectSlug });
+  return t("schedules.runsOnThis");
 }
 
 export const scheduleRow =
-  (hrefOf: (id: string) => string) =>
+  (hrefOf: (id: string) => string, { t, language, time }: RowCtx) =>
   (s: ScheduleStanding): ListRowView => ({
     key: s.id,
     keyLabel: s.name,
     href: hrefOf(s.id),
-    title: whatItRuns(s),
+    title: whatItRuns(s, t),
     facts: [
       <EnumBadge key="kind" family="scheduleKind" value={s.kind} />,
       <span key="cron" className="font-mono">
         {s.cron}
       </span>,
-      s.lastFire ? `Last fire ${statusReading("scheduleRun", s.lastFire.status).label.toLowerCase()}` : "Never fired",
+      s.lastFire ? t("schedules.lastFire", { status: statusReading("scheduleRun", s.lastFire.status, language).label.toLowerCase() }) : t("schedules.neverFired"),
     ],
     state: <StatusBadge family="scheduleStanding" value={s.state} />,
     waitingOn:
       s.waitingOn.kind === "none" ? (
-        <span className="text-12-5 text-subtle">{s.nextFireAt ? `Next fire ${fmtTime(s.nextFireAt)}` : "Not scheduled"}</span>
+        <span className="text-12-5 text-subtle">{s.nextFireAt ? t("schedules.nextFire", { at: fmtTime(s.nextFireAt, language) }) : t("schedules.notScheduled")}</span>
       ) : (
         <WaitingOn w={s.waitingOn} />
       ),
-    owner: s.owner?.name ?? "No owner",
-    age: s.lastFire ? { text: formatAge(s.lastFire.startedAt), title: `Last fire ${formatStamp(s.lastFire.startedAt)}` } : null,
+    owner: s.owner?.name ?? t("schedules.noOwner"),
+    age: s.lastFire ? { text: time.age(s.lastFire.startedAt), title: t("schedules.lastFireAt", { at: time.dateTime(s.lastFire.startedAt) }) } : null,
     dim: s.state === "off",
   });
 
 /** The one primary act on a schedule: fire it now. Members may, as the server allows; a refusal reads by its code. */
 export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationAccess }) {
+  const t = useCopy();
   const run = useRunSchedule(access.projectId);
   if (!access.canWrite) return null;
   return (
@@ -99,7 +102,7 @@ export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationA
         onClick={() => run.mutate(s.id)}
         data-testid="schedule-run-now"
       >
-        Run now
+        {t("schedules.runNow")}
       </Button>
       {run.isError ? (
         <span className="text-12-5 text-danger" data-testid="run-now-refusal">
@@ -111,14 +114,16 @@ export function RunNow({ s, access }: { s: ScheduleStanding; access: AutomationA
 }
 
 function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   if (s.waitingOn.kind === "none") return null;
   const w = s.waitingOn;
-  const head = w.kind === "you" ? "Waiting on you:" : `Waiting on ${w.who}:`;
+  const head = w.kind === "you" ? t("schedules.waitingOnYou") : t("schedules.waitingOnWho", { who: standingWho(w.who, language) });
   return (
     <WaitBanner
       tone={s.state === "failing" ? "err" : "you"}
-      head={`${statusReading("scheduleStanding", s.state).label} · ${head}`}
-      body={w.act}
+      head={`${statusReading("scheduleStanding", s.state, language).label} · ${head}`}
+      body={standingAct(w.act, language)}
       rule={s.waitingOn.rule}
       className={className}
       testId="schedule-banner"
@@ -129,51 +134,53 @@ function ScheduleBanner({ s, className }: { s: ScheduleStanding; className?: str
 }
 
 export function ScheduleFacts({ s, slug, failStreak }: { s: ScheduleStanding; slug: string; failStreak?: number }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   return (
     <>
-      <FactsGroup title="Standing">
-        <Fact label="State">
+      <FactsGroup title={t("schedules.facts.standing")}>
+        <Fact label={t("schedules.facts.state")}>
           <StatusBadge family="scheduleStanding" value={s.state} />
         </Fact>
-        <Fact label="Streak">
+        <Fact label={t("schedules.facts.streak")}>
           <span title={s.rule}>
             {s.streak}
-            {failStreak ? <span className="text-subtle"> of {failStreak} to failing</span> : null}
+            {failStreak ? <span className="text-subtle"> {t("schedules.facts.ofToFailing", { n: failStreak })}</span> : null}
           </span>
         </Fact>
-        <Fact label="Last fire" testId="schedule-last-fire">
+        <Fact label={t("schedules.facts.lastFire")} testId="schedule-last-fire">
           {s.lastFire ? (
             <>
               <StatusBadge family="scheduleRun" value={s.lastFire.status} />
-              <Link href={fireHref(slug, s.lastFire.id)} className="text-12-5 text-link hover:underline" title={formatStamp(s.lastFire.startedAt)}>
-                {formatAge(s.lastFire.startedAt)} ago
+              <Link href={fireHref(slug, s.lastFire.id)} className="text-12-5 text-link hover:underline" title={time.dateTime(s.lastFire.startedAt)}>
+                {t("schedules.ago", { age: time.age(s.lastFire.startedAt) })}
               </Link>
             </>
           ) : (
-            <span className="text-subtle">Never fired</span>
+            <span className="text-subtle">{t("schedules.neverFired")}</span>
           )}
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Cadence">
-        <Fact label="When">
+      <FactsGroup title={t("schedules.facts.cadence")}>
+        <Fact label={t("schedules.facts.when")}>
           <MonoTag>{s.cron}</MonoTag>
         </Fact>
-        <Fact label="Next fire" testId="schedule-next-fire">
-          {s.nextFireAt ? <span title={formatStamp(s.nextFireAt)}>{fmtTime(s.nextFireAt)}</span> : <span className="text-subtle">Off</span>}
+        <Fact label={t("schedules.facts.nextFire")} testId="schedule-next-fire">
+          {s.nextFireAt ? <span title={time.dateTime(s.nextFireAt)}>{time.dateTime(s.nextFireAt)}</span> : <span className="text-subtle">{t("schedules.facts.off")}</span>}
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Runs as">
-        <Fact label="Owner" testId="schedule-owner">
-          {s.owner ? <PersonChip name={s.owner.name ?? "Unnamed"} /> : <span className="text-subtle">No owner</span>}
+      <FactsGroup title={t("schedules.facts.runsAs")}>
+        <Fact label={t("schedules.facts.owner")} testId="schedule-owner">
+          {s.owner ? <PersonChip name={s.owner.name ?? t("schedules.facts.unnamed")} /> : <span className="text-subtle">{t("schedules.noOwner")}</span>}
         </Fact>
       </FactsGroup>
-      <FactsGroup title="Properties">
-        <Fact label="Kind">
+      <FactsGroup title={t("schedules.facts.properties")}>
+        <Fact label={t("schedules.facts.kind")}>
           <EnumBadge family="scheduleKind" value={s.kind} />
         </Fact>
-        <Fact label="Target">{s.targetProjectSlug ?? "This project"}</Fact>
-        <Fact label="Created">
-          <span title={formatStamp(s.createdAt)}>{new Date(s.createdAt).toLocaleDateString()}</span>
+        <Fact label={t("schedules.facts.target")}>{s.targetProjectSlug ?? t("schedules.facts.thisProject")}</Fact>
+        <Fact label={t("schedules.facts.created")}>
+          <span title={time.dateTime(s.createdAt)}>{time.date(s.createdAt)}</span>
         </Fact>
       </FactsGroup>
     </>
@@ -191,13 +198,14 @@ export function SchedulePeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
   return (
-    <PeekPanel peek={peek} listLabel="Automation" noun="Schedule" onOpenFull={onOpenFull} testId="schedule-peek">
+    <PeekPanel peek={peek} listLabel={t("schedules.title")} noun={t("schedules.noun.schedule")} onOpenFull={onOpenFull} testId="schedule-peek">
       <PeekHead
-        noun="Schedule"
+        noun={t("schedules.noun.schedule")}
         itemKey={s.name}
         badge={<StatusBadge family="scheduleStanding" value={s.state} />}
-        title={whatItRuns(s)}
+        title={whatItRuns(s, t)}
         action={<RunNow s={s} access={access} />}
       />
       <ScheduleBanner s={s} className="px-[18px]" />
@@ -213,8 +221,9 @@ const useScheduleTab = () => useUrlTab(SCHEDULE_TABS);
 
 /** Pause, edit, take over or delete: its owner for their own, an admin for any (the read model says which). */
 function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess }) {
+  const t = useCopy();
   const update = useUpdateSchedule(access.projectId);
-  const takeOver = useUpdateSchedule(access.projectId, "Schedule taken over");
+  const takeOver = useUpdateSchedule(access.projectId, "schedules.toast.takenOver");
   const remove = useDeleteSchedule(access.projectId);
   const router = useRouter();
   const config = useSchedules(access.projectId).data?.find((r) => r.id === s.id);
@@ -223,24 +232,24 @@ function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess
   if (!s.viewerMay.edit) return null;
   return (
     <section data-testid="schedule-controls">
-      <ViewHeading>Controls</ViewHeading>
+      <ViewHeading>{t("schedules.controls")}</ViewHeading>
       <div className="grid gap-3">
         <span className="inline-flex items-center gap-2 text-13">
           <Toggle
             checked={s.enabled}
             disabled={update.isPending}
-            aria-label={`${s.enabled ? "Pause" : "Resume"} ${s.name}`}
+            aria-label={t(s.enabled ? "schedules.pause" : "schedules.resume", { name: s.name })}
             onChange={(enabled) => update.mutate({ id: s.id, patch: { enabled } })}
           />
-          {s.enabled ? "On: the ticker claims it at each due time" : "Paused: never claimed until resumed"}
+          {s.enabled ? t("schedules.isOn") : t("schedules.isPaused")}
         </span>
         {s.viewerMay.takeOver ? (
-          <p className="text-12-5 text-muted">Saving any change takes it over: from then on it runs as you.</p>
+          <p className="text-12-5 text-muted">{t("schedules.takeOverNote")}</p>
         ) : null}
         {editing && config ? (
           <ScheduleForm
             initial={config}
-            submitLabel="Save"
+            submitLabel={t("schedules.save")}
             pending={update.isPending}
             error={update.error}
             testId="schedule-edit"
@@ -250,33 +259,33 @@ function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess
         ) : (
           <span className="inline-flex flex-wrap items-center gap-2">
             <Button type="button" size="sm" disabled={!config} onClick={() => setEditing(true)} data-testid="schedule-edit-open">
-              Edit
+              {t("schedules.edit")}
             </Button>
             {s.viewerMay.takeOver ? (
               <Button type="button" size="sm" onClick={() => setConfirm("take_over")} data-testid="schedule-take-over">
-                Take over
+                {t("schedules.takeOver")}
               </Button>
             ) : null}
             <Button type="button" size="sm" variant="ghost" onClick={() => setConfirm("delete")} data-testid="schedule-delete">
-              Delete
+              {t("schedules.delete")}
             </Button>
           </span>
         )}
       </div>
       <ConfirmDialog
         open={confirm === "take_over"}
-        title={`Take over ${s.name}`}
-        message="It runs as you from its next fire, bounded by what you hold on this project."
-        confirmLabel="Take over"
+        title={t("schedules.takeOverTitle", { name: s.name })}
+        message={t("schedules.takeOverMessage")}
+        confirmLabel={t("schedules.takeOver")}
         loading={takeOver.isPending}
         onClose={() => setConfirm(null)}
         onConfirm={() => takeOver.mutate({ id: s.id, patch: { enabled: s.enabled } }, { onSettled: () => setConfirm(null) })}
       />
       <ConfirmDialog
         open={confirm === "delete"}
-        title={`Delete ${s.name}`}
-        message="It never fires again. Its past fires and reports stay readable."
-        confirmLabel="Delete"
+        title={t("schedules.deleteTitle", { name: s.name })}
+        message={t("schedules.deleteMessage")}
+        confirmLabel={t("schedules.delete")}
         tone="danger"
         loading={remove.isPending}
         onClose={() => setConfirm(null)}
@@ -292,15 +301,16 @@ function Controls({ s, access }: { s: ScheduleStanding; access: AutomationAccess
 }
 
 function WhatItRuns({ s, projectId }: { s: ScheduleStanding; projectId: string }) {
+  const t = useCopy();
   const config = useSchedules(projectId).data?.find((r) => r.id === s.id);
   const body = config?.kind === "script" ? config.script : config?.prompt;
   return (
     <section>
-      <ViewHeading>What it runs</ViewHeading>
-      <p className="text-14">{whatItRuns(s)}</p>
+      <ViewHeading>{t("schedules.whatItRuns")}</ViewHeading>
+      <p className="text-14">{whatItRuns(s, t)}</p>
       {body ? (
         <details className="mt-2">
-          <summary className="cursor-pointer text-13 font-semibold text-muted">{config?.kind === "script" ? "Script" : "Prompt"}</summary>
+          <summary className="cursor-pointer text-13 font-semibold text-muted">{config?.kind === "script" ? t("schedules.script") : t("schedules.prompt")}</summary>
           <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words bg-sunken p-3 text-12-5">{body}</pre>
         </details>
       ) : null}
@@ -309,23 +319,26 @@ function WhatItRuns({ s, projectId }: { s: ScheduleStanding; projectId: string }
 }
 
 function Overview({ d, access }: { d: ScheduleDetailResponse; access: AutomationAccess }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const time = useTimeFormat();
   const marks = [...d.fires].reverse().map((f) => ({
     key: f.id,
-    label: `${statusReading("scheduleRun", f.status).label} · ${formatStamp(f.startedAt)}`,
-    tone: statusReading("scheduleRun", f.status).tone,
+    label: `${statusReading("scheduleRun", f.status, language).label} · ${time.dateTime(f.startedAt)}`,
+    tone: statusReading("scheduleRun", f.status, language).tone,
   }));
   return (
     <div className="grid gap-8" data-testid="schedule-overview">
       <WhatItRuns s={d.schedule} projectId={access.projectId} />
       <section>
-        <ViewHeading>Recent fires</ViewHeading>
+        <ViewHeading>{t("schedules.recentFires")}</ViewHeading>
         {marks.length ? (
           <span className="inline-flex items-center gap-2">
             <MarkStrip marks={marks} />
-            <span className="text-12-5 text-subtle">{marks.length} shown, newest last</span>
+            <span className="text-12-5 text-subtle">{t("schedules.shownNewestLast", { n: marks.length })}</span>
           </span>
         ) : (
-          <FactsEmpty>No fires yet.</FactsEmpty>
+          <FactsEmpty>{t("schedules.noFires")}</FactsEmpty>
         )}
       </section>
       <Controls s={d.schedule} access={access} />
@@ -334,17 +347,18 @@ function Overview({ d, access }: { d: ScheduleDetailResponse; access: Automation
 }
 
 export function SchedulePage({ access, scheduleId }: { access: AutomationAccess; scheduleId: string }) {
+  const t = useCopy();
   const q = useScheduleDetail(access.projectId, scheduleId, true);
   const [tab, setTab] = useScheduleTab();
   return (
-    <QueryBoundary query={q} loadingLabel="loading the schedule…">
+    <QueryBoundary query={q} loadingLabel={t("schedules.loadingSchedule")}>
       {(data) => {
         const d = data;
         const s = d.schedule;
         const tabs = [
-          { value: "overview" as const, label: "Overview" },
-          { value: "fires" as const, label: "Fires", count: d.firesTotal },
-          { value: "reports" as const, label: "Reports", count: d.reports.length },
+          { value: "overview" as const, label: t("schedules.tab.overview") },
+          { value: "fires" as const, label: t("schedules.tab.fires"), count: d.firesTotal },
+          { value: "reports" as const, label: t("schedules.tab.reports"), count: d.reports.length },
         ];
         return (
           <DetailLayout
@@ -356,10 +370,10 @@ export function SchedulePage({ access, scheduleId }: { access: AutomationAccess;
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey={s.name} title={whatItRuns(s)} badge={<StatusBadge family="scheduleStanding" value={s.state} />} />
+            <DetailMobileTitle itemKey={s.name} title={whatItRuns(s, t)} badge={<StatusBadge family="scheduleStanding" value={s.state} />} />
             <ScheduleBanner s={s} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="schedule-tabs" />
-            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+            <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.tab.overview")}>
               {tab === "overview" ? <Overview d={d} access={access} /> : null}
               {tab === "fires" ? <FireLines fires={d.fires} slug={access.slug} /> : null}
               {tab === "reports" ? <ReportLines reports={d.reports} slug={access.slug} /> : null}

@@ -1,11 +1,13 @@
 "use client";
 
 import { Icon } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 /**
  * The pill, pinned to the bottom of the thread's own viewport.
  */
 export function NewOutput({ onGo }: { onGo: () => void }) {
+  const t = useCopy();
   return (
     <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center">
       <button
@@ -16,7 +18,7 @@ export function NewOutput({ onGo }: { onGo: () => void }) {
         style={{ fontSize: "var(--text-12)" }}
       >
         <Icon name="chevronDown" size={12} className="flex-none" />
-        <span>New output</span>
+        <span>{t("sessions.newOutput")}</span>
       </button>
     </div>
   );

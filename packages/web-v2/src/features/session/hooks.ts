@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { formatRefusal } from "@/lib/api/error";
 import type { TurnRow, TurnsResponse } from "./types";
@@ -66,8 +67,9 @@ function useInvalidateSession(id: string) {
 
 function useToastError() {
   const { toast } = useToast();
+  const t = useCopy();
   return (err: unknown) =>
-    toast({ title: "Action failed", description: formatRefusal(err), tone: "error" });
+    toast({ title: t("sessions.toast.failed"), description: formatRefusal(err), tone: "error" });
 }
 
 /**
@@ -81,6 +83,7 @@ export function useSendMessage(id: string) {
   const invalidate = useInvalidateSession(id);
   const onError = useToastError();
   const { toast } = useToast();
+  const t = useCopy();
   return useMutation({
     mutationFn: async ({ files, ...opts }: SendOpts & { files?: File[] }) => {
       const ids: string[] = [...(opts.attachmentIds ?? [])];
@@ -90,7 +93,7 @@ export function useSendMessage(id: string) {
           ids.push(att.id);
         } catch (err) {
           toast({
-            title: "An attachment failed to upload",
+            title: t("sessions.toast.attachmentFailed"),
             description: `${file.name}: ${formatRefusal(err)}`,
             tone: "error",
           });
@@ -126,10 +129,11 @@ export function useEditTurn(id: string) {
 
 export function useForkSession(id: string) {
   const { toast } = useToast();
+  const t = useCopy();
   const onError = useToastError();
   return useMutation({
     mutationFn: (opts: ForkOpts) => sessionApi.fork(id, opts),
-    onSuccess: () => toast({ title: "Session forked", tone: "success" }),
+    onSuccess: () => toast({ title: t("sessions.toast.forked"), tone: "success" }),
     onError,
   });
 }

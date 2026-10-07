@@ -43,6 +43,7 @@ import {
 import { SUGGESTION_STATUS_LABELS } from "@forge/contracts/suggestions";
 import { HEALTH_MARKER_LABELS } from "@forge/contracts/workflow-health";
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
+import { ISSUE_LEASE_VERDICT_LABELS } from "@forge/contracts/issue-standing";
 import { copyOr } from "./product-copy";
 
 // The words the contracts give an enum value (a requirement's state, a feedback's phase, an area of
@@ -94,6 +95,7 @@ export const LABEL_GROUPS = {
   landingSurface: LANDING_SURFACE_LABELS,
   artifactChange: ARTIFACT_CHANGE_LABELS,
   criterionStanding: CRITERION_STANDING_LABELS,
+  leaseVerdict: ISSUE_LEASE_VERDICT_LABELS,
   issuePriority: ISSUE_PRIORITY_LABELS,
   issueStatus: ISSUE_STATUS_LABELS,
   workStep: WORK_STEP_LABELS,

@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ProjectDetail } from "@/features/projects/types";
 import { projectSettingsApi } from "./api";
 import { releaseReadinessKey, useToastedMutation } from "@/features/project-config/hooks";
+import { useCopy } from "@/lib/i18n/interface-language";
 import type { LabelCreateInput, LabelPatchInput, PluginDesignation, ProjectRole, ProjectUpdateInput } from "./types";
 
 const project = (id: string | undefined) => ["project", id];
@@ -45,13 +46,15 @@ export const useUnarchiveProject = (id: string | undefined) =>
 		failed: "Couldn't unarchive project",
 	});
 
-export const useUpdatePlugins = (id: string | undefined) =>
-	useToastedMutation({
+export const useUpdatePlugins = (id: string | undefined) => {
+	const t = useCopy();
+	return useToastedMutation({
 		mutationFn: (plugins: PluginDesignation[]) => projectSettingsApi.updatePlugins(id as string, plugins),
 		invalidates: [project(id)],
-		saved: "Plugins saved",
-		failed: "Couldn't save plugins",
+		saved: t("skills.toast.saved"),
+		failed: t("skills.toast.failed"),
 	});
+};
 
 /** What this project still owes before its first issue runs. */
 export const useReleaseReadiness = (id: string | undefined) =>

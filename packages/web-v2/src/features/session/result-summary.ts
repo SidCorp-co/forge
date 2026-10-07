@@ -1,4 +1,6 @@
 
+import { type Copy, productCopy } from "@/lib/i18n/product-copy";
+
 /**
  * A captured tool output, read back as the value the tool actually returned.
  */
@@ -25,8 +27,6 @@ export interface ResultSummary {
   pending: boolean;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
 function shorten(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > ERROR_CHARS ? `${flat.slice(0, ERROR_CHARS)}…` : flat;
@@ -49,32 +49,31 @@ export function summarizeResult(
   result: unknown,
   isError?: boolean,
   live?: boolean,
+  t: Copy = productCopy(),
 ): ResultSummary {
   if (isError === true) {
     const text = errorText(result);
-    return { label: text ? `Failed · ${text}` : "Failed", hasBody: result != null, pending: false };
+    return { label: text ? t("sessions.result.failedWith", { text }) : t("sessions.result.failed"), hasBody: result != null, pending: false };
   }
   if (result === undefined) {
     return live === true
-      ? { label: "Running…", hasBody: false, pending: true }
-      : { label: "No output recorded", hasBody: false, pending: false };
+      ? { label: t("sessions.result.running"), hasBody: false, pending: true }
+      : { label: t("sessions.result.noOutput"), hasBody: false, pending: false };
   }
   if (result === null || result === "") {
-    return { label: "No result", hasBody: false, pending: false };
+    return { label: t("sessions.result.none"), hasBody: false, pending: false };
   }
   if (Array.isArray(result)) {
-    return { label: `Array · ${plural(result.length, "item", "items")}`, hasBody: true, pending: false };
+    const n = result.length;
+    return { label: n === 1 ? t("sessions.result.arrayOne") : t("sessions.result.arrayMany", { n }), hasBody: true, pending: false };
   }
   if (typeof result === "string") {
-    return {
-      label: `Text · ${plural(result.length, "character", "characters")}`,
-      hasBody: true,
-      pending: false,
-    };
+    const n = result.length;
+    return { label: n === 1 ? t("sessions.result.textOne") : t("sessions.result.textMany", { n }), hasBody: true, pending: false };
   }
   if (typeof result === "object") {
     const n = Object.keys(result as Record<string, unknown>).length;
-    return { label: `Object · ${plural(n, "field", "fields")}`, hasBody: true, pending: false };
+    return { label: n === 1 ? t("sessions.result.objectOne") : t("sessions.result.objectMany", { n }), hasBody: true, pending: false };
   }
   return { label: String(result), hasBody: false, pending: false };
 }

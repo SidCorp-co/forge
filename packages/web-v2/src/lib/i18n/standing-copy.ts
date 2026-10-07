@@ -26,6 +26,7 @@ const WHO: Rule[] = [
   { re: new RegExp("^Issues$"), key: "standing.who.issues" },
   { re: new RegExp("^A project admin$"), key: "standing.who.projectAdmin" },
   { re: new RegExp("^A project writer$"), key: "standing.who.projectWriter" },
+  { re: new RegExp("^The schedule owner$"), key: "standing.who.scheduleOwner" },
   { re: new RegExp("^A release approver$"), key: "standing.who.releaseApprover" },
   { re: new RegExp("^The project's master$"), key: "standing.who.projectMaster" },
   { re: new RegExp("^Release run$"), key: "standing.who.releaseRun" },
@@ -44,6 +45,9 @@ const WHO: Rule[] = [
 ];
 
 const ACT: Rule[] = [
+  { re: new RegExp("^triage a report$"), key: "standing.act.triageReport" },
+  { re: new RegExp("^fix a failing schedule$"), key: "standing.act.fixSchedule" },
+  { re: new RegExp("^take over a schedule whose owner is gone$"), key: "standing.act.takeOverSchedule" },
   { re: new RegExp("^triage (?<n>\\d+) feedback items$"), key: "standing.act.triageMany", vars: (g) => ({ n: g.n ?? "" }) },
   { re: new RegExp("^triage it again$"), key: "standing.act.triageAgain" },
   { re: new RegExp("^triage it$"), key: "standing.act.triageIt" },

@@ -9,6 +9,7 @@
 // git stat that would disagree with it.
 
 import { EmptyState } from "@/design";
+import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { shortenPath } from "../../run-report";
 import type { FileDiff } from "../../derive";
 import { InlineDiff } from "../tool-card";
@@ -24,9 +25,11 @@ export function DiffLens({
   onSelect: (path: string) => void;
   repoPath?: string | null;
 }) {
+  const t = useCopy();
+  const time = useTimeFormat();
   const active = files.find((f) => f.path === selectedPath) ?? files[0];
   if (!active) {
-    return <EmptyState title="No file changes" message="This step edited nothing in the repo." />;
+    return <EmptyState title={t("runs.diff.empty")} message={t("runs.diff.emptyBody")} />;
   }
   return (
     <div className="flex min-h-0 flex-col">
@@ -35,10 +38,10 @@ export function DiffLens({
           {shortenPath(active.path, repoPath)}
         </span>
         <span className="fg-caption font-mono" style={{ color: "var(--green-600)" }}>
-          +{active.added}
+          +{time.number(active.added)}
         </span>
         <span className="fg-caption font-mono" style={{ color: "var(--red-600)" }}>
-          −{active.removed}
+          −{time.number(active.removed)}
         </span>
       </div>
       {files.length > 1 && (

@@ -1,21 +1,19 @@
 "use client";
 
 import { PageSection, PageSectionBody, SectionTitle } from "@/design";
+import { useCopy } from "@/lib/i18n/interface-language";
+import { inlineRich } from "./inline-code";
 import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 
 export function PipelineTab({ projectId, canEdit, slug }: { projectId: string; canEdit: boolean; slug: string }) {
+  const t = useCopy();
   return (
     <PageSection>
       <PageSectionBody>
-        <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
+        <SectionTitle className="fg-h3 mb-1">{t("skills.pipeline.title")}</SectionTitle>
         <p className="fg-body-sm mb-1 text-muted">
-          An issue is picked up at <b>Open</b>, runs <b>In progress</b> as one session through its
-          steps, and ends either at <b>Needs info</b>, <b>Awaiting release</b> or closed. The
-          session is driven by the{" "}
-          <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
-          Which model runs each status, with which tools denied, is the policy on the Configuration
-          tab.
+          {inlineRich(t("skills.pipeline.intro"))}
         </p>
 
         <ReleaseSection projectId={projectId} slug={slug} />
