@@ -78,7 +78,9 @@ describe('migration 0442 on a table that holds a row', () => {
     await patch({ theme: 'dark' });
     const outcome = await db
       .transaction(async (tx) => {
-        await tx.execute(sql`ALTER TABLE user_preferences DROP CONSTRAINT user_preferences_language_chk`);
+        await tx.execute(
+          sql`ALTER TABLE user_preferences DROP CONSTRAINT user_preferences_language_chk`,
+        );
         await tx.execute(sql`UPDATE user_preferences SET language = 'en'`);
         await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET NOT NULL`);
         await tx.execute(sql`ALTER TABLE user_preferences ALTER COLUMN language SET DEFAULT 'en'`);
