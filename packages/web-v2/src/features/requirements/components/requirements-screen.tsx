@@ -14,9 +14,9 @@ import {
 } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ActorChip, AGENT_TINT, Button, EmptyState, ErrorState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, ProjectLoader, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { ActorChip, AGENT_TINT, Button, EmptyState, Field, GroupedList, Input, ListSearch, type ListGroup, type ListRowView, PageTitle, rememberListOrigin, StatusBadge, Textarea, TopBarActions, useGroupFold, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, visibleRows, WaitingOn } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { RefusalLine } from "@/lib/api/refusal-line";
-import { formatApiError } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { PendingBadge, summaryOf } from "@/features/suggestions/components/suggestion-list";
@@ -219,63 +219,49 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
       </TopBarActions>
     </>
   );
-
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ProjectLoader label="loading requirements…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[60vh] place-items-center">
-        {title}
-        <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-      </div>
-    );
-  }
-
   return (
-    <div className="grid min-h-full content-start bg-app" data-testid="requirements-screen">
-      {title}
-      {creating ? (
-        <CreateForm
-          projectId={projectId}
-          onDone={(key) => {
-            setCreating(false);
-            if (key) peek.set(key);
-          }}
-        />
-      ) : null}
-      <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
-            <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
-            <ListSearch noun="requirements" value={text} onChange={(q) => setParams({ q: q || null })} />
-          </div>
-          <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
-          {all.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState title="No requirement has been written" message="A requirement says what is wanted and how anyone can tell it is done." />
-            </div>
-          ) : (
-            <GroupedList
-              ariaLabel="Requirements"
-              groups={groups}
-              fold={fold}
-              row={row}
-              selected={peek.open}
-              onPeek={(k) => peek.set(k === peek.open ? null : k)}
-              empty="Nothing matches this search."
+    <QueryBoundary query={q} loadingLabel="loading requirements…" title={title} height="60vh" retry="always">
+      {() => (
+        <div className="grid min-h-full content-start bg-app" data-testid="requirements-screen">
+          {title}
+          {creating ? (
+            <CreateForm
+              projectId={projectId}
+              onDone={(key) => {
+                setCreating(false);
+                if (key) peek.set(key);
+              }}
             />
-          )}
+          ) : null}
+          <div className={cn("grid min-h-[60vh] items-start", peek.open && "lg:grid-cols-[minmax(0,1fr)_minmax(380px,440px)]")}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
+                <ViewModeSwitcher modes={GROUP_MODES} value={mode} onChange={setMode} placement="toolbar" />
+                <ListSearch noun="requirements" value={text} onChange={(q) => setParams({ q: q || null })} />
+              </div>
+              <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
+              {all.length === 0 ? (
+                <div className="px-5 py-10">
+                  <EmptyState title="No requirement has been written" message="A requirement says what is wanted and how anyone can tell it is done." />
+                </div>
+              ) : (
+                <GroupedList
+                  ariaLabel="Requirements"
+                  groups={groups}
+                  fold={fold}
+                  row={row}
+                  selected={peek.open}
+                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  empty="Nothing matches this search."
+                />
+              )}
+            </div>
+            {peek.open ? (
+              <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
+            ) : null}
+          </div>
         </div>
-        {peek.open ? (
-          <RequirementPeek key={peek.open} projectId={projectId} slug={slug} reqKey={peek.open} peek={peek} onOpenFull={() => openFull(peek.open as string)} />
-        ) : null}
-      </div>
-    </div>
+      )}
+    </QueryBoundary>
   );
 }

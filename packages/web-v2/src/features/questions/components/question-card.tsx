@@ -229,7 +229,7 @@ export function outcomeOf(question: AgentQuestion): string | null {
 }
 
 /** What the answer said the issue still waits on, as the answered card shows it. */
-export function holdLine(hold: AnswerHold | undefined): string | null {
+function holdLine(hold: AnswerHold | undefined): string | null {
   if (!hold) return null;
   return hold.blockedBy
     ? `Still waits on ${hold.blockedBy.key}: ${hold.reason}`
@@ -240,7 +240,7 @@ const statusWord = (status: string) =>
   ISSUE_STATUS_LABELS[status as keyof typeof ISSUE_STATUS_LABELS] ?? status;
 
 /** What the answer did to the issue it stopped, in a reader's words; null until core recorded it. */
-export function resumeLine(resume: AnswerResume | undefined): string | null {
+function resumeLine(resume: AnswerResume | undefined): string | null {
   switch (resume?.kind) {
     case undefined:
       return null;

@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.78] - 2026-10-07
+
+One QueryBoundary draws every query-backed screen's loading and failed shells
+
+### Changed
+
+- **Loading and failed screens share one boundary.** About 30 web screens, peeks and detail pages draw their loader and error shell through `QueryBoundary` instead of repeating it; what a person sees is unchanged.
+
+### Fixed
+
+- **A refused stop's hints now take a run's own words as written.** Apostrophes, quotes and line breaks need no escaping: the comment goes through `forge-runner api -f body=@-`, the commit through `git commit -F -`, both over a quoted heredoc.
+
 ## [0.4.0-dev.77] - 2026-10-07
 
 Migration 0344 no longer converts history at boot; a background backfill does

@@ -12,7 +12,6 @@ import {
   DetailPane,
   DetailTabs,
   EnumBadge,
-  ErrorState,
   Fact,
   FactsEmpty,
   FactsGroup,
@@ -21,7 +20,6 @@ import {
   PeekHead,
   PeekPanel,
   type PeekState,
-  ProjectLoader,
   StatusBadge,
   StepBar,
   type StepView,
@@ -36,9 +34,10 @@ import {
   WaitBanner,
   WaitingOn,
 } from "@/design";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel, type StatusFamily, statusReading } from "@/design/vocabulary";
 import { issueHref } from "@/lib/routes/issues";
-import { formatApiError, formatRefusal, isRetryableApiError } from "@/lib/api/error";
+import { formatRefusal } from "@/lib/api/error";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { parkRefusalText, useCancelRun } from "@/features/run-control/hooks";
 import { RUNS_STANDING_ROOT, useRunDetail } from "../hooks";
@@ -514,47 +513,39 @@ function Lease({ r }: { r: RunStanding }) {
 export function RunPage({ projectId, slug, runId }: { projectId: string; slug: string; runId: string }) {
   const q = useRunDetail(projectId, runId);
   const [tab, setTab] = useUrlTab(RUN_TABS);
-  if (q.isLoading) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ProjectLoader label="loading the run…" />
-      </div>
-    );
-  }
-  if (q.isError || !q.data) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />
-      </div>
-    );
-  }
-  const d = q.data;
-  const r = d.run;
-  const tabs = [
-    { value: "overview" as const, label: "Overview" },
-    { value: "attempts" as const, label: "Attempts", count: Math.max(d.attempts.length, 1) },
-    { value: "events" as const, label: "Events", count: d.events.length },
-    { value: "lease" as const, label: "Lease" },
-  ];
   return (
-    <DetailLayout
-      testId="run-detail"
-      dataKey={r.id}
-      rail={
-        <FactsRail>
-          <RunFacts r={r} slug={slug} />
-        </FactsRail>
-      }
-    >
-      <DetailMobileTitle itemKey={runKey(r)} title={runName(r)} badge={<StatusBadge family="runStanding" value={r.state} />} />
-      <RunBanner r={r} className="px-8 py-2.5 max-md:px-4" />
-      <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="run-tabs" />
-      <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
-        {tab === "overview" ? <Overview r={r} /> : null}
-        {tab === "attempts" ? <Attempts d={d} slug={slug} /> : null}
-        {tab === "events" ? <Events d={d} /> : null}
-        {tab === "lease" ? <Lease r={r} /> : null}
-      </DetailPane>
-    </DetailLayout>
+    <QueryBoundary query={q} loadingLabel="loading the run…">
+      {(data) => {
+        const d = data;
+        const r = d.run;
+        const tabs = [
+          { value: "overview" as const, label: "Overview" },
+          { value: "attempts" as const, label: "Attempts", count: Math.max(d.attempts.length, 1) },
+          { value: "events" as const, label: "Events", count: d.events.length },
+          { value: "lease" as const, label: "Lease" },
+        ];
+        return (
+          <DetailLayout
+            testId="run-detail"
+            dataKey={r.id}
+            rail={
+              <FactsRail>
+                <RunFacts r={r} slug={slug} />
+              </FactsRail>
+            }
+          >
+            <DetailMobileTitle itemKey={runKey(r)} title={runName(r)} badge={<StatusBadge family="runStanding" value={r.state} />} />
+            <RunBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="run-tabs" />
+            <DetailPane label={tabs.find((t) => t.value === tab)?.label ?? "Overview"}>
+              {tab === "overview" ? <Overview r={r} /> : null}
+              {tab === "attempts" ? <Attempts d={d} slug={slug} /> : null}
+              {tab === "events" ? <Events d={d} /> : null}
+              {tab === "lease" ? <Lease r={r} /> : null}
+            </DetailPane>
+          </DetailLayout>
+        );
+      }}
+    </QueryBoundary>
   );
 }

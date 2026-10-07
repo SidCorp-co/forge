@@ -19,13 +19,11 @@ import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
-  ErrorState,
   GroupedList,
   ListSearch,
   LEGEND,
   type LegendTone,
   type ListGroup,
-  ProjectLoader,
   rememberListOrigin,
   SegmentedControl,
   useGroupFold,
@@ -34,7 +32,7 @@ import {
   useUrlParams,
   visibleRows,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { QueryBoundary } from "@/lib/api/query-boundary";
 import { cn } from "@/lib/utils/cn";
 import { useIssueStanding } from "../hooks";
 import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
@@ -385,31 +383,27 @@ export function IssuesBoard({ scope: project, mode, toolbarLead }: { scope: { pr
               Showing the newest {q.data?.returned} of {q.data?.counts[scope]}; the Table view pages through every one.
             </p>
           ) : null}
-          {q.isLoading ? (
-            <div className="grid min-h-[40vh] place-items-center">
-              <ProjectLoader label="loading issues…" />
-            </div>
-          ) : q.isError || !q.data ? (
-            <div className="grid min-h-[40vh] place-items-center">
-              <ErrorState message={formatApiError(q.error)} onRetry={() => q.refetch()} />
-            </div>
-          ) : q.data.issues.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState title={scope === "closed" ? "No closed issue yet" : "No issue here"} message="An issue is one unit of work with a named deliverable." />
-            </div>
-          ) : mode === "waves" ? (
-            <Waves rows={rows} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
-          ) : (
-            <GroupedList
-              ariaLabel="Issues"
-              groups={groups}
-              fold={fold}
-              row={row}
-              selected={peek.open}
-              onPeek={(k) => peek.set(k === peek.open ? null : k)}
-              empty="Nothing matches these filters."
-            />
-          )}
+          <QueryBoundary query={q} loadingLabel="loading issues…" retry="always">
+            {(data) =>
+              data.issues.length === 0 ? (
+                <div className="px-5 py-10">
+                  <EmptyState title={scope === "closed" ? "No closed issue yet" : "No issue here"} message="An issue is one unit of work with a named deliverable." />
+                </div>
+              ) : mode === "waves" ? (
+                <Waves rows={rows} selected={peek.open} onPeek={(k) => peek.set(k === peek.open ? null : k)} />
+              ) : (
+                <GroupedList
+                  ariaLabel="Issues"
+                  groups={groups}
+                  fold={fold}
+                  row={row}
+                  selected={peek.open}
+                  onPeek={(k) => peek.set(k === peek.open ? null : k)}
+                  empty="Nothing matches these filters."
+                />
+              )
+            }
+          </QueryBoundary>
         </div>
         {openRow ? <IssuePeek key={openRow.key} slug={project.slug} row={openRow} peek={peek} onOpenFull={() => openFull(openRow.key)} /> : null}
       </div>
