@@ -6,6 +6,7 @@
 // pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
@@ -124,8 +125,19 @@ interface IssuePorts {
       awaitsDesign?: { workflowId: string; revision: number } | undefined;
       /** Core linked `awaitsDesign` as the one revision proposed under this issue. */
       linkedUnderIssue?: boolean | undefined;
+      /** The issue whose merge mark answers the question. */
+      awaitsMerge?: { issueId: string } | undefined;
     },
   ) => Promise<unknown>;
+  /** Answer the open questions waiting on this issue's mark, in the stamp's transaction. */
+  answerMergeQuestions: (
+    executor: Tx,
+    args: {
+      issueId: string;
+      mark: { mergedAt: Date | string | null; commitSha: string | null; landing: string | null };
+      actor: OutboxActor | null;
+    },
+  ) => Promise<string[]>;
   /** The one design revision proposed under the issue still awaiting its approver; refused when several are. */
   pendingDesignOfPark: (
     executor: Tx,
@@ -293,6 +305,7 @@ export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');
 export const pendingDesignOfPark = port('pendingDesignOfPark');
+export const answerMergeQuestions = port('answerMergeQuestions');
 export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');

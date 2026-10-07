@@ -6,6 +6,7 @@ import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
+import { answerMergeQuestions } from './ports.js';
 
 /** The pool or a caller's open transaction. A close stamps inside one; a mark does not. */
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
@@ -131,7 +132,8 @@ const stampColumns = {
 };
 
 /**
- * Write the merge onto the issue, or report the stamp that was already there.
+ * Write the merge onto the issue, or report the stamp that was already there. A stamp written
+ * answers the questions parked on this issue's mark, in the same transaction.
  *
  * Call it inside the same transaction as whatever else has to hold with it — the
  * status UPDATE for a close, the projection row for a kernel merge — so a
@@ -191,6 +193,15 @@ export async function recordIssueMerge(
     });
   }
   if (wrote) {
+    await answerMergeQuestions(executor, {
+      issueId,
+      mark: {
+        mergedAt: wrote.mergedAt,
+        commitSha: wrote.mergedCommitSha,
+        landing: wrote.mergedLanding,
+      },
+      actor: args.actor,
+    });
     return {
       wrote: true,
       mergedAt: wrote.mergedAt,
@@ -249,6 +260,15 @@ export async function recordDesignLanding(
     mergedLanding: prior?.mergedLanding ?? null,
   };
   if (!wrote) return { wrote: false, ...(await readBack(executor, issueId)), before };
+  await answerMergeQuestions(executor, {
+    issueId,
+    mark: {
+      mergedAt: wrote.mergedAt,
+      commitSha: wrote.mergedCommitSha,
+      landing: wrote.mergedLanding,
+    },
+    actor: args.actor,
+  });
   if (prior) {
     await emitEvent(executor, 'issue.updated', {
       issueId,

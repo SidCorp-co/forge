@@ -17,6 +17,7 @@ interface MintParkQuestionInput {
   options: {
     needs?: string | undefined;
     awaitsDesign?: { workflowId: string; revision: number } | undefined;
+    awaitsMerge?: { issueId: string } | undefined;
     transitionReason?: string | undefined;
     reason?: string | undefined;
     waitingKind?: WaitingKind | undefined;
@@ -30,26 +31,31 @@ function mintsAt(toStatus: IssueStatus): boolean {
 }
 
 /**
- * Mint the question this park is answered through — unless the park names no need and no design
- * revision, and a person already owes the issue an answer, which is the question it waits on.
+ * Mint the question this park is answered through — unless the park names no need, no design
+ * revision and no merge mark, and a person already owes the issue an answer, which is the question
+ * it waits on.
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   const needs = input.options.needs?.trim();
   if (!mintsAt(input.toStatus)) return;
   if (actorAgency(input.actor) !== 'agent') return;
-  const linked = input.options.awaitsDesign ? null : await designDrawnHere(input, tx);
+  const awaitsMerge = input.options.awaitsMerge;
+  const linked =
+    input.options.awaitsDesign || awaitsMerge ? null : await designDrawnHere(input, tx);
   const awaitsDesign = input.options.awaitsDesign ?? linked ?? undefined;
-  if (!needs && !awaitsDesign && (await personOwesAnAnswer(tx, input.issue.id))) return;
+  if (!needs && !awaitsDesign && !awaitsMerge && (await personOwesAnAnswer(tx, input.issue.id)))
+    return;
   await askParkQuestion(tx, {
     id: randomUUID(),
     projectId: input.issue.projectId,
     issueId: input.issue.id,
     prompt: input.options.transitionReason?.trim() || input.options.reason?.trim() || '',
-    // a park on a design revision says what settles it by naming the revision
-    needed: needs || (awaitsDesign ? undefined : NEED_NOT_STATED),
+    // a park on a design revision or a merge mark says what settles it by naming it
+    needed: needs || (awaitsDesign || awaitsMerge ? undefined : NEED_NOT_STATED),
     ...(awaitsDesign
       ? { awaitsDesign: { workflowId: awaitsDesign.workflowId, revision: awaitsDesign.revision } }
       : {}),
+    ...(awaitsMerge ? { awaitsMerge: { issueId: awaitsMerge.issueId } } : {}),
     ...(linked ? { linkedUnderIssue: true } : {}),
   });
 }
@@ -64,8 +70,19 @@ async function designDrawnHere(input: MintParkQuestionInput, tx: DrizzleTx) {
   return pendingDesignOfPark(tx, input.issue.projectId, input.issue.id);
 }
 
-/** Why `needs` or `awaitsDesign` cannot be taken on this move: each shapes the question an agent's park mints. */
+/** Why `needs`, `awaitsDesign` or `awaitsMerge` cannot be taken on this move: each shapes the question an agent's park mints. */
 export function needsNotApplicable(input: MintParkQuestionInput): string | null {
+  if (input.options.awaitsDesign && input.options.awaitsMerge) {
+    return '`awaitsDesign` and `awaitsMerge` were both sent, and a park question waits on one fact — a design decision or a merge mark. Park on the one whose arrival settles this, and say the other in `needs`.';
+  }
+  if (input.options.awaitsMerge) {
+    if (!mintsAt(input.toStatus)) {
+      return `\`awaitsMerge\` was sent with \`${input.toStatus}\`, which mints no question — only a park at \`${AUTONOMOUS_QUESTION_STATUS}\` waits on a merge mark.`;
+    }
+    if (actorAgency(input.actor) !== 'agent') {
+      return '`awaitsMerge` was sent on a credential owned by a person, which mints no question for the mark to answer — a person parking their own work owns their own resume. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.';
+    }
+  }
   if (input.options.awaitsDesign) {
     if (!mintsAt(input.toStatus)) {
       return `\`awaitsDesign\` was sent with \`${input.toStatus}\`, which mints no question — only a park at \`${AUTONOMOUS_QUESTION_STATUS}\` waits on a design revision's decision.`;

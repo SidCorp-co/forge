@@ -107,6 +107,7 @@ const paneSeed = (questions: AgentQuestion[]): [QueryKey, unknown][] => [
 export const QUESTION_SCREENS = [
   { name: "Decision · free text", render: panel([question()]) },
   { name: "Decision · free text, still waits", render: panel([question()]), act: tick },
+  { name: "Decision · waits on a merge mark", render: panel([question({ awaitsMerge: { issueId: "i5", key: "ISS-5" } })]) },
   { name: "Decision · choice and earlier round", render: panel([choice]) },
   { name: "Decision · earlier rounds", render: panel([earlier, hidden]) },
   { name: "Decision · settled", render: panel(answered) },

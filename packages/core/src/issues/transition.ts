@@ -33,6 +33,7 @@ const transitionBodySchema = z
       .object({ workflowId: z.uuid(), revision: z.number().int().min(1) })
       .strict()
       .optional(),
+    awaitsMerge: z.object({ issueId: z.uuid() }).strict().optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
   })
@@ -181,8 +182,16 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind, needs, awaitsDesign, voidQuestions, recovery } =
-      c.req.valid('json');
+    const {
+      toStatus,
+      reason,
+      waitingKind,
+      needs,
+      awaitsDesign,
+      awaitsMerge,
+      voidQuestions,
+      recovery,
+    } = c.req.valid('json');
     const userId = c.get('userId');
 
     const issue = await transitionIssueRow(id);
@@ -209,6 +218,7 @@ transitionRoutes.post(
           waitingKind,
           needs,
           awaitsDesign,
+          awaitsMerge,
           voidQuestions,
           ...(recovery ? { recovery } : {}),
         },

@@ -77,6 +77,8 @@ export interface AgentQuestion {
   needed: string;
   locked: boolean;
   origin?: { kind: string; documentId?: string; number?: string } | null;
+  /** The issue whose merge mark answers this question, by its key; recording the mark answers it. */
+  awaitsMerge?: { issueId: string; key: string } | null;
 }
 
 export interface QuestionListResponse {
