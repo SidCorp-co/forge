@@ -18,9 +18,16 @@ COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 
 # Install only web-v2's transitive deps (package name is "web-v2"). The store is
-# a cache mount shared with the core image, so a deploy downloads only what changed.
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# a cache mount shared with the core image, so a deploy downloads only what changed. sharing=locked
+# because both images install in the same build and the default (shared) lets two pnpm processes
+# write one store at once, which left a truncated @next/swc .node file in release 0.4.0-dev.110
+# (docs.docker.com/reference/dockerfile/#run---mounttypecache: sharing=locked allows one writer).
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store,sharing=locked \
     pnpm install --frozen-lockfile --filter web-v2...
+
+# A missing or corrupt @next/swc-<platform> makes Next.js fall back to wasm SWC, and the build dies
+# later as "Turbopack is not supported". Refuse here, naming the package and platform.
+RUN node packages/web-v2/scripts/check-next-swc-binding.mjs
 
 # Every workspace dep whose export map points at dist/ must be built before the
 # Next.js build, or that import is unresolvable. Two qualify, in dependency
