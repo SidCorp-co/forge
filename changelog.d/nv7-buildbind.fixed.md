@@ -1,0 +1,1 @@
+**The web and core image builds no longer install into one pnpm store at once, and the web build refuses a corrupt or missing native Next.js SWC binding at install.** Concurrent installs left a truncated `.node` file in dev.110.
