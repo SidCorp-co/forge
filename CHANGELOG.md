@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.105] - 2026-10-07
+
+Requirements screens read in Vietnamese when that is the interface language
+
+### Changed
+
+- **The Requirements screens read in Vietnamese when that is the interface language.** The list, peek, full page with its tabs and rail, the acts and the create form; dates read 24-hour, day first. What people wrote stays as written.
+
 ## [0.4.0-dev.104] - 2026-10-07
 
 Integrations and issue fields explain themselves; interface-language migration repaired so core starts
