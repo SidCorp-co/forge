@@ -1,10 +1,13 @@
 "use client";
 
+import { LANDING_SURFACE_LABELS, LANDING_SURFACES, type LandingSurface } from "@forge/contracts/landing-artifacts";
 import { RELEASE_PROOF_LABELS } from "@forge/contracts/releases";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
+  EnumBadge,
   FieldLabel,
+  FilterChip,
   GroupedList,
   type ListGroup,
   type ListRowView,
@@ -18,6 +21,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { ReleaseDetail, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
+import { WhatChanges } from "./release-changes";
 import { ReleaseTrain } from "./release-train";
 
 export const RELEASE_TABS = ["overview", "issues", "criteria", "checks", "notes"] as const;
@@ -63,6 +67,7 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
 export function OverviewPane({ r, slug, all }: { r: ReleaseDetail; slug: string; all: ReleaseSummary[] }) {
   return (
     <div className="grid gap-8" data-testid="view-overview">
+      <WhatChanges changes={r.changes} slug={slug} />
       {r.gates.length > 0 ? (
         <section aria-label="Why it cannot be cut">
           <ViewHeading hint={r.state === "draft" ? "Each reason holds the cut until it is answered" : undefined}>
@@ -99,6 +104,15 @@ const issueRow =
     href: issueHref(slug, i.key),
     title: i.title,
     facts: [
+      ...(i.surfaces.length > 0
+        ? [
+            <span key="surfaces" className="inline-flex gap-1 align-middle" data-testid="issue-surfaces">
+              {i.surfaces.map((s) => (
+                <EnumBadge key={s} family="landingSurface" value={s} />
+              ))}
+            </span>,
+          ]
+        : []),
       ...(i.section ? [i.section] : []),
       i.criteria.total === 0 ? RELEASE_PROOF_LABELS.unrecorded : `Criteria ${i.criteria.proven} of ${i.criteria.total} proven`,
     ],
@@ -108,15 +122,42 @@ const issueRow =
     age: null,
   });
 
+const UNCLASSIFIED = "unclassified" as const;
+type SurfaceFilter = LandingSurface | typeof UNCLASSIFIED;
+
+const matchesSurface = (i: ReleaseIssueView, f: SurfaceFilter | null) =>
+  f === null || (f === UNCLASSIFIED ? i.landing.kind === "unclassified" : i.surfaces.includes(f));
+
 export function IssuesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const fold = useGroupFold(`web-v2:release-issues-fold:${r.key}`);
+  const [surface, setSurface] = useState<SurfaceFilter | null>(null);
+  const shown = useMemo(() => r.issues.filter((i) => matchesSurface(i, surface)), [r.issues, surface]);
   const groups = useMemo(
-    () => issueGroups(r.issues, new Map(r.requirementsCompleted.map((q) => [q.key, q.title]))),
-    [r.issues, r.requirementsCompleted],
+    () => issueGroups(shown, new Map(r.requirementsCompleted.map((q) => [q.key, q.title]))),
+    [shown, r.requirementsCompleted],
   );
   const row = useMemo(() => issueRow(slug), [slug]);
+  const filters: { value: SurfaceFilter; label: string; count: number }[] = [
+    ...LANDING_SURFACES.map((s) => ({ value: s, label: LANDING_SURFACE_LABELS[s], count: r.issues.filter((i) => i.surfaces.includes(s)).length })),
+    { value: UNCLASSIFIED, label: "Unclassified", count: r.issues.filter((i) => i.landing.kind === "unclassified").length },
+  ].filter((f) => f.count > 0);
   return (
     <div className="pb-16" data-testid="view-issues">
+      {filters.length > 1 ? (
+        <fieldset className="flex flex-wrap gap-2 px-8 py-3 max-md:px-4" aria-label="Filter by surface" data-testid="surface-filter">
+          {filters.map((f) => (
+            <FilterChip
+              key={f.value}
+              on={surface === f.value}
+              onToggle={() => setSurface((cur) => (cur === f.value ? null : f.value))}
+              count={f.count}
+              testId={`surface-filter-${f.value}`}
+            >
+              {f.label}
+            </FilterChip>
+          ))}
+        </fieldset>
+      ) : null}
       <GroupedList
         ariaLabel="Issues in this release"
         groups={groups}

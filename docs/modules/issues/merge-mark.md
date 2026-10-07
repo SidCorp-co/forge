@@ -1,7 +1,7 @@
 # The merged mark: what the two columns mean
 
 `packages/core/src/issues/merge-record.ts` is the only writer of
-`issues.merged_at`, `issues.merged_commit_sha` and `issues.merged_landing` —
+`issues.merged_at`, `issues.merged_commit_sha`, `issues.merged_landing` and `issues.merged_artifacts` —
 `scripts/check-merged-at-writers.mjs` holds that — and `mergeMarkKindOf`, in the same file, is the
 only reading of what the columns MEAN.
 
@@ -78,12 +78,41 @@ as for `merged_at`; a `200` that kept the old landing while the caller was told 
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
 
+## What a landing says it changed
+
+`issues.merged_artifacts` (0433) holds what a landing changed, one `{surface, ref, change}` per
+artifact: `surface` is one of `LANDING_SURFACES` (`packages/contracts/src/landing-artifacts.ts`) —
+`ui`, `api`, `logic`, `data`, `config`, `runner`, `design` — and `change` one of `added`, `changed`,
+`removed`. A surface or change outside those is refused by name at the route. It is written in the
+stamp's own UPDATE and cleared with it by `unmark`; `issues_merged_artifacts_chk` refuses a list with
+no `merged_at`, or one that is empty or not an array. NULL is a landing naming nothing structured.
+
+- **Outside git** the mark takes `artifacts` beside `landing`. A landing naming a design revision —
+  `forge-workflow:<flow>@rev<n>`, or the sentence a design approval writes — is surface `design`
+  without being told (`designLandingRef`), and a non-design artifact beside it is refused
+  `ARTIFACTS_NOT_DESIGN`: a revision deploys nothing. Artifacts sent over a standing mark that names
+  others are `MARK_ALREADY_STANDS`, as a landing is.
+- **On git** the mark refuses `artifacts` (`ARTIFACTS_NOT_THIS_SHAPE`): what a git landing changed is
+  read from its observed commit's changed paths (`changedFilesOf`, against its first parent) through
+  the project document's `release.surfaces` — ordered `rules` of globs per surface, first match
+  wins, and `ignore` for paths that ship nothing — or the map `landing-surfaces.ts:FORGE_CORE_SURFACES`
+  ships for the forge-core repository. A project declaring no map has its paths shown unclassified,
+  never sorted by a guess; a mark with no observed commit has no paths to read.
+- **A design approval** writes the revision's `design` artifact on either shape (below).
+
+The release read (`packages/core/src/release-batch/landing-surfaces.ts`) groups them into the release's
+`changes`: per surface its artifacts and the issues touching each, `design` marked as shipping
+nothing, and a risk where the data says so — a `data` artifact removed or changed, an `api` artifact
+removed. Rows marked before 0433 are not backfilled: their prose landings read `unclassified` with
+why, an amnesty that ends as each of those issues releases.
+
 ## What a design approval writes
 
 A workflow design revision drawn under an issue is that issue's deliverable, so approving it is where
 the work landed. `decideDesignAs` (`packages/core/src/workflows/design-service.ts`) records it in the
 decision's own transaction through `markApprovedDesign` (`packages/core/src/issues/design-landing.ts`),
-whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`:
+whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`. Where it
+writes, it also sets `merged_artifacts` to the revision's one `design` artifact, `<flow>@rev<n>`:
 
 | shape | the row holds | the approval |
 |---|---|---|

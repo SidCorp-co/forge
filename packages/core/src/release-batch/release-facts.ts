@@ -1,3 +1,4 @@
+import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import type { ReleaseCriterionView, ReleasePerson } from '@forge/contracts/releases';
 import type { RequirementState } from '@forge/contracts/requirements';
@@ -28,6 +29,13 @@ interface IssueFact {
   releaseNotes: ReleaseNotes | null;
   requirementId: string | null;
   criteria: ReleaseCriterionView[];
+  /** The merged mark's columns, which `landing-surfaces.ts` reads what the landing changed from. */
+  merged: {
+    at: Date | null;
+    landing: string | null;
+    artifacts: LandingArtifact[] | null;
+    commitSha: string | null;
+  };
 }
 
 export interface ReleaseFacts {
@@ -136,6 +144,10 @@ export async function loadReleaseFacts(
             updatedAt: issues.updatedAt,
             releaseNotes: issues.releaseNotes,
             requirementId: issues.requirementId,
+            mergedAt: issues.mergedAt,
+            mergedLanding: issues.mergedLanding,
+            mergedArtifacts: issues.mergedArtifacts,
+            mergedCommitSha: issues.mergedCommitSha,
           })
           .from(issues)
           .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
@@ -162,6 +174,12 @@ export async function loadReleaseFacts(
         releaseNotes: r.releaseNotes ?? null,
         requirementId: r.requirementId,
         criteria: (criteria.get(r.id) ?? []).map((c) => criterionView(c, reopened.get(r.id))),
+        merged: {
+          at: r.mergedAt,
+          landing: r.mergedLanding,
+          artifacts: r.mergedArtifacts ?? null,
+          commitSha: r.mergedCommitSha?.trim() ? r.mergedCommitSha.trim() : null,
+        },
       },
     ]),
   );

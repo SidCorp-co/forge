@@ -1,4 +1,5 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
+import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
@@ -9,9 +10,11 @@ import type { Actor } from './activity.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,
+  markArtifacts,
   markTargetRequired,
   readLandingShape,
   SOURCE_UNDECLARED,
+  standingArtifactsRefusal,
   standingMarkRefusal,
 } from './landing-evidence.js';
 import {
@@ -90,6 +93,8 @@ type MergeMarkArgs = {
   commit?: string | undefined;
   /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
   landing?: string | undefined;
+  /** What the landing changed, by surface; whether this shape takes a list is `landing-evidence.ts`'s. */
+  artifacts?: readonly LandingArtifact[] | undefined;
   mergedAt?: Date | null;
   /** The contract versions the landed work implemented, `<project>/<contract>@<version>` each. */
   contracts?: readonly string[] | undefined;
@@ -149,6 +154,10 @@ async function stampMark(
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
+  const sent = args.artifacts ?? null;
+  const named = markArtifacts({ shape, landing, sent });
+  if (!named.ok) throw refuse(named.code, named.detail, '/artifacts');
+  const artifacts = named.artifacts;
   let stamp: Stamp;
   if (observed) {
     const claimed = args.commit ?? null;
@@ -162,6 +171,7 @@ async function stampMark(
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
           landing,
+          artifacts,
         },
       }),
       claimedCommit:
@@ -189,7 +199,7 @@ async function stampMark(
         issueId,
         via: 'mark',
         actor: args.actor.hookActor,
-        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null },
+        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, artifacts },
       }),
       claimedCommit: args.commit ?? null,
       readFrom: null,
@@ -216,6 +226,14 @@ async function stampMark(
     },
   });
   if (standing) throw refuse(standing.code, standing.detail, '/landing');
+  const standingArtifacts = standingArtifactsRefusal({
+    sent: sent ? artifacts : null,
+    wrote: stamp.result.wrote,
+    held: stamp.result.artifacts,
+  });
+  if (standingArtifacts) {
+    throw refuse(standingArtifacts.code, standingArtifacts.detail, '/artifacts');
+  }
   if (args.target) await recordMergeTarget(tx, issueId, args.target);
   return stamp;
 }
@@ -334,6 +352,8 @@ export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
    */
   mark: MergeMarkKind;
   markDetail: string;
+  /** What the row's landing names it changed after this call; null where it names nothing structured. */
+  artifacts: LandingArtifact[] | null;
 }> {
   const prior = await findIssueById(args.issue.id);
   if (!prior) throw notFound('issue not found');
@@ -342,7 +362,7 @@ export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {
     let stamp: Stamp = {
-      result: { wrote: true, mergedAt: null, commitSha: null, landing: null },
+      result: { wrote: true, mergedAt: null, commitSha: null, landing: null, artifacts: null },
       claimedCommit: null,
       readFrom: null,
     };
@@ -353,6 +373,12 @@ export async function applyMergeMarker(args: MergeMarkArgs): Promise<{
 
   const issue = await findIssueById(args.issue.id);
   if (!issue) throw notFound('issue not found');
-  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
-  return { issue, action: stamp.result.wrote ? 'merged' : 'already_merged', mark, markDetail };
+  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail, artifacts: null };
+  return {
+    issue,
+    action: stamp.result.wrote ? 'merged' : 'already_merged',
+    mark,
+    markDetail,
+    artifacts: stamp.result.artifacts,
+  };
 }

@@ -20,6 +20,7 @@
  */
 
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
+import { landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -39,6 +40,7 @@ const mergeMarkerBodySchema = z
     note: z.string().trim().min(1).max(2000).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
+    artifacts: landingArtifactsSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
     contracts: z
       .array(
@@ -61,13 +63,14 @@ async function runMergeMarker(
   const issue = { id: scope.id, projectId: scope.projectId, mergedAt: scope.mergedAt };
 
   const actor = restActor(c);
-  const { action, mark, markDetail } = await applyMergeMarker({
+  const { action, mark, markDetail, artifacts } = await applyMergeMarker({
     issue,
     op,
     ...(body.target ? { target: body.target } : {}),
     ...(body.note ? { note: body.note } : {}),
     ...(body.commit ? { commit: body.commit } : {}),
     ...(body.landing ? { landing: body.landing } : {}),
+    ...(body.artifacts ? { artifacts: body.artifacts } : {}),
     ...(body.mergedAt ? { mergedAt: new Date(body.mergedAt) } : {}),
     ...(body.contracts ? { contracts: body.contracts } : {}),
     actor: {
@@ -80,7 +83,7 @@ async function runMergeMarker(
   // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
   // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
   // and never reached the one party that could act on it.
-  return c.json({ id: issueId, action, mark, detail: markDetail });
+  return c.json({ id: issueId, action, mark, detail: markDetail, artifacts });
 }
 
 const mergeMarkerValidators = [

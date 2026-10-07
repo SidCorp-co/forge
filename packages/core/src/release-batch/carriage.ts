@@ -11,7 +11,7 @@
  * and is unread like any other.
  */
 
-import type { SourceHost } from '../integrations/source-host/index.js';
+import type { HostFileChange, SourceHost } from '../integrations/source-host/index.js';
 import type { Carriage, ChangedPaths } from '../issues/index.js';
 
 const CACHE_LIMIT = 2000;
@@ -27,7 +27,7 @@ function keep<V>(held: Map<string, V>, key: string, value: V): void {
 }
 
 const carried = new Map<string, Carriage>();
-const changed = new Map<string, ChangedPaths>();
+const changed = new Map<string, ChangedFiles>();
 
 function why(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -66,11 +66,20 @@ export async function carriageOf(
   }
 }
 
-export async function changedPathsOf(
+/** The files a landing changed and what became of each, or why they were not read. */
+export type ChangedFiles =
+  | {
+      readonly kind: 'read';
+      readonly paths: readonly string[];
+      readonly changes: readonly HostFileChange[];
+    }
+  | { readonly kind: 'unread'; readonly why: string };
+
+export async function changedFilesOf(
   host: SourceHost,
   landing: string,
   spend: () => string | null = () => null,
-): Promise<ChangedPaths> {
+): Promise<ChangedFiles> {
   const key = `${host.fullName}\u0000${landing.toLowerCase()}`;
   const kept = changed.get(key);
   if (kept) return kept;
@@ -79,13 +88,26 @@ export async function changedPathsOf(
   try {
     const read = await host.commitFiles(landing);
     if ('why' in read) return { kind: 'unread', why: read.why };
-    const paths: ChangedPaths = { kind: 'read', paths: [...new Set(read.files)].sort() };
-    keep(changed, key, paths);
-    return paths;
+    const files: ChangedFiles = {
+      kind: 'read',
+      paths: [...new Set(read.files)].sort(),
+      changes: read.changes,
+    };
+    keep(changed, key, files);
+    return files;
   } catch (err) {
     return {
       kind: 'unread',
       why: `${host.fullName} could not read what ${landing} changed: ${why(err)}`,
     };
   }
+}
+
+export async function changedPathsOf(
+  host: SourceHost,
+  landing: string,
+  spend: () => string | null = () => null,
+): Promise<ChangedPaths> {
+  const read = await changedFilesOf(host, landing, spend);
+  return read.kind === 'read' ? { kind: 'read', paths: read.paths } : read;
 }

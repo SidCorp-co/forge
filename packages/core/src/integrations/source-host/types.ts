@@ -45,11 +45,23 @@ export type HostCompare = 'ahead' | 'behind' | 'identical' | 'diverged';
 /** A compare taken only whole: where head stands, and every file its tree differs from base's in
  *  since their merge base, a rename by both its names; or why the list cannot be taken whole. */
 export type HostFileCompare =
-  | { readonly status: HostCompare; readonly files: readonly string[] }
+  | {
+      readonly status: HostCompare;
+      readonly files: readonly string[];
+      readonly changes: readonly HostFileChange[];
+    }
   | { readonly why: string };
 
+/** One file a compare names and what happened to it; a rename is its old path removed and its new one added. */
+export interface HostFileChange {
+  readonly path: string;
+  readonly change: 'added' | 'changed' | 'removed';
+}
+
 /** The files one commit changed against its first parent, or why they cannot be named whole. */
-export type HostCommitFiles = { readonly files: readonly string[] } | { readonly why: string };
+export type HostCommitFiles =
+  | { readonly files: readonly string[]; readonly changes: readonly HostFileChange[] }
+  | { readonly why: string };
 
 export interface ChangeRequestDiff {
   number: number;

@@ -1,4 +1,5 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
+import type { LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
 import { relations, type SQL, sql } from 'drizzle-orm';
 import {
@@ -128,6 +129,8 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    /** What the landing changed, by surface; NULL where it names nothing structured (docs/modules/issues/merge-mark.md). */
+    mergedArtifacts: jsonb('merged_artifacts').$type<LandingArtifact[] | null>(),
     mergedTarget: text('merged_target'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
@@ -187,6 +190,10 @@ export const issues = pgTable(
     mergedLandingChk: check(
       'issues_merged_landing_chk',
       sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
+    ),
+    mergedArtifactsChk: check(
+      'issues_merged_artifacts_chk',
+      sql`${t.mergedArtifacts} IS NULL OR (${t.mergedAt} IS NOT NULL AND jsonb_typeof(${t.mergedArtifacts}) = 'array' AND jsonb_array_length(${t.mergedArtifacts}) > 0)`,
     ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),

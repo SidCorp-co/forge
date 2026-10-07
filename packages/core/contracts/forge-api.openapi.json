@@ -11671,6 +11671,47 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "artifacts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "change": {
+                          "enum": [
+                            "added",
+                            "changed",
+                            "removed"
+                          ],
+                          "type": "string"
+                        },
+                        "ref": {
+                          "maxLength": 300,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "surface": {
+                          "enum": [
+                            "ui",
+                            "api",
+                            "logic",
+                            "data",
+                            "config",
+                            "runner",
+                            "design"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "surface",
+                        "ref",
+                        "change"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "commit": {
                     "pattern": "^[0-9a-f]{7,64}$",
                     "type": "string"
@@ -11749,6 +11790,47 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "artifacts": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "change": {
+                          "enum": [
+                            "added",
+                            "changed",
+                            "removed"
+                          ],
+                          "type": "string"
+                        },
+                        "ref": {
+                          "maxLength": 300,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "surface": {
+                          "enum": [
+                            "ui",
+                            "api",
+                            "logic",
+                            "data",
+                            "config",
+                            "runner",
+                            "design"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "surface",
+                        "ref",
+                        "change"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "commit": {
                     "pattern": "^[0-9a-f]{7,64}$",
                     "type": "string"

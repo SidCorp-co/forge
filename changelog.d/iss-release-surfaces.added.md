@@ -1,0 +1,1 @@
+**A release says what it changes.** Each landing names its artifacts by surface, and the release page and approval peek open with "What changes": per surface, risks flagged, design revisions marked as shipping nothing.

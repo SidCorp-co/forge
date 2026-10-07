@@ -11,6 +11,7 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
+import { readLandingReadings } from './landing-surfaces.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
 import { approversOf, loadReleaseFacts } from './release-facts.js';
@@ -161,10 +162,28 @@ export async function readRelease(
     sharedFor(projectId, [part], viewer, current, required),
     readReleasePath(projectId),
   ]);
+  const landings = await readLandingReadings(
+    projectId,
+    part.issueIds.flatMap((id) => {
+      const i = shared.facts.issues.get(id);
+      return i
+        ? [
+            {
+              id,
+              marked: i.merged.at !== null,
+              landing: i.merged.landing,
+              artifacts: i.merged.artifacts,
+              commitSha: i.merged.commitSha,
+            },
+          ]
+        : [];
+    }),
+  );
   const prod = read.ok ? read.path.production : null;
   return detailOf(
     part,
     shared,
     prod ? { name: prod.name, url: prod.declaration.url ?? null } : null,
+    landings,
   );
 }

@@ -2,6 +2,7 @@
 
 import { releaseNotesSections } from '@forge/contracts/release-notes';
 import type {
+  IssueLandingReading,
   ReleaseApprovalView,
   ReleaseAttemptView,
   ReleaseContentGroup,
@@ -16,6 +17,7 @@ import type {
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
+import { releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import type { ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
@@ -206,11 +208,23 @@ function noteSections(p: Part, s: Shared) {
   };
 }
 
-function issueViews(p: Part, s: Shared, waiting: ReleaseSummary['waitingOn']): ReleaseIssueView[] {
+const UNREAD: IssueLandingReading = {
+  kind: 'unclassified',
+  why: 'what its landing changed was not read',
+  paths: [],
+};
+
+function issueViews(
+  p: Part,
+  s: Shared,
+  waiting: ReleaseSummary['waitingOn'],
+  landings: ReadonlyMap<string, IssueLandingReading>,
+): ReleaseIssueView[] {
   return p.issueIds.flatMap((id) => {
     const i = s.facts.issues.get(id);
     if (!i) return [];
     const criteria = totalsOf(i.criteria.map((c) => c.standing));
+    const landing = landings.get(id) ?? UNREAD;
     return [
       {
         id: i.id,
@@ -224,6 +238,8 @@ function issueViews(p: Part, s: Shared, waiting: ReleaseSummary['waitingOn']): R
         proof: proofOf(criteria),
         criteria,
         waitingOn: i.status === 'closed' || p.state === 'shipped' ? NOBODY : waiting,
+        surfaces: surfacesOf(landing),
+        landing,
       },
     ];
   });
@@ -233,8 +249,10 @@ export function detailOf(
   p: Part,
   s: Shared,
   production: ReleaseDetail['production'],
+  landings: ReadonlyMap<string, IssueLandingReading>,
 ): ReleaseDetail {
   const summary = summaryOf(p, s);
+  const issues = issueViews(p, s, summary.waitingOn, landings);
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const inRelease = new Set(p.issueIds);
   const reqIds = new Set(facts.flatMap((i) => (i.requirementId ? [i.requirementId] : [])));
@@ -242,7 +260,8 @@ export function detailOf(
   const strip = ({ runId: _run, ...view }: ApprovalView): ReleaseApprovalView => view;
   return {
     ...summary,
-    issues: issueViews(p, s, summary.waitingOn),
+    issues,
+    changes: releaseChangesOf(issues.map((i) => ({ key: i.key, reading: i.landing }))),
     requirementsCompleted: [...reqIds]
       .flatMap((id) => s.facts.requirements.get(id) ?? [])
       .map((r) => completionOf(r, inRelease))

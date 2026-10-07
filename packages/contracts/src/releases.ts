@@ -4,6 +4,11 @@
 // the browser.
 
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
+import type {
+	ArtifactChange,
+	LandingArtifact,
+	LandingSurface,
+} from "./landing-artifacts.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type { BcVerdict, RequirementState } from "./requirements.js";
 import type {
@@ -223,6 +228,65 @@ export interface ReleaseIssueView {
 	proof: ReleaseProof;
 	criteria: ReleaseCriteriaTotals;
 	waitingOn: WaitingOn<ReleaseWaitingKind>;
+	/** The surfaces its landing touches, in `LANDING_SURFACES` order; empty where none is named. */
+	surfaces: LandingSurface[];
+	landing: IssueLandingReading;
+}
+
+/**
+ * What an issue's landing says it changed. `named`: the artifacts, with any changed paths the
+ * project's surface map claims for none. `unclassified`: nothing structured names them — a prose
+ * landing, a commit not read, a project declaring no surface map — with why, and the paths where
+ * they were read.
+ */
+export type IssueLandingReading =
+	| {
+			kind: "named";
+			artifacts: LandingArtifact[];
+			unmappedPaths: string[];
+	  }
+	| { kind: "unclassified"; why: string; paths: string[] };
+
+export interface ReleaseChangeArtifact {
+	ref: string;
+	change: ArtifactChange;
+	/** The issue keys whose landings name it. */
+	issues: string[];
+}
+
+export interface ReleaseSurfaceChanges {
+	surface: LandingSurface;
+	/** How many distinct artifacts it names. */
+	count: number;
+	/** True for `design`: a design revision deploys nothing. */
+	shipsNothing: boolean;
+	issues: string[];
+	artifacts: ReleaseChangeArtifact[];
+}
+
+export const RELEASE_CHANGE_RISKS = [
+	"data_removed",
+	"data_changed",
+	"api_removed",
+] as const;
+export type ReleaseChangeRisk = (typeof RELEASE_CHANGE_RISKS)[number];
+
+export interface ReleaseChangeRiskView {
+	risk: ReleaseChangeRisk;
+	surface: LandingSurface;
+	ref: string;
+	issues: string[];
+	sentence: string;
+}
+
+/** "What changes": per surface, what the release's landings name, and what the data flags. */
+export interface ReleaseChanges {
+	surfaces: ReleaseSurfaceChanges[];
+	risks: ReleaseChangeRiskView[];
+	/** Issues whose landing names no artifact, with why. */
+	unclassified: { key: string; why: string; paths: string[] }[];
+	/** True where every classified artifact ships nothing and nothing is unclassified. */
+	shipsNothing: boolean;
 }
 
 export interface ReleaseRequirementView {
@@ -334,6 +398,7 @@ export interface ReleaseDetail extends ReleaseSummary {
 	issues: ReleaseIssueView[];
 	requirementsCompleted: ReleaseRequirementView[];
 	issueCriteria: ReleaseIssueCriteria[];
+	changes: ReleaseChanges;
 	notes: {
 		sections: ReleaseNoteSection[];
 		withoutNotes: { key: string; title: string }[];

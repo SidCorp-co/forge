@@ -4,6 +4,7 @@
 // each legend tone draws. A screen never declares a colour map.
 
 import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
+import { ARTIFACT_CHANGE_LABELS, LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
 import { NOTIFICATION_TYPE_LABELS } from "@forge/contracts/notifications";
 import { ONBOARDING_STATUS_LABELS, ONBOARDING_STATUS_TONES, THREAD_STATUS_HINTS } from "@forge/contracts/onboarding";
 import {
@@ -207,6 +208,8 @@ export const ENUM_FAMILIES = {
   contractDirection: CONTRACT_DIRECTION_LABELS,
   step: WORK_STEP_LABELS,
   notificationType: NOTIFICATION_TYPE_LABELS,
+  landingSurface: LANDING_SURFACE_LABELS,
+  artifactChange: ARTIFACT_CHANGE_LABELS,
   ...ENUM_LABELS,
 } as const satisfies Record<string, Record<string, string>>;
 
