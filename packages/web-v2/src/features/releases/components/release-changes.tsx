@@ -99,7 +99,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
   const deploys = changes.surfaces.filter((s) => !s.shipsNothing);
   const design = changes.surfaces.filter((s) => s.shipsNothing);
   return (
-    <section aria-label="What changes" data-testid="release-changes" className="grid gap-4">
+    <section aria-label="What changes" data-testid="release-changes" data-tour="rel-changes" className="grid gap-4">
       <div>
         <ViewHeading hint="What each issue's landing names, by where it takes effect">What changes</ViewHeading>
         <p className="text-13-5" data-testid="release-changes-sentence">
@@ -113,7 +113,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         ) : null}
       </div>
       {changes.risks.length > 0 ? (
-        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks">
+        <ul className="divide-y divide-line-subtle border-y border-line-subtle" aria-label="Risks" data-tour="rel-risk">
           {changes.risks.map((k) => (
             <li key={`${k.risk}:${k.ref}`} className="flex items-start gap-2 py-2 text-13" data-testid="release-risk" data-risk={k.risk}>
               <span aria-hidden className="mt-[7px] size-1.5 flex-none rounded-full" style={{ background: LEGEND.err.dot }} />
@@ -131,7 +131,7 @@ export function WhatChanges({ changes, slug }: { changes: ReleaseChanges; slug?:
         </ul>
       ) : null}
       {design.length > 0 ? (
-        <div data-testid="release-ships-nothing">
+        <div data-testid="release-ships-nothing" data-tour="rel-design">
           <FieldLabel>Design — ships nothing</FieldLabel>
           <ul className="border-t border-line-subtle">
             {design.map((s) => (

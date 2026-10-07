@@ -111,7 +111,7 @@ import {
   pipelineRunRoutes,
   stepHandoffRoutes,
 } from './pipeline/routes.js';
-import { preferenceRoutes } from './preferences/routes.js';
+import { preferenceRoutes, productStateRoutes } from './preferences/routes.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
@@ -136,6 +136,7 @@ import { scheduleRoutes } from './schedules/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
+import { whatsNewProjectRoutes, whatsNewRoutes } from './whats-new/routes.js';
 import { workflowJsonSchemas } from './workflows/index.js';
 import { workflowRoutes, workflowTemplateCatalogueRoutes } from './workflows/routes.js';
 
@@ -284,6 +285,8 @@ function mountAgentRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/notifications', notificationRoutes);
   app.route('/api/me', meAttentionRoutes);
   app.route('/api/me', mePulseRoutes);
+  app.route('/api/me', productStateRoutes);
+  app.route('/api/me', whatsNewRoutes);
   app.route('/api/questions', questionRoutes);
   app.route('/api', speakerLinkProjectRoutes);
   app.route('/api/conversations', conversationRoutes);
@@ -315,6 +318,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
 function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);
+  app.route('/api/projects', whatsNewProjectRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/projects', knowledgeRoutes);

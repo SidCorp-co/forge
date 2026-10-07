@@ -5,6 +5,9 @@ import { NavRail } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useMyEcosystems } from "@/features/ecosystem/hooks";
 import { ProjectSwitcher } from "./project-switcher";
+import { HelpToursButton } from "@/features/tours/components/help-tours-button";
+import { tourShowMe } from "@/features/tours/components/tour-show-me";
+import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
 import { SidebarVersion } from "./sidebar-version";
 import { type ProjectBadges, projectMenu, workspaceNavItems } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
@@ -59,7 +62,13 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       orgSwitcher={<OrgSwitcher variant={collapsed ? "compact" : "brand"} />}
       search={props.search(collapsed ? "compact" : "icon")}
       bell={props.bell}
-      version={<SidebarVersion onDocs={() => onRoute("/docs")} activeKey={activeKey} compact={collapsed} />}
+      version={
+        <>
+          <WhatsNewButton compact={collapsed} entryAction={tourShowMe} />
+          <HelpToursButton compact={collapsed} />
+          <SidebarVersion onDocs={() => onRoute("/docs")} activeKey={activeKey} compact={collapsed} />
+        </>
+      }
       user={props.userInitials ? { initials: props.userInitials } : undefined}
       onAccount={() => onRoute("/settings")}
       onSignOut={props.onSignOut}

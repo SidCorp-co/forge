@@ -9,6 +9,7 @@ import { ISSUE_TRANSITION_REFUSAL_STATUSES } from "./issue-machine.js";
 import { ISSUE_TAKE_REFUSAL_STATUSES } from "./issues.js";
 import { MOCKUP_REFUSAL_STATUSES } from "./mockups.js";
 import { PIPELINE_REFUSAL_STATUSES } from "./pipeline.js";
+import { PRODUCT_STATE_REFUSAL_STATUSES } from "./product-state.js";
 import { PROJECT_CONFIG_REFUSAL_STATUSES } from "./project-config.js";
 import { QUESTION_REFUSAL_STATUSES } from "./questions.js";
 import type { RefusalStatus } from "./refusal.js";
@@ -16,6 +17,7 @@ import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
 import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
 import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
+import { WHATS_NEW_REFUSAL_STATUSES } from "./whats-new.js";
 import { DESIGN_REFUSAL_STATUSES } from "./workflows.js";
 
 /** The request-shape answer core builds from a failed validator. */
@@ -35,6 +37,7 @@ const DECLARED: ReadonlyArray<
 	ISSUE_TAKE_REFUSAL_STATUSES,
 	MOCKUP_REFUSAL_STATUSES,
 	PIPELINE_REFUSAL_STATUSES,
+	PRODUCT_STATE_REFUSAL_STATUSES,
 	PROJECT_CONFIG_REFUSAL_STATUSES,
 	QUESTION_REFUSAL_STATUSES,
 	RELEASE_REFUSAL_STATUSES,
@@ -42,6 +45,7 @@ const DECLARED: ReadonlyArray<
 	STATE_MACHINE_REFUSAL_STATUSES,
 	SUGGESTION_REFUSAL_STATUSES,
 	DESIGN_REFUSAL_STATUSES,
+	WHATS_NEW_REFUSAL_STATUSES,
 ];
 
 function collect(): ReadonlyMap<string, Exclude<RefusalStatus, 422>> {

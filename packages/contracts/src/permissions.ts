@@ -38,6 +38,7 @@ const WRITE = [
 	"ecosystem-links.write",
 	"contracts.write",
 	"suggestions.write",
+	"whats-new.write",
 ] as const;
 
 /**

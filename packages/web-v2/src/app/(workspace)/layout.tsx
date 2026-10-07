@@ -35,8 +35,8 @@ import {
   resolveRailSlug,
   useProjectOrgScopeSync,
   useRailProjectData,
-  CurrentProjectProvider,
 } from "@/features/shell";
+import { CurrentProjectProvider } from "@/features/projects/current-project";
 import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
@@ -50,6 +50,10 @@ import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { TopBarSlotProvider } from "@/design";
 import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
+import { WhatsNewButton } from "@/features/whats-new/components/whats-new-button";
+import { HelpToursButton } from "@/features/tours/components/help-tours-button";
+import { TourLauncher } from "@/features/tours/components/tour-launcher";
+import { tourShowMe } from "@/features/tours/components/tour-show-me";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -251,10 +255,14 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onCreateProject={() => router.push("/projects?new=1")}
         onViewAllProjects={() => router.push("/projects")}
         version={
-          <SidebarVersion
-            onDocs={() => router.push("/docs")}
-            activeKey={activeKey}
-          />
+          <>
+            <WhatsNewButton entryAction={tourShowMe} />
+            <HelpToursButton />
+            <SidebarVersion
+              onDocs={() => router.push("/docs")}
+              activeKey={activeKey}
+            />
+          </>
         }
         search={<SidebarSearch onOpen={openPalette} />}
         bell={<SidebarBell ref={drawerBellRef} count={bellCount} onToggle={() => toggleBell(drawerBellRef)} />}
@@ -272,7 +280,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
+          <CurrentProjectProvider project={railProject}>
+            {children}
+            <TourLauncher />
+          </CurrentProjectProvider>
         </main>
       </div>
 

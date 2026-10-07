@@ -9,6 +9,8 @@
  */
 
 import type { AuthRefusalCode } from '@forge/contracts/auth';
+import type { ProductStateKey, ProductStateView } from '@forge/contracts/product-state';
+import type { TourEventRequest } from '@forge/contracts/tours';
 import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { db as defaultDb, type TxOnly } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
@@ -17,10 +19,18 @@ import {
   type PreferenceChangeField,
   preferenceChanges,
 } from '../db/schema-agent-selves.js';
+import { productTourEvents, userProductState } from '../db/schema-product-state.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { refuser } from '../lib/refusal.js';
+import { type Refusal, refuser } from '../lib/refusal.js';
 import { emitEvent } from '../outbox/index.js';
-import { ASSISTANT_PREFERENCE_DEFAULTS, ME_PREFERENCE_DEFAULTS, ME_PREFERENCES } from './read.js';
+import {
+  ASSISTANT_PREFERENCE_DEFAULTS,
+  ME_PREFERENCE_DEFAULTS,
+  ME_PREFERENCES,
+  PRODUCT_STATE_COLUMNS,
+  productStateViewOf,
+} from './read.js';
+import { productStateValueRefusal } from './rules.js';
 
 const refuse = refuser<AuthRefusalCode>('AUTH_REFUSED');
 
@@ -287,4 +297,52 @@ export async function writeMePreferences(userId: string, patch: MePreferencePatc
     }
     return row;
   });
+}
+
+export type ProductStateOutcome =
+  | { ok: true; state: ProductStateView }
+  | { ok: false; refusals: Refusal[] };
+
+/** Write one key of a person's product state whole, refused by name where the value is not the key's shape. */
+export async function writeProductState(args: {
+  userId: string;
+  key: ProductStateKey;
+  value: unknown;
+  now?: Date;
+}): Promise<ProductStateOutcome> {
+  const now = args.now ?? new Date();
+  const refused = productStateValueRefusal(args.key, args.value, now);
+  if (refused) return { ok: false, refusals: [refused] };
+  return defaultDb.transaction(async (tx) => {
+    await lockPreferences(tx, args.userId);
+    const [row] = await tx
+      .insert(userProductState)
+      .values({ userId: args.userId, key: args.key, value: args.value, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [userProductState.userId, userProductState.key],
+        set: { value: args.value, updatedAt: now },
+      })
+      .returning(PRODUCT_STATE_COLUMNS);
+    if (!row) throw new Error('user_product_state: upsert returned no row');
+    return { ok: true, state: productStateViewOf(row) };
+  });
+}
+
+/** Record one event of a person's tour run; insert-only. */
+export async function recordTourEvent(
+  userId: string,
+  event: TourEventRequest,
+): Promise<{ id: string }> {
+  const [row] = await defaultDb
+    .insert(productTourEvents)
+    .values({
+      userId,
+      tourId: event.tourId,
+      revision: event.revision,
+      kind: event.kind,
+      step: event.step ?? null,
+    })
+    .returning({ id: productTourEvents.id });
+  if (!row) throw new Error('product_tour_events: insert returned no row');
+  return row;
 }

@@ -1,6 +1,8 @@
-import { eq } from 'drizzle-orm';
+import type { ProductStateKey, ProductStateView } from '@forge/contracts/product-state';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AnswerStyle, userPreferences } from '../db/schema.js';
+import { userProductState } from '../db/schema-product-state.js';
 
 export const ASSISTANT_PREFERENCE_DEFAULTS = {
   answerStyle: 'default' as AnswerStyle,
@@ -61,4 +63,47 @@ export async function readMePreferences(userId: string) {
     .where(eq(userPreferences.userId, userId))
     .limit(1);
   return row ?? { ...ME_PREFERENCE_DEFAULTS, updatedAt: null };
+}
+
+type StoredValue = NonNullable<ProductStateView['value']>;
+
+export function productStateViewOf(row: {
+  key: string;
+  value: unknown;
+  updatedAt: Date;
+}): ProductStateView {
+  return {
+    key: row.key as ProductStateKey,
+    value: row.value as StoredValue,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export const PRODUCT_STATE_COLUMNS = {
+  key: userProductState.key,
+  value: userProductState.value,
+  updatedAt: userProductState.updatedAt,
+};
+
+/** One key of a person's product state; `value` and `updatedAt` null where nothing was written. */
+export async function readProductState(
+  userId: string,
+  key: ProductStateKey,
+): Promise<ProductStateView> {
+  const [row] = await db
+    .select(PRODUCT_STATE_COLUMNS)
+    .from(userProductState)
+    .where(and(eq(userProductState.userId, userId), eq(userProductState.key, key)))
+    .limit(1);
+  return row ? productStateViewOf(row) : { key, value: null, updatedAt: null };
+}
+
+/** Every key a person has written. */
+export async function listProductState(userId: string): Promise<ProductStateView[]> {
+  const rows = await db
+    .select(PRODUCT_STATE_COLUMNS)
+    .from(userProductState)
+    .where(eq(userProductState.userId, userId))
+    .orderBy(asc(userProductState.key));
+  return rows.map(productStateViewOf);
 }

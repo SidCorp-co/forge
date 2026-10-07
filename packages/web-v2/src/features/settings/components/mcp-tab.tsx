@@ -25,7 +25,7 @@ import {
   Tabs,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import { useCurrentProject } from "@/features/shell";
+import { useCurrentProject } from "@/features/projects/current-project";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import type { ProjectListItem } from "@/features/projects/types";
