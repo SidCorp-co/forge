@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.109] - 2026-10-07
+
+Integration tests apply new migrations over seeded rows, catching migrations existing data refuses
+
+### Fixed
+
+- **A migration that cannot apply to existing rows now fails the integration suite.** The template seeds the test factories' rows before the branch's new migrations run, and names the refused migration and its Postgres error.
+
 ## [0.4.0-dev.108] - 2026-10-07
 
 Releases and Workflows screens, and built-in workflow templates, read in Vietnamese
