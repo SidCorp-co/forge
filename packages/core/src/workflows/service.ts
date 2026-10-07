@@ -173,14 +173,14 @@ export async function createWorkflow(input: {
  */
 export async function drawingIssueOf(
   tx: Tx,
-  input: { projectId: string; workflowId: string; named: string | undefined },
+  input: { projectId: string; workflowId: string; flow: string; named: string | undefined },
 ): Promise<{ issueId: string | null } | { refusal: ReturnType<typeof designIssueLapsedRefusal> }> {
   if (input.named !== undefined) return { issueId: input.named };
   const inherited = await designIssueToInherit(tx, input.workflowId);
   if ('issueId' in inherited) return inherited;
-  const { issueId, issSeq, status } = inherited.lapsed;
+  const { issSeq, ...lapsed } = inherited.lapsed;
   const key = formatIssueRef(await activeIssuePrefix(input.projectId), issSeq);
-  return { refusal: designIssueLapsedRefusal(input.workflowId, { issueId, key, status }) };
+  return { refusal: designIssueLapsedRefusal(input.flow, { ...lapsed, key }) };
 }
 
 async function issueOfProject(projectId: string, ref: string, userId: string): Promise<string> {
@@ -233,7 +233,7 @@ export async function updateWorkflow(input: {
             {
               code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD' as const,
               path: '/issue',
-              detail: `${input.issue} builds workflow ${id}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
+              detail: `${input.issue} builds workflow ${row.flow}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
             },
           ]
         : []),
@@ -245,7 +245,12 @@ export async function updateWorkflow(input: {
     const fingerprint = designFingerprint(doc, templateFor(doc, facts.templates));
     const design = designStatusAfterWrite(row.designStatus, row.designFingerprint !== fingerprint);
     const drawing = design.proposes
-      ? await drawingIssueOf(tx, { projectId, workflowId: id, named: designIssueId })
+      ? await drawingIssueOf(tx, {
+          projectId,
+          workflowId: id,
+          flow: row.flow,
+          named: designIssueId,
+        })
       : null;
     if (drawing && 'refusal' in drawing) {
       return { ok: false, refusals: [drawing.refusal] };

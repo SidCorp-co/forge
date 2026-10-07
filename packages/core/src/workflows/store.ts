@@ -173,10 +173,21 @@ const designColumns = {
   designIssueId: projectWorkflowDesigns.designIssueId,
 };
 
-/** The issue a new revision inherits, or the superseded revision's issue where it is no longer work. */
+/**
+ * The issue a new revision inherits, or, where it is no longer work, that issue with the revision
+ * that named it (`revision`) and the newest revision, the one the write supersedes (`superseded`).
+ */
 export type InheritedDesignIssue =
   | { issueId: string | null }
-  | { lapsed: { issueId: string; issSeq: number; status: string } };
+  | {
+      lapsed: {
+        issueId: string;
+        issSeq: number;
+        status: string;
+        revision: number;
+        superseded: number;
+      };
+    };
 
 // A revision a write proposes again is drawn under the issue the latest revision to name one named,
 // while that issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38
@@ -190,18 +201,27 @@ export async function designIssueToInherit(
   tx: Tx,
   workflowId: string,
 ): Promise<InheritedDesignIssue> {
-  const prior =
-    (await designsOf(tx, workflowId)).find((d) => d.designIssueId !== null)?.designIssueId ?? null;
-  if (!prior) return { issueId: null };
+  const designs = await designsOf(tx, workflowId);
+  const named = designs.find((d) => d.designIssueId !== null);
+  const prior = named?.designIssueId ?? null;
+  if (!named || !prior) return { issueId: null };
   const [issue] = await tx
     .select({ status: issues.status, issSeq: issues.issSeq })
     .from(issues)
     .where(eq(issues.id, prior))
     .limit(1);
   if (!issue) return { issueId: null };
-  return ISSUE_TERMINAL_STATUSES.includes(issue.status)
-    ? { lapsed: { issueId: prior, issSeq: issue.issSeq, status: issue.status } }
-    : { issueId: prior };
+  if (!ISSUE_TERMINAL_STATUSES.includes(issue.status)) return { issueId: prior };
+  const superseded = designs[0]?.revision ?? named.revision;
+  return {
+    lapsed: {
+      issueId: prior,
+      issSeq: issue.issSeq,
+      status: issue.status,
+      revision: named.revision,
+      superseded,
+    },
+  };
 }
 
 export async function insertDesign(
