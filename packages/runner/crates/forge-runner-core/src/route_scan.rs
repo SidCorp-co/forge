@@ -517,7 +517,11 @@ impl Scan<'_> {
                 .find_map(|(k, f)| f.consts.get(n).map(|defs| (k, defs)))
         };
         let Some((at, defs)) = found else {
-            return if qualified || self.b.imported.contains(n) {
+            // An imported name resolves through the name it was imported as, `KEY` in
+            // `use keys::HOME_KEY as KEY` through `HOME_KEY`.
+            return if let Some(original) = self.b.aliases.get(n).and_then(|p| p.last()) {
+                resolve(self.consts, original, chain)
+            } else if qualified || self.b.imported.contains(n) {
                 resolve(self.consts, n, chain)
             } else {
                 None
@@ -1125,6 +1129,21 @@ mod tests {
             counts(&once.replace("a128(k); }", "a128(k); a128(k); }"), 2);
         }
         counts("use a as b; use b as a; fn r(k: &str) { b(k); }", 0);
+    }
+
+    /// The sixth whole-set read's F1: a const imported under another name resolves through the
+    /// name it was imported as.
+    #[test]
+    fn a_const_imported_under_another_name_resolves_as_its_original() {
+        let src = r#"mod keys { pub const HOME_KEY: &str = concat!("HO", "ME"); }
+            mod unrelated { pub const KEY: &str = "FORGE_TOKEN"; }
+            use keys::HOME_KEY as KEY;
+            fn f() { std::env::var_os(KEY); }"#;
+        counts(src, 2);
+        counts(
+            &src.replace("var_os(KEY); }", "var_os(KEY); std::env::var_os(KEY); }"),
+            3,
+        );
     }
 
     /// The whole-set read's F3: an import through another import's alias, in either order.
