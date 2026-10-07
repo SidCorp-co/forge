@@ -184,17 +184,15 @@ function redactText(text: string, chain: ChainReading | null): string {
     kept,
     bound.filter(([from, to]) => to > from),
   );
-  // An empty query's rendering is a point; inside a sealed message it holds nothing to redact.
-  const inSealed = ([from, to]: Span) => sealed.some(([f, t]) => f <= from && to <= t);
-  const marks: Mark[] = [
-    ...bound.filter((span) => !inSealed(span)).map(([from, to]): Mark => [from, to, -1]),
-    ...sealed,
-  ].sort((a, b) => a[0] - b[0]);
+  const marks: Mark[] = [...bound.map(([from, to]): Mark => [from, to, -1]), ...sealed].sort(
+    (a, b) => a[0] - b[0] || b[1] - a[1],
+  );
   const held = markerAbsentFrom(text);
   const keep = markerAbsentFrom(text, KEPT_USE);
   let out = '';
   let at = 0;
   for (const [from, to, i] of marks) {
+    if (from < at) continue;
     out += `${text.slice(at, from)}${i < 0 ? held : `${keep}${i}${keep}`}`;
     at = to;
   }
