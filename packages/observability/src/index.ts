@@ -73,13 +73,20 @@ export const ENV_SECRET_ASSIGNMENT_PATTERN =
 
 export const FILTERED = '[Filtered]';
 
+/** Sets a field in place where the field allows it: a getter-only or frozen one is left to the copy. */
+function put(target: object, key: string | number, value: unknown): void {
+  try {
+    (target as Record<string | number, unknown>)[key] = value;
+  } catch {}
+}
+
 export function scrubStringValues(obj: unknown, depth = 0): void {
   if (depth > 8 || !obj) return;
   if (typeof obj !== 'object') return;
   if (Array.isArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       const v = obj[i];
-      if (typeof v === 'string') obj[i] = scrubPatInString(v);
+      if (typeof v === 'string') put(obj, i, scrubPatInString(v));
       else scrubStringValues(v, depth + 1);
     }
     return;
@@ -87,7 +94,7 @@ export function scrubStringValues(obj: unknown, depth = 0): void {
   const rec = obj as Record<string, unknown>;
   for (const k of Object.keys(rec)) {
     const v = rec[k];
-    if (typeof v === 'string') rec[k] = scrubPatInString(v);
+    if (typeof v === 'string') put(rec, k, scrubPatInString(v));
     else scrubStringValues(v, depth + 1);
   }
 }
@@ -116,7 +123,7 @@ export function scrubBodyKeys(obj: unknown, depth = 0): void {
   const rec = obj as Record<string, unknown>;
   for (const key of Object.keys(rec)) {
     if (SCRUB_BODY_KEYS.has(key) || SCRUB_BODY_KEYS.has(key.toLowerCase())) {
-      rec[key] = FILTERED;
+      put(rec, key, FILTERED);
       continue;
     }
     scrubBodyKeys(rec[key], depth + 1);
@@ -126,7 +133,7 @@ export function scrubBodyKeys(obj: unknown, depth = 0): void {
 export function scrubHeaders(headers: Record<string, string | string[] | undefined>): void {
   for (const k of Object.keys(headers)) {
     if (SCRUB_HEADER_KEYS.has(k.toLowerCase())) {
-      headers[k] = FILTERED;
+      put(headers, k, FILTERED);
     }
   }
 }
@@ -168,49 +175,55 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
 }
 
 /**
- * Scrub a Sentry event: a failed query's bound params anywhere in it first, the hint's exception
- * naming them, which also renders whatever a serializer would call into plain fields (a copy where
- * anything changed); then request headers, URL, body and breadcrumbs in place on what that left.
- * Generic over the event shape so this works across @sentry/react,
- * @sentry/node, and @sentry/nextjs.
+ * Scrub a Sentry event: request headers, URL, body and breadcrumbs in place, so a key-named secret
+ * is censored before any of the event's own code renders it; then a failed query's bound params
+ * anywhere in it, the hint's exception naming them, which also renders whatever a serializer would
+ * call into plain fields (a copy where anything changed); then the same scrub over that copy, for
+ * a secret only the rendering showed. Generic over the event shape so this works across
+ * @sentry/react, @sentry/node, and @sentry/nextjs.
  */
 export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E {
+  scrubInPlace(event);
   const out = redactQueryParams(event, hint?.originalException);
-  const req = out.request;
+  if (out !== event) scrubInPlace(out);
+  return out;
+}
+
+function scrubInPlace(event: SentryLikeEvent): void {
+  const req = event.request;
   if (req?.headers) scrubHeaders(req.headers);
-  if (req?.url) req.url = scrubPatInString(scrubUrl(req.url));
-  if (req?.data !== undefined && req.data !== null) {
+  if (typeof req?.url === 'string') put(req, 'url', scrubPatInString(scrubUrl(req.url)));
+  if (req && req.data !== undefined && req.data !== null) {
     if (typeof req.data === 'string') {
       const rawData = req.data;
       try {
         const parsed = JSON.parse(rawData);
         scrubBodyKeys(parsed);
         scrubStringValues(parsed);
-        req.data = JSON.stringify(parsed);
+        put(req, 'data', JSON.stringify(parsed));
       } catch {
         // not JSON — still scan for raw PAT plaintext.
-        req.data = scrubPatInString(rawData);
+        put(req, 'data', scrubPatInString(rawData));
       }
     } else {
       scrubBodyKeys(req.data);
       scrubStringValues(req.data);
     }
   }
-  if (out.breadcrumbs) {
-    for (const b of out.breadcrumbs) {
-      if (typeof b.message === 'string') b.message = scrubPatInString(b.message);
-      if (b.data && typeof b.data === 'object') {
+  if (Array.isArray(event.breadcrumbs)) {
+    for (const b of event.breadcrumbs) {
+      if (typeof b?.message === 'string') put(b, 'message', scrubPatInString(b.message));
+      if (b?.data && typeof b.data === 'object') {
         const d = b.data as Record<string, unknown>;
-        if (typeof d.url === 'string') d.url = scrubPatInString(scrubUrl(d.url));
+        if (typeof d.url === 'string') put(d, 'url', scrubPatInString(scrubUrl(d.url)));
         scrubBodyKeys(d);
         scrubStringValues(d);
       }
     }
   }
-  return out;
 }
 
 interface SentryLikeEvent {

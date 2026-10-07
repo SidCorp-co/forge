@@ -46,4 +46,18 @@ describe("the register form's banner", () => {
     fill("Password", "another-long-password");
     expect(screen.getByText("Email already registered")).toBeInTheDocument();
   });
+
+  it("does not come up for an address the field no longer holds when the refusal arrives late", async () => {
+    let refuse: (err: Error) => void = () => {};
+    register.mockReturnValueOnce(new Promise((_, reject) => (refuse = reject)));
+    render(<RegisterForm />);
+    fill("Email", "taken@example.test");
+    fill("Password", "a-long-enough-password");
+    fill("Confirm password", "a-long-enough-password");
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    fill("Email", "other@example.test");
+    refuse(new Error("Email already registered"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled());
+    expect(screen.queryByText("Email already registered")).not.toBeInTheDocument();
+  });
 });

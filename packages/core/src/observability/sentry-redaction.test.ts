@@ -120,3 +120,31 @@ describe.each(SERIALIZER_HOOKS)('a Sentry event holding a value rendered through
     expect(sent).not.toContain(QUOTED);
   });
 });
+
+describe('scrubSentryEvent, given a request body that renders itself', () => {
+  it('censors a key-named secret before the body renders it unlabelled', () => {
+    const data = {
+      password: 'ordinary-password',
+      toJSON() {
+        return this.password;
+      },
+    };
+    const event = {
+      request: { data },
+      extra: { reading: { toJSON: () => failedInsert().message } },
+    };
+    const sent = JSON.stringify(scrubSentryEvent(event));
+    expect(sent).not.toContain('ordinary-password');
+    expect(sent).not.toContain(HASH);
+  });
+
+  it('censors a key-named secret only the rendering shows', () => {
+    const data = Object.defineProperty({}, 'password', {
+      get: () => 'getter-password',
+      enumerable: true,
+    });
+    const sent = JSON.stringify(scrubSentryEvent({ request: { data } }));
+    expect(sent).not.toContain('getter-password');
+    expect(sent).toContain('[Filtered]');
+  });
+});

@@ -377,6 +377,10 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     expect(JSON.parse(rendered).error).toBe('ordinary');
     const wrapped = { toJSON: () => ({ error: pg, reading: pg.message }) };
     expect(JSON.stringify(redactQueryParams({ wrapped }))).not.toContain('zq');
+    const hidden = { error: pg, toJSON: () => 'ordinary' };
+    const rendered2 = JSON.stringify(redactQueryParams({ hidden, reading: pg.message }));
+    expect(rendered2).not.toContain('zq');
+    expect(JSON.parse(rendered2).hidden).toBe('ordinary');
     const direct = {
       toJSON: () => pgRefusal('relation "zq" does not exist', { code: '42P01' }, ['zq']),
     };

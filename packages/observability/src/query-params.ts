@@ -310,6 +310,7 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
     const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
     if (toJSON === UNREADABLE) return REDACTED;
     if (typeof toJSON === 'function') {
+      collectHeld(value, walk, depth);
       const out = attempt(() => toJSON.call(value, key) as unknown);
       return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
     }
@@ -323,6 +324,23 @@ function render(value: unknown, key: string, depth: number, walk: Walk, top = fa
   const out = renderFields(value, depth, walk, false);
   walk.open.delete(value);
   return out;
+}
+
+/**
+ * Every `Error` a value holds in its data fields, collected without running its code: a `toJSON`
+ * may hide them from the rendering, and a sibling repeating one's bound values is read against it.
+ */
+function collectHeld(value: object, walk: Walk, depth: number, seen = new Set<object>()): void {
+  if (depth > MAX_DEPTH || seen.has(value)) return;
+  seen.add(value);
+  const fields = attempt(() => Object.getOwnPropertyDescriptors(value));
+  if (fields === UNREADABLE) return;
+  for (const own of Object.values(fields)) {
+    const v = 'value' in own ? own.value : undefined;
+    if (typeof v !== 'object' || v === null) continue;
+    if (v instanceof Error) walk.errors.push(v);
+    collectHeld(v, walk, depth + 1, seen);
+  }
 }
 
 /** What a `toJSON` rendered, which a serializer asks nothing more here: no function stays in it. */
