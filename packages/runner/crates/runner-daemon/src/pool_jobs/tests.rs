@@ -64,6 +64,13 @@ impl Panes for NoPanes {
     async fn names(&self) -> Vec<String> {
         Vec::new()
     }
+    async fn send_line(
+        &self,
+        _name: &str,
+        _text: &str,
+    ) -> std::result::Result<terminal::Prompt, terminal::NotTyped> {
+        unreachable!()
+    }
 }
 
 struct NoReport;

@@ -59,8 +59,7 @@ pub(crate) async fn fake_core(answer: fn(&str) -> (u16, &'static str)) -> (CoreC
     )
 }
 
-/// Every request answered `200 {}`. Its one caller drives a tmux pane, so unix's.
-#[cfg_attr(not(unix), allow(dead_code))]
+/// Every request answered `200 {}`.
 pub(crate) fn takes_everything(_path: &str) -> (u16, &'static str) {
     (200, "{}")
 }
