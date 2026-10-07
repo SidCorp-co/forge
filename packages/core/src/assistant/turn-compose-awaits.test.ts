@@ -17,10 +17,10 @@ const offered: string[][] = [];
 vi.mock('../conversations/index.js', async () => {
   const replies = await import('../conversations/fallback-replies.js');
   return {
-    confidentLanguageOf: replies.confidentLanguageOf,
+    ...replies,
+    screened: (text: string) => ({ text, proof: null }),
     codeAuthored: (text: string) => ({ text, proof: null }),
     recordSilence: async () => undefined,
-    turnFailureReason: replies.turnFailureReason,
   };
 });
 vi.mock('../lib/data-egress.js', () => ({ egressDeep: async () => ({ ok: true, value: null }) }));
@@ -82,6 +82,7 @@ function ctx(recordsAsks: boolean) {
     conversationId: 'c-1',
     abort: new AbortController(),
     setPhase: () => undefined,
+    draft: { text: '' },
     credential: async () => {
       throw new Error('no token in this test');
     },

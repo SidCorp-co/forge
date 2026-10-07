@@ -22,6 +22,7 @@ import {
   type ConversationVenue,
   codeAuthored,
   conversationTransport,
+  type ScreenedMessage,
 } from './ports.js';
 import { namesHandle } from './presence.js';
 import type { StoredConversationMessage } from './store.js';
@@ -128,6 +129,8 @@ interface PostStatusArgs {
   failure: TurnFailureCode | null;
   /** The window's own reservation; a false means the claim moved on and nothing is posted. */
   reserve: () => Promise<boolean>;
+  /** What a failed turn composed for the person — why, and what it did and found — posted in place of the bare line. */
+  report?: ScreenedMessage | undefined;
   log?: Record<string, unknown>;
 }
 
@@ -142,12 +145,17 @@ async function postStatus(args: PostStatusArgs): Promise<PostedStatus> {
   if (!(await args.reserve())) {
     return { ...base, delivered: false, reason: 'the claim moved on before the status was posted' };
   }
-  const text =
-    args.status === 'nothing-posted'
-      ? nothingPostedStatus(args.handleName, args.language, args.failure)
-      : uncertainStatus(args.handleName, args.language);
+  const message =
+    args.status === 'nothing-posted' && args.report
+      ? args.report
+      : codeAuthored(
+          args.status === 'nothing-posted'
+            ? nothingPostedStatus(args.handleName, args.language, args.failure)
+            : uncertainStatus(args.handleName, args.language),
+        );
+  const text = message.text;
   try {
-    const receipt = await args.transport.deliver(args.venue, codeAuthored(text), {
+    const receipt = await args.transport.deliver(args.venue, message, {
       anchor: args.anchor.messageId,
     });
     await recordDeliveredReply({
@@ -254,7 +262,14 @@ export async function withTerminalStatus<
   T extends { decision: ConversationWindowDecision; detail?: unknown; superseded?: true },
 >(
   routed: T,
-  args: { window: WindowRef; deliveryKey: string; claim: WindowClaim; track: RequestTrack },
+  args: {
+    window: WindowRef;
+    deliveryKey: string;
+    claim: WindowClaim;
+    track: RequestTrack;
+    /** A failed turn's report, posted as its status. */
+    report?: ScreenedMessage | undefined;
+  },
 ): Promise<T> {
   const { track } = args;
   track.outcomeKnown = true;
@@ -275,6 +290,7 @@ export async function withTerminalStatus<
     language: track.language,
     failure: failureOf(routed.detail),
     reserve: () => reserveDelivery(args.window.id, args.claim),
+    report: args.report,
     log: { windowId: args.window.id },
   });
   const detail = routed.detail && typeof routed.detail === 'object' ? routed.detail : {};

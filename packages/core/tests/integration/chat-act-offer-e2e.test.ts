@@ -25,8 +25,12 @@ const ids: Record<string, string> = {};
 
 type Said = { offer?: Record<string, unknown>; refused?: string };
 
-async function offer(userId: string, args: Record<string, unknown>): Promise<Said> {
-  const tools = buildOfferActToolset({ projectId, userId });
+async function offer(
+  userId: string,
+  args: Record<string, unknown>,
+  language: 'en' | 'vi' = 'en',
+): Promise<Said> {
+  const tools = buildOfferActToolset({ projectId, userId, language });
   const result = await tools.execute('offer_act', JSON.stringify(args));
   const text = result.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n');
   if (result.isError) return { refused: (JSON.parse(text) as { error: string }).error };
@@ -116,6 +120,21 @@ describe('an act asked for in chat is offered as a button the asker may press', 
     expect((await offer(owner, { act: 'drop', issue: 'ISS-751', reason: 'x' })).refused).toMatch(
       /^CHAT_ACT_NOT_FROM_STATUS: ISS-751 is at closed/,
     );
+  });
+
+  it('"chạy ISS-751" on a closed issue is refused with the sentence a Vietnamese asker is told, in Vietnamese', async () => {
+    // dev QA 2026-10-07: "chạy ISS-365" was refused correctly, and the reply came back in English
+    const vi = (await offer(owner, { act: 'run', issue: 'ISS-751' }, 'vi')).refused ?? '';
+    expect(vi).toMatch(/^CHAT_ACT_NOT_FROM_STATUS: ISS-751 is at closed/);
+    expect(vi).toContain(
+      'Tell the person, in these words: "ISS-751 đang ở trạng thái closed nên không thể chạy từ đây', // i18n-allow: the Vietnamese refusal under test
+    );
+    const forbidden = (await offer(viewer, { act: 'run', issue: 'ISS-379' }, 'vi')).refused ?? '';
+    expect(forbidden).toContain('Bạn chưa có quyền project.write trên project này'); // i18n-allow: the Vietnamese refusal under test
+    const unknown = (await offer(owner, { act: 'run', issue: 'ISS-99999' }, 'vi')).refused ?? '';
+    expect(unknown).toContain('ISS-99999 không phải là issue nào trong project này.'); // i18n-allow: the Vietnamese refusal under test
+    const en = (await offer(owner, { act: 'run', issue: 'ISS-751' })).refused ?? '';
+    expect(en).toContain('"ISS-751 is at closed, so it cannot be run from here');
   });
 
   it('offers nothing to a person who could not press it, an unknown issue, or a malformed call', async () => {

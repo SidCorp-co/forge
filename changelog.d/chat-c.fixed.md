@@ -1,0 +1,1 @@
+**A failed chat turn now delivers what it found, and a true answer is never rewritten into a false one.** Failures post reads and draft in the asker's language; rewrites add no claims; Add person lists project members.
