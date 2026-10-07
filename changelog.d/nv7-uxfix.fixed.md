@@ -1,1 +1,0 @@
-**Feedback takes screenshots, and releases and issues say what shipped.** Attach files when filing or later; an oversize draft offers its split; a release no longer reads design-only or headless; issues name their release and waiting writers.

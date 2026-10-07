@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.120] - 2026-10-07
+
+Writers named on waiting issues, honest release pages, attachments on feedback
+
+### Fixed
+
+- **Feedback takes screenshots, and releases and issues say what shipped.** Attach files when filing or later; an oversize draft offers its split; a release no longer reads design-only or headless; issues name their release and waiting writers.
+
 ## [0.4.0-dev.119] - 2026-10-07
 
 The Needs-you count stops crowding the pool, so dev pages load faster
