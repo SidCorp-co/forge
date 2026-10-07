@@ -6,16 +6,16 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { planTsConfig } from './tsconfig.mjs';
 
-// archmap never resolves TypeScript itself. tsconfig paths, pnpm symlinks, barrel re-exports
+// cm:why archmap never resolves TypeScript itself. tsconfig paths, pnpm symlinks, barrel re-exports
 //   and `import type` erasure are an endless edge-case surface that dependency-cruiser already
 //   handles; reimplementing it would move the false-confidence problem one layer deeper rather
 //   than removing it. This provider only normalises its output.
-// contract -> src/graph/normalize.mjs — the shape returned here is the graph contract
+// cm:edge contract -> src/graph/normalize.mjs — the shape returned here is the graph contract
 const TIMEOUT_MS = 180_000;
 
 const BIN_REL = join('node_modules', 'dependency-cruiser', 'bin', 'dependency-cruise.mjs');
 
-// resolved by walking node_modules, not require.resolve: dependency-cruiser's exports map
+// cm:why resolved by walking node_modules, not require.resolve: dependency-cruiser's exports map
 //   blocks every subpath including package.json, and a bin was never part of that contract anyway
 function walkUpFor(start, label) {
   for (let dir = start; ; dir = dirname(dir)) {
@@ -34,10 +34,10 @@ function resolveCruiser(root) {
     ?? walkUpFor(dirname(fileURLToPath(import.meta.url)), 'archmap');
 }
 
-// dependency-cruiser's --exclude is a REGEX and it refuses patterns it judges pathological,
+// cm:why dependency-cruiser's --exclude is a REGEX and it refuses patterns it judges pathological,
 //   so only whole-directory excludes are pushed down to it as a cheap segment alternation. Every
 //   other glob is applied by the mapper instead, which is why an exclude never silently widens scope.
-// protocol -> src/graph/map.mjs — the excludes not passed here are enforced by buildMapper
+// cm:edge protocol -> src/graph/map.mjs — the excludes not passed here are enforced by buildMapper
 function dirExcludeRe(globs) {
   const segments = new Set();
   for (const g of globs) {
@@ -47,13 +47,13 @@ function dirExcludeRe(globs) {
   return segments.size ? `(^|/)(${[...segments].join('|')})(/|$)` : null;
 }
 
-// `timeoutMs` is a parameter rather than the constant it used to be: the pre-write hook has
+// cm:why `timeoutMs` is a parameter rather than the constant it used to be: the pre-write hook has
 //   an interactive budget (a hook the client kills mid-decision decides nothing), while CI can wait.
 //   Both must still reach the same verdict, so the only thing that varies is how long we wait.
 export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig = null }) {
   const cruiser = resolveCruiser(root);
   if (!cruiser) {
-    // no package.json means this repo is not a JS/TS project, so the resolver's absence is
+    // cm:guard no package.json means this repo is not a JS/TS project, so the resolver's absence is
     //   the LANGUAGE's absence — return an empty graph. A Go-only repo must not be told on every
     //   single run that a TypeScript dependency is missing; noise on a gate is how a gate stops
     //   being read. With a package.json present the resolver IS required, and this stays `ok: false`
@@ -75,7 +75,7 @@ export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig
   const skip = dirExcludeRe(exclude);
   if (skip) base.push('--exclude', skip);
 
-  // the budget is a DEADLINE shared by every spawn below, not a per-spawn allowance. The
+  // cm:guard the budget is a DEADLINE shared by every spawn below, not a per-spawn allowance. The
   //   merged path can cruise twice (synthesized config, then the fallback), and two spawns each
   //   given the full budget is 2x the caller's ceiling — on the pre-write surface that is the
   //   client killing the hook mid-decision, which prints nothing at all.
@@ -91,13 +91,13 @@ export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig
     },
   );
 
-  // `--no-config` also drops the tsconfig, so without one every `paths` alias lands in
+  // cm:guard `--no-config` also drops the tsconfig, so without one every `paths` alias lands in
   //   `unresolvable` and the graph goes VACUOUS — contracts then pass because the edges are absent,
   //   not because the code obeys them. Measured on a Next.js app that imports through `@/`:
   //   2565 unresolvable vs 3219 resolved edges, 2 files in the whole fan-out distribution. The same
   //   vacuum arrives THROUGH a readable config in the project-references layout, where `paths` sits
   //   in a referenced child: hence the plan below rather than a single root filename.
-  // protocol -> src/providers/tsconfig.mjs — which config, and what a merged one contains
+  // cm:edge protocol -> src/providers/tsconfig.mjs — which config, and what a merged one contains
   const plan = planTsConfig(root, tsConfig);
   if (plan.mode === 'missing') {
     return { ok: false, reason: `tsConfig declared in ${'.arch.json'} but not a file: ${plan.declared}` };
@@ -118,7 +118,7 @@ export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig
         why = e.message;
       }
 
-      // MANDATORY fallback, not defensive decoration. A config whose include matches no
+      // cm:guard MANDATORY fallback, not defensive decoration. A config whose include matches no
       //   input is TS18003 — empty stdout, which the guard below turns into exit 2. Without this a
       //   fix for a fail-OPEN could hand back a gate that cannot run at all, on a layout we did not
       //   foresee or a machine with no writable tmp. Worst case here is today's behaviour + a note.
@@ -133,12 +133,12 @@ export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig
       res = cruise(plan.mode === 'root' ? plan.path : null);
     }
   } finally {
-    // nothing archmap synthesizes may ever land in the scanned repo — a checker that writes
+    // cm:guard nothing archmap synthesizes may ever land in the scanned repo — a checker that writes
     //   into the tree it is judging changes the thing it measures, and shows up as a dirty worktree
     if (tmp) rmSync(tmp, { recursive: true, force: true });
   }
 
-  // dependency-cruiser exits non-zero when it REPORTS violations, which is not a failure
+  // cm:guard dependency-cruiser exits non-zero when it REPORTS violations, which is not a failure
   //   to run — only an unparseable stdout is. Treating exit code as failure here silently drops
   //   the whole graph and every contract then passes.
   if (!res.stdout) {
@@ -169,11 +169,11 @@ export function collect({ root, roots, exclude, timeoutMs = TIMEOUT_MS, tsConfig
         unresolvable.push({ from: mod.source, spec: dep.module, why: 'dynamic import' });
         continue;
       }
-      // the raw specifier rides along with the resolved path. It is dependency-cruiser's own
+      // cm:why the raw specifier rides along with the resolved path. It is dependency-cruiser's own
       //   answer to "what does `@/db/client` mean in this repo", which the pre-write hook needs for
       //   bytes that are not on disk yet — and it is what lets that hook REPLACE a file's edges
       //   rather than only add to them, so a write that REMOVES an import can never deny.
-      // contract -> src/hook/resolve.mjs — tier 1 of the pending resolver is this field
+      // cm:edge contract -> src/hook/resolve.mjs — tier 1 of the pending resolver is this field
       edges.push({ from: mod.source, to: dep.resolved, spec: dep.module, dynamic: Boolean(dep.dynamic) });
     }
   }
