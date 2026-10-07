@@ -1,1 +1,0 @@
-**A commit marked after a design approval is recorded, not swallowed.** Refusals now name their rule: a status sent to PATCH points to the transition route, and an answer body names every missing field at once.

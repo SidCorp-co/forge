@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.133] - 2026-10-07
+
+Code merges after design approval keep their commit; refusals name their rule
+
+### Added
+
+- **Issue, requirement and design pages say more.** An issue read carries its relations, a coverage gap shows why the breakdown left it, and the design rail shows revisions, derived states and whom each design waits on.
+
+### Fixed
+
+- **A commit marked after a design approval is recorded, not swallowed.** Refusals now name their rule: a status sent to PATCH points to the transition route, and an answer body names every missing field at once.
+
 ## [0.4.0-dev.132] - 2026-10-07
 
 Coolify bindings without a target are refused by name, not borrowed
