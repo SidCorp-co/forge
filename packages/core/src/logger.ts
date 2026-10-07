@@ -2,6 +2,7 @@ import {
   asSerialized,
   errorsWithin,
   type FieldReads,
+  holding,
   isError,
   mayCarryBoundValues,
   REDACTED,
@@ -57,32 +58,9 @@ interface Censored {
  * each getter, held as the object it answered. What cannot be censored is `withheld`.
  */
 function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T): T {
-  const censored: Censored = { reads: new WeakMap(), withheld: new Set() };
-  const undo: (() => void)[] = [];
-  // `value` standing at `record[key]` as data until the line is written; false where it cannot.
-  const hold = (record: object, key: string, value: unknown): boolean => {
-    const own = Object.getOwnPropertyDescriptor(record, key);
-    if (own ? !own.configurable : !Object.isExtensible(record)) {
-      if (!own || !('value' in own) || !own.writable) return false;
-      (record as Record<string, unknown>)[key] = value;
-      undo.push(() => {
-        (record as Record<string, unknown>)[key] = own.value;
-      });
-      return true;
-    }
-    // An inherited getter held as an own field is not one: it stays out of the fields rendered.
-    Object.defineProperty(record, key, {
-      value,
-      enumerable: own?.enumerable ?? false,
-      writable: true,
-      configurable: true,
-    });
-    undo.push(() => {
-      if (own) Object.defineProperty(record, key, own);
-      else delete (record as Record<string, unknown>)[key];
-    });
-    return true;
-  };
+  const held = holding();
+  const censored: Censored = { reads: held.reads, withheld: new Set() };
+  const { hold } = held;
   const withhold = (on: object[]) => {
     for (const o of on) censored.withheld.add(o);
   };
@@ -137,11 +115,7 @@ function withPathsCensored<T>(root: unknown, render: (censored: Censored) => T):
     }
     return render(censored);
   } finally {
-    for (const put of undo.reverse()) {
-      try {
-        put();
-      } catch {}
-    }
+    held.release();
   }
 }
 

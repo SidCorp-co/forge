@@ -350,6 +350,10 @@ export function readOnce(
   if (own !== UNREADABLE && own !== undefined && 'value' in own) {
     return { value: own.value, called: false, threw: false };
   }
+  // A field it does not have, own or inherited, is no read: nothing runs, and nothing is held.
+  if (own === undefined && attempt(() => key in holder) === false) {
+    return { value: undefined, called: false, threw: false };
+  }
   if (!run) return { value: REDACTED, called: true, threw: false };
   let read: unknown;
   try {
@@ -359,6 +363,54 @@ export function readOnce(
   }
   if (reads) reads.set(holder, (known ?? new Map()).set(key, read));
   return answer(read);
+}
+
+/** Getter answers standing as data where they were read, until `release` puts each field back. */
+export interface Holding {
+  reads: FieldReads;
+  /** `value` at `holder[key]` as data, no setter of the caller's run; false where it cannot. */
+  hold(holder: object, key: string, value: unknown): boolean;
+  release(): void;
+}
+
+export function holding(): Holding {
+  const undo: (() => void)[] = [];
+  const hold = (holder: object, key: string, value: unknown): boolean => {
+    const record = holder as Record<string, unknown>;
+    try {
+      const own = Object.getOwnPropertyDescriptor(holder, key);
+      if (own ? !own.configurable : !Object.isExtensible(holder)) {
+        if (!own || !('value' in own) || !own.writable) return false;
+        record[key] = value;
+        undo.push(() => {
+          record[key] = own.value;
+        });
+        return true;
+      }
+      // An inherited getter held as an own field is not one: it stays out of the fields rendered.
+      Object.defineProperty(holder, key, {
+        value,
+        enumerable: own?.enumerable ?? false,
+        writable: true,
+        configurable: true,
+      });
+      undo.push(() => {
+        if (own) Object.defineProperty(holder, key, own);
+        else delete record[key];
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const release = () => {
+    for (const put of undo.splice(0).reverse()) {
+      try {
+        put();
+      } catch {}
+    }
+  };
+  return { reads: new WeakMap(), hold, release };
 }
 
 interface Walk extends Rendering {

@@ -1,9 +1,11 @@
-import { type FieldReads, readOnce, redactQueryParams } from './query-params.js';
+import { type Holding, holding, readOnce, redactQueryParams } from './query-params.js';
 
 export {
   asSerialized,
   errorsWithin,
   type FieldReads,
+  type Holding,
+  holding,
   isError,
   readOnce,
   mayCarryBoundValues,
@@ -79,6 +81,14 @@ export const FILTERED = '[Filtered]';
 /** Sets a field in place, and says whether it now holds `value`: a fixed field refuses it. */
 function put(target: object, key: string | number, value: unknown): boolean {
   try {
+    // A setter of the caller's is never run: a field it guards is one this scrub cannot write.
+    for (let at: object | null = target; at; at = Object.getPrototypeOf(at)) {
+      const field = Object.getOwnPropertyDescriptor(at, key);
+      if (field) {
+        if (!('value' in field)) return false;
+        break;
+      }
+    }
     (target as Record<string | number, unknown>)[key] = value;
   } catch {
     return false;
@@ -87,22 +97,33 @@ function put(target: object, key: string | number, value: unknown): boolean {
 }
 
 /**
- * `holder[key]` read once across `reads`, so what is scrubbed is what a later rendering answering
- * from the same reads writes; `null` where the read threw.
+ * `holder[key]` read once and, where a getter answered, held there as data while `held` lasts, so a
+ * hook rendering later reaches what was scrubbed; `null` where the read threw or cannot be held. A
+ * primitive read only to look past it is left for the rendering to read after every scrub landed.
  */
-function readField(holder: object, key: string, reads?: FieldReads): { value: unknown } | null {
-  const read = readOnce(holder, key, reads);
-  return read.threw ? null : read;
+function readField(
+  holder: object,
+  key: string,
+  held: Holding | undefined,
+  scrubbed: boolean,
+): { value: unknown } | null {
+  const read = readOnce(holder, key, held?.reads);
+  if (read.threw) return null;
+  if (!held || !read.called) return read;
+  const object = typeof read.value === 'object' || typeof read.value === 'function';
+  if (object || scrubbed) return held.hold(holder, key, read.value) ? read : null;
+  held.reads.get(holder)?.delete(key);
+  return read;
 }
 
 /** Scrubs every string in `obj` in place; false where a field refused the scrubbed text. */
-export function scrubStringValues(obj: unknown, depth = 0, reads?: FieldReads): boolean {
+export function scrubStringValues(obj: unknown, depth = 0, held?: Holding): boolean {
   if (depth > 8 || !obj) return true;
   if (typeof obj !== 'object') return true;
   let whole = true;
   const keys = Array.isArray(obj) ? obj.map((_, i) => String(i)) : Object.keys(obj);
   for (const k of keys) {
-    const field = readField(obj, k, reads);
+    const field = readField(obj, k, held, true);
     if (!field) {
       whole = false;
       continue;
@@ -111,7 +132,7 @@ export function scrubStringValues(obj: unknown, depth = 0, reads?: FieldReads): 
     if (typeof v === 'string') {
       const out = scrubPatInString(v);
       if (out !== v && !put(obj, k, out)) whole = false;
-    } else if (!scrubStringValues(v, depth + 1, reads)) whole = false;
+    } else if (!scrubStringValues(v, depth + 1, held)) whole = false;
   }
   return whole;
 }
@@ -132,7 +153,7 @@ export function scrubPatInString(s: string): string {
 }
 
 /** Key-named secrets in `obj` censored in place: true only if each one held. */
-export function scrubBodyKeys(obj: unknown, depth = 0, reads?: FieldReads): boolean {
+export function scrubBodyKeys(obj: unknown, depth = 0, held?: Holding): boolean {
   if (depth > 8 || !obj || typeof obj !== 'object') return true;
   let whole = true;
   const array = Array.isArray(obj);
@@ -142,8 +163,8 @@ export function scrubBodyKeys(obj: unknown, depth = 0, reads?: FieldReads): bool
       if (!put(obj, key, FILTERED)) whole = false;
       continue;
     }
-    const field = readField(obj, key, reads);
-    if (!field || !scrubBodyKeys(field.value, depth + 1, reads)) whole = false;
+    const field = readField(obj, key, held, false);
+    if (!field || !scrubBodyKeys(field.value, depth + 1, held)) whole = false;
   }
   return whole;
 }
@@ -202,25 +223,27 @@ export function scrubSentryEvent<E extends SentryLikeEvent>(
   event: E,
   hint?: { originalException?: unknown },
 ): E | null {
-  const reads: FieldReads = new WeakMap();
+  const held = holding();
   try {
-    if (!scrubInPlace(event, reads)) return null;
-    const out = redactQueryParams(event, hint?.originalException, reads);
-    if (out !== event && !scrubInPlace(out, new WeakMap())) return null;
+    if (!scrubInPlace(event, held)) return null;
+    const out = redactQueryParams(event, hint?.originalException, held.reads);
+    if (out !== event && !scrubInPlace(out, holding())) return null;
     return out;
   } catch {
     return null;
+  } finally {
+    held.release();
   }
 }
 
 /** Headers, URL, body and breadcrumbs scrubbed, the pass `scrubSentryEvent` runs either side. */
-function scrubInPlace(event: SentryLikeEvent, reads: FieldReads): boolean {
+function scrubInPlace(event: SentryLikeEvent, held: Holding): boolean {
   let whole = true;
   const keep = (done: boolean) => {
     if (!done) whole = false;
   };
   const at = (holder: object, key: string): unknown => {
-    const field = readField(holder, key, reads);
+    const field = readField(holder, key, held, true);
     if (!field) whole = false;
     return field?.value;
   };
@@ -248,8 +271,8 @@ function scrubInPlace(event: SentryLikeEvent, reads: FieldReads): boolean {
       }
       if (data !== rawData) keep(put(req, 'data', data));
     } else {
-      keep(scrubBodyKeys(reqData, 0, reads));
-      keep(scrubStringValues(reqData, 0, reads));
+      keep(scrubBodyKeys(reqData, 0, held));
+      keep(scrubStringValues(reqData, 0, held));
     }
   }
   const crumbs = at(event, 'breadcrumbs');
@@ -269,8 +292,8 @@ function scrubInPlace(event: SentryLikeEvent, reads: FieldReads): boolean {
           const url = scrubPatInString(scrubUrl(dUrl));
           if (url !== dUrl) keep(put(d, 'url', url));
         }
-        keep(scrubBodyKeys(d, 0, reads));
-        keep(scrubStringValues(d, 0, reads));
+        keep(scrubBodyKeys(d, 0, held));
+        keep(scrubStringValues(d, 0, held));
       }
     }
   }

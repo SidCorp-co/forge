@@ -187,17 +187,54 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
         },
       };
     };
+    const getter = (holder: object, key: string, configurable = true) =>
+      Object.defineProperty(holder, key, { get: fresh, enumerable: true, configurable });
+    const request = getter(
+      {
+        toJSON() {
+          return { data: (this as { data: { toJSON(): unknown } }).data.toJSON() };
+        },
+      },
+      'data',
+    );
     const events = [
-      { request: Object.defineProperty({}, 'data', { get: fresh, enumerable: true }) },
-      { request: { data: Object.defineProperty({}, 'body', { get: fresh, enumerable: true }) } },
-      { breadcrumbs: [Object.defineProperty({}, 'data', { get: fresh, enumerable: true })] },
+      { request: getter({}, 'data') },
+      { request: { data: getter({}, 'body') } },
+      { breadcrumbs: [getter({}, 'data')] },
+      { request },
     ];
     for (const event of events) {
       const sent = JSON.stringify(scrubSentryEvent(event as never));
       expect(sent).not.toContain('ordinary-password');
       expect(sent).toContain('[Filtered]');
     }
-    expect(made).toBe(3);
+    expect(made).toBe(4);
+    // A plain answer renders unchanged: the event sent is a copy, never the one whose getter runs again.
+    const plain = Object.defineProperty({}, 'data', {
+      get: () => ({ password: 'ordinary-password' }),
+      enumerable: true,
+      configurable: true,
+    });
+    const sent = scrubSentryEvent({ request: plain } as never);
+    expect(JSON.stringify(sent)).toBe('{"request":{"data":{"password":"[Filtered]"}}}');
+    // An answer that cannot stand where its getter was is one a hook could read afresh: dropped.
+    expect(scrubSentryEvent({ request: getter({}, 'data', false) } as never)).toBeNull();
+  });
+
+  it("drops an event whose key-named secret a setter guards, without running the caller's setter", () => {
+    let stored = 'ordinary-password';
+    let sets = 0;
+    const data = {
+      get password() {
+        return stored;
+      },
+      set password(value: string) {
+        sets++;
+        stored = value;
+      },
+    };
+    expect(scrubSentryEvent({ request: { data } })).toBeNull();
+    expect([sets, stored]).toEqual([0, 'ordinary-password']);
   });
 
   it('drops an event the scrub cannot read through, throwing nothing itself', () => {
