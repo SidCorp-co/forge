@@ -327,12 +327,50 @@ describe('redactQueryParams, given a value whose text only a serializer renders'
     });
     let calls = 0;
     const later = { toJSON: () => (++calls === 1 ? 'ordinary' : text) };
-    const out = redactQueryParams({ getter, later });
-    const asked = [reads, calls];
-    const rendered = JSON.stringify(out);
-    expect([reads, calls]).toEqual(asked);
+    const when = new Date(Date.UTC(2026, 9, 7));
+    let asked = 0;
+    when.toISOString = () => (++asked === 1 ? 'ordinary' : text);
+    const rendered = JSON.stringify(redactQueryParams({ getter, later, when }));
+    expect([reads, calls, asked]).toEqual([1, 1, 1]);
+    expect(rendered).toBe('{"getter":{"reason":"ordinary"},"later":"ordinary","when":"ordinary"}');
+  });
+
+  it('writes a hook that throws as redacted, and throws nothing itself', () => {
+    let reads = 0;
+    const value = {
+      always: Object.defineProperty({}, 'reason', {
+        get: () => {
+          throw new Error(duplicate().message);
+        },
+        enumerable: true,
+      }),
+      second: Object.defineProperty({}, 'reason', {
+        get: () => {
+          if (++reads > 1) throw new Error('read twice');
+          return 'ordinary';
+        },
+        enumerable: true,
+      }),
+      rendered: {
+        toJSON: () => {
+          throw new Error(duplicate().message);
+        },
+      },
+    };
+    const rendered = JSON.stringify(redactQueryParams(value));
+    expect(reads).toBe(1);
+    expect(rendered).toBe(
+      `{"always":{"reason":"${REDACTED}"},"second":{"reason":"ordinary"},"rendered":"${REDACTED}"}`,
+    );
+  });
+
+  it('redacts a payload that holds itself, writing [Circular] where it does', () => {
+    const loop: Record<string, unknown> = { reason: duplicate().message };
+    loop.again = loop;
+    loop.onceMore = loop;
+    const rendered = JSON.stringify(redactQueryParams({ loop }));
     expect(rendered).not.toContain(HASH);
-    expect(rendered).not.toContain(EMAIL);
+    expect(rendered).toContain('"again":"[Circular]","onceMore":"[Circular]"');
   });
 
   it('leaves a serializer no getter to read again, though it rendered nothing to redact', () => {

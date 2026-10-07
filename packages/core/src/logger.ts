@@ -1,4 +1,9 @@
-import { errorsWithin, mayCarryBoundValues, redactQueryParams } from '@forge/observability';
+import {
+  asSerialized,
+  errorsWithin,
+  mayCarryBoundValues,
+  redactQueryParams,
+} from '@forge/observability';
 import type { Context } from 'hono';
 import {
   type Bindings,
@@ -119,23 +124,28 @@ function rendersItself(v: unknown): v is object {
  * The call's arguments with every error in them serialized, and all of its text redacted against
  * every error it carries, which only this hook still holds: a value the call repeats beside its
  * error, or a driver message repeating a short one, is told only by the values the errors carry.
- * Text pino would render from a value's own code after this hook (a `%s` argument's `String()`,
- * a message joined to a child's `msgPrefix`) is rendered here, once, and redacted as text.
+ * What pino would later render from a value's own code is rendered here, once, before any of it
+ * is read: a `%s` argument's `String()`, a message joined to a child's `msgPrefix`, and each
+ * argument as it serializes (`asSerialized`), the merging object by its fields as pino reads it.
  */
-function redactCall(args: unknown[], err: Error | null, msgPrefix: unknown): unknown[] {
-  const errors = errorsWithin(args);
-  const clean = (v: unknown) =>
-    redactQueryParams(withErrorsSerialized(v), errors.length > 0 ? errors : undefined);
+function redactCall(args: unknown[], msgPrefix: unknown): unknown[] {
   const templateAt = typeof args[0] === 'string' ? 0 : 1;
   const template = args[templateAt];
   const stringified = typeof template === 'string' ? stringifiedArgs(template) : new Set<number>();
+  const found: Error[] = [];
   let [first, ...rest] = args.map((v, i) => {
     if (i === templateAt && typeof msgPrefix === 'string' && rendersItself(v)) {
       return (msgPrefix + (v as unknown as string)).slice(msgPrefix.length);
     }
     if (i > templateAt && stringified.has(i - templateAt - 1) && rendersItself(v)) return String(v);
-    return v;
+    const written = asSerialized(v, { fields: i === 0, errorsAsThemselves: true });
+    found.push(...written.errors);
+    return written.value;
   });
+  const err = loggedError(first);
+  const errors = [...new Set([...found, ...errorsWithin([first, ...rest])])];
+  const clean = (v: unknown) =>
+    redactQueryParams(withErrorsSerialized(v), errors.length > 0 ? errors : undefined);
   rest = rest.map(clean);
   const named = first as { msg?: unknown };
   if (typeof first === 'string') first = clean(first);
@@ -172,9 +182,18 @@ function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unk
   return out;
 }
 
-/** A child's bindings, or `setBindings`', redacted as a call's own arguments are. */
-function redactBindings(bindings: Bindings): Bindings {
-  const errors = errorsWithin(bindings);
+/** A child's bindings, or `setBindings`', rendered once, with every error met on the way. */
+function writtenBindings(given: Bindings): { bindings: Bindings; errors: Error[] } {
+  const written = asSerialized(given, { fields: true, errorsAsThemselves: true });
+  const bindings = written.value as Bindings;
+  return {
+    bindings,
+    errors: [...new Set([...written.errors, ...errorsWithin(bindings)])] as Error[],
+  };
+}
+
+/** Rendered bindings redacted as a call's own arguments are. */
+function redactBindings({ bindings, errors }: { bindings: Bindings; errors: Error[] }): Bindings {
   const record = besideErr(bindings, (rest) =>
     redactQueryParams(withErrorsSerialized(rest), errors.length > 0 ? errors : undefined),
   );
@@ -193,15 +212,16 @@ function redactingChildren(root: Logger): Logger {
   const child = root.child as unknown as Child;
   const setBindings = root.setBindings;
   root.child = function (this: Logger, bindings: Bindings, options?: ChildLoggerOptions) {
+    const written = writtenBindings(bindings);
     const prefix = options?.msgPrefix;
     const redacted =
       typeof prefix === 'string'
-        ? { ...options, msgPrefix: redactQueryParams(prefix, errorsWithin(bindings)) }
+        ? { ...options, msgPrefix: redactQueryParams(prefix, written.errors) }
         : options;
-    return child.call(this, redactBindings(bindings), redacted as ChildLoggerOptions);
+    return child.call(this, redactBindings(written), redacted as ChildLoggerOptions);
   } as unknown as Logger['child'];
   root.setBindings = function (this: Logger, bindings: Bindings) {
-    setBindings.call(this, redactBindings(bindings));
+    setBindings.call(this, redactBindings(writtenBindings(bindings)));
   };
   return root;
 }
@@ -212,8 +232,7 @@ const loggerOptions: LoggerOptions = {
   serializers: { err: serializeError },
   hooks: {
     logMethod(args, method) {
-      const err = loggedError(args[0]);
-      const redacted = redactCall(args, err, this.msgPrefix);
+      const redacted = redactCall(args, this.msgPrefix);
       return method.apply(this, redacted as Parameters<typeof method>);
     },
     streamWrite: redactLine,

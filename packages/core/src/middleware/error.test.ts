@@ -370,3 +370,40 @@ describe.each(SERIALIZER_HOOKS)(
     });
   },
 );
+
+describe('error middleware, given details whose hooks answer differently when asked again', () => {
+  it.each([false, true])(
+    'asks each once and answers 400 with none of it (production: %s)',
+    async (prod) => {
+      let asked = 0;
+      let reads = 0;
+      const when = new Date(Date.UTC(2026, 9, 7));
+      when.toISOString = () => (++asked === 1 ? 'ordinary' : failedInsert().message);
+      const details = {
+        when,
+        once: Object.defineProperty({}, 'reason', {
+          get: () => {
+            if (++reads > 1) throw new Error('read twice');
+            return 'ordinary';
+          },
+          enumerable: true,
+        }),
+      };
+      const app = new Hono<{ Variables: RequestIdVars }>();
+      app.get('/x', () => {
+        throw new HTTPException(400, { message: 'bad input', cause: { code: 'BAD', details } });
+      });
+      if (prod) vi.stubEnv('NODE_ENV', 'production');
+      vi.resetModules();
+      const handler = (await import('./error.js')).errorHandler;
+      vi.unstubAllEnvs();
+      app.onError(handler);
+      const res = await app.request('/x');
+      const text = await res.text();
+      expect(res.status).toBe(400);
+      expect([asked, reads]).toEqual([1, 1]);
+      expect(text).not.toMatch(LEAKS);
+      expect(JSON.parse(text).details).toEqual({ when: 'ordinary', once: { reason: 'ordinary' } });
+    },
+  );
+});

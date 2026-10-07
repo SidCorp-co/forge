@@ -1,6 +1,7 @@
 import { redactQueryParams } from './query-params.js';
 
 export {
+  asSerialized,
   errorsWithin,
   mayCarryBoundValues,
   REDACTED,

@@ -444,6 +444,51 @@ describe('the core logger, given a value whose text only a serializer renders', 
     },
   );
 
+  it('reads each hook once and writes one that throws as redacted, throwing nothing itself', () => {
+    const { lines, log } = capture();
+    let reads = 0;
+    let asked = 0;
+    const when = new Date(Date.UTC(2026, 9, 7));
+    when.toISOString = () => (++asked === 1 ? 'ordinary' : failedInsert().message);
+    const payload = {
+      once: Object.defineProperty({}, 'reason', {
+        get: () => {
+          if (++reads > 1) throw new Error('read twice');
+          return 'ordinary';
+        },
+        enumerable: true,
+      }),
+      broken: Object.defineProperty({}, 'reason', {
+        get: () => {
+          throw new Error(failedInsert().message);
+        },
+        enumerable: true,
+      }),
+      when,
+    };
+    log.warn(payload, 'read');
+    expect([reads, asked]).toEqual([1, 1]);
+    expect(lines).toHaveLength(1);
+    const line = JSON.parse(lines[0] ?? '');
+    expect(line.once.reason).toBe('ordinary');
+    expect(line.broken.reason).toBe('[Redacted]');
+    expect(line.when).toBe('ordinary');
+  });
+
+  it('writes a payload that holds itself, marking where it does', () => {
+    const { lines, log } = capture();
+    const loop: Record<string, unknown> = { reason: failedInsert().message };
+    loop.again = loop;
+    loop.onceMore = loop;
+    log.warn({ loop }, 'read');
+    log.child({ loop }).warn('bound');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line).not.toContain(HASH);
+      expect(line).toContain('[Circular]');
+    }
+  });
+
   it('keeps what a format argument renders when it carries nothing to redact', () => {
     const { lines, log } = capture();
     log.warn('read %s and %s', { toString: () => 'a reading' }, new URL('https://example.test/x'));

@@ -254,107 +254,188 @@ function driverFieldWithheld(key: string, v: unknown): boolean {
   return !DRIVER_FIELDS_KEPT.has(key) && !DRIVER_WALKED.has(key) && v !== null && v !== undefined;
 }
 
+/** A read of the caller's code that threw, written `[Redacted]` where it stood. */
+const UNREADABLE = Symbol('unreadable');
+const CIRCULAR = '[Circular]';
+
+function attempt<T>(read: () => T): T | typeof UNREADABLE {
+  try {
+    return read();
+  } catch {
+    return UNREADABLE;
+  }
+}
+
+/** A boxed primitive's value as `JSON.stringify` unboxes it, through its toPrimitive; else none. */
+function unboxed(value: object): { value: unknown } | null {
+  const proto = Object.getPrototypeOf(value);
+  if (proto === Object.prototype || proto === null || Array.isArray(value)) return null;
+  const is = (unbox: () => unknown) => attempt(unbox) !== UNREADABLE;
+  let out: unknown = UNREADABLE;
+  if (is(() => String.prototype.valueOf.call(value))) out = attempt(() => String(value));
+  else if (is(() => Number.prototype.valueOf.call(value))) out = attempt(() => Number(value));
+  else if (is(() => Boolean.prototype.valueOf.call(value))) {
+    out = Boolean.prototype.valueOf.call(value);
+  } else return null;
+  return { value: out === UNREADABLE ? REDACTED : out };
+}
+
+/** How `asSerialized` renders: the logger reads an error by its serializer, not by its `toJSON`. */
+export interface Rendering {
+  /** `value` is a set of fields, as a logger's merging object or bindings: no toJSON asked. */
+  fields?: boolean;
+  /** An `Error` is handed back as it is, for a serializer of errors to read. */
+  errorsAsThemselves?: boolean;
+}
+
+interface Walk extends Rendering {
+  errors: Error[];
+  done: Map<object, unknown>;
+  open: Set<object>;
+}
+
 /**
- * `value`'s own fields redacted, as a serializer reads them: each enumerable string key once, a
- * getter called once. A copy where anything changed, a getter was read or `copy` asks for one,
- * holding no function a serializer would call (it writes none in an object); otherwise null.
+ * `value` as a serializer would write it at `key`, every piece of the caller's code that writing
+ * calls run here and once: a `toJSON` asked with the key, a boxed primitive unboxed, a getter
+ * read. What comes back calls none of it again: anything rendered comes back as plain data, and
+ * an object holding no hook is the same reference. A hook that throws is written `[Redacted]`, a
+ * value that holds itself `[Circular]`, and every `Error` met on the way is collected.
+ */
+function render(value: unknown, key: string, depth: number, walk: Walk, top = false): unknown {
+  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
+  if (depth > MAX_DEPTH) return REDACTED;
+  const asError = value instanceof Error && walk.errorsAsThemselves;
+  if (!(top && walk.fields) && !asError) {
+    const toJSON = attempt(() => (value as { toJSON?: unknown }).toJSON);
+    if (toJSON === UNREADABLE) return REDACTED;
+    if (typeof toJSON === 'function') {
+      const out = attempt(() => toJSON.call(value, key) as unknown);
+      return out === UNREADABLE ? REDACTED : renderResult(out, depth, walk);
+    }
+  }
+  if (typeof value === 'function') return value;
+  const box = unboxed(value);
+  if (box) return box.value;
+  if (walk.done.has(value)) return walk.done.get(value);
+  if (walk.open.has(value)) return CIRCULAR;
+  if (value instanceof Error) walk.errors.push(value);
+  if (asError) return value;
+  walk.open.add(value);
+  const out = renderFields(value, depth, walk, false);
+  walk.open.delete(value);
+  walk.done.set(value, out);
+  return out;
+}
+
+/** What a `toJSON` rendered, which a serializer asks nothing more here: no function stays in it. */
+function renderResult(rendered: unknown, depth: number, walk: Walk): unknown {
+  if (typeof rendered === 'function') return undefined;
+  if (rendered === null || typeof rendered !== 'object') return rendered;
+  const box = unboxed(rendered);
+  if (box) return box.value;
+  if (walk.open.has(rendered)) return CIRCULAR;
+  walk.open.add(rendered);
+  const out = renderFields(rendered, depth, walk, true);
+  walk.open.delete(rendered);
+  return out;
+}
+
+/** `value`'s own enumerable fields rendered, as JSON reads them: a copy where any changed. */
+function renderFields(value: object, depth: number, walk: Walk, copy: boolean): unknown {
+  if (Array.isArray(value)) {
+    const next = value.map((v, i) => render(v, String(i), depth + 1, walk));
+    return copy || next.some((v, i) => v !== value[i]) ? next : value;
+  }
+  const keys = attempt(() => Object.keys(value));
+  if (keys === UNREADABLE) return REDACTED;
+  let changed = copy;
+  const next: Record<string, unknown> = {};
+  for (const key of keys) {
+    const own = attempt(() => Object.getOwnPropertyDescriptor(value, key));
+    let v: unknown;
+    if (own !== UNREADABLE && own && 'value' in own) v = own.value;
+    else {
+      changed = true;
+      const read = attempt(() => (value as Record<string, unknown>)[key]);
+      v = read === UNREADABLE ? REDACTED : read;
+    }
+    const out = render(v, key, depth + 1, walk);
+    if (out !== v) changed = true;
+    if (typeof out !== 'function') next[key] = out;
+  }
+  return changed ? next : value;
+}
+
+/**
+ * `value` as a serializer would write it, with every `Error` met on the way: the one read of the
+ * caller's code a redaction makes, so what is redacted is what is written, and what is handed on
+ * calls nothing again.
+ */
+export function asSerialized(
+  value: unknown,
+  how: Rendering = {},
+): { value: unknown; errors: Error[] } {
+  const walk: Walk = { ...how, errors: [], done: new Map(), open: new Set() };
+  return { value: render(value, '', 0, walk, true), errors: walk.errors };
+}
+
+/**
+ * `value`'s own fields redacted. Read from data a render already made, so no getter runs: a copy
+ * where anything changed, otherwise null.
  */
 function redactRecord(
   value: Record<string, unknown>,
   chain: ChainReading | null,
   depth: number,
-  copy: boolean,
+  memo: Map<object, unknown>,
 ): Record<string, unknown> | null {
   const failedQuery = typeof value.query === 'string';
   const driverError = isDriverError(value);
-  let changed = copy;
+  let changed = false;
   const next: Record<string, unknown> = {};
-  for (const key of Object.keys(value)) {
-    if (!changed && Object.getOwnPropertyDescriptor(value, key)?.get) changed = true;
-    const v = value[key];
+  for (const [key, v] of Object.entries(value)) {
     let out: unknown;
     if (failedQuery && (key === 'params' || key === 'parameters') && Array.isArray(v))
       out = REDACTED;
     else if (driverError && driverFieldWithheld(key, v)) out = REDACTED;
-    else out = redactValue(v, chain, depth + 1, key);
+    else out = redactValue(v, chain, depth + 1, memo);
     if (out !== v) changed = true;
-    if (typeof out !== 'function') next[key] = out;
+    next[key] = out;
   }
   return changed ? next : null;
 }
 
-/** A `toJSON` the platform defines, which renders the same text every time it is asked. */
-const PLATFORM_TO_JSON = new Set<unknown>([Date.prototype.toJSON, globalThis.URL?.prototype.toJSON]);
-
-/** A boxed primitive's value as `JSON.stringify` unboxes it, its own toPrimitive called; else none. */
-function unboxed(value: object): { value: unknown } | null {
-  const proto = Object.getPrototypeOf(value);
-  if (proto === Object.prototype || proto === null || Array.isArray(value)) return null;
-  const is = (unbox: () => unknown) => {
-    try {
-      unbox();
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  if (is(() => String.prototype.valueOf.call(value))) return { value: String(value) };
-  if (is(() => Number.prototype.valueOf.call(value))) return { value: Number(value) };
-  if (is(() => Boolean.prototype.valueOf.call(value))) {
-    return { value: Boolean.prototype.valueOf.call(value) };
-  }
-  return null;
-}
-
-/**
- * `value` as a serializer would write it at `key`, redacted, and inert: a `toJSON` is asked once,
- * with the key, and a boxed primitive unboxed once, so what is redacted is what is written, and
- * nothing handed back calls the caller's code again. A value with neither, and nothing to redact,
- * comes back as the same reference.
- */
+/** A rendered `value` redacted; each object once, one that holds itself written `[Circular]`. */
 function redactValue(
   value: unknown,
   chain: ChainReading | null,
   depth: number,
-  key = '',
+  memo: Map<object, unknown>,
 ): unknown {
   if (typeof value === 'string') return redactText(value, chain);
-  if (value === null || (typeof value !== 'object' && typeof value !== 'function')) return value;
+  if (value === null || typeof value !== 'object') return value;
   // Past the bound nothing was read, so nothing is vouched for: the subtree goes, not through.
   if (depth > MAX_DEPTH) return REDACTED;
-  // An Error left in a payload serializes as its enumerable properties, which for a failed query
-  // are `query`, `params` and `cause`: it is walked as that, against its own chain as well.
-  const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
-  const toJSON = (value as { toJSON?: unknown }).toJSON;
-  if (typeof toJSON === 'function') {
-    const rendered: unknown = toJSON.call(value, key);
-    const out = redactRendered(rendered, own, depth);
-    return PLATFORM_TO_JSON.has(toJSON) && out === rendered ? value : out;
-  }
-  if (typeof value === 'function') return value;
-  const box = unboxed(value);
-  if (box) return redactRendered(box.value, own, depth);
+  if (memo.has(value)) return memo.get(value) ?? CIRCULAR;
+  memo.set(value, undefined);
+  let out: unknown;
   if (Array.isArray(value)) {
-    const next = value.map((v, i) => redactValue(v, own, depth + 1, String(i)));
-    return next.some((v, i) => v !== value[i]) ? next : value;
+    const next = value.map((v) => redactValue(v, chain, depth + 1, memo));
+    out = next.some((v, i) => v !== value[i]) ? next : value;
+  } else {
+    // An Error left in a payload serializes as its enumerable properties, which for a failed
+    // query are `query`, `params` and `cause`: it is walked as that, against its own chain too.
+    const own = value instanceof Error ? mergeChains(chain, readChain(value)) : chain;
+    out = redactRecord(value as Record<string, unknown>, own, depth, memo) ?? value;
   }
-  return redactRecord(value as Record<string, unknown>, own, depth, false) ?? value;
+  memo.set(value, out);
+  return out;
 }
 
 /**
- * What a `toJSON` or an unboxing rendered, redacted. A serializer asks it nothing more at this
- * level, so an object comes back as a copy holding none of its functions, its own `toJSON` among them.
+ * Every `Error` inside `value`, read from its data alone, so a sibling repeating one of its bound
+ * values is read against it.
  */
-function redactRendered(rendered: unknown, chain: ChainReading | null, depth: number): unknown {
-  if (typeof rendered === 'function') return undefined;
-  if (rendered === null || typeof rendered !== 'object') return redactValue(rendered, chain, depth);
-  if (Array.isArray(rendered)) {
-    return rendered.map((v, i) => redactValue(v, chain, depth + 1, String(i)));
-  }
-  return redactRecord(rendered as Record<string, unknown>, chain, depth, true);
-}
-
-/** Every `Error` inside `value`, so a sibling repeating one of its bound values is read against it. */
 export function errorsWithin(value: unknown): unknown[] {
   const found: unknown[] = [];
   const seen = new Set<unknown>();
@@ -362,7 +443,11 @@ export function errorsWithin(value: unknown): unknown[] {
     if (typeof v !== 'object' || v === null || seen.has(v) || depth > MAX_DEPTH) return;
     seen.add(v);
     if (v instanceof Error) found.push(v);
-    for (const child of Object.values(v)) walk(child, depth + 1);
+    const fields = attempt(() => Object.getOwnPropertyDescriptors(v));
+    if (fields === UNREADABLE) return;
+    for (const own of Object.values(fields)) {
+      if (own.enumerable && 'value' in own) walk(own.value, depth + 1);
+    }
   };
   walk(value, 0);
   return found;
@@ -370,17 +455,20 @@ export function errorsWithin(value: unknown): unknown[] {
 
 /**
  * `value` with every bound parameter of a failed SQL statement replaced by `[Redacted]`, the same
- * reference where there was none. `err`, the error `value` was made from (or every error, as an
- * array), and every `Error` inside `value` let the statement and the driver's reason survive and
- * name the values to find anywhere in it; without any, a failed query's text is redacted to its
- * end. The database's own texts that quote a value lose it whether or not an error names it. An
- * `Error` inside `value` that carries one comes back as the plain object it serializes as.
+ * reference where there was none. It is redacted as a serializer would write it (`asSerialized`):
+ * what comes back holds plain data wherever the caller's code rendered any. `err`, the error
+ * `value` was made from (or every error, as an array), and every `Error` inside `value` let the
+ * statement and the driver's reason survive and name the values to find anywhere in it; without
+ * any, a failed query's text is redacted to its end. The database's own texts that quote a value
+ * lose it whether or not an error names it. An `Error` inside `value` that carries one comes back
+ * as the plain object it serializes as.
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
+  const written = asSerialized(value);
   const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
-  errs.push(...errorsWithin(value));
+  errs.push(...written.errors);
   const chain = errs.reduce<ChainReading | null>((acc, e) => mergeChains(acc, readChain(e)), null);
-  return redactValue(value, chain, 0) as T;
+  return redactValue(written.value, chain, 0, new Map()) as T;
 }
 
 /**
