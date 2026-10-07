@@ -36,7 +36,7 @@ const range = (p50: number, p85: number): Forecast => ({
   ahead: 0,
   aheadKeys: [],
   waitsOn: [],
-  basis,
+  basis, late: null,
 });
 const lines = (f: Forecast, c: EtaClock = vi) => etaLines(etaOfForecast(f, c), c);
 
@@ -87,7 +87,7 @@ describe("the ETA cell reads a clock, not a duration", () => {
 
 describe("the ETA cell where there is no date", () => {
   it("paused: who it waits on, short and muted, the full act in the tooltip", () => {
-    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked at needs_info", ref: null };
+    const f: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer a question", reason: "parked at needs_info", ref: null, since: null, late: null };
     const eta = etaOfForecast(f, vi);
     expect(eta.kind).toBe("waits");
     expect(etaLines(eta, vi)).toEqual({ line: "Chờ project writer", sub: null }); // i18n-allow: asserts the vi ETA copy
@@ -137,7 +137,7 @@ describe("a release a person still cuts", () => {
   });
 
   it("names who triages an untriaged feedback item, with no date", () => {
-    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null }, delivery: null }, vi);
+    const eta = etaOfFeedback({ key: "FB-1", triage: { ...stamp, kind: "paused", who: "A holder of feedback.approve", act: "triage it", reason: "new", ref: null, since: null, late: null }, delivery: null }, vi);
     expect(eta && etaLines(eta, vi).line).toBe("Chờ holder of feedback.appr…"); // i18n-allow: asserts the vi ETA copy
     expect(eta?.detail).toBe("A holder of feedback.approve — triage it. new");
   });
@@ -164,7 +164,7 @@ describe("the ETA column's language and order", () => {
 
   it("sorts by the p50 within each group, every row without a time last in its own order", () => {
     type R = { key: string; f: Forecast };
-    const paused: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer", reason: "r", ref: null };
+    const paused: Forecast = { ...stamp, kind: "paused", who: "A project writer", act: "answer", reason: "r", ref: null, since: null, late: null };
     const rows: R[] = [
       { key: "ISS-1", f: paused },
       { key: "ISS-2", f: range(1850, 1900) },

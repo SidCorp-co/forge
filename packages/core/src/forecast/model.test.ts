@@ -247,3 +247,68 @@ describe('scope forecast', () => {
     expect(scopeForecast(ran, [free.key, parked.key], NOW)).toMatchObject({ kind: 'paused' });
   });
 });
+
+describe('late', () => {
+  const ago = (minutes: number) => new Date(NOW.getTime() - minutes * MINUTE);
+  const p85 = (h: History) => run([item()], h).basisOf(null)?.cycleP85Minutes ?? Number.NaN;
+
+  it('reads work run past the p85 of similar landed work as late, by how much', () => {
+    const started = item({ startedAt: ago(180) });
+    const read = run([started]).forecasts.get(started.key);
+    const by = 180 - p85(history(20));
+    expect(read).toMatchObject({
+      kind: 'forecast',
+      late: { reason: 'p85_passed', byMinutes: by },
+    });
+    expect(by).toBeGreaterThan(60);
+  });
+
+  it('does not call work late that is still inside its p85, or that has not started', () => {
+    const fresh = item({ startedAt: ago(10) });
+    const queued = item();
+    const read = run([fresh, queued]).forecasts;
+    expect(read.get(fresh.key)).toMatchObject({ kind: 'forecast', late: null });
+    expect(read.get(queued.key)).toMatchObject({ kind: 'forecast', late: null });
+  });
+
+  it('is late exactly at the p85, not before it', () => {
+    const edge = p85(history(20));
+    const at = item({ startedAt: ago(edge - 1) });
+    const past = item({ startedAt: ago(edge + 1) });
+    const read = run([at, past]).forecasts;
+    expect(read.get(at.key)).toMatchObject({ late: null });
+    expect(read.get(past.key)).toMatchObject({ late: { byMinutes: 1 } });
+  });
+
+  it('reads a person owing the next move for over a day as late, and a fresh wait or an unknown start as not', () => {
+    const stale = item({ wait: { ...person, since: ago(30 * 60).toISOString() } });
+    const fresh = item({ wait: { ...person, since: ago(120).toISOString() } });
+    const unknown = item({ wait: person });
+    const read = run([stale, fresh, unknown]).forecasts;
+    expect(read.get(stale.key)).toMatchObject({
+      kind: 'paused',
+      since: ago(30 * 60).toISOString(),
+      late: { reason: 'waiting_over_day', byMinutes: 6 * 60 },
+    });
+    expect(read.get(fresh.key)).toMatchObject({ kind: 'paused', late: null });
+    expect(read.get(unknown.key)).toMatchObject({ kind: 'paused', since: null, late: null });
+  });
+
+  it('refuses a wait that began at no time, by name', () => {
+    const bad = item({ wait: { ...person, since: 'yesterday-ish' } });
+    expect(() => run([bad])).toThrow(/a wait began at "yesterday-ish", which is not a time/);
+  });
+
+  it('makes a scope as late as its latest member', () => {
+    const a = item({ startedAt: ago(200) });
+    const b = item({ startedAt: ago(100) });
+    const c = item();
+    const ran = run([a, b, c]);
+    const late = (k: string) =>
+      (ran.forecasts.get(k) as { late: { byMinutes: number } | null }).late;
+    expect(scopeForecast(ran, [a.key, b.key, c.key], NOW)).toMatchObject({
+      kind: 'forecast',
+      late: { byMinutes: late(a.key)?.byMinutes },
+    });
+  });
+});

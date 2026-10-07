@@ -5,12 +5,7 @@
  * transition moves the next answer with no projection to keep.
  */
 
-import {
-  FORECAST_LABEL,
-  type Forecast,
-  type ForecastPaused,
-  type ProjectForecast,
-} from '@forge/contracts/forecast';
+import { FORECAST_LABEL, type Forecast, type ProjectForecast } from '@forge/contracts/forecast';
 import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
@@ -26,7 +21,14 @@ import {
   settledForecast,
   waitOf,
 } from './facts.js';
-import { type ForecastRun, runForecast, seedOf, type Wait, type WorkItem } from './model.js';
+import {
+  type ForecastRun,
+  pausedOf,
+  runForecast,
+  seedOf,
+  type Wait,
+  type WorkItem,
+} from './model.js';
 
 export interface Facts {
   now: Date;
@@ -94,11 +96,7 @@ export async function simulate(projectId: string, now: Date): Promise<Facts> {
 
 export const stamp = (asOf: string) => ({ label: FORECAST_LABEL, asOf });
 
-export const pausedOf = (asOf: string, wait: Wait): ForecastPaused => ({
-  ...stamp(asOf),
-  kind: 'paused',
-  ...wait,
-});
+export { pausedOf };
 
 export async function readProjectForecast(
   projectId: string,

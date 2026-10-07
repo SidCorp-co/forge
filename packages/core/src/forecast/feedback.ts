@@ -13,7 +13,7 @@ import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { listFeedbackAs } from '../feedback/index.js';
 import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.js';
-import { stamp } from './read.js';
+import { pausedOf, stamp } from './read.js';
 import { readsFor, scopeOf } from './scope.js';
 
 interface LinkRow {
@@ -83,14 +83,13 @@ export async function readFeedbackForecasts(
       const w = s.waitingOn;
       own.set(s.id, {
         key: s.key,
-        triage: {
-          ...stamp(reads.f.run.asOf),
-          kind: 'paused',
+        triage: pausedOf(reads.f.run.asOf, {
           who: w.who,
           act: w.act,
           reason: w.rule,
           ref: null,
-        },
+          since: s.updatedAt,
+        }),
         delivery: null,
       });
       continue;

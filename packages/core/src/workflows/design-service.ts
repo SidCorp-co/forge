@@ -19,6 +19,7 @@ import {
   readBases,
   standingBaseRefusal,
 } from './design-bases.js';
+import { revisionChangesOf } from './design-changes.js';
 import {
   type DesignIssueOutcome,
   handBack,
@@ -109,7 +110,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       baseUnapproved:
         awaiting !== null ? standingBaseRefusal(awaiting, designs[0]?.document, held) : null,
     }),
-    revisions: designs.map((d) => ({
+    revisions: designs.map((d, at) => ({
       revision: d.revision,
       designIssueId: d.designIssueId,
       document: d.document,
@@ -122,6 +123,7 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
       state: revisionStateOf(d, head),
+      changes: revisionChangesOf(designs[at + 1]?.document, d.document),
     })),
     builds: builds.map((b) => ({
       issueId: b.issueId,

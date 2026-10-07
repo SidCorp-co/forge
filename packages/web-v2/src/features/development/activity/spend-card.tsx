@@ -9,7 +9,7 @@ import {
   Icon,
 } from "@/design";
 import { formatUsd } from "@/features/pipeline/derive";
-import type { SpendByStageData } from "../derive";
+import type { SpendByStageData } from "./derive";
 
 export function SpendCard({ data, inFlightUsd }: { data: SpendByStageData; inFlightUsd: number }) {
   const { segments, total } = data;

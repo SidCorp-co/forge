@@ -169,6 +169,7 @@ function draftScope(r: Reads, rows: readonly IssueRow[]): ScopeForecast {
       act: leg.act,
       reason: `every included issue has landed; ${leg.reason}`,
       ref: null,
+      since: read.forecast.landedAt,
     }),
   };
 }

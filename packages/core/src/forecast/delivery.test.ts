@@ -28,6 +28,7 @@ const range: Forecast = {
   aheadKeys: [],
   waitsOn: [],
   basis,
+  late: null,
 };
 const lags = (n: number, minutes = 30) => Array.from({ length: n }, () => minutes);
 const automatic = (n = 12, minutes = 30): ReleaseFacts => ({
@@ -97,6 +98,8 @@ describe('delivery: in people’s hands, not merged', () => {
       act: 'answer a question',
       reason: 'r',
       ref: null,
+      since: null,
+      late: null,
     };
     expect(deliver({ landing: paused })).toMatchObject({
       landing: { kind: 'paused' },

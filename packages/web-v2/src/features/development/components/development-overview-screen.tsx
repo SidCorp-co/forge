@@ -2,6 +2,7 @@
 
 import { EmptyState, PageTitle, ViewHeading, WaitBanner } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { DevelopmentActivity } from "../activity/development-activity";
 import { useDevelopmentOverview } from "../hooks";
 import type { DevelopmentOverview } from "../types";
 import { IssueFlow } from "./issue-flow";
@@ -44,6 +45,9 @@ export function DevelopmentOverviewScreen({ scope }: { scope: { projectId: strin
           {(d) => (
             <>
               <SignalsStrip data={d} />
+              <div className="pt-6">
+                <DevelopmentActivity projectId={scope.projectId} slug={scope.slug} />
+              </div>
               <Coverage c={d.coverage} />
               <div className="grid gap-x-14 gap-y-9 px-5 py-6 max-md:px-3 lg:grid-cols-2">
                 <div className="min-w-0 space-y-9">

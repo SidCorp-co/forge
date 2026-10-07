@@ -23,6 +23,7 @@ import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
+import { designRowOf } from './needs-you-design.js';
 import { designHealthOf } from './ports.js';
 
 export interface NeedsYouViewer {
@@ -123,30 +124,7 @@ export async function readNeedsYou(
       standing: c,
       touchedAt: c.touchedAt,
     })),
-    designs: [...health.values()]
-      .filter((h) => h.needsYou > 0)
-      .map(
-        (h): Row => ({
-          entity: 'workflow',
-          key: h.flow,
-          title: h.flow,
-          standing: {
-            attentionGroup: 'needs_you',
-            waitingOn: {
-              kind: 'person',
-              who: 'A person',
-              act: `settle ${h.needsYou} health ${h.needsYou === 1 ? 'marker' : 'markers'}`,
-              rule: 'a design needs you when a marker source waits on a person, or a node is Rewrite due or Not in design with no decision (REQ-17 BC-18)',
-              ref: h.flow,
-              dueAt: null,
-            },
-          },
-          touchedAt: h.markers.reduce<string | null>(
-            (at, m) => (m.since && (!at || m.since > at) ? m.since : at),
-            null,
-          ),
-        }),
-      ),
+    designs: [...health.values()].flatMap((h) => designRowOf(h) ?? []),
     automation: [
       ...automation.schedules.map(
         (s): Row => ({

@@ -10,7 +10,7 @@ import {
   Icon,
 } from "@/design";
 import { runnerLimitLine } from "@/features/runners/types";
-import type { RunnersSummary } from "../derive";
+import type { RunnersSummary } from "./derive";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
 

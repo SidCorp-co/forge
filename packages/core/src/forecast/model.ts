@@ -14,9 +14,11 @@ import {
   FORECAST_WINDOW_DAYS,
   type Forecast,
   type ForecastBasis,
+  type ForecastLate,
   type ForecastPaused,
   type ForecastRange,
 } from '@forge/contracts/forecast';
+import { lateAfterP85, latestLate, lateWaiting } from './late.js';
 
 const MINUTE = 60_000;
 const DAY_MINUTES = 1440;
@@ -39,6 +41,8 @@ export interface Wait {
   act: string;
   reason: string;
   ref: string | null;
+  /** When the wait began, where it is known; absent, it is never called late. */
+  since?: string | null;
 }
 
 export interface WorkItem {
@@ -178,8 +182,18 @@ function pools(samples: readonly CycleSample[], floor: number) {
 
 const stamp = (asOf: string) => ({ label: FORECAST_LABEL, asOf });
 
-function pausedOf(asOf: string, wait: Wait): ForecastPaused {
-  return { ...stamp(asOf), kind: 'paused', ...wait };
+export function pausedOf(asOf: string, wait: Wait): ForecastPaused {
+  const since = wait.since ?? null;
+  return {
+    ...stamp(asOf),
+    kind: 'paused',
+    who: wait.who,
+    act: wait.act,
+    reason: wait.reason,
+    ref: wait.ref,
+    since,
+    late: lateWaiting(since, new Date(asOf)),
+  };
 }
 
 /** An item's own wait, else the first blocker's that is paused, followed down the chain. */
@@ -367,6 +381,7 @@ export function runForecast(input: ForecastInput): ForecastRun {
       rangeOf(asOf, input.now, at, basis, {
         ahead: order.slice(0, position).map((i) => i.key),
         waitsOn: [...item.blockedBy],
+        late: lateAfterP85(item.startedAt, basis.cycleP85Minutes, input.now),
       }),
     );
   });
@@ -380,7 +395,7 @@ export function rangeOf(
   now: Date,
   landings: Float64Array,
   basis: ForecastBasis,
-  path: { ahead: readonly string[]; waitsOn: readonly string[] },
+  path: { ahead: readonly string[]; waitsOn: readonly string[]; late: ForecastLate | null },
 ): ForecastRange {
   const sorted = Float64Array.from(landings).sort();
   const p50 = Math.round(percentile(sorted, 0.5));
@@ -396,6 +411,7 @@ export function rangeOf(
     aheadKeys: path.ahead.slice(0, AHEAD_KEYS_SHOWN),
     waitsOn: [...path.waitsOn],
     basis,
+    late: path.late,
   };
 }
 
@@ -420,6 +436,7 @@ export function scopeForecast(
   return rangeOf(run.asOf, now, scopeLandings(run, openKeys), last.basis, {
     ahead: last.aheadKeys,
     waitsOn: last.waitsOn,
+    late: latestLate(ranged.map((f) => f.late)),
   });
 }
 

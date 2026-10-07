@@ -14,7 +14,7 @@ import type {
 } from "@forge/contracts/system-graph";
 import type { WaitingOn } from "@forge/contracts/standing";
 import type { WorkflowHealthSummary } from "@forge/contracts/workflow-health";
-import type { DesignBuildGate, DesignRequirementLink, DesignWaitingKind } from "@forge/contracts/workflows";
+import type { DesignBuildGate, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
 
 export type { DesignBuildGate, DesignRequirementLink };
 export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
@@ -153,6 +153,8 @@ export interface DesignRevision {
   decidedAt: string | null;
   reason: string | null;
   state: DesignRevisionState;
+  /** Against the revision before it, as core diffed them; null on the first. */
+  changes: RevisionChanges | null;
 }
 
 /** `GET /api/projects/:id/workflows/:workflow/design`. */
