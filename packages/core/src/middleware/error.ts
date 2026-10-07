@@ -63,7 +63,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     };
     if (details !== undefined) body.details = details;
 
-    const logPayload = { status, code: body.code, err: err.message };
+    const logPayload = { status, code: body.code, err: redactQueryParams(err.message, err) };
     if (status >= 500) log.error(logPayload, 'http.error');
     else log.warn(logPayload, 'http.error');
 

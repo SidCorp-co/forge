@@ -45,8 +45,8 @@ function redactLine(line: string): string {
 
 /**
  * `record` with `redact` applied to everything but `err` as ONE record, so a `query` keeps its
- * `params` beside it. `err` is left as it is: `serializeError` read the error itself, and a second,
- * blind pass would take the database's reason that follows the params along with them.
+ * `params` beside it. `err` is left as it is: `serializeError` redacted whatever it held, and a
+ * second, blind pass would take the database's reason that follows the params along with them.
  */
 function besideErr(
   record: Record<string, unknown>,
@@ -99,7 +99,9 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   else if (first instanceof Error) first = { err: serializeError(first, errors) };
   else if (typeof first === 'object' && first !== null) {
     const record = besideErr(first as Record<string, unknown>, clean);
-    first = err ? { ...record, err: serializeError(err, errors) } : record;
+    first = Object.hasOwn(record, 'err')
+      ? { ...record, err: serializeError(record.err, errors) }
+      : record;
   }
   if (err && typeof named?.msg !== 'string' && typeof rest[0] !== 'string') {
     rest = [redactQueryParams(err.message, errors), ...rest];
@@ -107,14 +109,28 @@ function redactCall(args: unknown[], err: Error | null): unknown[] {
   return [first, ...rest];
 }
 
-/** pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`. */
-function serializeError(err: unknown, hints: unknown[] = [err]): unknown {
-  // `redactCall` hands pino an `err` it already serialized against the whole call's errors.
-  if (!(err instanceof Error)) return err;
-  const out = redactQueryParams(stdSerializers.err(err), hints);
-  const sqlstate = pgErrorCode(err);
-  if (!sqlstate || typeof out !== 'object' || out === null) return out;
-  return { ...out, sqlstate, constraint: pgConstraintName(err) };
+/** What `serializeError` returned, which pino hands straight back to it as the `err` serializer. */
+const serialized = new WeakSet<object>();
+
+/**
+ * pino's own, redacted, plus the SQLSTATE and constraint a wrapped driver error keeps on `cause`.
+ * Whatever else sits under `err` (its message, `String(err)`, an object or array holding either)
+ * is redacted as any other value is, so no shape a caller logs there passes through.
+ */
+function serializeError(err: unknown, hints: unknown[] = errorsWithin(err)): unknown {
+  if (typeof err === 'object' && err !== null && serialized.has(err)) return err;
+  let out: unknown;
+  if (err instanceof Error) {
+    out = redactQueryParams(stdSerializers.err(err), hints.length > 0 ? hints : [err]);
+    const sqlstate = pgErrorCode(err);
+    if (sqlstate && typeof out === 'object' && out !== null) {
+      out = { ...out, sqlstate, constraint: pgConstraintName(err) };
+    }
+  } else {
+    out = redactQueryParams(withErrorsSerialized(err), hints.length > 0 ? hints : undefined);
+  }
+  if (typeof out === 'object' && out !== null) serialized.add(out);
+  return out;
 }
 
 export const loggerOptions: LoggerOptions = {

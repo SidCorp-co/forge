@@ -22,6 +22,28 @@ function failedQueryParams(held: string): RegExp {
   return new RegExp(`(Failed query: [\\s\\S]*?\\nparams: )(?!${held})[\\s\\S]*$`);
 }
 
+/**
+ * The database's own texts that quote an input value: a unique, foreign-key or exclusion `detail`,
+ * a not-null `detail`, and the messages refusing a value's syntax or range. Each keeps its anchor
+ * and loses everything after it, read with no error to say which part is the value.
+ */
+const QUOTED_VALUE_ANCHORS = [
+  'Key \\([^)\\n]*\\)=\\(',
+  'Failing row contains \\(',
+  'invalid input (?:syntax|value) for (?:type|enum) [^:\\n]*: (?=")',
+  'malformed [a-z]+ literal: (?=")',
+  'date/time field value out of range: (?=")',
+  'value (?="[\\s\\S]*" is out of range for type )',
+  'Token (?="[\\s\\S]*" is invalid)',
+];
+const QUOTED_VALUE = new RegExp(`(${QUOTED_VALUE_ANCHORS.join('|')})[\\s\\S]*$`);
+/** Every anchor holds one of these, so text holding none skips the pattern. */
+const QUOTED_VALUE_HINTS = ['Key (', 'Failing row contains (', ': "', '" is '];
+
+function quotesAValue(text: string): boolean {
+  return QUOTED_VALUE_HINTS.some((hint) => text.includes(hint)) && QUOTED_VALUE.test(text);
+}
+
 interface ChainReading {
   renderings: string[];
   values: string[];
@@ -93,7 +115,7 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
 }
 
 function redactText(text: string, chain: ChainReading | null): string {
-  if (!chain && !text.includes('Failed query: ')) return text;
+  if (!chain && !text.includes('Failed query: ') && !quotesAValue(text)) return text;
   const held = markerAbsentFrom(text);
   let out = text;
   if (chain) {
@@ -106,7 +128,8 @@ function redactText(text: string, chain: ChainReading | null): string {
     }
     out += text.slice(at);
   }
-  out = out.replace(failedQueryParams(held), `$1${REDACTED}`);
+  out = out.replace(failedQueryParams(held), `$1${held}`);
+  if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
   return out.split(held).join(REDACTED);
 }
 
@@ -184,7 +207,8 @@ export function errorsWithin(value: unknown): unknown[] {
  * reference where there was none. `err`, the error `value` was made from (or every error, as an
  * array), and every `Error` inside `value` let the statement and the driver's reason survive and
  * name the values to find anywhere in it; without any, a failed query's text is redacted to its
- * end. An `Error` inside `value` that carries one comes back as the plain object it serializes as.
+ * end. The database's own texts that quote a value lose it whether or not an error names it. An
+ * `Error` inside `value` that carries one comes back as the plain object it serializes as.
  */
 export function redactQueryParams<T>(value: T, err?: unknown): T {
   const errs: unknown[] = err === undefined ? [] : Array.isArray(err) ? [...err] : [err];
