@@ -7,6 +7,7 @@
  * truncation from a count, because reaching `limit` proves nothing about what was behind it.
  */
 
+import { redactedMessage } from '@forge/observability';
 import type { Context } from 'hono';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { getLogger } from '../../logger.js';
@@ -193,9 +194,9 @@ export async function emitBacklogStream<T>(
   } catch (err) {
     clearInterval(ticker);
     if (cancellation.reason === 'disconnect') return;
-    const cause = err as { code?: unknown; message?: unknown };
+    const cause = err as { code?: unknown };
     const code = typeof cause?.code === 'string' ? cause.code : 'BACKLOG_STREAM_FAILED';
-    const message = typeof cause?.message === 'string' ? cause.message : String(err);
+    const message = redactedMessage(err);
     log.warn(
       { kind: opts.kind, projectId: opts.projectId, code, emitted },
       'backlog.stream failed',

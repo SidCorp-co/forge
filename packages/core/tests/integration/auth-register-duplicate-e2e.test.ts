@@ -8,8 +8,9 @@
 
 import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
+import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
-import { type LoggerOptions, pino } from 'pino';
+import type { Logger } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { setupTestDatabase, type TestDatabase, truncateAll } from '../helpers/index.js';
 
@@ -20,7 +21,7 @@ describe('POST /api/auth/register for an email already registered', () => {
   let harness: TestDatabase;
   // biome-ignore lint/suspicious/noExplicitAny: test-only mount
   let app: any;
-  let loggerOptions: LoggerOptions;
+  let capture: () => { lines: string[]; log: Logger };
   let isUniqueViolation: (err: unknown) => boolean;
 
   beforeAll(async () => {
@@ -42,7 +43,10 @@ describe('POST /api/auth/register for an email already registered', () => {
       import('../../src/logger.js'),
       import('../../src/lib/db-errors.js'),
     ]);
-    loggerOptions = logger.loggerOptions;
+    capture = () => {
+      const lines: string[] = [];
+      return { lines, log: logger.createLogger({}, { write: (s: string) => lines.push(s) }) };
+    };
     isUniqueViolation = dbErrors.isUniqueViolation;
     app = new Hono();
     app.route('/api/auth', authRoutes);
@@ -91,8 +95,7 @@ describe('POST /api/auth/register for an email already registered', () => {
 
   it("logs the database's refusal by statement, SQLSTATE and constraint, and none of its values", async () => {
     const err = await duplicateInsert();
-    const lines: string[] = [];
-    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    const { lines, log } = capture();
     log.error({ err });
     log.error(err as Error, 'http.unhandled');
     log.warn({ error: err }, 'wrapped');
@@ -107,19 +110,22 @@ describe('POST /api/auth/register for an email already registered', () => {
     expect(first.err.message).toContain('violates unique constraint "users_email_unique"');
   });
 
-  /** What the database throws for a statement it refuses, through drizzle. */
-  function refused(statement: ReturnType<typeof sql>): Promise<Error> {
-    return harness.db.execute(statement).then(
+  /**
+   * What the database throws for a statement it refuses, wrapped as drizzle wraps it but taken
+   * from the driver directly: drizzle's own path seals it (db/query-error-seal.ts), and these
+   * guards are of the logger, which has to hold for an error nothing sealed.
+   */
+  function refused(statement: string, bound: string): Promise<Error> {
+    return harness.client.unsafe(statement, [bound]).then(
       () => expect.unreachable('the statement was accepted'),
-      (e: unknown) => e as Error,
+      (e: unknown) => new DrizzleQueryError(statement, [bound], e as Error),
     );
   }
 
   it('withholds a driver message that repeats a short bound value', async () => {
     // No quoted-value anchor names this message: only the bound value read off the error does.
-    const err = await refused(sql`select ${'zq9'}::regclass`);
-    const lines: string[] = [];
-    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    const err = await refused('select $1::regclass', 'zq9');
+    const { lines, log } = capture();
     log.error({ err });
     log.error(err, 'failed');
     log.error({ err: redactedMessage(err.cause) });
@@ -129,11 +135,10 @@ describe('POST /api/auth/register for an email already registered', () => {
   });
 
   it("drops a value the database's own text quotes, with no error in the call to name it", async () => {
-    const err = await refused(sql`select ${'zq9'}::uuid`);
+    const err = await refused('select $1::uuid', 'zq9');
     const driverMessage = (err.cause as Error).message;
     expect(driverMessage).toContain('"zq9"');
-    const lines: string[] = [];
-    const log = pino(loggerOptions, { write: (s: string) => lines.push(s) });
+    const { lines, log } = capture();
     log.error({ err: err.message });
     log.error({ err: driverMessage });
     log.warn({ reason: driverMessage }, 'refused');
