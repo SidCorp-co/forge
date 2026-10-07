@@ -147,6 +147,25 @@ describe('sealQueryError', () => {
     expect(redactedMessage(err)).toBe(err.message);
   });
 
+  it.each([
+    ['by itself', (pg: Error) => sealQueryError(pg)],
+    [
+      'as the cause of a failed query',
+      (pg: Error) => sealQueryError(new DrizzleQueryError('select $1', ['zq9-secret'], pg)),
+    ],
+  ])('copies a driver error that fixed its input in a field for good, %s', (_, seal) => {
+    const pg = pgRefusal('refused', { code: '23514', constraint_name: 'notes_check' }, []);
+    Object.defineProperty(pg, 'detail', { value: 'zq9-secret', enumerable: true });
+    const sealed = seal(pg);
+    expect(JSON.stringify(sealed)).not.toContain('zq9');
+    const driver = (sealed instanceof DrizzleQueryError ? sealed.cause : sealed) as Error &
+      Record<string, unknown>;
+    expect(driver).not.toBe(pg);
+    expect(driver.code).toBe('23514');
+    expect(driver.constraint_name).toBe('notes_check');
+    expect(driver.message).toBe('refused');
+  });
+
   it('reads no redaction it made as a value, however often a transaction seals it', () => {
     const err = new DrizzleQueryError(
       'select $1::uuid',
@@ -155,6 +174,10 @@ describe('sealQueryError', () => {
     );
     sealQueryError(sealQueryError(err));
     expect((err.cause as Error).message).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    expect(redactedMessage(err.cause)).toBe(`invalid input syntax for type uuid: ${REDACTED}`);
+    const logged = redactQueryParams(stdSerializers.err(err), err);
+    expect(logged.message).toContain(`: invalid input syntax for type uuid: ${REDACTED}`);
+    expect(logged.stack).toContain('    at ');
     expect(err.message).toBe(`Failed query: select $1::uuid\nparams: ${REDACTED}`);
   });
 

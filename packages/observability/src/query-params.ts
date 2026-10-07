@@ -105,6 +105,7 @@ function readChain(err: unknown): ChainReading {
         if (v !== null && v !== undefined && `${v}` !== '') reading.values.push(`${v}`);
     }
     if (
+      !sealedErrors.has(link) &&
       typeof link.code === 'string' &&
       SQLSTATE.test(link.code) &&
       typeof link.message === 'string'
@@ -138,7 +139,10 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
   for (const v of chain.values) {
     if (v.length >= BARE_VALUE_MIN) spans.push(...occurrences(text, v, 0, 0));
   }
-  return mergeSpans(spans);
+  // A value that is part of the marker shows nothing where the marker stands.
+  const markers = occurrences(text, REDACTED, 0, 0);
+  const inMarker = ([from, to]: Span) => markers.some(([f, t]) => f <= from && to <= t);
+  return mergeSpans(spans.filter((span) => !inMarker(span)));
 }
 
 function mergeSpans(spans: Span[]): Span[] {
@@ -378,39 +382,66 @@ function sealedDriverMessage(text: string, values: string[]): string {
   return values.some((v) => left.includes(v)) ? REDACTED : out.split(held).join(REDACTED);
 }
 
-function sealLink(link: Error & Record<string, unknown>, chain: ChainReading): void {
+function markSealed(link: Error, chain: ChainReading): Error {
+  sealedErrors.add(link);
+  sealedValues.set(link, chain.values);
+  return link;
+}
+
+/**
+ * A driver error rebuilt from the fields that name where it failed, for one whose input sits in a
+ * field it fixed for good, which no rewrite can reach: the database's failure stands, the input goes.
+ */
+function sealedCopy(link: Error & Record<string, unknown>, chain: ChainReading): Error {
+  const message = sealedDriverMessage(link.message, chain.values);
+  const copy = new Error(message) as Error & Record<string, unknown>;
+  for (const key of DRIVER_FIELDS_KEPT) if (key in link) rewrite(copy, key, link[key], true);
+  rewrite(copy, 'stack', `${link.stack ?? ''}`.split(link.message).join(message));
+  if (link.cause !== undefined) rewrite(copy, 'cause', link.cause);
+  return markSealed(copy, chain);
+}
+
+/** The link sealed in place, or a sealed copy where the driver fixed an input-bearing field. */
+function sealLink(link: Error & Record<string, unknown>, chain: ChainReading): Error {
   if (typeof link.query === 'string' && Array.isArray(link.params)) {
     rewriteMessage(link, redactText(link.message, chain));
     rewrite(link, 'params', link.params, false);
-  } else if (isDriverError(link)) {
-    for (const [key, v] of Object.entries(link)) {
-      if (!driverFieldWithheld(key, v)) continue;
-      if (fixedForGood(link, key) && Array.isArray(v)) v.splice(0, v.length);
-      else rewrite(link, key, REDACTED);
-    }
-    rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
-  } else return;
-  sealedErrors.add(link);
-  sealedValues.set(link, chain.values);
+    return markSealed(link, chain);
+  }
+  if (!isDriverError(link)) return link;
+  if (fixedForGood(link, 'message') || fixedForGood(link, 'stack')) return sealedCopy(link, chain);
+  for (const [key, v] of Object.entries(link)) {
+    if (!driverFieldWithheld(key, v)) continue;
+    if (!fixedForGood(link, key)) rewrite(link, key, REDACTED);
+    else if (Array.isArray(v)) v.splice(0, v.length);
+    else return sealedCopy(link, chain);
+  }
+  rewriteMessage(link, sealedDriverMessage(link.message, chain.values));
+  return markSealed(link, chain);
 }
 
 /**
  * `err` with no bound value of a failed statement left in its message, its stack or any
- * enumerable field of it or of a driver error on its chain, mutated in place and handed back so a
- * caller that copies it later copies nothing. The values stay readable on the non-enumerable
- * `params` and `parameters`, where `redactQueryParams` finds what a caller repeats beside it.
+ * enumerable field of it or of a driver error on its chain, sealed in place (a link the driver
+ * fixed is swapped for a sealed copy) and handed back, so a caller that copies it copies nothing.
+ * The values stay where `redactQueryParams` reads them, to find what a caller repeats beside it.
  * Anything that is not an error is handed back untouched.
  */
 export function sealQueryError<T>(err: T): T {
   if (!(err instanceof Error)) return err;
   const chain = readChain(err);
   const seen = new Set<unknown>();
+  let head: unknown = err;
+  let parent: Error | null = null;
   for (let cur: unknown = err, i = 0; cur instanceof Error && i < MAX_CHAIN; i++) {
     if (seen.has(cur)) break;
     seen.add(cur);
     const link = cur as Error & Record<string, unknown>;
-    if (!sealedErrors.has(link)) sealLink(link, chain);
-    cur = link.cause;
+    const sealed = sealedErrors.has(link) ? link : sealLink(link, chain);
+    if (sealed !== link && parent) rewrite(parent, 'cause', sealed);
+    else if (sealed !== link) head = sealed;
+    parent = sealed;
+    cur = sealed.cause;
   }
-  return err;
+  return head as T;
 }
