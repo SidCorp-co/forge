@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.142] - 2026-10-07
+
+Feedback reporters hear in their language what shipped, or someone relays it
+
+### Fixed
+
+- **A reporter hears their feedback shipped**: every reporter notice reads in their language; one ship notice per item; untold items owe a relay on Needs you, or, shipped before release notices, read a dated state with "Tell the reporter now".
+
 ## [0.4.0-dev.141] - 2026-10-07
 
 Requirements carry open questions and decisions; Decisions log and Roadmap pages
