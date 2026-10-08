@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.164] - 2026-10-08
+
+Chat replies' claims of recording feedback or requirements are checked against the turn's writes
+
+### Fixed
+
+- **When the assistant says it recorded your feedback or drafted a requirement, that is checked against what it wrote.** A claim it cannot back is held instead of shown; a chat reply saying it created an issue is always held.
+
 ## [0.4.0-dev.163] - 2026-10-08
 
 Conversations accept documents; the assistant reads and cites them
