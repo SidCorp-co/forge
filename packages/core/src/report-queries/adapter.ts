@@ -11,6 +11,8 @@ import type { StatusViewer } from '../project-status/index.js';
 export interface ReportQueryContext {
   projectId: string;
   viewer: StatusViewer;
+  /** The moment the read answers as; the run stamps its provenance with the same one. */
+  now?: Date;
 }
 
 export interface ReportQueryAdapter<P extends z.ZodObject = z.ZodObject> {

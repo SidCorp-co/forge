@@ -10,22 +10,8 @@ import {
   type ReportQueryDescriptor,
 } from '@forge/contracts/report-queries';
 import type { z } from 'zod';
-import type { StatusViewer } from '../project-status/index.js';
-
-/** What a query is run as: the asker's own standing, never the process's. */
-export interface ReportQueryContext {
-  projectId: string;
-  viewer: StatusViewer;
-  now: Date;
-}
-
-/** What a query is declared with; `reads` names each existing read it summarises, never a second computation of it. */
-export interface ReportQuery<P extends z.ZodObject = z.ZodObject> {
-  descriptor: ReportQueryDescriptor<P>;
-  /** Anchors (`path.ts:symbol`) of the reads this query is built over; at least one. */
-  reads: readonly string[];
-  run(ctx: ReportQueryContext, params: z.infer<P>): Promise<ReportFrame>;
-}
+import { badRequest, notFound } from '../middleware/route-errors.js';
+import type { ReportQueryAdapter, ReportQueryContext } from './adapter.js';
 
 /** The registered form: params arrive raw and leave parsed, so no caller holds a half-checked query. */
 export interface RegisteredReportQuery {
@@ -39,18 +25,6 @@ export interface RegisteredReportQuery {
 
 const registry = new Map<string, RegisteredReportQuery>();
 
-export class UnknownReportQueryError extends Error {
-  constructor(
-    readonly queryId: string,
-    readonly registered: readonly string[],
-  ) {
-    super(`report query "${queryId}" is not registered; registered: ${registered.join(', ')}`);
-  }
-}
-
-/** The caller's params did not meet the query's declaration: unknown key, wrong type or a value outside the set. */
-export class ReportParamsRefusedError extends Error {}
-
 function assertPopulated(): void {
   if (registry.size > 0) return;
   throw new Error(
@@ -59,7 +33,7 @@ function assertPopulated(): void {
   );
 }
 
-export function registerReportQuery<P extends z.ZodObject>(query: ReportQuery<P>): void {
+export function registerReportQuery<P extends z.ZodObject>(query: ReportQueryAdapter<P>): void {
   const { id } = query.descriptor;
   if (registry.has(id)) throw new Error(`report query "${id}" is already registered`);
   if (query.reads.length === 0) {
@@ -75,7 +49,7 @@ export function registerReportQuery<P extends z.ZodObject>(query: ReportQuery<P>
       try {
         params = parseReportParams(query.descriptor, rawParams);
       } catch (e) {
-        throw new ReportParamsRefusedError(e instanceof Error ? e.message : String(e));
+        throw badRequest(e instanceof Error ? e.message : String(e), 'REPORT_PARAMS_REFUSED');
       }
       return { params: params as Record<string, unknown>, frame: await query.run(ctx, params) };
     },
@@ -85,7 +59,11 @@ export function registerReportQuery<P extends z.ZodObject>(query: ReportQuery<P>
 export function getReportQuery(id: string): RegisteredReportQuery {
   assertPopulated();
   const found = registry.get(id);
-  if (!found) throw new UnknownReportQueryError(id, [...registry.keys()]);
+  if (!found) {
+    throw notFound(
+      `report query "${id}" is not registered; registered: ${[...registry.keys()].join(', ')}`,
+    );
+  }
   return found;
 }
 

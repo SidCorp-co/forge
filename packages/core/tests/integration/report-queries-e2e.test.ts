@@ -32,7 +32,13 @@ describe('the report-queries door', () => {
     const res = await api(w.token, 'GET', '/api/report-queries');
     expect(res.status).toBe(200);
     const queries = res.body.queries as Body[];
-    expect(queries.map((q) => q.id).sort()).toEqual(['progress-by-requirement', 'roadmap-eta']);
+    expect(queries.map((q) => q.id).sort()).toEqual([
+      'criteria-coverage',
+      'progress-by-requirement',
+      'release-readiness',
+      'roadmap-eta',
+      'workflow-status',
+    ]);
     const progress = queries.find((q) => q.id === 'progress-by-requirement') as Body;
     expect(progress).toMatchObject({ version: 1, permission: 'project.read', egress: 'product' });
     expect((progress.params as Body).additionalProperties).toBe(false);
@@ -83,7 +89,7 @@ describe('the report-queries door', () => {
     const res = await run(w.token, 'burndown');
     expect(res.status).toBe(404);
     expect(detail(res)).toBe(
-      'report query "burndown" is not registered; registered: progress-by-requirement, roadmap-eta',
+      'report query "burndown" is not registered; registered: progress-by-requirement, roadmap-eta, release-readiness, criteria-coverage, workflow-status',
     );
   });
 

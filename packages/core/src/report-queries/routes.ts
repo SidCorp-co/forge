@@ -4,14 +4,8 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import {
-  getReportQuery,
-  listReportQueries,
-  ReportParamsRefusedError,
-  UnknownReportQueryError,
-} from './registry.js';
+import { getReportQuery, listReportQueries } from './registry.js';
 import { runReportQuery } from './run.js';
 
 const runParam = z.strictObject({ id: z.uuid(), queryId: z.string().min(1).max(64) });
@@ -51,27 +45,19 @@ reportQueryRoutes.post(
     if (!agency)
       throw new Error('report queries: a request reached its handler without an auth gate');
     const userId = c.get('userId');
-    let run: Awaited<ReturnType<typeof runReportQuery>>;
-    try {
-      const { egress } = getReportQuery(queryId).descriptor;
-      if (egress !== 'product') {
-        throw new Error(
-          `report query "${queryId}" is ${egress}-class and no egress surface is declared for it; add the surface before registering it`,
-        );
-      }
-      const access = await loadProjectAccess(projectId, userId);
-      run = await runReportQuery({
-        projectId,
-        queryId,
-        params: c.req.valid('json').params,
-        asker: { userId, agency, access },
-      });
-    } catch (e) {
-      if (e instanceof UnknownReportQueryError) throw notFound(e.message);
-      if (e instanceof ReportParamsRefusedError)
-        throw badRequest(e.message, 'REPORT_PARAMS_REFUSED');
-      throw e;
+    const { egress } = getReportQuery(queryId).descriptor;
+    if (egress !== 'product') {
+      throw new Error(
+        `report query "${queryId}" is ${egress}-class and no egress surface is declared for it; add the surface before registering it`,
+      );
     }
+    const access = await loadProjectAccess(projectId, userId);
+    const run = await runReportQuery({
+      projectId,
+      queryId,
+      params: c.req.valid('json').params,
+      asker: { userId, agency, access },
+    });
     const frame = await egressForRequest(
       agency,
       projectId,

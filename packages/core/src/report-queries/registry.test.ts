@@ -1,14 +1,12 @@
 import { defineReportQuery } from '@forge/contracts/report-queries';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import type { ReportQueryAdapter } from './adapter.js';
 import {
   clearReportQueriesForTest,
   getReportQuery,
   listReportQueries,
-  ReportParamsRefusedError,
-  type ReportQuery,
   registerReportQuery,
-  UnknownReportQueryError,
 } from './registry.js';
 
 const params = z.object({ n: z.number().int().optional() });
@@ -16,7 +14,7 @@ const params = z.object({ n: z.number().int().optional() });
 const query = (
   id: string,
   reads: readonly string[] = ['x/read.ts:readX'],
-): ReportQuery<typeof params> => ({
+): ReportQueryAdapter<typeof params> => ({
   descriptor: defineReportQuery({
     id,
     version: 1,
@@ -62,7 +60,7 @@ describe('the report-queries registry', () => {
         return e;
       }
     })();
-    expect(err).toBeInstanceOf(UnknownReportQueryError);
+    expect(err).toMatchObject({ status: 404 });
     expect((err as Error).message).toBe(
       'report query "three" is not registered; registered: one, two',
     );
@@ -71,13 +69,19 @@ describe('the report-queries registry', () => {
   it('parses params strictly: an unknown key is refused by name, a wrong type too', async () => {
     registerReportQuery(query('one'));
     const ctx = { projectId: 'p', now: new Date(), viewer: {} as never };
-    await expect(getReportQuery('one').execute(ctx, { m: 1 })).rejects.toThrow(
-      ReportParamsRefusedError,
-    );
-    await expect(getReportQuery('one').execute(ctx, { m: 1 })).rejects.toThrow(
-      /report query "one": params refused/,
-    );
-    await expect(getReportQuery('one').execute(ctx, { n: 'x' })).rejects.toThrow(/n: /);
+    const refusal = (raw: unknown) =>
+      getReportQuery('one')
+        .execute(ctx, raw)
+        .then(
+          () => null,
+          (e: { status: number; cause: { code: string; details: string } }) => e,
+        );
+    expect(await refusal({ m: 1 })).toMatchObject({
+      status: 400,
+      cause: { code: 'REPORT_PARAMS_REFUSED' },
+    });
+    expect((await refusal({ m: 1 }))?.cause.details).toMatch(/report query "one": params refused/);
+    expect((await refusal({ n: 'x' }))?.cause.details).toMatch(/n: /);
     await expect(getReportQuery('one').execute(ctx, { n: 2 })).resolves.toMatchObject({
       params: { n: 2 },
     });

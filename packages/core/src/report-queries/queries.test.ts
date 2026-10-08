@@ -9,8 +9,8 @@ vi.mock('../project-status/index.js', () => ({
   statusViewerOf: () => ({ userId: 'u', agency: 'human', canWrite: true }),
 }));
 
-const { progressByRequirement } = await import('./queries/progress-by-requirement.js');
-const { roadmapEta, etaOf } = await import('./queries/roadmap-eta.js');
+const { progressByRequirement } = await import('./progress-by-requirement.js');
+const { roadmapEta, etaOf } = await import('./roadmap-eta.js');
 
 const ctx = { projectId: 'p', now: new Date('2026-10-08T09:00:00.000Z'), viewer: {} as never };
 

@@ -10,8 +10,8 @@ import {
   type ReportFrame,
 } from '@forge/contracts/report-queries';
 import { z } from 'zod';
-import { readProjectStatus } from '../../project-status/index.js';
-import type { ReportQuery } from '../registry.js';
+import { readProjectStatus } from '../project-status/index.js';
+import { defineAdapter, type ReportQueryAdapter } from './adapter.js';
 
 const STATUS_DAYS = 7;
 const LANES = ['now', 'next', 'later'] as const;
@@ -60,7 +60,7 @@ export function etaOf(delivery: DeliveryForecast | null): {
   }
 }
 
-export const roadmapEta: ReportQuery<typeof params> = {
+export const roadmapEta: ReportQueryAdapter<typeof params> = defineAdapter({
   descriptor: defineReportQuery({
     id: 'roadmap-eta',
     version: 1,
@@ -73,7 +73,12 @@ export const roadmapEta: ReportQuery<typeof params> = {
   }),
   reads: ['project-status/read.ts:readProjectStatus', 'forecast/scope.ts:readForecastLine'],
   async run(ctx, p): Promise<ReportFrame> {
-    const { roadmap } = await readProjectStatus(ctx.projectId, ctx.viewer, STATUS_DAYS, ctx.now);
+    const { roadmap } = await readProjectStatus(
+      ctx.projectId,
+      ctx.viewer,
+      STATUS_DAYS,
+      ctx.now ?? new Date(),
+    );
     const rows: Record<string, ReportCell>[] = [];
     for (const lane of LANES) {
       if (p.lane !== undefined && p.lane !== lane) continue;
@@ -89,4 +94,4 @@ export const roadmapEta: ReportQuery<typeof params> = {
     }
     return { fields: [...OUTPUT], rows };
   },
-};
+});

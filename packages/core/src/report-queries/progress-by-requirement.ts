@@ -10,8 +10,8 @@ import {
 } from '@forge/contracts/report-queries';
 import { REQUIREMENT_STATES } from '@forge/contracts/requirements';
 import { z } from 'zod';
-import { readProjectStatus } from '../../project-status/index.js';
-import type { ReportQuery } from '../registry.js';
+import { readProjectStatus } from '../project-status/index.js';
+import { defineAdapter, type ReportQueryAdapter } from './adapter.js';
 
 const STATUS_DAYS = 7;
 
@@ -31,7 +31,7 @@ const params = z.object({
   state: z.enum(REQUIREMENT_STATES).optional(),
 });
 
-export const progressByRequirement: ReportQuery<typeof params> = {
+export const progressByRequirement: ReportQueryAdapter<typeof params> = defineAdapter({
   descriptor: defineReportQuery({
     id: 'progress-by-requirement',
     version: 1,
@@ -44,7 +44,12 @@ export const progressByRequirement: ReportQuery<typeof params> = {
   }),
   reads: ['project-status/read.ts:readProjectStatus'],
   async run(ctx, p): Promise<ReportFrame> {
-    const status = await readProjectStatus(ctx.projectId, ctx.viewer, STATUS_DAYS, ctx.now);
+    const status = await readProjectStatus(
+      ctx.projectId,
+      ctx.viewer,
+      STATUS_DAYS,
+      ctx.now ?? new Date(),
+    );
     const rows = status.requirements.items
       .filter((r) => p.state === undefined || r.state === p.state)
       .map(
@@ -61,4 +66,4 @@ export const progressByRequirement: ReportQuery<typeof params> = {
       );
     return { fields: [...OUTPUT], rows };
   },
-};
+});

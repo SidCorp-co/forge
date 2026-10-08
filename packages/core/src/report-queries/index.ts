@@ -6,15 +6,12 @@ export type {
   ReportQueryDescriptor,
   ReportRun,
 } from '@forge/contracts/report-queries';
+export type { ReportQueryAdapter, ReportQueryContext } from './adapter.js';
 export { registerReportQueries } from './register.js';
 export {
   clearReportQueriesForTest,
   getReportQuery,
   listReportQueries,
-  ReportParamsRefusedError,
-  type ReportQuery,
-  type ReportQueryContext,
   registerReportQuery,
-  UnknownReportQueryError,
 } from './registry.js';
 export { type ReportAsker, runReportQuery } from './run.js';
