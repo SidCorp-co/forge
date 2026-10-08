@@ -3,6 +3,7 @@
 // The peek (`?peek=FB-3`) beside the list: a summary, not the page — the header with the one
 // primary act, whose turn it is, and the facts the full page's rail shows.
 
+import { Written } from "@/lib/i18n/written";
 import { PeekHead, PeekPanel, type PeekState, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -40,7 +41,7 @@ export function FeedbackPeek({
                 noun={t("feedback.title")}
                 itemKey={f.key}
                 badge={<StatusBadge family="feedbackPhase" value={f.phase} />}
-                title={f.title}
+                title={<Written text={f.title} lang={f.writtenLang} />}
                 action={<FeedbackPrimary f={f} onAct={onOpenFull} />}
               />
               <FeedbackBanner f={f} slug={slug} className="px-[18px]" />

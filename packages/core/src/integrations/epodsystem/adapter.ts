@@ -1,11 +1,13 @@
-import { say } from '@forge/contracts/said';
+import { say, sayEn } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
 import {
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
+  healthOf,
   type IntegrationAdapterMethods,
   isPreviousCredentialValid,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
@@ -74,7 +76,7 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Epodsystem API key configured' };
+      return healthOf('error', say('integrations.health.epodsystem.noKey'));
     }
 
     // The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT env, default
@@ -130,19 +132,17 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
           lastHealthAt: new Date(),
         });
         if (result.kind === 'unauthorized') {
-          return result.status === 200
-            ? { status: healthStatus, message: 'invalid Epodsystem API key' }
-            : {
-                status: healthStatus,
-                message: 'invalid Epodsystem API key',
-                diagnostics: { httpStatus: result.status },
-              };
+          return healthOf(
+            healthStatus,
+            say('integrations.health.epodsystem.invalidKey'),
+            result.status === 200 ? undefined : { httpStatus: result.status },
+          );
         }
-        return {
-          status: 'error',
-          message: `Epodsystem API error (HTTP ${result.status})`,
-          diagnostics: { httpStatus: result.status },
-        };
+        return healthOf(
+          'error',
+          say('integrations.health.epodsystem.http', { status: String(result.status) }),
+          { httpStatus: result.status },
+        );
       }
 
       const body = result.body;
@@ -202,11 +202,13 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
-      return {
-        status: 'ok',
-        message: store?.name ? `Connected to ${store.name}` : 'Epodsystem API key is valid',
+      return healthOf(
+        'ok',
+        store?.name
+          ? say('integrations.health.connectedTo', { name: store.name })
+          : say('integrations.health.epodsystem.valid'),
         // Only non-secret store identity — never the key.
-        diagnostics: {
+        {
           orgId,
           scopes,
           storeId: store?.id != null ? String(store.id) : null,
@@ -217,18 +219,18 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
           commerceEnabled: store?.commerce_enabled ?? null,
           domain,
         },
-      };
+      );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
+      const said = thrownSaid(err, true);
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: sayEn(said) },
         'epodsystem: healthcheck failed',
       );
-      return { status: 'error', message };
+      return healthOf('error', said);
     }
   },
 

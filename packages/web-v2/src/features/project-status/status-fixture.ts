@@ -55,6 +55,7 @@ export const STATUS: ProjectStatus = {
       {
         key: "ISS-20",
         title: "Referral screens",
+        titleLang: "en",
         status: "in_progress",
         waitingOn: waitingOn("agent", { who: say("standing.who.master"), act: say("issues.standing.act.working"), rule: RULE }),
       },
@@ -70,8 +71,10 @@ export const STATUS: ProjectStatus = {
         entity: "release",
         key: "0.3.0",
         title: "Release 0.3.0",
+        titleLang: null,
         waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.approveReleaseV", { v: "0.3.0" }), rule: RULE }),
         touchedAt: AT,
+        says: { title: say("needsYou.title.release", { version: "0.3.0" }) },
       },
     ],
     peopleCount: 1,

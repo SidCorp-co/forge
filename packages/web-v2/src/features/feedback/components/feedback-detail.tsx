@@ -5,6 +5,7 @@
 // facts rail. The page leads with the reporter's answer (where it stands, when, the release that
 // shipped it); the phase, whose turn and what carries it live in the rail.
 
+import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
 import {
   Button,
@@ -58,8 +59,15 @@ function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
       ) : (
-        <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body">
-          {f.body?.trim() ? f.body : <span className="text-subtle">{t("feedback.body.none")}</span>}
+        <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" data-testid="feedback-body" lang={f.writtenLang ?? undefined}>
+          {f.body?.trim() ? (
+            <>
+              {f.body}
+              <WrittenMark lang={f.writtenLang} />
+            </>
+          ) : (
+            <span className="text-subtle">{t("feedback.body.none")}</span>
+          )}
         </p>
       )}
       <FeedbackAttachments projectId={projectId} f={f} />
@@ -131,7 +139,7 @@ export function FeedbackPage({
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey={f.key} title={f.title} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
+            <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />

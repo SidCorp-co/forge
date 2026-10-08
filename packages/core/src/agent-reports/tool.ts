@@ -6,6 +6,7 @@ import {
   type TriageAgentReportRequest,
   triageAgentReportRequestSchema,
 } from '@forge/contracts/agent-reports';
+import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -62,6 +63,7 @@ const inputSchema = z
     summary: z.string().min(1).max(2000).optional(),
     detail: z.string().max(5000).optional(),
     suggestion: z.string().max(2000).optional(),
+    writtenLang: writtenLangSchema.optional(),
     // list filters
     filters: z
       .object({
@@ -109,7 +111,7 @@ const DESCRIPTION =
   'Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. ' +
   'Required fields: projectId, kind, target, summary. ' +
   'projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`GET /api/projects` prints it beside each slug). ' +
-  'Optional: severity (default low), targetRef, detail, suggestion. ' +
+  'Optional: severity (default low), targetRef, detail, suggestion, writtenLang (en | vi — the language you wrote the text in; absent, the project content language; any other value is refused WRITTEN_LANG_INVALID). ' +
   'Returns {ok:true,id,signalKey} on success; {ok:false,reason:"rate_limited"} when the per-job cap is hit (not a 500 — agent continues). ' +
   'action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). ' +
   'scope="project" (default) reads the resolved project; scope="all" unions every project you own or are a member of and adds projectId/projectSlug to each row. ' +

@@ -13,13 +13,15 @@ import { IssueProgressText } from "@/features/forecast/components/issue-progress
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
 import { spanText } from "@/features/forecast/text";
 import { formatDateTime } from "@/lib/i18n/format";
-import { useCopy, useLabel } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
 import { statusMarkdown } from "../report-markdown";
+import { Written } from "@/lib/i18n/written";
 
 export const STATUS_WINDOWS = ["7", "14", "30"] as const;
 export type StatusWindow = (typeof STATUS_WINDOWS)[number];
@@ -92,6 +94,7 @@ export interface StatusReportProps {
 
 export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportProps) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const label = useLabel();
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const markdown = useMemo(() => statusMarkdown(s, { t, label, clock }), [s, t, label, clock]);
@@ -189,7 +192,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
                 <Link href={issueHref(slug, i.key)} className={KEY_LINK}>
                   {i.key}
                 </Link>
-                <span className="min-w-0 flex-1">{i.title}</span>
+                <Written className="min-w-0 flex-1" text={i.title} lang={i.titleLang} />
                 <StatusBadge family="issue" value={i.status} />
               </li>
             ))}
@@ -207,7 +210,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
                 <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
                   {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
                 </Link>
-                <span className="min-w-0 flex-1">{x.title}</span>
+                <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
                 <WaitingOn w={x.waitingOn} />
               </li>
             ))}

@@ -20,7 +20,7 @@ import type { IntegrationSummary, StatusCard } from "@/features/integrations/typ
 import { IntegrationsTab } from "@/features/project-settings/components/integrations-tab";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
-import { cardDetail, say } from "./said";
+import { cardDetail, say, verbatim } from "./said";
 
 // The Integrations screens for the vi walking test: the workspace connection directory and a
 // connection's drawer, a project's integrations table with its MCP preview, and every provider's
@@ -100,7 +100,7 @@ const cards: StatusCard[] = [
   { key: "repository", label: "Repository", status: "not_configured", ...cardDetail(say("integrations.detail.unreachedConnect", { host: "github.com", provider: "GitHub" })), lastSyncAt: null, configured: true, meta: { repository: "github.com/SidCorp-co/hop", remoteUrl: "https://github.com/SidCorp-co/hop", provider: null, connectProvider: "github" } },
   { key: "github", label: "GitHub", status: "not_configured", ...cardDetail(say("integrations.detail.noneConfigured", { provider: "GitHub" })), lastSyncAt: null, configured: false, meta: { capabilities: { hasDeliveryLog: false } } },
   { key: "coolify:dev", label: "Coolify (dev)", status: "connected", ...cardDetail(say("integrations.detail.lastHealth", { status: "ok" })), lastSyncAt: ago(4), configured: true, meta: { capabilities: { hasDeliveryLog: true }, bindingId: "b-coolify", role: "deploy", environment: "dev", name: "dev" } },
-  { key: "sentry", label: "Sentry", status: "error", ...cardDetail(say("integrations.detail.lastHealthWhy", { status: "error", detail: "401 from logs.example.com" })), lastSyncAt: ago(30), configured: true, meta: { capabilities: { hasDeliveryLog: false }, bindingId: "b-sentry", role: "service" } },
+  { key: "sentry", label: "Sentry", status: "error", ...cardDetail(say("integrations.detail.lastHealthWhy", { status: "error", detail: verbatim("401 from logs.example.com") })), lastSyncAt: ago(30), configured: true, meta: { capabilities: { hasDeliveryLog: false }, bindingId: "b-sentry", role: "service" } },
 ] as StatusCard[];
 
 const mcp = (reason: string, over: Record<string, unknown> = {}) => ({

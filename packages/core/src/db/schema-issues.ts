@@ -1,6 +1,7 @@
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
 import type { LandingArtifact, ReadPaths } from '@forge/contracts/landing-artifacts';
 import type { ReleaseNotes } from '@forge/contracts/release-notes';
+import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { relations, type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -183,8 +184,14 @@ export const issues = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'issues_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     descriptionFormatChk: check(
       'issues_description_format_chk',
       sql`${t.descriptionFormat} IN ('markdown', 'html')`,

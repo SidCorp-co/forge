@@ -1,5 +1,6 @@
 import { type DesignStatus, WORKFLOW_DESIGN_MACHINE } from '@forge/contracts/design-status';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import type { Said } from '@forge/contracts/said';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -157,6 +158,8 @@ export interface StoredDesign {
   decidedByUser: string | null;
   decidedAt: Date | null;
   reason: string | null;
+  /** `reason` as said where Forge composed it; null where the decider wrote it. */
+  reasonSays: Said | null;
   designIssueId: string | null;
 }
 
@@ -170,6 +173,7 @@ const designColumns = {
   decidedByUser: projectWorkflowDesigns.decidedByUser,
   decidedAt: projectWorkflowDesigns.decidedAt,
   reason: projectWorkflowDesigns.reason,
+  reasonSays: projectWorkflowDesigns.reasonSays,
   designIssueId: projectWorkflowDesigns.designIssueId,
 };
 
@@ -310,6 +314,8 @@ export async function decideDesign(
     decision: DesignDecision;
     userId: string;
     reason: string | null;
+    /** `reason` as said where Forge composed it; null where the decider wrote it. */
+    reasonSays?: Said | null;
   },
 ): Promise<void> {
   await tx
@@ -319,6 +325,7 @@ export async function decideDesign(
       decidedByUser: input.userId,
       decidedAt: sql`now()`,
       reason: input.reason,
+      reasonSays: input.reasonSays ?? null,
     })
     .where(
       and(

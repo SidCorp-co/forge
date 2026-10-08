@@ -8,11 +8,11 @@ import type { NeedsYouEntity } from '@forge/contracts/needs-you';
 import { say } from '@forge/contracts/said';
 import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import { readDetachedOpenQuestions } from '../questions/index.js';
+import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
-interface QuestionRow {
+interface QuestionRow extends RowTitle {
   entity: NeedsYouEntity;
   key: string;
-  title: string;
   standing: Standing;
   touchedAt: string | null;
 }
@@ -31,7 +31,8 @@ export async function questionRowsOf(
   return (await readDetachedOpenQuestions(projectId)).map((q) => ({
     entity: 'question',
     key: q.id,
-    title: q.prompt || 'A question a run asked',
+    // a run's prompt is its words, in a language the question does not keep
+    ...(q.prompt ? writtenTitle(q.prompt, null) : composedTitle(say('needsYou.title.question'))),
     standing: { attentionGroup: 'needs_you', waitingOn: owedAnswer },
     touchedAt: q.at,
   }));

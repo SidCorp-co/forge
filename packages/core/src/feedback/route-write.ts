@@ -284,6 +284,8 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<CarrierIssue> {
       createdVia: input.channel,
       requirementId: linkable ? target.id : null,
       fromSuggestionId: input.fromSuggestionId,
+      // a title carried over from the item keeps the item's language; one the router wrote is theirs
+      ...(w.createIssue?.title === undefined && copied.ok ? { writtenLang: row.writtenLang } : {}),
     },
     { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
   );

@@ -59,7 +59,7 @@ describe("the BA dashboard", () => {
 
   it("keeps issue, contract and automation rows off the dashboard's Needs you, and the workflow approval on it", () => {
     const wait = waitingOn("you", { who: say("standing.who.you"), act: verbatim("a"), rule: RULE });
-    const item = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: key, waitingOn: wait, touchedAt: null });
+    const item = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: key, titleLang: null, waitingOn: wait, touchedAt: null, says: { title: verbatim(key) } });
     const kept = baNeedsYou([
       item("issues", "issue", "ISS-120"),
       item("designs", "workflow", "hop-staff-shell-ux"),

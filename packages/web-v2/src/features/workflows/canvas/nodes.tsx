@@ -10,7 +10,8 @@ import { Button, PageSectionTitle, TemplateIcon } from "@/design";
 import { HealthMark } from "../components/health-parts";
 import type { StepMark } from "../design-diff";
 import { type NodeHealthView, rewriteWords } from "../health";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import type { WorkflowStep } from "../types";
 import type { BandSummary } from "./model";
 import { titleOf, purposeOf } from "./model";
@@ -70,13 +71,14 @@ export function TypeChip({ type }: { type: TemplateNodeType }) {
 /** A node's markers: one dot per kind zoomed out, a chip per kind on a full card, each opening its source; then its rewrite reading. */
 function NodeHealth({ h, full, hrefOf }: { h: NodeHealthView; full: boolean; hrefOf: StepNodeData["hrefOf"] }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   if (h.kinds.length === 0 && !h.rewrite) return null;
   return (
     <div className="wfc-health" data-testid="node-health">
       {h.kinds.map((k) => {
         const first = h.markers.find((m) => m.kind === k);
         const href = first && hrefOf ? hrefOf(first) : null;
-        const tip = first ? `${k} · ${first.reason}` : k;
+        const tip = first ? `${k} · ${said(first.says.reason, language)}` : k;
         return href ? (
           <Link key={k} href={href} className="nodrag nopan" onClick={(e) => e.stopPropagation()} data-testid="node-health-link">
             <HealthMark kind={k} dot={!full} title={tip} />

@@ -59,6 +59,7 @@ function revisionSummaryOf(r: DesignView['revisions'][number]): DesignRevisionSu
     decidedByName: r.decidedByName,
     decidedAt: r.decidedAt,
     reason: r.reason,
+    says: r.says,
     state: r.state,
     stepCount: listIn(r.document, 'steps').length,
     changes: r.changes,

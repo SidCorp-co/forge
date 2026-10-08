@@ -7,6 +7,7 @@
 import { ISSUE_CREATE_ATTACHMENTS_MAX } from '@forge/contracts/attachments';
 import { ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import { ReleaseNotesSchema } from '@forge/contracts/release-notes';
+import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { issueComplexities, issuePriorities, issueStatuses } from '../db/schema.js';
@@ -39,6 +40,7 @@ export const issuePatchSchema = z
     workState: workStatePatchSchema.optional(),
     detectorKey: z.string().trim().min(1).max(120).optional(),
     expect: sessionContextExpectSchema.optional(),
+    writtenLang: writtenLangSchema.optional(),
   })
   .strict()
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
@@ -114,6 +116,7 @@ export const issueCreateSchema = z
     detectorKey: z.string().trim().min(1).max(120).optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
     status: z.enum(ISSUE_INITIAL_STATUSES).optional(),
+    writtenLang: writtenLangSchema.optional(),
   })
   .strict();
 

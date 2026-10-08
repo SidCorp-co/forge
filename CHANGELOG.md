@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.148] - 2026-10-08
+
+Vietnamese pages read Forge's own sentences in Vietnamese and mark people's words
+
+### Changed
+
+- **Vietnamese pages no longer pass English off as their own.** Forge's own sentences (health, refusals, hints, markers, history, chrome) read in Vietnamese; text a person or agent wrote keeps its language, shown as written and marked.
+
 ## [0.4.0-dev.147] - 2026-10-08
 
 Agents are taught the ask, wait and release acts that landed today

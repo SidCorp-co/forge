@@ -4,6 +4,7 @@ import {
   type CommentIntent,
   isCommentIntent,
 } from '@forge/contracts/record-events';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
@@ -18,6 +19,7 @@ import {
 } from '../issues/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { emitEvent } from '../outbox/index.js';
 import { parseMentions, resolveMentions } from './mentions.js';
@@ -38,6 +40,8 @@ export type CommentThreadRow = {
   intent: CommentIntent;
   /** What a decision decided and why, as fields; null on every other comment. */
   decision: DecisionFields | null;
+  /** The language the body was written in; null when written before the column existed. */
+  writtenLang: WrittenLang | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -54,6 +58,7 @@ export const commentThreadColumns = {
   parentId: comments.parentId,
   intent: comments.intent,
   decision: comments.decision,
+  writtenLang: comments.writtenLang,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
 } as const;
@@ -77,6 +82,12 @@ export type NewComment = {
   intent?: string | null | undefined;
   /** A decision's fields, stored beside the body that writes them out. */
   decision?: DecisionFields | null | undefined;
+  /**
+   * The language the body is in, as its writer declared it. Absent is derived from the writer by
+   * `writtenLangFor`; a notice Forge writes itself passes `'en'`, and a body quoting a writer on
+   * another system passes null: its language is unknown here, and unknown is never guessed.
+   */
+  writtenLang?: WrittenLang | null | undefined;
   /**
    * Who the door says posted it: given, the comment's `comment.created` outbox event is written in
    * its transaction. A notice Forge posts on its own act passes none and emits no event.
@@ -204,6 +215,18 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
     ...rest
   } = input;
   const actor = commentActor(input, byAnAgent);
+  const writtenLang =
+    input.writtenLang !== undefined
+      ? input.writtenLang
+      : context
+        ? await writtenLangFor(
+            { userId: input.authorId, agency: byAnAgent ? 'agent' : 'human' },
+            context.projectId,
+            null,
+            tx,
+            input.body,
+          )
+        : null;
   const result = await tx.transaction(async (t) => {
     const [row] = await t
       .insert(comments)
@@ -213,6 +236,7 @@ export async function insertComment(input: NewComment, tx: Tx = db): Promise<Wri
         format: prepared.format,
         stage: context?.stage ?? null,
         intent,
+        writtenLang,
       })
       .returning(commentThreadColumns);
     if (!row) throw new Error('comment insert returned no row');
@@ -283,6 +307,8 @@ export async function updateCommentBody(
     body: string;
     format?: BodyFormat | null | undefined;
     declaresRecordRoute?: boolean | undefined;
+    /** The language the new body is in, as declared; absent, derived from the comment's author. */
+    writtenLang?: WrittenLang | undefined;
     /** Who edited it, through a door; given, the edit's `comment.updated` event is written with it. */
     announce?: { actor: Actor; projectId: string; before: string } | undefined;
   },
@@ -306,6 +332,15 @@ export async function updateCommentBody(
   const context = await loadStageContext(issueId);
   if (byAnAgent && context) await screenAgentComment(context.projectId, input.body, db);
   const level = context ? await dataPolicyOf(context.projectId) : 'off';
+  const writtenLang = context
+    ? await writtenLangFor(
+        { userId: existing.authorId, agency: byAnAgent ? 'agent' : 'human' },
+        context.projectId,
+        input.writtenLang,
+        undefined,
+        input.body,
+      )
+    : (input.writtenLang ?? null);
 
   return db.transaction(async (t) => {
     const [row] = await t
@@ -313,6 +348,7 @@ export async function updateCommentBody(
       .set({
         body: storedText(level, prepared.body).text,
         format: prepared.format,
+        writtenLang,
         updatedAt: new Date(),
       })
       .where(eq(comments.id, commentId))

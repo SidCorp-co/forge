@@ -12,6 +12,7 @@ import type {
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { PermissionRefusalCode } from "./permissions.js";
 import type { RunWaitingOn } from "./run-standing.js";
+import type { Said } from "./said.js";
 
 /** The onboarding thread's status, as the conversation list and the dashboard hint show it. */
 export const ONBOARDING_STATUSES = [
@@ -367,6 +368,8 @@ export interface OnboardingHint {
 	actionLabel: string;
 	/** Whether a person may ask for a re-analysis now: an onboarding exists and no job of it is live. */
 	mayReanalyze: boolean;
+	/** The sentences `lead`, `text` and `actionLabel` were rendered from. */
+	says: { lead: Said; text: Said; actionLabel: Said };
 }
 
 /** project-onboarding `req-result`: whether the BA assistant suggested first requirements; `pending` while it has not answered. */

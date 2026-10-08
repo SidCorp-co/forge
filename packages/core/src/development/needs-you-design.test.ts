@@ -47,6 +47,13 @@ describe('the design row on Needs you', () => {
       entity: 'workflow',
       key: 'hop-staff-shell-ux',
       title: 'Staff shell · revision 3 proposed',
+      titleLang: null,
+      says: {
+        title: {
+          key: 'needsYou.title.designProposed',
+          vars: { title: verbatim('Staff shell'), revision: 3 },
+        },
+      },
       touchedAt: '2026-10-06T08:00:00.000Z',
       standing: {
         attentionGroup: 'needs_you',

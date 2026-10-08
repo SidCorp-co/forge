@@ -1,8 +1,9 @@
-import { say } from '@forge/contracts/said';
+import { say, verbatim } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
 import {
   declareIntegration,
   type HealthCheckResult,
+  healthOf,
   type IntegrationAdapterMethods,
   updateConnection,
 } from '../index.js';
@@ -30,10 +31,10 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return {
-        status: 'error',
-        message: authToken ? 'no Sentry host configured' : 'no Sentry auth token configured',
-      };
+      return healthOf(
+        'error',
+        say(authToken ? 'integrations.health.sentry.noHost' : 'integrations.health.sentry.noToken'),
+      );
     }
     // `callSentry` makes the previous-token retry and writes the connection's health either way.
     try {
@@ -43,29 +44,29 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         'GET',
       );
       const orgs = Array.isArray(body) ? (body as SentryOrg[]) : [];
-      return {
-        status: 'ok',
-        message: orgs.length
-          ? `Authenticated — ${orgs.length} organization(s) accessible`
-          : 'Sentry auth token is valid',
+      return healthOf(
+        'ok',
+        orgs.length
+          ? say('integrations.health.sentry.authenticated', { n: orgs.length })
+          : say('integrations.health.sentry.valid'),
         // Only non-secret identity fields — never the token.
-        diagnostics: {
+        {
           organizations: orgs
             .slice(0, 10)
             .map((o) => ({ id: o.id ?? null, slug: o.slug ?? null, name: o.name ?? null })),
         },
-      };
+      );
     } catch (err) {
       if (!(err instanceof SentryRefusal)) throw err;
       logger.warn(
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: err.message },
         'sentry: healthcheck failed',
       );
-      return {
-        status: sentryRefusalHealth(err.reason),
-        message: err.message,
-        ...(err.httpStatus !== null ? { diagnostics: { httpStatus: err.httpStatus } } : {}),
-      };
+      return healthOf(
+        sentryRefusalHealth(err.reason),
+        verbatim(err.message),
+        err.httpStatus !== null ? { httpStatus: err.httpStatus } : undefined,
+      );
     }
   },
 

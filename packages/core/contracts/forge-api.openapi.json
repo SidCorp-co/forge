@@ -707,6 +707,13 @@
                   "targetRef": {
                     "maxLength": 500,
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -3267,6 +3274,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }
@@ -10618,6 +10632,13 @@
                     "x-forge-refinements": [
                       "`workState` names no field to write"
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "type": "object",
@@ -11071,6 +11092,13 @@
                   "parentId": {
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -18718,6 +18746,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -19657,6 +19692,13 @@
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -20456,6 +20498,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -20682,6 +20731,13 @@
                       "html"
                     ],
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "type": "object"
@@ -20754,6 +20810,13 @@
                   },
                   "text": {
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -20831,6 +20894,13 @@
                   },
                   "text": {
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -22669,6 +22739,13 @@
                   "title": {
                     "maxLength": 500,
                     "minLength": 1,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -26345,6 +26422,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -26875,6 +26959,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -27099,6 +27190,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }
@@ -28016,6 +28114,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -28241,6 +28346,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -30515,6 +30627,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -30739,6 +30858,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }

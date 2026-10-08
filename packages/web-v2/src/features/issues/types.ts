@@ -15,6 +15,7 @@ import {
 } from "@forge/contracts/pipeline-registry";
 import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
+import type { WrittenLang } from "@forge/contracts/written-lang";
 
 /** The kinds of merged mark core reads off an issue (`merge-record.ts`). */
 export type MergeMarkKind = "unmarked" | "asserted" | "landed" | "observed";
@@ -113,6 +114,8 @@ export interface IssueRow {
   issSeq: number;
   displayId: string;
   title: string;
+  /** The language title and description were written in; null when not kept. */
+  writtenLang?: WrittenLang | null;
   status: IssueStatus;
   priority: IssuePriority;
   category: string | null;
@@ -397,6 +400,8 @@ export interface CommentNode {
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
   body: string;
+  /** The language the body was written in; null when not kept. */
+  writtenLang?: WrittenLang | null;
   /** `markdown` (the default and every pre-existing row) or `html` (ISS-898). */
   format: string;
   template: string | null;

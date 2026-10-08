@@ -1,3 +1,4 @@
+import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "@/test/said";
 import { describe, expect, it } from "vitest";
 import { labelCopy } from "@/lib/i18n/labels";
@@ -27,7 +28,7 @@ describe("the status report as Markdown", () => {
 
   it("calls a harness report by the area it waits in, never by the id no reader knows", () => {
     const id = "b4e9546d-5dad-4dec-b7c6-9a0becf852c0";
-    const report = { area: "automation" as const, entity: "report" as const, key: id, title: "Harness run failed", touchedAt: AT, waitingOn: waitingOn("writers", { who: say("automation.who.harnessTriage"), act: say("standing.act.triageReport"), rule: RULE }) };
+    const report = { area: "automation" as const, entity: "report" as const, key: id, title: "Harness run failed", titleLang: "en" as const, says: { title: verbatim("Harness run failed") }, touchedAt: AT, waitingOn: waitingOn("writers", { who: say("automation.who.harnessTriage"), act: say("standing.act.triageReport"), rule: RULE }) };
     const md = statusMarkdown({ ...STATUS, waits: { ...STATUS.waits, people: [report], peopleCount: 1 } }, words("en"));
     expect(md).not.toContain(id);
     expect(md).toContain(`**${labelCopy("en")("needsYouArea", "automation")}** Harness run failed`);

@@ -29,12 +29,13 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { enumLabel } from "@/design/vocabulary";
 import { formatRelative } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { useRunStanding } from "../hooks";
 import { AGENTS_LIST, MASTER_KEY, masterHref, runHref } from "@/lib/routes/agents";
 import type { MasterStanding, RunStanding, RunStandingList } from "../types";
-import { GROUP_MODES, type GroupMode, runGroups } from "../view";
+import { attentionGroupText, GROUP_MODES, type GroupMode, runGroups } from "../view";
 import { MasterPeek, masterRow } from "./master-views";
 import { RunPeek, runRow } from "./run-views";
 
@@ -70,7 +71,7 @@ function Signals({ d }: { d: RunStandingList }) {
           </span>
         ) : null}
       </Signal>
-      <Signal label={t("agents.signal.slots")} testId="signal-slots" title={m.slots?.undeclared?.detail ?? t("agents.signal.slotsTitle")}>
+      <Signal label={t("agents.signal.slots")} testId="signal-slots" title={m.slots?.undeclared ? said(m.slots.undeclared.says.detail, language) : t("agents.signal.slotsTitle")}>
         <b className="font-semibold">{m.slots ? time.number(m.slots.inUse) : "—"}</b>
         {m.slots ? <span className="text-muted">{t("agents.signal.of", { max: m.slots.max ?? "?" })}</span> : null}
         {m.slots && m.slots.runs > 0 ? <span className="text-muted">· {t(m.slots.runs === 1 ? "agents.signal.declaredOne" : "agents.signal.declaredMany", { n: time.number(m.slots.runs) })}</span> : null}
@@ -115,7 +116,7 @@ export function RunsList({ access }: { access: AgentsAccess }) {
       (r) => matches(text, r) && (!on.has("you") || needsViewer(r)) && (!on.has("stuck") || r.state === "stuck"),
     );
     const showMaster = scope !== "finished" && on.size === 0 && !text;
-    const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, rows: showMaster ? [d.master] : [] };
+    const master: ListGroup<Item> = { id: MASTER_KEY, ...RUN_MASTER_GROUP, ...attentionGroupText("master", language), rows: showMaster ? [d.master] : [] };
     const runs = runGroups(rows, mode, language).map((g) =>
       g.id === "finished" ? { ...g, collapsed: scope === "finished" ? false : RUN_GROUP_LABELS.finished.collapsed } : g,
     );
