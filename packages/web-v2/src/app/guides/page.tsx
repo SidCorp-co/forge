@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
-import { fetchGuideCorpus } from "@/features/guides/api";
+import { fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
 import { DOORS } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
@@ -38,13 +38,15 @@ export default async function GuidesPage({ searchParams }: Props) {
       </GuideShell>
     );
   }
-  const corpus = buildCorpus(HELP_DOCS, await fetchGuideCorpus());
+  const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
+  const corpus = buildCorpus(HELP_DOCS, guides);
   return (
     <GuideShell>
       {asked.kind === "landing" ? (
-        <PublicLanding corpus={corpus} placeholder={searchPlaceholder(corpus)} />
+        <PublicLanding corpus={corpus} placeholder={searchPlaceholder(corpus)} scope={scope} />
       ) : (
         <PublicReader
+          scope={scope}
           corpus={corpus}
           view={asked.kind === "page" ? { kind: "page", href: helpPageHref(asked.slug) } : asked}
         />

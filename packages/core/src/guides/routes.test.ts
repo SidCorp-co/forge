@@ -6,6 +6,7 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const { guideRoutes } = await import('./routes.js');
+const { CORPUS_SCOPE, cliServedBullets } = await import('./corpus-scope.js');
 
 const app = new Hono().route('/api', guideRoutes);
 
@@ -83,6 +84,18 @@ describe('the public index states the corpus it is part of (ISS-1329)', () => {
     expect(body).toContain('Not listed here');
     expect(body).toContain('forge guide');
     expect(body).toContain('authoritative');
+  });
+
+  it('puts the sentence calling the CLI names a pointer directly above those names', async () => {
+    const body = await (await app.request('/api/llms.txt')).text();
+    expect(body).toContain(`${CORPUS_SCOPE.authority}\n\n${cliServedBullets().join('\n')}`);
+    const before = body.slice(0, body.indexOf(CORPUS_SCOPE.authority));
+    expect(before).not.toContain('- dispatch:');
+  });
+
+  it('does not offer a CLI-served guide as a page this host serves', async () => {
+    const body = await (await app.request('/api/llms.txt')).text();
+    for (const g of CORPUS_SCOPE.cliServed) expect(body).not.toContain(`/guides/${g.slug}.md`);
   });
 
   it('serves the capability guide as markdown and lists it', async () => {
