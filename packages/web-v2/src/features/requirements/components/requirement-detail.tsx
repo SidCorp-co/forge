@@ -23,7 +23,6 @@ import {
 import { useState } from "react";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
-import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
@@ -36,6 +35,7 @@ import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts, RequirementPhoneProgressOf } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
+import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
 import { RequirementBanner } from "./standing-bits";
 
@@ -228,7 +228,7 @@ export function RequirementPage({
   const t = useCopy();
   const q = useRequirement(projectId, reqKey);
   const decisions = useRequirementDecisions(projectId, reqKey);
-  const memories = useItemMemoryCount(projectId, reqKey);
+  const memories = useRequirementMemoryCount(projectId, reqKey);
   const proposedAt =
     q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
     q.data?.currentRevision ??
@@ -275,7 +275,7 @@ export function RequirementPage({
                   <RequirementDecisions projectId={projectId} slug={slug} reqKey={d.key} />
                 </section>
               ) : null}
-              {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={d.key} /> : null}
+              {tab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}
               {tab === "activity" ? <RequirementActivity projectId={projectId} d={d} /> : null}
             </DetailPane>
           </DetailLayout>
