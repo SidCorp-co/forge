@@ -141,20 +141,23 @@ describe('releaseContainsRunnerHead', () => {
     await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
   });
 
-  it('cannot say where GitHub stalls, and does not keep that as an answer', async () => {
+  // The deadline is five seconds, over the request and over reading its body: a stall
+  // in either must settle as unanswered at five seconds, and keep nothing.
+  async function settlesAtTheDeadline(stall: (signal?: AbortSignal) => Promise<Response>) {
     vi.useFakeTimers();
     try {
       vi.stubGlobal(
         'fetch',
-        vi.fn(
-          (_url: unknown, init?: { signal?: AbortSignal }) =>
-            new Promise<Response>((_resolve, reject) => {
-              init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
-            }),
-        ),
+        vi.fn((_url: unknown, init?: { signal?: AbortSignal }) => stall(init?.signal)),
       );
-      const asked = releaseContainsRunnerHead(RELEASE, HEAD);
-      await vi.advanceTimersByTimeAsync(10_000);
+      let settled = false;
+      const asked = releaseContainsRunnerHead(RELEASE, HEAD).then((v) => {
+        settled = true;
+        return v;
+      });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
       await expect(asked).resolves.toBeNull();
       const fetchMock = compare('ahead');
       vi.stubGlobal('fetch', fetchMock);
@@ -163,6 +166,26 @@ describe('releaseContainsRunnerHead', () => {
     } finally {
       vi.useRealTimers();
     }
+  }
+
+  const untilAborted = (signal?: AbortSignal) =>
+    new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+
+  it('cannot say where GitHub stalls before answering, at five seconds, and keeps nothing', async () => {
+    await settlesAtTheDeadline((signal) => untilAborted(signal));
+  });
+
+  it('cannot say where GitHub answers and then stalls the body, at five seconds, and keeps nothing', async () => {
+    await settlesAtTheDeadline(async (signal) => {
+      const body = new ReadableStream({
+        start(controller) {
+          signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+        },
+      });
+      return new Response(body, { status: 200 });
+    });
   });
 
   it('asks once for a pair, because the ancestry of two commits cannot change', async () => {
