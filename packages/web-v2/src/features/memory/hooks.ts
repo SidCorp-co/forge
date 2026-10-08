@@ -13,7 +13,7 @@ export function useMemoryEntries(projectId: string, q: MemoryQuery) {
   });
 }
 
-/** Correct and retire, each refreshing every list of this project's memory once it lands. */
+/** Correct, retire and verify ("still true"), each refreshing every list of this project's memory once it lands. */
 export function useMemoryActs(projectId: string) {
   const qc = useQueryClient();
   const refresh = () => qc.invalidateQueries({ queryKey: [...MEMORY_ROOT, projectId] });
@@ -25,5 +25,9 @@ export function useMemoryActs(projectId: string) {
     mutationFn: (a: { id: string; reason: string }) => memoryApi.retire(projectId, a.id, { reason: a.reason }),
     onSuccess: refresh,
   });
-  return { correct, retire };
+  const verify = useMutation({
+    mutationFn: (ids: string[]) => memoryApi.verify(projectId, ids),
+    onSuccess: refresh,
+  });
+  return { correct, retire, verify };
 }

@@ -10,7 +10,9 @@ import {
   correctMemory,
   memoryCorrectInputSchema,
   memoryRetireInputSchema,
+  memoryVerifyInputSchema,
   retireMemory,
+  verifyMemories,
 } from './person-acts.js';
 import { runMemoryWrite, writeMemoryInputSchema } from './write-service.js';
 
@@ -59,6 +61,20 @@ memoryWriteRoutes.post(
     const userId = c.get('userId');
     await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
     return c.json(await correctMemory({ projectId, memoryId, userId, ...body }));
+  },
+);
+
+// A person says "still true" of one memory or many: each is stamped checked now, by them.
+memoryWriteRoutes.post(
+  '/verify',
+  zValidator('query', memoryActQuery),
+  zValidator('json', memoryVerifyInputSchema),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const { ids } = c.req.valid('json');
+    const userId = c.get('userId');
+    await requireCan(actorFor(userId), 'project.write', projectResource(projectId));
+    return c.json(await verifyMemories({ projectId, memoryIds: ids, userId }));
   },
 );
 

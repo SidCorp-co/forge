@@ -3,8 +3,8 @@
 // One memory on the Memory page (MJ-1, MJ-3): what it says, who wrote it and when, whether anyone
 // checked it, why it needs a check (core's reasons: unchecked too long, a cited record changed since),
 // which records it names that no longer exist, a release's "may be outdated" flag read
-// as the guess it is, and every correction or retirement with its reason. Correct and Retire each
-// take a reason before they send; a mirror of an issue, comment or job offers neither.
+// as the guess it is, and every correction or retirement with its reason. "Still true" stamps the row checked
+// by the person; "Not true anymore" leads to Correct or Retire, which each take a reason before they send; a mirror of an issue, comment or job offers neither.
 
 import { MEMORY_CHECK_AFTER_DAYS, MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
 import Link from "next/link";
@@ -21,13 +21,18 @@ import { requirementHref } from "@/lib/routes/requirements";
 /** A reason short enough to be a word is not one; core holds the same floor. */
 const REASON_MIN = 3;
 
-type Mode = "read" | "correct" | "retire";
+type Mode = "read" | "untrue" | "correct" | "retire";
 
 export interface MemoryEntryRowProps {
   entry: MemoryEntry;
   slug: string;
   timeZone?: string;
   busy: boolean;
+  /** "Still true": this memory was checked and holds. */
+  onVerify: (id: string) => void;
+  /** Set on the needs-a-check list, where rows are picked for a bulk "Mark checked". */
+  selected?: boolean;
+  onSelect?: (id: string, on: boolean) => void;
   onCorrect: (id: string, body: { text: string; reason: string }) => void;
   onRetire: (id: string, body: { reason: string }) => void;
 }
@@ -100,7 +105,7 @@ function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | nul
   return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
 }
 
-export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetire }: MemoryEntryRowProps) {
+export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, selected, onSelect, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const day = (iso: string) => formatDate(iso, lang, timeZone);
@@ -121,6 +126,9 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetir
   return (
     <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        {onSelect && canAct ? (
+          <input type="checkbox" className="self-center" checked={selected === true} aria-label={t("memory.select", { ref: entry.sourceRef })} onChange={(e) => onSelect(entry.id, e.target.checked)} />
+        ) : null}
         <span className="font-mono text-12-5 text-fg" translate="no">
           {entry.sourceRef}
         </span>
@@ -129,7 +137,13 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetir
       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-12 text-muted" data-testid="memory-meta">
         <span>{t("memory.writtenBy", { name: actorName(t, entry.writtenBy) })}</span>
         <span>{t("memory.updated", { date: day(entry.updatedAt) })}</span>
-        <span>{entry.verifiedAt ? t("memory.verified", { date: day(entry.verifiedAt) }) : t("memory.neverVerified")}</span>
+        <span data-testid="memory-checked">
+          {!entry.verifiedAt
+            ? t("memory.neverVerified")
+            : entry.verifiedBy
+              ? t("memory.verifiedBy", { date: day(entry.verifiedAt), name: actorName(t, entry.verifiedBy) })
+              : t("memory.verified", { date: day(entry.verifiedAt) })}
+        </span>
       </p>
       {needsCheck ? (
         <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
@@ -189,16 +203,30 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetir
 
       {canAct && mode === "read" ? (
         <div className="flex gap-2">
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onVerify(entry.id)}>
+            {t("memory.stillTrue")}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setMode("untrue")}>
+            {t("memory.notTrue")}
+          </Button>
+        </div>
+      ) : null}
+
+      {canAct && mode === "untrue" ? (
+        <div className="flex gap-2">
           <Button size="sm" variant="ghost" onClick={() => setMode("correct")}>
             {t("memory.correct")}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setMode("retire")}>
             {t("memory.retire")}
           </Button>
+          <Button size="sm" variant="ghost" onClick={close}>
+            {t("memory.cancel")}
+          </Button>
         </div>
       ) : null}
 
-      {canAct && mode !== "read" ? (
+      {canAct && (mode === "correct" || mode === "retire") ? (
         <form
           className="grid max-w-[760px] gap-2"
           onSubmit={(e) => {

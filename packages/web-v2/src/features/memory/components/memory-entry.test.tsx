@@ -18,6 +18,7 @@ const BASE: MemoryEntry = {
   updatedAt: "2026-10-05T09:00:00.000Z",
   writtenBy: { id: "u1", name: "runner", agent: true },
   verifiedAt: null,
+  verifiedBy: null,
   cites: [
     { ref: "ISS-1", kind: "issue", project: "hop", state: "gone", why: "dropped" },
     { ref: "REQ-9", kind: "requirement", project: "hop", state: "gone", why: "missing" },
@@ -39,7 +40,7 @@ const BASE: MemoryEntry = {
   archivedBy: null,
 };
 
-const row = (entry: MemoryEntry, acts = { onCorrect: vi.fn(), onRetire: vi.fn() }, lang: "en" | "vi" = "en") => {
+const row = (entry: MemoryEntry, acts = { onVerify: vi.fn(), onCorrect: vi.fn(), onRetire: vi.fn() }, lang: "en" | "vi" = "en") => {
   renderWithQuery(
     <InterfaceLanguageScope language={lang}>
       <MemoryEntryRow entry={entry} slug="hop" timeZone="UTC" busy={false} {...acts} />
@@ -84,7 +85,7 @@ describe("a memory on the Memory page", () => {
     const meta = screen.getByTestId("memory-meta").textContent ?? "";
     expect(meta).toContain("runner (agent)");
     expect(meta).toContain("05/10/2026");
-    expect(meta).toContain("Never verified");
+    expect(meta).toContain("Never checked");
   });
 
   it("names each record it cites that no longer resolves, and the release flag as a guess", () => {
@@ -113,6 +114,7 @@ describe("a memory on the Memory page", () => {
 
   it("does not save a correction until a reason is given, then sends the text and the reason", () => {
     const acts = row(BASE);
+    fireEvent.click(screen.getByRole("button", { name: "Not true anymore" }));
     fireEvent.click(screen.getByRole("button", { name: "Correct" }));
     fireEvent.change(screen.getByLabelText("Corrected text"), { target: { value: "Owner chose the card board (REQ-1)." } });
     const save = screen.getByRole("button", { name: "Save correction" });
@@ -124,6 +126,7 @@ describe("a memory on the Memory page", () => {
 
   it("retires only with a reason", () => {
     const acts = row(BASE);
+    fireEvent.click(screen.getByRole("button", { name: "Not true anymore" }));
     fireEvent.click(screen.getByRole("button", { name: "Retire" }));
     const confirm = screen.getByRole("button", { name: "Retire this memory" });
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
@@ -163,6 +166,31 @@ describe("a memory on the Memory page", () => {
     row({ ...BASE, source: "issue" });
     expect(screen.queryByRole("button", { name: "Correct" })).toBeNull();
     expect(screen.getByTestId("memory-mirror").textContent).toBe("A copy of this project's Issue: change the Issue itself.");
+  });
+
+  it("says who checked it and when, and that an agent's check names no person", () => {
+    row({ ...BASE, verifiedAt: "2026-10-07T09:00:00.000Z", verifiedBy: { id: "u2", name: "Lan", agent: false } });
+    expect(screen.getByTestId("memory-checked").textContent).toBe("Checked 07/10/2026 by Lan");
+    document.body.innerHTML = "";
+    row({ ...BASE, verifiedAt: "2026-10-07T09:00:00.000Z" });
+    expect(screen.getByTestId("memory-checked").textContent).toBe("Checked 07/10/2026");
+  });
+
+  it("sends \"Still true\" for the row at once, with no reason asked", () => {
+    const acts = row(BASE);
+    fireEvent.click(screen.getByRole("button", { name: "Still true" }));
+    expect(acts.onVerify).toHaveBeenCalledWith("m1");
+  });
+
+  it("offers a pick box only where the list asks for one, and reports it", () => {
+    const onSelect = vi.fn();
+    renderWithQuery(
+      <InterfaceLanguageScope language="en">
+        <MemoryEntryRow entry={BASE} slug="hop" timeZone="UTC" busy={false} onVerify={vi.fn()} onCorrect={vi.fn()} onRetire={vi.fn()} onSelect={onSelect} selected={false} />
+      </InterfaceLanguageScope>,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select gotcha/flat-board" }));
+    expect(onSelect).toHaveBeenCalledWith("m1", true);
   });
 
   it("reads in Vietnamese", () => {

@@ -5,6 +5,11 @@
 //    what they know. A release's "possibly stale" flag is cleared with it.
 //  - Retire: the row leaves every read surface (archived), and who retired it and why stays on it,
 //    so the Memory page's Retired list says so. Nothing is deleted here.
+//  - Verify ("still true"): the row counts as checked now, by this person. The check is stamped on
+//    the row (`last_verified_at`, who on `metadata.verifiedBy`), kept in `metadata.checks`, and the
+//    reasons it needed a check fall away: a release's flag is cleared, and a cited record that
+//    changes later brings the reason back. One or many rows; each gets its own stamp, and a bulk
+//    naming a row it cannot check checks none.
 // A mirror of an issue, comment or job is refused: it follows its record, so it is corrected there.
 //
 // Does NOT check authorization — callers MUST verify writer access to the project first.
@@ -26,12 +31,19 @@ export const memoryCorrectInputSchema = z.object({
   reason: REASON,
 });
 
+export const memoryVerifyInputSchema = z.object({
+  ids: z.array(z.uuid()).min(1).max(200),
+});
+
 export const memoryRetireInputSchema = z.object({ reason: REASON });
 
 /** The last acts kept on a row's `metadata.corrections`. */
 const CORRECTION_HISTORY_CAP = 20;
 
 /** The `metadata` keys a correction clears: the release flag, which the person has just answered. */
+/** The last checks kept on a row's `metadata.checks`. */
+const CHECK_HISTORY_CAP = 20;
+
 const FLAG_KEYS = ['staleSince', 'supersededBy'] as const;
 
 async function rowOf(projectId: string, memoryId: string) {
@@ -94,6 +106,7 @@ export async function correctMemory(args: {
     -CORRECTION_HISTORY_CAP,
   );
   md.writtenBy = args.userId;
+  md.verifiedBy = args.userId;
   const result = await indexMemory({
     projectId: args.projectId,
     source: row.source,
@@ -122,4 +135,29 @@ export async function retireMemory(args: {
     .set({ archivedAt: at, metadata: md })
     .where(and(eq(memories.id, row.id), sql`${memories.archivedAt} IS NULL`));
   return { id: row.id, retiredAt: at.toISOString() };
+}
+
+export async function verifyMemories(args: {
+  projectId: string;
+  memoryIds: readonly string[];
+  userId: string;
+}): Promise<{ verified: { id: string; verifiedAt: string }[] }> {
+  const ids = [...new Set(args.memoryIds)];
+  const rows = [];
+  for (const id of ids) rows.push(await rowOf(args.projectId, id));
+  const verified: { id: string; verifiedAt: string }[] = [];
+  for (const row of rows) {
+    const at = new Date();
+    const md = { ...((row.metadata ?? {}) as Record<string, unknown>) };
+    for (const k of FLAG_KEYS) delete md[k];
+    const history = Array.isArray(md.checks) ? md.checks : [];
+    md.checks = [...history, { by: args.userId, at: at.toISOString() }].slice(-CHECK_HISTORY_CAP);
+    md.verifiedBy = args.userId;
+    await db
+      .update(memories)
+      .set({ lastVerifiedAt: at, metadata: md })
+      .where(and(eq(memories.id, row.id), sql`${memories.archivedAt} IS NULL`));
+    verified.push({ id: row.id, verifiedAt: at.toISOString() });
+  }
+  return { verified };
 }
