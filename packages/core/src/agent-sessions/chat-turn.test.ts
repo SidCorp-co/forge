@@ -21,7 +21,7 @@ const state = vi.hoisted(() => ({
   written: [] as Array<{ id: string; messages: unknown[] }>,
   seeded: [] as Array<Record<string, unknown>>,
   calls: [] as string[],
-  box: { name: 'box-1', capabilities: { confinedChat: true } as Record<string, unknown> },
+  box: { name: 'box-1', capabilities: { confinedChatNetwork: true } as Record<string, unknown> },
 }));
 
 vi.mock('../db/client.js', () => {
@@ -158,7 +158,7 @@ beforeEach(() => {
     boundPath: '/bound',
     preambleFails: false,
     transcript: [{ type: 'user', content: 'earlier' }],
-    box: { name: 'box-1', capabilities: { confinedChat: true } },
+    box: { name: 'box-1', capabilities: { confinedChatNetwork: true } },
   });
   for (const k of ['set', 'transitions', 'frames', 'written', 'seeded', 'calls'] as const) {
     state[k].length = 0;
@@ -449,8 +449,9 @@ describe('dispatchChatTurn: refusals write nothing', () => {
   });
 
   it.each([
-    ['cannot', { confinedChat: false, confinedChatUnavailable: 'this box runs macos' }, 'macos'],
+    ['cannot', { confinedChatNetwork: false, confinedChatUnavailable: 'runs macos' }, 'macos'],
     ['never declared it', { turnCredential: true }, 'forge-runner update'],
+    ['confines only the credential of', { confinedChat: true }, 'not its network'],
   ])(
     'a box that %s confine a chat is BOX_CANNOT_CONFINE_CHAT, naming why',
     async (_, caps, why) => {

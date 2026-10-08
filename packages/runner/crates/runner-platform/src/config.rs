@@ -211,6 +211,11 @@ pub struct RunnerSettings {
     pub duplex_max_sessions: u32,
     #[serde(default = "default_max_job_panes")]
     pub max_job_panes: u32,
+    /// Hosts a confined chat session may reach beyond the model's endpoint, Forge core and its
+    /// MCP servers — `host`, `host:port` or a URL. Each one is a place a prompt-injected chat
+    /// can send what it reads, so the default is none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chat_egress_allow: Vec<String>,
 }
 
 impl Default for RunnerSettings {
@@ -218,6 +223,7 @@ impl Default for RunnerSettings {
         Self {
             duplex_max_sessions: default_duplex_max_sessions(),
             max_job_panes: default_max_job_panes(),
+            chat_egress_allow: Vec::new(),
         }
     }
 }

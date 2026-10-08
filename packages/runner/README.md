@@ -134,12 +134,25 @@ runs it in a bubblewrap sandbox (`crates/runner-agent/src/claude_code/confine.rs
   `git fetch` runs there with every credential the daemon holds), the executables on `PATH`,
   Claude Code's install and `~/.claude` (its login and transcripts), `config.toml` for
   `forge-runner api`'s core URL, the turn's own MCP config and attachments.
-- **Environment:** built from a list — locale, proxies, trust roots and Claude Code's own login —
-  plus `$FORGE_PAT` set to the turn token. Git has no push credential and asks for none.
+- **Environment:** built from a list — locale, trust roots and Claude Code's own login — plus
+  `$FORGE_PAT` set to the turn token. Git has no push credential and asks for none.
+- **Network:** a namespace of its own with only loopback, so no host, DNS resolver or abstract
+  socket of the box is reachable. The proxy variables name `127.0.0.1:3128`, where
+  `forge-runner egress-bridge` (the sandboxed program's parent) carries each connection to a
+  proxy the runner holds outside (`crates/runner-platform/src/confine/egress.rs`). That proxy
+  opens a connection only to the model's endpoint (`api.anthropic.com` and `platform.claude.com`,
+  or the `ANTHROPIC_*_BASE_URL` hosts), the core, the URL-typed MCP servers the turn was handed
+  and the hosts `[runner] chat_egress_allow` lists in `config.toml`; any other host is answered
+  `403 CHAT_EGRESS_REFUSED`, naming it, and logged. Where the box reaches the network through an
+  `http://` proxy of its own, the egress chains through it. `WebSearch` runs on Anthropic's side
+  and is unaffected; `WebFetch` runs on this box, so it reaches the same hosts and no others. A
+  stdio MCP server runs inside the sandbox and is held to the same list.
 
 It needs Linux with `bwrap` installed. A box without it — and every macOS or Windows box —
-declares `confinedChat: false` with the reason on its heartbeat, `forge-runner doctor` prints
-it, and core refuses a chat turn there `BOX_CANNOT_CONFINE_CHAT` rather than run it unconfined.
+declares `confinedChat: false` and `confinedChatNetwork: false` with the reason on its heartbeat,
+`forge-runner doctor` prints it, and core refuses a chat turn there `BOX_CANNOT_CONFINE_CHAT`
+rather than run it unconfined. Core requires `confinedChatNetwork`, so a runner that confined
+the credential alone is refused the same way, naming the update.
 A schedule fire is a run, not a chat, and runs with the box's view as before.
 
 ### Skill delivery

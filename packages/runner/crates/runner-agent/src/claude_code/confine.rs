@@ -12,10 +12,17 @@
 //! The checkout is writable, its git directory is not: the runner's own `git fetch` runs in that
 //! directory with every credential the daemon holds, so a `core.sshCommand` or a hook a chat
 //! wrote there would be code the daemon runs for it.
+//!
+//! What it can read it cannot send anywhere it likes either: a chat answers text a stranger may
+//! have written — an issue body, feedback, an attachment, a file in the checkout — and a shell
+//! that obeys it could post the checkout to any host. Its network is the egress proxy's, which
+//! reaches the model's endpoint, Forge core, the MCP servers it was handed and what this box's
+//! `[runner] chat_egress_allow` adds, and refuses every other host by name.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
+use runner_platform::confine::egress::{Egress, Host, Upstream};
 use runner_platform::confine::{Mount, Sandbox};
 use runner_platform::error::{Error, Result};
 
@@ -32,17 +39,34 @@ pub(crate) struct BoxView {
     /// The `claude` binary as resolved, so its install is bound back wherever it lives.
     pub claude_bin: Option<PathBuf>,
     pub temp_dir: PathBuf,
+    /// This runner's own binary, which runs the egress bridge inside the sandbox.
+    pub runner_exe: Option<PathBuf>,
+    /// Where each session's egress socket directory is made.
+    pub egress_dir: PathBuf,
+    /// `[runner] chat_egress_allow` from this box's config.
+    pub egress_allow: Vec<String>,
 }
 
 impl BoxView {
     pub fn current() -> Result<Self> {
         let home = dirs_home()?;
+        let config = runner_platform::config::Config::load().map_err(|e| {
+            Error::Other(format!(
+                "[CHAT_EGRESS_CONFIG] this runner's config, which names the hosts a chat session \
+                 may reach, cannot be read: {e}"
+            ))
+        })?;
         Ok(Self {
             home,
             inherited: std::env::vars_os().collect(),
             runner_config: runner_platform::config::Config::path().ok(),
             claude_bin: Some(PathBuf::from(runner_platform::process::resolve_claude_bin())),
             temp_dir: std::env::temp_dir(),
+            runner_exe: runner_platform::exe::own().ok().map(|own| own.path),
+            egress_dir: runner_platform::config::base_dir()
+                .unwrap_or_else(|_| std::env::temp_dir().join("forge-runner"))
+                .join("egress"),
+            egress_allow: config.runner.chat_egress_allow,
         })
     }
 
@@ -82,6 +106,11 @@ pub(crate) struct Handed<'a> {
     /// `user.name` and `user.email` as git reads them outside, so a commit inside is still
     /// attributed: the session does not see `~/.gitconfig`.
     pub git_identity: Option<(String, String)>,
+    /// The core this runner talks to, which the session's MCP server and `forge-runner api`
+    /// reach.
+    pub core_url: &'a str,
+    /// Where this session's egress proxy listens.
+    pub egress_socket: PathBuf,
 }
 
 /// Variables a session inherits by name: locale, terminal, proxies and trust roots, and Claude
@@ -192,14 +221,19 @@ fn tool_dirs(view: &BoxView, emptied: &[PathBuf]) -> Vec<PathBuf> {
     out
 }
 
-/// The sandbox a confined chat session runs in.
-pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Sandbox {
+/// The sandbox a confined chat session runs in. Refused by name where this runner cannot name
+/// its own binary, which the sandbox's network runs through. `/run/systemd/resolve` stays
+/// empty: its resolver socket would answer a lookup for any name, and a name is a message.
+pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbox> {
+    let bridge = view.runner_exe.clone().ok_or_else(|| {
+        Error::Other(
+            "[CHAT_CONFINEMENT_UNAVAILABLE] this runner cannot name its own binary, which carries \
+             a confined chat session's network, so the session would have none"
+                .into(),
+        )
+    })?;
     let emptied = emptied(view);
     let mut mounts: Vec<Mount> = emptied.iter().cloned().map(Mount::Empty).collect();
-    let resolve = Path::new("/run/systemd/resolve");
-    if resolve.is_dir() {
-        mounts.push(Mount::Read(resolve.to_path_buf()));
-    }
     for dir in tool_dirs(view, &emptied) {
         mounts.push(Mount::Read(dir));
     }
@@ -239,11 +273,69 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Sandbox {
         mounts.push(Mount::Hide(workspace_mcp));
     }
 
-    Sandbox {
+    Ok(Sandbox {
         mounts,
         env: chat_env(view, handed),
         cwd: handed.repo.to_path_buf(),
+        egress: Some(Egress {
+            socket: handed.egress_socket.clone(),
+            bridge,
+        }),
+    })
+}
+
+/// The Anthropic hosts a session reaches by default: the API, and where a claude.ai login
+/// refreshes its token.
+const MODEL_HOSTS: &[&str] = &["https://api.anthropic.com", "https://platform.claude.com"];
+
+/// Where a model endpoint is moved, each replacing nothing but adding its host.
+const MODEL_ENDPOINT_VARS: &[&str] = &[
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_BEDROCK_BASE_URL",
+    "ANTHROPIC_VERTEX_BASE_URL",
+];
+
+/// Every host a confined session may reach: the model's endpoint as this box's Claude Code login
+/// names it, the core, each URL-typed MCP server it was handed, and the box's configured extras.
+/// An entry that names no host is refused by name rather than dropped.
+pub(crate) fn egress_allow(view: &BoxView, handed: &Handed<'_>) -> Result<Vec<Host>> {
+    let refuse = |what: &str, why: String| {
+        Error::Other(format!(
+            "[CHAT_EGRESS_CONFIG] {what} cannot be allowed to a confined chat session: {why}"
+        ))
+    };
+    let mut out: Vec<Host> = Vec::new();
+    for url in MODEL_HOSTS {
+        out.push(Host::parse(url).map_err(|e| refuse("the model's endpoint", e))?);
     }
+    for name in MODEL_ENDPOINT_VARS {
+        if let Some(url) = view.var(name) {
+            let url = url.to_string_lossy();
+            out.push(Host::parse(&url).map_err(|e| refuse(&format!("${name}"), e))?);
+        }
+    }
+    out.push(Host::parse(handed.core_url).map_err(|e| refuse("the core URL", e))?);
+    let config = std::fs::read_to_string(handed.mcp_config).unwrap_or_default();
+    let config: serde_json::Value = serde_json::from_str(&config).unwrap_or_default();
+    if let Some(servers) = config.get("mcpServers").and_then(|s| s.as_object()) {
+        for (name, server) in servers {
+            if let Some(url) = server.get("url").and_then(|u| u.as_str()) {
+                out.push(Host::parse(url).map_err(|e| refuse(&format!("MCP server `{name}`"), e))?);
+            }
+        }
+    }
+    for entry in &view.egress_allow {
+        out.push(Host::parse(entry).map_err(|e| refuse("`[runner] chat_egress_allow`", e))?);
+    }
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+/// This box's own upstream proxy, which the egress proxy chains through.
+pub(crate) fn upstream(view: &BoxView) -> Result<Option<Upstream>> {
+    Upstream::from_env(|name| view.var(name).map(|v| v.to_string_lossy().into_owned()))
+        .map_err(|why| Error::Other(format!("[CHAT_EGRESS_CONFIG] {why}")))
 }
 
 fn chat_env(view: &BoxView, handed: &Handed<'_>) -> Vec<(OsString, OsString)> {

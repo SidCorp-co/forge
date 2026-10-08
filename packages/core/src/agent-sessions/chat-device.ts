@@ -25,13 +25,18 @@ export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
         : 'No online Claude client for this session. Bring its runner online, then try again.',
   );
 
-/** What a box's heartbeat declares when it runs a session core marks `confined` holding only its turn token. */
-export const CONFINED_CHAT_CAPABILITY = 'confinedChat';
+/**
+ * What a box's heartbeat declares when it runs a session core marks `confined` holding only its
+ * turn token, on a network that reaches only the model, this core and the MCP servers it was
+ * handed. A runner that confined the credential alone declared `confinedChat`, and is not enough.
+ */
+export const CONFINED_CHAT_CAPABILITY = 'confinedChatNetwork';
 
 /**
  * A chat door's turn is refused by name on a box that cannot confine it, before anything is
  * written: run unconfined, its shell reads the box's other credentials — the checkout's
- * workspace token, the holder's stored PAT — and files with those what its own token may not.
+ * workspace token, the holder's stored PAT — and files with those what its own token may not;
+ * run on the box's network, it sends what it reads to any host a prompt names.
  */
 export async function requireConfiningBox(deviceId: string): Promise<void> {
   const [box] = await db
@@ -45,7 +50,9 @@ export async function requireConfiningBox(deviceId: string): Promise<void> {
   const why =
     typeof said === 'string' && said.trim()
       ? said.trim()
-      : 'its forge-runner predates confining a chat session — update it on the box (`forge-runner update`)';
+      : declared.confinedChat === true
+        ? "its forge-runner confines a chat session's credentials but not its network — update it on the box (`forge-runner update`)"
+        : 'its forge-runner predates confining a chat session — update it on the box (`forge-runner update`)';
   throw refuseSession(
     'BOX_CANNOT_CONFINE_CHAT',
     `A chat session holds only its own turn credential, and the runner box ${box?.name ?? deviceId} cannot confine one, so nothing was dispatched: ${why}.`,

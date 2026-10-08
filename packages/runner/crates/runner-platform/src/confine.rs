@@ -8,10 +8,17 @@
 //! rule or a prompt does not stop a shell that can `cat` a path, so the paths are simply not
 //! there.
 //!
+//! A shell that holds nothing still sends whatever it can read wherever it can connect, so a
+//! sandbox given an [`egress::Egress`] has a network of its own as well, and reaches only the
+//! hosts its proxy was started with.
+//!
 //! Linux only, through bubblewrap: a mount namespace for the view, a PID namespace so no other
-//! process's `/proc/<pid>/environ` or `/proc/<pid>/root` is reachable. Elsewhere, and on a Linux
-//! box where bubblewrap cannot start, [`availability`] says why, so the box declares it and core
-//! refuses the turn by name instead of running it unconfined.
+//! process's `/proc/<pid>/environ` or `/proc/<pid>/root` is reachable, a network namespace so no
+//! connection leaves except through the egress proxy. Elsewhere, and on a Linux box where
+//! bubblewrap cannot start, [`availability`] says why, so the box declares it and core refuses
+//! the turn by name instead of running it unconfined.
+
+pub mod egress;
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -33,12 +40,13 @@ pub enum Mount {
 }
 
 /// What a confined process sees: everything on the box read-only, then `mounts` in order, run
-/// in `cwd` with exactly `env`.
+/// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy.
 #[derive(Debug, Clone, Default)]
 pub struct Sandbox {
     pub mounts: Vec<Mount>,
     pub env: Vec<(OsString, OsString)>,
     pub cwd: PathBuf,
+    pub egress: Option<egress::Egress>,
 }
 
 /// Whether this box can confine a process, and if not, the reason a person can act on.
@@ -82,7 +90,8 @@ fn probe() -> Availability {
         cwd: PathBuf::from("/"),
         ..Sandbox::default()
     };
-    let mut args = probe.bwrap_args();
+    let mut args: Vec<OsString> = vec!["--unshare-net".into()];
+    args.extend(probe.bwrap_args());
     args.push("true".into());
     match std::process::Command::new(&bwrap)
         .args(&args)
@@ -109,7 +118,8 @@ impl Sandbox {
     ///
     /// The whole tree is bound read-only first, so nothing not named is writable. `/dev` and
     /// `/proc` are fresh, and the PID namespace makes this process tree the only one `/proc`
-    /// shows. `--die-with-parent` ends the tree with the runner's child, and no `--new-session`,
+    /// shows. With egress the network namespace is new too, and the proxy's socket directory and
+    /// the bridge binary are bound back last, so no emptied directory covers them. `--die-with-parent` ends the tree with the runner's child, and no `--new-session`,
     /// so the runner's kill of the process group still reaches every process inside.
     #[cfg(target_os = "linux")]
     pub fn bwrap_args(&self) -> Vec<OsString> {
@@ -141,14 +151,24 @@ impl Sandbox {
             }
             args.push(target.as_os_str().to_os_string());
         }
+        if let Some(egress) = &self.egress {
+            args.insert(0, "--unshare-net".into());
+            let dir = egress.socket.parent().unwrap_or(&egress.socket);
+            for path in [dir, egress.bridge.as_path()] {
+                args.push("--ro-bind".into());
+                args.push(path.as_os_str().to_os_string());
+                args.push(path.as_os_str().to_os_string());
+            }
+        }
         args.push("--chdir".into());
         args.push(self.cwd.as_os_str().to_os_string());
         args.push("--".into());
         args
     }
 
-    /// `program args` inside this sandbox, its environment exactly [`Sandbox::env`]. Refused,
-    /// naming why, where [`availability`] says this box cannot confine.
+    /// `program args` inside this sandbox, its environment exactly [`Sandbox::env`] — with
+    /// egress, the proxy variables replaced by the bridge's, and the bridge running the program.
+    /// Refused, naming why, where [`availability`] says this box cannot confine.
     pub fn command(
         &self,
         program: &std::ffi::OsStr,
@@ -163,8 +183,20 @@ impl Sandbox {
         #[cfg(target_os = "linux")]
         {
             let mut cmd = tokio::process::Command::new("bwrap");
-            cmd.args(self.bwrap_args()).arg(program).args(args);
-            cmd.env_clear().envs(self.env.iter().map(|(k, v)| (k, v)));
+            cmd.args(self.bwrap_args());
+            let mut env = self.env.clone();
+            match &self.egress {
+                Some(egress) => {
+                    let (bridge, wrapped) = egress.wrap(program, args);
+                    cmd.arg(bridge).args(wrapped);
+                    env.retain(|(k, _)| !egress::Egress::sets(k));
+                    env.extend(egress::Egress::env());
+                }
+                None => {
+                    cmd.arg(program).args(args);
+                }
+            }
+            cmd.env_clear().envs(env);
             cmd.current_dir(&self.cwd);
             Ok(cmd)
         }
@@ -192,6 +224,7 @@ mod tests {
             ],
             env: vec![],
             cwd: "/home/u/repo".into(),
+            egress: None,
         };
         let args: Vec<String> = sandbox
             .bwrap_args()
@@ -210,6 +243,38 @@ mod tests {
         assert!(
             !args.iter().any(|a| a == "--new-session"),
             "a new session would put the tree outside the process group the runner kills: {args:?}"
+        );
+    }
+
+    #[test]
+    fn with_egress_the_network_is_new_and_the_proxy_and_bridge_are_bound_back_last() {
+        let sandbox = Sandbox {
+            mounts: vec![Mount::Empty("/home/u".into())],
+            env: vec![("HTTPS_PROXY".into(), "http://box-proxy:3128".into())],
+            cwd: "/home/u/repo".into(),
+            egress: Some(egress::Egress {
+                socket: "/home/u/.config/forge-runner/egress/s1/proxy.sock".into(),
+                bridge: "/home/u/.local/bin/forge-runner".into(),
+            }),
+        };
+        let args: Vec<String> = sandbox
+            .bwrap_args()
+            .into_iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.iter().any(|a| a == "--unshare-net"), "{args:?}");
+        let home = args.iter().position(|a| a == "/home/u").unwrap();
+        let dir = args
+            .iter()
+            .position(|a| a == "/home/u/.config/forge-runner/egress/s1")
+            .expect("the proxy's socket directory is bound into the sandbox");
+        let bridge = args
+            .iter()
+            .position(|a| a == "/home/u/.local/bin/forge-runner")
+            .expect("the bridge binary is bound into the sandbox");
+        assert!(
+            home < dir && home < bridge,
+            "the emptied home would cover the socket and the bridge: {args:?}"
         );
     }
 }

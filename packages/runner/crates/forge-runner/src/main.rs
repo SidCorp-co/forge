@@ -64,6 +64,9 @@ enum Command {
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
     Update(cmd::update::Args),
+    /// Inside a confined chat session's sandbox: carry its proxy port to the runner's egress.
+    #[command(name = "egress-bridge", hide = true)]
+    EgressBridge(cmd::egress_bridge::Args),
 }
 
 #[tokio::main]
@@ -119,5 +122,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Question(a) => cmd::question::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
+        Command::EgressBridge(a) => cmd::egress_bridge::run(a).await,
     }
 }
