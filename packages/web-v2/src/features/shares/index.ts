@@ -4,4 +4,4 @@ export { SharedAnswerPage } from "./components/shared-answer-page";
 export { ReportDocumentBody } from "./components/shared-answer";
 export { ShareAction } from "./components/share-action";
 export { ShareList } from "./components/share-list";
-export { shareSubjectOf } from "./subject";
+export { shareSubjectOf, type TemplateSave, templateSaveOf } from "./subject";

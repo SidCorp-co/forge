@@ -19,6 +19,8 @@ export interface ConfirmDialogProps {
   confirmLabel: string;
   tone?: "danger" | "default";
   loading?: boolean;
+  /** Holds the confirm back while what it would send is not whole yet (a form asked in `message`). */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -30,6 +32,7 @@ export function ConfirmDialog({
   confirmLabel,
   tone = "default",
   loading = false,
+  confirmDisabled = false,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -56,6 +59,7 @@ export function ConfirmDialog({
             type="button"
             variant={tone === "danger" ? "danger" : "primary"}
             loading={loading}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}

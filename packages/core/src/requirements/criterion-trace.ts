@@ -13,7 +13,13 @@ import { requirementCriteria, requirements } from '../db/schema-requirements.js'
 export interface TraceWordings {
   /** The issue's requirement, and the revision its plan was written against; null where it serves none. */
   requirement: { seq: number; revision: number | null } | null;
-  wordings: { id: string; code: string; sinceRevision: number; retiredRevision: number | null }[];
+  wordings: {
+    id: string;
+    code: string;
+    body: string;
+    sinceRevision: number;
+    retiredRevision: number | null;
+  }[];
 }
 
 export async function traceWordingsOf(tx: Tx, issueId: string): Promise<TraceWordings> {
@@ -33,6 +39,7 @@ export async function traceWordingsOf(tx: Tx, issueId: string): Promise<TraceWor
     .select({
       id: requirementCriteria.id,
       code: requirementCriteria.code,
+      body: requirementCriteria.body,
       sinceRevision: requirementCriteria.sinceRevision,
       retiredRevision: requirementCriteria.retiredRevision,
     })

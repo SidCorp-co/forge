@@ -32,11 +32,14 @@ export const issueDetailApi = {
   listComments: (id: string, projectId?: string) =>
     apiClientCursorAll<CommentNode>(withProject(`/issues/${id}/comments`, projectId)),
 
-  /** `POST /api/issues/:id/comments` — create (optional `parentId`). */
-  createComment: (id: string, body: string, parentId?: string) =>
+  /**
+   * `POST /api/issues/:id/comments` — create (optional `parentId`), naming what it is: a `question`
+   * the agent working the issue owes a reply to, or a `note` for the record.
+   */
+  createComment: (id: string, body: string, intent: "question" | "note", parentId?: string) =>
     apiClient<CommentNode>(`/issues/${id}/comments`, {
       method: "POST",
-      body: JSON.stringify(parentId ? { body, parentId } : { body }),
+      body: JSON.stringify(parentId ? { body, intent, parentId } : { body, intent }),
     }),
 
   /**

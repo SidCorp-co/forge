@@ -327,7 +327,14 @@ function IssueTabBody({
         <OverviewTab issue={issue} attachmentsQ={attachmentsQ} canWrite={canWrite} />
       ) : null}
       {tab === "criteria" ? (
-        <CriteriaTab issueId={issue.id} hasCriteriaRows={criteria.hasCriteriaRows} checklist={criteria.checklist} />
+        <CriteriaTab
+          issue={issue}
+          projectId={projectId}
+          hasCriteriaRows={criteria.hasCriteriaRows}
+          checklist={criteria.checklist}
+          canWrite={canWrite}
+          requirementKey={standingQ.data?.standing.requirement?.key ?? null}
+        />
       ) : null}
       {tab === "runs" ? (
         <RunsTab

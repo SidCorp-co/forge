@@ -4,6 +4,7 @@
  *
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
+ *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion
  */
 
@@ -18,12 +19,18 @@ import {
 import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { heldIssue } from '../issue-route-ref.js';
-import { criteriaPutSchema, verdictPostSchema } from './input-schemas.js';
-import { addVerdict, readCriteriaWithDrafts as readCriteria, replaceCriteria } from './service.js';
+import { criteriaPutSchema, criteriaTracePostSchema, verdictPostSchema } from './input-schemas.js';
+import {
+  addVerdict,
+  readCriteriaWithDrafts as readCriteria,
+  replaceCriteria,
+  traceCriteria,
+} from './service.js';
 
 export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
+issueCriteriaRoutes.use('/:id/criteria/traces', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 
 /** An issue's criteria as this caller may read them: every answer passes the same egress. */
@@ -56,6 +63,19 @@ issueCriteriaRoutes.put(
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
     await replaceCriteria(id, criteria);
     return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
+  },
+);
+
+issueCriteriaRoutes.post(
+  '/:id/criteria/traces',
+  zValidator('param', idParamSchema),
+  zValidator('json', criteriaTracePostSchema),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { codes } = c.req.valid('json');
+    const issue = await heldIssue(id, c.get('userId'), 'project.write');
+    await traceCriteria(issue.id, codes);
+    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) }, 201);
   },
 );
 

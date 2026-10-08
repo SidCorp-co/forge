@@ -21,7 +21,8 @@ import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { settingsHref } from "@/features/project-settings/sections";
-import { ShareAction, shareSubjectOf } from "@/features/shares";
+import { SaveTemplateReport } from "@/features/project-status/components/save-template-report";
+import { ShareAction, shareSubjectOf, templateSaveOf } from "@/features/shares";
 import { runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
@@ -151,7 +152,7 @@ function MessageActions({ message, share }: { message: ConversationMessage; shar
   };
   return (
     <div
-      className="fg-caption flex items-center gap-2 text-subtle"
+      className="fg-caption flex flex-wrap items-center gap-2 text-subtle"
       data-testid="message-actions"
     >
       <span>{author}</span>
@@ -170,6 +171,7 @@ function MessageActions({ message, share }: { message: ConversationMessage; shar
         {copied ? t("shell.thread.copied") : t("shell.thread.copy")}
       </button>
       {share && <ShareOf message={message} share={share} />}
+      {share && <SaveOf message={message} share={share} />}
     </div>
   );
 }
@@ -191,6 +193,12 @@ function ShareOf({ message, share }: { message: ConversationMessage; share: Shar
       manageHref={share.projectSlug ? settingsHref(share.projectSlug, "people", "shares") : undefined}
     />
   );
+}
+
+/** Save report, beside Share, on an answer that ran a template; else nothing. */
+function SaveOf({ message, share }: { message: ConversationMessage; share: ShareScope }) {
+  const save = templateSaveOf(message);
+  return save ? <SaveTemplateReport projectId={share.projectId} projectSlug={share.projectSlug} save={save} /> : null;
 }
 
 /**

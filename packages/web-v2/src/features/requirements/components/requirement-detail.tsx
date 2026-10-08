@@ -17,9 +17,12 @@ import {
   StatusBadge,
   useUrlTab,
   FieldLabel,
+  SegmentedControl,
   ViewHeading,
 } from "@/design";
+import { useState } from "react";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
@@ -184,6 +187,30 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
   );
 }
 
+/**
+ * The Activity view: the requirement's comments, where a person asks, notes or records a decision
+ * on it, beside its history of revisions and sign-offs.
+ */
+function RequirementActivity({ projectId, d }: { projectId: string; d: RequirementDetail }) {
+  const t = useCopy();
+  const [view, setView] = useState<"comments" | "history">("comments");
+  return (
+    <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
+      <SegmentedControl
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "comments", label: t("requirements.activity.comments") },
+          { value: "history", label: t("requirements.activity.history"), count: d.history.length },
+        ]}
+      />
+      <div className="mt-4">
+        {view === "comments" ? <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} /> : <History entries={d.history} />}
+      </div>
+    </section>
+  );
+}
+
 export function RequirementPage({
   projectId,
   slug,
@@ -245,11 +272,7 @@ export function RequirementPage({
                   <RequirementDecisions projectId={projectId} slug={slug} reqKey={d.key} />
                 </section>
               ) : null}
-              {tab === "activity" ? (
-                <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
-                  <History entries={d.history} />
-                </section>
-              ) : null}
+              {tab === "activity" ? <RequirementActivity projectId={projectId} d={d} /> : null}
             </DetailPane>
           </DetailLayout>
         );
