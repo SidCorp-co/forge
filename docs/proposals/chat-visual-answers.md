@@ -377,7 +377,8 @@ ruling and is not registered.
 ## How the assistant and the reply check use the ports
 
 - **Tools, composed, not wired.** `forge_report` (run a query), `forge_show` (attach a block),
-  `forge_template` (run a template) and, in Phase C, `forge_compute` (run an execution) join
+  `forge_template` (run a template), `forge_template_save` (keep a template run, next items) and, in
+  Phase C, `forge_compute` (run an execution) join
   `CHAT_REPORT_TOOLS` in `packages/core/src/mcp/chat-report-tools.ts` and reach the
   assistant through `provideChatTools`. The assistant's turn loop, prompt composer and providers
   are unchanged; the system prompt gains one guide entry saying when to answer with a block, as
@@ -388,7 +389,12 @@ ruling and is not registered.
   A block its frame cannot fill (a `kpi` or `timeline` over no rows) is named in `notDrawn`, never
   dropped quietly. A second call with `runIds` and `narrative` is
   `checkTemplateNarrative`: the runs must be the template's own queries in its order, and a slot
-  over its words or stating a number no run returned is refused by name. Agent mode reaches both
+  over its words or stating a number no block of the template shows is refused by name. A block
+  shows what `packages/contracts/src/visual-blocks.ts:shownFrame` answers: the fields it draws over
+  the rows it draws. A figure a run holds in a field no block draws is refused too (ISS-419): the
+  narrative is read beside the blocks, in the chat, a kept report, its export and a share, and none
+  of them shows the run itself. Naming the run in the narrative is not taken in its place, because
+  no reader can open a run by its name. Agent mode reaches both
   over `POST /api/projects/:id/report-templates/:templateId/runs` and `.../narrative`.
 - **Sharing a template output.** The `template-output` subject is `<templateId>:<runId>,<runId>`
   (`reports/template-share-source.ts`); each run is read again as the creator. That subject keeps no
@@ -397,13 +403,15 @@ ruling and is not registered.
 - **Saving and scheduling a template run (B3).** `status_reports` holds either a project status read
   or a template's `ReportDocument` (`template_id`, `template_version`, `document`; migration 0463),
   immutable either way. `POST /api/projects/:id/status/reports` with `{ templateId, runIds, narrative? }`
-  judges the narrative with `checkTemplateNarrative` and keeps the document, so the narrative is
-  stored with who saved it; it lists in the same history as the status reads, exports through core
+  and the Assistant's `forge_template_save` both go through one service
+  (`packages/core/src/status-reports/save.ts:saveTemplateReport`), which judges the narrative with
+  `checkTemplateNarrative` and keeps the document, so the narrative is stored with who saved it; it lists in the same history as the status reads, exports through core
   (B4, below), and is removed by its author or a project admin. A
   `status_report` schedule with `params.templateId` runs the template for its owner on each fire and
   stores the output with its narrative (`status-reports/narrative.ts:writeFireNarrative`): after the
-  runs are stored, one model call is given the template's slot guidance and the frames of this
-  fire's runs and nothing else from the project, and its answer is judged by `checkTemplateNarrative`.
+  runs are stored, one model call is given the template's slot guidance and what each of this
+  fire's blocks shows of its runs, and nothing else from the project, and its answer is judged by
+  `checkTemplateNarrative`.
   A refused answer gets one retry carrying the refusal text. The call goes through
   `integrations/llm/chat.ts:completeOnce`, the chat turn's own `openChat` path, so the deployment's
   provider and the project's data policy apply as they do to chat: a `no_egress` project gets no call.
@@ -437,7 +445,12 @@ ruling and is not registered.
   `figures-grounded` (`packages/core/src/messaging/figures-rule.ts`) refuses a reply whose prose
   states a percentage, a ratio, a count of tracked things or days, a count of a state or a total
   that no such run holds, quoting the figure; and any number typed into a block's title or labels,
-  flow labels included. Dates, ids, versions, ordinals, quoted sources and numbers the person typed
+  flow labels included. Where the door shows the answer's blocks, a run's figure must also be one a
+  block of the answer shows (ISS-419), or it is held asking for the block that shows it. A figure is
+  also grounded by the result of a read the rule declares (`FIGURE_GROUNDING_RESULTS`: the project
+  status, requirement, release and metrics reads, and the `preview` and `taken` count
+  `forge_requirement_draft` took from an attached document; ISS-421), never by a tool that answers
+  with what the model sent it, nor by a refused call. Dates, ids, versions, ordinals, quoted sources and numbers the person typed
   in the question are exempt, by the table in `figure-exemptions.ts`. It judges at the chat doors
   where the turn could run a report: a turn offered `forge_report` or `forge_template`, and an
   Agent session, whose REST runs are read from its tool results. A block whose frame differs from
@@ -447,9 +460,13 @@ ruling and is not registered.
   (`packages/core/src/messaging/figures-rule.ts:ungroundedBlockFigures`), so the model corrects it
   inside the turn.
   `status-claims-rule.ts` counts the report tools as grounding every claim family but a decision;
-  `creation-claims-rule.ts` refuses "I shared this", a share link, or "I saved the report" where the
-  turn made no share (`POST /api/projects/:id/shares`) or status-report save, and no
-  unverified mark exempts a claim to have written a record.
+  `creation-claims-rule.ts` refuses "I shared this", a share link, or a claim that a report was
+  saved, read as the act in any phrasing ("its results are saved in the report history", "Saved the
+  report…", and the Vietnamese forms; ISS-422), where the turn made no share (`POST /api/projects/:id/shares`)
+  or save (`forge_template_save`, or the status-report POST), and no unverified mark exempts a claim
+  to have written a record. A reply the screen holds with no rewrite passing goes out as a line that
+  names what it stated that nothing backed (`conversations/fallback-replies.ts:heldFallbackReply`),
+  never as a check that could not run (ISS-420).
 - **A block waits on its reply.** A block is never written into the room when it is drawn: it is
   staged outside `conversation_messages`, so neither the room's REST read nor its socket can show
   it, and is posted just above the reply only once that reply passes the reply check. A chat turn
@@ -593,8 +610,9 @@ adapter inherits. The port adds:
   to delete it, and a data-policy change has to reach it.
 - **The parity test binds contracts and web together**: a new block kind cannot land in one package
   alone, so a block is always a two-package change.
-- **`figures-grounded` will refuse some honest replies** (a figure stated from the question itself, a
-  year in prose) until its grammar learns them; every false refusal costs a rewrite turn.
+- **`figures-grounded` will refuse some honest replies**: a count worked out from a run (how many
+  rows are in one state) is no value of its frame, and a run's figure no drawn block shows is held
+  until the block is drawn; every false refusal costs a rewrite turn.
 - **A `link` share is egress by design**: once opened, a snapshot cannot be called back from a reader
   who saved it; revocation only stops further views.
 - **The in-band executor pays a model call per execution**: `anthropic-code-exec` runs the script in an

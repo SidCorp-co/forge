@@ -200,6 +200,36 @@ describe('a narrative cites only the template runs', () => {
     expect((err as Error).message).toContain(ids[0]);
   });
 
+  // ISS-419 on dev.185: the progress narrative said "12 issue to do" and "2 awaiting_release", which
+  // the progress run held in fields the drawn blocks did not show, and it passed
+  it('refuses a figure a run holds in a field no block of the template shows', async () => {
+    const ids = await ran();
+    const progress = stored.get(ids[1] as string) as ReportRun;
+    (progress.frame.rows[0] as Record<string, unknown>).criteriaProven = 13;
+    const err = await check(ids, { summary: 'REQ-12 has 13 criteria proven.' }).catch(
+      (e: unknown) => e,
+    );
+    expect(isRefusal(err, 'REPORT_NARRATIVE_REFUSED')).toBe(true);
+    expect((err as Error).message).toContain('slot "summary" states 13');
+    expect((err as Error).message).toContain('status-list "Requirements"');
+  });
+
+  it('keeps a figure the same field holds where a block of the template draws it', async () => {
+    const out = await go('progress');
+    const ids = out.document.runs.map((r) => r.runId);
+    const progress = stored.get(ids[0] as string) as ReportRun;
+    (progress.frame.rows[0] as Record<string, unknown>).toDo = 12;
+    const doc = await checkTemplateNarrative({
+      projectId: 'p1',
+      templateId: 'progress',
+      runIds: ids,
+      narrative: { risks: 'REQ-12 still has 12 issues to do.' },
+      userId: 'asker',
+      agency: 'human' as never,
+    });
+    expect(doc.narrative.risks).toContain('12 issues');
+  });
+
   it('refuses a slot over its word cap and a slot the template does not declare', async () => {
     const ids = await ran();
     const long = Array.from({ length: 81 }, () => 'word').join(' ');

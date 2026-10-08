@@ -9,6 +9,7 @@ import {
   cellText,
   isSensible,
   kpiFigures,
+  shownFrame,
   tableCsv,
   tableRows,
   VISUAL_BLOCK_KINDS,
@@ -300,6 +301,50 @@ describe("what a block shows, shared by the text fallback and the screen", () =>
       { label: "All", value: "9" },
     ]);
     expect(kpiFigures({ ...kpi, row: 1 })[0]).toEqual({ label: "Proven", value: "8", delta: "-1" });
+  });
+});
+
+describe("what a block shows of its frame", () => {
+  const checked = (kind: VisualBlockKind) => {
+    const r = checkBlock(good[kind]);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r.block;
+  };
+  const shown = (block: VisualBlock) => {
+    const f = shownFrame(block);
+    return f && { fields: f.fields.map((x) => x.name), rows: f.rows };
+  };
+
+  it("a table shows its columns over its rows, sorted and cut to its limit", () => {
+    const table = checked("table") as VisualBlock & { kind: "table" };
+    expect(shown({ ...table, limit: 1 })).toEqual({
+      fields: ["key", "title", "done"],
+      rows: [{ key: "REQ-1", title: "Alpha", done: 8 }],
+    });
+  });
+
+  it("a chart shows its x and y over every row, and no column it does not draw", () => {
+    const f = shown(checked("chart"));
+    expect(f?.fields).toEqual(["key", "done", "total"]);
+    expect(f?.rows.map((r) => r.total)).toEqual([9, 8]);
+    expect(JSON.stringify(f)).not.toContain("7500000");
+  });
+
+  it("a kpi shows the one row it reads, its figures and their deltas", () => {
+    const kpi = checked("kpi") as VisualBlock & { kind: "kpi" };
+    expect(shown({ ...kpi, row: 1 })).toEqual({
+      fields: ["done", "total", "delta"],
+      rows: [{ done: 8, total: 8, delta: -1 }],
+    });
+  });
+
+  it("a status list and a timeline show the fields they name", () => {
+    expect(shown(checked("status-list"))?.fields).toEqual(["key", "state", "who"]);
+    expect(shown(checked("timeline"))?.fields).toEqual(["key", "p50", "p85"]);
+  });
+
+  it("a flow shows no frame", () => {
+    expect(shownFrame(checked("flow"))).toBeNull();
   });
 });
 

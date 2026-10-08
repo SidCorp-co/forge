@@ -10,8 +10,18 @@
  *
  * The same holds a claim to have shared an answer or saved a report (REQ-32): "I shared this", a
  * share link in the reply, or "I saved the report" is true only where this turn created a share
- * (`POST /api/projects/:id/shares`) or saved a status report (`POST /api/projects/:id/status/reports`).
- * The chat's own toolset does neither, so from the Assistant such a claim is always held.
+ * (`POST /api/projects/:id/shares`) or saved a report: `forge_template_save` from the Assistant, or
+ * `POST /api/projects/:id/status/reports` from an Agent session, the one service behind both. The
+ * Assistant has no share tool, so from it a share claim is always held.
+ *
+ * A save or share claim is read as an act, not as a list of sentences: a save verb in a completed or
+ * passive form ("saved", "stored", "is saved", "has been saved", a sentence opening "Saved the…",
+ * and the Vietnamese forms `SAVE_ACT_VI` reads) in a sentence naming what a save keeps (a report, an
+ * answer, its results, the report history). QA of ISS-422 on dev.185: "its results are saved in the
+ * project report history" and "Saved the progress report to the project report history" both went
+ * out with no save behind them, because the rule knew only "I saved … report" and "report is saved".
+ * A negation, a modal or future ("will be saved", "can save") and a conditional ("once it is saved")
+ * do not claim the act, and neither does a question.
  *
  * A hedge exempts none of these. Marking a clause unverified (`reply-marks.ts`) lets a claim about
  * the world that the turn could not check go out; a claim to have written a record is about the
@@ -37,13 +47,32 @@ const VERB_VI = /(?:đã|vừa)\s+(?:ghi\s+nhận|ghi|lưu|tạo|soạn|đề\s+
 const KEYLESS_NOUN = /\b(feedback|requirement|revision)\b/iu;
 
 const SHARE_EN =
-  /\b(?:I(?:'ve| have| just)?|we(?:'ve| have| just)?)\s+(?:just\s+)?(?:shared|created (?:a|the|your) (?:share |sharing )?link|made (?:a|the|your) (?:share |sharing )?link)\b|\b(?:share|sharing) link (?:is ready|has been created|was created)\b|\b(?:has|have) been shared\b|\bhere(?:'s| is) (?:the|your) (?:share|sharing) link\b/iu;
+  /\b(?:I(?:'ve| have| just)?|we(?:'ve| have| just)?)\s+(?:just\s+)?(?:shared|created (?:a|the|your) (?:share |sharing )?link|made (?:a|the|your) (?:share |sharing )?link)\b|\b(?:share|sharing) link (?:is ready|has been created|was created)\b|\b(?:has|have) been shared\b|\b(?:is|are|was|were)\s+(?:now\s+)?shared\b|^\W*shared\s+(?:the|this|your|it)\b|\bhere(?:'s| is) (?:the|your) (?:share|sharing) link\b/iu;
 const SHARE_VI =
   /(?:đã|vừa)\s+(?:chia\s+sẻ|tạo\s+(?:đường\s+)?(?:link|liên\s+kết))|đã\s+được\s+chia\s+sẻ|(?:link|liên\s+kết)\s+chia\s+sẻ\s+(?:đây|của\s+bạn)/iu; // i18n-allow: the Vietnamese phrasing of a share claim being policed
-const SAVE_EN =
-  /\b(?:I(?:'ve| have| just)?|we(?:'ve| have| just)?)\s+(?:just\s+)?saved\b[^.!?\n]{0,40}\b(?:report|answer)\b|\breport (?:is|has been|was) saved\b/iu;
-const SAVE_VI =
-  /(?:đã|vừa)\s+lưu\s+(?:lại\s+)?(?:báo\s+cáo|câu\s+trả\s+lời)|báo\s+cáo\s+(?:đã\s+được|đã)\s+lưu/iu; // i18n-allow: the Vietnamese phrasing of a report-save claim being policed
+
+/** A save verb in a completed or passive form: the act claimed, wherever its subject stands. */
+const SAVE_ACT_EN =
+  /\b(?:I|we)(?:'ve|’ve| have| had| just)?\s+(?:just\s+|now\s+|also\s+|already\s+)?(?:saved|stored|archived)\b|^\W*(?:saved|stored|archived)\s+(?:the|this|your|it|a|an|its)\b|\b(?:is|are|was|were|has\s+been|have\s+been|'s\s+been|got|gets)\s+(?:now\s+|also\s+|already\s+|successfully\s+|safely\s+)?(?:saved|stored|archived)\b|\b(?:is|are)\s+(?:now\s+)?(?:in|listed\s+in|available\s+in)\s+(?:the|your)\s+(?:project(?:'s|’s)?\s+)?report\s+history\b|\badded\s+(?:it\s+|them\s+)?to\s+(?:the|your)\s+(?:project(?:'s|’s)?\s+)?(?:report\s+)?history\b/iu;
+const SAVE_ACT_VI =
+  /(?:đã|vừa)\s+(?:được\s+)?lưu|được\s+lưu\s+(?:lại\s+)?(?:vào|trong|ở|tại)|(?:đã|vừa)\s+(?:thêm|đưa)\s+(?:\S+\s+){0,4}vào\s+lịch\s+sử|(?:đã|hiện)\s+(?:nằm|có\s+mặt)\s+trong\s+lịch\s+sử/iu; // i18n-allow: the Vietnamese phrasing of a report-save act being policed
+/** What a save keeps: the claim is about a report only where the sentence names one. */
+const SAVE_OBJECT =
+  /\b(?:reports?|answers?|results?|summary|history)\b|báo\s+cáo|kết\s+quả|câu\s+trả\s+lời|lịch\s+sử|bản\s+tóm\s+tắt/iu; // i18n-allow: the Vietnamese nouns a save keeps
+/** Words before the act that make it not happen, not yet, or only if: then nothing is claimed. */
+const NOT_CLAIMED =
+  /\b(?:if|once|when|whenever|after|until|unless|whether|before)\b|\b(?:nếu|khi|sau\s+khi|trước\s+khi|để)\s|(?:chưa|không|sẽ|có\s+thể)\s+(?:\S+\s+){0,1}$/iu; // i18n-allow: the Vietnamese conditional and negating words
+
+/** Whether the sentence claims a report was saved: the act, its object, and nothing before it that undoes it. */
+function claimsSave(body: string): boolean {
+  if (!SAVE_OBJECT.test(body)) return false;
+  for (const re of [SAVE_ACT_EN, SAVE_ACT_VI]) {
+    const m = re.exec(body);
+    if (m && !NOT_CLAIMED.test(body.slice(0, m.index))) return true;
+  }
+  return false;
+}
+
 const SHARE_TOKEN_RE = new RegExp(`${SHARE_TOKEN_PREFIX}[A-Za-z0-9_-]{8,}`);
 
 const writes = (calls: readonly Call[]) => calls.filter((c) => !c.isError);
@@ -136,7 +165,9 @@ function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
 function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBreak[] {
   const breaks: RuleBreak[] = [];
   const shared = writes(calls).some((c) => restPostExact(c, 'shares'));
-  const saved = writes(calls).some((c) => restPostExact(c, 'status/reports'));
+  const saved = writes(calls).some(
+    (c) => named(c, 'forge_template_save') || restPostExact(c, 'status/reports'),
+  );
   for (const { body, question } of sentences(text)) {
     if (question || !body) continue;
     if (!shared && (SHARE_EN.test(body) || SHARE_VI.test(body))) {
@@ -145,10 +176,10 @@ function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBre
         why: 'reply claims the answer was shared, and this turn created no share (POST /api/projects/<id>/shares): offer to make the link instead of saying it exists',
       });
     }
-    if (!saved && (SAVE_EN.test(body) || SAVE_VI.test(body))) {
+    if (!saved && claimsSave(body)) {
       breaks.push({
         quote: body,
-        why: 'reply claims a report was saved, and this turn saved none (POST /api/projects/<id>/status/reports): offer to save it instead of saying it is saved',
+        why: 'reply claims a report was saved, and this turn saved none: call forge_template_save with the template run (in Agent mode, POST /api/projects/<id>/status/reports), or offer to save it instead of saying it is saved',
       });
     }
   }
@@ -165,7 +196,7 @@ function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBre
 export const CREATION_CLAIMS_GROUNDED: MessageRule = {
   id: 'creation-claims-grounded',
   shape:
-    'say a record was made, an answer shared or a report saved only where this turn did it: Feedback or a Requirement draft, never an issue; a share or a saved report only after its POST',
+    'say a record was made, an answer shared or a report saved only where this turn did it: Feedback or a Requirement draft, never an issue; a share only after its POST, a saved report only after forge_template_save or its POST',
   example: 'I have not recorded anything yet; tell me to and I will record it as Feedback.',
   needs: ['prefixes'],
   check: (text, f) => {

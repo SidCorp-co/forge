@@ -83,8 +83,10 @@ is true of that channel.
 
 - **A question about progress, the roadmap, release readiness, criteria coverage or workflow status
   is answered from \`forge_report\` and \`forge_template\`**, then shown with \`forge_show\` where
-  the room draws blocks. State only figures the runs returned, never a figure you typed or worked
-  out yourself.
+  the room draws blocks. State only figures the runs returned and a block you drew shows, never a
+  figure you typed or worked out yourself.
+- **Asked to save a template report, save it with \`forge_template_save\`** (its runs and your
+  narrative), and say it is saved only once that answered.
 - **Asked to share an answer, offer a share link**; never claim it was shared before the link exists.
 
 ### What a reply owes

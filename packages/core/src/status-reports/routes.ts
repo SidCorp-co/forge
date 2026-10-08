@@ -17,7 +17,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { markStatusReportRead } from '../notifications/index.js';
 import { holds, requireHeld } from '../permissions/index.js';
-import { statusReportsPorts } from './ports.js';
+import { saveTemplateReport } from './save.js';
 import {
   deleteStatusReport,
   listStatusReports,
@@ -25,7 +25,6 @@ import {
   reportMeta,
   reportRow,
   storeStatusReport,
-  storeTemplateReport,
 } from './store.js';
 
 const projectParam = z.strictObject({ id: z.uuid() });
@@ -115,26 +114,21 @@ statusReportRoutes.post(
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');
     const access = await loadProjectAccess(projectId, userId);
-    requireHeld(access, 'project.write', 'saving a status report');
     const agency = agencyOf(c.get('agency'));
     const body = c.req.valid('json');
     if ('templateId' in body) {
-      // the narrative is judged against the template's own runs, read back as the saver, before it is kept
-      const document = await statusReportsPorts().checkTemplateNarrative({
+      const meta = await saveTemplateReport({
         projectId,
+        access,
+        userId,
+        agency,
         templateId: body.templateId,
         runIds: body.runIds,
         narrative: body.narrative,
-        userId,
-        agency,
       });
-      const row = await storeTemplateReport({
-        projectId,
-        document,
-        producer: { kind: 'person', userId },
-      });
-      return c.json(await reportMeta(row), 201);
+      return c.json(meta, 201);
     }
+    requireHeld(access, 'project.write', 'saving a status report');
     const row = await storeStatusReport({
       projectId,
       access,

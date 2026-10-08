@@ -278,3 +278,111 @@ describe('an Agent session', () => {
     expect((await agent('Drawn above.', [REPORTED], [], [table])).ok).toBe(true);
   });
 });
+
+// ISS-419 on dev.185: the progress narrative said "12 issue to do", a figure its run held in a field
+// no block drawn with the answer showed, and the reply went out
+describe('a run figure in an answer that shows blocks', () => {
+  const table = (columns: string[]) => ({
+    v: 1,
+    kind: 'table',
+    columns,
+    source: { runId: RUN },
+    frame: READINESS,
+  });
+  const withBlocks = (text: string, heldBlocks: unknown[] | undefined) =>
+    screenReplyAtDoor('web-chat-reply', {
+      projectId: PID,
+      segments: [text],
+      toolCalls: [],
+      offeredTools: OFFERED,
+      progress: null,
+      toolResults: [REPORTED],
+      question: 'How is the release going?',
+      ...(heldBlocks ? { heldBlocks } : {}),
+    }).then((v) => (v.ok ? [] : v.refusals.filter((r) => r.rule === 'figures-grounded')));
+
+  it('is held where no block of the answer shows the field the run holds it in', async () => {
+    const r = await withBlocks('17 issues have shipped.', [table(['release', 'total'])]);
+    expect(r.map((x) => x.quote)).toEqual(['17']);
+    expect(r[0]?.why).toContain('no block of this answer shows');
+  });
+
+  it('is held where the answer draws no block at all, and naming the run does not let it through', async () => {
+    expect((await withBlocks('17 issues have shipped.', [])).map((x) => x.quote)).toEqual(['17']);
+    const named = `17 issues have shipped (release-readiness run ${RUN}).`;
+    expect((await withBlocks(named, [])).map((x) => x.quote)).toEqual(['17']);
+  });
+
+  it('passes where a block of the answer shows it, the count of its rows included', async () => {
+    expect(await withBlocks('17 issues have shipped.', [table(['release', 'shipped'])])).toEqual(
+      [],
+    );
+    expect(await withBlocks('It lists 1 release.', [table(['release'])])).toEqual([]);
+  });
+
+  it('is held to the run alone where the door shows no block', async () => {
+    expect(await withBlocks('17 issues have shipped.', undefined)).toEqual([]);
+  });
+});
+
+// ISS-421 on dev.185: "exactly 11 criteria", the count forge_requirement_draft took from the attached
+// document, was held because no report run returned it, and the rewrite dropped the count
+describe('a figure a declared read of this turn returned', () => {
+  const PREVIEW = JSON.stringify({
+    preview: {
+      file: 'pk01.md',
+      criteria: 11,
+      lines: '7-17',
+      count: 11,
+      say: 'exactly 11 criteria, from lines 7-17; 5 lines skipped, not a list item (2, 3, 4, 5, 6)',
+      written: false,
+    },
+  });
+  const COUNTED = 'Trích được chính xác 11 tiêu chí nghiệm thu, ở dòng 7–17.'; // i18n-allow: the held draft of the QA, replayed
+  const read = (text: string, named: { name: string; text: string; isError?: boolean }[]) =>
+    screenReplyAtDoor('web-chat-reply', {
+      projectId: PID,
+      segments: [text],
+      toolCalls: named.map((n) => ({ name: n.name, arguments: '{}', isError: n.isError === true })),
+      offeredTools: [...OFFERED, 'forge_requirement_draft'],
+      progress: null,
+      toolResults: named.map((n) => n.text),
+      namedResults: named,
+      question: 'Xem trước các tiêu chí trong pk01.md', // i18n-allow: the QA's question
+      heldBlocks: [],
+    }).then((v) => (v.ok ? [] : v.refusals.filter((r) => r.rule === 'figures-grounded')));
+
+  it('grounds the count forge_requirement_draft took from the attached document', async () => {
+    expect(await read(COUNTED, [])).toHaveLength(1);
+    expect(await read(COUNTED, [{ name: 'forge_requirement_draft', text: PREVIEW }])).toEqual([]);
+  });
+
+  it('grounds a count the project status read returned, as the MCP client names it too', async () => {
+    const status = JSON.stringify({ issues: { total: 196, shipped: 100 } });
+    const said = 'Of 196 items, 100 have shipped.';
+    expect(await read(said, [{ name: 'forge_project_status', text: status }])).toEqual([]);
+    expect(await read(said, [{ name: 'mcp__forge__forge_project_status', text: status }])).toEqual(
+      [],
+    );
+  });
+
+  it('grounds nothing from a refused call', async () => {
+    const refused = { name: 'forge_requirement_draft', text: PREVIEW, isError: true };
+    expect(await read(COUNTED, [refused])).toHaveLength(1);
+  });
+
+  it('grounds nothing from a tool that answers with what the model sent it, or from a memory', async () => {
+    const echoed = JSON.stringify({ block: { title: '11 criteria' } });
+    expect(await read(COUNTED, [{ name: 'forge_show', text: echoed }])).toHaveLength(1);
+    expect(await read(COUNTED, [{ name: 'forge_memory', text: PREVIEW }])).toHaveLength(1);
+  });
+
+  it("grounds only a draft's preview and taken count, never the record its write echoes", async () => {
+    const written = JSON.stringify({
+      requirement: { key: 'REQ-4', criteria: ['Answer within 11 days'] },
+    });
+    expect(await read(COUNTED, [{ name: 'forge_requirement_draft', text: written }])).toHaveLength(
+      1,
+    );
+  });
+});
