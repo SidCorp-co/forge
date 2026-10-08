@@ -5,7 +5,7 @@
 //! Session key = the core `jobId`, so `abort(job_id)` maps a `job.cancel`
 //! frame straight onto the right process.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::process::ExitStatus;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,7 +36,9 @@ struct Session {
     /// Held open for the life of a DUPLEX session — dropping it is EOF, which
     /// is how a resident session is closed. `None` on the print path.
     stdin: Option<tokio::process::ChildStdin>,
-    /// Where the CURRENT turn's events go. Swapped by [`Runner::send`].
+    /// Where the CURRENT turn's events go. Handed on only when a turn ends and
+    /// the next is written, never while one is in flight: the turn in flight
+    /// ends with a result, and that result belongs to the channel it began on.
     turn_tx: TurnTx,
     /// Raised by [`Runner::send`] so the turn loop knows the idle clock stops.
     turn_started: Arc<tokio::sync::Notify>,
@@ -44,9 +46,17 @@ struct Session {
     /// Completed turns, so an `applied` report can name the one that consumed
     /// the message.
     turns: u64,
-    /// Messages written to stdin. A close of parked sessions reads it to tell
-    /// a session still parked from one sent a message after the close began.
+    /// Messages accepted by [`Runner::send`], written or waiting. A close of
+    /// parked sessions reads it to tell a session still parked from one sent a
+    /// message after the close began.
     sends: u64,
+    /// A turn is in flight: written to stdin and not yet ended by its result.
+    /// Claude answers stream-json messages one turn at a time, so a message
+    /// accepted now is written when this ends.
+    busy: bool,
+    /// Messages accepted while `busy`, oldest first, each with the channel its
+    /// own turn reports on.
+    waiting: VecDeque<Waiting>,
     /// Raised after each turn's verdict is sent. The only signal a caller
     /// outside the turn loop has that a turn it started has finished.
     turn_done: Arc<tokio::sync::Notify>,
@@ -60,6 +70,13 @@ struct Session {
     head_sha: Option<String>,
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     project_slug: Option<String>,
+}
+
+/// A message accepted while a turn was in flight on its session.
+struct Waiting {
+    message: String,
+    tx: mpsc::Sender<RunnerEvent>,
+    pending: Option<(String, u64)>,
 }
 
 /// The current turn's event sink. Shared by the stdout reader, the completion
@@ -193,6 +210,13 @@ async fn report_session_closed(
 }
 
 async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>) -> bool {
+    let (sessions, job_id) = (r.sessions, r.job_id);
+    let reported = run_turns(r, reader).await;
+    refuse_waiting(sessions, job_id).await;
+    reported
+}
+
+async fn run_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>) -> bool {
     let TurnLoop {
         sessions,
         job_id,
@@ -247,6 +271,7 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     }
                     return reported;
                 }
+                write_next_waiting(sessions, job_id).await;
             }
             _ = &mut *reader => return reported,
         }
@@ -263,6 +288,85 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
             }
         }
     }
+}
+
+/// Write one turn to `sess` and hand the session's channel to it. The only
+/// place a session's channel changes hands, and only called with no turn in
+/// flight.
+async fn write_turn(
+    sess: &mut Session,
+    message: &str,
+    tx: mpsc::Sender<RunnerEvent>,
+    pending: Option<(String, u64)>,
+) -> Result<()> {
+    let stdin = sess
+        .stdin
+        .as_mut()
+        .ok_or_else(|| Error::Other("session is not duplex — nothing to send to".into()))?;
+    stdin
+        .write_all(user_message_line(message).as_bytes())
+        .await
+        .map_err(|e| Error::Other(format!("failed to write the turn: {e}")))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
+    sess.busy = true;
+    sess.pending_inbox = pending;
+    let _ = tx.send(RunnerEvent::StateChanged("working")).await;
+    *sess.turn_tx.lock().await = tx;
+    sess.turn_started.notify_one();
+    Ok(())
+}
+
+const NOT_WRITTEN: &str = "[MESSAGE_NOT_WRITTEN]";
+
+/// A turn has ended and its result has been delivered: the session is free,
+/// and the oldest message that waited for it is written, on its own channel.
+async fn write_next_waiting(sessions: &Sessions, job_id: &str) {
+    let mut map = sessions.lock().await;
+    let Some(sess) = map.get_mut(job_id) else {
+        return;
+    };
+    sess.busy = false;
+    let Some(next) = sess.waiting.pop_front() else {
+        return;
+    };
+    tracing::info!(
+        "[claude] session={job_id} writing the message that waited behind the turn that ended ({} still waiting)",
+        sess.waiting.len()
+    );
+    if let Err(e) = write_turn(sess, &next.message, next.tx.clone(), next.pending).await {
+        refuse(job_id, next.tx, &e.to_string()).await;
+        let rest: Vec<Waiting> = sess.waiting.drain(..).collect();
+        for w in rest {
+            refuse(job_id, w.tx, &e.to_string()).await;
+        }
+    }
+}
+
+/// The session ended with messages still waiting for a turn: each is refused.
+async fn refuse_waiting(sessions: &Sessions, job_id: &str) {
+    let rest: Vec<Waiting> = match sessions.lock().await.get_mut(job_id) {
+        Some(sess) => sess.waiting.drain(..).collect(),
+        None => return,
+    };
+    for w in rest {
+        refuse(job_id, w.tx, "the session ended first").await;
+    }
+}
+
+async fn refuse(job_id: &str, tx: mpsc::Sender<RunnerEvent>, why: &str) {
+    let error = format!(
+        "{NOT_WRITTEN} this message waited behind a turn still in flight on the session and was never written to it: {why}"
+    );
+    tracing::warn!("[claude] session={job_id} {error}");
+    let _ = tx
+        .send(RunnerEvent::Failed {
+            error,
+            kind: FailureKind::Transient,
+        })
+        .await;
 }
 
 fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
@@ -648,18 +752,53 @@ impl ClaudeCodeRunner {
         pending: Option<(String, u64)>,
     ) -> Result<()> {
         let turn_tx = {
-            let mut map = self.sessions.lock().await;
+            let map = self.sessions.lock().await;
             let sess = map
-                .get_mut(id)
+                .get(id)
                 .ok_or_else(|| Error::Other("session not found".into()))?;
             if sess.stdin.is_none() {
                 return Err(Error::Other("session is not resident".into()));
             }
-            sess.pending_inbox = pending;
             sess.turn_tx.clone()
         };
         let tx = turn_tx.lock().await.clone();
-        Runner::send(self, id, message.to_string(), tx).await
+        self.accept(id, message.to_string(), tx, pending).await
+    }
+
+    /// Take a message for a resident session: written now where no turn is in
+    /// flight, and held until that turn ends where one is.
+    async fn accept(
+        &self,
+        session: &SessionId,
+        message: String,
+        tx: mpsc::Sender<RunnerEvent>,
+        pending: Option<(String, u64)>,
+    ) -> Result<()> {
+        let mut map = self.sessions.lock().await;
+        let sess = map
+            .get_mut(session)
+            .ok_or_else(|| Error::Other("session not found".into()))?;
+        if sess.stdin.is_none() {
+            return Err(Error::Other(
+                "session is not duplex — nothing to send to".into(),
+            ));
+        }
+        if sess.busy {
+            sess.waiting.push_back(Waiting {
+                message,
+                tx,
+                pending,
+            });
+            sess.sends += 1;
+            tracing::info!(
+                "[claude] session={session} message waiting behind the turn in flight ({} waiting)",
+                sess.waiting.len()
+            );
+            return Ok(());
+        }
+        write_turn(sess, &message, tx, pending).await?;
+        sess.sends += 1;
+        Ok(())
     }
 
     /// Record the checkout the session has just been told about.
@@ -911,6 +1050,8 @@ impl Runner for ClaudeCodeRunner {
                 pending_inbox: None,
                 turns: 0,
                 sends: 0,
+                busy: true,
+                waiting: VecDeque::new(),
                 turn_done: turn_done.clone(),
                 is_issue_job,
                 model: spec.model.clone(),
@@ -1249,27 +1390,7 @@ impl Runner for ClaudeCodeRunner {
         message: String,
         tx: mpsc::Sender<RunnerEvent>,
     ) -> Result<()> {
-        let mut map = self.sessions.lock().await;
-        let sess = map
-            .get_mut(session)
-            .ok_or_else(|| Error::Other("session not found".into()))?;
-        let stdin = sess
-            .stdin
-            .as_mut()
-            .ok_or_else(|| Error::Other("session is not duplex — nothing to send to".into()))?;
-        stdin
-            .write_all(user_message_line(&message).as_bytes())
-            .await
-            .map_err(|e| Error::Other(format!("failed to write the turn: {e}")))?;
-        stdin
-            .flush()
-            .await
-            .map_err(|e| Error::Other(format!("failed to flush the turn: {e}")))?;
-        sess.sends += 1;
-        let _ = tx.send(RunnerEvent::StateChanged("working")).await;
-        *sess.turn_tx.lock().await = tx;
-        sess.turn_started.notify_one();
-        Ok(())
+        self.accept(session, message, tx, None).await
     }
 
     async fn abort(&self, session: &SessionId) -> Result<()> {
@@ -1858,6 +1979,8 @@ mod tests {
                 pending_inbox: None,
                 turns: 0,
                 sends: 0,
+                busy: false,
+                waiting: VecDeque::new(),
                 turn_done: turn_done.clone(),
                 is_issue_job: true,
                 model: None,
@@ -1961,6 +2084,335 @@ mod tests {
                 "{id} was sent a message during the close and is still open"
             );
         }
+    }
+
+    /// A resident session whose turns the real turn loop runs, around a child
+    /// that writes every line it is sent to a file, so a test reads both what
+    /// reached the session and what each turn's channel was told. `finish`
+    /// ends the loop's reader, as the child's exit does.
+    struct Live {
+        _dir: crate::test_scratch::Scratch,
+        written: std::path::PathBuf,
+        outcome: Arc<Mutex<Outcome>>,
+        result_notify: Arc<tokio::sync::Notify>,
+        finish: tokio::sync::oneshot::Sender<()>,
+        turns: tokio::task::JoinHandle<bool>,
+        first: mpsc::Receiver<RunnerEvent>,
+    }
+
+    async fn live(runner: &ClaudeCodeRunner, id: &str) -> Live {
+        let dir = crate::test_scratch::Scratch::new("turnq");
+        let written = dir.join("written");
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::fs::File::create(&written).expect("the log of what the child is sent"))
+            .spawn()
+            .expect("cat must spawn");
+        let stdin = child.stdin.take();
+        let (tx, first) = mpsc::channel(16);
+        let turn_tx: TurnTx = Arc::new(Mutex::new(tx));
+        let turn_started = Arc::new(tokio::sync::Notify::new());
+        let turn_done = Arc::new(tokio::sync::Notify::new());
+        runner.sessions.lock().await.insert(
+            id.to_string(),
+            Session {
+                status: RunnerStatus::Running,
+                child: Some(child),
+                claude_session_id: None,
+                stdin,
+                turn_tx: turn_tx.clone(),
+                turn_started: turn_started.clone(),
+                pending_inbox: None,
+                turns: 0,
+                sends: 0,
+                busy: false,
+                waiting: VecDeque::new(),
+                turn_done: turn_done.clone(),
+                is_issue_job: false,
+                model: None,
+                head_sha: None,
+                permit: None,
+                project_slug: None,
+            },
+        );
+        let outcome = Arc::new(Mutex::new(Outcome::default()));
+        let result_notify = Arc::new(tokio::sync::Notify::new());
+        let (finish, ended) = tokio::sync::oneshot::channel::<()>();
+        let turns = {
+            let (sessions, outcome, result_notify) = (
+                runner.sessions.clone(),
+                outcome.clone(),
+                result_notify.clone(),
+            );
+            let job_id = id.to_string();
+            tokio::spawn(async move {
+                let mut reader = tokio::spawn(async move {
+                    let _ = ended.await;
+                });
+                duplex_turns(
+                    TurnLoop {
+                        sessions: &sessions,
+                        job_id: &job_id,
+                        core: None,
+                        outcome: &outcome,
+                        result_notify: &result_notify,
+                        turn_tx: &turn_tx,
+                        turn_started: &turn_started,
+                        turn_done: &turn_done,
+                        is_issue_job: false,
+                        residency: SESSION_IDLE_TIMEOUT,
+                    },
+                    &mut reader,
+                )
+                .await
+            })
+        };
+        Live {
+            _dir: dir,
+            written,
+            outcome,
+            result_notify,
+            finish,
+            turns,
+            first,
+        }
+    }
+
+    impl Live {
+        /// What claude does when the turn it was given ends well.
+        async fn the_turn_ends(&self) {
+            self.outcome.lock().await.succeeded = Some(true);
+            self.result_notify.notify_one();
+        }
+
+        /// The lines the session has been sent so far.
+        fn sent(&self) -> Vec<String> {
+            std::fs::read_to_string(&self.written)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+
+        /// Until the session has been sent `n` lines.
+        async fn sent_by_now(&self, n: usize) -> Vec<String> {
+            for _ in 0..400 {
+                if self.sent().len() >= n {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            self.sent()
+        }
+    }
+
+    /// Everything a turn's channel was told, up to its verdict.
+    async fn told(rx: &mut mpsc::Receiver<RunnerEvent>) -> Vec<String> {
+        let mut said = Vec::new();
+        while let Ok(Some(ev)) = tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
+            let end = matches!(ev, RunnerEvent::Done { .. } | RunnerEvent::Failed { .. });
+            said.push(match ev {
+                RunnerEvent::StateChanged(s) => format!("state:{s}"),
+                RunnerEvent::Done { .. } => "done".to_string(),
+                RunnerEvent::Failed { error, .. } => format!("failed:{error}"),
+                other => format!("{other:?}"),
+            });
+            if end {
+                break;
+            }
+        }
+        said
+    }
+
+    /// What a channel has been told by now, once the loop has had the moment it
+    /// needs to say what it is going to.
+    async fn so_far(rx: &mut mpsc::Receiver<RunnerEvent>) -> Vec<String> {
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let mut said = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            said.push(match ev {
+                RunnerEvent::StateChanged(s) => format!("state:{s}"),
+                RunnerEvent::Done { .. } => "done".to_string(),
+                other => format!("{other:?}"),
+            });
+        }
+        said
+    }
+
+    fn quiet(rx: &mut mpsc::Receiver<RunnerEvent>) -> bool {
+        matches!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty))
+    }
+
+    /// ISS-1223 criteria 37, 38 and 39: a person's message that arrives while
+    /// the handover's save request is in flight is written after the save turn
+    /// ends, the save's result reaches the save's channel, and the runner says
+    /// the message waited. Before, `send` swapped the reply channel at once, so
+    /// the save's result ended the person's turn and their own answer went to a
+    /// channel nobody read (j3b, J1).
+    #[tokio::test]
+    async fn a_message_sent_mid_turn_waits_for_it_and_keeps_its_own_reply() {
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let mut s = live(&runner, "j1").await;
+        let id = "j1".to_string();
+        let (said, _log) = crate::log_capture::capturing();
+        runner
+            .send_resident(&id, ClaudeCodeRunner::CHECKPOINT_PROMPT, None)
+            .await
+            .expect("the save request is written");
+        let (tx, mut person) = mpsc::channel(16);
+        Runner::send(&runner, &id, "a person's message".into(), tx)
+            .await
+            .expect("the message is accepted");
+        assert_eq!(
+            s.sent_by_now(1).await.len(),
+            1,
+            "only the save request is written while its turn is in flight"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(s.sent().len(), 1, "and the message is still not written");
+        assert!(
+            quiet(&mut person),
+            "the person's channel is told nothing of a turn that is not theirs"
+        );
+        assert!(
+            said.said().contains("waiting behind the turn in flight"),
+            "the runner says the message waits: {}",
+            said.said()
+        );
+
+        s.the_turn_ends().await;
+        assert_eq!(
+            told(&mut s.first).await,
+            ["state:working", "state:awaiting_input", "done"],
+            "the save's result reaches the channel the save was started on"
+        );
+        assert_eq!(
+            s.sent_by_now(2).await.len(),
+            2,
+            "now the message is written"
+        );
+        assert_eq!(
+            so_far(&mut person).await,
+            ["state:working"],
+            "the person's turn begins, and the save's result is not theirs"
+        );
+
+        s.the_turn_ends().await;
+        assert_eq!(
+            told(&mut person).await,
+            ["state:awaiting_input", "done"],
+            "the person's own turn ends with its own result"
+        );
+    }
+
+    /// ISS-1223 criterion 30: the whole of j3b's walk A. A session parked when
+    /// the close began is sent a person's message after the close wrote its
+    /// save request. The close leaves it open, and the message is answered by
+    /// its own turn, after the save's.
+    #[tokio::test]
+    async fn a_person_messaging_a_session_the_close_is_saving_gets_their_own_answer() {
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let s = live(&runner, "j1").await;
+        let id = "j1".to_string();
+        let walk = async {
+            first_checkpointed(&runner, &["j1"]).await;
+            let (tx, person) = mpsc::channel(16);
+            Runner::send(&runner, &id, "a person's message".into(), tx)
+                .await
+                .expect("the message is accepted");
+            s.the_turn_ends().await;
+            person
+        };
+        let (closed, mut person) =
+            tokio::join!(runner.checkpoint_and_close(Duration::from_secs(30)), walk);
+        assert!(closed.is_empty(), "closed {closed:?}");
+        assert!(
+            runner.resident(&id).await.is_some(),
+            "a session sent a message during the close is still open"
+        );
+        assert_eq!(s.sent_by_now(2).await.len(), 2);
+        assert_eq!(
+            so_far(&mut person).await,
+            ["state:working"],
+            "the person's turn begins, and the save's result is not theirs"
+        );
+        s.the_turn_ends().await;
+        assert_eq!(
+            told(&mut person).await,
+            ["state:awaiting_input", "done"],
+            "the person's answer reaches the person"
+        );
+    }
+
+    /// ISS-1223 criterion 41: an inbox message waiting behind a turn is applied
+    /// by the turn that consumes it. Marked at once, the turn in flight would
+    /// report it applied before it had been written.
+    #[tokio::test]
+    async fn a_waiting_inbox_message_is_applied_by_its_own_turn() {
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let s = live(&runner, "j1").await;
+        let id = "j1".to_string();
+        let pending = |runner: &ClaudeCodeRunner| {
+            let sessions = runner.sessions.clone();
+            async move {
+                sessions
+                    .lock()
+                    .await
+                    .get("j1")
+                    .and_then(|s| s.pending_inbox.clone())
+            }
+        };
+        runner
+            .send_resident(&id, "the turn in flight", None)
+            .await
+            .expect("written");
+        runner
+            .send_resident(&id, "an inbox message", Some(("sess".into(), 7)))
+            .await
+            .expect("accepted");
+        assert_eq!(
+            pending(&runner).await,
+            None,
+            "the turn in flight does not consume a message not yet written"
+        );
+        s.the_turn_ends().await;
+        s.sent_by_now(2).await;
+        assert_eq!(
+            pending(&runner).await,
+            Some(("sess".to_string(), 7)),
+            "the next turn consumes it"
+        );
+    }
+
+    /// ISS-1223 criterion 40: a message still waiting when the session ends is
+    /// refused by name on the channel it arrived on, and logged, rather than
+    /// left to a channel that closes without a word.
+    #[tokio::test]
+    async fn a_message_waiting_when_the_session_ends_is_refused_by_name() {
+        let runner = ClaudeCodeRunner::new("http://127.0.0.1:1", "tok", 1);
+        let s = live(&runner, "j1").await;
+        let id = "j1".to_string();
+        let (said, _log) = crate::log_capture::capturing();
+        runner
+            .send_resident(&id, "the turn in flight", None)
+            .await
+            .expect("written");
+        let (tx, mut person) = mpsc::channel(16);
+        Runner::send(&runner, &id, "a person's message".into(), tx)
+            .await
+            .expect("accepted");
+        s.finish.send(()).expect("the loop is running");
+        let refusal = told(&mut person).await;
+        assert!(
+            refusal.len() == 1 && refusal[0].starts_with("failed:[MESSAGE_NOT_WRITTEN]"),
+            "{refusal:?}"
+        );
+        assert!(
+            said.said().contains("MESSAGE_NOT_WRITTEN"),
+            "the runner logs the refusal: {}",
+            said.said()
+        );
+        s.turns.await.expect("the loop ends");
     }
 
     #[tokio::test]
