@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
-import { fetchGuide, fetchGuideCorpus } from "@/features/guides/api";
+import { fetchGuide, fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
 import { DOORS } from "@/features/guides/audience";
 import { buildCorpus, fromGuide } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
@@ -20,10 +20,12 @@ export default async function GuidePage({ params }: Params) {
   const { slug } = await params;
   const guide = await fetchGuide(slug);
   if (!guide) notFound();
-  const corpus = buildCorpus(HELP_DOCS, await fetchGuideCorpus());
+  const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
+  const corpus = buildCorpus(HELP_DOCS, guides);
   return (
     <GuideShell>
       <PublicReader
+        scope={scope}
         corpus={corpus}
         view={{ kind: "page", href: fromGuide(guide, 0).href }}
       />

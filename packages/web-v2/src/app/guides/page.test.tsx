@@ -10,7 +10,10 @@ afterEach(cleanup);
 const fetchGuideCorpus = vi.fn(async () => {
   throw new Error("core is down");
 });
-vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus }));
+const fetchGuideScope = vi.fn(async () => {
+  throw new Error("core is down");
+});
+vi.mock("@/features/guides/api", () => ({ fetchGuideCorpus, fetchGuideScope }));
 
 const { default: GuidesPage } = await import("./page");
 

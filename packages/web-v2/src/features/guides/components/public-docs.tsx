@@ -16,6 +16,7 @@ import {
 } from "@/features/docs/components/docs-reader";
 import { deriveToc, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
+import type { GuideScope } from "../api";
 import { AUDIENCES, type Audience, DOORS, ONE_CORPUS } from "../audience";
 import {
   INDEX_PATH,
@@ -39,6 +40,23 @@ function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
   };
 }
 
+/** Core's own words, with each backticked span set as code; nothing here restates what core says. */
+function Said({ text }: { text: string }) {
+  return (
+    <>
+      {text.split("`").map((part, i) =>
+        i % 2 === 1 ? (
+          <code key={i} className="font-mono">
+            {part}
+          </code>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
+
 function useSearch(corpus: readonly PublicDoc[]) {
   const [query, setQuery] = useState("");
   const results = useMemo(() => searchDocs(corpus, query), [corpus, query]);
@@ -48,9 +66,11 @@ function useSearch(corpus: readonly PublicDoc[]) {
 export function PublicLanding({
   corpus,
   placeholder,
+  scope,
 }: {
   corpus: readonly PublicDoc[];
   placeholder: string;
+  scope: GuideScope;
 }) {
   const { query, setQuery, results } = useSearch(corpus);
   return (
@@ -82,6 +102,11 @@ export function PublicLanding({
               <span className="fg-caption mt-auto pt-2 text-subtle">
                 {count} {count === 1 ? "page" : "pages"}
               </span>
+              {audience === "agent" ? (
+                <span className="fg-caption text-subtle">
+                  <Said text={scope.elsewhere} />
+                </span>
+              ) : null}
             </Link>
           );
         })}
@@ -91,7 +116,7 @@ export function PublicLanding({
 }
 
 /** The addresses the agent door documents — every one of them already served by core. */
-function MachineDoor({ docs }: { docs: readonly PublicDoc[] }) {
+function MachineDoor({ docs, scope }: { docs: readonly PublicDoc[]; scope: GuideScope }) {
   return (
     <section aria-label="Plain markdown" className="mb-6 flex flex-col gap-2">
       <p className="fg-body text-fg">
@@ -103,16 +128,27 @@ function MachineDoor({ docs }: { docs: readonly PublicDoc[] }) {
         <code className="break-all font-mono">{coreFileUrl("/api/llms.txt")}</code> lists every page for a
         model to fetch. There are {docs.length} pages.
       </p>
+      <p className="fg-body-sm text-muted">
+        <Said text={`${scope.elsewhere} ${scope.reach}`} />
+      </p>
     </section>
   );
 }
 
-function DoorPage({ audience, docs }: { audience: Audience; docs: readonly PublicDoc[] }) {
+function DoorPage({
+  audience,
+  docs,
+  scope,
+}: {
+  audience: Audience;
+  docs: readonly PublicDoc[];
+  scope: GuideScope;
+}) {
   return (
     <div style={{ maxWidth: "72ch" }} className="mx-auto">
       <PageTitle className="fg-h2 text-fg">{DOORS[audience].label}</PageTitle>
       <p className="fg-body-sm mt-1.5 mb-6 text-muted">{DOORS[audience].blurb}</p>
-      {audience === "agent" ? <MachineDoor docs={docs} /> : null}
+      {audience === "agent" ? <MachineDoor docs={docs} scope={scope} /> : null}
       <ul aria-label="Pages" className="flex flex-col gap-1">
         {docs.map((doc) => (
           <li key={doc.href}>
@@ -155,7 +191,15 @@ function AudienceNotice({ doc }: { doc: PublicDoc }) {
  *  its first word; the examples are taught on the landing, whose field has the width for them. */
 const SIDEBAR_PLACEHOLDER = "Search every page";
 
-export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; view: ReaderView }) {
+export function PublicReader({
+  corpus,
+  view,
+  scope,
+}: {
+  corpus: readonly PublicDoc[];
+  view: ReaderView;
+  scope: GuideScope;
+}) {
   const { query, setQuery, results } = useSearch(corpus);
   const doc = view.kind === "page" ? (corpus.find((d) => d.href === view.href) ?? null) : null;
   const audience: Audience | null =
@@ -201,7 +245,7 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
   let content: React.ReactNode;
   if (view.kind === "door") {
     const docs = doorSections(corpus, view.audience).flatMap((section) => section.docs);
-    content = <DoorPage audience={view.audience} docs={docs} />;
+    content = <DoorPage audience={view.audience} docs={docs} scope={scope} />;
   } else if (!doc) {
     // The server resolved this href from the same corpus, so a miss here is a defect, said so.
     content = (

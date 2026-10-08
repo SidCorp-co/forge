@@ -3,7 +3,7 @@
 
 import { RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
 import { ASSISTANT_METHOD_SLUG } from './assistant-method-guide.js';
-import { CORPUS_SCOPE } from './corpus-scope.js';
+import { CORPUS_SCOPE, cliServedBullets } from './corpus-scope.js';
 import type { ForgeGuide } from './types.js';
 
 export const CAPABILITY_GUIDE_SLUG = 'what-forge-is';
@@ -86,8 +86,6 @@ function areaRow(a: CapabilityArea): string {
   return `| ${a.area} | ${a.covers} | ${links} |`;
 }
 
-const cliNames = CORPUS_SCOPE.cliServed.map((g) => `${g.slug} (${g.covers})`).join('; ');
-
 export const CAPABILITY_GUIDE: ForgeGuide = {
   slug: CAPABILITY_GUIDE_SLUG,
   audience: 'agent',
@@ -118,9 +116,11 @@ has landed, releasing it, and what each status is owed before it moves are **met
 forge CLI serves them. They are not served by this host, so they are not in the table above and a
 request for one here answers 404.
 
-${CORPUS_SCOPE.reach} Names the CLI served when this core was built, as a pointer: ${cliNames}.
+${CORPUS_SCOPE.reach}
 
 ${CORPUS_SCOPE.authority}
+
+${cliServedBullets().join('\n')}
 
 ### What this page does not do
 

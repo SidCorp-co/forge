@@ -36,8 +36,11 @@ The methods that drive work — running a wave, taking an issue to landed code, 
 are served by the `forge` CLI, from the plugin's own repository and on its own release clock. Core
 holds none of them and cannot read their list, so no page here may be taken for the complete set.
 `packages/core/src/guides/corpus-scope.ts` is the one statement of that: the public index
-carries it as its `corpus` field, `/api/llms.txt` and a refused slug repeat it, and the `forge_guide`
-tool description says it. The names it gives are a pointer, and the CLI's own list overrides them.
+carries it as its `corpus` field, `/api/llms.txt` and a refused slug repeat it, the `forge_guide`
+tool description says it, and the public `/guides` page reads the `corpus` field from that same index
+and states it beside the agent door's page count (`fetchGuideScope` in
+`packages/web-v2/src/features/guides/api.ts`). The names it gives are a pointer, and the CLI's own
+list overrides them: every surface that carries the names puts that sentence directly above them.
 
 `packages/core/src/guides/capability-guide.ts` is the page a cold reader starts from: the capability map by area, each area
 routing to the registry guide that owns it, checked slug by slug in `packages/core/src/guides/capability-guide.test.ts`. It

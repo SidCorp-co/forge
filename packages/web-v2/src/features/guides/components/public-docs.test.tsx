@@ -6,7 +6,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
-import type { Guide } from "../api";
+import type { Guide, GuideScope } from "../api";
 import { ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
 import { missingDoor } from "../missing";
@@ -33,11 +33,19 @@ const GUIDES: Guide[] = [
     body: "## Issue dependencies\nOnly a blocks edge gates dispatch.",
   },
 ];
+const SCOPE: GuideScope = {
+  complete: false,
+  listed: "Listed: what core serves.",
+  elsewhere: "Elsewhere: the method guides are served by the cli, and not by core.",
+  reach: "Reach: `cli guide` lists them.",
+  authority: "Authority: the cli list wins.",
+  cliServed: [{ slug: "dispatch", covers: "running a wave" }],
+};
 const corpus = buildCorpus(HELP_DOCS, GUIDES);
 const placeholder = searchPlaceholder(corpus);
 
 function landing() {
-  return render(<PublicLanding corpus={corpus} placeholder={placeholder} />);
+  return render(<PublicLanding corpus={corpus} placeholder={placeholder} scope={SCOPE} />);
 }
 
 describe("the public documentation landing", () => {
@@ -85,6 +93,23 @@ describe("the public documentation landing", () => {
     }
   });
 
+  it("says beside the agent door's count that the list is not the whole corpus, in core's words", () => {
+    landing();
+    const agent = within(screen.getByRole("navigation", { name: "Ways in" })).getByRole("link", {
+      name: /I'm an agent or a script/,
+    });
+    expect(agent).toHaveTextContent(/2 pages/);
+    expect(agent).toHaveTextContent(SCOPE.elsewhere);
+    const text = agent.textContent ?? "";
+    expect(text.indexOf("2 pages")).toBeLessThan(text.indexOf(SCOPE.elsewhere));
+  });
+
+  it("says it of no other door, whose pages are the whole of what it counts", () => {
+    landing();
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.filter((d) => d.textContent?.includes(SCOPE.elsewhere))).toHaveLength(1);
+  });
+
   it("says no page matches rather than showing nothing", () => {
     landing();
     fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
@@ -95,7 +120,7 @@ describe("the public documentation landing", () => {
 });
 
 function reader(view: Parameters<typeof PublicReader>[0]["view"]) {
-  return render(<PublicReader corpus={corpus} view={view} />);
+  return render(<PublicReader corpus={corpus} view={view} scope={SCOPE} />);
 }
 
 describe("a door", () => {
@@ -118,6 +143,21 @@ describe("a door", () => {
       expect.stringMatching(/\/api\/guides\/what-is-an-issue\.md$/),
       expect.stringMatching(/\/api\/guides\/issue-dependencies\.md$/),
     ]);
+  });
+
+  it("for agents says the pages are not the whole corpus and how to reach the rest, in core's words", () => {
+    reader({ kind: "door", audience: "agent" });
+    const region = screen.getByRole("region", { name: "Plain markdown" });
+    expect(region).toHaveTextContent("There are 2 pages.");
+    expect(region).toHaveTextContent(SCOPE.elsewhere);
+    expect(region).toHaveTextContent("Reach: cli guide lists them.");
+    expect(within(region).getByText("cli guide").tagName).toBe("CODE");
+    expect(region).not.toHaveTextContent("`");
+  });
+
+  it("says it on no other door", () => {
+    reader({ kind: "door", audience: "user" });
+    expect(screen.queryByText(SCOPE.elsewhere, { exact: false })).toBeNull();
   });
 
   it("offers the other two doors and the way back to all three", () => {

@@ -6,7 +6,12 @@ import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
-import { CORPUS_SCOPE, corpusScopeSentence, NOT_SERVED_HERE_NOTE } from './corpus-scope.js';
+import {
+  CORPUS_SCOPE,
+  cliServedBullets,
+  corpusScopeSentence,
+  NOT_SERVED_HERE_NOTE,
+} from './corpus-scope.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,
@@ -150,6 +155,12 @@ guideRoutes.get('/llms.txt', (c) => {
     '## Guides',
     '',
     ...listGuides().map((g) => `- [${g.title}](${base}/guides/${g.slug}.md): ${g.summary}`),
+    '',
+    '## Method guides, served by the forge CLI and not by this host',
+    '',
+    CORPUS_SCOPE.authority,
+    '',
+    ...cliServedBullets(),
     '',
     '## Index',
     '',

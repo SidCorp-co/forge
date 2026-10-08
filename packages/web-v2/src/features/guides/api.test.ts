@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchGuide, fetchGuideCorpus, fetchGuideIndex } from "./api";
+import { fetchGuide, fetchGuideCorpus, fetchGuideIndex, fetchGuideScope } from "./api";
 
 const BASE = "http://core.test/api";
 
@@ -111,5 +111,47 @@ describe("fetchGuideCorpus", () => {
       return Response.json({ guide: { slug: "a", title: "A", summary: "", version: 1, body: "# a" } });
     });
     await expect(fetchGuideCorpus()).rejects.toThrow(/the index lists b and core answers 404 for it/);
+  });
+});
+
+describe("fetchGuideScope", () => {
+  const corpus = {
+    complete: false,
+    listed: "l",
+    elsewhere: "e",
+    reach: "r",
+    authority: "a",
+    cliServed: [{ slug: "dispatch", covers: "waves" }],
+  };
+
+  it("returns the statement the same index carries, from the one request", async () => {
+    withBase();
+    const spy = stubFetch(() => Response.json({ guides: [], corpus }));
+    await expect(fetchGuideScope()).resolves.toEqual(corpus);
+    expect(String(spy.mock.calls[0][0])).toBe(`${BASE}/guides`);
+  });
+
+  it("throws by name when the index carries no statement, rather than letting the list read as whole", async () => {
+    withBase();
+    stubFetch(() => Response.json({ guides: [] }));
+    await expect(fetchGuideScope()).rejects.toThrow(/`corpus` statement is missing/);
+  });
+
+  it("throws by name when the statement says the list is complete", async () => {
+    withBase();
+    stubFetch(() => Response.json({ guides: [], corpus: { ...corpus, complete: true } }));
+    await expect(fetchGuideScope()).rejects.toThrow(/does not say the list is incomplete/);
+  });
+
+  it.each(["listed", "elsewhere", "reach", "authority"])("throws naming the missing `%s` text", async (key) => {
+    withBase();
+    stubFetch(() => Response.json({ guides: [], corpus: { ...corpus, [key]: "" } }));
+    await expect(fetchGuideScope()).rejects.toThrow(new RegExp(`no \\\`${key}\\\` text`));
+  });
+
+  it("throws by name when core cannot be reached", async () => {
+    withBase();
+    stubFetch(() => new Response("boom", { status: 500 }));
+    await expect(fetchGuideScope()).rejects.toThrow(/guide index[\s\S]*answered 500/);
   });
 });

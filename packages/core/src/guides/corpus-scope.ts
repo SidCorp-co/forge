@@ -30,9 +30,17 @@ export const CORPUS_SCOPE = {
   cliServed: CLI_SERVED_GUIDES,
 } as const;
 
-/** The same statement as one paragraph, for a surface that carries prose and not a field. */
+/** What the list is and where the rest is, as one paragraph, for a surface that carries prose and not a field. */
 export function corpusScopeSentence(): string {
-  return `${CORPUS_SCOPE.elsewhere} ${CORPUS_SCOPE.reach} ${CORPUS_SCOPE.authority}`;
+  return `${CORPUS_SCOPE.elsewhere} ${CORPUS_SCOPE.reach}`;
+}
+
+/**
+ * The CLI-served names as bullet lines, for a surface that carries prose. The authority sentence
+ * says "the names below", so a surface places it directly above these and nothing between.
+ */
+export function cliServedBullets(): string[] {
+  return CORPUS_SCOPE.cliServed.map((g) => `- ${g.slug}: ${g.covers}`);
 }
 
 /** The statement a refused slug carries: the likeliest reason it is absent is that the CLI serves it. */

@@ -21,6 +21,11 @@ the agent pages are fetched at request time, every body included (`fetchGuideCor
 Each guide carries the `audience` core declared for it, which `fromGuide` reads and refuses where it
 is not `agent`.
 
+The agent door's count is not the whole corpus, and the page says so: `fetchGuideScope` reads the
+`corpus` statement from the same index response and `PublicLanding` and the agent door print it
+beside the count. Core's words are never copied into `web-v2`, and an index that carries no such
+statement is refused by name rather than rendered as if complete.
+
 The addresses: `/guides` is the landing — the sentence saying the corpus is one, the search, the
 three doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help page, the same
 `?path=` form help pages already link each other by, resolved there by `Markdown`'s `docRoute`.

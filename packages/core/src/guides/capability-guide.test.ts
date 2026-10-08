@@ -11,7 +11,7 @@ import {
   CAPABILITY_GUIDE_SLUG,
   type CapabilityArea,
 } from './capability-guide.js';
-import { CORPUS_SCOPE } from './corpus-scope.js';
+import { CORPUS_SCOPE, cliServedBullets } from './corpus-scope.js';
 import { FORGE_GUIDES, getGuide } from './registry.js';
 
 /** `<area>: routes to <slug>, which core does not serve` for each unresolved route. */
@@ -23,7 +23,11 @@ function routeFaults(areas: readonly CapabilityArea[], known: ReadonlySet<string
   );
 }
 
-const FLAG = /(^|\s)--[a-z][a-z-]*/;
+// A flag is one or two dashes and a letter that no word or dash precedes: after a space, a
+// backtick, a bracket, a quote or other punctuation, and at the start of a line. A hyphen inside a
+// word ("well-known"), an em dash and a table rule ("|---|") have a word or a dash before them or no
+// letter after them, so they are not flags.
+const FLAG = /(?<![\w-])(--?[A-Za-z][\w-]*)/;
 const TOOL_NAME = /\bforge_[a-z_]+/;
 
 /** Each match of a flag or an MCP tool name in `text`, named. */
@@ -34,9 +38,17 @@ function surfaceFaults(label: string, text: string): string[] {
     ['an MCP tool name', TOOL_NAME],
   ] as const) {
     const m = re.exec(text);
-    if (m) faults.push(`${label}: carries ${kind} (${JSON.stringify(m[0].trim())})`);
+    if (m) faults.push(`${label}: carries ${kind} (${JSON.stringify(m[1] ?? m[0])})`);
   }
   return faults;
+}
+
+/** Every string a statement carries, one per line: what a reader of it can read. */
+function textOf(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(textOf).join('\n');
+  if (value && typeof value === 'object') return Object.values(value).map(textOf).join('\n');
+  return '';
 }
 
 const KNOWN = new Set(FORGE_GUIDES.map((g) => g.slug));
@@ -70,7 +82,15 @@ describe('the capability guide', () => {
 
   it('carries no flag and no tool name, here or in the corpus text', () => {
     expect(surfaceFaults('capability guide', CAPABILITY_GUIDE.body)).toEqual([]);
-    expect(surfaceFaults('corpus scope', JSON.stringify(CORPUS_SCOPE))).toEqual([]);
+    expect(surfaceFaults('corpus scope', textOf(CORPUS_SCOPE))).toEqual([]);
+  });
+
+  it('puts the sentence calling the CLI names a pointer directly above those names', () => {
+    expect(CAPABILITY_GUIDE.body).toContain(
+      `${CORPUS_SCOPE.authority}\n\n${cliServedBullets().join('\n')}`,
+    );
+    const keys = Object.keys(CORPUS_SCOPE);
+    expect(keys.indexOf('cliServed') - keys.indexOf('authority')).toBe(1);
   });
 
   it('points at the CLI for methods rather than restating one', () => {
@@ -91,6 +111,58 @@ describe('those rules, against planted faults', () => {
     expect(surfaceFaults('planted', 'run it with --force to skip')).toEqual([
       'planted: carries a CLI flag ("--force")',
     ]);
+  });
+
+  // The spellings a page carries a flag in: beside a command in backticks, in a bracket, in a
+  // quote, after punctuation, at the start of a line, with a value, and as a one-letter flag.
+  const SPELLINGS: ReadonlyArray<readonly [string, string, string]> = [
+    ['after a space', 'Run it with --force to skip.', '--force'],
+    ['in backticks', 'Run it with `--force` to skip.', '--force'],
+    ['in parentheses', 'Read it whole (--force) first.', '--force'],
+    ['in a quote', 'The "--force" switch skips it.', '--force'],
+    ['after a colon', 'The switch:--force skips it.', '--force'],
+    ['after a comma', 'Take it, --force, and go.', '--force'],
+    ['at the start of a line', 'Intro.\n--force skips it.', '--force'],
+    ['with a value', 'Pass `--limit=5` for fewer.', '--limit'],
+    ['as a short flag', 'Run it with -f to skip.', '-f'],
+    ['as a short flag in backticks', 'Run it with `-f` to skip.', '-f'],
+    ['as a short flag in parentheses', 'Read it whole (-f) first.', '-f'],
+  ];
+
+  describe.each(SPELLINGS)('a flag %s', (_spelling, sentence, flag) => {
+    it('is named in the capability guide', () => {
+      expect(surfaceFaults('capability guide', `${CAPABILITY_GUIDE.body}\n${sentence}`)).toEqual([
+        `capability guide: carries a CLI flag (${JSON.stringify(flag)})`,
+      ]);
+    });
+
+    it.each(['listed', 'elsewhere', 'reach', 'authority'] as const)(
+      'is named in the corpus text, planted in its %s statement',
+      (field) => {
+        const planted = { ...CORPUS_SCOPE, [field]: `${CORPUS_SCOPE[field]}\n${sentence}` };
+        expect(surfaceFaults('corpus scope', textOf(planted))).toEqual([
+          `corpus scope: carries a CLI flag (${JSON.stringify(flag)})`,
+        ]);
+      },
+    );
+
+    it('is named in a method the CLI serves, planted in what it covers', () => {
+      const [first, ...rest] = CORPUS_SCOPE.cliServed;
+      const planted = { ...CORPUS_SCOPE, cliServed: [{ ...first, covers: sentence }, ...rest] };
+      expect(surfaceFaults('corpus scope', textOf(planted))).toEqual([
+        `corpus scope: carries a CLI flag (${JSON.stringify(flag)})`,
+      ]);
+    });
+  });
+
+  it('does not name a hyphenated word, a dash, a rule or a slug as a flag', () => {
+    const prose = [
+      'A well-known, pre-existing issue — see the e-mail; a dash - and an en dash \u2013 stand alone.',
+      '|---|---|',
+      'Read [what-is-an-issue](/api/guides/what-is-an-issue.md) and -1 of them (negative one).',
+      'Method-guides are served by the CLI: build-time names, read-only.',
+    ].join('\n');
+    expect(surfaceFaults('prose', prose)).toEqual([]);
   });
 
   it('names an MCP tool name planted in a body', () => {

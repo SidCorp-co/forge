@@ -38,16 +38,45 @@ async function readJson(url: string, what: string): Promise<unknown> {
   }
 }
 
+/** What the index says of its own extent (`CORPUS_SCOPE` in `packages/core/src/guides/corpus-scope.ts`).
+ *  Read from the index core serves, never restated here, so the web page and the API say one thing. */
+export interface GuideScope {
+  complete: false;
+  listed: string;
+  elsewhere: string;
+  reach: string;
+  authority: string;
+  cliServed: ReadonlyArray<{ slug: string; covers: string }>;
+}
+
+const readIndex = cache(async (): Promise<{ url: string; body: { guides?: unknown; corpus?: unknown } }> => {
+  const url = `${resolveServerApiBase()}/guides`;
+  return { url, body: ((await readJson(url, "reading the guide index")) ?? {}) as { guides?: unknown; corpus?: unknown } };
+});
+
 /** Every guide Forge publishes, in registry order. Throws by name when core is
  *  unreachable: an empty index would read as "Forge has no guides". */
 export const fetchGuideIndex = cache(async (): Promise<GuideSummary[]> => {
-  const url = `${resolveServerApiBase()}/guides`;
-  const body = await readJson(url, "reading the guide index");
-  const guides = (body as { guides?: unknown } | null)?.guides;
-  if (!Array.isArray(guides)) {
+  const { url, body } = await readIndex();
+  if (!Array.isArray(body.guides)) {
     throw new GuideFetchError("reading the guide index", url, "the response carried no `guides` array");
   }
-  return guides as GuideSummary[];
+  return body.guides as GuideSummary[];
+});
+
+/** The statement that the listed guides are not the whole corpus, as core's index carries it. Refused
+ *  by name when core's answer has none: a public page that stopped saying so would read as complete. */
+export const fetchGuideScope = cache(async (): Promise<GuideScope> => {
+  const { url, body } = await readIndex();
+  const scope = body.corpus as Partial<GuideScope> | undefined;
+  const wrong = (why: string) => new GuideFetchError("reading the guide index", url, `its \`corpus\` ${why}`);
+  if (!scope || typeof scope !== "object") throw wrong("statement is missing, so the list would read as the whole corpus");
+  if (scope.complete !== false) throw wrong("statement does not say the list is incomplete");
+  for (const key of ["listed", "elsewhere", "reach", "authority"] as const) {
+    if (typeof scope[key] !== "string" || scope[key] === "") throw wrong(`statement carries no \`${key}\` text`);
+  }
+  if (!Array.isArray(scope.cliServed)) throw wrong("statement carries no `cliServed` list");
+  return scope as GuideScope;
 });
 
 /** One guide, or `null` when Forge publishes no guide under that slug. */
