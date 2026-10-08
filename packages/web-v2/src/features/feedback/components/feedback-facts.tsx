@@ -18,10 +18,10 @@ import type { FeedbackForecast } from "@forge/contracts/forecast";
 import { EtaInline } from "@/features/forecast/components/eta-cell";
 import { ReleaseLine } from "@/features/forecast/components/release-line";
 import { type EtaClock, etaOfFeedback } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { feedbackForecastText } from "@/features/forecast/text";
 import { releaseHref } from "@/lib/routes/releases";
-import { useEtaClock } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
 
 const STRIP: FeedbackPhase[] = ["new", "triaged", "planned", "resolved", "verified"];
 

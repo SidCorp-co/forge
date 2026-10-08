@@ -3,8 +3,8 @@ import { formatClock, formatDateTime, formatNumber } from "@/lib/i18n/format";
 import { labelCopy } from "@/lib/i18n/labels";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import { type EtaClock, partsOf, rangeText } from "./clock";
-import { ETA_COPY } from "./eta-copy";
+import { type EtaClock, partsOf, rangeText } from "@/lib/i18n/eta-clock-words";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { progressText } from "./progress";
 
 // The forecast sentences a screen reads: a line, and the tooltip behind it. Their words are the

@@ -42,9 +42,10 @@ import { ISSUES_LIST, issueHref } from "@/lib/routes/issues";
 import { statusesFromParam } from "../derive";
 import { issueBadge, issueEta, issueRowView, useRowWords } from "./issue-standing-bits";
 import { IssuePeek } from "./issue-peek";
-import { useEtaClock, useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
+import { useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
 import { etaSortValue } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { Written } from "@/lib/i18n/written";
 
 type BoardMode = "attention" | "module" | "waves";

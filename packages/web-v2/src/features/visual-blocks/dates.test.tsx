@@ -8,7 +8,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VisualBlockProvider, VisualBlockView } from ".";
-import { doneDayText, whenText } from "@/features/forecast/clock";
+import { doneDayText, whenText } from "@/lib/i18n/eta-clock-words";
 
 // the QA case: shipped at 18:19 UTC on 4 Oct, which is already 5 Oct for a viewer in Ho Chi Minh City
 const SHIPPED = "2026-10-04T18:19:08.744Z";

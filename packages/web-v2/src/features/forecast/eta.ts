@@ -2,12 +2,12 @@ import { type DeliveryForecast, deliveryDatesOf, type FeedbackForecast, type For
 import type { Said } from "@forge/contracts/said";
 import { formatDateTime } from "@/lib/i18n/format";
 import { said, saysKey } from "@/lib/i18n/said";
-import { type EtaClock, doneDayText, partsOf, whenText } from "./clock";
-import { ETA_COPY } from "./eta-copy";
+import { type EtaClock, doneDayText, partsOf, whenText } from "@/lib/i18n/eta-clock-words";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { deliveryText, forecastText, spanText, statusWord } from "./text";
 
-export type { EtaClock } from "./clock";
-export { doneDayText, whenText } from "./clock";
+export type { EtaClock } from "@/lib/i18n/eta-clock-words";
+export { doneDayText, whenText } from "@/lib/i18n/eta-clock-words";
 
 // The ETA column: a forecast read as the clock and the day it lands, in the viewer's timezone, never as
 // durations the reader has to add to now. The p50 is the cell, the p85 its quiet second line; the

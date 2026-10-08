@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, ErrorState, PageContainer, ProjectLoader, Tabs, useUrlChoice } from "@/design";
-import { useEtaClock } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { StatusHistory } from "@/features/project-status/components/status-history";
 import { STATUS_WINDOWS, StatusReport } from "@/features/project-status/components/status-report";
 import { TemplateRun } from "@/features/project-status/components/template-run";

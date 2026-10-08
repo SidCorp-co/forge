@@ -2,12 +2,12 @@
 
 import type { InstantReading } from "@forge/contracts/visual-blocks";
 import { useMemo } from "react";
-import { type EtaClock, doneDayText, partsOf, whenText } from "@/features/forecast/clock";
-import { ETA_COPY } from "@/features/forecast/eta-copy";
-import { useEtaClock } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
+import { type EtaClock, doneDayText, partsOf, whenText } from "@/lib/i18n/eta-clock-words";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 
 // Every date a block draws reads as the Requirements list reads the same moment: the forecast's own
-// clock words (`forecast/clock.ts`) in the viewer's timezone, never the ISO a frame carries.
+// clock words (`lib/i18n/eta-clock-words.ts`) in the viewer's timezone, never the ISO a frame carries.
 
 /** A calendar day with no time: its own day, read in UTC so no timezone moves it. */
 const DAY_ONLY = /^\d{4}-\d{2}-\d{2}(?:T00:00(?::00(?:\.0+)?)?Z)?$/;

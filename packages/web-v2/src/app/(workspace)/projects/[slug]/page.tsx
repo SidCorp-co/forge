@@ -20,7 +20,8 @@ import { LandsThisWeek, LateItems } from "@/features/project-dashboard/component
 import { ProjectMemory } from "@/features/memory/components/project-memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
 import { useModuleRollup } from "@/features/modules/hooks";
-import { useComingNext, useEtaClock, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
+import { useComingNext, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast/hooks";
 import { etaInline, etaOfScope } from "@/features/forecast/eta";
 import { useFeedbackList } from "@/features/feedback/hooks";
 import { useReleases } from "@/features/releases/hooks";
