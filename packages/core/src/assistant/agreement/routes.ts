@@ -1,7 +1,7 @@
 // `/api/conversations/:id/proposals` — the chat writes held in a room until the person they wait on
 // agrees (REQ-30 BC-4). The person reads them as confirm cards and records or declines one as
-// themselves; an Agent-mode session binds the person's reply to one with its own token, which the
-// agreement checks (`agree.ts`). A card's agreement is told in the thread, with the record it made.
+// themselves; no chat credential decides one (`agreement-door.ts`). What the press made, or what
+// refused it, is told in the thread in a sentence.
 
 import {
   AGREE_CHAT_PROPOSAL_SHAPE,
@@ -19,6 +19,7 @@ import { postServiceAnswer } from '../conversation-adapter.js';
 import { agreeProposal, declineAs } from './agree.js';
 import { agreementOf, refuseChatDecline } from './agreement-door.js';
 import type { WriteOutcome } from './execute.js';
+import { failureSentence } from './failure.js';
 import { type ChatProposalRow, listProposals, readProposal } from './store.js';
 import { labels, viewOf } from './views.js';
 
@@ -31,7 +32,7 @@ const proposalParam = zValidator('param', z.object({ id: z.uuid(), pid: z.uuid()
 
 function toldInThread(row: ChatProposalRow, outcome: WriteOutcome): string {
   const title = (row.summary as ChatProposalSummary).title;
-  if (!outcome.ok) return `Not recorded: ${title}. The write was refused: ${outcome.failure}`;
+  if (!outcome.ok) return `Not recorded: ${title}. ${failureSentence(outcome.failure)}`;
   const ref = outcome.record.ref;
   return ref ? `Recorded as ${ref}: ${title}.` : `Recorded: ${title}.`;
 }
@@ -58,17 +59,15 @@ conversationProposalRoutes.post(
         `proposal ${pid} is not one made in conversation ${id}`,
       );
     }
-    const as = await agreementOf(id, proposal, c.get('userId'), c.req.valid('json'));
+    const as = await agreementOf(id, proposal, c.get('userId'));
     const { row, outcome } = await agreeProposal(pid, as);
-    if (as.via === 'card') {
-      await postServiceAnswer({
-        conversationId: id,
-        projectId: row.projectId,
-        askerUserId: as.userId,
-        content: toldInThread(row, outcome),
-        blocks: [],
-      });
-    }
+    await postServiceAnswer({
+      conversationId: id,
+      projectId: row.projectId,
+      askerUserId: as.userId,
+      content: toldInThread(row, outcome),
+      blocks: [],
+    });
     const named = await labels([row.proposedTo]);
     return c.json({
       proposal: viewOf(row, as.userId, named),

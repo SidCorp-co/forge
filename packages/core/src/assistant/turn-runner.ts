@@ -243,9 +243,13 @@ async function composeWithin(
     await settle();
     return first;
   }
-  // a room that may stay silent hears a partial only when the turn already changed something in it;
+  // a room that may stay silent hears a partial only when the turn already changed something in it:
+  // a write that landed, or one held for the person's go-ahead, whose card the room now shows (REQ-30
+  // BC-4: a chat's write lands only on that press, so a held one is the change a chat makes);
   // otherwise the turn ends at the first ceiling, as a turn there always has
-  if (req.fallbacks === 'silence' && !ctx.writes?.calls().some((c) => c.write)) {
+  const changed =
+    (ctx.writes?.calls().some((c) => c.write) ?? false) || (ctx.writes?.held().length ?? 0) > 0;
+  if (req.fallbacks === 'silence' && !changed) {
     abort.abort(TURN_TIMED_OUT);
     const ended = await work;
     await settle();
@@ -259,6 +263,7 @@ async function composeWithin(
     partial: codeAuthored(
       partialReplyText({
         calls: ctx.writes?.calls() ?? [],
+        held: ctx.writes?.held() ?? [],
         language: req.replyLanguage ?? 'en',
         handleName: req.handleName,
         waitedMs: Date.now() - startedAt,

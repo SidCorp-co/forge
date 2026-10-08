@@ -1,14 +1,11 @@
-// Who an agreement arrives from, read from the credential: the person's own sign-in or token
-// presses a card; an Agent-mode session binds the person's reply to the turn it answers; any other
-// chat credential agrees to nothing, and no chat credential declines.
+// Who an agreement arrives from, read from the credential: only the person's own sign-in or token
+// presses a card. No chat credential agrees or declines — not the assistant's turn token, not an
+// Agent session's, not the token an agreed proposal is written under — whatever the person typed in
+// the chat, since a typed reply is never an agreement (REQ-30 BC-4, workflow chat-turn step confirm).
 
-import type {
-  agreeChatProposalRequestSchema,
-  ChatProposalRefusalCode,
-} from '@forge/contracts/chat-proposals';
-import type { z } from 'zod';
+import type { ChatProposalRefusalCode } from '@forge/contracts/chat-proposals';
 import { chatDoorOfToken } from '../../agent-sessions/index.js';
-import { agentTurnOfSession, readableConversation } from '../../conversations/index.js';
+import { readableConversation } from '../../conversations/index.js';
 import { currentPatScope } from '../../credentials/pat-scope.js';
 import { RefusalError, refuser } from '../../lib/refusal.js';
 import { resolveTurnAuthority } from '../../permissions/index.js';
@@ -26,67 +23,34 @@ async function authorityOf(userId: string, projectId: string, viaTokenId: string
   return resolved.authority;
 }
 
-/** How the agreement arrived: the person's own sign-in or token (a card), or a session binding their reply. */
+/** Refused when the request arrived on a chat credential: a proposal is decided by the person's own press. */
+async function refuseChatCredential(act: 'agreed' | 'declined'): Promise<void> {
+  const scope = currentPatScope();
+  if (!scope || !(await chatDoorOfToken(scope.tokenId))) return;
+  throw refuse(
+    'CHAT_AGREEMENT_DOOR',
+    act === 'agreed'
+      ? 'a proposal is agreed only by the person it waits on pressing Record it on its card, from their own sign-in. A chat credential agrees to nothing, whatever the person typed: tell them the card is waiting. Nothing was written.'
+      : 'a proposal is declined by the person it waits on, from their own sign-in; a chat that hears "no" writes nothing and leaves the card to them',
+  );
+}
+
+/** The person pressing Record it, and the authority their press writes under. */
 export async function agreementOf(
   conversationId: string,
   proposal: ChatProposalRow,
   userId: string,
-  body: z.infer<typeof agreeChatProposalRequestSchema>,
 ): Promise<AgreeAs> {
+  await refuseChatCredential('agreed');
+  await readableConversation(conversationId, userId);
   const scope = currentPatScope();
-  const door = scope ? await chatDoorOfToken(scope.tokenId) : null;
-  if (!door) {
-    await readableConversation(conversationId, userId);
-    return {
-      via: 'card',
-      userId,
-      authority: await authorityOf(userId, proposal.projectId, scope?.tokenId ?? null),
-    };
-  }
-  if (door.door !== 'box-session') {
-    throw refuse(
-      'CHAT_AGREEMENT_DOOR',
-      door.door === 'assistant-turn'
-        ? 'the assistant binds a reply to a proposal with forge_agree, not with this route'
-        : 'the token an agreed proposal is written under agrees to nothing',
-    );
-  }
-  const read = await agentTurnOfSession(door.sessionId);
-  const turn = read.found ? read.turn : null;
-  if (!turn?.asker || turn.conversationId !== conversationId) {
-    throw refuse(
-      'CHAT_AGREEMENT_DOOR',
-      'this session answers no turn of this conversation, so it has no reply of the person to bind',
-    );
-  }
-  if (!body.words || !body.kind) {
-    throw refuse(
-      'CHAT_AGREEMENT_UNBOUND',
-      `from a chat session an agreement is the person's reply: send words (their whole message) and kind (the proposal's kind, ${proposal.kind} here)`,
-      body.words ? '/kind' : '/words',
-    );
-  }
   return {
-    via: 'reply',
-    userId: turn.asker.userId,
-    authority: await authorityOf(turn.asker.userId, proposal.projectId, turn.asker.viaTokenId),
-    reply: {
-      conversationId,
-      message: turn.question,
-      startedAt: turn.startedAt,
-      words: body.words,
-      kind: body.kind,
-    },
+    userId,
+    authority: await authorityOf(userId, proposal.projectId, scope?.tokenId ?? null),
   };
 }
 
 /** A decline is the person's own, from their sign-in: refused on any chat credential. */
-export async function refuseChatDecline(): Promise<void> {
-  const scope = currentPatScope();
-  if (scope && (await chatDoorOfToken(scope.tokenId))) {
-    throw refuse(
-      'CHAT_AGREEMENT_DOOR',
-      'a proposal is declined by the person it waits on, from their own sign-in; a chat that hears "no" writes nothing',
-    );
-  }
+export function refuseChatDecline(): Promise<void> {
+  return refuseChatCredential('declined');
 }

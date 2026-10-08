@@ -1,3 +1,5 @@
+import type { AgreedRecord } from './reads.js';
+
 export interface ProgressFacts {
   shipped: number;
   closedUnshipped: number;
@@ -78,6 +80,12 @@ export interface MessageFacts {
    * shown with it, so a block's text is read from them. Null reads it from the turn's calls.
    */
   readonly heldBlocks: readonly string[] | null;
+  /**
+   * The records this conversation wrote through the person's agreement (REQ-30 BC-4): a chat's write
+   * lands only when they press Record it, so a reply's claim to a record is held to these. Empty
+   * where the reply belongs to no conversation.
+   */
+  readonly agreedRecords: readonly AgreedRecord[];
 }
 
 export const NO_FACTS: MessageFacts = {
@@ -95,6 +103,7 @@ export const NO_FACTS: MessageFacts = {
   asked: new Set(),
   figures: null,
   heldBlocks: null,
+  agreedRecords: [],
 };
 
 export function facts(over: Partial<MessageFacts>): MessageFacts {

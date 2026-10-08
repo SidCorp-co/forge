@@ -1,4 +1,4 @@
-// The REST side of BC-4 (REQ-30): a record route's write that arrives on a chat credential is held
+// The REST side of BC-4 (REQ-30): a write route's request that arrives on a chat credential is held
 // (`middleware/chat-write-hold.ts`). Read from the credential the request arrived on, so an Agent
 // session's shell meets it whatever command it writes with:
 // - an Agent-mode session answering a room: the request is kept, bytes and all, as a proposal the
@@ -22,17 +22,15 @@ import { chatDoorOfToken } from '../../agent-sessions/index.js';
 import { agentTurnOfSession } from '../../conversations/index.js';
 import { currentPatScope } from '../../credentials/pat-scope.js';
 import { refuser } from '../../lib/refusal.js';
-import { actorFor, projectResource, requireCan } from '../../permissions/index.js';
+import { requireRoleFor } from './roles.js';
 import { readProposal, recordProposal } from './store.js';
 import { summaryOfRest } from './summary.js';
 
 const refuse = refuser<ChatProposalRefusalCode>('CHAT_WRITE_AWAITS_AGREEMENT');
 
-/** Every record route a chat's write is held on needs project.write where it lands. */
-const RECORD_PERMISSION = 'project.write';
-
-async function requireRole(c: Context, projectId: string): Promise<void> {
-  await requireCan(actorFor(c.get('userId')), RECORD_PERMISSION, projectResource(projectId));
+/** The person's role must make the write where it lands, as the route itself would ask. */
+function requireRole(c: Context, kind: ChatProposalKind, projectId: string): Promise<void> {
+  return requireRoleFor(kind, c.get('userId'), projectId);
 }
 
 /** The request headers a record route reads beside the body, kept so the agreed write reads the same. */
@@ -86,7 +84,7 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
     );
   }
   const { turn } = read;
-  await requireRole(c, turn.projectId);
+  await requireRole(c, kind, turn.projectId);
   if (!turn.asker) {
     throw refuse(
       'CHAT_WRITE_AWAITS_AGREEMENT',
@@ -113,16 +111,17 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
     form: 'rest',
     call: { method: c.req.method, path, contentType, headers: keptHeaders(c) },
     body: bytes.length > 0 ? bytes : null,
-    summary: summaryOfRest(
+    summary: summaryOfRest({
       kind,
+      method: c.req.method,
       path,
-      await jsonOf(bytes, contentType),
-      await fileNameOf(bytes, contentType),
-    ),
+      body: await jsonOf(bytes, contentType),
+      attachmentName: await fileNameOf(bytes, contentType),
+    }),
   });
   throw refuse(
     'CHAT_WRITE_AWAITS_AGREEMENT',
-    `nothing was written. Core holds this ${kind} as proposal ${row.id} until the person agrees; they see it in the conversation as a confirm card they can record or decline. End your reply by restating what it records and what it relates to and asking for their go-ahead; do not say it is recorded. When they agree in their next message, POST /api/conversations/${turn.conversationId}/proposals/${row.id}/agree with { "words": <their whole message>, "kind": "${kind}" }: core writes this exact request as them. Do not send it again.`,
+    `nothing was written. Core holds this ${kind} as proposal ${row.id} until the person agrees; they see it in the conversation as a confirm card with Record it and Decline. End your reply by restating what it records and what it relates to and asking them to press Record it on the card; do not say it is recorded. Only their press writes it: a reply they type, yes or no, writes nothing, and nothing you send agrees for them. Do not send this request again unless they want it changed.`,
   );
 }
 
@@ -142,13 +141,13 @@ export async function holdChatRestWrite(c: Context, kind: ChatProposalKind): Pro
       );
     }
     case 'assistant-turn':
-      for (const projectId of scope.projectIds ?? []) await requireRole(c, projectId);
+      for (const projectId of scope.projectIds ?? []) await requireRole(c, kind, projectId);
       throw refuse(
         'CHAT_WRITE_AWAITS_AGREEMENT',
-        "this is the assistant's turn token, and a chat's write waits for the person to agree: it is held through the turn's own tools (forge_feedback, the requirement tools, forge comment and forge attach), which show the person a confirm card. Nothing was written.",
+        "this is the assistant's turn token, and a chat's write waits for the person to agree: it is held through the turn's own tools (forge_feedback, the requirement tools, forge comment, forge attach, forge issue and forge project), which show the person a confirm card. Nothing was written.",
       );
     case 'box-session':
-      for (const projectId of scope.projectIds ?? []) await requireRole(c, projectId);
+      for (const projectId of scope.projectIds ?? []) await requireRole(c, kind, projectId);
       return holdSessionWrite(c, kind, door.sessionId);
   }
 }

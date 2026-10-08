@@ -21,7 +21,7 @@ export interface RuleBreak {
 }
 
 /** What a rule needs gathered before it can judge anything. */
-export type FactKind = 'issue-rows' | 'progress' | 'prefixes' | 'report-runs';
+export type FactKind = 'issue-rows' | 'progress' | 'prefixes' | 'report-runs' | 'agreed-records';
 
 export interface MessageRule {
   readonly id: string;

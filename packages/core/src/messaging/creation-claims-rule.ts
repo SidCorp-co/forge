@@ -1,20 +1,21 @@
 /**
  * The rule that holds a reply's claim to have made a record against what the turn actually did.
  *
- * Chat records Feedback (`forge_feedback`) or a Requirement draft or revision
- * (`forge_requirement_draft`, `forge_requirement_revise`; at a requirement's BA door `ba_suggest` and
- * `ba_suggest_requirement`) once the person agrees — a chat's record is held until they do, and
- * written by `forge_agree` or the proposal's agree route (`assistant/agreement`) — and never an
- * issue (owner ruling 2026-10-08: the kernel refuses a chat credential `CHAT_FILES_FEEDBACK_NOT_ISSUES`).
- * So "I recorded this as FB-112" is true only where this turn wrote a Feedback, and "I created an
- * issue" is false whatever the turn did. An Agent session has no record tools; its write is a REST
- * POST to the project's `feedback` or `requirements` route, read from its Bash call.
+ * Chat records Feedback or a Requirement draft or revision, and never an issue (owner ruling
+ * 2026-10-08: the kernel refuses a chat credential `CHAT_FILES_FEEDBACK_NOT_ISSUES`). Since REQ-30
+ * BC-4 a chat's record is written only when the person presses Record it on the card its proposal is
+ * shown as (`assistant/agreement`): the tool the model calls, or an Agent session's REST POST, is
+ * held and writes nothing. So "I recorded this as FB-112" is true only where this conversation holds
+ * FB-112 as a record written through an agreement (`facts.ts:MessageFacts.agreedRecords`), and a
+ * held call — `forge_feedback`, a POST to the `feedback` route — grounds nothing. At a
+ * requirement's BA door `ba_suggest` and `ba_suggest_requirement` are the door's own writes and
+ * ground its claim. "I created an issue" is false whatever the turn did.
  *
  * The same holds a claim to have shared an answer or saved a report (REQ-32): "I shared this", a
  * share link in the reply, or "I saved the report" is true only where this turn created a share
- * (`POST /api/projects/:id/shares`) or saved a report: `forge_template_save` from the Assistant, or
- * `POST /api/projects/:id/status/reports` from an Agent session, the one service behind both. The
- * Assistant has no share tool, so from it a share claim is always held.
+ * (`POST /api/projects/:id/shares`) or this conversation saved a report through an agreement (the
+ * save is held like every chat write). The Assistant has no share tool, so from it a share claim is
+ * always held.
  *
  * A save or share claim is read as an act, not as a list of sentences: a save verb in a completed or
  * passive form ("saved", "stored", "is saved", "has been saved", a sentence opening "Saved the…",
@@ -33,7 +34,6 @@
 
 // every Vietnamese literal here is an `i18n-allow` pragma carrying the phrasing the detector must read; people chat in Vietnamese.
 
-import { CHAT_AGREE_TOOL } from '@forge/contracts/chat-proposals';
 import { SHARE_TOKEN_PREFIX } from '@forge/contracts/shares';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
@@ -80,16 +80,6 @@ const SHARE_TOKEN_RE = new RegExp(`${SHARE_TOKEN_PREFIX}[A-Za-z0-9_-]{8,}`);
 
 const writes = (calls: readonly Call[]) => calls.filter((c) => !c.isError);
 
-/** A REST POST an Agent session made to a project's feedback or requirement route. */
-function restPost(c: Call, route: 'feedback' | 'requirements'): boolean {
-  if (c.name !== 'Bash') return false;
-  const cmd = c.arguments;
-  return (
-    new RegExp(`projects/[^\\s"'\\\\]+/${route}\\b`).test(cmd) &&
-    /(?:-X\s*POST|--request\s+POST|\s-d\s|--data)/.test(cmd)
-  );
-}
-
 /** A REST POST an Agent session made to exactly this project route, not to one beneath it. */
 function restPostExact(c: Call, route: string): boolean {
   if (c.name !== 'Bash') return false;
@@ -102,40 +92,13 @@ function restPostExact(c: Call, route: string): boolean {
 
 const named = (c: Call, tool: string) => c.name === tool || c.name.endsWith(`__${tool}`);
 
-/**
- * A record the person agreed to and this turn wrote (REQ-30 BC-4): every chat write is held until
- * they agree, so a turn that records one does it by binding their reply, through `forge_agree`
- * (whose `kind` names the record) or, from an Agent session, a POST to the proposal's agree route.
- * A held write is a refused call and grounds nothing.
- */
-function agreedKinds(c: Call): readonly string[] {
-  if (named(c, CHAT_AGREE_TOOL)) {
-    try {
-      const kind = (JSON.parse(c.arguments) as { kind?: unknown }).kind;
-      return typeof kind === 'string' ? [kind] : [];
-    } catch {
-      return [];
-    }
-  }
-  const agreedOverRest =
-    c.name === 'Bash' &&
-    /conversations\/[^\s"'\\/]+\/proposals\/[^\s"'\\/]+\/agree\b/.test(c.arguments) &&
-    /(?:-X\s*POST|--request\s+POST|\s-d\s|--data)/.test(c.arguments);
-  return agreedOverRest ? ['feedback', 'requirement_draft', 'requirement_revision'] : [];
-}
+type Agreed = MessageFacts['agreedRecords'];
 
-function feedbackWritten(calls: readonly Call[]): boolean {
-  return writes(calls).some((c) => {
-    if (named(c, 'forge_feedback') || restPost(c, 'feedback')) return true;
-    if (agreedKinds(c).includes('feedback')) return true;
-    if (c.name !== 'forge') return false;
-    try {
-      const argv = (JSON.parse(c.arguments) as { argv?: unknown }).argv;
-      return Array.isArray(argv) && argv[0] === 'feedback';
-    } catch {
-      return false;
-    }
-  });
+/** The conversation wrote this Feedback through an agreement: the key claimed, or any where none is. */
+function feedbackWritten(agreed: Agreed, ref: string | null): boolean {
+  return agreed.some(
+    (r) => r.kind === 'feedback' && (ref === null || r.ref?.toUpperCase() === ref),
+  );
 }
 
 /**
@@ -146,23 +109,21 @@ function feedbackWritten(calls: readonly Call[]): boolean {
  */
 const BA_REQUIREMENT_WRITES = ['ba_suggest', 'ba_suggest_requirement'] as const;
 
-/** Whether the turn wrote the requirement `ref` names: any draft, a revision of that REQ, a BA suggestion, or a REST POST. */
-function requirementWritten(calls: readonly Call[], ref: string | null): boolean {
-  return writes(calls).some((c) => {
-    if (named(c, 'forge_requirement_draft') || restPost(c, 'requirements')) return true;
-    if (BA_REQUIREMENT_WRITES.some((tool) => named(c, tool))) return true;
-    if (agreedKinds(c).some((k) => k === 'requirement_draft' || k === 'requirement_revision')) {
-      return true;
-    }
-    if (!named(c, 'forge_requirement_revise')) return false;
-    if (ref === null) return true;
-    try {
-      const target = (JSON.parse(c.arguments) as { requirement?: unknown }).requirement;
-      return typeof target !== 'string' || target.toUpperCase() === ref;
-    } catch {
-      return true;
-    }
-  });
+const REQUIREMENT_KINDS: ReadonlySet<string> = new Set([
+  'requirement_draft',
+  'requirement_revision',
+]);
+
+/**
+ * Whether the requirement `ref` names was written: a draft or revision of it agreed in this
+ * conversation (its record reads "REQ-4" or "REQ-4 r2"), or the BA door's own suggestion.
+ */
+function requirementWritten(calls: readonly Call[], agreed: Agreed, ref: string | null): boolean {
+  if (writes(calls).some((c) => BA_REQUIREMENT_WRITES.some((tool) => named(c, tool)))) return true;
+  return agreed.some(
+    (r) =>
+      REQUIREMENT_KINDS.has(r.kind) && (ref === null || r.ref?.toUpperCase().split(' ')[0] === ref),
+  );
 }
 
 const sentences = (text: string): { body: string; question: boolean }[] =>
@@ -172,7 +133,7 @@ const sentences = (text: string): { body: string; question: boolean }[] =>
   }));
 
 /** Every record the reply says it made that this turn did not make, quoted. */
-function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
+function ungroundedRecords(text: string, calls: readonly Call[], agreed: Agreed): RuleBreak[] {
   const breaks: RuleBreak[] = [];
   for (const { body, question } of sentences(text)) {
     if (question || !body || !(VERB_EN.test(body) || VERB_VI.test(body))) continue;
@@ -186,13 +147,15 @@ function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
       if (noun) claimed.push({ kind: noun === 'feedback' ? 'feedback' : 'requirement', ref: null });
     }
     for (const c of claimed) {
-      const held =
-        c.kind === 'feedback' ? feedbackWritten(calls) : requirementWritten(calls, c.ref);
-      if (held) continue;
+      const written =
+        c.kind === 'feedback'
+          ? feedbackWritten(agreed, c.ref)
+          : requirementWritten(calls, agreed, c.ref);
+      if (written) continue;
       const what = c.kind === 'feedback' ? 'Feedback' : 'a Requirement draft or revision';
       breaks.push({
         quote: body,
-        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this turn made no ${c.kind === 'feedback' ? '`forge_feedback` call or POST to the feedback route' : "requirement write (`forge_requirement_draft`, `forge_requirement_revise`, at a requirement's BA door `ba_suggest` or `ba_suggest_requirement`, or a POST to the requirements route) that succeeded"}`,
+        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this conversation holds no such record written through the person's agreement${c.kind === 'requirement' ? ", and this turn made no `ba_suggest` or `ba_suggest_requirement` at a requirement's BA door that succeeded" : ''}: a chat's write is held until they press Record it on its card, so a call that was held recorded nothing. Say it waits on their card instead.`,
       });
     }
   }
@@ -200,12 +163,14 @@ function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
 }
 
 /** Every claim to have shared an answer or saved a report that this turn's writes do not carry. */
-function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBreak[] {
+function ungroundedSharesAndSaves(
+  text: string,
+  calls: readonly Call[],
+  agreed: Agreed,
+): RuleBreak[] {
   const breaks: RuleBreak[] = [];
   const shared = writes(calls).some((c) => restPostExact(c, 'shares'));
-  const saved = writes(calls).some(
-    (c) => named(c, 'forge_template_save') || restPostExact(c, 'status/reports'),
-  );
+  const saved = agreed.some((r) => r.kind === 'report_save');
   for (const { body, question } of sentences(text)) {
     if (question || !body) continue;
     if (!shared && (SHARE_EN.test(body) || SHARE_VI.test(body))) {
@@ -217,7 +182,7 @@ function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBre
     if (!saved && claimsSave(body)) {
       breaks.push({
         quote: body,
-        why: 'reply claims a report was saved, and this turn saved none: call forge_template_save with the template run (in Agent mode, POST /api/projects/<id>/status/reports), or offer to save it instead of saying it is saved',
+        why: "reply claims a report was saved, and this conversation saved none through the person's agreement: a save is held until they press Record it on its card, so say it waits on their card instead of saying it is saved",
       });
     }
   }
@@ -234,13 +199,13 @@ function ungroundedSharesAndSaves(text: string, calls: readonly Call[]): RuleBre
 export const CREATION_CLAIMS_GROUNDED: MessageRule = {
   id: 'creation-claims-grounded',
   shape:
-    'say a record was made, an answer shared or a report saved only where this turn did it: Feedback or a Requirement draft, never an issue; a share only after its POST, a saved report only after forge_template_save or its POST',
-  example: 'I have not recorded anything yet; tell me to and I will record it as Feedback.',
-  needs: ['prefixes'],
+    "say a record was made or a report saved only where the person's press on its card wrote it in this conversation, and an answer shared only after this turn's POST: Feedback or a Requirement draft, never an issue",
+  example: 'Nothing is written until you press Record it on the card; it then becomes Feedback.',
+  needs: ['prefixes', 'agreed-records'],
   check: (text, f) => {
     const breaks = [
-      ...ungroundedRecords(text, f.toolCalls),
-      ...ungroundedSharesAndSaves(text, f.toolCalls),
+      ...ungroundedRecords(text, f.toolCalls, f.agreedRecords),
+      ...ungroundedSharesAndSaves(text, f.toolCalls, f.agreedRecords),
     ];
     if (claimsIssueCreated(text, f.prefixes)) {
       breaks.push({

@@ -6,6 +6,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
+  agreedRecordsIn,
   composeLayers,
   holdChatRestWrite,
   METHOD_LAYERS,
@@ -261,6 +262,7 @@ provideMessageReads({
     ...(await keptRunFrames(projectId, ids, tx)),
     ...(await keptExecutionFrames(projectId, ids, tx)),
   ],
+  agreedRecords: agreedRecordsIn,
 });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

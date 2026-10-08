@@ -5,7 +5,7 @@
 // quoted: they are the asker's, the whole room reads this message, and JSON is not a sentence.
 
 import { partialReplyWords, type ReplyLanguage } from '../conversations/index.js';
-import { type DoneCall, isProposalCall } from './turn-writes.js';
+import { type DoneCall, type HeldCall, isProposalCall } from './turn-writes.js';
 
 const NAMED_WRITES = 10;
 const CLI_TOOL = 'forge';
@@ -83,6 +83,23 @@ const WRITES: Record<string, Record<ReplyLanguage, string>> = {
   'forge attach': { en: 'attached a file', vi: 'đính kèm tệp' }, // i18n-allow: user-facing channel reply
   'forge issue': { en: 'updated an issue', vi: 'cập nhật issue' }, // i18n-allow: user-facing channel reply
 };
+/**
+ * A held write, by tool and for the CLI by its verb, as what it would make. English in every room:
+ * new copy is English only (owner ruling ISS-403).
+ */
+const HELD: Record<string, string> = {
+  forge_feedback: 'Feedback',
+  forge_requirement_draft: 'a draft requirement',
+  forge_requirement_revise: 'a requirement revision',
+  forge_memory_note: 'a project memory note',
+  forge_preferences: 'a change to reply preferences',
+  forge_template_save: 'a saved report',
+  'forge comment': 'a comment',
+  'forge attach': 'an attachment',
+  'forge issue': 'a change to an issue',
+  'forge project': 'a change to the project',
+};
+
 const USED: Record<ReplyLanguage, string> = { en: 'used', vi: 'dùng' }; // i18n-allow: user-facing channel reply
 
 /** A tool's name as words: no server prefix, no `forge_`, spaces for underscores. */
@@ -106,7 +123,7 @@ function drawnKind(argsJson: string): string {
   return typeof kind === 'string' && Object.hasOwn(DRAWN, kind) ? kind : 'block';
 }
 
-function writeKey(c: DoneCall): string {
+function writeKey(c: { name: string; arguments: string }): string {
   if (c.name !== CLI_TOOL) return c.name;
   const argv = parsedArgs(c.arguments)?.argv;
   return Array.isArray(argv) && typeof argv[0] === 'string' ? `${CLI_TOOL} ${argv[0]}` : CLI_TOOL;
@@ -114,6 +131,11 @@ function writeKey(c: DoneCall): string {
 
 function writeLine(c: DoneCall, language: ReplyLanguage): string {
   const said = WRITES[writeKey(c)]?.[language] ?? `${USED[language]} ${plainName(c.name)}`;
+  return c.keys.length > 0 ? `- ${said} → ${c.keys.join(', ')}` : `- ${said}`;
+}
+
+function heldLine(c: HeldCall): string {
+  const said = HELD[writeKey(c)] ?? plainName(c.name);
   return c.keys.length > 0 ? `- ${said} → ${c.keys.join(', ')}` : `- ${said}`;
 }
 
@@ -151,8 +173,15 @@ export function readsSaid(calls: readonly DoneCall[], language: ReplyLanguage): 
   return `${parts.join(', ')}.`;
 }
 
-/** The calls that landed, writes first with the keys they returned, then the reads; empty when none did. */
-export function ledgerLines(calls: readonly DoneCall[], language: ReplyLanguage): string[] {
+/**
+ * The calls that landed, writes first with the keys they returned, then the writes held for the
+ * person's go-ahead, which landed nothing, then the reads; empty when none did.
+ */
+export function ledgerLines(
+  calls: readonly DoneCall[],
+  language: ReplyLanguage,
+  held: readonly HeldCall[] = [],
+): string[] {
   const words = partialReplyWords(language);
   const writes = calls.filter((c) => c.write);
   const reads = readsSaid(
@@ -163,6 +192,10 @@ export function ledgerLines(calls: readonly DoneCall[], language: ReplyLanguage)
   if (writes.length > 0) {
     lines.push(words.did, ...writes.slice(-NAMED_WRITES).map((c) => writeLine(c, language)));
   }
+  if (held.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push(words.held, ...held.slice(-NAMED_WRITES).map(heldLine));
+  }
   if (reads) {
     if (lines.length > 0) lines.push('');
     lines.push(`${words.read} ${reads}`);
@@ -172,12 +205,13 @@ export function ledgerLines(calls: readonly DoneCall[], language: ReplyLanguage)
 
 export function partialReplyText(args: {
   calls: readonly DoneCall[];
+  held?: readonly HeldCall[];
   language: ReplyLanguage;
   handleName: string;
   waitedMs: number;
 }): string {
   const words = partialReplyWords(args.language);
   const head = words.head(args.handleName, Math.round(args.waitedMs / 1000));
-  const ledger = ledgerLines(args.calls, args.language);
+  const ledger = ledgerLines(args.calls, args.language, args.held);
   return [head, '', ...(ledger.length > 0 ? ledger : [words.nothingYet])].join('\n');
 }

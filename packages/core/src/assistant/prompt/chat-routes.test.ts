@@ -50,10 +50,13 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
     it(`${door}: discusses before it writes, and asks the scope questions before the record`, () => {
       expect(prompt).toContain('### Discuss before writing');
       expect(prompt).toContain('what you understood');
-      expect(prompt).toContain('a request for their go-ahead');
+      expect(prompt).toContain('ask them to press Record it on the');
       expect(prompt).toContain('Nothing you write lands until the person agrees: core holds it');
       expect(prompt).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
-      expect(prompt).toContain('call `forge_agree`');
+      // agreement is the person's press alone (ISS-439): a typed yes or no writes nothing
+      expect(prompt).toContain('Only their press on the card records it.');
+      expect(prompt).toContain('A reply they type, yes or no, writes nothing');
+      expect(prompt).not.toContain('forge_agree');
       expect(prompt).toContain('comes BEFORE the record, never after it');
       expect(prompt).toContain('Asked to "just file an issue"');
     });
@@ -65,7 +68,8 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
     expect(agent).toContain(`projects/${PROJECT.id}/requirements`);
     expect(agent).toContain(`projects/${PROJECT.id}/requirements/REQ-n/revisions`);
     expect(agent).toContain('you file no issue');
-    expect(agent).toContain('/proposals/<proposal>/agree -X POST');
+    expect(agent).toContain('Only their press writes it');
+    expect(agent).not.toContain('/agree');
   });
 
   it('closes `forge new` at the chat door, naming where a record goes instead', () => {

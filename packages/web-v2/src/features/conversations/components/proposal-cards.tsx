@@ -3,7 +3,9 @@
 // A write a chat turn proposed waits here, above the composer, until the person it answers agrees
 // (REQ-30 BC-4, workflow chat-turn step confirm): what it would record, what it relates to, and for
 // that person alone Record it / Decline. Everyone else in the room reads whom it waits on. Once it
-// is decided, core says so in the thread, and the card goes.
+// is decided, core says so in the thread, and the card goes. The card shows the WHOLE proposal —
+// every line core summarised from the held call, none clipped — since a person agrees only to what
+// they could read; a long one scrolls inside the card rather than being cut short.
 
 import type { ChatProposalView } from "@forge/contracts/chat-proposals";
 import { Button } from "@/design";
@@ -11,8 +13,15 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useConversationProposals, useDecideProposal } from "../hooks";
 
-/** The lines a card shows of what would be written; the rest is in the record once it is written. */
-const SHOWN_LINES = 3;
+/** Each line with a key of its own: a line written twice is shown twice, as the proposal holds it. */
+function keyedLines(lines: readonly string[]): { key: string; line: string }[] {
+  const seen = new Map<string, number>();
+  return lines.map((line) => {
+    const n = (seen.get(line) ?? 0) + 1;
+    seen.set(line, n);
+    return { key: `${n}:${line}`, line };
+  });
+}
 
 export function ProposalCards({
   conversationId,
@@ -63,11 +72,15 @@ export function ProposalCard({
   return (
     <div data-testid="proposal-card" data-kind={proposal.kind} className="flex flex-col gap-1.5 border-l-2 border-line pl-3">
       <p className="fg-body-sm font-semibold text-fg">{summary.title}</p>
-      {summary.lines.slice(0, SHOWN_LINES).map((line) => (
-        <p key={line} className="fg-caption line-clamp-2 text-muted">
-          {line}
-        </p>
-      ))}
+      {summary.lines.length > 0 && (
+        <div data-testid="proposal-lines" className="flex max-h-64 flex-col gap-1 overflow-y-auto">
+          {keyedLines(summary.lines).map(({ key, line }) => (
+            <p key={key} className="fg-caption whitespace-pre-wrap break-words text-muted">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
       {summary.relates.length > 0 && (
         <p className="fg-caption text-subtle">
           {t("conversations.proposal.relates", { records: summary.relates.join(", ") })}

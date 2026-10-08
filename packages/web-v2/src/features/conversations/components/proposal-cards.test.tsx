@@ -62,6 +62,29 @@ describe("a held write waits in the room for its person", () => {
     expect(writes[0]?.body).toEqual({});
   });
 
+  it("shows the whole proposal, every line of it, before Record it", async () => {
+    const lines = [
+      "Why: People lose drafts.",
+      ...Array.from({ length: 14 }, (_, i) => `${i + 1}. Criterion number ${i + 1} holds.`),
+      "spec: {\"openQuestions\":[\"Who sees the card?\"]}",
+    ];
+    fakeCore((c) => {
+      if (c.method === "GET" && c.path === `/conversations/${ROOM}/proposals`) {
+        return {
+          body: {
+            proposals: [proposal({ kind: "requirement_draft", summary: { title: "New requirement: Keep drafts", lines, relates: [] } })],
+          },
+        };
+      }
+      return undefined;
+    });
+    renderWithQuery(<ProposalCards conversationId={ROOM} threadLength={1} />);
+
+    expect(await screen.findByText("New requirement: Keep drafts")).toBeTruthy();
+    for (const line of lines) expect(screen.getByText(line)).toBeTruthy();
+    expect(screen.getByTestId("proposal-lines").children).toHaveLength(lines.length);
+  });
+
   it("declines without writing, through the decline route alone", async () => {
     const calls = fakeCore((c) => {
       if (c.method === "GET" && c.path === `/conversations/${ROOM}/proposals`) return { body: { proposals: [proposal()] } };
