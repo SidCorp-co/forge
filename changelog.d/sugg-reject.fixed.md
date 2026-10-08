@@ -1,0 +1,1 @@
+**A pending suggestion in the requirements list can now be rejected.** The BA assistant strip offers Reject beside Accept and Review, asks for a reason, and the reason shows in the requirement history.

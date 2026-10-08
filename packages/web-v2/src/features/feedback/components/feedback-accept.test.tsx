@@ -61,6 +61,25 @@ describe("accepting a suggested triage", () => {
   });
 });
 
+describe("rejecting a suggested triage", () => {
+  it("takes a required reason through the shared reject step, Cancel sends nothing, and the route is unchanged", async () => {
+    const calls = fakeCore((c) => (c.method === "GET" ? { body: { suggestions: [triage], open: 1 } } : { body: { suggestion: { ...triage, status: "rejected" } } }));
+    renderWithQuery(<Proposals projectId="p1" f={item()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    const step = screen.getByTestId("reject-step");
+    expect(within(step).getByRole("button", { name: "Reject" })).toBeDisabled();
+    fireEvent.click(within(step).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("reject-step")).toBeNull();
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    fireEvent.change(within(screen.getByTestId("reject-step")).getByRole("textbox"), { target: { value: "  Not a bug  " } });
+    fireEvent.click(within(screen.getByTestId("reject-step")).getByRole("button", { name: "Reject" }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST")).toEqual([{ method: "POST", path: "/projects/p1/suggestions/s9/reject", body: { reason: "Not a bug" } }]),
+    );
+  });
+});
+
 describe("a decision an accepted suggestion wrote, in the History", () => {
   const decision = {
     decision: "triaged",

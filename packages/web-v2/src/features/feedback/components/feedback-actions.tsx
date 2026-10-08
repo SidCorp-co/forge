@@ -8,6 +8,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { SuggestionView } from "@/features/suggestions/types";
+import { RejectStep } from "@/features/suggestions/components/reject-step";
 import { useSuggestionDecision, useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
@@ -200,7 +201,6 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
   const decide = useSuggestionDecision(projectId, [["feedback", projectId], ["feedback-item", projectId]]);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
   const rows = q.data?.suggestions ?? [];
   if (rows.length === 0) return null;
   return (
@@ -236,12 +236,11 @@ export function Proposals({ projectId, f }: { projectId: string; f: FeedbackView
                   onConfirm={(why) => decide.mutate({ kind: "accept", id: s.id, reason: why }, { onSuccess: () => setAccepting(null) })}
                 />
               ) : rejecting === s.id ? (
-                <span className="flex gap-2">
-                  <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("feedback.proposal.whyNot")} />
-                  <Button type="button" size="sm" disabled={!reason.trim()} onClick={() => decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() })}>
-                    {t("feedback.proposal.reject")}
-                  </Button>
-                </span>
+                <RejectStep
+                  loading={decide.isPending}
+                  onCancel={() => setRejecting(null)}
+                  onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setRejecting(null) })}
+                />
               ) : (
                 <span className="flex gap-2">
                   <Button type="button" size="sm" variant="primary" disabled={decide.isPending} onClick={() => setAccepting(s.id)}>

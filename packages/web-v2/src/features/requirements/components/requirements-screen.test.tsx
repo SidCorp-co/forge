@@ -95,3 +95,41 @@ describe("the assistant strip's Accept", () => {
     expect(within(screen.getByTestId("accept-step")).getByRole("textbox")).toHaveValue("PO said yes");
   });
 });
+
+describe("the assistant strip's Reject", () => {
+  it("offers Reject, requires a reason, sends it through the reject route, and the row leaves the pending list", async () => {
+    let pending = true;
+    const calls = fakeCore((c) => {
+      if (c.method === "POST") {
+        pending = false;
+        return { body: { suggestion: { ...sug, status: "rejected" } } };
+      }
+      if (c.path.includes("/suggestions")) return { body: { suggestions: pending ? [sug] : [], open: pending ? 1 : 0 } };
+      if (c.path.includes("/requirements")) return { body: { requirements: [req] } };
+      return { body: {} };
+    });
+    renderWithQuery(<RequirementsScreen projectId="p1" slug="epod" />);
+    fireEvent.click((await strip()).getByRole("button", { name: "Reject" }));
+    const submit = within(await screen.findByTestId("reject-step")).getByRole("button", { name: "Reject" });
+    expect(submit).toBeDisabled();
+    const why = within(screen.getByTestId("reject-step")).getByRole("textbox");
+    fireEvent.change(why, { target: { value: "   " } });
+    expect(submit).toBeDisabled();
+    await settled();
+    expect(posts(calls)).toEqual([]);
+    fireEvent.change(why, { target: { value: "  Already covered by REQ-12  " } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(posts(calls)).toEqual([{ method: "POST", path: "/projects/p1/suggestions/s1/reject", body: { reason: "Already covered by REQ-12" } }]));
+    await waitFor(() => expect(screen.queryByTestId("assistant-strip")).toBeNull());
+  });
+
+  it("Cancel sends nothing", async () => {
+    const calls = world();
+    renderWithQuery(<RequirementsScreen projectId="p1" slug="epod" />);
+    fireEvent.click((await strip()).getByRole("button", { name: "Reject" }));
+    fireEvent.click(within(await screen.findByTestId("reject-step")).getByRole("button", { name: "Cancel" }));
+    await settled();
+    expect(screen.queryByTestId("reject-step")).toBeNull();
+    expect(posts(calls)).toEqual([]);
+  });
+});
