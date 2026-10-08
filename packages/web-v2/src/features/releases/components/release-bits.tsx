@@ -126,7 +126,9 @@ export function ReleaseBanner({ r, className }: { r: ReleaseDetail; className?: 
   const body = ended
     ? r.state === "shipped"
       ? r.current
-        ? t("releases.bannerLive")
+        ? r.production?.url
+          ? t("releases.bannerLiveAt", { where: r.production.url.replace(/^https?:\/\//, "").replace(/\/$/, "") })
+          : t("releases.bannerLive")
         : t("releases.bannerSuperseded")
       : t("releases.bannerNothingOwed")
     : stuck

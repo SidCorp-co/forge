@@ -25,6 +25,7 @@ import type { ReleaseDetail, ReleaseFeedbackView, ReleaseIssueView, ReleaseNoteE
 import { DisclosureToggle, GateLine } from "./release-bits";
 import { TourHint } from "@/features/tours/components/tour-hint";
 import { changesSentence, WhatChanges } from "./release-changes";
+import { CustomerNotes } from "./release-customer-notes";
 import { WhatUsersGet } from "./release-users-get";
 import { ReleaseTrain } from "./release-train";
 
@@ -328,6 +329,7 @@ export function NotesPane({ r, slug }: { r: ReleaseDetail; slug: string }) {
   if (sections.length === 0 && withoutNotes.length === 0) return <p className="text-13 text-subtle">{t("releases.notesEmpty")}</p>;
   return (
     <div className="grid gap-6" data-testid="view-notes">
+      <CustomerNotes r={r} />
       {sections.map((s) => (
         <section key={s.section}>
           <ViewHeading>{s.section}</ViewHeading>
