@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import {
   Badge,
   EmptyState,
@@ -24,6 +25,7 @@ import { SpendCard } from "@/features/project-dashboard/components/spend-card";
 import { StatusDonut } from "@/features/project-dashboard/components/status-donut";
 import {
   activeRuns,
+  attentionCaption,
   idleRuns,
   activeSpend,
   awaitingReleaseRuns,
@@ -129,6 +131,7 @@ export default function ProjectOverviewPage() {
     activeRunnersQ.data?.runners,
   );
   const donut = statusDonut(health?.work);
+  const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
   const spend = spendByStage(durationsQ.data);
   const schedules = upcomingSchedules(schedulesQ.data);
 
@@ -150,10 +153,10 @@ export default function ProjectOverviewPage() {
                 {runsActive.length} {runsActive.length === 1 ? "run" : "runs"} live
               </span>
             )}
-            {runsAwaitingRelease.length > 0 && (
+            {awaitingReleaseIssues > 0 && (
               <span className="fg-caption inline-flex items-center gap-1.5 font-semibold text-subtle">
                 <span className="size-1.5 rounded-full bg-[var(--green-500)]" />
-                {runsAwaitingRelease.length} awaiting release
+                {awaitingReleaseIssues} {WORK_STATE_LABELS.awaiting_release.toLowerCase()}
               </span>
             )}
             {attention.length > 0 && (
@@ -180,6 +183,7 @@ export default function ProjectOverviewPage() {
           busyRunners={runners.busyCount}
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
+          needsYouCaption={attentionCaption(attention)}
           openWork={donut.total}
           spendTodayUsd={health?.spend24hUsd ?? 0}
           inFlightUsd={inFlight}
@@ -189,7 +193,12 @@ export default function ProjectOverviewPage() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />
-          <AwaitingReleaseCard runs={runsAwaitingRelease} slug={project.slug} projectId={project.id} />
+          <AwaitingReleaseCard
+            runs={runsAwaitingRelease}
+            slug={project.slug}
+            projectId={project.id}
+            awaitingReleaseIssues={awaitingReleaseIssues}
+          />
           <StatusDonut data={donut} />
           <SpendCard data={spend} inFlightUsd={inFlight} />
           <RunnersCard summary={runners} slug={project.slug} />

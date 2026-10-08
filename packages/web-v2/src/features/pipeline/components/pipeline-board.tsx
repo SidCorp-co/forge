@@ -23,9 +23,18 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
-import { boardColumns, cardStatus, formatUsd, groupIssuesByLabel, runsByIssue } from "../derive";
+import {
+  boardColumns,
+  boardLeftOut,
+  cardStatus,
+  formatUsd,
+  groupIssuesByLabel,
+  runsByIssue,
+} from "../derive";
+import { useProjectHealth } from "@/features/projects/hooks";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
+import { BoardLeftOut } from "./board-left-out";
 import { RunDetail } from "./run-detail";
 
 interface PipelineBoardProps {
@@ -55,6 +64,8 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
 
   const issuesQ = useProjectIssues(projectId);
   const runsQ = useProjectRuns(projectId);
+  const healthQ = useProjectHealth();
+  const work = healthQ.data?.find((h) => h.id === projectId)?.work;
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
   const groups = useMemo(() => groupIssuesByLabel(issuesQ.data?.items), [issuesQ.data]);
@@ -109,6 +120,13 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
           ))}
         </KanbanBoard>
       ) : (
+        <>
+          <BoardLeftOut
+            leftOut={boardLeftOut(work)}
+            slug={slug}
+            drawn={issuesQ.data?.items.length ?? 0}
+            matching={issuesQ.data?.totalCount ?? 0}
+          />
         <KanbanBoard>
           {groups.map((group) => (
             <KanbanColumn
@@ -144,6 +162,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
             </KanbanColumn>
           ))}
         </KanbanBoard>
+        </>
       )}
 
       <RunDetail

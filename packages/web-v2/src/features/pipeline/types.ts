@@ -1,5 +1,6 @@
 
 import type { PipelineHealth } from "@/features/issues/types";
+import { statusesInWorkState, type WorkState } from "@forge/contracts/work-state";
 import {
   type REGISTRY_JOB_TYPES,
   REGISTRY_PIPELINE_RUN_KINDS,
@@ -210,4 +211,15 @@ export interface AnalyticsOpts {
   step?: PipelineJobType;
 }
 
-export const BOARD_EXCLUDED_STATUSES = ["draft", "closed"] as const;
+/**
+ * The work states the board does not draw. It is the board of work in motion: Draft is not started
+ * and Finished is over, and there can be a thousand of them, which no page of columns holds. The
+ * board says so by name above its columns, with each one's count, rather than leaving the figure
+ * to disagree with the Issues strip in silence.
+ */
+export const BOARD_LEFT_OUT_STATES = ["draft", "finished"] as const satisfies readonly WorkState[];
+
+/** Every status the board leaves out, derived from the states, never listed beside them. */
+export const BOARD_EXCLUDED_STATUSES: readonly string[] = BOARD_LEFT_OUT_STATES.flatMap((s) =>
+  statusesInWorkState(s),
+);

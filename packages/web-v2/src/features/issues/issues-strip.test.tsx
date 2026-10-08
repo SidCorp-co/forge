@@ -118,13 +118,23 @@ describe("the Issues strip", () => {
     expect(capturedOpts?.filter).toBe("all");
   });
 
-  it("drops a Finished outcome cut when another segment is chosen, so it cannot empty that list", () => {
+  // The counts are narrowed by the status in the link, so a segment that kept reading its count
+  // after choosing it would have to keep the status too: the figure is the list it opens.
+  it("keeps a status filter when another segment is chosen, so the count the segment printed is the list it opens", () => {
     mountAt("?filter=finished&status=closed");
     expect(capturedOpts?.status).toEqual(["closed"]);
     fireEvent.click(segment(WORK_STATE_LABELS.in_flight).button);
     const params = new URLSearchParams(window.location.search);
     expect(params.get("filter")).toBe("in_flight");
-    expect(params.has("status")).toBe(false);
+    expect(params.get("status")).toBe("closed");
+  });
+
+  it("keeps a status filter when All is chosen", () => {
+    mountAt("?filter=in_flight&status=in_progress");
+    fireEvent.click(segment("All").button);
+    const params = new URLSearchParams(window.location.search);
+    expect(params.has("filter")).toBe(false);
+    expect(params.get("status")).toBe("in_progress");
   });
 
   it("moves the list to a state when its segment is chosen", () => {
@@ -164,5 +174,32 @@ describe("a link naming a segment the strip does not have", () => {
   it("says nothing for a segment the strip has", () => {
     mountAt("?filter=finished");
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("a status filter in the link", () => {
+  it("says a status filter is on, names it, and says the counts are for those issues", () => {
+    mountAt("?status=in_progress");
+    const line = screen.getByTestId("status-filter-line");
+    expect(line).toHaveTextContent("A status filter is on: In progress");
+    expect(line).toHaveTextContent("counts above are for those issues only");
+  });
+
+  it("names every status it was given", () => {
+    mountAt("?filter=finished&status=closed,dropped");
+    expect(screen.getByTestId("status-filter-line")).toHaveTextContent("Closed, Dropped");
+  });
+
+  it("clears the status and keeps the segment, so the counts widen back to the whole project", () => {
+    mountAt("?filter=finished&status=closed");
+    fireEvent.click(screen.getByRole("button", { name: "Clear the status filter" }));
+    const params = new URLSearchParams(window.location.search);
+    expect(params.has("status")).toBe(false);
+    expect(params.get("filter")).toBe("finished");
+  });
+
+  it("says nothing when no status is named", () => {
+    mountAt("?filter=finished");
+    expect(screen.queryByTestId("status-filter-line")).toBeNull();
   });
 });

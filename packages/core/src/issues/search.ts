@@ -46,21 +46,43 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { IssueSearchKeyRefused, type IssueSearchTerm, readIssueSearchTerm } from './search-term.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
-import { foldWorkStates, WORK_STATES, type WorkStateCounts } from './work-state.js';
+import {
+  emptyWorkStateCounts,
+  foldWorkStates,
+  WORK_STATES,
+  type WorkStateCounts,
+} from './work-state.js';
 import { readWorkStateRows, workStateCondition } from './work-state-read.js';
 
 export interface IssueBuckets {
+  /** Every filter but the status ones, so a segment that picks a status still reads its siblings. */
   readonly byStatus: Record<string, number>;
-  /** Both counts hold every filter but the work state and status, so the six states add up to the unfiltered total. */
+  /** Every filter but the work state, the status filters included, so the six add up to the total the same query returns. */
   readonly byWorkState: WorkStateCounts;
 }
 
-async function countBuckets(axisFree: SQL[], includeArchived: boolean): Promise<IssueBuckets> {
+interface StatusFilter {
+  readonly status: readonly IssueStatus[] | undefined;
+  readonly statusNot: readonly IssueStatus[] | undefined;
+}
+
+/**
+ * The rows are grouped by status, so the status filters narrow them exactly here, after the read,
+ * and `byStatus` keeps the read as it came.
+ */
+async function countBuckets(
+  axisFree: SQL[],
+  includeArchived: boolean,
+  { status, statusNot }: StatusFilter,
+): Promise<IssueBuckets> {
   const base = axisFree.length === 1 ? axisFree[0] : and(...axisFree);
   const rows = await readWorkStateRows(base, includeArchived);
   const byStatus: Record<string, number> = {};
   for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + r.n;
-  return { byStatus, byWorkState: foldWorkStates(rows) };
+  const passes = (r: { status: string }) =>
+    (!status || status.length === 0 || (status as readonly string[]).includes(r.status)) &&
+    (!statusNot || !(statusNot as readonly string[]).includes(r.status));
+  return { byStatus, byWorkState: foldWorkStates(rows.filter(passes)) };
 }
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -291,7 +313,14 @@ searchRoutes.get(
     if (q.module && q.module.length > 0) {
       const moduleIds = await resolveModuleIdsTolerant(projectId, q.module);
       if (moduleIds.length === 0) {
-        return c.json(listResponse(c, [], 0, { limit: q.limit, offset: q.offset }));
+        // No issue can carry a module that does not exist, so every count is zero, and the strip
+        // is told so rather than left with no counts at all.
+        const empty = listResponse(c, [], 0, { limit: q.limit, offset: q.offset });
+        return c.json(
+          q.withBuckets
+            ? { ...empty, buckets: { byStatus: {}, byWorkState: emptyWorkStateCounts() } }
+            : empty,
+        );
       }
       both(
         exists(
@@ -309,7 +338,9 @@ searchRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    const buckets = q.withBuckets ? await countBuckets(axisFree, archived) : null;
+    const buckets = q.withBuckets
+      ? await countBuckets(axisFree, archived, { status: q.status, statusNot: q.statusNot })
+      : null;
 
     const rows = await issueListPageQuery({
       where,

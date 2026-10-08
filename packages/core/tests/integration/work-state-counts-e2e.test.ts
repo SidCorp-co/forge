@@ -219,7 +219,17 @@ describe('the same project, counted by every endpoint that counts it', () => {
 
   it('adds the six search counts up to the total the same query returns with no work state', async () => {
     await seedEveryStatus();
-    for (const extra of ['', '&origin=human', '&origin=detector', '&priority=medium']) {
+    const filters = [
+      '',
+      '&origin=human',
+      '&origin=detector',
+      '&priority=medium',
+      '&status=in_progress',
+      '&status=closed&status=dropped',
+      '&statusNot=closed',
+      '&statusNot=closed&statusNot=draft&origin=human',
+    ];
+    for (const extra of filters) {
       const body = await search(`withBuckets=1&limit=1${extra}`);
       const sum = WORK_STATES.reduce((n, s) => n + (body.buckets?.byWorkState[s] ?? 0), 0);
       expect([extra, sum]).toEqual([extra, body.total]);
@@ -231,6 +241,55 @@ describe('the same project, counted by every endpoint that counts it', () => {
     const all = (await search('withBuckets=1&limit=1')).buckets?.byWorkState;
     const chosen = (await search('withBuckets=1&limit=1&workState=in_flight')).buckets?.byWorkState;
     expect(chosen).toEqual(all);
+  });
+
+  it('narrows the six counts to a status filter, and keeps the per-status counts whole', async () => {
+    await seedEveryStatus();
+    const body = await search('withBuckets=1&limit=1&status=in_progress');
+    expect(body.buckets?.byWorkState).toEqual({
+      open: 0,
+      in_flight: 1,
+      awaiting_release: 0,
+      blocked_on_person: 1,
+      draft: 0,
+      finished: 0,
+    });
+    // The seed holds two in_progress issues, one of them with a question a person owes: that one
+    // reads Blocked on a person, so a status filter never keeps a count another state holds.
+    expect(body.total).toBe(2);
+    expect(body.buckets?.byStatus.closed, 'the per-status counts are not narrowed by status').toBe(
+      1,
+    );
+  });
+
+  it('lists under each state exactly as many issues as its count said, under a status filter too', async () => {
+    await seedEveryStatus();
+    for (const filter of [
+      '',
+      '&status=in_progress',
+      '&status=closed&status=dropped',
+      '&statusNot=open',
+    ]) {
+      const counted = (await search(`withBuckets=1&limit=1${filter}`)).buckets?.byWorkState;
+      for (const state of WORK_STATES) {
+        const listed = await search(`limit=1&workState=${state}${filter}`);
+        expect([filter, state, listed.total]).toEqual([filter, state, counted?.[state]]);
+      }
+    }
+  });
+
+  it('counts every state as zero under a module that does not exist, and still sends the counts', async () => {
+    await seedEveryStatus();
+    const body = await search('withBuckets=1&limit=1&module=no-such-module');
+    expect(body.total).toBe(0);
+    expect(body.buckets?.byWorkState).toEqual({
+      open: 0,
+      in_flight: 0,
+      awaiting_release: 0,
+      blocked_on_person: 0,
+      draft: 0,
+      finished: 0,
+    });
   });
 
   it('counts a machine-filed issue under its own state and narrows every count by origin', async () => {

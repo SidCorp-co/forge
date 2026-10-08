@@ -240,6 +240,26 @@ export function projectAttention(
   return out;
 }
 
+const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; many: string }> = [
+  { kind: "retry", one: "failed job", many: "failed jobs" },
+  { kind: "diff", one: "to review", many: "to review" },
+  { kind: "input", one: "question", many: "questions" },
+  { kind: "chain", one: "held by a dependency", many: "held by a dependency" },
+];
+
+/**
+ * What the Needs you tile counts, said under its figure: items a person has to act on, by kind.
+ * A failed job or a held dependency is no issue's work state, so this figure is not Blocked on a
+ * person and the tile says what it is instead of sitting beside that count unexplained.
+ */
+export function attentionCaption(items: readonly DashboardAttentionItem[]): string {
+  const parts = ATTENTION_PARTS.flatMap(({ kind, one, many }) => {
+    const n = items.filter((i) => i.actionKind === kind).length;
+    return n === 0 ? [] : [`${n} ${n === 1 ? one : many}`];
+  });
+  return parts.length === 0 ? "nothing to act on" : `to act on: ${parts.join(" · ")}`;
+}
+
 /* ------------------------------------------------------------------ *
  * Runners (compact) (AC#5)
  * ------------------------------------------------------------------ */

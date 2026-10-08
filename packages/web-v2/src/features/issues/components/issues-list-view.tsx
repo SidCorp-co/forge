@@ -49,6 +49,7 @@ import {
   filterCount,
   groupRows,
   priorityLabel,
+  STATUS_LABELS,
   statusesFromParam,
 } from "../derive";
 import {
@@ -80,7 +81,7 @@ const FILTERS: SegmentOption<IssueFilter>[] = [
   { value: "all", label: "All" },
 ];
 const VALID_FILTERS: IssueFilter[] = FILTERS.map((o) => o.value);
-/* status-tuple: differs — this is the "Finished" segment's cut of the status counts, not core's
+/* status-tuple: differs — this is the cut the Finished segment offers of the status counts, not core's
    ISSUE_TERMINAL_STATUSES. It names which buckets that one filter chip sums, and a segment added
    or re-cut here moves it without anything about the issue lifecycle having changed. */
 const FINISHED_CUTS = ["closed", "dropped"];
@@ -412,9 +413,7 @@ export function IssuesListView({
             stableCountWidth
             options={tabs}
             value={filter}
-            onChange={(v) =>
-              setParams({ filter: v !== "all" ? v : "", status: "", page: "" })
-            }
+            onChange={(v) => setParams({ filter: v !== "all" ? v : "", page: "" })}
           />
         </div>
         <Button
@@ -595,6 +594,20 @@ export function IssuesListView({
         </p>
       )}
 
+      {statusParam !== undefined && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="status-filter-line">
+          A status filter is on: {statusParam.map((s) => STATUS_LABELS[s]).join(", ")}. The counts
+          above are for those issues only, so they add up to what the list holds.{" "}
+          <button
+            type="button"
+            className="text-accent-text hover:underline"
+            onClick={() => setParams({ status: "", page: "" })}
+          >
+            Clear the status filter
+          </button>
+        </p>
+      )}
+
       {filter === "finished" && (
         <div className="mb-4 flex items-center gap-2">
           <span className="fg-caption text-muted">Outcome</span>
@@ -664,6 +677,7 @@ export function IssuesListView({
                     setParams({
                       q: "",
                       filter: "",
+                      status: "",
                       origin: "",
                       priority: "",
                       createdBy: "",

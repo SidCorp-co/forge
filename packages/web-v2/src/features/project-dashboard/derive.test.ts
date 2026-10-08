@@ -1,6 +1,12 @@
 import { OPEN_WORK_STATES, WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { describe, expect, it } from "vitest";
-import { conicGradient, statusDonut } from "./derive";
+import {
+  type AttentionActionKind,
+  attentionCaption,
+  conicGradient,
+  type DashboardAttentionItem,
+  statusDonut,
+} from "./derive";
 
 const WORK = {
   open: 56,
@@ -59,5 +65,33 @@ describe("statusDonut (ISS-1156)", () => {
     const { segments } = statusDonut(WORK);
     const gradient = conicGradient(segments);
     for (const s of segments) expect(gradient).toContain(s.color);
+  });
+});
+
+describe("attentionCaption (ISS-1156)", () => {
+  const item = (actionKind: AttentionActionKind, i: number): DashboardAttentionItem => ({
+    key: `${actionKind}-${i}`,
+    actionKind,
+    actionLabel: "x",
+    title: "t",
+    link: "/l",
+  });
+
+  it("says what the Needs you figure counts, by kind, so it is not read as Blocked on a person", () => {
+    const items = [item("retry", 0), item("retry", 1), item("diff", 2), ...[3, 4, 5].map((i) => item("input", i)), item("chain", 6)];
+    expect(attentionCaption(items)).toBe(
+      "to act on: 2 failed jobs · 1 to review · 3 questions · 1 held by a dependency",
+    );
+  });
+
+  it("adds up to the figure: the parts of the caption are the items counted", () => {
+    const items = [item("retry", 0), item("input", 1), item("input", 2)];
+    const parts = attentionCaption(items).replace("to act on: ", "").split(" · ");
+    expect(parts.reduce((n, p) => n + Number.parseInt(p, 10), 0)).toBe(items.length);
+  });
+
+  it("leaves out a kind with nothing in it, and says so when nothing needs a person", () => {
+    expect(attentionCaption([item("diff", 0)])).toBe("to act on: 1 to review");
+    expect(attentionCaption([])).toBe("nothing to act on");
   });
 });

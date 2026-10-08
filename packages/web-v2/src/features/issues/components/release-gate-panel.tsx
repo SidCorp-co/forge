@@ -13,6 +13,7 @@ import {
   MonoTag,
   Skeleton,
 } from "@/design";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { failedCloseLead } from "@/features/releases/roster";
 import { formatApiError } from "@/lib/api/error";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
@@ -77,7 +78,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
   if (issues.length === 0) {
     return (
       <EmptyPanelLine
-        title="Awaiting release"
+        title={WORK_STATE_LABELS.awaiting_release}
         status="None waiting"
         detail={emptyGateDetail(data.nextCutAt)}
       />
@@ -112,7 +113,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       <CardHeader className="flex-wrap gap-y-2">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex items-center gap-2">
-            <CardTitle>Awaiting release</CardTitle>
+            <CardTitle>{WORK_STATE_LABELS.awaiting_release}</CardTitle>
             <Badge tone="cobalt">{issues.length}</Badge>
           </div>
           <p className="fg-caption text-muted">
