@@ -48,6 +48,22 @@ describe('a tracker date in a reply is one this turn read', () => {
     expect(ungroundedClaims('ISS-59 đã đóng ngày 16/07/2026.', [ISSUE_59_READ], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
   });
 
+  // REQ-30 BC-1 (ISS-442): a date the turn read still names what it is a date of, or the read
+  it('holds a date the turn read when nothing names what it is a date of', () => {
+    const f = rows([[59, 'closed']]);
+    const held = ungroundedClaims('It was closed on 2026-07-15.', [ISSUE_59_READ], f);
+    expect(held.map((b) => b.why).join('\n')).toContain('names no read it came from');
+    for (const named of [
+      'It was closed on 2026-07-15 (ISS-59).',
+      'Release 0.4.0 shipped on 2026-07-15.',
+      'Per the project status, the last fix landed on 2026-07-15.',
+      '## ISS-59\n\nClosed on 2026-07-15.',
+      'Closed on 2026-07-15.\n\nSources:\n- tracker read of ISS-59',
+    ]) {
+      expect(ungroundedClaims(named, [ISSUE_59_READ], f), named).toEqual([]);
+    }
+  });
+
   it('abstains on a planned, hedged or asked date, and on a date about nothing in the tracker', () => {
     const f = rows([[59, 'closed']]);
     expect(ungroundedClaims('Bản release dự kiến phát hành 2026-10-20.', [], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
