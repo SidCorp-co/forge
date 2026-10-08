@@ -60,7 +60,7 @@ const operands = (args) => {
 };
 const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
-/** Whether a rev-parse is the `--verify <ref>^{commit}` lookup a merge base is taken from. */
+/** Whether a rev-parse is the `--verify <ref>^{commit}` existence test base-branch.mjs makes; no checker reads the sha. */
 const resolves = (args) =>
   args.includes('--verify') && operands(args).every((a) => a.endsWith('^{commit}'));
 
