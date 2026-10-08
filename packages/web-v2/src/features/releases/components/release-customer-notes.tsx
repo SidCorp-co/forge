@@ -10,18 +10,12 @@ import { customerNotes, customerNotesText, notesCallingItDemo } from "@forge/con
 import { useMemo, useState } from "react";
 import { Button, ViewHeading } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { saveFile } from "@/lib/utils/save-file";
 import type { ReleaseDetail } from "../types";
 
 const hostOf = (url: string) => url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-function save(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+const save = (name: string, text: string) => saveFile(name, new Blob([text], { type: "text/markdown;charset=utf-8" }));
 
 export function CustomerNotes({ r }: { r: ReleaseDetail }) {
   const t = useCopy();

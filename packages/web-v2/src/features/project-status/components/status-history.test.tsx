@@ -4,18 +4,22 @@
 // dialog when it comes anyway.
 
 import type { ReportDocument } from "@forge/contracts/report-templates";
-import type { StatusReportMeta } from "@forge/contracts/status-reports";
+import type { StatusReportMeta, StatusReportNarrative } from "@forge/contracts/status-reports";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { saveFile } from "@/lib/utils/save-file";
 import { StatusHistory } from "./status-history";
-import { templateReportFile } from "./template-report";
+import * as templateReport from "./template-report";
 
 const ME = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
 
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: ME } }) }));
+vi.mock("@/lib/utils/save-file", () => ({ saveFile: vi.fn() }));
 
 const clock = { lang: "en" as const, now: Date.parse("2026-10-08T10:00:00Z"), timeZone: "UTC" };
 
@@ -124,12 +128,25 @@ describe("a kept template report", () => {
   };
   const TEMPLATE: StatusReportMeta = { ...report("r-template", ME), days: null, template: { id: "progress", version: 1, title: "Progress" } };
 
-  function open(calls: Call[] = []) {
+  const MARKDOWN = "# Progress\n\n_As of 2026-10-08T09:00:00.000Z_\n";
+  const CSV = "\uFEFFRequirement,Proven\r\nREQ-1,3\r\n";
+
+  function open(calls: Call[] = [], narrative: StatusReportNarrative | null = null) {
     const log = fakeCore((call) => {
       calls.push(call);
       if (call.method === "GET" && call.path === "/projects/p1/status/reports") return { body: { reports: [TEMPLATE, MINE] } };
       if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template")
-        return { body: { report: TEMPLATE, narrative: null, status: null, document, previous: null, diff: null } };
+        return { body: { report: TEMPLATE, narrative, status: null, document, previous: null, diff: null } };
+      if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template/export")
+        return {
+          file: MARKDOWN,
+          headers: { "content-type": "text/markdown; charset=utf-8", "content-disposition": 'attachment; filename="progress-2026-10-08.md"' },
+        };
+      if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template/export?format=csv&block=0")
+        return {
+          file: CSV,
+          headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": 'attachment; filename="progress-2026-10-08-block-1.csv"' },
+        };
       if (call.method === "POST" && call.path === "/projects/p1/status/reports/r-template/read") return { body: { read: 0 } };
       if (call.method === "GET" && call.path === "/projects/p1/shares/audiences")
         return { body: { audiences: [{ audience: "members", refusal: null }, { audience: "link", refusal: { code: "PERMISSION_FORBIDDEN", message: "needs shares.public" } }] } };
@@ -156,7 +173,10 @@ describe("a kept template report", () => {
     const user = userEvent.setup();
     renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
     expect(await screen.findByTestId("template-report")).toHaveTextContent("One requirement moved.");
-    expect(screen.getByTestId("template-report")).toHaveTextContent("Narrative not written: risks, recommendations.");
+    expect(screen.getByTestId("template-report-unwritten")).toHaveTextContent(
+      "Narrative not written: risks, recommendations (left empty when the report was saved).",
+    );
+    expect(screen.queryByTestId("template-report-outcome")).toBeNull();
     expect(screen.getByTestId("template-report-export")).toBeInTheDocument();
     await user.click(screen.getByTestId("message-share"));
     await user.click(await screen.findByRole("button", { name: "Create link" }));
@@ -168,10 +188,80 @@ describe("a kept template report", () => {
     });
   });
 
-  it("exports the report as the Markdown core's export route answers, narrative first", () => {
-    const file = templateReportFile(TEMPLATE, document);
-    expect(file.name).toBe("progress-2026-10-08.md");
-    expect(file.text).toContain("## Summary\n\nOne requirement moved.");
-    expect(file.text).toContain("Narrative not written: risks, recommendations.");
+  it("exports the report by calling core's export route and saves the file it answers, under its name", async () => {
+    const calls: Call[] = [];
+    open(calls);
+    window.history.replaceState({}, "", "/?report=r-template");
+    const user = userEvent.setup();
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    await user.click(await screen.findByTestId("template-report-export"));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(calls.map((c) => c.path)).toContain("/projects/p1/status/reports/r-template/export");
+    const [name, blob] = vi.mocked(saveFile).mock.calls[0] as [string, Blob];
+    expect(name).toBe("progress-2026-10-08.md");
+    expect(await blob.text()).toBe(MARKDOWN);
+    vi.mocked(saveFile).mockClear();
+  });
+
+  it("builds no export in the browser: the contract's Markdown builder is not reached from the web", () => {
+    expect(Object.keys(templateReport)).toEqual(["TemplateReport"]);
+    const files = (dir: string): string[] =>
+      readdirSync(dir).flatMap((f) => {
+        const at = join(dir, f);
+        return statSync(at).isDirectory() ? files(at) : /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f) ? [at] : [];
+      });
+    const reaching = files(join(__dirname, "../../..")).filter((f) => /reportDocumentMarkdown|tableCsv/.test(readFileSync(f, "utf8")));
+    expect(reaching).toEqual([]);
+  });
+
+  it("offers each table's CSV beside it and in its wide view, as core exports it", async () => {
+    const calls: Call[] = [];
+    open(calls);
+    window.history.replaceState({}, "", "/?report=r-template");
+    const user = userEvent.setup();
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    await user.click(await screen.findByTestId("visual-block-csv"));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveFile).mock.calls[0]?.[0]).toBe("progress-2026-10-08-block-1.csv");
+    await user.click(screen.getByTestId("visual-block-open-wide"));
+    await user.click(await screen.findByTestId("visual-block-wide-csv"));
+    await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(2));
+    const csv = calls.filter((c) => c.path === "/projects/p1/status/reports/r-template/export?format=csv&block=0");
+    expect(csv).toHaveLength(2);
+    vi.mocked(saveFile).mockClear();
+  });
+
+  it.each([
+    [{ path: "written", reason: null, model: "claude-x", calls: 1 }, "Summary written by claude-x."],
+    [{ path: "retried", reason: null, model: "claude-x", calls: 2 }, "Summary written by claude-x on its one retry, after the first answer was refused."],
+    [
+      { path: "not_written", reason: "the model is over its budget or rate limit", model: "claude-x", calls: 1 },
+      "Summary not written: the model is over its budget or rate limit.",
+    ],
+  ] as [StatusReportNarrative, string][])("shows how a sent report's summary came to be: %o", async (narrative, line) => {
+    open([], narrative);
+    window.history.replaceState({}, "", "/?report=r-template");
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    const outcome = await screen.findByTestId("template-report-outcome");
+    expect(outcome).toHaveTextContent(line);
+    expect(outcome).toHaveAttribute("data-path", narrative.path);
+    if (narrative.path === "not_written") expect(screen.queryByTestId("template-report-unwritten")).toBeNull();
+  });
+
+  it("prints the report alone: its actions, the history list and the schedule carry the print stylesheet's hide", async () => {
+    open();
+    window.history.replaceState({}, "", "/?report=r-template");
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    const actions = await screen.findByTestId("template-report-actions");
+    expect(actions).toHaveClass("print:hidden");
+    expect(within(actions).getByTestId("template-report-export")).toBeInTheDocument();
+    expect(within(actions).getByTestId("template-report-print")).toBeInTheDocument();
+    expect(within(actions).getByTestId("message-share")).toBeInTheDocument();
+    expect(screen.getByTestId("visual-block-csv").closest(".print\\:hidden")).not.toBeNull();
+    expect(screen.getByTestId("visual-block-open-wide").closest(".print\\:hidden")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "Kept reports" }).closest(".print\\:hidden")).not.toBeNull();
+    for (const remove of removeButtons()) expect(remove).toHaveClass("print:hidden");
+    // the source line is the report's, not the screen's: it prints
+    expect(screen.getByTestId("visual-block-source").closest(".print\\:hidden")).toBeNull();
   });
 });

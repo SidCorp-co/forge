@@ -4,10 +4,13 @@ import type { ProjectStatus, StatusWait } from "./project-status.js";
 import type { ReportDocument } from "./report-templates.js";
 import {
 	deliveryDateOf,
+	narrativeOutcomeLine,
 	reportDocumentMarkdown,
 	STATUS_DATE_MOVE_MIN_MINUTES,
+	type StatusReportNarrative,
 	statusReportDiff,
 	templateTitleOf,
+	unwrittenNarrativeLine,
 	unwrittenSlots,
 } from "./status-reports.js";
 import { blockToText } from "./visual-blocks.js";
@@ -244,6 +247,7 @@ describe("a kept template report as Markdown", () => {
 		const text = reportDocumentMarkdown(document, {
 			title: "Progress",
 			asOf: "2026-10-08T09:00:00.000Z",
+			narrative: null,
 		});
 		expect(
 			text.startsWith(
@@ -257,7 +261,9 @@ describe("a kept template report as Markdown", () => {
 		expect(
 			text
 				.trimEnd()
-				.endsWith("_Narrative not written: risks, recommendations._"),
+				.endsWith(
+					"_Narrative not written: risks, recommendations (left empty when the report was saved)._",
+				),
 		).toBe(true);
 		expect(unwrittenSlots(document)).toEqual(["risks", "recommendations"]);
 	});
@@ -268,8 +274,85 @@ describe("a kept template report as Markdown", () => {
 			narrative: { summary: "a", risks: "b", recommendations: "c" },
 		};
 		expect(
-			reportDocumentMarkdown(all, { title: "Progress", asOf: "x" }),
+			reportDocumentMarkdown(all, {
+				title: "Progress",
+				asOf: "x",
+				narrative: null,
+			}),
 		).not.toContain("not written");
+	});
+
+	describe("how a fire's summary came to be", () => {
+		const outcome = (
+			path: StatusReportNarrative["path"],
+			reason: string | null = null,
+		): StatusReportNarrative => ({
+			path,
+			reason,
+			model: path === "not_written" && reason?.includes("policy") ? null : "claude-x",
+			calls: path === "retried" ? 2 : 1,
+		});
+		const empty = {
+			...document,
+			narrative: { summary: "", risks: "", recommendations: "" },
+		};
+
+		it("says written, retried once, or not written with the reason; nothing for a saved report", () => {
+			expect(narrativeOutcomeLine(outcome("written"))).toBe(
+				"Summary written by claude-x.",
+			);
+			expect(narrativeOutcomeLine(outcome("retried"))).toBe(
+				"Summary written by claude-x on its one retry, after the first answer was refused.",
+			);
+			expect(
+				narrativeOutcomeLine(
+					outcome(
+						"not_written",
+						"the project's data policy forbids sending its data to a model, so no model was asked.",
+					),
+				),
+			).toBe(
+				"Summary not written: the project's data policy forbids sending its data to a model, so no model was asked.",
+			);
+			expect(narrativeOutcomeLine(null)).toBeNull();
+		});
+
+		it("prints the outcome in the Markdown export, with the reason, and names no slot twice", () => {
+			const reason = "the model's narrative was refused twice (a number no run returned)";
+			const text = reportDocumentMarkdown(empty, {
+				title: "Progress",
+				asOf: "x",
+				narrative: outcome("not_written", reason),
+			});
+			expect(text).toContain(`_Summary not written: ${reason}._`);
+			expect(text.indexOf("Summary not written")).toBeLessThan(
+				text.indexOf(blockToText(document.blocks[0] as never)),
+			);
+			expect(text).not.toContain("Narrative not written");
+			for (const path of ["written", "retried"] as const) {
+				const md = reportDocumentMarkdown(document, {
+					title: "Progress",
+					asOf: "x",
+					narrative: outcome(path),
+				});
+				expect(md).toContain(`_${narrativeOutcomeLine(outcome(path))}_`);
+				expect(md).toContain(
+					"_Narrative not written: risks, recommendations (the model wrote nothing for them)._",
+				);
+			}
+		});
+
+		it("names the empty slots with why for a saved report, and nothing when all are written", () => {
+			expect(unwrittenNarrativeLine(document, null)).toBe(
+				"Narrative not written: risks, recommendations (left empty when the report was saved).",
+			);
+			expect(
+				unwrittenNarrativeLine(
+					{ ...document, narrative: { summary: "a", risks: "b", recommendations: "c" } },
+					outcome("written"),
+				),
+			).toBeNull();
+		});
 	});
 
 	it("titles a stored template this build no longer has by its id", () => {

@@ -2,6 +2,7 @@
 
 import { PROJECT_STATUS_DAYS_DEFAULT } from "@forge/contracts/project-status";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { saveFile } from "@/lib/utils/save-file";
 import { projectStatusApi } from "./api";
 
 /** Every key of this read starts here, so an issue or question event refreshes it in one call. */
@@ -54,3 +55,16 @@ export function useDeleteStatusReport(projectId: string) {
   });
 }
 
+
+/**
+ * Saves what core exports for a kept template report: the Markdown with no table named, or that
+ * table block's CSV. Core builds every export; this only hands its file to the browser.
+ */
+export function useExportStatusReport(projectId: string, reportId: string, fallbackName: string) {
+  return useMutation({
+    mutationFn: async (table?: number) => {
+      const file = await projectStatusApi.exportFile(projectId, reportId, table);
+      saveFile(file.name ?? `${fallbackName}${table === undefined ? ".md" : `-block-${table + 1}.csv`}`, file.blob);
+    },
+  });
+}

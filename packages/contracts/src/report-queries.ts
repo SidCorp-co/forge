@@ -5,6 +5,9 @@
 import { z } from "zod";
 import { PROJECT_PERMISSIONS } from "./permissions.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { RELEASE_STATE_LABELS } from "./releases.js";
+import { BC_VERDICT_LABELS, REQUIREMENT_STATE_LABELS } from "./requirements.js";
+import { sentenceCase } from "./ui-vocabulary.js";
 
 export const REPORT_FIELD_TYPES = [
   "string",
@@ -37,6 +40,26 @@ const NAME = z.string().min(1).max(64);
  */
 export const REPORT_FIELD_VOCABULARIES = ["requirement", "releaseState", "bcVerdict"] as const;
 export type ReportFieldVocabulary = (typeof REPORT_FIELD_VOCABULARIES)[number];
+
+/**
+ * The sentence-case label of each value of each vocabulary: the domain's own label map, the one the
+ * web's badge for that state family reads, so a cell reads the same words in a table, in its text
+ * fallback and in an export. A vocabulary without its labels does not compile.
+ */
+export const REPORT_VOCABULARY_LABELS: Record<ReportFieldVocabulary, Readonly<Record<string, string>>> = {
+  requirement: REQUIREMENT_STATE_LABELS,
+  releaseState: RELEASE_STATE_LABELS,
+  bcVerdict: BC_VERDICT_LABELS,
+};
+
+/**
+ * A `status` value as words: its vocabulary's label, else the value sentence-cased (a value the
+ * vocabulary does not name yet, or a column that names none). Never the stored token.
+ */
+export function stateLabel(field: Pick<ReportField, "vocabulary">, value: string): string {
+  const labels = field.vocabulary ? REPORT_VOCABULARY_LABELS[field.vocabulary] : undefined;
+  return labels?.[value] ?? sentenceCase(value);
+}
 
 export const ReportFieldSchema = z
   .object({

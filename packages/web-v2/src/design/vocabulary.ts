@@ -85,7 +85,7 @@ import {
   CONTRACT_STATE_LABELS,
   CONTRACT_STATE_TONES,
 } from "@forge/contracts/contract-standing";
-import { ENUM_LABELS, type Reading, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
+import { ENUM_LABELS, type Reading, STATE_READINGS, sentenceCase } from "@forge/contracts/ui-vocabulary";
 import { type LabelGroup, labelKey } from "@/lib/i18n/labels";
 import { copyOr } from "@/lib/i18n/product-copy";
 import { type ColorMeta, TONE_META } from "./status";
@@ -181,10 +181,12 @@ const STATUS_MAPS: Record<StatusFamily, Maps> = {
   ...(Object.fromEntries(Object.entries(STATE_READINGS).map(([k, r]) => [k, fromReadings(r)])) as Record<ReadingFamily, Maps>),
 };
 
-/** `change_request` reads "Change request": the fallback for a value no map names yet. */
-export function sentenceCase(v: string): string {
-  const t = v.replace(/[_-]+/g, " ").trim();
-  return t.charAt(0).toUpperCase() + t.slice(1);
+/** `change_request` reads "Change request": the fallback for a value no map names yet, the contracts' one. */
+export { sentenceCase };
+
+/** The label map a state family reads, the very object its contract declares (a report column's vocabulary binds to it). */
+export function statusLabels(family: StatusFamily): Readonly<Record<string, string>> {
+  return STATUS_MAPS[family].labels;
 }
 
 const hintOf = (h: string | undefined) => (h ? h.replace(/^[a-z_-]+: /, "") : null);

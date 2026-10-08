@@ -114,6 +114,19 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
   return (await res.json()) as T;
 }
 
+/** A file core serves for download: its bytes, and the name its Content-Disposition gives (null for none). */
+export interface ApiFile {
+  blob: Blob;
+  name: string | null;
+}
+
+/** File-returning client: the session's cookie, core's refusal envelope on a failure, the bytes as sent. */
+export async function apiFile(endpoint: string): Promise<ApiFile> {
+  const res = await fetchRaw(endpoint);
+  const disposition = res.headers.get('content-disposition') ?? '';
+  return { blob: await res.blob(), name: /filename="([^"]+)"/.exec(disposition)?.[1] ?? null };
+}
+
 /**
  * Raw-bytes client, for the capability-authenticated upload endpoint: the
  * ticket in the path IS the authorization, so this sends no credentials and no

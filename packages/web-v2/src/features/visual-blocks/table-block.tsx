@@ -2,7 +2,8 @@
 
 import type { ReportField } from "@forge/contracts/report-queries";
 import { cellText, type VisualBlockOf, tableRows } from "@forge/contracts/visual-blocks";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import { Cell } from "./cells";
 
@@ -34,7 +35,7 @@ function ClampedText({ text, children }: { text: string; children: ReactNode }) 
       type="button"
       className={cn(
         "block min-w-[10rem] max-w-[20rem] cursor-text text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
-        !open && "line-clamp-2",
+        !open && "line-clamp-2 print:line-clamp-none",
       )}
       title={text}
       aria-expanded={open}
@@ -44,6 +45,25 @@ function ClampedText({ text, children }: { text: string; children: ReactNode }) 
       {children}
     </button>
   );
+}
+
+/**
+ * Whether the page is being printed: true from the browser's `beforeprint` to its `afterprint`,
+ * rendered synchronously so the printed copy already holds what the flag shows.
+ */
+function usePrinting(): boolean {
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    const on = () => flushSync(() => setPrinting(true));
+    const off = () => setPrinting(false);
+    window.addEventListener("beforeprint", on);
+    window.addEventListener("afterprint", off);
+    return () => {
+      window.removeEventListener("beforeprint", on);
+      window.removeEventListener("afterprint", off);
+    };
+  }, []);
+  return printing;
 }
 
 /** The first column stays put while the rest scroll sideways, on the page's own ground so nothing shows through it. */
@@ -56,13 +76,15 @@ const STICKY = "sticky left-0 z-[1] bg-app";
  */
 export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
   const [all, setAll] = useState(false);
+  // a printed table holds every row it shows: paper has no "Show all"
+  const printing = usePrinting();
   const fields = block.columns.flatMap((c) => block.frame.fields.filter((f) => f.name === c));
   const rows = tableRows(block);
-  const shown = all ? rows : rows.slice(0, TABLE_ROW_CAP);
+  const shown = all || printing ? rows : rows.slice(0, TABLE_ROW_CAP);
   const hidden = block.frame.rows.length - rows.length;
   return (
     <div className="min-w-0">
-      <div className="overflow-x-auto" data-testid="table-scroll">
+      <div className="overflow-x-auto print:overflow-visible" data-testid="table-scroll">
         <table className="w-full border-collapse text-left text-[12.5px]">
           <thead>
             <tr className="border-b border-line">
@@ -107,7 +129,7 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
       {rows.length > TABLE_ROW_CAP && (
         <button
           type="button"
-          className="mt-1 text-[12px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          className="mt-1 text-[12px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] print:hidden"
           aria-expanded={all}
           onClick={() => setAll((a) => !a)}
           data-testid="table-show-all"

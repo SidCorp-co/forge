@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { app } from '../../src/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
@@ -77,13 +78,65 @@ describe('saving a template run', () => {
     expect(res.status).toBe(200);
     const text = String(res.body.text ?? res.body);
     expect(text).toContain('## Summary\n\nWork is under way.');
-    expect(text).toContain('Narrative not written: risks, recommendations.');
+    expect(text).toContain(
+      '_Narrative not written: risks, recommendations (left empty when the report was saved)._',
+    );
+    expect(text).not.toContain('Summary written');
+    expect(res.headers.get('content-disposition')).toMatch(
+      /^attachment; filename="progress-\d{4}-\d{2}-\d{2}\.md"$/,
+    );
     const doc = (await api(w.token, 'GET', `${base()}/status/reports/${reportId}`)).body
       .document as Body;
     const { blockToText } = await import('@forge/contracts/visual-blocks');
     for (const block of doc.blocks as Body[]) {
       expect(text).toContain(blockToText(block as never));
     }
+  });
+
+  it('exports one table block as CSV: the BOM, a heading row of its labels, CRLF records', async () => {
+    // the bytes as sent: a text decoder drops the byte order mark this asserts
+    const res = await app.fetch(
+      new Request(
+        `http://forge.test${base()}/status/reports/${reportId}/export?format=csv&block=2`,
+        {
+          headers: { authorization: `Bearer ${w.token}` },
+        },
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
+    expect(res.headers.get('content-disposition')).toMatch(
+      /^attachment; filename="progress-\d{4}-\d{2}-\d{2}-block-3\.csv"$/,
+    );
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    const text = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes).slice(1);
+    const doc = (await api(w.token, 'GET', `${base()}/status/reports/${reportId}`)).body
+      .document as Body;
+    const block = (doc.blocks as Body[])[2] as { columns: string[]; frame: { fields: Body[] } };
+    const labels = block.columns.map(
+      (c) => block.frame.fields.find((f) => f.name === c)?.label as string,
+    );
+    expect(text.split('\r\n')[0]).toBe(labels.join(','));
+    expect(text.endsWith('\r\n')).toBe(true);
+  });
+
+  it('refuses a CSV export of no table, of a block that is not one, and of a block that is not there, by name', async () => {
+    const at = (query: string) =>
+      api(w.token, 'GET', `${base()}/status/reports/${reportId}/export?${query}`);
+    const none = await at('format=csv');
+    expect(code(none)).toBe('STATUS_REPORT_REFUSED');
+    expect(detail(none)).toContain("this report's table blocks are 2, 3");
+    const chart = await at('format=csv&block=0');
+    expect(code(chart)).toBe('STATUS_REPORT_REFUSED');
+    expect(detail(chart)).toContain('block 0 is a chart, not a table');
+    const missing = await at('format=csv&block=9');
+    expect(detail(missing)).toContain('block 9 is not in this report, which holds 4 block(s)');
+    const markdownBlock = await at('block=2');
+    expect(detail(markdownBlock)).toContain('only ?format=csv exports');
+    const unknown = await at('format=xlsx');
+    expect(unknown.status).toBe(400);
+    expect(JSON.stringify(unknown.body)).toContain('?format=csv&block=<index of a table block');
   });
 
   it('refuses a narrative that states a figure no run returned, and keeps nothing', async () => {
@@ -186,7 +239,7 @@ describe('a schedule that names a template', () => {
     });
     for (const n of told)
       expect(n.body).toContain(
-        'Narrative (summary, risks, recommendations) not written: no chat model is configured on this instance.',
+        'Summary not written: no chat model is configured on this instance.',
       );
     // a period is stored once: the same slot again is refused by name and stores nothing
     const again = await api(w.token, 'POST', `/api/schedules/${created.body.id}/run`);
