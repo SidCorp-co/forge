@@ -30,6 +30,27 @@ export type RestTurn =
       stage(block: StagedBlock): Promise<boolean>;
     };
 
+/** One stored message of a turn, as a share reads it. */
+export interface ChatTurnMessage {
+  id: string;
+  content: string;
+  blocks: unknown;
+  deliveryProof: unknown;
+  silenceReason: string | null;
+}
+
+/**
+ * An assistant turn, read from any one of its messages: the room, what the person asked (their
+ * messages just before it, oldest first, joined), and every assistant message between that question
+ * and the next person's message, oldest first. `role` is the named message's own.
+ */
+export interface ChatTurn {
+  conversationId: string;
+  role: 'user' | 'assistant' | 'system';
+  question: string | null;
+  messages: ChatTurnMessage[];
+}
+
 /** Who runs a query or reads a run back: every read is made as this person. */
 export interface ReportAsker {
   userId: string;
@@ -55,8 +76,8 @@ interface ReportsPorts {
     conversationId: string,
     userId: string,
   ): Promise<{ adapter: string; projectIds: string[] }>;
-  /** One stored message: the room it sits in and its blocks column, or null where no message has the id. */
-  messageOf(messageId: string): Promise<{ conversationId: string; blocks: unknown } | null>;
+  /** The assistant turn one stored message belongs to, or null where no message has the id. */
+  turnOf(messageId: string): Promise<ChatTurn | null>;
   /** Appends one service-written answer to the room, as the project's handle, and tells its readers. */
   postAnswer(args: {
     conversationId: string;

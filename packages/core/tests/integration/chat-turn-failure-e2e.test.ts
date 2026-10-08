@@ -181,7 +181,7 @@ describe('a turn whose model stream breaks partway', () => {
     expect(report).toContain(
       'forge chưa trả lời xong: mô hình ngừng trả lời giữa chừng. (ASSISTANT_TURN_FAILED)', // i18n-allow: the Vietnamese report under test
     );
-    expect(report).toContain('- forge_knowledge {"action":"list"}');
+    expect(report).toContain('Đã đọc: đọc tri thức dự án.'); // i18n-allow: the Vietnamese report under test
     expect(report).toContain('Phần đã viết được, chưa xong'); // i18n-allow: the Vietnamese report under test
     expect(report).toContain('1. Bối cảnh: người quản lý dự án'); // i18n-allow: the Vietnamese report under test
     expect(report).not.toContain('chưa gửi gì'); // i18n-allow: the line that must not stand
@@ -196,7 +196,7 @@ describe('a turn whose model stream breaks partway', () => {
     ];
     const outcome = await turn(SPEC_ASK);
     const report = outcome.kind === 'failed' ? outcome.report.text : '';
-    expect(report).toContain('- forge_knowledge {"action":"list"}');
+    expect(report).toContain('Đã đọc: đọc tri thức dự án.'); // i18n-allow: the Vietnamese report under test
     expect(report).not.toContain('Export weekly project progress');
     expect(report).toContain('bản nháp chưa qua bước kiểm tra'); // i18n-allow: the Vietnamese report under test
   });

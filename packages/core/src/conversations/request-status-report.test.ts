@@ -60,7 +60,7 @@ describe("a failed turn's status is its report", () => {
         language: 'vi',
         code: 'ASSISTANT_TURN_FAILED',
         cause: 'provider',
-        findings: 'Đã đọc (1):\n- forge_knowledge {"action":"list"}', // i18n-allow: the Vietnamese report under test
+        findings: 'Đã đọc: đọc tri thức dự án.', // i18n-allow: the Vietnamese report under test
       }),
     );
     const routed = await withTerminalStatus(unreachable, {
@@ -74,7 +74,7 @@ describe("a failed turn's status is its report", () => {
     expect(delivered[0]).toContain(
       'forge chưa trả lời xong: mô hình ngừng trả lời giữa chừng. (ASSISTANT_TURN_FAILED)', // i18n-allow: the Vietnamese report under test
     );
-    expect(delivered[0]).toContain('- forge_knowledge {"action":"list"}');
+    expect(delivered[0]).toContain('Đã đọc: đọc tri thức dự án.'); // i18n-allow: the Vietnamese report under test
     expect(delivered[0]).not.toContain('chưa gửi gì'); // i18n-allow: the Vietnamese line that must not stand
     expect(routed.detail).toMatchObject({ cause: 'provider', status: { delivered: true } });
   });

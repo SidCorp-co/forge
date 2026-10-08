@@ -18,8 +18,9 @@ const table: StagedBlock = {
 };
 
 const handed: { text: string; blocks: readonly StagedBlock[] }[] = [];
+const recorded: { askedBy?: string | null; deliveryKey?: string }[] = [];
 let failDelivery = false;
-let ends: 'answer' | 'decline' | 'decline-late' = 'answer';
+let ends: 'answer' | 'answer-late' | 'decline' | 'decline-late' = 'answer';
 
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, proof: null }),
@@ -35,12 +36,14 @@ vi.mock('../conversations/index.js', () => ({
     },
   }),
   openConversation: async () => ({ id: 'c-1' }),
-  recordDeliveredReply: async () => undefined,
+  recordDeliveredReply: async (reply: { askedBy?: string | null; deliveryKey?: string }) => {
+    recorded.push(reply);
+  },
   nothingMoreReply: () => 'nothing more to add',
   partialReplyWords: () => ({
     head: () => 'still working',
     did: 'did',
-    read: () => 'read',
+    read: 'read',
     nothingYet: 'nothing yet',
   }),
 }));
@@ -53,8 +56,10 @@ vi.mock('./turn-compose.js', () => ({
     };
   }) => {
     await ctx.stage.stage.hold(table);
-    if (ends === 'decline-late') await new Promise((r) => setTimeout(r, 60));
-    if (ends !== 'answer') return { send: false, reason: 'nothing-to-say', ended: 'declined' };
+    if (ends === 'decline-late' || ends === 'answer-late')
+      await new Promise((r) => setTimeout(r, 60));
+    if (ends !== 'answer' && ends !== 'answer-late')
+      return { send: false, reason: 'nothing-to-say', ended: 'declined' };
     ctx.stage.settle(0);
     return {
       send: true,
@@ -77,14 +82,16 @@ const run = (budget?: { partialAfterMs: number; ceilingMs: number }) =>
   runConversationTurn({
     door: 'web-chat-reply',
     venue: { adapter: 'web', externalId: 'room-1', shape: 'direct', projectId: 'p-1' },
-    authority: { origin: 'message' },
+    authority: { origin: 'message', userId: 'u-asker' },
     message: 'where does REQ-1 stand?',
+    deliveryKey: 'window:w-1',
     handleName: 'forge',
     ...(budget ? { budget } : {}),
   } as never);
 
 beforeEach(() => {
   handed.length = 0;
+  recorded.length = 0;
   failDelivery = false;
   ends = 'answer';
 });
@@ -141,5 +148,30 @@ describe('a turn that runs past its first ceiling', () => {
       kind: 'delivered',
       droppedBlocks: [{ kind: 'table', runId: 'r' }],
     });
+  });
+});
+
+describe('the reply a turn records', () => {
+  it('names whose turn it was, so only they read its tool calls back', async () => {
+    await run();
+    expect(recorded).toEqual([
+      expect.objectContaining({ deliveryKey: 'window:w-1', askedBy: 'u-asker' }),
+    ]);
+  });
+
+  it('names them on the rest of a turn that outran its first ceiling, too', async () => {
+    ends = 'answer-late';
+    const outcome = await run({ partialAfterMs: 10, ceilingMs: 5000 });
+    expect(
+      outcome.kind === 'delivered' && outcome.continuation,
+      'the turn outran its first ceiling',
+    ).toBeTruthy();
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    await continuation?.rest;
+    expect(recorded).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ deliveryKey: 'window:w-1:continued', askedBy: 'u-asker' }),
+      ]),
+    );
   });
 });

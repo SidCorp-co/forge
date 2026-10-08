@@ -26,7 +26,7 @@ provideReportsPorts({
   describeQuery: (id) => getReportQuery(id).descriptor,
   listQueries: () => listReportQueries().map((q) => q.descriptor),
   roomOf: () => Promise.reject(new Error('not read here')),
-  messageOf: () => Promise.reject(new Error('not read here')),
+  turnOf: () => Promise.reject(new Error('not read here')),
   postAnswer: () => Promise.reject(new Error('not posted here')),
   restTurnOf: () => Promise.reject(new Error('not read here')),
 });
@@ -147,6 +147,7 @@ describe('running a template', () => {
     const out = await go('release');
     expect(out.notDrawn).toEqual([
       expect.objectContaining({ index: 0, kind: 'kpi', as: 'release' }),
+      expect.objectContaining({ index: 1, kind: 'kpi', as: 'release' }),
     ]);
     expect(out.notDrawn[0]?.why).toContain('release-readiness returned no rows');
     expect(out.document.blocks.map((b) => b.kind)).toEqual(['table', 'status-list']);

@@ -1,10 +1,11 @@
 "use client";
 
+import { builtinReportTemplate } from "@forge/contracts/report-template-builtins";
 import type { ReportDocument, TemplateNarrativeSlot } from "@forge/contracts/report-templates";
 import type { ShareSnapshot } from "@forge/contracts/shares";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useQuery } from "@tanstack/react-query";
-import { Skeleton } from "@/design";
+import { Markdown, Skeleton } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { openShare } from "../api";
@@ -38,15 +39,37 @@ function factsOf(document: ReportDocument): (source: BlockSource) => SourceFacts
   };
 }
 
+/** The template id a frozen chat answer carries (`packages/core/src/reports/share-source.ts`). */
+const CHAT_ANSWER = "chat-answer";
+
 /**
- * A report document as it reads: the narrative slots someone wrote, then each block over the runs it
- * names. Where the document is a kept report that core exports, `onTableCsv` gives each table block a
- * "Download CSV" by its index in the document; a share page has none.
+ * What a document is called: its own title (a shared chat answer's question), else its built-in
+ * template's title. Never a template id: a chat answer frozen before it carried its question is a
+ * "Shared answer".
+ */
+export function documentTitle(document: Pick<ReportDocument, "templateId" | "title">): string {
+  if (document.title?.trim()) return document.title;
+  const template = builtinReportTemplate(document.templateId);
+  if (template) return template.title;
+  return document.templateId === CHAT_ANSWER ? "Shared answer" : "Shared report";
+}
+
+/**
+ * A report document as it reads: a chat answer's reply, the narrative slots someone wrote, then each
+ * block over the runs it names, in order. Where the document is a kept report that core exports,
+ * `onTableCsv` gives each table block a "Download CSV" by its index in the document; a share page has
+ * none.
  */
 export function ReportDocumentBody({ document, onTableCsv }: { document: ReportDocument; onTableCsv?: (blockIndex: number) => void }) {
   const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
   return (
     <>
+      {document.reply?.trim() && (
+        // a reader may not be a member: a link in the reply is drawn as its words and leads nowhere
+        <section className="border-b border-line py-5" data-testid="shared-reply">
+          <Markdown inert>{document.reply}</Markdown>
+        </section>
+      )}
       {narrative.map(({ slot, label }) => (
         <section key={slot} className="border-b border-line py-5">
           <h2 className="fg-body-sm font-semibold text-fg">{label}</h2>
@@ -72,7 +95,7 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
     <article className="flex flex-col">
       <header className="border-b border-line pb-5">
         <p className="fg-caption text-subtle">Shared answer · read-only snapshot</p>
-        <h1 className="fg-h3 mt-1 font-semibold text-fg">Report: {document.templateId}</h1>
+        <h1 className="fg-h3 mt-1 font-semibold text-fg">{documentTitle(document)}</h1>
         <p className="fg-caption mt-1 text-subtle">
           {snapshot.audience === "members" ? "Shared with the project's members" : "Shared by link"} ·
           available until {when(snapshot.expiresAt)}

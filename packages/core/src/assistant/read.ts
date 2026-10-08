@@ -3,6 +3,7 @@ import {
   listWindowsForConversation,
   readConversationAgentTurns,
   readMessages,
+  toolContentFor,
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
@@ -75,12 +76,15 @@ export async function speakerLabelOf(userId: string): Promise<string | null> {
 /** How many of a room's latest messages, and of its windows, a read carries. */
 const READ_WINDOW = 200;
 
-/** What a room's read and a send into it both answer with. */
+/**
+ * What a room's read and a send into it both answer with, as `viewerId` may read it: a reply's tool
+ * inputs and outputs only to the person whose turn wrote it.
+ */
 export async function roomTail(id: string, viewerId: string) {
   const [messages, windows, agentTurns] = await Promise.all([
     readMessages(id, READ_WINDOW),
     listWindowsForConversation(id, READ_WINDOW),
     readConversationAgentTurns(id, viewerId),
   ]);
-  return { messages, windows, agentTurns };
+  return { messages: messages.map((m) => toolContentFor(m, viewerId)), windows, agentTurns };
 }

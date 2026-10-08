@@ -244,8 +244,9 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     const partial = await said(room.id);
     expect(partial).toHaveLength(1);
     expect(partial[0]?.content).toContain('đang làm tiếp');
-    expect(partial[0]?.content).toContain('ISS-61');
-    expect(partial[0]?.content).toContain('comment');
+    // the write by what it did and the key it returned, never by its call (lane A8d)
+    expect(partial[0]?.content).toContain('Đã làm:\n- bình luận → ISS-61'); // i18n-allow: the Vietnamese partial under test
+    expect(partial[0]?.content).not.toContain('["comment"');
 
     expect(await continuation).toMatchObject({ kind: 'delivered' });
     const both = await said(room.id);
@@ -276,11 +277,12 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     await continuation;
     const both = await said(room.id);
     expect(both).toHaveLength(2);
-    expect(both[0]?.content).toContain('forge ["issue","ISS-61"]');
+    expect(both[0]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese partial under test
+    expect(both[0]?.content).not.toContain('forge ["issue","ISS-61"]');
     expect(both[1]?.content).toContain(
       'forge chưa trả lời xong trong thời gian cho phép của một lượt. (ASSISTANT_TURN_TIMED_OUT)', // i18n-allow: the Vietnamese report under test
     );
-    expect(both[1]?.content).toContain('forge ["issue","ISS-61"]');
+    expect(both[1]?.content).toContain('Đã đọc: tra cứu tracker.'); // i18n-allow: the Vietnamese report under test
   });
 
   it('a room that may stay silent hears no partial from a turn that only read', async () => {

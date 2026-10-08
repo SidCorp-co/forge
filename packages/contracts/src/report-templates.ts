@@ -89,6 +89,11 @@ export const ReportTemplateSchema = z
   .strict();
 export type ReportTemplate = z.infer<typeof ReportTemplateSchema>;
 
+/** The longest name a document carries: a shared chat answer is named by its question, trimmed to this. */
+export const REPORT_DOCUMENT_TITLE_MAX = 160;
+/** The longest reply a shared chat answer freezes, in characters of Markdown. */
+export const REPORT_DOCUMENT_REPLY_MAX = 40_000;
+
 /** What a template produces: what the chat shows, what status-reports stores and what a share freezes. */
 export const ReportDocumentSchema = z
   .object({
@@ -98,6 +103,10 @@ export const ReportDocumentSchema = z
     runs: z.array(ReportRunSchema),
     blocks: z.array(VisualBlockSchema),
     narrative: z.record(z.enum(TEMPLATE_NARRATIVE_SLOTS), z.string()),
+    /** The document's name where it has one of its own: a shared chat answer's question. A template's output is named by its template. */
+    title: z.string().min(1).max(REPORT_DOCUMENT_TITLE_MAX).optional(),
+    /** A shared chat answer's reply, as the room was shown it, in Markdown; drawn above the blocks. */
+    reply: z.string().min(1).max(REPORT_DOCUMENT_REPLY_MAX).optional(),
   })
   .strict();
 export type ReportDocument = z.infer<typeof ReportDocumentSchema>;

@@ -1,6 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { sql } from 'drizzle-orm';
@@ -61,14 +59,8 @@ export function testEnv(): void {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV = 'test';
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 9).toString('base64');
-  // a stored upload lands in a directory of its own, never in the checkout's ./uploads
-  if (!process.env.UPLOADS_DIR) {
-    uploadsDir = mkdtempSync(join(tmpdir(), 'forge-world-uploads-'));
-    process.env.UPLOADS_DIR = uploadsDir;
-  }
+  // a stored upload lands in the file's own directory, set by tests/helpers/file-database.ts
 }
-
-let uploadsDir: string | null = null;
 
 /**
  * pg-boss over the test database with every outbox consumer working, as the server boots it: a
@@ -111,7 +103,6 @@ export async function closeWorld(): Promise<void> {
   await stopOutboxWorker();
   const { stopBoss } = await import('../../src/queue/boss.js');
   await stopBoss();
-  if (uploadsDir) rmSync(uploadsDir, { recursive: true, force: true });
 }
 
 /** A project at a slug of the test's choosing: a contract is named `<provider slug>/<contract slug>`. */

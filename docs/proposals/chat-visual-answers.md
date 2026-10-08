@@ -111,7 +111,7 @@ read; it never computes the same fact a second way.
 |---|---|---|
 | `progress-by-requirement` | per requirement: criteria proven of total, issues shipped / awaiting release / to do | `readProjectStatus` (`requirements` section) |
 | `roadmap-eta` | now / next / later by requirement, each with its p50–p85 forecast range | `readProjectStatus` (`roadmap`), `packages/core/src/forecast/scope.ts:readForecastLine` |
-| `release-readiness` | the next release: state, progress, whose turn, what blocks it | `readProjectStatus` (`nextRelease`), the release read behind `forge_release` |
+| `release-readiness` | row 0: the release in flight (state, progress, whose turn, the draft behind it) or a `none_in_flight` row, with the window's shipped totals; then the releases shipped in the last `days` (default 14), newest first, with date, version and issue count | `readProjectStatus` (`nextRelease`, `shipped`) |
 | `criteria-coverage` | per requirement criterion: proven, failing, untested, and by which issue | the requirement read behind `forge_requirement` |
 | `workflow-status` | per workflow design: steps and their health markers, with the design graph | `packages/core/src/workflows/health-read.ts:projectHealthAs` |
 
@@ -336,8 +336,13 @@ ruling and is not registered.
 
 **The `forge-link` adapter:**
 
-- **Scoped.** A link points at one frozen snapshot — a message's blocks, a template's output or a
-  stored status report — never at a live query, a conversation, or the project.
+- **Scoped.** A link points at one frozen snapshot — a chat answer, a template's output or a
+  stored status report — never at a live query, a conversation, or the project. A chat answer is
+  shared from any message of its turn and freezes the whole turn: the person's question as the
+  document's `title`, the reply as `reply` (Markdown; a partial whose rest followed gives way to the
+  rest), and every visual block the turn posted, in order (`packages/core/src/reports/share-source.ts:messageShareSource`
+  over `packages/core/src/conversations/answer-turn.ts:readAnswerTurn`). No tool input or output is
+  ever frozen.
 - **Frozen and scrubbed.** At creation, the snapshot is copied into the link row after
   `scrubSecretsDeep` and the project's data policy (`packages/core/src/lib/data-egress.ts:egressDeep`
   with a new surface, `report.share`); a project at `no_egress` cannot create a link-audience
@@ -357,13 +362,14 @@ ruling and is not registered.
 - **Offered, never guessed.** `GET /api/projects/:id/shares/audiences` answers each audience as open
   or with the refusal creating it would answer, from the same checks
   (`packages/core/src/shares/service.ts:shareAudienceOptions`). The web's Share action on an
-  answer with a report block or a template's output reads it before offering "Anyone with the
+  answer — on any message of an assistant turn — reads it before offering "Anyone with the
   link", shows the link once, and Project settings → People lists and revokes the project's links
   (`packages/web-v2/src/features/shares/components/share-list.tsx:ShareList`).
-- **Read-only.** The page `/s/[token]` draws the snapshot as data — each block by its text fallback
-  (`packages/web-v2/src/features/shares/components/shared-answer.tsx:SharedBlock`) while the web block
-  registry holds no renderer for it — with no actions, no navigation and no live reads; for the `link` audience, `ref` cells render as text,
-  not links.
+- **Read-only.** The page `/s/[token]` draws the snapshot as data — titled by the document's own
+  title, else its built-in template's, never a template id; a chat answer's reply as Markdown whose
+  links and images are drawn as their words; then each block through the web block registry
+  (`packages/web-v2/src/features/shares/components/shared-answer.tsx:ReportDocumentBody`) — with no
+  actions, no navigation and no live reads; `ref` cells render as text, not links.
 - **Stored.** A `share_links` table owned by a new `shares` domain (`operations`): `id`,
   `project_id`, `token_hash` (SHA-256 of a 256-bit random token shown once), `audience`,
   `subject_kind`, `snapshot` (jsonb), `created_by`, `created_at`, `expires_at`, `revoked_at`,
@@ -477,7 +483,16 @@ ruling and is not registered.
   Standards: Slack's `chat.postEphemeral` shows a message to one user in a shared channel, and
   Teams streams a bot's reply in one-on-one chats only, a group seeing the finished message.
   Divergence: a group room here streams to its asker, and shows the others tool names, which Teams
-  shows nobody.
+  shows nobody. The delivered reply keeps the same split: its delivery records whose turn it was
+  (`delivery_proof.askedBy`), and every read that hands a message out
+  (`packages/core/src/assistant/read.ts:roomTail`) gives its tool inputs and outputs, its act buttons
+  and its reasoning text to that person alone, and to anyone else the tools by name and time
+  (`packages/core/src/conversations/tool-content.ts:toolContentFor`). A reply stored before the
+  asker was recorded shows its tool content to nobody.
+- **A partial reply says what the turn read, in words.** The message a turn posts at its first
+  ceiling counts its reads by tool ("ran 3 reports, drew 2 tables") and names its writes with the
+  keys they returned; it never quotes a call's arguments or result
+  (`packages/core/src/assistant/turn-partial.ts:partialReplyText`).
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
   never drives a write without the person's confirmation (REQ-30 BC-4).

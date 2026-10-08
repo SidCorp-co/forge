@@ -41,8 +41,13 @@ const CREATED_WITH: Record<ShareAudience, ProjectPermission> = {
   link: 'shares.public',
 };
 
-/** The first block title a stored snapshot holds; it was scrubbed with the rest of the snapshot. */
+/**
+ * What a stored snapshot is named by: its own title (a shared chat answer's question), else its first
+ * block title; both were scrubbed with the rest of the snapshot.
+ */
 function titleOf(snapshot: unknown): string | null {
+  const own = (snapshot as { title?: unknown } | null)?.title;
+  if (typeof own === 'string' && own.trim()) return own;
   const blocks = (snapshot as { blocks?: unknown } | null)?.blocks;
   if (!Array.isArray(blocks)) return null;
   for (const block of blocks) {

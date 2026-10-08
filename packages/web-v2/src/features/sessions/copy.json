@@ -244,6 +244,7 @@
     "sessions.result.failed": "Failed",
     "sessions.result.failedWith": "Failed · {text}",
     "sessions.result.noOutput": "No output recorded",
+    "sessions.result.withheld": "Shown only to the person who asked",
     "sessions.result.none": "No result",
     "sessions.result.objectMany": "Object · {n} fields",
     "sessions.result.objectOne": "Object · 1 field",

@@ -87,7 +87,9 @@ function SimpleCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boole
   const t = useCopy();
   const time = useTimeFormat();
   const kind = toolKind(tool.name);
-  const summary = summarizeResult(tool.result, tool.isError, live, t);
+  const summary = tool.withheld
+    ? { label: t("sessions.result.withheld"), hasBody: false, pending: false }
+    : summarizeResult(tool.result, tool.isError, live, t);
   return (
     <div className="rounded-md border border-line bg-surface px-3 py-2">
       <div className="flex items-center gap-2">

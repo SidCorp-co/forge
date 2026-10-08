@@ -35,11 +35,11 @@ const PROGRESS = {
 
 const RELEASE = {
   id: "release",
-  version: 1,
+  version: 2,
   title: "Release readiness",
-  params: {},
+  params: { days: { type: "number", label: "Shipped releases from the last N days", default: 14 } },
   queries: [
-    { as: "release", query: "release-readiness", params: {} },
+    { as: "release", query: "release-readiness", params: { days: { param: "days" } } },
     { as: "progress", query: "progress-by-requirement", params: {} },
   ],
   layout: [
@@ -54,13 +54,29 @@ const RELEASE = {
         { field: "toDo", label: "To do" },
       ],
     },
-    { kind: "table", as: "release", title: "Where it stands", columns: ["release", "state", "requirements", "turnWho", "turnAct", "behindRelease"] },
+    {
+      kind: "kpi",
+      as: "release",
+      title: "Shipped in the window",
+      figures: [
+        { field: "shippedReleases", label: "Releases" },
+        { field: "shippedIssues", label: "Issues" },
+      ],
+    },
+    {
+      kind: "table",
+      as: "release",
+      title: "In flight and shipped",
+      columns: ["stage", "release", "state", "releasedAt", "total", "requirements", "turnWho", "turnAct", "behindRelease"],
+    },
     { kind: "status-list", as: "progress", title: "Requirements", ref: "key", status: "state" },
   ],
   narrative: slots(
-    "Say whether the next release is ready and what it still waits on.",
-    "Name what could hold it back: issues still to do, and whose turn it is.",
-    "Say what to do next so it ships, and who does it.",
+    // the first row says whether a release is in flight; the rows after it are what shipped. A run
+    // with shipped rows is a project that releases, whatever its first row says (lane A8d)
+    "Say whether a release is in flight and what it waits on, then what shipped in the window: how many releases and issues, and the newest. Where shipped rows exist, never say there is no release.",
+    "Name what could hold the next release back: issues still to do, and whose turn it is.",
+    "Say what to do next so the next release ships, and who does it.",
   ),
 } satisfies ReportTemplate;
 

@@ -55,7 +55,7 @@ describe("a shared answer", () => {
       kind: "chart", v: 1, title: "Proven", variant: "bar", x: "requirement", y: ["proven"], source: { runId: "run-1" }, frame,
     } as never);
     const { container } = renderWithQuery(<SharedAnswerView snapshot={s} />);
-    expect(screen.getByText("Report: progress")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Progress$/);
     expect(screen.getByText("One requirement moved.")).toBeInTheDocument();
     expect(screen.queryByText("Risks")).toBeNull();
     expect(container.querySelector('[data-testid="visual-block"][data-kind="table"] table')).not.toBeNull();
@@ -82,6 +82,51 @@ describe("a shared answer", () => {
     expect(screen.getByTestId("visual-block-unsupported")).toHaveTextContent("This answer has a pie block this screen cannot show.");
   });
 
+  it("shows a shared turn whole: its question as the title, its reply as Markdown, then its three blocks in order", () => {
+    const s = snapshot();
+    const frame = s.document.runs[0]?.frame as ShareSnapshot["document"]["runs"][number]["frame"];
+    const source = { runId: "run-1" };
+    s.document = {
+      ...s.document,
+      templateId: "chat-answer",
+      version: 2,
+      title: "How far along is the project, and what ships next?",
+      reply: "## Summary\n\n**REQ-7** is closest. See [the board](https://forge.example/projects/p1/requirements).",
+      narrative: { summary: "", risks: "", recommendations: "" },
+      blocks: [
+        { kind: "table", v: 1, title: "Progress", columns: ["requirement", "proven"], source, frame },
+        { kind: "table", v: 1, title: "Notes", columns: ["requirement", "note"], source, frame },
+        { kind: "chart", v: 1, title: "Proven", variant: "bar", x: "requirement", y: ["proven"], source, frame },
+      ] as never,
+    };
+    const { container } = renderWithQuery(<SharedAnswerView snapshot={s} />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("How far along is the project, and what ships next?");
+    expect(container.textContent).not.toContain("chat-answer");
+    const reply = screen.getByTestId("shared-reply");
+    expect(reply.querySelector("h2")).toHaveTextContent("Summary");
+    expect(reply.querySelector("strong")).toHaveTextContent("REQ-7");
+    expect(reply).toHaveTextContent("See the board.");
+    expect(container.querySelectorAll("a")).toHaveLength(0);
+    const kinds = [...container.querySelectorAll('[data-testid="visual-block"]')].map((b) => b.getAttribute("data-kind"));
+    expect(kinds).toEqual(["table", "table", "chart"]);
+    expect([...container.querySelectorAll('[data-testid="visual-block"]')].map((b) => b.textContent?.slice(0, 5))).toEqual([
+      "Progr",
+      "Notes",
+      "Prove",
+    ]);
+    expect(reply.compareDocumentPosition(container.querySelector('[data-testid="visual-block"]') as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("names a chat answer shared before it carried its question a shared answer, never by its template id", () => {
+    const s = snapshot();
+    s.document = { ...s.document, templateId: "chat-answer", narrative: { summary: "", risks: "", recommendations: "" } };
+    const { container } = renderWithQuery(<SharedAnswerView snapshot={s} />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Shared answer$/);
+    expect(container.textContent).not.toContain("chat-answer");
+  });
+
   it("opens through the open door with the token in the body, and waits for the session first", async () => {
     const calls = fakeCore((call) =>
       call.path === "/shares/open" ? { body: snapshot() } : undefined,
@@ -93,7 +138,7 @@ describe("a shared answer", () => {
         <SharedAnswer token={TOKEN} signedIn={false} />
       </QueryClientProvider>,
     );
-    expect(await screen.findByText("Report: progress")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/^Progress$/);
     expect(calls).toEqual([{ method: "POST", path: "/shares/open", body: { token: TOKEN } }]);
   });
 
