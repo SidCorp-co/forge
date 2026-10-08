@@ -1,1 +1,0 @@
-**A chat session reaches only the model, Forge core and its MCP servers.** Its network is the runner's egress proxy; `curl` to any other host is refused, naming it. Extra hosts go in `[runner] chat_egress_allow`.

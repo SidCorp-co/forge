@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.167] - 2026-10-08
+
+Agent chat network confined to the model, Forge and its own tools
+
+### Security
+
+- **A chat session reaches only the model, Forge core and its MCP servers.** Its network is the runner's egress proxy; `curl` to any other host is refused, naming it. Extra hosts go in `[runner] chat_egress_allow`.
+
 ## [0.4.0-dev.166] - 2026-10-08
 
 A person can say a memory is still true, one at a time or many
