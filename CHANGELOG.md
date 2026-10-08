@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.200] - 2026-10-08
+
+Computations run sandboxed on the team's own runner, not Anthropic's container
+
+### Fixed
+
+- **A chat writes only when you press Record it.** A typed reply never records a proposal. Design links, issue and project changes and report saves now wait on the card, which shows the whole proposal; a refused press says why.
+- **A question no report covers is now computed on your team's own runner.** The script runs in a sandbox there with no network; where no runner can run it, the reply names why and nothing is sent.
+
 ## [0.4.0-dev.199] - 2026-10-08
 
 BA can propose revisions on new requirements; chat tabs reload when stale
