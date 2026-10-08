@@ -33,7 +33,7 @@ const labelled = (key: ProductCopyKey) => `[aria-label="${productCopy("vi")(key)
 // The Issues screens of the Development space for the vi walking test: the table and the three
 // grouped views, the peek, the full page and its tabs, the rail, the banners, the dialogs. Content
 // is placeholder words; core's sentences (whom an issue waits on, why it is blocked, a gate) are the
-// real ones core writes, since they reach the screen through standing-copy patterns.
+// real ones core writes, since they reach the screen as registry keys the said reader renders.
 
 const P = "p1";
 const AT = "2026-10-07T08:00:00.000Z";
