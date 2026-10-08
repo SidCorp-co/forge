@@ -133,28 +133,103 @@ describe('POST confirm-prod-deploy, when the environment is held', () => {
   });
 });
 
-/** ISS-1346 — a Coolify refusal reaches the REST caller as what Coolify said, not INTERNAL_ERROR. */
+/**
+ * ISS-1346 — a Coolify refusal reaches the REST caller as what Coolify said, not INTERNAL_ERROR.
+ * ISS-1194 — and as a status Cloudflare lets through: it replaces an origin 502's body with its own
+ * `error code: 502`, which is how this read's refusal stayed invisible on the live tracker.
+ */
 describe('GET rollback-images, when Coolify refuses the read', () => {
   const images = () =>
     app.request(`/${PROJECT_ID}/integrations/coolify/rollback-images?resourceUuid=app-uuid`);
 
-  it('answers 502 naming the status and the Coolify route', async () => {
+  /** Coolify's own answer, made by the real client against a stubbed fetch. */
+  const coolifyAnswers = async (status: number, body: string) => {
+    const { CoolifyClient } = await import('./client.js');
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl: (async () => new Response(body, { status })) as typeof fetch,
+    });
     const { listCoolifyRollbackImages } = await import('./controls.js');
-    const { CoolifyApiError } = await import('./client.js');
-    vi.mocked(listCoolifyRollbackImages).mockRejectedValueOnce(
-      new CoolifyApiError(
-        404,
-        '{}',
-        undefined,
-        'GET /api/v1/applications/app-uuid/rollback-images',
-      ),
-    );
+    vi.mocked(listCoolifyRollbackImages).mockImplementationOnce(async () => {
+      await client.listRollbackImages('app-uuid');
+      throw new Error('the stubbed Coolify answer was a refusal');
+    });
+  };
+
+  it('answers a status Cloudflare does not replace, never the 502 it turns into its own page', async () => {
+    await coolifyAnswers(404, '{"message":"Not found."}');
     const res = await images();
-    expect(res.status).toBe(502);
-    const body = JSON.stringify(await res.json());
-    expect(body).toContain('COOLIFY_API_ERROR');
-    expect(body).toContain(
+    expect(res.status).toBe(424);
+    expect([502, 504]).not.toContain(res.status);
+  });
+
+  it('names that Forge got no rollback image list, with the status, route and body Coolify gave, and does not claim which 404 it was', async () => {
+    await coolifyAnswers(404, '{"message":"Not found."}');
+    const body = (await (await images()).json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_API_ERROR');
+    expect(body.message).toContain(
       'Coolify answered HTTP 404 to GET /api/v1/applications/app-uuid/rollback-images',
+    );
+    expect(body.message).toContain('no rollback image list to read and no tag to roll back to');
+    expect(body.message).toContain('lacks the route or does not know the application');
+    expect(body.message).toContain('Not found.');
+  });
+
+  it('names the status and route for a refusal that is not a missing list', async () => {
+    await coolifyAnswers(500, 'boom');
+    const res = await images();
+    expect(res.status).toBe(424);
+    const body = (await res.json()) as { message: string };
+    expect(body.message).toBe(
+      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images',
+    );
+  });
+
+  it('names the missing ability for a 403, as the other Coolify routes do', async () => {
+    await coolifyAnswers(403, '{}');
+    const res = await images();
+    expect(res.status).toBe(424);
+    expect(JSON.stringify(await res.json())).toContain('`read` ability');
+  });
+
+  it('still answers 400 for a caller error, which is not Coolify refusing anything', async () => {
+    const { listCoolifyRollbackImages } = await import('./controls.js');
+    const { CoolifyCommandError } = await import('./commands.js');
+    vi.mocked(listCoolifyRollbackImages).mockRejectedValueOnce(
+      new CoolifyCommandError('project has no active Coolify integration'),
+    );
+    expect((await images()).status).toBe(400);
+  });
+
+  it('answers 200 with the images when Coolify lists them', async () => {
+    const { listCoolifyRollbackImages } = await import('./controls.js');
+    const listed = {
+      integrationId: BINDING_ID,
+      resourceUuid: 'app-uuid',
+      targetLabel: 'Backend',
+      current: 'sha-b',
+      images: [{ tag: 'sha-b', createdAt: null, isCurrent: true }],
+    };
+    vi.mocked(listCoolifyRollbackImages).mockResolvedValueOnce(listed);
+    const res = await images();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(listed);
+  });
+});
+
+/** ISS-1194 — the 424 is this one read's; the other Coolify routes keep what ISS-1346 gave them. */
+describe('the other Coolify routes, when Coolify refuses', () => {
+  it('still answer 502 naming the status and the Coolify route', async () => {
+    const { coolifyDeliveryStatus } = await import('./commands.js');
+    const { CoolifyApiError } = await import('./client.js');
+    vi.mocked(coolifyDeliveryStatus).mockRejectedValueOnce(
+      new CoolifyApiError(500, '{}', undefined, 'GET /api/v1/resources'),
+    );
+    const res = await app.request(`/${PROJECT_ID}/integrations/coolify/status`);
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(await res.json())).toContain(
+      'Coolify answered HTTP 500 to GET /api/v1/resources',
     );
   });
 });
