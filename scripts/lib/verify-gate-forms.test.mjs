@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { INPUTS } from './check-inputs.mjs';
+import { checksFor } from './verify-layers.mjs';
 import { listEntries } from './verify-memo.mjs';
 import { Memo } from './verify-memo-run.mjs';
 
@@ -16,19 +17,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const RATCHET = join(HERE, 'debt-ratchet.mjs');
 const VERIFY = readFileSync(join(HERE, '..', 'verify.mjs'), 'utf8');
 
-/** Every check `verify.mjs` declares, with the command of its scoped form where it has one. */
+/** The checks `verify.mjs` declares, as far as the mode selection reads them: label, layer, commands. */
 function formsOf(source) {
   const table = source.slice(source.indexOf('const CHECKS = ['), source.indexOf('\n];\n'));
+  const list = (text) => JSON.parse(text.replaceAll("'", '"'));
   return table
     .split(/\n {2}\{\n/)
     .map((chunk) => ({
       label: /label: '([^']+)'/.exec(chunk)?.[1],
+      layer: /layer: '([^']+)'/.exec(chunk)?.[1],
+      cmd: /\n {4}cmd: (\[[^\]]*\])/.exec(chunk)?.[1],
       scoped: /scoped: \{\s*cmd: (\[[^\]]*\])/.exec(chunk)?.[1],
     }))
     .filter((c) => c.label)
     .map((c) => ({
       label: c.label,
-      scoped: c.scoped ? JSON.parse(c.scoped.replaceAll("'", '"')) : null,
+      layer: c.layer,
+      cmd: list(c.cmd),
+      ...(c.scoped ? { scoped: { cmd: list(c.scoped) } } : {}),
     }));
 }
 
@@ -72,8 +78,14 @@ describe('the whole and the scoped form of a check that asks git, each through t
   let root;
   let dir;
   const sh = (...argv) => spawnSync(argv[0], argv.slice(1), { cwd: root, encoding: 'utf8' });
-  const whole = { label: 'comment-budget', cmd: ['node', 'check.mjs', '--all'] };
-  const scoped = { label: 'comment-budget', cmd: ['node', 'check.mjs', '--changed'] };
+  /** The comment-budget command the real mode selection hands a gate form, aimed at the fixture's checker. */
+  const formOf = (mode) => {
+    const picked = checksFor(mode, formsOf(VERIFY)).find((c) => c.label === 'comment-budget');
+    expect(picked.cmd[1]).toBe('scripts/check-comment-budget.mjs');
+    return { label: 'comment-budget', cmd: ['node', 'check.mjs', ...picked.cmd.slice(2)] };
+  };
+  const whole = formOf('whole');
+  const scoped = formOf('entry');
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'verify-forms-'));
@@ -114,10 +126,16 @@ describe('the whole and the scoped form of a check that asks git, each through t
     return { memo, plan, out, verdict: memo.settle(plan, r.status, out, { code: r.status, out }) };
   };
 
+  it('hands --entry and --window the scoped form, which asks git, and the whole gate the other', () => {
+    expect(whole.cmd).toEqual(['node', 'check.mjs', '--all']);
+    expect(scoped.cmd).toEqual(['node', 'check.mjs', '--changed']);
+    expect(formOf('window').cmd).toEqual(scoped.cmd);
+  });
+
   it.each([
     ['the whole gate', whole],
     ['--entry', scoped],
-    ['--window', scoped],
+    ['--window', formOf('window')],
   ])('passes %s, files its verdict, and serves it from the store the second time', (_, check) => {
     const first = take(check);
     expect(first.plan.kind).toBe('miss');

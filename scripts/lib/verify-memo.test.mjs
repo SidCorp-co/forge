@@ -651,6 +651,22 @@ describe('a check taken through the memo', () => {
     expect(listEntries(dir)).toHaveLength(1);
   });
 
+  it('goes red when the target of a probed link grows past what the check allows, the link itself unchanged', () => {
+    put('.gitignore', 'target.txt\nlinked\n');
+    commit();
+    put('target.txt', 'small');
+    symlinkSync(join(root, 'target.txt'), join(root, 'linked'));
+    const probed = { c: { roots: ['check.mjs', 'src'], probed: ['linked'] } };
+    const plan = () =>
+      new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(plan(), { SIZED: join(root, 'linked') }).verdict.code).toBe(0);
+    expect(run(plan(), { SIZED: join(root, 'linked') }).plan.kind).toBe('hit');
+    put('target.txt', 'a target grown well past ten bytes');
+    const grown = run(plan(), { SIZED: join(root, 'linked') });
+    expect(grown.plan.kind).toBe('miss');
+    expect(grown.status).toBe(1);
+  });
+
   it('refuses a module the check imports from outside its declaration', () => {
     put('docs/rule.mjs', 'export default 1;');
     const done = run(memo(), { IMPORT: join(root, 'docs/rule.mjs') });

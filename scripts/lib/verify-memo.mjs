@@ -214,22 +214,38 @@ export function builtFiles(root, dirs = []) {
   return out.sort();
 }
 
+/** How `abs` answers a stat: its kind and size, and for a link where it points and what is there. */
+function statLine(abs) {
+  const own = lstatOrNull(abs);
+  if (!own) return null;
+  const said = (st) => (st.isDirectory() ? 'dir' : `file:${st.size}`);
+  if (!own.isSymbolicLink()) return said(own);
+  let target = 'dangling';
+  try {
+    target = said(statSync(abs));
+  } catch {
+    // A link that leads nowhere is still a fact a stat reports.
+  }
+  return `link:${readlinkSync(abs)}:${target}`;
+}
+
 /**
- * What a check that only stats `paths` can learn from them: what is there, of what kind, and how big
- * a file is. Never what is inside, and never when it was written, which would move on every build.
+ * What a check that only stats `paths` can learn from them: what is there, of what kind, how big a
+ * file is and, through a link, what it leads to. Never what is inside, and never when it was
+ * written, which would move on every build.
  */
 export function probedState(root, paths = []) {
   const state = [];
-  const note = (rel, st) => state.push(`${rel}${st.isDirectory() ? '/' : `\0${st.size}`}`);
+  const note = (rel) => {
+    const line = statLine(join(root, rel));
+    if (line) state.push(`${rel}\0${line}`);
+    return line;
+  };
   for (const p of paths) {
-    const st = lstatOrNull(join(root, p));
-    if (!st) continue;
-    note(p, st);
-    if (!st.isDirectory()) continue;
+    const line = note(p);
+    if (!(line === 'dir' || line?.endsWith(':dir'))) continue;
     for (const name of readdirSync(join(root, p), { recursive: true })) {
-      const rel = `${p}/${String(name).split('\\').join('/')}`;
-      const inner = lstatOrNull(join(root, rel));
-      if (inner) note(rel, inner);
+      note(`${p}/${String(name).split('\\').join('/')}`);
     }
   }
   return state.sort();
