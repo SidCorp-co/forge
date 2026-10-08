@@ -76,7 +76,11 @@ export function AttentionQueue({
       </div>
       <CardContent className="flex-1">
         {items.length === 0 ? (
-          <EmptyState title="All caught up" message="Nothing in this project needs you right now." mascot={false} />
+          cut || refusal ? (
+            <p className="fg-body-sm text-subtle">Nothing is listed to act on here.</p>
+          ) : (
+            <EmptyState title="All caught up" message="Nothing in this project needs you right now." mascot={false} />
+          )
         ) : (
           <ul className="flex flex-col gap-2">
             {items.map((it) => {
