@@ -4,12 +4,20 @@ import { sourceCommit } from './source-commit.js';
 
 let initialized = false;
 
-/** Tags a capture site writes from server-held identifiers, put back after the scrub withholds them; no other key is. */
-const serverHeldTags = new WeakMap<object, Record<string, string>>();
+/** The only tags put back after the scrub withholds them: identifiers the capture site reads from the server. */
+export const SERVER_HELD_TAGS = ['webhook.provider', 'webhook.slug', 'webhook.binding_id'] as const;
+export type ServerHeldTag = (typeof SERVER_HELD_TAGS)[number];
 
-/** Records `tags` to be restored on the event `captureException(error)` produces. */
-export function holdServerTags(error: object, tags: Record<string, string>): void {
-  serverHeldTags.set(error, tags);
+const serverHeldTags = new WeakMap<object, Partial<Record<ServerHeldTag, string>>>();
+
+/** Records the server-held `tags` to be restored on the event `captureException(error)` produces. */
+export function holdServerTags(error: object, tags: Partial<Record<ServerHeldTag, string>>): void {
+  const kept: Partial<Record<ServerHeldTag, string>> = {};
+  for (const key of SERVER_HELD_TAGS) {
+    const value = tags[key];
+    if (typeof value === 'string') kept[key] = value;
+  }
+  serverHeldTags.set(error, kept);
 }
 
 function scrubAndRestoreHeldTags<

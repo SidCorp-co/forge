@@ -88,6 +88,38 @@ describe('the Sentry client, given a wrapper that JSON-quotes a short bound valu
   });
 });
 
+describe('the tags a capture site holds beside its error', () => {
+  it('puts back the named identifiers and withholds a tag outside the named three', async () => {
+    const { initSentry, Sentry, holdServerTags } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const before = envelopes.length;
+    const SLUG = 'held-slug-9';
+    const PATH = '/held/path/9';
+    const error = new Error('could not save', {
+      cause: new DrizzleQueryError('select $1, $2', [SLUG, PATH], new Error('boom')),
+    });
+    holdServerTags(error, { 'webhook.slug': SLUG, 'http.path': PATH } as never);
+    Sentry.withScope((scope) => {
+      scope.setTags({ 'webhook.slug': SLUG, 'http.path': PATH });
+      Sentry.captureException(error);
+    });
+    expect(await Sentry.flush(5000)).toBe(true);
+    const event = envelopes
+      .slice(before)
+      .flatMap((envelope) => envelope.split('\n'))
+      .map((line) => {
+        try {
+          return JSON.parse(line) as { tags?: Record<string, string>; exception?: unknown };
+        } catch {
+          return {};
+        }
+      })
+      .find((item) => item.exception);
+    expect(event?.tags?.['webhook.slug']).toBe(SLUG);
+    expect(event?.tags?.['http.path']).toBe('[Redacted]');
+  });
+});
+
 function failedInsert(): DrizzleQueryError {
   const driver = Object.assign(new Error('duplicate key value violates unique constraint "u"'), {
     code: '23505',
