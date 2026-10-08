@@ -9,6 +9,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import {
   Button,
   Card,
@@ -34,10 +36,13 @@ export function AwaitingReleaseCard({
   runs,
   slug,
   projectId,
+  awaitingReleaseIssues,
 }: {
   runs: PipelineRunListItem[];
   slug: string;
   projectId: string;
+  /** Issues in the Awaiting release state, from the same health row the donut reads. */
+  awaitingReleaseIssues: number;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -91,15 +96,34 @@ export function AwaitingReleaseCard({
       <div className="flex items-center justify-between gap-2 border-b border-line-subtle px-5 py-3.5">
         <div className="flex items-center gap-2">
           <Icon name="check" size={16} className="text-subtle" />
-          <CardTitle>Awaiting release</CardTitle>
+          <CardTitle>{WORK_STATE_LABELS.awaiting_release}</CardTitle>
         </div>
         {runs.length > 0 && <span className="fg-caption font-mono text-subtle">{runs.length}</span>}
       </div>
       <CardContent className="flex-1">
         {runs.length === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">Nothing waiting on a release decision.</p>
+          awaitingReleaseIssues === 0 ? (
+            <p className="fg-body-sm py-6 text-center text-muted">Nothing waiting on a release decision.</p>
+          ) : (
+            <p className="fg-body-sm py-6 text-center text-muted">
+              No release run is parked at the gate, and {awaitingReleaseIssues}{" "}
+              {awaitingReleaseIssues === 1 ? "issue is" : "issues are"}{" "}
+              {WORK_STATE_LABELS.awaiting_release}.{" "}
+              <Link
+                href={`/projects/${slug}/issues?filter=awaiting_release`}
+                className="text-accent-text hover:underline"
+              >
+                See them in Issues
+              </Link>
+            </p>
+          )
         ) : (
           <>
+            <p className="fg-caption mb-2 text-muted">
+              {awaitingReleaseIssues} {awaitingReleaseIssues === 1 ? "issue is" : "issues are"}{" "}
+              {WORK_STATE_LABELS.awaiting_release}; this list holds the {runs.length} with a release
+              run parked at the gate.
+            </p>
             {selectableVisible.length > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Checkbox

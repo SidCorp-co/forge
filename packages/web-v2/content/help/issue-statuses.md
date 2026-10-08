@@ -29,7 +29,19 @@ and finished work are never in it. The tabs on the Issues list add up to **All**
 and the dashboard chart draws a row for every state that has an issue in it.
 
 The **Source** filter beside the tabs narrows the list, and every count on the
-tabs, to issues a person filed or issues a detector filed.
+tabs, to issues a person filed or issues a detector filed. A link that names a
+status narrows them the same way, and the Issues list says so above the list with
+a way to clear it.
+
+The **Board** tab draws the four open states, one group of columns for each, in
+the order of the table above. It leaves out Draft and Finished, and says so above
+its columns with the count of each, so the columns it draws add up to the open
+work and nothing it holds is missing without being named.
+
+On the project dashboard, **Needs you** counts the things waiting on a person —
+failed jobs, reviews, questions and issues held by a dependency — not issues in a
+state, and the line under its figure says how many of each. So it can be larger or
+smaller than **Blocked on a person**, which counts issues.
 
 ## The short version
 

@@ -3,6 +3,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import {
   Button,
   Card,
@@ -163,7 +164,7 @@ export function PipelineTab({
         <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
         <p className="fg-body-sm mb-1 text-muted">
           An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
-          <b>Needs info</b>, <b>Awaiting release</b> or closed. The session is driven by the{" "}
+          <b>Needs info</b>, <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> or closed. The session is driven by the{" "}
           <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
         </p>
         {libraryHref && (

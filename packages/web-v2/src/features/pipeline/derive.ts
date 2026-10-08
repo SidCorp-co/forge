@@ -12,7 +12,14 @@ import { type StageKey, stageColor } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners/types";
 import { formatElapsed } from "@/lib/utils/format";
 import {
+  LABEL_WORK_STATE,
+  WORK_STATE_LABELS,
+  WORK_STATES,
+  type WorkState,
+} from "@forge/contracts/work-state";
+import {
   BOARD_EXCLUDED_STATUSES,
+  BOARD_LEFT_OUT_STATES,
   type PipelineIssueRow,
   type PipelineRunListItem,
   type PipelineRunStatus,
@@ -113,12 +120,10 @@ export interface LabelGroup {
 }
 
 /**
- * The board's columns: every lane label that a status the board's own query CAN RETURN maps to,
- * kept in `AUTONOMOUS_LABELS`' order.
- *
- * Derived forward from the returnable statuses, never by subtracting the excluded ones' labels.
- * The two are different relations: `toAutonomousLabel` is many-to-one, so the moment an excluded
- * status shares a label with an included one, subtraction deletes a column full of live issues.
+ * The board's columns: the lane labels of the statuses its query can return, one work state's
+ * columns together in `WORK_STATES` order. Derived forward from the returnable statuses, never by
+ * subtracting the excluded ones' labels: `toAutonomousLabel` is many-to-one, so subtraction
+ * deletes a column full of live issues once an excluded status shares a label with an included one.
  */
 export function boardColumns(
   excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
@@ -129,7 +134,25 @@ export function boardColumns(
     reachable.add(toAutonomousLabel(status, true));
     reachable.add(toAutonomousLabel(status, false));
   }
-  return AUTONOMOUS_LABELS.filter((l) => reachable.has(l));
+  const stateOf = (l: AutonomousLabel) => WORK_STATES.indexOf(LABEL_WORK_STATE[l]);
+  return AUTONOMOUS_LABELS.filter((l) => reachable.has(l)).sort((a, b) => stateOf(a) - stateOf(b));
+}
+
+/** A work state the board does not draw. */
+export interface LeftOutState {
+  state: WorkState;
+  label: string;
+  /** Undefined until the project's counts arrive: the figure is never invented. */
+  count: number | undefined;
+}
+
+/** The states the board leaves out, with core's count of each. */
+export function boardLeftOut(work: Partial<Record<WorkState, number>> | undefined): LeftOutState[] {
+  return BOARD_LEFT_OUT_STATES.map((state) => ({
+    state,
+    label: WORK_STATE_LABELS[state],
+    count: work?.[state],
+  }));
 }
 
 /** The colour a lane label reads in — the same `SemanticTone` its status chip resolves through. */

@@ -166,3 +166,30 @@ describe("a link naming a segment the strip does not have", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 });
+
+describe("a status filter in the link", () => {
+  it("says a status filter is on, names it, and says the counts are for those issues", () => {
+    mountAt("?status=in_progress");
+    const line = screen.getByTestId("status-filter-line");
+    expect(line).toHaveTextContent("A status filter is on: In progress");
+    expect(line).toHaveTextContent("counts above are for those issues only");
+  });
+
+  it("names every status it was given", () => {
+    mountAt("?filter=finished&status=closed,dropped");
+    expect(screen.getByTestId("status-filter-line")).toHaveTextContent("Closed, Dropped");
+  });
+
+  it("clears the status and keeps the segment, so the counts widen back to the whole project", () => {
+    mountAt("?filter=finished&status=closed");
+    fireEvent.click(screen.getByRole("button", { name: "Clear the status filter" }));
+    const params = new URLSearchParams(window.location.search);
+    expect(params.has("status")).toBe(false);
+    expect(params.get("filter")).toBe("finished");
+  });
+
+  it("says nothing when no status is named", () => {
+    mountAt("?filter=finished");
+    expect(screen.queryByTestId("status-filter-line")).toBeNull();
+  });
+});

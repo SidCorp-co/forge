@@ -210,7 +210,7 @@ describe('withBuckets — the strip counts (ISS-1010)', () => {
     });
   });
 
-  it('counts the work states the status and workState filters exclude, not only the ones on screen', async () => {
+  it('reads the buckets without the status and workState conditions, and narrows the six states by the status filter after the read', async () => {
     queueAuthSelect();
     queueProjectAccessMember();
     queuePage();
@@ -225,13 +225,52 @@ describe('withBuckets — the strip counts (ISS-1010)', () => {
     const bucketWhere = readWorkStateRows.mock.calls[0]?.[0];
     expect(
       namesColumn(bucketWhere, 'status'),
-      'the bucket read carried the status filter — every segment but the chosen one would read zero',
+      'the bucket read carried the status filter, so byStatus could not name a sibling status',
     ).toBe(false);
     expect(
       holds(bucketWhere, WORK_STATE_SENTINEL),
       'the bucket read carried the work state filter — every segment but the chosen one would read zero',
     ).toBe(false);
   });
+
+  const GROUPED = [
+    { projectId: PROJECT_ID, status: 'closed', owesAnswer: false, n: 5 },
+    { projectId: PROJECT_ID, status: 'dropped', owesAnswer: false, n: 3 },
+    { projectId: PROJECT_ID, status: 'in_progress', owesAnswer: false, n: 2 },
+    { projectId: PROJECT_ID, status: 'in_progress', owesAnswer: true, n: 1 },
+    { projectId: PROJECT_ID, status: 'draft', owesAnswer: false, n: 4 },
+  ];
+  const sumOf = (c: Record<string, number>) => Object.values(c).reduce((a, b) => a + b, 0);
+
+  it.each([
+    ['status=in_progress', 3, { in_flight: 2, blocked_on_person: 1 }],
+    ['status=closed&status=dropped', 8, { finished: 8 }],
+    ['statusNot=closed', 10, { finished: 3, in_flight: 2, blocked_on_person: 1, draft: 4 }],
+    ['status=in_progress&statusNot=in_progress', 0, {}],
+  ])(
+    'narrows the six counts by %s so they add up to the same query’s total',
+    async (qs, total, expected) => {
+      queueAuthSelect();
+      queueProjectAccessMember();
+      selectOffset.mockReturnValueOnce([]);
+      readWorkStateRows.mockResolvedValueOnce(GROUPED);
+      const res = await req(`?${qs}&withBuckets=1`, await token());
+      expect(res.status).toBe(200);
+      const b = (
+        (await res.json()) as {
+          buckets: { byStatus: Record<string, number>; byWorkState: Record<string, number> };
+        }
+      ).buckets;
+      expect(sumOf(b.byWorkState)).toBe(total);
+      expect(b.byWorkState).toMatchObject(expected);
+      expect(b.byStatus, 'the per-status counts keep every status').toEqual({
+        closed: 5,
+        dropped: 3,
+        in_progress: 3,
+        draft: 4,
+      });
+    },
+  );
 
   it('narrows the counts by origin, so a strip drawn from them still adds up to its All', async () => {
     queueAuthSelect();

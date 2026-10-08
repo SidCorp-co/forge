@@ -10,6 +10,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import Link from "next/link";
+import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import { inlineCode } from "./inline-code";
 import { useReleaseReadiness } from "../hooks";
 import type { ReleaseReadiness } from "../types";
@@ -88,7 +89,7 @@ function stateLine(r: ReleaseReadiness) {
   if (r.hasReleaseGate)
     return (
       <>
-        This one declares both, so its issues wait at <b>Awaiting release</b>.
+        This one declares both, so its issues wait at <b>{ISSUE_STATUS_LABELS.awaiting_release}</b>.
       </>
     );
   if (r.targetUndeclared)
@@ -114,7 +115,7 @@ export function ReleaseSection({
     <div>
       <CardTitle className="fg-label text-fg">Release</CardTitle>
       <p className="fg-caption mt-0.5 text-muted">
-        An issue reaches <b>Awaiting release</b> only when this project declares what releasing it
+        An issue reaches <b>{ISSUE_STATUS_LABELS.awaiting_release}</b> only when this project declares what releasing it
         means <i>and</i> has a live target to send it to. {r ? stateLine(r) : null}
       </p>
     </div>

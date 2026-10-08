@@ -6,6 +6,7 @@ import {
   SectionTitle,
   StreamBand,
 } from "@/design";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import type { PulseFlowWeek } from "../types";
 
 export interface FlowSectionProps {
@@ -48,7 +49,7 @@ export function FlowSection({ flow }: FlowSectionProps) {
             line: w.backlog,
           }))}
           inboundLabel="Created"
-          outboundLabel="Finished"
+          outboundLabel={WORK_STATE_LABELS.finished}
           lineLabel="Backlog left behind"
           label={`${flow.length} weeks of issues created against issues finished. Backlog went from ${startBacklog} to ${last.backlog}.`}
         />

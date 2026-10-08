@@ -5,6 +5,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { OPEN_WORK_LABEL, WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { ISSUE_STATUSES } from "./types";
 
 const SRC = resolve(__dirname, "../..");
@@ -94,25 +95,66 @@ describe("exactly one kernel-status-to-word map", () => {
 
 describe("one work-state vocabulary (ISS-1156)", () => {
   const HOME = resolve(SRC, "../../contracts/src/work-state.ts");
-  // The words a screen reads from `@forge/contracts/work-state`. A literal of one of them anywhere
-  // else in web-v2 is a second place to keep in step, which is how five screens came to five words.
-  const WORDS = ["Open, not picked up", "In flight", "Blocked on a person"];
+  // Every word a screen reads from `@forge/contracts/work-state`, taken from its own list so a state
+  // added there is guarded the day it is added. A literal of one anywhere else in web-v2 is a second
+  // place to keep in step, which is how five screens came to five words.
+  const WORDS = [...Object.values(WORK_STATE_LABELS), OPEN_WORK_LABEL];
+  const escapeRe = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  const declaringAWord = (text: string): string[] =>
-    WORDS.filter((w) => new RegExp(`["'\`]${w}["'\`]`, "u").test(text));
+  /** A comment names a word without declaring it. */
+  const withoutComments = (text: string) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-  it("finds the words where they are declared, so the scan is not passing on a broken pattern", () => {
-    expect(declaringAWord(readFileSync(HOME, "utf8")).length).toBe(WORDS.length);
+  /**
+   * The words `text` declares: a whole quoted string, a whole JSX text node, or a JSX text node that
+   * opens with a word of more than one word (a card titled "Open work by state" is the word plus
+   * more, which is the word kept in a second file all the same).
+   */
+  const declaringAWord = (raw: string): string[] => {
+    const text = withoutComments(raw);
+    return WORDS.filter((w) => {
+      const word = escapeRe(w);
+      const quoted = new RegExp(`["'\`]${word}["'\`]`, "u");
+      const textNode = new RegExp(`>\\s*${word}\\s*<`, "u");
+      const textNodeOpening = new RegExp(`>\\s*${word}\\b[^<>{}]*[<{]`, "u");
+      return quoted.test(text) || textNode.test(text) || (w.includes(" ") && textNodeOpening.test(text));
+    });
+  };
+
+  it("takes every state's word and the open-work word, so none is hand-picked", () => {
+    expect(WORDS).toEqual([...WORK_STATES.map((s) => WORK_STATE_LABELS[s]), OPEN_WORK_LABEL]);
+    expect(WORDS.length).toBe(WORK_STATES.length + 1);
   });
 
-  it("goes red on a file that declares one of the words itself", () => {
-    expect(declaringAWord(`const LABELS = { open: "Open, not picked up" };`)).toEqual([
-      "Open, not picked up",
-    ]);
-    expect(declaringAWord(`const x = 'In flight';`)).toEqual(["In flight"]);
+  it("finds each word where it is declared, so the scan is not passing on a broken pattern", () => {
+    const home = readFileSync(HOME, "utf8");
+    expect(declaringAWord(home).sort()).toEqual([...WORDS].sort());
   });
 
-  it("declares none of the open states' words in any other source file", () => {
+  it.each(WORDS)("goes red on a file that declares %s itself, however it is written", (word) => {
+    expect(declaringAWord(`const LABEL = "${word}";`)).toEqual([word]);
+    expect(declaringAWord(`const x = '${word}';`)).toEqual([word]);
+    expect(declaringAWord(`const x = \`${word}\`;`)).toEqual([word]);
+    expect(declaringAWord(`<CardTitle>${word}</CardTitle>`)).toEqual([word]);
+    expect(declaringAWord(`<StreamBand outboundLabel="${word}" />`)).toEqual([word]);
+  });
+
+  it.each(WORDS.filter((w) => w.includes(" ")))(
+    "goes red on a JSX text node that opens with %s and carries on",
+    (word) => {
+      expect(declaringAWord(`<CardTitle>${word} by state</CardTitle>`)).toEqual([word]);
+    },
+  );
+
+  it("leaves a word named in a comment, and a word inside a longer string, alone", () => {
+    for (const word of WORDS) {
+      expect(declaringAWord(`// the "${word}" segment`)).toEqual([]);
+      expect(declaringAWord(`/* the '${word}' segment\n   goes here */`)).toEqual([]);
+    }
+    expect(declaringAWord(`const m = "Draft saved";`)).toEqual([]);
+  });
+
+  it("declares none of the words in any other source file", () => {
     const found: string[] = [];
     for (const { path, text } of FILES) {
       if (path.endsWith(".test.ts") || path.endsWith(".test.tsx")) continue;

@@ -329,7 +329,7 @@ export function IssueTableRow({
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
+          <WaitingOnPersonChip since={row.waitingOnPersonSince} status={row.status} now={now} />
           <DepBadges deps={row.dependencies} slug={slug} />
         </div>
       </TD>
@@ -419,7 +419,7 @@ export function IssueMobileCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
           {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
+          <WaitingOnPersonChip since={row.waitingOnPersonSince} status={row.status} now={now} />
           <DepBadges deps={row.dependencies} slug={slug} />
         </div>
 

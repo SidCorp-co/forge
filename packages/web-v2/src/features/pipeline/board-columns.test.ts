@@ -25,8 +25,12 @@ import {
   workStateOf,
 } from "@forge/contracts/work-state";
 import type { IssueStatus } from "@/features/issues/types";
-import { boardColumns, groupIssuesByLabel, labelTone } from "./derive";
-import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow } from "./types";
+import { boardColumns, boardLeftOut, groupIssuesByLabel, labelTone } from "./derive";
+import {
+  BOARD_EXCLUDED_STATUSES,
+  BOARD_LEFT_OUT_STATES,
+  type PipelineIssueRow,
+} from "./types";
 
 function issue(id: string, status: string, held = true): PipelineIssueRow {
   return {
@@ -59,16 +63,39 @@ describe("boardColumns", () => {
     );
   });
 
-  it("keeps the contracts tuple's order, so the column order is not this module's to choose", () => {
+  it("keeps one work state's columns together, the states in the order the Overview reads them", () => {
     const cols = boardColumns();
-    const positions = cols.map((l) => AUTONOMOUS_LABELS.indexOf(l));
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(positions).not.toContain(-1);
+    const states = cols.map((l) => LABEL_WORK_STATE[l]);
+    // Each state appears as one run of columns: once a state has been left, it never comes back.
+    const runs = states.filter((s, i) => i === 0 || s !== states[i - 1]);
+    expect(new Set(runs).size, `a state's columns were split around another's: ${runs}`).toBe(
+      runs.length,
+    );
+    expect(runs.map((s) => WORK_STATES.indexOf(s))).toEqual(
+      [...runs.map((s) => WORK_STATES.indexOf(s))].sort((a, b) => a - b),
+    );
+    expect(cols.filter((l) => LABEL_WORK_STATE[l] === "blocked_on_person")).toEqual([
+      "needs_human",
+      "paused",
+      "reopened",
+    ]);
+  });
+
+  it("keeps the contracts tuple's order inside a state, so the order is not this module's to choose", () => {
+    const cols = boardColumns();
+    for (const state of WORK_STATES) {
+      const positions = cols
+        .filter((l) => LABEL_WORK_STATE[l] === state)
+        .map((l) => AUTONOMOUS_LABELS.indexOf(l));
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      expect(positions).not.toContain(-1);
+    }
   });
 
   it("omits the labels only an excluded status reaches, and no others", () => {
     expect(boardColumns()).not.toContain("draft");
     expect(boardColumns()).not.toContain("done");
+    expect(boardColumns()).not.toContain("dropped");
     for (const label of AUTONOMOUS_LABELS) {
       const reachedByALiveStatus = RETURNABLE.some((s) => readable(s).includes(label));
       expect(boardColumns().includes(label)).toBe(reachedByALiveStatus);
@@ -208,6 +235,77 @@ describe("a column belongs to one work state, so the columns of a state sum to i
   });
 });
 
+describe("the board accounts for every status", () => {
+  /** Three rows at every status the kernel has — the excluded ones too, which the board's query never returns. */
+  const everyRow = REGISTRY_ISSUE_STATUSES.flatMap((s, i) => [
+    issue(`${i}a`, s),
+    issue(`${i}b`, s, false),
+    { ...issue(`${i}c`, s), waitingOnPersonSince: "2026-09-27T10:00:00Z" } as PipelineIssueRow,
+  ]);
+  const byRule = (state: (typeof WORK_STATES)[number]) =>
+    everyRow.filter(
+      (r) => workStateOf(r.status as IssueStatus, r.waitingOnPersonSince != null) === state,
+    ).length;
+  const returned = everyRow.filter(
+    (r) => !(BOARD_EXCLUDED_STATUSES as readonly string[]).includes(r.status),
+  );
+
+  it("leaves out whole states, never part of one", () => {
+    for (const status of REGISTRY_ISSUE_STATUSES) {
+      const state = workStateOf(status, false);
+      const left = (BOARD_LEFT_OUT_STATES as readonly string[]).includes(state);
+      expect([status, (BOARD_EXCLUDED_STATUSES as readonly string[]).includes(status)]).toEqual([
+        status,
+        left,
+      ]);
+    }
+  });
+
+  it("draws no column in a state it leaves out, so no head says a word it cannot sum", () => {
+    for (const label of boardColumns()) {
+      expect([
+        label,
+        (BOARD_LEFT_OUT_STATES as readonly string[]).includes(LABEL_WORK_STATE[label]),
+      ]).toEqual([label, false]);
+    }
+  });
+
+  it("sums the columns of each drawn state to that state's count over every status", () => {
+    const groups = groupIssuesByLabel(returned);
+    for (const state of WORK_STATES) {
+      if ((BOARD_LEFT_OUT_STATES as readonly string[]).includes(state)) continue;
+      const inColumns = groups
+        .filter((g) => LABEL_WORK_STATE[g.label] === state)
+        .reduce((n, g) => n + g.issues.length, 0);
+      expect([state, inColumns]).toEqual([state, byRule(state)]);
+    }
+  });
+
+  it("states each left-out state by name with the count the same rule gives it", () => {
+    const work = Object.fromEntries(WORK_STATES.map((s) => [s, byRule(s)]));
+    const stated = boardLeftOut(work);
+    expect(stated.map((l) => l.state)).toEqual([...BOARD_LEFT_OUT_STATES]);
+    for (const l of stated) {
+      expect([l.state, l.label, l.count]).toEqual([l.state, WORK_STATE_LABELS[l.state], byRule(l.state)]);
+    }
+  });
+
+  it("accounts for every row: drawn in a column or in a state the board names as left out", () => {
+    const groups = groupIssuesByLabel(returned);
+    const drawn = groups.reduce((n, g) => n + g.issues.length, 0);
+    const named = boardLeftOut(Object.fromEntries(WORK_STATES.map((s) => [s, byRule(s)])));
+    const stated = named.reduce((n, l) => n + (l.count ?? 0), 0);
+    expect(drawn + stated).toBe(everyRow.length);
+  });
+
+  it("names the left-out states without inventing a count while the project's counts are unread", () => {
+    expect(boardLeftOut(undefined).map((l) => [l.label, l.count])).toEqual([
+      ["Draft", undefined],
+      ["Finished", undefined],
+    ]);
+  });
+});
+
 describe("a column is coloured by the statuses it holds", () => {
   /** The kernel statuses a label buckets, among the ones the board's query can return. */
   const bucket = (label: AutonomousLabel): string[] =>
@@ -215,7 +313,7 @@ describe("a column is coloured by the statuses it holds", () => {
 
   it("gives a label with ONE status exactly that status's chip colour", () => {
     const single = boardColumns().filter((l) => bucket(l).length === 1);
-    expect(single.length).toBeGreaterThanOrEqual(4);
+    expect(single.length).toBeGreaterThanOrEqual(3);
     for (const label of single) {
       const status = bucket(label)[0] as IssueStatus;
       expect([label, labelTone(label)]).toEqual([label, statusToTone(status)]);
