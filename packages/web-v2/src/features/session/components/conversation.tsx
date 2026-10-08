@@ -9,6 +9,7 @@ import { Button, Icon, StreamingText, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
 import { UnsupportedBlock, VisualBlockView } from "@/features/visual-blocks";
+import { readProseInstants, useBlockInstants } from "@/features/visual-blocks/instants";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
@@ -169,6 +170,7 @@ function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
 
 function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
   const t = useCopy();
+  const instants = useBlockInstants();
   const tailIdx = item.blocks.length - 1;
   const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
@@ -203,7 +205,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
 
   const renderBlock = (block: RenderBlock, i: number) => {
     if (block.type === "text") {
-      return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
+      return <StreamingText key={i} text={readProseInstants(block.text, instants)} streaming={streamingTail && i === caretIdx} />;
     }
     if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
     if (block.type === "visual") return <VisualBlockView key={i} block={block.block} />;
