@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.161] - 2026-10-08
+
+Built-in workflow templates name the person's step Customer action, not Patient action
+
+### Fixed
+
+- **Workflow templates name the person's step "Customer action", not "Patient action".** The built-in templates carry no healthcare word, so their canvas fits every kind of project.
+
 ## [0.4.0-dev.160] - 2026-10-08
 
 New interface copy is English only; no gate asks for a Vietnamese translation
