@@ -13,7 +13,7 @@ const { syncBuiltinESMExports } = require('node:module');
 const { resolve } = require('node:path');
 const { fileURLToPath } = require('node:url');
 
-const out = process.env.VERIFY_MEMO_TRACE;
+const { VERIFY_MEMO_TRACE: out } = process.env;
 
 const READS = [
   'readFile',
@@ -21,6 +21,10 @@ const READS = [
   'open',
   'openSync',
   'createReadStream',
+  'copyFile',
+  'copyFileSync',
+  'cp',
+  'cpSync',
   'stat',
   'statSync',
   'lstat',

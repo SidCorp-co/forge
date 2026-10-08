@@ -4,7 +4,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -403,6 +402,15 @@ describe('a check taken through the memo', () => {
     expect(done.verdict.code).toBe(2);
     expect(done.verdict.out).toContain('read docs/n.md');
     expect(listEntries(dir)).toEqual([]);
+  });
+
+  it('shows the first of a long refusal and counts the rest', () => {
+    const faults = Array.from({ length: 25 }, (_, i) => `read src/f${i}.txt`);
+    const refused = memo().refuse(check, { code: 0 }, faults);
+    expect(refused.code).toBe(2);
+    expect(refused.out).toContain('  read src/f19.txt');
+    expect(refused.out).not.toContain('read src/f20.txt');
+    expect(refused.out).toContain('… and 5 more');
   });
 
   it('does not file a verdict when a file it reads changed while it ran', () => {

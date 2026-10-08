@@ -18,6 +18,14 @@ import {
 } from './verify-memo.mjs';
 import { gitState } from './verify-memo-git.mjs';
 
+const SHOWN = 20;
+
+const shown = (faults) =>
+  [
+    ...faults.slice(0, SHOWN).map((f) => `  ${f}`),
+    ...(faults.length > SHOWN ? [`  … and ${faults.length - SHOWN} more`] : []),
+  ].join('\n');
+
 export class Memo {
   /** @param {{ root: string, args: string[], env?: object, baseRef: string, base: string }} o */
   constructor({ root, args, env = process.env, baseRef, base, declarations = INPUTS }) {
@@ -103,7 +111,7 @@ export class Memo {
 
   refuse(check, verdict, faults) {
     const why = `memo refused: it read past its declared inputs (scripts/lib/check-inputs.mjs)`;
-    const out = `${check.label} ${why}:\n${faults.map((f) => `  ${f}`).join('\n')}\n\nName each in its declaration (\`roots\`, \`blind\`), or declare the check \`uncached\` with the reason. Exit 2: a verdict filed under a key that misses a file it read would be served stale, in silence.\n`;
+    const out = `${check.label} ${why}:\n${shown(faults)}\n\nName each in its declaration (\`roots\`, \`blind\`), or declare the check \`uncached\` with the reason. Exit 2: a verdict filed under a key that misses a file it read would be served stale, in silence.\n`;
     return { ...verdict, code: 2, why, out };
   }
 

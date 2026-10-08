@@ -243,7 +243,8 @@ export function keyFor({ check, decl, tree, git, env = process.env }) {
 export function traceEnv(env = process.env) {
   const dir = join(tmpdir(), `verify-memo-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
-  const NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --require=${TRACER}`.trim();
+  const tracer = /\s/.test(TRACER) ? JSON.stringify(TRACER) : TRACER;
+  const NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --require=${tracer}`.trim();
   return { dir, env: { ...env, NODE_OPTIONS, VERIFY_MEMO_TRACE: join(dir, 'trace') } };
 }
 
