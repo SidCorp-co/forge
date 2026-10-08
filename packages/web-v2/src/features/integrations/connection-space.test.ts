@@ -5,7 +5,9 @@ import { connectionInSpace, connectionOwnerLabel, readOnlyNote } from "./connect
 const TEAM = { id: "org-team", isPersonal: false };
 const PERSONAL = { id: "org-me", isPersonal: true };
 const PROJECT_IN_TEAM = "project-in-team";
-const projectOrg = (id: string) => (id === PROJECT_IN_TEAM ? TEAM.id : "org-elsewhere");
+const PROJECT_IN_PERSONAL = "project-in-personal";
+const projectOrg = (id: string) =>
+  id === PROJECT_IN_TEAM ? TEAM.id : id === PROJECT_IN_PERSONAL ? PERSONAL.id : "org-elsewhere";
 
 function item(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryItem {
   return {
@@ -40,9 +42,14 @@ describe("which space a connection belongs in", () => {
     expect(connectionInSpace(own, PERSONAL, projectOrg)).toBe(true);
   });
 
-  it("never lists somebody else's credential, reached through a binding, as the caller's own", () => {
+  it("never lists somebody else's credential as the caller's own, when no project of this space binds it", () => {
     const theirs = item({ usage: boundTo(PROJECT_IN_TEAM) });
     expect(connectionInSpace(theirs, PERSONAL, projectOrg)).toBe(false);
+  });
+
+  it("lists it in a personal space whose own project binds it, since the caller reaches it there and nowhere else", () => {
+    const theirs = item({ usage: boundTo(PROJECT_IN_PERSONAL) });
+    expect(connectionInSpace(theirs, PERSONAL, projectOrg)).toBe(true);
   });
 
   it("lists a credential another person minted in the team space whose project binds it", () => {

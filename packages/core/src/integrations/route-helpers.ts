@@ -47,8 +47,8 @@ export const connectionNotReachable = (connectionId: string) =>
     message:
       `connection ${connectionId} is not one you can reach. A connection is visible to the ` +
       'individual who owns it, to the members of the organization that owns it, and to an admin ' +
-      'of a project it is bound to. Ask its owner, or an admin of a project it is bound to, to ' +
-      'bind it to a project you administer.',
+      "of a project it is bound to. Only its owner (for an organization's connection, an owner or " +
+      'admin of that organization) can bind it to a project you administer, so ask them.',
     cause: { code: 'CONNECTION_NOT_REACHABLE' },
   });
 

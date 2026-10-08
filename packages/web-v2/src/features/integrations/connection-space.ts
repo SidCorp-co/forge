@@ -5,7 +5,7 @@ export interface DirectorySpace {
   isPersonal: boolean;
 }
 
-/** A personal space holds the caller's own credentials; a team space what its org owns or its projects bind (ISS-1216). */
+/** A space holds what its owner has and what its projects bind without owning (ISS-1216). */
 export function connectionInSpace(
   connection: ConnectionDirectoryItem,
   space: DirectorySpace | null,
@@ -13,9 +13,10 @@ export function connectionInSpace(
 ): boolean {
   if (!space) return true;
   if (space.isPersonal) {
-    return connection.ownerType === "user" && connection.access.reach === "owner";
+    if (connection.ownerType === "user" && connection.access.reach === "owner") return true;
+  } else if (connection.ownerType === "org" && connection.ownerId === space.id) {
+    return true;
   }
-  if (connection.ownerType === "org" && connection.ownerId === space.id) return true;
   return (
     connection.access.reach === "binding" &&
     connection.usage.bindings.some((b) => projectOrgId(b.projectId) === space.id)

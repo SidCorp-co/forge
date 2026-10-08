@@ -298,7 +298,8 @@ describe('who does not reach it', () => {
     expect(body.message).toContain(connection.id);
     expect(body.message).toMatch(/owner|organization/i);
     expect(body.message).toMatch(/admin of a project/i);
-    expect(body.message).toMatch(/ask/i);
+    expect(body.message).toMatch(/owner or admin of that organization/i);
+    expect(body.message).toMatch(/ask them/i);
   });
 });
 
