@@ -48,14 +48,15 @@ export type MemoryCiteKind = (typeof MEMORY_CITE_KINDS)[number];
  * One source a memory names, as the reader links it (MJ-6). An issue or requirement key is read in
  * the project the text places it in — this one unless a sibling project is named beside it — and a
  * key the text places in a project it does not name is `unchecked`, never read against this
- * project's numbers. A workflow has no key: the text names it by its flow, as a whole word, and it
+ * project's numbers. A sibling is read only for a reader who may read it: a key placed in one they
+ * may not read is `unchecked` with no project, the same as one placed in a project not named. A workflow has no key: the text names it by its flow, as a whole word, and it
  * is read in this project only (REQ-33 BC-4). A commit links to the project's repository and is not
  * checked; a release is a cite only when the project has that release.
  */
 export interface MemoryCite {
 	ref: string;
 	kind: MemoryCiteKind;
-	/** Slug of the project the cite was read in; null when the memory places it in a project it does not name. */
+	/** Slug of the project the cite was read in; null when the memory places it in a project it does not name, or in one the reader may not read. */
 	project: string | null;
 	state: "resolved" | "gone" | "unchecked";
 	/** Set when `state` is `gone`. */

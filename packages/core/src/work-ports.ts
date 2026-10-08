@@ -51,7 +51,6 @@ import {
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
-import { embedBatch } from './integrations/llm/index.js';
 import { resolveSourceHost, SourceHostUnavailable } from './integrations/source-host/index.js';
 import { provideIssuePorts } from './issues/index.js';
 import {
@@ -67,7 +66,7 @@ import {
   requestJobKill,
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
-import { deleteMemory, runMemorySearch } from './memory/index.js';
+import { deleteMemory } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
 import {
   emitNotification,
@@ -252,8 +251,6 @@ export function provideWorkPorts(): void {
       landingDriftRefusal(landed, await landingWorld(issue, landed)),
     guideRef,
     deleteMemory,
-    runMemorySearch,
-    embedBatch,
     getStorage,
     isEnoent,
     resolveSourceHost,

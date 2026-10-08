@@ -3,12 +3,16 @@
 // their flow (REQ-33 BC-4), commits and releases — and links each. A key is read in the project the text places it in: this project,
 // unless a sibling project of the same organization is named beside it (`epod ISS-4`, `epod#ISS-4`).
 // A key the text places in a project it does not name (`core ISS-96`) is `unchecked` and never read
-// against this project's numbers. Each key that no longer resolves — no such record, dropped,
+// against this project's numbers. A sibling is read only for a reader who may read it (REQ-30 BC-10):
+// a key placed in one they may not reads exactly as one placed in a project the text does not name,
+// so nothing of that project — whether the row exists, its status, its prefix — reaches them. Each key that no longer resolves — no such record, dropped,
 // archived — is named back as why the memory reads stale. Derived on read, never stored, so it
 // cannot drift, and nothing here archives or deletes a row.
 
 import type { MemoryCite, MemoryStaleRef } from '@forge/contracts/memory';
+import type { ProjectReader } from '../lib/authz.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
+import { actorFor, can, projectResource } from '../permissions/index.js';
 import { memoryIssueReads } from './ports.js';
 
 const KEY_RE = /\b([A-Z][A-Z0-9]{1,5})-(\d{1,6})\b/g;
@@ -35,6 +39,8 @@ export interface CiteProject {
 export interface CiteContext {
   self: CiteProject;
   siblings: readonly CiteProject[];
+  /** The ids of the siblings this reader may not read: a key placed in one is never read there. */
+  unreadable: ReadonlySet<string>;
   /** The flows this project's workflows are drawn under; a workflow is named only in its own project. */
   flows?: readonly string[];
 }
@@ -97,14 +103,16 @@ export function parseCites(text: string, ctx: CiteContext): ParsedCite[] {
     seen.add(key);
     out.push(c);
   };
+  const readable = [ctx.self, ...ctx.siblings].filter((p) => !ctx.unreadable.has(p.id));
   for (const m of text.matchAll(KEY_RE)) {
     const [ref, prefix, n] = m;
     if (!prefix || !n || m.index === undefined) continue;
-    const project = placement(text, m.index, ctx);
+    const placed = placement(text, m.index, ctx);
+    const project = placed && ctx.unreadable.has(placed.id) ? null : placed;
     if (prefix === REQUIREMENT_PREFIX) {
       push({ at: m.index, ref, kind: 'requirement', project, seq: Number(n) });
     } else if (project ? project.prefixes.has(prefix) : true) {
-      if (!project && ![ctx.self, ...ctx.siblings].some((p) => p.prefixes.has(prefix))) continue;
+      if (!project && !readable.some((p) => p.prefixes.has(prefix))) continue;
       push({ at: m.index, ref, kind: 'issue', project, seq: Number(n) });
     }
   }
@@ -210,12 +218,47 @@ export interface Citations {
   staleRefs: MemoryStaleRef[];
 }
 
-async function contextOf(projectId: string, flows: readonly string[]): Promise<CiteContext> {
+/**
+ * Who a memory's citations are read for. A person reads a sibling's records only where the fence
+ * of the credential they came on holds it and they hold `project.read` there. `own-project` is a
+ * read made for no person (a gate, a port), which reads no sibling at all.
+ */
+export type CiteReader = ProjectReader | 'own-project';
+
+/** The siblings the reader may not read; the project itself is the one the caller checked. */
+async function unreadableOf(
+  reader: CiteReader,
+  projectId: string,
+  ids: readonly string[],
+): Promise<Set<string>> {
+  const others = ids.filter((id) => id !== projectId);
+  if (reader === 'own-project') return new Set(others);
+  const { userId, fence } = reader;
+  const may = await Promise.all(
+    others.map((id) =>
+      fence && !fence.includes(id)
+        ? false
+        : can(actorFor(userId), 'project.read', projectResource(id)),
+    ),
+  );
+  return new Set(others.filter((_, i) => !may[i]));
+}
+
+async function contextOf(
+  projectId: string,
+  flows: readonly string[],
+  reader: CiteReader,
+): Promise<CiteContext> {
   const reads = memoryIssueReads();
   const rows = await reads.siblingProjects(projectId);
   const self = rows.find((r) => r.id === projectId);
   if (!self)
     throw new Error(`memory citations: project ${projectId} is not in its own organization's list`);
+  const unreadable = await unreadableOf(
+    reader,
+    projectId,
+    rows.map((r) => r.id),
+  );
   const held = await reads.issuePrefixes(projectId);
   const project = (r: (typeof rows)[number]): CiteProject => ({
     id: r.id,
@@ -226,7 +269,7 @@ async function contextOf(projectId: string, flows: readonly string[]): Promise<C
         ? issuePrefixSet(held)
         : issuePrefixSet({ active: r.issuePrefix, held: [] }),
   });
-  return { self: project(self), siblings: rows.map(project), flows };
+  return { self: project(self), siblings: rows.map(project), unreadable, flows };
 }
 
 async function holdingsOf(
@@ -252,16 +295,21 @@ async function holdingsOf(
   return { issues, requirements, workflows, releases, repositoryWebUrl };
 }
 
-/** For each text, every source it cites, linked, and the ones among them that no longer resolve. */
+/**
+ * For each text, every source it cites, linked, and the ones among them that no longer resolve, as
+ * `reader` may see them: no record of a project they may not read is read.
+ */
 export async function resolveCitations(
   projectId: string,
   texts: readonly string[],
+  reader: CiteReader,
 ): Promise<Citations[]> {
   if (texts.length === 0) return [];
   const drawn = await memoryIssueReads().workflowFlows(projectId);
   const ctx = await contextOf(
     projectId,
     drawn.map((w) => w.flow),
+    reader,
   );
   const workflows = new Map(drawn.map((w) => [w.flow, w.updatedAt]));
   const parsed = texts.map((t) => parseCites(t, ctx));

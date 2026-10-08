@@ -1,4 +1,5 @@
 import { EmbeddingUnavailableError, embed } from '../integrations/llm/index.js';
+import type { ProjectReader } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { knowledgePort } from './ports.js';
 import type { KnowledgeHit } from './search.js';
@@ -21,6 +22,7 @@ interface UnifiedSearchResult {
 
 type Needs = {
   projectId: string;
+  reader: ProjectReader;
   query: string;
   topK: number | undefined;
   knowledge: boolean;
@@ -34,7 +36,7 @@ const labelMemory = (hits: { id: string }[]) =>
 
 /** Both stores by keyword alone — the `keyword` strategy, and what the others degrade to. */
 async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
-  const { projectId, query, topK } = needs;
+  const { projectId, query, topK, reader } = needs;
   const knowledge = needs.knowledge
     ? labelKnowledge(await keywordSearchKnowledge(projectId, query, topK))
     : [];
@@ -47,6 +49,7 @@ async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
             topK,
             strategy: 'keyword',
             surface: 'agent',
+            reader,
           })
         ).hits,
       )
@@ -61,14 +64,17 @@ async function keywordOnly(needs: Needs): Promise<UnifiedSearchResult> {
  */
 export async function runUnifiedSearch(input: {
   projectId: string;
+  /** Who reads: a memory hit's cite in a project they may not read is never read (REQ-30 BC-10). */
+  reader: ProjectReader;
   query: string;
   scope: UnifiedScope;
   topK?: number;
   strategy?: UnifiedStrategy;
 }): Promise<UnifiedSearchResult> {
-  const { projectId, query, scope, topK, strategy = 'semantic' } = input;
+  const { projectId, reader, query, scope, topK, strategy = 'semantic' } = input;
   const needs: Needs = {
     projectId,
+    reader,
     query,
     topK,
     knowledge: scope === 'knowledge' || scope === 'all',
@@ -103,6 +109,7 @@ export async function runUnifiedSearch(input: {
           topK,
           strategy,
           surface: 'agent',
+          reader,
         })
       : undefined,
   ]);

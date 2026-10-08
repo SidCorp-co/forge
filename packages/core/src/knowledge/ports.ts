@@ -1,4 +1,5 @@
 import type { ItemEmbeddingStatus } from '../db/schema-item-embeddings.js';
+import type { ProjectReader } from '../lib/authz.js';
 import { portSlot } from '../lib/port-slot.js';
 
 interface MemorySearchInput {
@@ -8,6 +9,8 @@ interface MemorySearchInput {
   topK: number | undefined;
   strategy: 'semantic' | 'keyword' | 'hybrid';
   surface: 'agent';
+  /** Who the hits are read for: a memory's cite in a project they may not read is never read. */
+  reader: ProjectReader;
 }
 
 /**

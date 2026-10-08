@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
 import { masterVerbs } from '../db/schema-master-charter.js';
+import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -110,7 +111,9 @@ knowledgeRoutes.post(
     const userId = c.get('userId');
     await requireCan(actorFor(userId), 'project.read', projectResource(id));
 
-    return c.json(await runUnifiedSearch({ projectId: id, ...body }));
+    return c.json(
+      await runUnifiedSearch({ projectId: id, reader: requestReader(userId), ...body }),
+    );
   },
 );
 

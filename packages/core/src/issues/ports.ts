@@ -13,7 +13,6 @@ import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import type { EgressScope } from '../lib/data-egress.js';
 import { portSlot } from '../lib/port-slot.js';
 import type { Refusal, RefusalError } from '../lib/refusal.js';
 import type { KernelActor } from '../lifecycle/index.js';
@@ -277,18 +276,6 @@ interface IssuePorts {
 
   guideRef: (slug: 'pipeline-and-issue-lifecycle') => string;
   deleteMemory: (projectId: string, source: 'issue', sourceRef: string) => Promise<number>;
-  runMemorySearch: (input: {
-    projectId: string;
-    query: string;
-    topK?: number | undefined;
-    sourceFilter: ['issue'];
-    strategy: 'semantic';
-    surface: 'web';
-    queryVec: number[];
-  }) => Promise<{
-    hits: Array<{ id: string; sourceRef: unknown; score: unknown; stale: unknown }>;
-  }>;
-  embedBatch: (scope: EgressScope, texts: string[]) => Promise<number[][]>;
 
   getStorage: () => StoredFiles;
   isEnoent: (err: unknown) => boolean;
@@ -384,8 +371,6 @@ export const contractDrift = port('contractDrift');
 
 export const guideRef = port('guideRef');
 export const deleteMemory = port('deleteMemory');
-export const runMemorySearch = port('runMemorySearch');
-export const embedBatch = port('embedBatch');
 
 export const getStorage = port('getStorage');
 export const isEnoent = port('isEnoent');

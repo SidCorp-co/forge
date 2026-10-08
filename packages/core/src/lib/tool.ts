@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import type { PatPermission, PatRoute } from '../credentials/pat-permissions.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import { loadVisibleProjectIds } from './authz.js';
+import { loadVisibleProjectIds, type ProjectReader } from './authz.js';
 import { type Refusal, type RefusalEnvelope, refusalEnvelope } from './refusal.js';
 import type { BlockStage } from './staged-block.js';
 
@@ -119,6 +119,11 @@ export function patEffectiveProjectIds(principal: McpPrincipal): readonly string
   if (principal.kind !== 'pat') return null;
   if (principal.boundProjectId) return [principal.boundProjectId];
   return principal.projectIds;
+}
+
+/** The reader a tool call is: the principal's user, fenced by its token (a chat turn's: its project). */
+export function projectReaderOf(principal: McpPrincipal): ProjectReader {
+  return { userId: principal.userId, fence: patEffectiveProjectIds(principal) };
 }
 
 export async function loadVisibleProjectIdsForPrincipal(
