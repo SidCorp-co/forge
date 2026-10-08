@@ -65,3 +65,27 @@ export function renderCriteriaText(criteria: readonly ParsedCriterion[]): string
     })
     .join('\n');
 }
+
+/**
+ * The business criterion a criterion's own words say it proves: a lead `(REQ-<n> BC-<m>)`, the trace
+ * a plan writes into the text path, which carries no `requirementCriterionId`. `none` where the
+ * statement opens with no tag; `malformed` where it opens with `(REQ-` in any other shape — two
+ * codes in one tag among them, since one criterion proves one BC (`issue_criteria.requirement_criterion_id`).
+ */
+export type TraceTag =
+  | { kind: 'none' }
+  | { kind: 'tag'; requirementSeq: number; code: string }
+  | { kind: 'malformed'; tag: string };
+
+const TRACE_TAG = /^\s*\(REQ-(\d+) (BC-\d+)\)/u;
+const TAG_OPEN = /^\s*\(REQ-[^)]*\)?/u;
+
+export function traceTagOf(statement: string): TraceTag {
+  const m = TRACE_TAG.exec(statement);
+  if (m) return { kind: 'tag', requirementSeq: Number(m[1]), code: m[2] as string };
+  const open = TAG_OPEN.exec(statement);
+  return open ? { kind: 'malformed', tag: open[0].trim() } : { kind: 'none' };
+}
+
+export const TRACE_TAG_SHAPE =
+  '`(REQ-<n> BC-<m>) <statement>`: one requirement and one of its business criteria per criterion';

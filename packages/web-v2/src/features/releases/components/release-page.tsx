@@ -14,7 +14,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useDraftReleaseForecast } from "@/features/forecast/hooks";
 import { useRelease, useReleases } from "../hooks";
-import { ContinuedAs } from "./release-attempts";
+import { ContinuedAs, EndedAttempt } from "./release-attempts";
 import { ReleaseBanner } from "./release-bits";
 import { ChecksPane } from "./release-checks";
 import { ReleaseFacts, ReleasePhoneStanding } from "./release-facts";
@@ -57,6 +57,7 @@ export function ReleasePage({ projectId, slug, version }: { projectId: string; s
           >
             <DetailMobileTitle title={t("releases.releaseVersion", { version: r.version })} badge={<StatusBadge family="releaseState" value={r.state} />} />
             <ReleaseBanner r={r} className="px-8 py-2.5 max-md:px-4" />
+            <EndedAttempt r={r} slug={slug} />
             {r.continuedAs ? <ContinuedAs to={r.continuedAs} slug={slug} className="border-b border-line-subtle px-8 py-2 max-md:px-4" /> : null}
             <ReleasePhoneStanding r={r} forecast={forecastQ.data} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="release-tabs" />

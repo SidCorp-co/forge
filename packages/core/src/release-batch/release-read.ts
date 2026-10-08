@@ -240,7 +240,7 @@ export async function listReleases(
     required,
     parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
   );
-  await fillCuts(parts, placed.groupOf, shared.facts.cutters);
+  await fillCuts(projectId, parts, placed.groupOf, shared.facts.cutters);
   const releases = parts.map((p) => summaryOf(p, shared));
   const counts = Object.fromEntries(
     RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
@@ -288,7 +288,7 @@ export async function readRelease(
     ),
     readReleasePath(projectId),
   ]);
-  await fillCuts([part], placed.groupOf, shared.facts.cutters);
+  await fillCuts(projectId, [part], placed.groupOf, shared.facts.cutters);
   const landings = await readLandingReadings(
     projectId,
     part.issueIds.flatMap((id) => {

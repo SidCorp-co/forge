@@ -29,7 +29,7 @@ const basis: ForecastBasis = {
 };
 const range = (p50: number, p85: number): Forecast => ({
   ...stamp,
-  kind: "forecast",
+  kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 },
   p50At: at(p50),
   p85At: at(p85),
   p50Minutes: p50,

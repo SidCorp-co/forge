@@ -374,11 +374,13 @@
     "forecast": {
       "kind": "read-model",
       "context": "operations",
+      "projections": ["forecastMoves"],
       "reads": [
         "activityLog",
         "agentSessions",
         "feedback",
         "feedbackRouteIssues",
+        "issueDependencies",
         "issues",
         "pipelineRuns",
         "requirements"

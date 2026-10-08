@@ -122,12 +122,14 @@ import { approvalRequired } from './release-batch/index.js';
 import {
   changedTracedOf,
   contractAboutRefusal,
+  liveTracedCodesOf,
   planDriftOf,
   plannedRevisionFor,
   requirementIdIn,
   requirementOfIssue,
   rowIn as requirementRowIn,
   requirementStatesOf,
+  traceWordingsOf,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';
@@ -236,6 +238,8 @@ export function provideWorkPorts(): void {
     settlingContractVersion,
     proposesWorkflowOf,
     requirementOfIssue,
+    traceWordingsOf,
+    liveTracedCodesOf,
     shippedReleaseOf: async (projectId, issueId) =>
       (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
     plannedRevisionFor,

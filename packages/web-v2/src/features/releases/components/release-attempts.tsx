@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { StatusBadge, ViewHeading } from "@/design";
-import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
+import { Written } from "@/lib/i18n/written";
+import { issueHref } from "@/lib/routes/issues";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import type { ReleaseContinuation, ReleaseCutView, ReleaseDetail, ReleaseVersionCarrier } from "../types";
@@ -32,6 +35,7 @@ function carriedLine(c: ReleaseCutView, t: Copy): string | null {
 
 function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slug: string }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const ended = c.outcome === "aborted" || c.outcome === "failed" || c.outcome === "shipped";
   const carried = carriedLine(c, t);
@@ -60,7 +64,9 @@ function Attempt({ c, release, slug }: { c: ReleaseCutView; release: string; slu
       </span>
       {c.refusal ? (
         <span className="text-12-5" data-testid="cut-refusal">
-          <span className="text-muted">{t("releases.attemptRefused")}</span> {c.refusal.code ? <code className="font-mono text-12">{c.refusal.code}</code> : null} {c.refusal.text}
+          <span className="text-muted">{t("releases.attemptRefused")}</span> {said(c.refusal.says, language)}{" "}
+          {c.refusal.code ? <code className="font-mono text-12">{c.refusal.code}</code> : null}
+          <Written className="block text-12 text-muted" text={c.refusal.text} lang="en" />
         </span>
       ) : null}
       {c.abortReason ? (
@@ -102,5 +108,55 @@ export function ContinuedAs({ to, slug, className }: { to: ReleaseContinuation; 
         {t(to.shipped ? "releases.continuedAs.shipped" : "releases.continuedAs.recut", { v: to.version })}
       </Link>
     </p>
+  );
+}
+
+/**
+ * Why a version that did not ship ended, at the top of its own page: the attempt that wore it, the
+ * refusal said in the reader's language with its words as recorded behind a fold, the abort reason,
+ * what carries the version, and the roster that attempt was cut with — not the release it went on as.
+ */
+export function EndedAttempt({ r, slug }: { r: ReleaseDetail; slug: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  if (r.state !== "aborted" && r.state !== "failed") return null;
+  const own = r.cuts.find((c) => c.version === r.version && c.runId === r.runId) ?? r.cuts.find((c) => c.version === r.version);
+  if (!own) return null;
+  const carried = carriedLine(own, t);
+  return (
+    <section aria-label={t(`releases.ended.title.${r.state}`, { v: r.version })} data-testid="release-ended" className="grid gap-2 border-b border-line-subtle px-8 py-4 text-13 max-md:px-4">
+      <h2 className="fg-h3 text-[var(--accent-text)]">{t(`releases.ended.title.${r.state}`, { v: r.version })}</h2>
+      {own.refusal ? (
+        <div data-testid="release-ended-refusal">
+          <p>{said(own.refusal.says, language)}</p>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-12-5 text-link">{t("releases.ended.words")}</summary>
+            <p className="mt-1 text-12-5 text-muted">
+              {own.refusal.code ? <code className="font-mono text-12">{own.refusal.code}</code> : null} <Written text={own.refusal.text} lang="en" />
+            </p>
+          </details>
+        </div>
+      ) : null}
+      {own.abortReason ? (
+        <p data-testid="release-ended-abort">
+          <span className="text-muted">{t("releases.attemptAbortReason")}</span> <Written text={own.abortReason} lang={null} />
+        </p>
+      ) : null}
+      {!own.refusal && !own.abortReason ? <p className="text-muted">{t("releases.ended.noReason")}</p> : null}
+      {carried ? <p className="text-12-5 text-muted">{carried}</p> : null}
+      <div data-testid="release-ended-roster">
+        <p className="text-12-5 text-muted">{t("releases.ended.roster", { n: own.roster.length })}</p>
+        <ul className="mt-1 border-t border-line-subtle">
+          {own.roster.map((i) => (
+            <li key={i.key} className="flex gap-3 border-b border-line-subtle py-1.5">
+              <Link href={issueHref(slug, i.key)} className="font-mono text-12 text-link hover:underline">
+                {i.key}
+              </Link>
+              <Written className="min-w-0 flex-1" text={i.title} lang={null} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }

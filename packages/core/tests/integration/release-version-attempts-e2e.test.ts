@@ -89,10 +89,11 @@ type Cut = {
   n: number;
   version: string;
   outcome: string;
-  refusal: { code: string | null; text: string } | null;
+  refusal: { code: string | null; text: string; says: unknown } | null;
   decidedBy: { name: string } | null;
   rule: { decided: string; from: string | null; carriers: { kind: string; name: string }[] };
   carried: { kind: string; name: string }[] | null;
+  roster: { key: string; title: string }[];
 };
 type Summary = { version: string; state: string; cutCount: number; continuedAs: unknown };
 
@@ -142,10 +143,15 @@ describe('HOP: one roster cut three times, nothing outside Forge carrying the ve
       [2, first.version, 'aborted'],
       [3, first.version, 'shipped'],
     ]);
-    expect(shown.cuts[0]?.refusal).toEqual({ code: 'RELEASE_NOT_VERIFIED', text: REFUSAL });
+    expect(shown.cuts[0]?.refusal).toEqual({
+      code: 'RELEASE_NOT_VERIFIED',
+      text: REFUSAL,
+      says: { key: 'releases.refused.notVerified' },
+    });
     expect(shown.cuts[0]?.decidedBy?.name).toBeTruthy();
     expect(shown.cuts.map((c) => c.rule.decided)).toEqual(['first', 'reused', 'reused']);
     expect(shown.cuts[0]?.carried).toEqual([]);
+    expect(shown.cuts.map((c) => c.roster.length)).toEqual([2, 2, 2]);
   });
 });
 

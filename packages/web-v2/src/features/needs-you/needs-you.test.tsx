@@ -19,6 +19,7 @@ const item = (over: Partial<NeedsYouItem>): NeedsYouItem => {
   const title = over.title ?? "Answer the agent's question";
   return {
     area: "issues",
+    space: "asks",
     entity: "issue",
     key: "ISS-7",
     title,

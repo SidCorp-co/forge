@@ -10,17 +10,11 @@ import { REQUIREMENT_LIFECYCLE, type RequirementState } from "@forge/contracts/r
 import type { Said } from "@forge/contracts/said";
 import { partsOf, type EtaClock } from "@/features/forecast/clock";
 import { type Eta, etaOfFeedback, etaOfScope } from "@/features/forecast/eta";
-import type { NeedsYouAreaKey, NeedsYouItem } from "@/features/needs-you/types";
 import type { RequirementSummary } from "@/features/requirements/types";
 import type { ReleaseSummary } from "@/features/releases/types";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
-
-/** The areas a BA or PM acts in. Issues, contracts and automation are the engineers' space and keep their own Needs you. */
-export const BA_NEEDS_YOU_AREAS: ReadonlySet<NeedsYouAreaKey> = new Set(["requirements", "releases", "feedback", "designs"]);
-
-export const baNeedsYou = (items: readonly NeedsYouItem[]): NeedsYouItem[] => items.filter((n) => BA_NEEDS_YOU_AREAS.has(n.area));
 
 /* ------------------------------------------------------------------ *
  * Figures

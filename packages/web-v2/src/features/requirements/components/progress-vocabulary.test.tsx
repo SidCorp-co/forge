@@ -17,7 +17,7 @@ vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 const stamp = { label: "forecast" as const, asOf: "2026-10-07T12:00:00Z" };
 const REQ_19: ScopeForecast = {
   ...stamp,
-  scope: "requirement",
+  scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null,
   key: "REQ-1",
   title: "Muc",
   progress: { total: 6, shipped: 0, awaitingRelease: 5, toDo: 1 },

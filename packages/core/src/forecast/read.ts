@@ -8,15 +8,18 @@
 import { FORECAST_LABEL, type Forecast, type ProjectForecast } from '@forge/contracts/forecast';
 import { activeIssuePrefix, compareDispatchOrder, listIssueStanding } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
 import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/index.js';
 import { readEffectivePolicy } from '../project-config/index.js';
 import {
+  type Anchor,
   type IssueRow,
   intakeWaitOf,
   issueRowsBySeq,
   LANDED_STATUSES,
   projectWaitOf,
+  readAnchor,
   readHistory,
   readWork,
   settledForecast,
@@ -33,22 +36,44 @@ import {
 import type { ForecastViewer } from './release.js';
 
 export interface Facts {
+  /** The simulation's clock: the anchor's moment (`facts.ts:readAnchor`). */
   now: Date;
+  /** When it was read. */
+  readAt: Date;
+  anchor: Anchor;
   run: ForecastRun;
   keyOf: Map<string, string>;
   projectWait: Wait | null;
   prefix: string | null;
 }
 
-/** One simulation over the project's open work, every issue's forecast read from it. */
+/** The simulation's clocks: dates run from the anchor's moment, lateness from the read's. */
+export const clockOf = (anchor: Pick<Anchor, 'at'>, readAt: Date) => ({
+  now: anchor.at,
+  readAt,
+});
+
+/**
+ * One simulation over the project's open work, every issue's forecast read from it, anchored on the
+ * last event its facts moved on: the landing window, the run peak and each in-flight item's age are
+ * read as of the anchor, so a read with no event since answers the same dates; lateness is measured
+ * against `now`, so an item still grows late while nothing happens.
+ */
 export async function simulate(
   projectId: string,
   now: Date,
   viewer: ForecastViewer | null,
+  anchored?: Anchor,
 ): Promise<Facts> {
+  const [anchor, master] = await Promise.all([
+    anchored ? Promise.resolve(anchored) : readAnchor(projectId, now),
+    readMasterStanding(projectId),
+  ]);
+  const clock = clockOf(anchor, now);
+  const at = clock.now;
   const [standing, history, projectWait, prefix, policy, writers] = await Promise.all([
     listIssueStanding(projectId, 'open', viewer ? { userId: viewer.userId } : null, now),
-    readHistory(projectId, now),
+    readHistory(projectId, at, master.slots?.max ?? null),
     projectWaitOf(projectId),
     activeIssuePrefix(projectId),
     readEffectivePolicy(projectId),
@@ -82,7 +107,7 @@ export async function simulate(
       landed,
       landedAt: landed && row.merged_at ? new Date(row.merged_at) : null,
       ended: row.status === 'dropped' ? row.status : null,
-      startedAt: inFlight ? new Date(row.started_at ?? now) : null,
+      startedAt: inFlight ? new Date(row.started_at ?? at) : null,
       rank: rankOf.get(s.id) ?? queue.length,
       // a blocker that landed frees its dependent's run, and a dropped one no longer holds it
       blockedBy: s.standing.blockedBy
@@ -91,9 +116,17 @@ export async function simulate(
       wait: waitOf(s) ?? (intakeHeld ? intakeWaitOf(writers) : null),
     });
   }
-  const run = runForecast({ now, items, history, projectWait, writers, seed: seedOf(projectId) });
+  const run = runForecast({
+    ...clock,
+    items,
+    history,
+    projectWait,
+    writers,
+    seed: seedOf(projectId),
+  });
   return {
-    now,
+    ...clock,
+    anchor,
     run,
     keyOf: new Map(items.map((i) => [i.id, i.key])),
     projectWait,

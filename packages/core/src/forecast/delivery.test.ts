@@ -21,6 +21,8 @@ const basis: ForecastBasis = {
 const range: Forecast = {
   ...stamp,
   kind: 'forecast',
+  anchoredAt: asOf,
+  confidence: { level: 'medium', n: 12, spread: 0 },
   p50At: asOf,
   p85At: asOf,
   p50Minutes: 120,

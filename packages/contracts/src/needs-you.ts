@@ -29,6 +29,30 @@ export const NEEDS_YOU_AREA_LABELS: Record<NeedsYouAreaKey, string> = {
 	questions: "Questions",
 };
 
+/**
+ * Whose list a needs-you row belongs on. `asks`: what a project member owes as a person — a
+ * question, an approval, a decision, an accept, a promote or a drop. `ops`: Forge's own upkeep — an
+ * agent report to triage, a schedule's owner, a contract to repin — which Development reads, never
+ * the person's Needs you. One map, so the home, /attention and the status report count one set.
+ */
+export const NEEDS_YOU_SPACES = ["asks", "ops"] as const;
+export type NeedsYouSpace = (typeof NEEDS_YOU_SPACES)[number];
+
+export const NEEDS_YOU_AREA_SPACE: Record<NeedsYouAreaKey, NeedsYouSpace> = {
+	requirements: "asks",
+	releases: "asks",
+	feedback: "asks",
+	issues: "asks",
+	designs: "asks",
+	questions: "asks",
+	contracts: "ops",
+	automation: "ops",
+};
+
+/** The rows a person owes, in their order: the one filter every person-facing list reads. */
+export const asksOf = <T extends { space: NeedsYouSpace }>(items: readonly T[]): T[] =>
+	items.filter((i) => i.space === "asks");
+
 /** What a needs-you row is, so a screen can open it. */
 export const NEEDS_YOU_ENTITIES = [
 	"requirement",
@@ -46,6 +70,8 @@ export type NeedsYouEntity = (typeof NEEDS_YOU_ENTITIES)[number];
 /** One row a slice's read model groups `needs_you` for the viewer, with that model's waiting-on. */
 export interface NeedsYouItem {
 	area: NeedsYouAreaKey;
+	/** Whose list it belongs on (`NEEDS_YOU_AREA_SPACE`): a member's ask, or Forge ops' upkeep. */
+	space: NeedsYouSpace;
 	entity: NeedsYouEntity;
 	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow, a question's id. */
 	key: string;
@@ -59,7 +85,7 @@ export interface NeedsYouItem {
 	says: { title: Said };
 }
 
-/** A needs-you row read across every project the viewer can see (`GET /api/me/attention`). */
+/** A member's ask read across every project the viewer can see (`GET /api/me/attention`); ops rows stay in each project's Development. */
 export interface NeedsYouProjectItem extends NeedsYouItem {
 	projectSlug: string;
 	projectName: string;
@@ -83,6 +109,8 @@ export interface NeedsYouResponse {
 	areas: Record<NeedsYouAreaKey, NeedsYouArea>;
 	/** Every row behind the counts, area by area in `NEEDS_YOU_AREAS` order, newest first. */
 	items: NeedsYouItem[];
+	/** How many of `items` are a member's asks: the one Needs you count the home, /attention and the status report show. */
+	asks: number;
 	requirementsInDelivery: number;
 	untriagedFeedback: number;
 }

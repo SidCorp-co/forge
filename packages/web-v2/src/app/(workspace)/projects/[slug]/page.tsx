@@ -13,7 +13,7 @@ import {
   ProjectLoader,
   ProjectMark,
 } from "@/design";
-import { baNeedsYou, feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
+import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
 import { LandsThisWeek, LateItems } from "@/features/project-dashboard/components/plan-sections";
@@ -23,6 +23,7 @@ import { useFeedbackList } from "@/features/feedback/hooks";
 import { useReleases } from "@/features/releases/hooks";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYou } from "@/features/needs-you/hooks";
+import { asksOf } from "@forge/contracts/needs-you";
 import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
@@ -91,7 +92,8 @@ export default function ProjectOverviewPage() {
   }
 
   const glyph = projectGlyph(project.id);
-  const attention = baNeedsYou(needsYouQ.data?.items ?? []);
+  // the member's asks core marked (`NEEDS_YOU_AREA_SPACE`): the same set /attention lists for this project
+  const attention = asksOf(needsYouQ.data?.items ?? []);
   const draft = releasesQ.data?.releases.find((r) => r.state === "draft");
   const rows = planRows(
     {

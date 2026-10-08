@@ -19,11 +19,14 @@ import {
   type VerdictValue,
 } from '../../db/schema-issue-criteria.js';
 import { refuser } from '../../lib/refusal.js';
+import { liveTracedCodesOf, traceWordingsOf } from '../ports.js';
 import {
   normalizeStatement,
   type ParsedCriterion,
   parseCriteriaText,
   renderCriteriaText,
+  TRACE_TAG_SHAPE,
+  traceTagOf,
 } from './criteria-text.js';
 
 const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
@@ -69,11 +72,16 @@ export interface CriterionWithVerdict {
   readonly latest: LatestVerdict | null;
 }
 
-type LiveRow = { id: string; n: number; statement: string };
+type LiveRow = { id: string; n: number; statement: string; requirementCriterionId: string | null };
 
 export async function liveRows(tx: Tx, issueId: string): Promise<LiveRow[]> {
   return tx
-    .select({ id: issueCriteria.id, n: issueCriteria.n, statement: issueCriteria.statement })
+    .select({
+      id: issueCriteria.id,
+      n: issueCriteria.n,
+      statement: issueCriteria.statement,
+      requirementCriterionId: issueCriteria.requirementCriterionId,
+    })
     .from(issueCriteria)
     .where(and(eq(issueCriteria.issueId, issueId), isNull(issueCriteria.retiredAt)));
 }
@@ -102,6 +110,7 @@ async function applyCriteria(
       `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them`,
     );
   }
+  await refuseDroppedTraces(tx, issue.id, live, desired);
   const keep = new Map<number, string>();
   for (const row of live) {
     const wanted = desired.find((c) => c.n === row.n);
@@ -135,6 +144,116 @@ async function applyCriteria(
       ...requirement,
     });
   }
+}
+
+/**
+ * The BCs the live rows trace that the desired set would leave untraced, by code: a write that
+ * rewords or removes a traced criterion and does not restate the trace drops that BC's proof
+ * silently (HOP ISS-39, whose 2026-10-06 rewrite left REQ-25 BC-1, BC-2 and BC-7 with no issue).
+ * Where every desired criterion states its trace (`requirementCriterionId` given, `null` meaning
+ * none) the writer said so and nothing is refused; a wording the requirement retired, or one of
+ * another requirement, counts as no proof to lose.
+ */
+export function droppedTraceIds(
+  live: readonly Pick<LiveRow, 'n' | 'statement' | 'requirementCriterionId'>[],
+  desired: readonly CriterionInput[],
+): string[] {
+  if (desired.every((c) => c.requirementCriterionId !== undefined)) return [];
+  const before = new Set(
+    live.flatMap((r) => (r.requirementCriterionId ? [r.requirementCriterionId] : [])),
+  );
+  const after = new Set<string>();
+  for (const c of desired) {
+    if (c.requirementCriterionId) after.add(c.requirementCriterionId);
+    if (c.requirementCriterionId !== undefined) continue;
+    const kept = live.find(
+      (r) => r.n === c.n && normalizeStatement(r.statement) === normalizeStatement(c.statement),
+    );
+    if (kept?.requirementCriterionId) after.add(kept.requirementCriterionId);
+  }
+  return [...before].filter((id) => !after.has(id));
+}
+
+async function refuseDroppedTraces(
+  tx: Tx,
+  issueId: string,
+  live: readonly LiveRow[],
+  desired: readonly CriterionInput[],
+): Promise<void> {
+  const dropped = droppedTraceIds(live, desired);
+  if (dropped.length === 0) return;
+  const codes = await liveTracedCodesOf(tx, issueId, dropped);
+  if (codes.length === 0) return;
+  throw refuseCriteria(
+    'CRITERIA_TRACE_DROPPED',
+    `this write leaves ${codes.join(', ')} traced by no criterion of this issue, so the proof it held would vanish silently. Restate each trace — open the criterion that proves it with ${TRACE_TAG_SHAPE}, or send \`requirementCriterionId\` on PUT /criteria — or, to drop it on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`,
+    '/acceptanceCriteria',
+  );
+}
+
+/**
+ * The text path's criteria with the trace each states: a lead `(REQ-n BC-m)` resolved to the wording
+ * of that code live at the revision the issue was planned against (its requirement's current one
+ * where it records none). A tag naming another requirement, a code with no live wording, or a tag of
+ * another shape is refused by name; an untagged criterion states nothing and keeps what it had.
+ */
+async function tracedInputs(
+  tx: Tx,
+  issueId: string,
+  parsed: readonly ParsedCriterion[],
+): Promise<CriterionInput[]> {
+  const tags = parsed.map((c) => ({ c, tag: traceTagOf(c.statement) }));
+  const malformed = tags.find((t) => t.tag.kind === 'malformed');
+  if (malformed && malformed.tag.kind === 'malformed') {
+    throw refuseCriteria(
+      'CRITERIA_TRACE_INVALID',
+      `criterion ${malformed.c.n} opens with ${JSON.stringify(malformed.tag.tag)}, which is not a trace: write ${TRACE_TAG_SHAPE}, one criterion per BC`,
+      '/acceptanceCriteria',
+    );
+  }
+  if (tags.every((t) => t.tag.kind === 'none')) return [...parsed];
+  const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
+  const rows = await liveRows(tx, issueId);
+  const revision = req?.revision ?? null;
+  return tags.map(({ c, tag }) => {
+    if (tag.kind !== 'tag') return c;
+    const where = `criterion ${c.n} traces REQ-${tag.requirementSeq} ${tag.code}`;
+    if (!req) {
+      throw refuseCriteria(
+        'CRITERIA_TRACE_UNRESOLVED',
+        `${where}, and this issue serves no requirement: link it to REQ-${tag.requirementSeq} first, or drop the tag`,
+        '/acceptanceCriteria',
+      );
+    }
+    if (req.seq !== tag.requirementSeq) {
+      throw refuseCriteria(
+        'CRITERIA_TRACE_UNRESOLVED',
+        `${where}, and this issue serves REQ-${req.seq}: a criterion proves a BC of its own issue's requirement`,
+        '/acceptanceCriteria',
+      );
+    }
+    const live = wordings.filter(
+      (w) =>
+        w.code === tag.code &&
+        revision !== null &&
+        w.sinceRevision <= revision &&
+        (w.retiredRevision === null || w.retiredRevision > revision),
+    );
+    if (live.length !== 1 || !live[0]) {
+      throw refuseCriteria(
+        'CRITERIA_TRACE_UNRESOLVED',
+        `${where}, and REQ-${req.seq} has no wording of ${tag.code} live at revision ${revision ?? 'none'}, the one this issue was planned against`,
+        '/acceptanceCriteria',
+      );
+    }
+    const kept = rows.find(
+      (r) => r.n === c.n && normalizeStatement(r.statement) === normalizeStatement(c.statement),
+    );
+    const keptCode = wordings.find((w) => w.id === kept?.requirementCriterionId)?.code;
+    // an unchanged criterion already traced to a wording of this code keeps the wording it has
+    if (keptCode === tag.code) return c;
+    return { ...c, requirementCriterionId: live[0].id };
+  });
 }
 
 /** Refuse a desired set whose numbers repeat or fall below 1, or whose statements are blank. */
@@ -207,7 +326,7 @@ export async function syncCriteriaFromText(
       '/acceptanceCriteria',
     );
   }
-  await applyCriteria(tx, issue, parsed.criteria as ParsedCriterion[]);
+  await applyCriteria(tx, issue, await tracedInputs(tx, issue.id, parsed.criteria));
 }
 
 const LIST_SQL = (issueIds: readonly string[]) => sql`

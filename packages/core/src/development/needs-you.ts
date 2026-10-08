@@ -8,6 +8,8 @@
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
 import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackPhase } from '@forge/contracts/feedback';
 import {
+  asksOf,
+  NEEDS_YOU_AREA_SPACE,
   NEEDS_YOU_AREAS,
   type NeedsYouAct,
   type NeedsYouArea,
@@ -202,33 +204,36 @@ export async function readNeedsYou(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ): Promise<NeedsYouResponse> {
-  const { rows, requirements, feedback: items } = await readAttention(projectId, viewer, now);
+  const { rows, requirements, feedback } = await readAttention(projectId, viewer, now);
   const owed = Object.fromEntries(
     Object.entries(rows).map(([area, list]) => [
       area,
       list.filter((r) => needsViewer(r.standing)).sort(newestFirst),
     ]),
   ) as Record<NeedsYouAreaKey, AttentionRow[]>;
+  const items = NEEDS_YOU_AREAS.flatMap((area) =>
+    owed[area].map(
+      (r): NeedsYouItem => ({
+        area,
+        space: NEEDS_YOU_AREA_SPACE[area],
+        entity: r.entity,
+        key: r.key,
+        title: r.title,
+        titleLang: r.titleLang,
+        waitingOn: r.standing.waitingOn,
+        touchedAt: r.touchedAt,
+        says: { title: r.says.title },
+      }),
+    ),
+  );
   return {
     generatedAt: now.toISOString(),
     areas: Object.fromEntries(
       Object.entries(owed).map(([area, list]) => [area, areaOf(list)]),
     ) as Record<NeedsYouAreaKey, NeedsYouArea>,
-    items: NEEDS_YOU_AREAS.flatMap((area) =>
-      owed[area].map(
-        (r): NeedsYouItem => ({
-          area,
-          entity: r.entity,
-          key: r.key,
-          title: r.title,
-          titleLang: r.titleLang,
-          waitingOn: r.standing.waitingOn,
-          touchedAt: r.touchedAt,
-          says: { title: r.says.title },
-        }),
-      ),
-    ),
+    items,
+    asks: asksOf(items).length,
     requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
-    untriagedFeedback: items.filter((f) => UNTRIAGED.has(f.phase)).length,
+    untriagedFeedback: feedback.filter((f) => UNTRIAGED.has(f.phase)).length,
   };
 }
