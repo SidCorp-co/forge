@@ -339,3 +339,31 @@ describe('GET /api/projects/health — what it does NOT serve', () => {
     expect(JSON.stringify(body)).not.toContain('mcpServers');
   });
 });
+
+describe('GET /api/projects/health, the parked list', () => {
+  it('lists at most five parked issues and counts every one beside them', async () => {
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
+    queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
+    queryQueue.push([{ projectId: PROJECT_A_ID, status: 'needs_info', n: 9 }]); // statusRows
+    queryQueue.push(
+      Array.from({ length: 9 }, (_, i) => ({
+        projectId: PROJECT_A_ID,
+        id: `doc-${i}`,
+        issSeq: i + 1,
+        issuePrefix: 'ISS',
+        status: 'needs_info',
+        updatedAt: new Date(),
+      })),
+    ); // blockerRowsAll
+    queryQueue.push([]); // throughputRows
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    const body = (await res.json()) as Array<{ blockers: unknown[]; blockersTotal: number }>;
+    expect(body[0]?.blockers).toHaveLength(5);
+    expect(body[0]?.blockersTotal).toBe(9);
+  });
+});

@@ -105,4 +105,55 @@ describe('Needs you lists a question only where it moves the work state (real Po
     await issueAt('in_progress', false);
     expect(await listed()).toEqual([]);
   });
+
+  describe('the count beside each capped bucket', () => {
+    async function failedJob(): Promise<void> {
+      const runId = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+        VALUES (${runId}, ${projectId}, 'system', 'failed', now())
+      `);
+      await harness.db.execute(sql`
+        INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, created_at)
+        VALUES (${randomUUID()}, ${projectId}, ${runId}, 'drive', 'failed', ${owner}, now())
+      `);
+    }
+
+    it('counts every issue and job a bucket holds, where its list is cut', async () => {
+      const {
+        AWAITING_INPUT_CAP,
+        selectAttentionTotals,
+        selectAwaitingInput,
+        selectFailedJobs,
+        selectNeedsReview,
+      } = await import('../../src/me/attention-buckets.js');
+      for (let i = 0; i < AWAITING_INPUT_CAP + 5; i++) await issueAt('needs_info', false);
+      for (let i = 0; i < 7; i++) await issueAt('developed', false);
+      for (let i = 0; i < 6; i++) await failedJob();
+
+      expect(await selectAwaitingInput(owner)).toHaveLength(AWAITING_INPUT_CAP);
+      expect(await selectNeedsReview(owner)).toHaveLength(5);
+      expect(await selectFailedJobs(owner)).toHaveLength(5);
+      const [slug] = Object.keys(await selectAttentionTotals(owner));
+      expect((await selectAttentionTotals(owner))[slug as string]).toEqual({
+        awaitingInput: AWAITING_INPUT_CAP + 5,
+        needsReview: 7,
+        failedJobs: 6,
+      });
+    });
+
+    it('counts by the predicate the list is read by: a question on a closed issue is in neither', async () => {
+      const { selectAttentionTotals } = await import('../../src/me/attention-buckets.js');
+      await issueAt('closed', true);
+      await issueAt('in_progress', true);
+      const totals = Object.values(await selectAttentionTotals(owner));
+      expect(totals).toEqual([{ awaitingInput: 1, needsReview: 0, failedJobs: 0 }]);
+    });
+
+    it('has no entry for a project with nothing in any bucket', async () => {
+      const { selectAttentionTotals } = await import('../../src/me/attention-buckets.js');
+      await issueAt('in_progress', false);
+      expect(await selectAttentionTotals(owner)).toEqual({});
+    });
+  });
 });

@@ -6330,6 +6330,8 @@
 - **The board says how many issues each state holds beyond its page.** Above its columns it names, per state, how many it draws of how many there are, with a link to the rest.
 - **Needs you counts what it names.** A question left on a draft, closed or dropped issue no longer counts, an issue is listed once, and parked issues are worded as states, not raw statuses.
 - **The Issues list names a filter in a link instead of dropping it.** A repeated `status` applies every value; a status or source the page lacks is named above the list.
+- **Needs you says how much of its list it shows.** Where more questions, parked issues, failed jobs or reviews wait than the page lists, it reads "8 of at least 10" and links to the rest.
+- **A repeated `origin` in an Issues link names what it left out.** The Source filter takes one, so the others are listed above the list instead of dropped without a word.
 - **A release closes on a reading Forge took when asked, not a five-minute wait.** The agent
   calls `look`; a finish closes only on what was read at every live binding. A site serving the old
   build stays refused.

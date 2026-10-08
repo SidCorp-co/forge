@@ -154,6 +154,15 @@ export function IssuesListView({
   // A saved link can name a segment this strip no longer has; it shows every issue, and says so.
   const unknownFilter = VALID_FILTERS.includes(rawFilter) ? null : rawFilter;
   const rawOrigin = sp.get("origin") ?? "";
+  // One source narrows the list, so a link naming more applies the first and names the others.
+  const droppedOrigins = [
+    ...new Set(
+      sp
+        .getAll("origin")
+        .slice(1)
+        .filter((o) => o !== rawOrigin),
+    ),
+  ];
   const origin = (VALID_ORIGINS as string[]).includes(rawOrigin)
     ? (rawOrigin as IssueOrigin)
     : undefined;
@@ -602,6 +611,15 @@ export function IssuesListView({
         <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-origin-line">
           This link names the source <code className="font-mono">{unknownOrigin}</code>, which the
           Source filter does not offer, so issues from every source are shown.
+        </p>
+      )}
+
+      {droppedOrigins.length > 0 && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="dropped-origin-line">
+          This link names more than one source; the Source filter takes one, so only{" "}
+          <code className="font-mono">{rawOrigin === "" ? "no source" : rawOrigin}</code> is applied and{" "}
+          <code className="font-mono">{droppedOrigins.join(", ")}</code>{" "}
+          {droppedOrigins.length === 1 ? "is" : "are"} left out.
         </p>
       )}
 

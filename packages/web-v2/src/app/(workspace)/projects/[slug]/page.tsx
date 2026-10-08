@@ -26,6 +26,7 @@ import { StatusDonut } from "@/features/project-dashboard/components/status-donu
 import {
   activeRuns,
   attentionCaption,
+  attentionCut,
   idleRuns,
   activeSpend,
   awaitingReleaseRuns,
@@ -119,6 +120,7 @@ export default function ProjectOverviewPage() {
   const now = Date.now();
 
   const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
+  const attentionLeftOut = attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal);
   const runItems = runsQ.data?.items;
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
@@ -165,7 +167,7 @@ export default function ProjectOverviewPage() {
                 style={{ color: "var(--accent-text)" }}
               >
                 <Icon name="inbox" size={13} />
-                needs attention {attention.length}
+                needs attention {attentionLeftOut ? `${attention.length} of at least ${attentionLeftOut.atLeast}` : attention.length}
               </span>
             )}
           </div>
@@ -183,13 +185,13 @@ export default function ProjectOverviewPage() {
           busyRunners={runners.busyCount}
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
-          needsYouCaption={attentionCaption(attention)}
+          needsYouCaption={attentionCaption(attention, attentionLeftOut)}
           openWork={donut.total}
           spendTodayUsd={health?.spend24hUsd ?? 0}
           inFlightUsd={inFlight}
         />
 
-        <AttentionQueue items={attention} now={now} />
+        <AttentionQueue items={attention} cut={attentionLeftOut} slug={project.slug} now={now} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />

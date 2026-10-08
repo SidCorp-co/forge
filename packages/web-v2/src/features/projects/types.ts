@@ -48,7 +48,10 @@ export interface ProjectHealthRow {
   totalActive: number;
   /** Issues in each work state, counted by core's one fold. */
   work: Record<WorkState, number>;
+  /** The most recently updated parked issues, a capped list. */
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  /** Every parked issue: the count behind the capped `blockers`. */
+  blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
   /** Pipeline runs currently running or paused. */

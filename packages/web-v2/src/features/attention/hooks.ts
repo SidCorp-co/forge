@@ -49,6 +49,8 @@ export function useAttention() {
       pendingSkillUpdates,
       unseenDrafts,
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
+      // Nothing is loaded yet, or the response is the server's: a response without totals is refused where it is read.
+      projectTotals: base ? base.projectTotals : {},
       offlineRunners,
       total:
         needsReview.length +

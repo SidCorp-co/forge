@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AttentionActionKind,
   attentionCaption,
+  attentionCut,
   conicGradient,
   type DashboardAttentionItem,
   projectAttention,
@@ -117,6 +118,7 @@ describe("projectAttention (ISS-1156)", () => {
     pendingSkillUpdates: [],
     unseenDrafts: [],
     unseenDraftsTotal: 0,
+    projectTotals: {},
     total: awaitingInput.length,
     offlineRunners: [],
   });
@@ -163,5 +165,78 @@ describe("projectAttention (ISS-1156)", () => {
   it("keeps another project's rows out", () => {
     const other = { ...awaiting(5, "q5"), projectSlug: "tern" };
     expect(projectAttention(view([other]), "sable", [])).toEqual([]);
+  });
+});
+
+describe("attentionCut (ISS-1156)", () => {
+  const item = (actionKind: AttentionActionKind, i: number): DashboardAttentionItem => ({
+    key: `${actionKind}-${i}`,
+    actionKind,
+    actionLabel: "x",
+    title: "t",
+    link: `/l/${i}`,
+  });
+  const many = (kind: AttentionActionKind, n: number) => Array.from({ length: n }, (_, i) => item(kind, i));
+  const viewWith = (totals: { needsReview?: number; awaitingInput?: number; failedJobs?: number }): AttentionView => ({
+    needsReview: [],
+    awaitingInput: [],
+    mentions: [],
+    failedJobs: [],
+    pendingSkillUpdates: [],
+    unseenDrafts: [],
+    unseenDraftsTotal: 0,
+    projectTotals: { sable: { needsReview: 0, awaitingInput: 0, failedJobs: 0, ...totals } },
+    total: 0,
+    offlineRunners: [],
+  });
+
+  it("is null where every source's count is what the list holds", () => {
+    const items = [...many("input", 3), ...many("parked", 2)];
+    expect(attentionCut(items, viewWith({ awaitingInput: 3 }), "sable", 2)).toBeNull();
+  });
+
+  it("says 8 of at least 10 where 1 question and 9 parked read as 8 parked: the parked read stops at 5 and the questions at the viewer's 20", () => {
+    // j3's seed: one issue with a question and nine at needs_info, 10 to act on. The question
+    // source lists all ten (its cap is 20) but the viewer's other projects took 12 of the 20.
+    const items = [...many("input", 1), ...many("parked", 7)];
+    const cut = attentionCut(items, viewWith({ awaitingInput: 10 }), "sable", 9);
+    expect(cut).toEqual({ shown: 8, atLeast: 10, peopleCut: true });
+    expect(attentionCaption(items, cut)).toBe(
+      "to act on: 1 issue with an open question · 7 issues parked with no question — 8 of at least 10",
+    );
+  });
+
+  it("takes the larger of the two parked sources, since an issue can be in both and they cannot be added", () => {
+    const items = many("parked", 5);
+    expect(attentionCut(items, viewWith({ awaitingInput: 6 }), "sable", 46)?.atLeast).toBe(46);
+  });
+
+  it("adds a cut failed-jobs or review bucket to the people it lists", () => {
+    const items = [...many("retry", 5), ...many("diff", 5), ...many("input", 2)];
+    const cut = attentionCut(items, viewWith({ failedJobs: 8, needsReview: 6, awaitingInput: 2 }), "sable", 0);
+    expect(cut).toEqual({ shown: 12, atLeast: 16, peopleCut: false });
+  });
+
+  it("does not link to the people it lists where only another bucket is cut", () => {
+    const items = many("retry", 5);
+    expect(attentionCut(items, viewWith({ failedJobs: 9 }), "sable", 0)?.peopleCut).toBe(false);
+  });
+
+  it("reads a project core has no totals for as holding nothing beyond its list", () => {
+    expect(attentionCut(many("diff", 1), { ...viewWith({}), projectTotals: {} }, "sable", 0)).toBeNull();
+  });
+
+  it("refuses a response with no projectTotals, by name, rather than say the list is whole", () => {
+    const old = { ...viewWith({}), projectTotals: undefined } as unknown as AttentionView;
+    expect(() => attentionCut([], old, "sable", 0)).toThrow(/no `projectTotals`.*not the release/u);
+  });
+
+  it("says nothing before the attention response has loaded", () => {
+    expect(attentionCut([], undefined, "sable", 5)).toBeNull();
+  });
+
+  it("names an empty list that is cut as nothing listed rather than nothing to act on", () => {
+    const cut = attentionCut([], viewWith({ awaitingInput: 3 }), "sable", 0);
+    expect(attentionCaption([], cut)).toBe("nothing listed to act on — 0 of at least 3");
   });
 });

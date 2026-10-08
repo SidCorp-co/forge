@@ -5,6 +5,7 @@
 // holding a question → Provide info, parked → Open issue). Each primary action
 // NAVIGATES to the existing destination (issue-detail / review / relations) —
 // no new mutations, no duplication of ISS-377/366.
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Button,
@@ -18,7 +19,8 @@ import {
 } from "@/design";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import { formatRelativeTime } from "@/features/projects/derive";
-import type { AttentionActionKind, DashboardAttentionItem } from "../derive";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
+import type { AttentionActionKind, AttentionCut, DashboardAttentionItem } from "../derive";
 
 // ISS-509: tone-resolved so only a genuinely failed job is red — a
 // blocked-on-dependency `chain` item is calm `blocked` ink, NOT alarm-red.
@@ -41,7 +43,18 @@ function actionTone(kind: AttentionActionKind): { fg: string; bg: string } {
   return { fg: t.fg, bg: t.bg };
 }
 
-export function AttentionQueue({ items, now }: { items: DashboardAttentionItem[]; now: number }) {
+export function AttentionQueue({
+  items,
+  cut,
+  slug,
+  now,
+}: {
+  items: DashboardAttentionItem[];
+  /** How much of what a person has to act on the list leaves out; null where it holds it all. */
+  cut: AttentionCut | null;
+  slug: string;
+  now: number;
+}) {
   const router = useRouter();
 
   return (
@@ -91,6 +104,20 @@ export function AttentionQueue({ items, now }: { items: DashboardAttentionItem[]
               );
             })}
           </ul>
+        )}
+        {cut && (
+          <p className="fg-caption mt-3 text-subtle">
+            Showing {cut.shown} of at least {cut.atLeast}.
+            {cut.peopleCut && (
+              <>
+                {" "}
+                <Link href={`/projects/${slug}/issues?filter=blocked_on_person`} className="underline">
+                  Every {WORK_STATE_LABELS.blocked_on_person.toLowerCase()} issue is in Issues
+                </Link>
+                .
+              </>
+            )}
+          </p>
         )}
       </CardContent>
     </Card>
