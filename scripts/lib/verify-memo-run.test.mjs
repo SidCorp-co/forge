@@ -120,7 +120,7 @@ describe('a check taken through the memo', () => {
     expect(restored.status).toBe(0);
   });
 
-  it('goes red in a place where the native program reads differently, through a store that holds the green', () => {
+  it("files a verdict apart for a place where the native program reads differently, and never serves it the other place's", () => {
     const asked = [];
     const place = (said) => ({
       biome: {
