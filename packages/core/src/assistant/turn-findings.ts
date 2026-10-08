@@ -15,7 +15,7 @@ import {
 } from '../conversations/index.js';
 import { logger } from '../lib/logger.js';
 import type { DoorId } from '../messaging/contract.js';
-import type { ProgressFacts } from '../messaging/facts.js';
+import type { ProgressFacts, ToolResultEntry } from '../messaging/facts.js';
 import { reframed } from '../messaging/proven.js';
 import { repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -40,6 +40,8 @@ export interface FailureReportArgs {
   /** The text the turn had streamed in its last round, or nothing. */
   draft: string | null;
   toolResults: readonly string[];
+  /** The same results by the tool that returned each: a declared read's result grounds a figure. */
+  namedResults?: readonly ToolResultEntry[];
   /** The tools the turn was offered, so a rule holding a claim to a read judges the draft as it would the reply. */
   offeredTools: readonly string[];
   progress: ProgressFacts | null;
@@ -59,6 +61,7 @@ async function screenedDraft(
       offeredTools: args.offeredTools,
       progress: args.progress,
       toolResults: args.toolResults,
+      ...(args.namedResults ? { namedResults: args.namedResults } : {}),
       question: args.question,
     });
     const judged = withReplyLanguage(verdict, draft, args.askedIn, args.log);

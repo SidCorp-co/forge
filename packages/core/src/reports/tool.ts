@@ -151,7 +151,7 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
     )
     .join(
       '; ',
-    )}. Answers { document: { runs, blocks }, slots, notDrawn } and keeps each run 30 days. Draw each block with forge_show (source its run), then write each slot from document.runs alone. Before you state the slots, call again with runIds and narrative: a slot over its words, or a figure no run returned, is refused by name.`,
+    )}. Answers { document: { runs, blocks }, slots, notDrawn } and keeps each run 30 days. Draw each block with forge_show (source its run), then write each slot from what document.blocks show alone. Before you state the slots, call again with runIds and narrative: a slot over its words, or a figure no block shows, is refused by name. To keep the report, save it with forge_template_save.`,
   inputSchema: zodToMcpSchema(templateInput),
   handler: async (args) => {
     const input = templateInput.parse(args);

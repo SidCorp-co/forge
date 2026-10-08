@@ -160,7 +160,7 @@ describe('a rewrite answers to both the status-claims rule and the rewrite rule'
     );
     expect(out.text).not.toContain('ISS-300');
     expect(out.text, 'the original is still unread, so marking it cannot pass either').toContain(
-      'chưa đối chiếu được số liệu', // i18n-allow: the unverified line under test
+      'the reply check held it: it said where the work stands without a read that shows it',
     );
   });
 

@@ -1,7 +1,7 @@
 // The narrative of a template report a schedule stores: one model call, after the template's runs are
-// stored, writes the slots from the template's guidance and the frames of this fire's own runs, and
-// nothing else from the project. The answer is judged by `checkTemplateNarrative` (word caps, declared
-// slots only, no number the runs did not return); a refused answer gets one retry that carries the
+// stored, writes the slots from the template's guidance and what this fire's blocks show of its own
+// runs, and nothing else from the project. The answer is judged by `checkTemplateNarrative` (word caps,
+// declared slots only, no number its blocks do not show); a refused answer gets one retry that carries the
 // refusal. The call goes through `completeOnce`, so the deployment's provider and the project's data
 // policy apply exactly as they do to a chat turn. Whatever happens is kept on the report and named in
 // the notice: written, retried, or not written with the reason, never an empty slot in silence.
@@ -10,6 +10,7 @@ import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReportDocument, TemplateNarrativeSlot } from '@forge/contracts/report-templates';
 import type { StatusReportNarrative } from '@forge/contracts/status-reports';
+import { shownFrame } from '@forge/contracts/visual-blocks';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
 import {
   type ChatMessage,
@@ -53,7 +54,7 @@ export function narrativeSystemPrompt(
   const keys = slots.map((s) => s.slot).join(', ');
   return [
     `You write the narrative of one scheduled "${title}" report: ${keys}.`,
-    "Your only input is the template's guidance for each slot and the rows of this report's own query runs, both below. Nothing else from the project is given to you, so state nothing they do not hold.",
+    "Your only input is the template's guidance for each slot and what each of this report's blocks shows, both below. Nothing else from the project is given to you, so state nothing they do not hold.",
     '',
     'Rules:',
     `- Answer with one JSON object and nothing else. Its keys are exactly: ${keys}. Each value is plain prose.`,
@@ -65,15 +66,24 @@ export function narrativeSystemPrompt(
   ].join('\n');
 }
 
-/** The input: each slot's guidance, then each run's fields and rows. No run id, time or param, which are not figures. */
+/**
+ * The input: each slot's guidance, then each block's fields and rows as it shows them, since the
+ * narrative is read beside the blocks and is held to them. No run id, time or param, which are not
+ * figures.
+ */
 export function narrativeInput(document: ReportDocument, slots: readonly Slot[]): string {
-  const parts = ['## Slots', ...slots.map((s) => `- ${s.slot}: ${s.guidance}`), '', '## Runs'];
-  for (const run of document.runs) {
+  const parts = ['## Slots', ...slots.map((s) => `- ${s.slot}: ${s.guidance}`), '', '## Blocks'];
+  const queryOf = new Map(document.runs.map((r) => [r.runId, r.queryId]));
+  for (const block of document.blocks) {
+    const frame = shownFrame(block);
+    if (!frame) continue;
+    const runId = block.source && 'runId' in block.source ? block.source.runId : null;
+    const query = runId ? queryOf.get(runId) : undefined;
     parts.push(
       '',
-      `### Query ${run.queryId}`,
-      `Fields: ${run.frame.fields.map((f) => `${f.name} (${f.type})`).join(', ')}`,
-      `Rows: ${JSON.stringify(run.frame.rows)}`,
+      `### ${block.kind}${block.title ? ` "${block.title}"` : ''}${query ? ` (query ${query})` : ''}`,
+      `Fields: ${frame.fields.map((f) => `${f.name} (${f.type})`).join(', ')}`,
+      `Rows: ${JSON.stringify(frame.rows)}`,
     );
   }
   return parts.join('\n');

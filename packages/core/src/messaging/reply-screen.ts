@@ -1,8 +1,8 @@
 import type { Tx } from '../db/client.js';
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
-import type { ProgressFacts } from './facts.js';
-import { isReportTool } from './figures-rule.js';
+import type { ProgressFacts, ToolResultEntry } from './facts.js';
+import { groundingTexts, isReportTool } from './figures-rule.js';
 import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
@@ -48,21 +48,29 @@ interface ReplyScreenInput {
    * belong to an answer this reply replaced.
    */
   readonly heldBlocks?: readonly unknown[];
+  /**
+   * What each of the turn's calls returned, by the tool's name. Given, the results of the reads
+   * `figures-rule.ts:FIGURE_GROUNDING_RESULTS` declares ground a figure as a report run does.
+   */
+  readonly namedResults?: readonly ToolResultEntry[];
 }
 
 /** What the figures rule reads of this turn, or nothing where the turn could run no report. */
 function figureInput(
   input: ReplyScreenInput,
   held: readonly string[],
-): { asked: string; texts: readonly string[] } | undefined {
+): { asked: string; texts: readonly string[]; reads: readonly string[] } | undefined {
   if (input.question === undefined) return undefined;
   const sent = [
     ...input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments),
     ...held,
   ];
-  if (input.restResults) return { asked: input.question, texts: [...input.restResults, ...sent] };
+  const reads = groundingTexts(input.namedResults ?? []);
+  if (input.restResults) {
+    return { asked: input.question, texts: [...input.restResults, ...sent], reads };
+  }
   if (!input.offeredTools?.some(isReportTool)) return undefined;
-  return { asked: input.question, texts: [...(input.toolResults ?? []), ...sent] };
+  return { asked: input.question, texts: [...(input.toolResults ?? []), ...sent], reads };
 }
 
 export async function screenReplyAtDoor(
@@ -86,6 +94,7 @@ export async function screenReplyAtDoor(
         }
       : {}),
     progress: input.progress,
+    ...(input.question !== undefined ? { question: input.question } : {}),
     ...(figures ? { figures } : {}),
     ...(held ? { heldBlocks: held } : {}),
     ...(input.executor ? { executor: input.executor } : {}),

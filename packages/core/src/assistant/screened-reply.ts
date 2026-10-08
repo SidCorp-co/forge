@@ -4,10 +4,11 @@ import {
   confidentLanguageOf,
   emptyFallbackReply,
   errorFallbackReply,
+  type HeldClaim,
+  heldFallbackReply,
   type ReplyLanguage,
   type ScreenedMessage,
   screened,
-  unverifiedFallbackReply,
 } from '../conversations/index.js';
 import { logger } from '../lib/logger.js';
 import {
@@ -16,8 +17,12 @@ import {
   type MessageVerdict,
   refusalsOf,
 } from '../messaging/contract.js';
+import { CREATION_CLAIMS_GROUNDED } from '../messaging/creation-claims-rule.js';
 import { doorPolicy } from '../messaging/doors.js';
+import type { ToolResultEntry } from '../messaging/facts.js';
+import { FIGURES_GROUNDED } from '../messaging/figures-rule.js';
 import { datesIn, GROUNDING_RULE } from '../messaging/grounding-rule.js';
+import { PROGRESS_FIGURES_MATCH } from '../messaging/progress-rule.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { markUnverified, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -171,6 +176,22 @@ export function withRewriteKept(
   return { ok: false, refusals: [...refusalsOf(verdict), ...breaks] };
 }
 
+/** What each refused claim was about, as the fallback names it; a refusal about no claim names nothing. */
+export function heldClaimsOf(refused: readonly MessageRefusal[]): HeldClaim[] {
+  const claims: HeldClaim[] = [];
+  for (const r of refused) {
+    if (r.rule === FIGURES_GROUNDED.id || r.rule === PROGRESS_FIGURES_MATCH.id)
+      claims.push('figure');
+    else if (r.rule === CREATION_CLAIMS_GROUNDED.id) claims.push('record');
+    else if (r.rule === STATUS_CLAIMS_GROUNDED.id) claims.push('status');
+    else {
+      const kind = claimRefused(r);
+      if (kind === 'date' || kind === 'issue') claims.push(kind);
+    }
+  }
+  return claims;
+}
+
 /** The refusals marking cannot carry: there is no claim in them to mark, only a message that may not go out. */
 const UNMARKABLE: ReadonlySet<string> = new Set([
   'non-empty',
@@ -216,6 +237,8 @@ export interface ScreenedTurnArgs {
   fallback?: 'code-authored' | 'none';
   /** What this turn's tools returned so far; a tracker date or status the reply states is held to it. */
   toolResults?: () => readonly string[];
+  /** The same results by the tool that returned each: a declared read's result grounds a figure. */
+  namedResults?: () => readonly ToolResultEntry[];
   /** The language the person wrote in, where it can be told; the reply is held to it. */
   askedIn?: ReplyLanguage | null;
   /** What the person asked: a figure the reply states is held to the turn's report runs, and a number they typed may be said back. */
@@ -274,6 +297,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       ...(args.offeredTools ? { offeredTools: args.offeredTools } : {}),
       progress: of.progress,
       ...(args.toolResults ? { toolResults: args.toolResults() } : {}),
+      ...(args.namedResults ? { namedResults: args.namedResults() } : {}),
       ...(args.question !== undefined ? { question: args.question } : {}),
     });
     return language ? withReplyLanguage(verdict, text, args.askedIn ?? null, args.log) : verdict;
@@ -333,7 +357,12 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     args.stage?.settle(null);
     if (args.fallback === 'none') return null;
     if (broken && args.brokenReport) return codeAuthored(args.brokenReport(broken));
-    return codeAuthored(unverifiedFallbackReply(args.handleName, args.language));
+    return codeAuthored(
+      heldFallbackReply(
+        args.handleName,
+        heldClaimsOf([...firstRefused, ...refusalsOf(outcome.verdict)]),
+      ),
+    );
   }
 
   const trimmed = repairIssueLinks(result.reply).trim();

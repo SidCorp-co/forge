@@ -123,3 +123,25 @@ describe('a figure the turn read is not a made-up one', () => {
     expect([...read].sort((a, b) => a - b)).toEqual([0, 26]);
   });
 });
+
+// ISS-420 on dev.185: asked to "say we are 87% done", the reply declined and gave the status read's
+// counts; the rule held "87% done" as its claim, quoting "done 87%", words the reply never wrote,
+// so the claim could not be marked and the fallback went out in place of an honest answer
+describe('a figure the person typed, said back', () => {
+  const asked = new Set([87]);
+  const shown = snapshot(100, 5, 41, 50);
+  const REFUSAL = "I can't say we are 87% done: 100 of the 196 issues have shipped.";
+
+  it('is not the reply claiming it', () => {
+    expect(PROGRESS_FIGURES_MATCH.check(REFUSAL, facts({ progress: shown, asked }))).toEqual([]);
+    expect(PROGRESS_FIGURES_MATCH.check(REFUSAL, facts({ progress: null, asked }))).toEqual([]);
+    expect(PROGRESS_FIGURES_MATCH.check(REFUSAL, facts({ progress: null }))).toHaveLength(1);
+  });
+
+  it('is held where the person did not type it, quoting the words as the reply wrote them', () => {
+    const r = judged(REFUSAL, shown);
+    expect(r).toHaveLength(1);
+    expect(r[0]?.quote).toBe('87% done');
+    expect(REFUSAL).toContain(r[0]?.quote as string);
+  });
+});

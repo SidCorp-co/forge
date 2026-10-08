@@ -80,12 +80,13 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
 // typed. Without this entry the model has the tools and no reason to reach for them over prose.
 describe('every chat door answers a progress question from the report tools', () => {
   for (const [door, prompt] of Object.entries(DOORS)) {
-    it(`${door}: names forge_report, forge_template and forge_show, bars a typed figure, and offers a link`, () => {
+    it(`${door}: names forge_report, forge_template, forge_show and forge_template_save, bars a typed figure, and offers a link`, () => {
       for (const says of [
         'progress, the roadmap, release readiness, criteria coverage or workflow status',
         '`forge_report` and `forge_template`',
         '`forge_show`',
         'only figures the runs returned',
+        '`forge_template_save`',
         'offer a share link',
       ]) {
         expect(prompt, `${door} does not say ${says}`).toContain(says);

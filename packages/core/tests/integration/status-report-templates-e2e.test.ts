@@ -162,6 +162,63 @@ describe('saving a template run', () => {
   });
 });
 
+// QA of ISS-422 on dev.185: asked to save a template report, the Assistant said it had and saved
+// nothing, because it had no act that saves one. forge_template_save is that act, over the same
+// service as the route above
+describe("the Assistant's forge_template_save", () => {
+  const chat = (userId: string) =>
+    ({
+      principal: {
+        kind: 'pat',
+        agency: 'human',
+        agentUserId: null,
+        userId,
+        tokenId: 'chat-turn',
+        scopes: [],
+        projectIds: null,
+        boundProjectId: null,
+        permissions: ['*'],
+      },
+      projectSlug: null,
+      turn: { conversationId: 'c-1', speakerUserId: userId, handleUserId: null },
+    }) as never;
+  const saveInChat = async (userId: string, runIds: string[], narrative?: Body) => {
+    const { forgeTemplateSaveTool } = await import('../../src/status-reports/tool.js');
+    return forgeTemplateSaveTool(chat(userId)).handler({
+      projectId: w.projectId,
+      templateId: 'progress',
+      runIds,
+      ...(narrative ? { narrative } : {}),
+    }) as Promise<Body>;
+  };
+
+  it('keeps the run in the report history as the person who asked, with its narrative', async () => {
+    const before = (await list()).length;
+    const runIds = await runProgress(author.token);
+    const saved = await saveInChat(author.id, runIds, { summary: 'Work is under way.' });
+    expect(saved).toMatchObject({
+      template: { id: 'progress' },
+      producer: { kind: 'person', user: { id: author.id } },
+    });
+    expect((await list()).length).toBe(before + 1);
+    const opened = await api(w.token, 'GET', `${base()}/status/reports/${saved.id}`);
+    expect(((opened.body.document as Body).narrative as Body).summary).toBe('Work is under way.');
+  });
+
+  it('refuses a narrative figure no block shows, and a person who may not write, keeping nothing', async () => {
+    const before = (await list()).length;
+    const runIds = await runProgress(author.token);
+    const invented = await saveInChat(author.id, runIds, {
+      summary: 'There are 98765 requirements.',
+    }).catch((e: unknown) => e);
+    expect(String((invented as Error).message)).toContain('states 98765');
+    const reader = await createTestUser({ verified: true });
+    const refused = await saveInChat(reader.id, runIds).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(Error);
+    expect((await list()).length).toBe(before);
+  });
+});
+
 describe('removing a saved template report', () => {
   const remove = (token: string, id: string) =>
     api(token, 'DELETE', `${base()}/status/reports/${id}`);

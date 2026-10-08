@@ -1,8 +1,9 @@
 // A template run: the template's queries are run as the asker through `runReport` (so each is a
 // stored run a block can name), its layout is drawn over those frames, and what the model writes is
 // left to it: the slots come back empty with their guidance. A template is contract data; this is
-// the only code that reads it. A narrative is checked here against the template's own runs and no
-// others, so a figure the runs never returned is refused by name before it is written.
+// the only code that reads it. A narrative is checked here against what the template's own blocks
+// show of its own runs and no others, so a figure the runs never returned, or one they hold that no
+// block of the report shows its reader, is refused by name before it is written.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ReportRefusalCode, ReportRun, ReportSurface } from '@forge/contracts/report-queries';
@@ -20,6 +21,7 @@ import {
 import {
   blockToText,
   checkBlock,
+  shownFrame,
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';
@@ -47,7 +49,7 @@ export interface TemplateSlot {
 
 export interface TemplateRun {
   document: ReportDocument;
-  /** What to write, slot by slot, from `document.runs` alone. */
+  /** What to write, slot by slot, from what `document.blocks` show alone. */
   slots: TemplateSlot[];
   notDrawn: NotDrawn[];
   /** The blocks as plain text, as a door that draws none reads them. */
@@ -252,12 +254,19 @@ const NUMBER = /\d[\d,]*(?:\.\d+)?/g;
 const numeralsIn = (text: string): string[] =>
   (text.match(NUMBER) ?? []).map((n) => n.replaceAll(',', ''));
 
-/** Every number a run returned: a numeric cell, or digits inside a cell's text (REQ-12, a date), and its row count. */
-function figuresOf(runs: readonly ReportRun[]): Set<string> {
+/**
+ * Every number the report's blocks show: a numeric cell of a field a block draws, or digits inside
+ * such a cell's text (REQ-12, a date), and the count of the rows it draws. A figure a run holds in a
+ * field no block draws is not one of them: the narrative is read beside the blocks, in the chat, a
+ * kept report, its export and a share, and none of them shows the run itself (ISS-419).
+ */
+function figuresShown(blocks: readonly VisualBlock[]): Set<string> {
   const held = new Set<string>();
-  for (const run of runs) {
-    held.add(String(run.frame.rows.length));
-    for (const row of run.frame.rows) {
+  for (const block of blocks) {
+    const frame = shownFrame(block);
+    if (!frame) continue;
+    held.add(String(frame.rows.length));
+    for (const row of frame.rows) {
       for (const cell of Object.values(row)) {
         if (typeof cell === 'number') held.add(String(cell));
         else if (typeof cell === 'string') for (const n of numeralsIn(cell)) held.add(n);
@@ -267,12 +276,20 @@ function figuresOf(runs: readonly ReportRun[]): Set<string> {
   return held;
 }
 
+/** Each block a reader can check a figure against, named as a refusal names it. */
+const blocksNamed = (blocks: readonly VisualBlock[]): string =>
+  blocks
+    .filter((b) => shownFrame(b) !== null)
+    .map((b) => `${b.kind}${b.title ? ` "${b.title}"` : ''}`)
+    .join('; ');
+
 const wordsIn = (text: string): number => text.trim().split(/\s+/).filter(Boolean).length;
 
 /**
- * Judges a narrative against the template's own runs: the runs are those of this template's queries,
- * in its order, read back as the asker; a slot the template does not declare, one over its word
- * cap, or a number no run returned is refused by name. Answers the document with the narrative set.
+ * Judges a narrative against what the template's blocks show of its own runs: the runs are those of
+ * this template's queries, in its order, read back as the asker, and the blocks its layout draws over
+ * them; a slot the template does not declare, one over its word cap, or a number no block shows is
+ * refused by name. Answers the document with the narrative set.
  */
 export async function checkTemplateNarrative(args: {
   projectId: string;
@@ -286,7 +303,8 @@ export async function checkTemplateNarrative(args: {
   const t = templateNamed(args.templateId);
   const runs = await readTemplateRuns(t, args);
   const declared = new Map(t.narrative.map((n) => [n.slot, n]));
-  const figures = figuresOf(runs);
+  const { blocks } = documentOf(t, runs, emptyNarrative()).document;
+  const figures = figuresShown(blocks);
   const refusals: string[] = [];
   const narrative = emptyNarrative();
   for (const [slot, text] of Object.entries(args.narrative)) {
@@ -309,7 +327,7 @@ export async function checkTemplateNarrative(args: {
     const stray = [...new Set(numeralsIn(said))].filter((n) => !figures.has(n));
     if (stray.length > 0) {
       refusals.push(
-        `slot "${slot}" states ${stray.join(', ')}, which no run of template "${t.id}" returned; state only figures its runs hold (${runs.map((r) => `${r.queryId} ${r.runId}`).join('; ')})`,
+        `slot "${slot}" states ${stray.join(', ')}, which no block of template "${t.id}" shows; state only figures its blocks show of its runs (${blocksNamed(blocks)}; runs ${runs.map((r) => `${r.queryId} ${r.runId}`).join(', ')})`,
       );
     }
     narrative[slot as TemplateNarrativeSlot] = said;

@@ -86,6 +86,7 @@ export function reportOfFailure(
     calls: ctx.writes?.calls() ?? [],
     draft: found.draft,
     toolResults: ctx.writes?.resultTexts() ?? [],
+    namedResults: ctx.writes?.results() ?? [],
     offeredTools: (ctx.writes?.tools?.tools ?? []).map((t) => t.function.name),
     progress: found.progress,
     ...(req.log ? { log: req.log } : {}),
@@ -323,6 +324,7 @@ async function screenReply(
     askedIn: askedInOf(ctx),
     question: req.message,
     toolResults: () => ctx.writes?.resultTexts() ?? [],
+    namedResults: () => ctx.writes?.results() ?? [],
     first: result,
     brokenReport: (attempt) =>
       failedReportText(ctx, attempt.errorSource === 'loop' ? 'crash' : 'provider'),
