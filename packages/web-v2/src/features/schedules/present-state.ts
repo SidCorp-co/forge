@@ -1,6 +1,4 @@
-// What a schedule row says about the present, as opposed to what its last run once said.
-// Colour and the status slot belong to the present state (enabled or paused); the last run's
-// verdict is a dated fact, so it is rendered with its age and goes stale (ISS-1163).
+// What a schedule row says about the present; the last run is a dated fact, never a status (ISS-1163).
 import { CronExpressionParser } from "cron-parser";
 import cronstrue from "cronstrue";
 import type { ScheduleRow } from "./types";
@@ -8,7 +6,6 @@ import type { ScheduleRow } from "./types";
 /** A last result is stale once this many scheduled runs have come due since it. */
 export const STALE_AFTER_RUNS = 2;
 
-/** The rule the screen prints beside the list, so the threshold is stated rather than implied. */
 export const STALE_RULE =
   "A last result is marked stale once two scheduled runs have come due since it, or while " +
   "the schedule is paused.";
@@ -20,7 +17,6 @@ const DAY = 24 * HOUR;
 export interface Cadence {
   /** The cron in words, or null when the translator cannot read it. */
   words: string | null;
-  /** The raw expression, always kept so whoever audits the schedule can read the source. */
   expression: string;
 }
 

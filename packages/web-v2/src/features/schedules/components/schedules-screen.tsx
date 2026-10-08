@@ -474,9 +474,7 @@ function ScheduleMobileItem({ row, actions }: { row: ScheduleRow; actions: RowAc
     try {
       await actions.run(row.id);
       setOpen(true);
-    } catch {
-      // error is surfaced by the mutation's onError toast
-    }
+    } catch {}
   }
 
   return (
