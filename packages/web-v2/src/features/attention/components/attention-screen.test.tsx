@@ -78,6 +78,14 @@ describe("the Attention inbox", () => {
     expect(screen.getByText(/attention down/u)).toBeInTheDocument();
   });
 
+  it("names both reads when both failed, and says no Inbox zero", () => {
+    state.read = "failed";
+    state.devicesRead = "failed";
+    render(<AttentionScreen />);
+    expect(screen.queryByText("Inbox zero")).toBeNull();
+    expect(screen.getByText(/attention down.*Offline runners could not be read either: devices down/u)).toBeInTheDocument();
+  });
+
   it("names a runner list that failed and does not read an empty inbox as nothing owed", () => {
     state.devicesRead = "failed";
     render(<AttentionScreen />);

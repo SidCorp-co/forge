@@ -210,7 +210,14 @@ export function AttentionScreen() {
   if (read === "failed") {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ErrorState
+          message={
+            devicesRead === "failed"
+              ? `${formatApiError(error)} Offline runners could not be read either: ${formatApiError(devicesError)}.`
+              : formatApiError(error)
+          }
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }
