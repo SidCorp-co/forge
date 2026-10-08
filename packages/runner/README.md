@@ -118,6 +118,30 @@ next sweep places it again.
 `forge-runner run declare --project` takes the project's id or its slug, and
 names the pane's own project when it refuses another.
 
+### A chat session's credential
+
+A chat session — Agent mode, the Agents screen, a room escalation — runs as the person it
+answers, under the `turn:<sessionId>` token core mints for that turn, which files no issue
+(`packages/core/src/agent-sessions/chat-door.ts:isChatDoorSession`). Its shell runs as this box's
+user, who can read every credential the box keeps, so core marks the turn `confined` and the box
+runs it in a bubblewrap sandbox (`crates/runner-agent/src/claude_code/confine.rs`):
+
+- **Out of view:** the home, `/tmp`, `/var` and `/run` are empty, so the stored PAT and device
+  token, the master panes' borrowed credentials, other sessions' MCP configs, the `forge` CLI's
+  account, `gh`'s token, SSH keys and the agent, the control and tmux sockets and the Docker socket
+  are not there. The checkout's `.mcp.json` reads empty. Other processes are not visible.
+- **Bound back:** the checkout (writable), its git directory (read-only, since the runner's own
+  `git fetch` runs there with every credential the daemon holds), the executables on `PATH`,
+  Claude Code's install and `~/.claude` (its login and transcripts), `config.toml` for
+  `forge-runner api`'s core URL, the turn's own MCP config and attachments.
+- **Environment:** built from a list — locale, proxies, trust roots and Claude Code's own login —
+  plus `$FORGE_PAT` set to the turn token. Git has no push credential and asks for none.
+
+It needs Linux with `bwrap` installed. A box without it — and every macOS or Windows box —
+declares `confinedChat: false` with the reason on its heartbeat, `forge-runner doctor` prints
+it, and core refuses a chat turn there `BOX_CANNOT_CONFINE_CHAT` rather than run it unconfined.
+A schedule fire is a run, not a chat, and runs with the box's view as before.
+
 ### Skill delivery
 
 Skills reach a runner without a manual step: `[skills] auto_pull` is **on by

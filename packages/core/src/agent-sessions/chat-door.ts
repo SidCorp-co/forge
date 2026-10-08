@@ -24,6 +24,16 @@ function isScheduleFire(metadata: unknown): boolean {
 }
 
 /**
+ * Whether a session on a paired box is a chat door: a chat-kind session that is not a schedule
+ * fire. Its turn token files no issue, and the box runs it confined, holding that token and none
+ * of the box's own — one set, so a session the issue kernel fences is never one whose shell can
+ * reach a credential it does not fence.
+ */
+export function isChatDoorSession(session: { kind: string; metadata: unknown }): boolean {
+  return session.kind === 'chat' && !isScheduleFire(session.metadata);
+}
+
+/**
  * The chat door `tokenId` was minted for, or null for any other credential. A `turn:<sessionId>`
  * token whose session row is gone is still a chat door's: only chat sessions are handed one.
  */
@@ -43,6 +53,6 @@ export async function chatDoorOfToken(tokenId: string): Promise<ChatDoor | null>
     .from(agentSessions)
     .where(eq(agentSessions.id, origin.sessionId))
     .limit(1);
-  if (session && (session.kind !== 'chat' || isScheduleFire(session.metadata))) return null;
+  if (session && !isChatDoorSession(session)) return null;
   return chat;
 }

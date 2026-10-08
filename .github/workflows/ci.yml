@@ -557,17 +557,20 @@ jobs:
       # FORGE_TEST_SKIP_TMUX=1 opts the run out and says so: a return that passed green having
       # asserted nothing is what it replaced. So each leg that compiles those tests installs
       # tmux — Linux by apt, macOS by brew (neither image promises it) — and none sets the
-      # opt-out. Windows does not compile the module. Clippy denies warnings, here, in
-      # runner-release.yml's check job and in scripts/check-runner-gates.mjs alike: a lint that
-      # only warns is read by nobody, and five stood on main that way.
+      # opt-out. Windows does not compile the module. A confined chat session's test needs
+      # bubblewrap the same way (FORGE_TEST_SKIP_BWRAP=1 is its opt-out, set nowhere here); it is
+      # Linux-only, and the macOS and Windows legs assert the refusal instead. Clippy denies
+      # warnings, here, in runner-release.yml's check job and in scripts/check-runner-gates.mjs
+      # alike: a lint that only warns is read by nobody, and five stood on main that way.
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
         # Anchored: `runner-platforms` runs this same script by alias, so the two cannot drift.
         run: &runner-gate |
           if [ "$RUNNER_OS" = Linux ]; then
-            sudo apt-get update -q && sudo apt-get install -y -q tmux
+            sudo apt-get update -q && sudo apt-get install -y -q tmux bubblewrap
             tmux -V
+            bwrap --version
           elif [ "$RUNNER_OS" = macOS ]; then
             command -v tmux >/dev/null || brew install tmux
             tmux -V

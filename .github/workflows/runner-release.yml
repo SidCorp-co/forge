@@ -90,11 +90,13 @@ jobs:
           workspaces: packages/runner
       - name: Lockfile sync + fmt + clippy + test (same gates as the merge gate)
         working-directory: packages/runner
-        # A test that needs a real tmux server fails naming tmux where it is absent (ci.yml's
-        # runner gate says why), and the image does not promise it.
+        # A test that needs a real tmux server, or bubblewrap to start a chat session's sandbox,
+        # fails naming it where it is absent (ci.yml's runner gate says why), and the image
+        # promises neither.
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q tmux
+          sudo apt-get update -q && sudo apt-get install -y -q tmux bubblewrap
           tmux -V
+          bwrap --version
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings

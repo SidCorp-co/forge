@@ -17,7 +17,13 @@ import { assertRunAcceptsWork, insertOneShotRun, openOneShotRun } from '../pipel
 import { listSessionAttachmentsByIds, type SessionAttachmentRef } from './attachment-service.js';
 import { applyAutoTitleAsync } from './auto-title.js';
 import { broadcastSession, broadcastTurnAppended } from './broadcast.js';
-import { type ChatClient, noClaudeClient, requireListeningBox } from './chat-device.js';
+import {
+  type ChatClient,
+  noClaudeClient,
+  requireConfiningBox,
+  requireListeningBox,
+} from './chat-device.js';
+import { isChatDoorSession } from './chat-door.js';
 import { stripSystemNoise } from './content-filter.js';
 import {
   formatPageContextLine,
@@ -271,6 +277,8 @@ interface TurnPlan {
   resumable: boolean;
   model: ReturnType<typeof readSessionModel>;
   language: ContentLanguageView | null;
+  /** A chat door's turn: the box runs it holding its turn token and none of the box's own. */
+  confined: boolean;
 }
 
 /**
@@ -309,6 +317,8 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   const repoPath = await turnCheckout(session, args.project.id, deviceId, migrated);
   // a turn no socket of the box would receive is refused before anything is written
   requireListeningBox(deviceId);
+  const confined = isChatDoorSession(session);
+  if (confined) await requireConfiningBox(deviceId);
 
   const attachments = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
@@ -352,6 +362,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     resumable,
     model,
     language,
+    confined,
   };
 }
 
@@ -457,6 +468,7 @@ async function boxFrame(
     ...(plan.model ? { model: plan.model } : {}),
     ...(plan.attachments.length ? { attachments: plan.attachments } : {}),
     ...(args.credential ? { forgeToken: args.credential } : {}),
+    ...(plan.confined ? { confined: true } : {}),
   };
   // `--resume` keeps the original system prompt and history
   if (plan.resumable) {
