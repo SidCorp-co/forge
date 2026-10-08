@@ -1,14 +1,17 @@
 // A screen rewrite is the same turn asked again. Production, 2026-07-17 (chat mining, 2026-10-07):
-// one ask in a group room filed an issue, the reply promised a follow-up, the screen refused it as
-// a future promise, and the rewrite filed the same issue again — twice per ask, four issues in 32 s.
-// The model is scripted here exactly as it behaved: every attempt files, then names what it filed.
+// one ask in a group room filed a record, the reply promised a follow-up, the screen refused it as
+// a future promise, and the rewrite filed the same record again — twice per ask, four in 32 s.
+// The model is scripted here exactly as it behaved: every attempt records, then names what it made.
+// A chat records Feedback, never an issue (owner ruling 2026-10-08), so the filing is forge_feedback.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TITLE = 'Push the draft issues through review';
 const FILING = JSON.stringify({
-  argv: ['new', '-', '--title', TITLE, '--category', 'feature'],
-  body: '## Problem\nSeveral issues are still drafts and nobody has reviewed them.',
+  kind: 'change_request',
+  title: TITLE,
+  body: 'Several issues are still drafts and nobody has reviewed them.',
+  screen: '/projects/hop/issues',
 });
 
 const tracker = { filed: 0 };
@@ -33,9 +36,9 @@ vi.mock('./external-chat.js', () => ({
     tools?: { execute: (n: string, a: string) => Promise<{ content: { text: string }[] }> };
   }) => {
     asked.push(args.message);
-    const result = await args.tools?.execute('forge', FILING);
+    const result = await args.tools?.execute('forge_feedback', FILING);
     const said = result?.content.map((b) => b.text).join('\n') ?? '';
-    const key = /ISS-\d+/.exec(said)?.[0] ?? 'nothing';
+    const key = /FB-\d+/.exec(said)?.[0] ?? 'nothing';
     return {
       conversationId: 'c-1',
       reply:
@@ -45,7 +48,7 @@ vi.mock('./external-chat.js', () => ({
       terminal: 'done',
       error: null,
       iterations: 2,
-      toolCalls: [{ name: 'forge', arguments: FILING }],
+      toolCalls: [{ name: 'forge_feedback', arguments: FILING }],
       progress: null,
     };
   },
@@ -69,18 +72,15 @@ vi.mock('./screened-reply.js', () => ({
 const { composeReply } = await import('./turn-compose.js');
 
 const trackerTools = {
-  tools: [{ type: 'function', function: { name: 'forge', description: '', parameters: {} } }],
+  tools: [
+    { type: 'function', function: { name: 'forge_feedback', description: '', parameters: {} } },
+  ],
   ranAs: () => 'u-1',
-  async execute(name: string, argsJson: string) {
-    const argv = (JSON.parse(argsJson) as { argv: string[] }).argv;
-    if (name !== 'forge' || argv[0] !== 'new') throw new Error('the test scripted only a filing');
+  async execute(name: string) {
+    if (name !== 'forge_feedback') throw new Error('the test scripted only a feedback filing');
     tracker.filed += 1;
-    const issueId = `ISS-${60 + tracker.filed}`;
-    return {
-      content: [
-        { type: 'text', text: JSON.stringify({ exitCode: 0, stdout: `{"issueId":"${issueId}"}` }) },
-      ],
-    };
+    const key = `FB-${60 + tracker.filed}`;
+    return { content: [{ type: 'text', text: JSON.stringify({ feedback: { key } }) }] };
   },
 };
 
@@ -114,21 +114,21 @@ beforeEach(() => {
 });
 
 describe('a screen rewrite does not repeat what the first attempt already did', () => {
-  it('files the issue once and delivers the issue the first attempt filed', async () => {
+  it('records the feedback once and delivers the item the first attempt recorded', async () => {
     const reply = await composeReply(ctx());
     expect(tracker.filed).toBe(1);
     expect(reply).toMatchObject({
       send: true,
-      message: { text: 'Filed ISS-61; it is in the tracker now.' },
+      message: { text: 'Filed FB-61; it is in the tracker now.' },
     });
   });
 
-  it('tells the rewrite what the first attempt did, the issue it filed included', async () => {
+  it('tells the rewrite what the first attempt did, the item it recorded included', async () => {
     await composeReply(ctx());
     expect(asked).toHaveLength(2);
     expect(asked[1]).toContain('What this turn already did before this rewrite');
-    expect(asked[1]).toContain(`"--title","${TITLE}"`);
-    expect(asked[1]).toContain('ISS-61');
+    expect(asked[1]).toContain(TITLE);
+    expect(asked[1]).toContain('FB-61');
   });
 
   it("screens the rewrite against every call the turn made, the first attempt's included", async () => {

@@ -147,8 +147,8 @@ throws "Cannot access X before initialization" (ISS-168).
 - **The heavy face.** A module's routers are exported from its **routes.ts** and its MCP tools from
   its **tool.ts**. Only `packages/core/src/route-registry.ts` imports a **routes.ts**; only the tool
   registries import a **tool.ts**: `packages/core/src/mcp/registry.ts` (served on /mcp), the chat
-  assistant's read tools (`packages/core/src/mcp/chat-read-tools.ts:CHAT_READ_MODEL_TOOLS`) and its
-  chat toolset (`packages/core/src/assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST`).
+  assistant's read tools (`packages/core/src/mcp/chat-read-tools.ts:CHAT_READ_MODEL_TOOLS`), its
+  record tools (`packages/core/src/mcp/chat-record-tools.ts:CHAT_RECORD_TOOLS`) and its chat toolset (`packages/core/src/assistant/tools/registry.ts:CHAT_TOOL_ALLOWLIST`).
 - **A module whose face is empty says so.** A module that offers other modules nothing has an
   **index.ts** of `export {};`; another module's import of its internals is then a finding.
 - Another module imports the **index.ts** and never a file behind it.

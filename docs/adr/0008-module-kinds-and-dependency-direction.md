@@ -234,7 +234,8 @@ excluded.
   exports services, read functions and types and constructs nothing at import; **routes.ts** is
   imported only by `packages/core/src/route-registry.ts`, and **tool.ts** only by
   `packages/core/src/mcp/registry.ts`, the chat assistant's read tools
-  (`packages/core/src/mcp/chat-read-tools.ts`) and its chat toolset
+  (`packages/core/src/mcp/chat-read-tools.ts`), its record tools
+  (`packages/core/src/mcp/chat-record-tools.ts`) and its chat toolset
   (`packages/core/src/assistant/tools/registry.ts`), the other places tools are composed; shared constants and types come from `@forge/contracts`; a
   type-only edge is `import type`, which `verbatimModuleSyntax` (already on in core and contracts)
   erases.

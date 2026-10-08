@@ -197,6 +197,8 @@ interface IssuePorts {
     deviceId: string | null;
     boundProjectId: string | null;
   }) => Promise<string | null>;
+  /** The chat door a credential was minted for, or null for any other (`agent-sessions/chat-door.ts`). */
+  chatDoorOfToken: (tokenId: string) => Promise<{ door: 'assistant-turn' | 'box-session' } | null>;
   issueDeleteRefusal: (issue: {
     id: string;
     projectId: string;
@@ -344,6 +346,7 @@ export const usageSessionMatch = port('usageSessionMatch');
 export const usageTotalsSelection = port('usageTotalsSelection');
 export const emptyUsageTotals = (): UsageTotals => issuePorts().emptyUsageTotals;
 export const fireOfCaller = port('fireOfCaller');
+export const chatDoorOfToken = port('chatDoorOfToken');
 export const issueDeleteRefusal = port('issueDeleteRefusal');
 
 export const designUnapprovedSql = port('designUnapprovedSql');

@@ -5,6 +5,7 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
+import { currentPatScope } from '../credentials/pat-scope.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -32,6 +33,7 @@ import {
   resolveLabelIdsForWrite,
 } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
+import { chatDoorOfToken } from './ports.js';
 import {
   type AppliedIssueRelation,
   type IssueRelationInput,
@@ -123,6 +125,7 @@ export async function insertIssueRow(
   values: typeof issues.$inferInsert,
   by: { actor: Actor; labelIds?: readonly string[] },
 ): Promise<IssueCreateRow> {
+  await refuseChatDoorFiling();
   // the language its title and body were written in: the caller's where it copies them from a row
   // that holds one, else the writer's (`writtenLangFor`)
   const writtenLang =
@@ -157,6 +160,29 @@ export async function insertIssueRow(
     },
   });
   return inserted;
+}
+
+const CHAT_DOOR_SAYS = {
+  'assistant-turn': 'the assistant answering in a conversation',
+  'box-session':
+    'a chat session on a paired box (Agent mode, the Agents screen or a room escalation)',
+} as const;
+
+/**
+ * No chat door files an issue (owner ruling 2026-10-08): a person's report or wish enters as
+ * Feedback or a Requirement, and issues are produced from those by triage or breakdown. Read from
+ * the credential this request arrived on, so the assistant's `forge` CLI, its in-process tools and
+ * an Agent-mode shell's `forge-runner api` all meet it, whatever route reaches the insert.
+ */
+async function refuseChatDoorFiling(): Promise<void> {
+  const scope = currentPatScope();
+  if (!scope) return;
+  const chat = await chatDoorOfToken(scope.tokenId);
+  if (!chat) return;
+  throw refuse(
+    'CHAT_FILES_FEEDBACK_NOT_ISSUES',
+    `this credential belongs to ${CHAT_DOOR_SAYS[chat.door]}, and a chat files no issue: issues come from requirement breakdown or feedback triage. Record a problem or a wish as Feedback (\`POST /api/projects/:id/feedback\`, kind bug | change_request | idea | question, linked to the requirement it touches) or draft a Requirement (\`POST /api/projects/:id/requirements\`) or a revision of one (\`POST /api/projects/:id/requirements/REQ-n/revisions\`), after the person confirms.`,
+  );
 }
 
 /** `open` needs `issues.admit`: named, it is refused without it; unnamed, the issue is born at `draft`. */
@@ -303,6 +329,7 @@ export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
 ): Promise<CreateIssueResult> {
+  await refuseChatDoorFiling();
   refuseBirthStatus(input.status);
   const status = await birthStatus(
     input.projectId,

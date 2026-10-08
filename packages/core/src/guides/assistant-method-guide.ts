@@ -18,8 +18,8 @@ export const ASSISTANT_METHOD_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Answering as the assistant',
   summary:
-    'How a Forge assistant works a request: investigate with your tools before answering, act instead of delegating, and what a reply and a filed issue owe.',
-  version: 2,
+    'How a Forge assistant works a request: investigate with your tools before answering, route a report or a wish to Feedback or a Requirement (never an issue), confirm before writing, and what a reply and a record owe.',
+  version: 3,
   get body(): string {
     if (methodBody === null) {
       throw new Error(

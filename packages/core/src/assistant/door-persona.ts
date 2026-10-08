@@ -50,17 +50,17 @@ export function webConversationPersona(
  * The same assistant, in a conversation opened in Agent mode.
  */
 export function webAgentConversationPersona(
-  projectName: string,
-  projectSlug: string,
+  project: { id: string; name: string; slug: string },
   askedBy: string | null,
 ): string {
   return composeLayers(WEB_AGENT_DOOR_LAYERS, {
     ...openingValues({
-      projectName,
+      projectName: project.name,
       venue:
         "answering a person in the Forge web app, from a session on this project's own checkout",
-      projectSlug,
+      projectSlug: project.slug,
     }),
+    projectId: project.id,
     askedBy,
   });
 }

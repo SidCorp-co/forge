@@ -66,6 +66,20 @@ export const turnTokenDefaultName = (at: Date, nonce: string) =>
 export const isTurnTokenName = (name: string) =>
   name.startsWith(TURN_TOKEN_NAME_PREFIX) || name.startsWith(TURN_DEFAULT_NAME_PREFIX);
 
+/**
+ * Which chat door minted a turn token: an in-process assistant turn (`turn <at> <nonce>`), a
+ * session on a paired box (`turn:<sessionId>`), or none for any other token.
+ */
+export function turnTokenOrigin(
+  name: string,
+): { door: 'assistant-turn' } | { door: 'box-session'; sessionId: string } | null {
+  if (name.startsWith(TURN_DEFAULT_NAME_PREFIX)) return { door: 'assistant-turn' };
+  if (name.startsWith(TURN_TOKEN_NAME_PREFIX)) {
+    return { door: 'box-session', sessionId: name.slice(TURN_TOKEN_NAME_PREFIX.length) };
+  }
+  return null;
+}
+
 const CORE_NAME_PREFIXES = [
   DEVICE_TOKEN_NAME_PREFIX,
   WORKSPACE_TOKEN_NAME_PREFIX,

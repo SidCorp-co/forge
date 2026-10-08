@@ -92,12 +92,12 @@ function buildEscalationPrompt(question: string): string {
     '',
     'Investigate the repository and this Forge project to answer it correctly. Then:',
     '1. Upsert your durable understanding into project knowledge (`PUT /api/projects/:id/knowledge/:slug`) — a stable kebab-case slug; if a similar topic already has an entry, REUSE its slug (upsert/dedup, do not create a near-duplicate); pick an appropriate `kind` and `confidence`. Write PRODUCT/BUSINESS understanding — how the feature/pipeline/mechanism works, the product map, interpretation rules. NEVER write volatile numbers (e.g. issue counts) into knowledge — those must stay a live query every time.',
-    '2. You are an ADVISOR only: do NOT post a reply to the room and do NOT create an issue yourself (no `forge new`, no `POST /api/projects/:id/issues`). A teammate will deliver the final answer to the user and create any follow-up issue on your behalf.',
+    '2. You are an ADVISOR only: do NOT post a reply to the room, and record nothing (no Feedback, no requirement, no issue — core refuses an issue from this session). A teammate delivers the final answer and offers the person any follow-up you propose, to record as Feedback once they agree.',
     '3. End your reply with EXACTLY ONE fenced JSON block and nothing after it:',
     '```json',
-    '{ "answer": "<concise, business-language final answer for a non-technical stakeholder: no code, file paths, line numbers, raw pipeline-status tokens, or bare ISS-ids — plain language only>", "issueProposal": { "title": "<only if follow-up work is needed>", "description": "<what/where, expected vs actual>", "reason": "<why this needs an issue>" } }',
+    '{ "answer": "<concise, business-language final answer for a non-technical stakeholder: no code, file paths, line numbers, raw pipeline-status tokens, or bare ISS-ids — plain language only>", "followUp": { "title": "<only if follow-up work is needed>", "description": "<what/where, expected vs actual>", "reason": "<why it is worth recording>" } }',
     '```',
-    'Omit `issueProposal` entirely when no follow-up work is needed.',
+    'Omit `followUp` entirely when no follow-up work is needed.',
   ].join('\n');
 }
 

@@ -36,7 +36,7 @@ export function provideChatTools(specs: readonly ChatToolSpec[]): void {
 function chatToolSpecs(): ChatToolSpec[] {
   if (!providedSpecs) {
     throw new Error(
-      'chat toolset: the composed tools were not provided, so the allowlist is incomplete; the process entry calls provideChatTools(CHAT_READ_MODEL_TOOLS) from mcp/index.ts before it serves',
+      'chat toolset: the composed tools were not provided, so the allowlist is incomplete; the process entry calls provideChatTools with CHAT_READ_MODEL_TOOLS and CHAT_RECORD_TOOLS from mcp/index.ts before it serves',
     );
   }
   return [...CHAT_TOOL_ALLOWLIST, ...providedSpecs];

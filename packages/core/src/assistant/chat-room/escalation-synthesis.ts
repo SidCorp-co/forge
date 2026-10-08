@@ -1,15 +1,11 @@
 /**
- * The PM session is an advisor returning `{answer, issueProposal?}`; this parses that and runs ONE
- * fresh Bao-persona turn to author the reply the user sees, creating any proposed follow-up issue
- * as the person who asked (ISS-17).
+ * The PM session is an advisor returning `{answer, followUp?}`; this parses that and runs ONE fresh
+ * Bao-persona turn to author the reply the user sees. A proposed follow-up is OFFERED to the person
+ * as Feedback to record once they agree (owner ruling 2026-10-08: a chat files no issue, and writes
+ * nothing before the person confirms), so the relay turn runs with no tools.
  */
 
 import { eq } from 'drizzle-orm';
-import {
-  CHAT_TURN_MENU,
-  mintTurnCredential,
-  type TurnCredential,
-} from '../../credentials/turn-credential.js';
 import { db } from '../../db/client.js';
 import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof } from '../../integrations/rocketchat/index.js';
@@ -19,19 +15,15 @@ import { type MessageRefusal, type MessageVerdict, refusalsOf } from '../../mess
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
-import { resolveTurnAuthority } from '../../permissions/index.js';
 import { correctFalseClaims } from '../confab.js';
 import { runExternalChatTurn } from '../external-chat.js';
-import type { ChatToolset } from '../tools/mcp-adapter.js';
-import { buildChatToolContext } from '../tools/principal.js';
-import { buildProjectToolset } from '../tools/registry.js';
 import { ESCALATION_FALLBACK_REPLY } from './escalation.js';
 import { rocketChatPersona } from './persona.js';
 import type { RoomReplyMeta } from './room-replies.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
-interface EscalationIssueProposal {
+interface EscalationFollowUp {
   title: string;
   description: string;
   reason: string;
@@ -39,7 +31,7 @@ interface EscalationIssueProposal {
 
 interface EscalationPayload {
   answer: string;
-  issueProposal?: EscalationIssueProposal;
+  followUp?: EscalationFollowUp;
 }
 
 const JSON_FENCE_RE = /```json\s*([\s\S]*?)```/gi;
@@ -52,7 +44,7 @@ export function parseEscalationPayload(text: string): EscalationPayload {
     const parsed = JSON.parse(fence) as Record<string, unknown>;
     if (typeof parsed.answer !== 'string' || !parsed.answer.trim()) return { answer: text };
     const payload: EscalationPayload = { answer: parsed.answer.trim() };
-    const proposal = parsed.issueProposal;
+    const proposal = parsed.followUp;
     if (proposal && typeof proposal === 'object') {
       const p = proposal as Record<string, unknown>;
       if (
@@ -63,7 +55,7 @@ export function parseEscalationPayload(text: string): EscalationPayload {
         typeof p.reason === 'string' &&
         p.reason.trim()
       ) {
-        payload.issueProposal = {
+        payload.followUp = {
           title: p.title.trim(),
           description: p.description.trim(),
           reason: p.reason.trim(),
@@ -86,9 +78,9 @@ function buildSynthesisMessage(
     `Their answer: "${payload.answer}"`,
     'Relay this to the user in your own voice, plainly, as the final answer — do NOT re-investigate or contradict it, the answer is authoritative.',
   ];
-  if (payload.issueProposal) {
+  if (payload.followUp) {
     lines.push(
-      `Also log this as a draft issue with forge new --status draft — title "${payload.issueProposal.title}", description "${payload.issueProposal.description}" (reason: ${payload.issueProposal.reason}). If the tool reports a near-duplicate, comment on that existing issue instead. Then tell the user you've logged it.`,
+      `The teammate also proposes a follow-up — "${payload.followUp.title}": ${payload.followUp.description} (why: ${payload.followUp.reason}). Offer to record it as Feedback: say in a sentence what you would record and ask whether to go ahead. Record nothing in this reply, and never call it an issue: a chat files no issue.`,
     );
   }
   return lines.join('\n');
@@ -107,9 +99,6 @@ async function resolveEscalationRoute(projectId: string): Promise<EscalationRout
     .limit(1);
   return proj ?? null;
 }
-
-/** Synthesis credential lifetime: one relayed turn, with a CLI call at its edge. */
-const SYNTHESIS_CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
 const EMPTY_SYNTHESIS = {
   rule: 'non-empty',
@@ -136,28 +125,7 @@ export async function synthesizeViaBao(
     );
     return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
   }
-  let credential: TurnCredential | null = null;
-  if (payload.issueProposal) {
-    const resolved = await resolveTurnAuthority({
-      userId: meta.principalUserId,
-      projectId: session.projectId,
-      viaTokenId: meta.principalTokenId,
-    });
-    if (!resolved.ok) return { text: resolved.refusal.message, proof: FIXED_REPLY_CONSTANT };
-    credential = await mintTurnCredential({
-      authority: resolved.authority,
-      menu: CHAT_TURN_MENU,
-      ttlMs: SYNTHESIS_CREDENTIAL_TTL_MS,
-    });
-  }
-  try {
-    const tools = credential
-      ? buildProjectToolset(buildChatToolContext({ credential, projectSlug: route.slug }))
-      : undefined;
-    return await synthesizeWith(session, meta, payload, route, tools);
-  } finally {
-    await credential?.revoke();
-  }
+  return synthesizeWith(session, meta, payload, route);
 }
 
 async function synthesizeWith(
@@ -165,7 +133,6 @@ async function synthesizeWith(
   meta: RoomReplyMeta,
   payload: EscalationPayload,
   route: EscalationRoute,
-  tools: ChatToolset | undefined,
 ): Promise<{ text: string; proof: ReplySendProof }> {
   const persona = rocketChatPersona(route.name, meta.askedByUsername, {
     projectSlug: route.slug,
@@ -177,7 +144,6 @@ async function synthesizeWith(
       projectId: session.projectId,
       adapter: 'rocketchat',
       message: correction ?? buildSynthesisMessage(meta.question, payload, meta.askedByUsername),
-      tools,
       persona,
       userKey: meta.askedByUsername || null,
     });
