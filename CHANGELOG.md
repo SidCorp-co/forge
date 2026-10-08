@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.204] - 2026-10-08
+
+The BA door no longer states an asker's invented figure as fact
+
+### Fixed
+
+- **The requirement assistant checks its figures too.** Ask Agent on a requirement page now holds a number it did not read from Forge, your own included, exactly as the project assistant does; figures it read pass unchanged.
+
 ## [0.4.0-dev.203] - 2026-10-08
 
 Schedule scripts and chat computations share one read-only QuickJS sandbox
