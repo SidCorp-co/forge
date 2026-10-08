@@ -1,6 +1,6 @@
 {
   "name": "@forge/contracts",
-  "version": "0.4.0-dev.186",
+  "version": "0.4.0-dev.187",
   "private": true,
   "license": "Apache-2.0",
   "description": "Shared types and runtime tables for core and web-v2: row and request types derived from @forge/core, and the vocabularies both read at runtime (permissions, outbox consumers, pipeline registry). Each module is its own subpath, @forge/contracts/<module>.",
