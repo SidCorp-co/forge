@@ -63,7 +63,7 @@ function item(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
         { id: "b1", projectId: PROJECT_IN_TEAM, role: "service", stages: [], label: "", active: true },
       ],
     },
-    access: { reach: "binding", canManage: false },
+    access: { reach: "binding", canManage: false, ownerName: null },
     ...over,
   };
 }
@@ -112,7 +112,7 @@ describe("a credential reached only through a binding", () => {
   });
 
   it("leaves a credential the caller owns with its controls", async () => {
-    connections = [item({ ownerId: "me", access: { reach: "owner", canManage: true } })];
+    connections = [item({ ownerId: "me", access: { reach: "owner", canManage: true, ownerName: null } })];
     activeOrg = PERSONAL;
 
     mount();

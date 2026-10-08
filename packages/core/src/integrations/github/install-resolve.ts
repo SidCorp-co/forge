@@ -8,6 +8,8 @@
  * installation alone.
  */
 
+import { HTTPException } from 'hono/http-exception';
+import { effectiveProjectRole } from '../../lib/authz.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
@@ -17,6 +19,18 @@ import { buildAppJwt } from './app-auth.js';
 import { listGithubAppsReachableBy } from './install-candidates.js';
 import { GITHUB_API_BASE } from './types.js';
 
+export const installNotCompletable = (connection: { id: string; displayName: string | null }) =>
+  new HTTPException(403, {
+    message:
+      `GitHub App ${connection.displayName ? `"${connection.displayName}" ` : ''}(connection ` +
+      `${connection.id}) owns this installation, but it is bound only to projects you do not ` +
+      'administer, so you cannot record the installation on one of them. An admin of a project ' +
+      "it is bound to (or an owner or admin of that project's organization) can finish it from " +
+      "that project's GitHub settings.",
+    cause: { code: 'INSTALL_NOT_COMPLETABLE' },
+  });
+
+/** Resolved per project: the right to record an installation is the caller's admin role on it (ISS-1216). */
 export async function findBindingOwningInstallation(args: {
   userId: string;
   installationId: number;
@@ -46,10 +60,15 @@ export async function findBindingOwningInstallation(args: {
     }
     if (!ok) continue;
 
-    const pair = (await listBindingsForConnection(connection.id)).find(
+    const pairs = (await listBindingsForConnection(connection.id)).filter(
       (p) => p.binding.provider === 'github',
     );
-    if (pair) return pair;
+    if (pairs.length === 0) continue;
+    for (const pair of pairs) {
+      const access = await effectiveProjectRole(args.userId, pair.binding.projectId);
+      if (access?.role === 'admin') return pair;
+    }
+    throw installNotCompletable(connection);
   }
 
   return null;

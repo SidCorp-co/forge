@@ -423,10 +423,15 @@ export type ConnectionReach = (typeof CONNECTION_REACH_VALUES)[number];
  * What the caller may do with a connection the directory shows them, stated by the server that
  * decides it so no screen derives it a second time. Reaching is reading: `canManage` is the owner,
  * or an owner/admin of the owning org, and a `binding` reach never carries it.
+ *
+ * `ownerName` is who owns it as the product names them elsewhere: the organization's name, or the
+ * person's display name (their email where they set none). Null only where the owner no longer
+ * resolves, and a screen then says that rather than inventing a name.
  */
 export interface ConnectionAccess {
   reach: ConnectionReach;
   canManage: boolean;
+  ownerName: string | null;
 }
 
 /** A connection as the workspace directory reads it: the credential plus where it is used. */

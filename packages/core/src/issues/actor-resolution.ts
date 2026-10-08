@@ -113,3 +113,15 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
 
   return result;
 }
+
+/** The label each user is rendered by; an id with no user row is absent, never "Unknown". */
+export async function userLabels(ids: string[]): Promise<Map<string, string>> {
+  const labels = new Map<string, string>();
+  if (ids.length === 0) return labels;
+  const rows = await db
+    .select({ id: users.id, email: users.email, displayName: users.displayName })
+    .from(users)
+    .where(inArray(users.id, ids));
+  for (const row of rows) labels.set(row.id, row.displayName ?? row.email);
+  return labels;
+}

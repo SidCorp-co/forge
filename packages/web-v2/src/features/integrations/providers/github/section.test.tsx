@@ -139,7 +139,7 @@ function connection(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDire
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-20T00:00:00.000Z",
     usage: { bindings: [] },
-    access: { reach: "org", canManage: true },
+    access: { reach: "org", canManage: true, ownerName: null },
     ...over,
   } as ConnectionDirectoryItem;
 }
@@ -365,7 +365,7 @@ describe("a project with no binding, offered the Apps the directory lists", () =
       ownerType: "user",
       ownerId: "someone-else",
       displayName: "Their App",
-      access: { reach: "binding", canManage: false },
+      access: { reach: "binding", canManage: false, ownerName: "Dana Reyes" },
       ...over,
     });
 
@@ -402,7 +402,7 @@ describe("a project with no binding, offered the Apps the directory lists", () =
     expect(picker()).toBeNull();
     expect(screen.getByRole("button", { name: /create github app/i })).toBeInTheDocument();
     expect(
-      screen.getByText(/Their App already serves this workspace.*owned by another user, and only its owner can bind it/i),
+      screen.getByText(/Their App is owned by Dana Reyes, and only they can bind it/i),
     ).toBeInTheDocument();
   });
 
@@ -411,7 +411,7 @@ describe("a project with no binding, offered the Apps the directory lists", () =
 
     mount();
 
-    expect(screen.queryByText(/already serves this workspace/i)).toBeNull();
+    expect(screen.queryByText(/is owned by/i)).toBeNull();
   });
 });
 
