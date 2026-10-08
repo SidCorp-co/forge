@@ -223,6 +223,18 @@ describe("the Release section's prose", () => {
 		expect(container.textContent).not.toMatch(/cut this project's releases by hand/i);
 	});
 
+	it("says a release over two targets that declare no probe closes unverified", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ providers: ["coolify", "coolify"], hasVerify: false, gaps: ["verify-probes"] }),
+		});
+
+		const { container } = draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(container.textContent).toContain("with none declared anywhere the release closes unverified");
+	});
+
 	it("says a live target with no probe is named as not read, where another target has one", () => {
 		readiness.mockReturnValue({
 			isLoading: false,
@@ -236,7 +248,7 @@ describe("the Release section's prose", () => {
 
 		const { container } = draw(<ReleaseSection projectId={PROJECT_ID} />);
 
-		expect(container.textContent).toContain("one with none is named as not read");
+		expect(container.textContent).toContain("a target with none is named as not read");
 		expect(container.textContent).toMatch(/names this one as not read/);
 	});
 });

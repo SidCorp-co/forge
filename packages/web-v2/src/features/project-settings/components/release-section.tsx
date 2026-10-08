@@ -60,7 +60,7 @@ const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure
 /** One reading is taken per live target that declares a probe, so with several targets the answer is per target. */
 function verifiedBy(r: ReleaseReadiness): string {
   if (r.providers.length > 1) {
-    return r.hasVerify ? "a probe on each live target" : "not on every live target — one with none is named as not read";
+    return r.hasVerify ? "a probe on each live target" : "a probe where one is declared — a target with none is named as not read, and with none declared anywhere the release closes unverified";
   }
   return r.hasVerify ? "a probe" : "nothing";
 }
