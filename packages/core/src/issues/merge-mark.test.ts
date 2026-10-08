@@ -67,7 +67,12 @@ describe('the sentence a caller is given', () => {
   it('says an unverified claim is NOT verified, why, and what verifies it, naming the commit once (ISS-1409)', () => {
     const unverified = describeMergeMark({
       kind: 'asserted',
-      unverified: { commit: 'abc1234', why: 'attach a deploy key under Git access' },
+      unverified: {
+        commit: 'abc1234',
+        why: 'attach a deploy key under Git access',
+        clears: 'once a deploy key is attached',
+        noReader: true,
+      },
     });
     expect(unverified).toContain('CLAIM Forge did not observe');
     expect(unverified).toContain('commit abc1234');
@@ -77,6 +82,33 @@ describe('the sentence a caller is given', () => {
     expect(unverified).toContain('`merged_claimed_commit`');
     expect(unverified).not.toContain('observed.');
     expect(unverified.match(/abc1234/g)).toHaveLength(1);
+  });
+
+  it('names the host\'s own words and the fix where a configured reader failed, never "no way to read" (ISS-1409)', () => {
+    const failed = describeMergeMark({
+      kind: 'asserted',
+      unverified: {
+        commit: 'abc1234',
+        why: 'the git host refused the deploy key attached to this project',
+        clears: "once the tracker can read the project's repository with the deploy key",
+        noReader: false,
+      },
+    });
+    expect(failed).toContain('NOT verified');
+    expect(failed).toContain('the git host refused the deploy key attached to this project');
+    expect(failed).toContain(
+      "To have Forge verify it, mark again once the tracker can read the project's repository with the deploy key",
+    );
+    expect(failed).not.toContain('no way to read this project');
+  });
+
+  it("says by name that a repeat's other commit was not recorded, and the first claim stands (ISS-1409)", () => {
+    const repeat = describeMergeMark({
+      kind: 'asserted',
+      unverified: { commit: 'abc1234', why: 'w', clears: 'c', noReader: true, notKept: 'def5678' },
+    });
+    expect(repeat).toContain('Commit def5678, which this call named, was NOT recorded');
+    expect(repeat).toContain('first claim, abc1234, stands');
   });
 
   it('carries the claim beside the kind, and never lets it make a mark observed (ISS-1409)', () => {

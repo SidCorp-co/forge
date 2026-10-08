@@ -179,15 +179,16 @@ async function refuseMovedLane(issue: {
 /** What an agent's mark rests on where nothing but its commit stands behind it. */
 type AgentEvidence =
   | { kind: 'read'; landing: Extract<CommitLanding, { ok: true }> }
-  | { kind: 'unverified'; commit: string; why: string };
+  | { kind: 'unverified'; commit: string; why: string; clears: string; noReader: boolean };
 
 /**
  * An agent with nothing else behind it may still have landed: on a git lane on the base branch
  * itself, where the commit is the only trace and counts once the repository says it is this
  * issue's landing (`read`); outside git where the landing it names is, that lane's evidence.
  *
- * Where the project declares no way to read its repository the commit is kept as a claim
- * (`unverified`, ISS-1409); a readable repository saying no, and a reader that fails, still refuse.
+ * Wherever Forge cannot verify the commit (the project declares no way to read its repository, a
+ * reader that is configured fails, or no base branch is named) it is kept as a claim naming the
+ * cause (`unverified`, ISS-1409); a repository that was read and says no still refuses.
  * A standing claim is verified here, ahead of the work-evidence shortcut it would itself satisfy.
  */
 async function agentEvidence(
@@ -206,8 +207,25 @@ async function agentEvidence(
 async function agentCommit(issueId: string, commit: string): Promise<AgentEvidence> {
   const read = await readCommitLanding({ issueId, commit });
   if (read.ok) return { kind: 'read', landing: read };
-  if (read.unreadable) return { kind: 'unverified', commit, why: read.unreadable.why };
+  if (read.unreadable) return { kind: 'unverified', commit, ...read.unreadable };
   throw new MergeMarkerError(read.code, read.detail, read.details);
+}
+
+/** What `describeMergeMark` is told of an unverified mark: the claim the row KEEPS, and the cause. */
+function keptClaim(
+  unverified: Extract<AgentEvidence, { kind: 'unverified' }>,
+  kept: string | null,
+) {
+  if (!kept) return null;
+  const { why, clears, noReader } = unverified;
+  return { commit: kept, why, clears, noReader, notKept: namesAnother(unverified.commit, kept) };
+}
+
+/** The commit a call named where it is not the claim the row keeps; an abbreviation of the kept sha is the same commit. */
+function namesAnother(named: string, kept: string): string | null {
+  const a = named.toLowerCase();
+  const b = kept.toLowerCase();
+  return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
 /**
@@ -283,7 +301,7 @@ export async function applyMergeMarker(args: {
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
-  let unverified: { commit: string; why: string } | null = null;
+  let unverified: Extract<AgentEvidence, { kind: 'unverified' }> | null = null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
@@ -406,9 +424,7 @@ export async function applyMergeMarker(args: {
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
-    ...(unverified && stampResult.claimedCommit
-      ? { unverified: { commit: stampResult.claimedCommit, why: unverified.why } }
-      : {}),
+    unverified: unverified && keptClaim(unverified, stampResult.claimedCommit),
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
     leftOut,

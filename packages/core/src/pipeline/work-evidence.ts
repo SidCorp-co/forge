@@ -198,9 +198,9 @@ const DECLARED =
   "`statusEntryCriteria`; where this project's work leaves none of these, that declaration is " +
   'what to change.';
 
-/** Where the project gives Forge no way to read its repository the agent's commit still counts. */
+/** Where Forge cannot verify the agent's commit it still counts, as a claim; where it read the repository and the repository says no, it does not. */
 const UNREADABLE_REPOSITORY =
-  'Where the project gives Forge no way to read its repository (no GitHub binding and no deploy key beside a repository URL), that mark is accepted and the commit is recorded as a claim Forge has not verified, which counts as the evidence; a repository Forge can read, or a reader that fails, still refuses it.';
+  "Where Forge cannot verify the commit (the project gives it no way to read its repository, the reader it has fails, or no base branch is named), that mark is accepted and the commit is recorded as a claim Forge has not verified, which counts as the evidence, and the mark says why and what would verify it; a repository Forge read that does not hold the commit as this issue's landing still refuses it.";
 
 const WHERE_IT_NOW_IS =
   'where the work now is (the live URL, the deployment, the CMS entry or storefront resource)';
@@ -255,7 +255,7 @@ function gitDetail(door: EvidenceDoor): string {
     'before this status. A merge mark counts only where Forge read its commit itself, or held it as a claim it could not check: a mark ' +
     "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
     "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
-    'landing, or, where the project gives Forge no way to read its repository, as the unverified ' +
+    'landing, or, where Forge cannot verify it, as the unverified ' +
     "claim that mark records; a person's mark naming a commit is checked only for the repository " +
     `holding it, not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
     `${DECLARED} ${NOT_A_BRANCH}`

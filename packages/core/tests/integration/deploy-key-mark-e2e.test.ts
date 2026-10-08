@@ -180,25 +180,32 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
   ];
 
   it.each(HOST_ANSWERS.map(([answer, says]) => [answer.name, answer, says] as const))(
-    'refuses COMMIT_UNVERIFIED naming the cause in the words of %s, and writes nothing (criteria 11, 16)',
+    'records an unverified claim naming the cause in the words of %s, and keeps the commit out of merged_commit_sha (criteria 11, 16; ISS-1409)',
     async (_name, answer, says) => {
       host.answering(answer);
       const issue = await seed();
 
-      const refused = await refusal(() => mark(issue, own()));
+      const res = await mark(issue, own());
 
-      expect(refused.code).toBe('COMMIT_UNVERIFIED');
-      expect(refused.message).toContain(answer.said);
-      for (const s of says) expect(refused.message).toContain(s);
-      expect(refused.message).not.toMatch(/remote:\s*(\.|\))/);
-      expect(refused.message).not.toContain('172.65.251.78');
-      expect(refused.message).not.toMatch(/GitHub binding|Integrations/);
-      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+      expect(res.mark).toBe('asserted');
+      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toContain(answer.said);
+      for (const s of says) expect(res.markDetail).toContain(s);
+      expect(res.markDetail).toContain(
+        `mark again once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
+      );
+      expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
+      expect(res.markDetail).not.toContain('172.65.251.78');
+      expect(res.markDetail).not.toMatch(/GitHub binding|Integrations/);
+      expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+      expect((await row(issue.id)).merged_at).not.toBeNull();
+      const person = await refusal(() => mark(issue, own(), 'human'));
+      expect(person.code).toBe('COMMIT_UNVERIFIED');
     },
     60_000,
   );
 
-  it('refuses COMMIT_UNVERIFIED, never landed, where the live branch is not in the repository (criterion 11)', async () => {
+  it('records an unverified claim, never a landing, where the live branch is not in the repository (criterion 11; ISS-1409)', async () => {
     const { db, projectId } = current();
     await db.execute(sql`
       UPDATE projects SET release_chain = ${JSON.stringify([
@@ -207,14 +214,14 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       ])}::jsonb WHERE id = ${projectId}
     `);
     const issue = await seed();
-    const refused = await refusal(() => mark(issue, at.offBase as string));
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain(`${GITLAB_URL} has no branch staging`);
-    expect(refused.message).toContain(
-      `Two routes clear it: mark again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has;`,
+    const res = await mark(issue, at.offBase as string);
+    expect(res.mark).toBe('asserted');
+    expect(res.markDetail).toContain(`${GITLAB_URL} has no branch staging`);
+    expect(res.markDetail).toContain(
+      `mark again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
     );
-    expect(refused.message).not.toContain('with the deploy key attached');
-    expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+    expect(res.markDetail).not.toContain('with the deploy key attached');
+    expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
   }, 60_000);
 });
 
@@ -240,17 +247,17 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
   }, 60_000);
 
-  it('still refuses COMMIT_UNVERIFIED where a deploy key is attached but the repository URL is no SSH remote (criterion 6; ISS-1409)', async () => {
+  it('records the claim naming the cause where a deploy key is attached but the repository URL is no SSH remote (criterion 6; ISS-1409)', async () => {
     const { db, projectId } = current();
     await db.execute(
       sql`UPDATE projects SET repo_url = 'https://gitlab.com/org/repo.git' WHERE id = ${projectId}`,
     );
     const issue = await seed();
 
-    const refused = await refusal(() => mark(issue, own()));
+    const res = await mark(issue, own());
 
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain('is not an SSH remote');
-    expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
+    expect(res.mark).toBe('asserted');
+    expect(res.markDetail).toContain('is not an SSH remote');
+    expect((await row(issue.id)).merged_commit_sha).toBeNull();
   }, 60_000);
 });

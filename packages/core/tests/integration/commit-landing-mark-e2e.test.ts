@@ -94,8 +94,8 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     },
   );
 
-  // A reader that is configured and fails is refused; a project that declares none is ISS-1409's, in
-  // `unverified-claim-e2e.test.ts`.
+  // A reader that is configured and fails leaves the agent's commit as a claim that names the cause
+  // (ISS-1409's ruling of 2026-10-08); a person's mark naming a commit is still refused.
   it.each([
     ['read', 'HTTP 502', ', through a GitHub binding whose installation can read it'],
     [
@@ -104,20 +104,23 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
       ', through a GitHub binding whose installation can read it',
     ],
   ] as const)(
-    'refuses COMMIT_UNVERIFIED when the repository cannot be read (%s) (criteria 7, 8)',
+    'records an unverified claim naming the cause and its fix when the repository cannot be read (%s) (criteria 7, 8)',
     async (down, says, route) => {
       repo.down = down;
       const issue = await seed();
-      const refused = await refusal(() => mark(issue, OWN));
+      const res = await mark(issue, OWN);
+      expect(res.action).toBe('merged');
+      expect(res.mark).toBe('asserted');
+      expect(res.markDetail).toContain(`commit ${OWN} is recorded as this call's claim`);
+      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toContain(says);
+      expect(res.markDetail).toContain(
+        `mark again once the tracker can read the project's repository${route}`,
+      );
+      expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+      const refused = await refusal(() => mark(issue, OWN, 'human'));
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
-      expect(refused.message).toContain('not taken as evidence unchecked');
-      expect(refused.message).toContain(
-        `Two routes clear it: mark again once the tracker can read the project's repository${route}; or have a person mark it merged naming no commit and move it through \`developed\` and \`testing\``,
-      );
-      expect(refused.message).toContain("a branch recorded under the base branch's name");
-      expect(refused.message).not.toContain('record the branch the work was done on');
-      expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
 
@@ -233,30 +236,25 @@ describe('ISS-1318 — the live branch and an abbreviated sha, named for what th
 });
 
 describe('ISS-1318 r3 — each refusal names a route its reader can take (real Postgres)', () => {
-  it('asks for a base branch, and a person, where the project names none', async () => {
+  it('records the claim and names the base branch to set, where the project names none', async () => {
     await setBaseBranch(null);
     // With no base branch to discard, a recorded `main` would itself count, so none is recorded.
     const issue = await seed({ sessionContext: {} });
-    const refused = await refusal(() => mark(issue, OWN));
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain('the project names no base branch to look for it on');
-    expect(refused.message).toContain(
-      'Two routes clear it: mark again once the project names its base branch; or have a person mark it merged naming no commit and move it',
-    );
+    const res = await mark(issue, OWN);
+    expect(res.mark).toBe('asserted');
+    expect(res.markDetail).toContain('the project names no base branch to look for it on');
+    expect(res.markDetail).toContain('mark again once the project names its base branch');
     expect(repo.reads).toEqual([]);
   });
 
-  it("clears the agent's gate once a person marks it merged and moves it, as COMMIT_UNVERIFIED says", async () => {
+  it("carries the issue to testing on the agent's claim where the reader fails, and holds a person's mark naming a commit refused", async () => {
     repo.down = 'read';
     const issue = await seed();
-    expect((await refusal(() => mark(issue, OWN))).code).toBe('COMMIT_UNVERIFIED');
-    await mark(issue, undefined, 'human');
-    expect((await refusal(() => advance(issue.id, 'in_progress', 'developed'))).code).toBe(
-      'NO_WORK_EVIDENCE',
-    );
-    await advance(issue.id, 'in_progress', 'developed', 'human');
-    await advance(issue.id, 'developed', 'testing', 'human');
+    expect((await mark(issue, OWN)).mark).toBe('asserted');
+    await advance(issue.id, 'in_progress', 'developed');
+    await advance(issue.id, 'developed', 'testing');
     expect((await row(issue.id)).status).toBe('testing');
+    expect((await refusal(() => mark(issue, OWN, 'human'))).code).toBe('COMMIT_UNVERIFIED');
   });
 
   it("tells a person held by the declared work_evidence criterion that a person's mark does not clear it (git)", async () => {

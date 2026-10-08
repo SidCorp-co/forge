@@ -21,6 +21,7 @@ import { connectClientAsPat } from '../helpers/mcp-harness.js';
 type Mods = {
   issueMergeRoutes: typeof import('../../src/issues/merge-routes.js')['issueMergeRoutes'];
   issueRoutes: typeof import('../../src/issues/routes.js')['issueRoutes'];
+  issueProjectRoutes: typeof import('../../src/issues/routes.js')['issueProjectRoutes'];
   signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
   errorHandler: typeof import('../../src/middleware/error.js')['errorHandler'];
   mintPat: typeof import('../../src/auth/pat.js')['mintPat'];
@@ -183,6 +184,7 @@ export function useLandingHarness(): void {
     mods = {
       issueMergeRoutes: mergeMod.issueMergeRoutes,
       issueRoutes: routesMod.issueRoutes,
+      issueProjectRoutes: routesMod.issueProjectRoutes,
       signUserToken: jwtMod.signUserToken,
       errorHandler: errMod.errorHandler,
       mintPat: patMod.mintPat,
@@ -193,6 +195,7 @@ export function useLandingHarness(): void {
     app = new Hono();
     app.route('/api/issues', mods.issueMergeRoutes);
     app.route('/api/issues', mods.issueRoutes);
+    app.route('/api/projects', mods.issueProjectRoutes);
     app.onError(mods.errorHandler);
   }, 60_000);
 
