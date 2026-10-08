@@ -348,13 +348,14 @@ describe('ISS-1225 an edge that holds until shipped (real Postgres, through the 
     expect((await admissible()).keys).toContain('ISS-2');
   });
 
-  it('releases the dependent when the blocker is dropped, which expires its edges', async () => {
+  it("releases the dependent when the blocker is dropped, through the drop transition's own expiry", async () => {
     const blocker = await issue(1, 'awaiting_release');
     const held = await issue(2);
     await edge(blocker, held, { holdsUntil: 'shipped' });
-    await harness.db.execute(
-      sql`UPDATE issue_dependencies SET valid_until = now() WHERE from_issue_id = ${blocker}`,
-    );
+    expect((await admissible()).keys).not.toContain('ISS-2');
+
+    const { expireBlocksEdgesOnDrop } = await import('../../src/issues/drop-cascade.js');
+    await harness.db.transaction((tx) => expireBlocksEdgesOnDrop(tx, projectId, blocker));
     await setStatus(blocker, 'dropped');
 
     expect((await admissible()).keys).toContain('ISS-2');
