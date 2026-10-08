@@ -97,6 +97,11 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q tmux bubblewrap
           tmux -V
           bwrap --version
+          # Ubuntu 24.04 images restrict unprivileged user namespaces through AppArmor, so bwrap
+          # starts but cannot raise a network namespace ("loopback: Failed RTM_NEWADDR"). Lift it
+          # for this VM so the confined-chat tests run instead of refusing BWRAP_UNAVAILABLE.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          bwrap --unshare-all --ro-bind / / true && echo "bwrap can confine here"
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings
