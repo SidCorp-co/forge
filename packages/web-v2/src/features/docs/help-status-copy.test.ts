@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { statusLabel } from "@/features/issues/derive";
 import { HELP_DOCS } from "./help-content.generated";
 
 const CLOSES_IT_AS_THE_DISCARD = /clos(e|es|ed|ing)\b[^.;:]{0,60}\bas\s+[*_]*dropp?ed/i;
@@ -84,5 +85,25 @@ describe("that guard, against the wordings the conflation comes back in", () => 
     const offenders = sentencesClaimingEveryClosedIssueShipped(copy);
     expect(offenders).toHaveLength(1);
     expect(copy).toContain(offenders[0]);
+  });
+});
+
+/** The statuses a person parks an issue at: the Needs you tile lists one parked at any of them. */
+const PARKED_STATUSES = ["needs_info", "waiting", "on_hold"] as const;
+
+describe("the help page's account of what Needs you counts", () => {
+  const body = HELP_DOCS.find((doc) => doc.slug === "issue-statuses")?.body ?? "";
+  const paragraph = body.split(/\n\s*\n/).find((p) => p.includes("**Needs you**")) ?? "";
+
+  it("is there to read", () => {
+    expect(paragraph).not.toBe("");
+  });
+
+  it.each(PARKED_STATUSES)("names %s among the statuses a parked issue is counted at", (status) => {
+    expect(paragraph.replace(/\s+/g, " ")).toContain(statusLabel(status));
+  });
+
+  it("says a cut list is shown as a part of at least the whole", () => {
+    expect(paragraph.replace(/\s+/g, " ")).toMatch(/of at least/);
   });
 });

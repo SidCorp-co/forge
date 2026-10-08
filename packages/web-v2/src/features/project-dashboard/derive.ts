@@ -276,16 +276,60 @@ const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; m
 ];
 
 /**
+ * How much of what a person has to act on the list leaves out. Core caps each source (failed jobs
+ * and reviews at 5 and questions at 20 across every project the viewer sees, parked issues at 5 per
+ * project) and counts each whole beside it, so the listed items and the counts are from the same two
+ * responses. An issue can be in both the question source and the parked one, so the two cannot be
+ * added: the larger is the least that is true, and the figure says "at least".
+ */
+export interface AttentionCut {
+  shown: number;
+  atLeast: number;
+  /** The parked and question items are the part cut, so the Issues list holds the rest. */
+  peopleCut: boolean;
+}
+
+export function attentionCut(
+  items: readonly DashboardAttentionItem[],
+  view: AttentionView | undefined,
+  slug: string,
+  blockersTotal: number | undefined,
+): AttentionCut | null {
+  if (!view) return null;
+  if (view.projectTotals === undefined) {
+    throw new Error(
+      "Needs you: the attention response carries no `projectTotals`, so it cannot say how much of what a person has to act on the list leaves out. The server is not the release this page was built for.",
+    );
+  }
+  const totals = view.projectTotals[slug] ?? { needsReview: 0, awaitingInput: 0, failedJobs: 0 };
+  const listed = (kinds: readonly AttentionActionKind[]) =>
+    items.filter((i) => kinds.includes(i.actionKind)).length;
+  const people = Math.max(totals.awaitingInput, blockersTotal ?? 0, listed(["input", "parked"]));
+  const atLeast =
+    Math.max(totals.failedJobs, listed(["retry"])) +
+    Math.max(totals.needsReview, listed(["diff"])) +
+    people;
+  if (atLeast <= items.length) return null;
+  return { shown: items.length, atLeast, peopleCut: people > listed(["input", "parked"]) };
+}
+
+/**
  * What the Needs you tile counts, said under its figure: items a person has to act on, by kind.
  * A failed job or a held dependency is no issue's work state, so this figure is not Blocked on a
- * person and the tile says what it is instead of sitting beside that count unexplained.
+ * person and the tile says what it is instead of sitting beside that count unexplained. Where the
+ * list is cut the caption says how much of the whole it shows.
  */
-export function attentionCaption(items: readonly DashboardAttentionItem[]): string {
+export function attentionCaption(
+  items: readonly DashboardAttentionItem[],
+  cut: AttentionCut | null = null,
+): string {
   const parts = ATTENTION_PARTS.flatMap(({ kind, one, many }) => {
     const n = items.filter((i) => i.actionKind === kind).length;
     return n === 0 ? [] : [`${n} ${n === 1 ? one : many}`];
   });
-  return parts.length === 0 ? "nothing to act on" : `to act on: ${parts.join(" · ")}`;
+  const said = parts.length === 0 ? "nothing listed to act on" : `to act on: ${parts.join(" · ")}`;
+  if (cut) return `${said} — ${cut.shown} of at least ${cut.atLeast}`;
+  return parts.length === 0 ? "nothing to act on" : said;
 }
 
 /* ------------------------------------------------------------------ *

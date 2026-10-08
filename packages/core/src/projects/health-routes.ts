@@ -33,7 +33,10 @@ interface ProjectHealthRow {
   totalActive: number;
   /** How many issues are in each work state, by the same rule the pulse and the issues search count by. */
   work: WorkStateCounts;
+  /** The most recently updated parked issues, capped at `PER_PROJECT_BLOCKER_CAP`. */
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  /** Every parked issue, the count behind the capped `blockers` list. */
+  blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
   /** Pipeline runs currently `running` or `paused`. */
@@ -118,6 +121,10 @@ projectHealthRoutes.get('/health', async (c) => {
   }
 
   const blockersByProject = groupBlockers(agg.blockerRowsAll);
+  const blockersTotalByProject = new Map<string, number>();
+  for (const r of agg.blockerRowsAll) {
+    blockersTotalByProject.set(r.projectId, (blockersTotalByProject.get(r.projectId) ?? 0) + 1);
+  }
 
   const throughputByProject = new Map<string, number>();
   for (const r of agg.throughputRows) throughputByProject.set(r.projectId, Number(r.n));
@@ -168,6 +175,7 @@ projectHealthRoutes.get('/health', async (c) => {
       totalActive: openWorkTotal(work),
       work,
       blockers: blockersByProject.get(p.id) ?? [],
+      blockersTotal: blockersTotalByProject.get(p.id) ?? 0,
       pendingEscalations: pendingEscalationsOf(rowsByProject.get(p.id) ?? []),
       avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,

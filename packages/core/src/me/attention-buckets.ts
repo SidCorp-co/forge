@@ -111,19 +111,21 @@ const issueFields = {
   projectName: projects.name,
 } as const;
 
+function needsReviewWhere(userId: string): SQL {
+  return and(
+    eq(issues.assigneeId, userId),
+    inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
+    // A person owes it an answer, so it is counted once, as awaiting input.
+    sql`not ${holdsOpenHumanQuestion(issues.id)}`,
+  ) as SQL;
+}
+
 export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> {
   return db
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(
-      and(
-        eq(issues.assigneeId, userId),
-        inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
-        // A person owes it an answer, so it is counted once, as awaiting input.
-        sql`not ${holdsOpenHumanQuestion(issues.id)}`,
-      ),
-    )
+    .where(needsReviewWhere(userId))
     .orderBy(desc(issues.updatedAt))
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
@@ -140,6 +142,24 @@ const AWAITING_COST_ORDER = [
   desc(openQuestionCost('dependents')),
   issues.updatedAt,
 ] as const;
+
+function awaitingInputWhere(userId: string): SQL {
+  return and(
+    ownedForAnswer(userId),
+    or(
+      inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
+      // A question left on a draft, closed or dropped issue is not something to act on.
+      and(
+        notInArray(issues.status, [
+          ...statusesInWorkState('draft'),
+          ...statusesInWorkState('finished'),
+        ]),
+        holdsOpenHumanQuestion(issues.id),
+      ),
+    ),
+    ...visibleProjectsWhere(),
+  ) as SQL;
+}
 
 export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
   return db
@@ -161,23 +181,7 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
       organizationMembers,
       and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
     )
-    .where(
-      and(
-        ownedForAnswer(userId),
-        or(
-          inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
-          // A question left on a draft, closed or dropped issue is not something to act on.
-          and(
-            notInArray(issues.status, [
-              ...statusesInWorkState('draft'),
-              ...statusesInWorkState('finished'),
-            ]),
-            holdsOpenHumanQuestion(issues.id),
-          ),
-        ),
-        ...visibleProjectsWhere(),
-      ),
-    )
+    .where(awaitingInputWhere(userId))
     .orderBy(...AWAITING_COST_ORDER)
     .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
 }
@@ -304,6 +308,19 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
     .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>;
 }
 
+function failedJobsWhere(userId: string): SQL {
+  return and(
+    eq(jobs.createdBy, userId),
+    eq(jobs.status, 'failed'),
+    sql`${jobs.createdAt} >= now() - interval '7 days'`,
+    notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
+    or(
+      isNull(issues.id),
+      and(notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]), ...issueArchiveSide(false)),
+    ),
+  ) as SQL;
+}
+
 export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[]> {
   return db
     .select({
@@ -320,18 +337,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     .from(jobs)
     .innerJoin(projects, eq(projects.id, jobs.projectId))
     .leftJoin(issues, eq(issues.id, jobs.issueId))
-    .where(
-      and(
-        eq(jobs.createdBy, userId),
-        eq(jobs.status, 'failed'),
-        sql`${jobs.createdAt} >= now() - interval '7 days'`,
-        notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-        or(
-          isNull(issues.id),
-          and(notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]), ...issueArchiveSide(false)),
-        ),
-      ),
-    )
+    .where(failedJobsWhere(userId))
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
     .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
 }
@@ -362,4 +368,60 @@ export function selectPendingSkillUpdates(userId: string): Promise<AttentionReco
     )
     .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
     .limit(PENDING_SKILL_UPDATES_CAP) as Promise<AttentionReconcileRow[]>;
+}
+
+/** What a project holds in the three capped buckets, counted whole. */
+export interface AttentionProjectTotals {
+  needsReview: number;
+  awaitingInput: number;
+  failedJobs: number;
+}
+
+/**
+ * Each capped bucket's unclipped count per project slug, from the same predicate the bucket's rows
+ * come from, so a screen showing part of a bucket can say how much of it that is. A project with
+ * nothing in any of the three has no entry.
+ */
+export async function selectAttentionTotals(
+  userId: string,
+): Promise<Record<string, AttentionProjectTotals>> {
+  const count = sql<number>`count(*)::int`;
+  const [review, awaiting, failed] = await Promise.all([
+    db
+      .select({ slug: projects.slug, n: count })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(needsReviewWhere(userId))
+      .groupBy(projects.slug),
+    db
+      .select({ slug: projects.slug, n: count })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .leftJoin(
+        projectMembers,
+        and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+      )
+      .leftJoin(
+        organizationMembers,
+        and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+      )
+      .where(awaitingInputWhere(userId))
+      .groupBy(projects.slug),
+    db
+      .select({ slug: projects.slug, n: count })
+      .from(jobs)
+      .innerJoin(projects, eq(projects.id, jobs.projectId))
+      .leftJoin(issues, eq(issues.id, jobs.issueId))
+      .where(failedJobsWhere(userId))
+      .groupBy(projects.slug),
+  ]);
+  const totals: Record<string, AttentionProjectTotals> = {};
+  const at = (slug: string) => {
+    totals[slug] ??= { needsReview: 0, awaitingInput: 0, failedJobs: 0 };
+    return totals[slug];
+  };
+  for (const r of review) at(r.slug).needsReview = r.n;
+  for (const r of awaiting) at(r.slug).awaitingInput = r.n;
+  for (const r of failed) at(r.slug).failedJobs = r.n;
+  return totals;
 }

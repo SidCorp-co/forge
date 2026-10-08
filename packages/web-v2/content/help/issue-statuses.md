@@ -45,10 +45,13 @@ link to them on the Issues list. Nothing the board holds is missing without bein
 
 On the project dashboard, **Needs you** counts the things waiting on a person —
 failed jobs, reviews, issues holding an open question and issues parked at Needs
-info or On hold with no question — not issues in a state, and the line under its
-figure says how many of each. An issue is counted once, and a question left on a
-draft or finished issue is not counted. So it can be larger or smaller than
-**Blocked on a person**, which counts issues.
+info, Waiting or On hold with no question — not issues in a state, and the line
+under its figure says how many of each. An issue is counted once, and a question
+left on a draft or finished issue is not counted. So it can be larger or smaller
+than **Blocked on a person**, which counts issues. Each list is cut at a few items,
+so where the project holds more than the list shows, the line under the figure says
+"of at least" how many, and where it is the parked and questioned issues that are cut
+the list links to them on the Issues page.
 
 ## The short version
 

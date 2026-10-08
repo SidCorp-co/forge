@@ -34,6 +34,8 @@ export interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts` — render it, don't recompute it. */
   unseenDraftsTotal: number;
+  /** Per project slug, the unclipped count behind the three capped lists; none of them, no key. */
+  projectTotals: Record<string, { needsReview: number; awaitingInput: number; failedJobs: number }>;
   total: number;
 }
 

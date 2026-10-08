@@ -6,7 +6,9 @@ import {
   type AttentionFailedJobRow,
   type AttentionIssueRow,
   type AttentionMentionRow,
+  type AttentionProjectTotals,
   type AttentionReconcileRow,
+  selectAttentionTotals,
   selectAwaitingInput,
   selectFailedJobs,
   selectMentions,
@@ -48,6 +50,11 @@ interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts`, which is capped. */
   unseenDraftsTotal: number;
+  /**
+   * Per project slug, the unclipped count behind `needsReview`, `awaitingInput` and `failedJobs`,
+   * which are each capped across every project the viewer sees.
+   */
+  projectTotals: Record<string, AttentionProjectTotals>;
   total: number;
 }
 
@@ -131,6 +138,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     pendingSkillUpdateRows,
     unseenDraftRows,
     unseenDraftCountRows,
+    projectTotals,
   ] = await Promise.all([
     selectNeedsReview(userId),
     selectAwaitingInput(userId),
@@ -139,6 +147,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     selectPendingSkillUpdates(userId),
     selectUnseenDrafts(userId),
     selectUnseenDraftCount(userId),
+    selectAttentionTotals(userId),
   ]);
 
   const needsReview = needsReviewRows.map((r) => issueItem('needs_review', r));
@@ -157,6 +166,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     pendingSkillUpdates,
     unseenDrafts,
     unseenDraftsTotal,
+    projectTotals,
     total:
       needsReview.length +
       awaitingInput.length +

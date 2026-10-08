@@ -165,6 +165,29 @@ describe("Findings is a Source filter, not a segment", () => {
   it("says nothing for a source it offers", () => {
     mountAt("?origin=detector");
     expect(screen.queryByTestId("unknown-origin-line")).toBeNull();
+    expect(screen.queryByTestId("dropped-origin-line")).toBeNull();
+  });
+
+  it("applies the first of a repeated source and names the ones it leaves out", () => {
+    mountAt("?origin=detector&origin=human&origin=agent");
+    expect(capturedOpts?.origin).toBe("detector");
+    const line = screen.getByTestId("dropped-origin-line");
+    expect(line).toHaveTextContent("detector");
+    expect(line).toHaveTextContent("human, agent");
+    expect(line).toHaveTextContent("are left out");
+  });
+
+  it("says nothing for a source repeated as the same value", () => {
+    mountAt("?origin=detector&origin=detector");
+    expect(capturedOpts?.origin).toBe("detector");
+    expect(screen.queryByTestId("dropped-origin-line")).toBeNull();
+  });
+
+  it("names a source dropped behind an empty one, since no source is then applied", () => {
+    mountAt("?origin=&origin=detector");
+    expect(capturedOpts?.origin).toBeUndefined();
+    expect(screen.getByTestId("dropped-origin-line")).toHaveTextContent("no source");
+    expect(screen.getByTestId("dropped-origin-line")).toHaveTextContent("detector");
   });
 
   it("offers the source as a filter of its own", () => {

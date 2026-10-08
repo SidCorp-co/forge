@@ -9,9 +9,12 @@
  * over `agent_sessions.id` so a re-run after a crash picks up where it stopped.
  */
 import { asc, eq, gt, sql } from 'drizzle-orm';
+import {
+  messageRoleToTurnRole,
+  normalizeTurnContent,
+} from '../src/agent-sessions/turns-helpers.js';
 import { closeDb, db } from '../src/db/client.js';
 import { agentSessions, agentSessionTurns } from '../src/db/schema.js';
-import { messageRoleToTurnRole, normalizeTurnContent } from '../src/agent-sessions/turns-helpers.js';
 
 interface Options {
   dryRun: boolean;
@@ -32,7 +35,6 @@ function parseArgs(argv: string[]): Options {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  // biome-ignore lint/suspicious/noConsole: CLI script
   console.log(`[backfill] dry-run=${opts.dryRun} batch-size=${opts.batchSize}`);
 
   let cursor: string | null = null;
@@ -94,7 +96,6 @@ async function main() {
     if (rows.length < opts.batchSize) break;
   }
 
-  // biome-ignore lint/suspicious/noConsole: CLI script
   console.log(
     `[backfill] sessions-scanned=${scannedSessions} sessions-backfilled=${backfilledSessions} ` +
       `rows-inserted=${insertedRows} malformed-skipped=${skippedMalformed}`,
@@ -103,7 +104,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  // biome-ignore lint/suspicious/noConsole: CLI script
   console.error('[backfill] failed', err);
   process.exit(1);
 });

@@ -21,7 +21,9 @@ vi.mock('../db/client.js', () => {
   return { db: { select: () => ({ from: () => ({ where }) }) } };
 });
 
-const { resolveGuide, resolveGuideIndex } = await import('./integration-guides.js');
+const { INTEGRATION_GUIDE_SLUG_PREFIX, providerFromGuideSlug, resolveGuide, resolveGuideIndex } =
+  await import('./integration-guides.js');
+const { FORGE_GUIDES } = await import('./registry.js');
 
 describe("an organisation's integration guide", () => {
   it('carries the agent audience when read in full', async () => {
@@ -35,5 +37,19 @@ describe("an organisation's integration guide", () => {
     const row = index.find((g) => g.slug === 'integration-epodsystem');
     expect(row?.title).toBe(ROW.title);
     for (const g of index) expect(g.audience, g.slug).toBe('agent');
+  });
+});
+
+describe('the slug space the two tiers share', () => {
+  it('has no shipped code guide under the integration prefix, so an org row can never shadow one', () => {
+    const taken = FORGE_GUIDES.filter((g) => g.slug.startsWith(INTEGRATION_GUIDE_SLUG_PREFIX));
+    expect(
+      taken.map((g) => g.slug),
+      `a code guide under \`${INTEGRATION_GUIDE_SLUG_PREFIX}\` is read as an org's integration guide for that provider`,
+    ).toEqual([]);
+  });
+
+  it('reads no shipped code guide as an integration guide for some provider', () => {
+    for (const g of FORGE_GUIDES) expect(providerFromGuideSlug(g.slug), g.slug).toBeNull();
   });
 });
