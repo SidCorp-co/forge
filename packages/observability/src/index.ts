@@ -49,6 +49,13 @@ const URL_TOKEN_PATTERN =
  */
 const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 
+/**
+ * A share link's token (`@forge/contracts/shares:SHARE_TOKEN_PREFIX`): whoever holds it opens the
+ * share, so it is redacted wherever it turns up, a `/s/<token>` path included. A cut-off or altered
+ * one goes too.
+ */
+const SHARE_TOKEN_STRING_PATTERN = /forge_share_[A-Za-z0-9_-]{8,}/g;
+
 const PEM_PRIVATE_KEY_PATTERN =
 	/-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
@@ -112,6 +119,7 @@ function scrubStringValues(obj: unknown, depth = 0): void {
 function scrubPatInString(s: string): string {
 	return s
 		.replace(PAT_STRING_PATTERN, FILTERED)
+		.replace(SHARE_TOKEN_STRING_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
 		.replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
 		.replace(GOOGLE_ACCESS_TOKEN_PATTERN, FILTERED)
@@ -345,6 +353,7 @@ export function parseSourceCommit(raw: string | undefined): string | null {
 
 export {
 	redactionCount,
+	scrubEmails,
 	scrubPersonalData,
 } from "./personal-data.js";
 

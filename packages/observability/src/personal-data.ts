@@ -175,6 +175,11 @@ export function scrubPersonalData(input: string): PersonalDataScrub {
 	return { text, redactions };
 }
 
+/** `text` with every email address replaced, and nothing else changed. */
+export function scrubEmails(text: string): string {
+	return text.replace(EMAIL, PERSONAL_DATA_PLACEHOLDER.email);
+}
+
 /** How many things a scrub replaced. */
 export const redactionCount = (r: Record<PersonalDataKind, number>) =>
 	r.email + r.number + r.name + r.secret;

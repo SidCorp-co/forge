@@ -239,22 +239,30 @@ ruling and is not registered.
   with a new surface, `report.share`); a project at `no_egress` cannot create a link-audience
   share. Emails never enter a snapshot; people appear by display name.
 - **Permission-checked.** Creating needs `shares.write` (member by default) and a fresh read, as
-  the creator, of every run the snapshot holds; a run the creator can no longer read refuses the
-  share by name. Two audiences: `members` (opener must be signed in and hold `project.read` now)
+  the creator, of every run the snapshot holds, made by the subject source registered for the
+  subject's kind (`packages/core/src/shares/ports.ts:ShareSubjectSource`); a run the creator can no
+  longer read refuses the share by name, and a kind with no source registered is refused naming the
+  kinds that have one. Two audiences: `members` (opener must be signed in and hold `project.read` now)
   and `link` (anyone with the token; creating one needs `shares.public`, admin by default and
   token-explicit per ADR 0007).
 - **Expiring.** `expires_at` is required: default 7 days, at most 30.
-- **Revocable.** The creator or a `project.admin` revokes it, effective on the next request. A
-  creator who leaves the project has their links revoked by the membership-removed outbox event.
-- **Read-only.** The page `/s/[token]` draws the snapshot with the same block registry and no
-  actions, no navigation and no live reads; for the `link` audience, `ref` cells render as text,
+- **Revocable.** The creator or a `project.admin` revokes it, effective on the next request. A share
+  stands only while its creator still holds the permission that created it (`shares.write`, or
+  `shares.public` for a `link` share), read on every open, so a creator who leaves the project or
+  loses that permission stops their links on the next request.
+- **Read-only.** The page `/s/[token]` draws the snapshot as data — each block by its text fallback
+  (`packages/web-v2/src/features/shares/components/shared-answer.tsx:SharedBlock`) while the web block
+  registry holds no renderer for it — with no actions, no navigation and no live reads; for the `link` audience, `ref` cells render as text,
   not links.
 - **Stored.** A `share_links` table owned by a new `shares` domain (`operations`): `id`,
   `project_id`, `token_hash` (SHA-256 of a 256-bit random token shown once), `audience`,
   `subject_kind`, `snapshot` (jsonb), `created_by`, `created_at`, `expires_at`, `revoked_at`,
   `revoked_by`, `view_count`, `last_viewed_at`.
 - **Served** with `Cache-Control: no-store`, `Referrer-Policy: no-referrer` and
-  `X-Robots-Tag: noindex`, and rate-limited per token and per address.
+  `X-Robots-Tag: noindex`, and rate-limited per token and per address. The token reaches core only
+  in a request body (`POST /api/shares/open`, and `/api/shares/open/member` for a signed-in reader),
+  never in a core path, and carries the prefix `forge_share_` that the log scrubber
+  (`packages/observability/src/index.ts:scrubLogText`) redacts wherever it appears.
 
 ## How the assistant and the reply check use the ports
 
@@ -334,7 +342,7 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 | B2 saved project templates | `report_templates` writer, `reports.write`, the template picker in chat | **yes: `report_templates`** |
 | B3 templates in status-reports | a stored report holds a `ReportDocument`; the `status_report` schedule takes `templateId` | **yes: `status_reports` gains template id, version and document** |
 | B4 export | Markdown from `toText`, CSV per `table` block, a print stylesheet for PDF | none |
-| B5 doors | external chat doors (Rocket.Chat) post `toText` with a member link; share revoked on membership removal | none |
+| B5 doors | external chat doors (Rocket.Chat) post `toText` with a member link | none |
 | B6 more templates | weekly delivery, requirement coverage, feedback digest | none |
 
 ### Phase C — executor adapters, promotion
@@ -353,10 +361,10 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 
 | Threat | Path | Control |
 |---|---|---|
-| Token leaks | pasted in chat, a proxy log, a `Referer` header, browser history | only the hash is stored; `no-referrer`; `no-store`; short expiry; revocation on the next request; the request logger is made to redact `/s/` paths, so the token never reaches Forge's own logs |
+| Token leaks | pasted in chat, a proxy log, a `Referer` header, browser history | only the hash is stored; `no-referrer`; `no-store`; short expiry; revocation on the next request; the token reaches core only in a request body, and the scrubber redacts its `forge_share_` shape in every log line and error report, so it never reaches Forge's own logs |
 | Guessing | enumerating tokens | 256-bit random token; per-token and per-address rate limit; one answer for unknown, expired and revoked |
 | Wider data than meant | a link that reads live | the snapshot is frozen at creation; the view does no query |
-| Stale authority | the creator is demoted or leaves | creation re-reads every run as the creator; leaving revokes the creator's links; a `members` link re-checks the opener's `project.read` every view |
+| Stale authority | the creator is demoted or leaves | creation re-reads every run as the creator; every view re-reads the creator's `shares.write` or `shares.public`, so leaving stops the creator's links; a `members` link re-checks the opener's `project.read` every view |
 | Secrets or personal data | a frame cell holding a token or an email | `scrubSecretsDeep` and the project's data policy at creation; emails never copied; `no_egress` projects cannot create `link` shares |
 | Injected markup | model text in a title or a flow label | blocks are data drawn as text; no HTML; no markup parsing |
 | Indexing and caching | a crawler, a shared cache | `noindex`, `no-store`, no sitemap entry |

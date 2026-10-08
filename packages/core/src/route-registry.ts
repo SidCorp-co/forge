@@ -135,6 +135,7 @@ import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
+import { projectShareRoutes, shareOpenRoutes } from './shares/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
 import { statusReportRoutes } from './status-reports/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
@@ -249,6 +250,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', needsYouRoutes);
   app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', statusReportRoutes);
+  app.route('/api/projects', projectShareRoutes);
   app.route('/api', reportQueryRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
@@ -326,6 +328,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', releaseBatchRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
+  app.route('/api/shares', shareOpenRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
   app.route('/api/runners', runnerRoutes);

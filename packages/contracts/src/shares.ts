@@ -4,6 +4,7 @@
 // ruling, and its descriptor cannot say otherwise: `hostedBy` is the literal "forge".
 
 import { z } from "zod";
+import type { RefusalStatuses } from "./refusal.js";
 import { ReportDocumentSchema } from "./report-templates.js";
 
 export const SHARE_AUDIENCES = ["members", "link"] as const;
@@ -14,6 +15,50 @@ export type ShareSubjectKind = (typeof SHARE_SUBJECT_KINDS)[number];
 
 export const SHARE_DEFAULT_EXPIRY_DAYS = 7;
 export const SHARE_MAX_EXPIRY_DAYS = 30;
+
+/**
+ * A share token: this prefix and 43 base64url characters (256 random bits), shown once at creation
+ * and stored only as its SHA-256. The prefix is what lets the log scrubber
+ * (`@forge/observability:scrubLogText`) find one anywhere, so it never reaches a log.
+ */
+export const SHARE_TOKEN_PREFIX = "forge_share_";
+export const SHARE_TOKEN_PATTERN = /^forge_share_[A-Za-z0-9_-]{43}$/;
+export const SHARE_TOKEN_SHAPE = `${SHARE_TOKEN_PREFIX} followed by 43 base64url characters`;
+/** Where a reader opens a share, under the web origin. */
+export const sharePath = (token: string) => `/s/${token}`;
+
+export const SHARE_REFUSAL_CODES = [
+  "SHARE_REFUSED",
+  /** The subject kind has no source registered in this build, so nothing can be frozen from it. */
+  "SHARE_SUBJECT_UNSUPPORTED",
+  "SHARE_SUBJECT_NOT_FOUND",
+  /** The frozen document holds a run of another project. */
+  "SHARE_SUBJECT_FOREIGN",
+  /** The frozen document, before or after scrubbing, is not a valid report document. */
+  "SHARE_SNAPSHOT_INVALID",
+  /** A link-audience share of a project whose data policy keeps its data from leaving. */
+  "SHARE_EGRESS_FORBIDDEN",
+  "SHARE_REVOKE_FORBIDDEN",
+  "SHARE_ALREADY_REVOKED",
+  "SHARE_NOT_FOUND",
+  /** The one answer to opening an unknown, tampered, expired or revoked token, or one whose creator left. */
+  "SHARE_NOT_AVAILABLE",
+  "SHARE_TOKEN_MALFORMED",
+  /** A members share opened by nobody signed in. */
+  "SHARE_SIGN_IN_REQUIRED",
+  /** A members share opened by someone who cannot read the project. */
+  "SHARE_AUDIENCE_FORBIDDEN",
+] as const;
+export type ShareRefusalCode = (typeof SHARE_REFUSAL_CODES)[number];
+
+export const SHARE_REFUSAL_STATUSES = {
+  SHARE_SUBJECT_NOT_FOUND: 404,
+  SHARE_ALREADY_REVOKED: 409,
+  SHARE_NOT_FOUND: 404,
+  SHARE_NOT_AVAILABLE: 404,
+  SHARE_TOKEN_MALFORMED: 400,
+  SHARE_SIGN_IN_REQUIRED: 403,
+} as const satisfies RefusalStatuses<ShareRefusalCode>;
 
 export const ShareTargetDescriptorSchema = z
   .object({
@@ -61,6 +106,16 @@ export const ShareLinkViewSchema = z
   .strict();
 export type ShareLinkView = z.infer<typeof ShareLinkViewSchema>;
 
+/** What creating a share answers: the share, and the one time its link is shown. */
+export const ShareCreatedSchema = z
+  .object({ share: ShareLinkViewSchema, url: z.string().min(1) })
+  .strict();
+export type ShareCreated = z.infer<typeof ShareCreatedSchema>;
+
+/** Opening a share: the token travels in the body, never in a path a log or a proxy keeps. */
+export const ShareOpenSchema = z.object({ token: z.string().min(1).max(200) }).strict();
+export type ShareOpen = z.infer<typeof ShareOpenSchema>;
+
 /** What a reader opens: the frozen document, read-only. For a `link` audience a ref cell is drawn as text. */
 export const ShareSnapshotSchema = z
   .object({
@@ -76,6 +131,7 @@ export interface ShareTarget extends ShareTargetDescriptor {
   publish(input: {
     projectId: string;
     audience: ShareAudience;
+    subjectKind: ShareSubjectKind;
     expiresAt: Date;
     document: z.infer<typeof ReportDocumentSchema>;
     createdBy: string;

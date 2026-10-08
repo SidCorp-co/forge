@@ -12,6 +12,19 @@ const nextConfig: NextConfig = {
   // without those, standalone because Turbopack merges an extended config's `paths`.
   typescript: { ignoreBuildErrors: true, tsconfigPath: "tsconfig.next.json" },
   ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+  // a share page carries its token in its path: never cached, indexed or sent on as a Referer
+  async headers() {
+    return [
+      {
+        source: "/s/:token*",
+        headers: [
+          { key: "Cache-Control", value: "no-store" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     const wellKnown = [
       {
