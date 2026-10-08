@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.155] - 2026-10-08
+
+Workflow canvas gets a focus mode, a one-line banner and a foldable side panel
+
+### Changed
+
+- **A workflow design's canvas gets the room.** Focus mode (F, Esc, `#canvas`) fills the screen; the decision banner is one line with folding details; the facts rail folds away; the canvas keeps 60% of the viewport.
+
 ## [0.4.0-dev.154] - 2026-10-08
 
 Onboarding runs remove their temporary worktree before closing the session
