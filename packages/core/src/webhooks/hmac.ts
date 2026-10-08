@@ -1,5 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+/** An adapter throws this for a delivery that fails its binding's signature; the route answers 401 on the type, never on a message. */
+export class SignatureVerificationError extends Error {
+  override name = 'SignatureVerificationError';
+}
+
 export function verifyHmacSignature(
   secret: string,
   rawBody: string,

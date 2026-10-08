@@ -3146,6 +3146,8 @@
 
 - **A failed inbound webhook names what failed in the error report.** The report now holds the adapter's own error, tagged with provider, project and binding, where every failure used to read `handler failed`. The sender's response is unchanged.
 
+- **A failed inbound webhook's error report names its binding even when a database write failed.** A delivery for a repository with "signature" in its name is also no longer refused as badly signed, and its failure reaches the report.
+
 - **A paused schedule no longer wears a green pill for a run from weeks ago.** Automation says "Paused", dates the last run ("Succeeded 17 days ago · stale"), opens with "5 schedules · none enabled" and reads cron in words.
 
 - **A status change kept at another status says so.** When an agent's park becomes needs-info,

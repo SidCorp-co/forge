@@ -43,7 +43,7 @@ export async function handleDelivery(job: DeliveryJob): Promise<void> {
     .from(projectWebhooks)
     .where(eq(projectWebhooks.id, job.webhookId))
     .limit(1);
-  if (!hook || !hook.active) {
+  if (!hook?.active) {
     logger.info({ webhookId: job.webhookId }, 'webhook-delivery: skipped (missing or inactive)');
     return;
   }

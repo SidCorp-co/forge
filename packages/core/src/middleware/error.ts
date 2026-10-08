@@ -2,7 +2,12 @@ import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getLogger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import {
+  holdServerTags,
+  isSentryEnabled,
+  Sentry,
+  type ServerHeldTag,
+} from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -64,7 +69,7 @@ export interface SentryCause {
   /** The error that was caught; sent in place of the exception that replaced it. */
   error: unknown;
   /** Tags naming what the failing call was, set on the event beside the request's own. */
-  tags: Record<string, string>;
+  tags: Record<ServerHeldTag, string>;
 }
 
 const sentryCauses = new WeakMap<HTTPException, SentryCause>();
@@ -142,6 +147,9 @@ function captureToSentry(
     scope.setTag('error.code', code);
     const requestId = c.get('requestId');
     if (requestId) scope.setTag('request.id', requestId);
+    if (carried && typeof carried.error === 'object' && carried.error !== null) {
+      holdServerTags(carried.error, carried.tags);
+    }
     Sentry.captureException(carried ? carried.error : err);
   });
 }

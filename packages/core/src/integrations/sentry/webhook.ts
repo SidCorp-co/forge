@@ -1,5 +1,5 @@
 import { logger } from '../../logger.js';
-import { verifyHmacSignature } from '../../webhooks/hmac.js';
+import { SignatureVerificationError, verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
 import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
@@ -127,7 +127,7 @@ export async function handleSentryWebhook(
   }
   const signature = input.headers[SENTRY_SIGNATURE_HEADER] ?? null;
   if (!verifyHmacSignature(ctx.integrationSecret, input.rawBody, signature)) {
-    throw new Error('sentry: signature verification failed');
+    throw new SignatureVerificationError('sentry: signature verification failed');
   }
 
   const envelope = readEnvelope(input);
