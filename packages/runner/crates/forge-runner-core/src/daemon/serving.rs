@@ -1690,7 +1690,15 @@ mod tests {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test of the production rule: where Config::path puts config.toml"
+        )]
         let ours = crate::config::Config::path().unwrap();
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test of the production rule hands config_dir_in this process's own environment"
+        )]
         let dir = config_dir_in(|k| std::env::var_os(k)).expect("this process has a HOME");
         assert_eq!(Some(dir.as_path()), ours.parent());
     }

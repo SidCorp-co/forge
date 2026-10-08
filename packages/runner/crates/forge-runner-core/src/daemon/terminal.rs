@@ -67,12 +67,20 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
     name
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the tmux socket's dir, a writer held by ISS-1265, which owes its move to config::base_dir"
+)]
 fn session_config_dir() -> Option<std::path::PathBuf> {
     crate::config::Config::path()
         .ok()
         .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the config dir with no XDG override, compared against the socket's to name the unit; a read"
+)]
 fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -345,6 +353,11 @@ async fn ensure_server() -> bool {
     static PLACING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_attempt = PLACING.lock().await;
     if server_answers().await {
+        // A server an older runner left up, or one whose keepalive was killed, holds sessions
+        // and no keepalive; the master placed now would become its last session (ISS-1344 r5).
+        if SessionIdentity::current().is_some() && !keepalive_is_held().await {
+            hold_the_keepalive_here().await;
+        }
         return true;
     }
     let Some(id) = SessionIdentity::current() else {
@@ -426,6 +439,12 @@ async fn hold_the_keepalive_here() {
 }
 
 const KEEPALIVE_READY_WITHIN: Duration = Duration::from_secs(5);
+
+async fn keepalive_is_held() -> bool {
+    tmux(&["has-session", "-t", &session_target(KEEPALIVE)])
+        .await
+        .is_ok_and(|o| o.status.success())
+}
 
 enum Placement {
     Accepted,
@@ -879,6 +898,10 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> 
     vec!["sh".into(), "-c".into(), line]
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "MCP_TOOL_TIMEOUT, an operator value a pane keeps"
+)]
 pub fn pane_env() -> Vec<(String, String)> {
     match crate::runner::process::mcp_tool_timeout_default(
         std::env::var_os("MCP_TOOL_TIMEOUT").as_deref(),
@@ -1089,6 +1112,10 @@ pub(crate) mod testing {
     /// a failure naming `why`; anywhere else it is printed, and the caller
     /// returns.
     pub(crate) fn cannot_run(why: &str) {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "FORGE_TEST_REQUIRE_TMUX, whether this test run promised a tmux; test only"
+        )]
         if std::env::var_os(REQUIRE_TMUX).is_some_and(|v| !v.is_empty()) {
             panic!(
                 "{why} — and {REQUIRE_TMUX} is set, so this run promised tmux and a server of this test's own; returning here would pass the test without running it"
@@ -2236,6 +2263,10 @@ done
                 .expect("mode");
         }
         // Before anything resolves the binary: `resolve_claude_bin` caches in a `OnceLock`.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test puts its fake claude ahead of the PATH it read"
+        )]
         std::env::set_var(
             "PATH",
             format!(
@@ -2306,7 +2337,7 @@ done
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn with_no_unit_for_the_server_a_master_that_exits_reads_as_gone() {
-        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit).await;
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit, false).await;
     }
 
     /// The same where systemd takes the unit and its server never answers.
@@ -2314,13 +2345,30 @@ done
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn with_a_unit_that_never_answers_a_master_that_exits_reads_as_gone() {
-        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::UnitNeverAnswers)
-            .await;
+        a_master_that_exits_reads_as_gone_when_systemd(
+            testing::SystemdSays::UnitNeverAnswers,
+            false,
+        )
+        .await;
+    }
+
+    /// ISS-1344 r5, from judge j6 (criterion 26). The upgrade path: an older
+    /// runner left the session server up holding a session of its own and no
+    /// keepalive. The master placed now outlives that session, so without the
+    /// keepalive it is the server's last session and its exit takes the server.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn with_a_server_already_up_without_the_keepalive_a_master_that_exits_reads_as_gone() {
+        a_master_that_exits_reads_as_gone_when_systemd(testing::SystemdSays::NoUnit, true).await;
     }
 
     #[cfg(unix)]
     #[allow(clippy::await_holding_lock)]
-    async fn a_master_that_exits_reads_as_gone_when_systemd(says: testing::SystemdSays) {
+    async fn a_master_that_exits_reads_as_gone_when_systemd(
+        says: testing::SystemdSays,
+        already_up: bool,
+    ) {
         use crate::daemon::recovery::MasterPresence;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let iso = testing::IsolatedServer::new("nounit");
@@ -2335,10 +2383,29 @@ done
         let _stand_in = testing::StandIn::here(says);
         let cwd = crate::test_scratch::Scratch::new("nounit-cwd");
         let name = session_name(MASTER_PREFIX, &format!("nounit-{}", std::process::id()));
-        let argv = ["sh", "-c", "sleep 1"].map(String::from);
+        // The older session outlives the placement and is ended after it, so the server is up
+        // when the master is placed and the master is the last one standing when it exits.
+        let older = session_name(RUN_PREFIX, &format!("older-{}", std::process::id()));
+        if already_up {
+            let up = tmux(&["new-session", "-d", "-s", &older, "sh", "-c", "sleep 60"])
+                .await
+                .expect("the older runner's session is started");
+            assert!(up.status.success(), "the server is up before the daemon");
+            assert!(
+                !names_with_prefix("").await.contains(&KEEPALIVE.to_string()),
+                "the server an older runner left holds no keepalive"
+            );
+        }
+        let argv = ["sh", "-c", "sleep 2"].map(String::from);
         ensure(&name, cwd.path(), &argv, &[], None)
             .await
             .expect("the master is placed");
+        if already_up {
+            let ended = tmux(&["kill-session", "-t", &session_target(&older)])
+                .await
+                .expect("the older session is ended");
+            assert!(ended.status.success(), "the older session was still there");
+        }
         let held = names_with_prefix("").await.contains(&KEEPALIVE.to_string());
         // Read as the sweep reads, until the master's exit is read as one: a tmux slow to answer
         // under a loaded test run reads `Unanswered` for a moment, and only a server that is
@@ -2380,6 +2447,10 @@ done
         std::fs::write(bin.join("forge-runner"), "#!/bin/sh\nexit 0\n")
             .expect("the planted runner");
         testing::executable(&bin.join("forge-runner"));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads its own PATH to show it does not reach the planted HOME"
+        )]
         let inherited = std::env::var_os("PATH").unwrap_or_default();
         assert!(
             which::which_in("forge-runner", Some(&inherited), "/")
@@ -2502,6 +2573,10 @@ done
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the test reads whether an operator set MCP_TOOL_TIMEOUT"
+    )]
     fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
         let env = pane_env();
         match std::env::var_os("MCP_TOOL_TIMEOUT") {
@@ -3092,6 +3167,10 @@ done
     /// emptied it failed every `git` spawned by name beside it.
     #[test]
     fn a_fake_tmux_leaves_the_process_environment_as_it_found_it() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test reads the fake tmux's variables to see them put back"
+        )]
         let read = || {
             [
                 "PATH",

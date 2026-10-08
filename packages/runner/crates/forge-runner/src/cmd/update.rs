@@ -557,6 +557,10 @@ fn print_restart_hint() {
 fn systemctl() -> std::process::Command {
     let mut cmd = std::process::Command::new("systemctl");
     cmd.arg("--user");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "XDG_RUNTIME_DIR, whether systemctl --user can reach the user manager"
+    )]
     if std::env::var_os("XDG_RUNTIME_DIR").is_none() {
         let uid = unsafe { getuid() };
         cmd.env("XDG_RUNTIME_DIR", format!("/run/user/{uid}"));

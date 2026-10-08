@@ -31,6 +31,10 @@ fn master(home: &Scratch, args: &[&str]) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_forge-runner"));
     cmd.env_clear();
     for var in TEMP_VARS {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the temp-dir variables it passes to the child, read by name"
+        )]
         if let Some(value) = std::env::var_os(var) {
             cmd.env(var, value);
         }

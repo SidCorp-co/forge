@@ -121,7 +121,12 @@ pub fn for_pane() -> Result<(String, String), Unresolved> {
     let own = crate::exe::own().ok().map(|o| o.path);
     let claude = PathBuf::from(crate::runner::process::resolve_claude_bin());
     let claude = claude.is_absolute().then_some(claude);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "$HOME for $HOME/.local/bin on a pane's PATH, a read"
+    )]
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    #[expect(clippy::disallowed_methods, reason = "the PATH a pane inherits")]
     let inherited = std::env::var_os("PATH");
     let path = build(
         own.as_deref(),

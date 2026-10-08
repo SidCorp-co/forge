@@ -237,6 +237,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
 /// The tmux session the pane `$TMUX_PANE` names belongs to, asked of the
 /// runner's own server.
 async fn session_of_this_pane(socket: &Path) -> Result<String, String> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "TMUX_PANE, the pane the hook runs in"
+    )]
     let pane = std::env::var("TMUX_PANE")
         .ok()
         .filter(|p| !p.trim().is_empty())
@@ -273,6 +277,10 @@ async fn session_of_this_pane(socket: &Path) -> Result<String, String> {
 
 /// What the hook can establish about the process it ran in, holding no token.
 async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "TMUX, the server the hook runs under"
+    )]
     let tmux = std::env::var("TMUX").ok();
     let socket = forge_runner_core::daemon::terminal::socket_path();
     let named = match (tmux.as_deref(), socket.as_deref()) {
@@ -438,6 +446,10 @@ pub fn dialog_caller(
 /// The gate's answer to a question dialog, marking an allowance it could not
 /// decide.
 async fn answer_dialog(dir: Option<&Path>) -> String {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "TMUX, the server the hook runs under"
+    )]
     let tmux = std::env::var("TMUX").ok();
     let socket = forge_runner_core::daemon::terminal::socket_path();
     let named = match (tmux.as_deref(), socket.as_deref()) {

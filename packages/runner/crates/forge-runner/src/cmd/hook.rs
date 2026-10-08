@@ -50,6 +50,10 @@ pub async fn run(args: Args) {
     let Ok(token) = session_tokens::token_from_env() else {
         return;
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "connects to the daemon's socket beside the config"
+    )]
     let Ok(cfg_path) = Config::path() else {
         return;
     };
@@ -79,8 +83,10 @@ mod tests {
             !body.contains('?'),
             "a `?` here propagates a failure into the agent's hook exit code"
         );
+        // A lint admission is an attribute, not a call that can panic.
+        let calls = body.replace("#[expect(", "#[");
         assert!(
-            !body.contains("unwrap()") && !body.contains("expect("),
+            !calls.contains("unwrap()") && !calls.contains("expect("),
             "a panic in a hook is a non-zero exit in the agent's critical path"
         );
         assert!(

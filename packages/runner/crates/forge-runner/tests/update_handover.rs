@@ -51,14 +51,26 @@ fn wait_for(path: &Path, what: &str) -> String {
 /// the listener was.
 #[test]
 fn image() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the directory the parent test handed this child image"
+    )]
     let Some(dir) = std::env::var_os(DIR_ENV).map(PathBuf::from) else {
         return;
     };
     let sock = dir.join("control.sock");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "whether this image was handed a listener"
+    )]
     if std::env::var_os(handover::LISTENER_ENV).is_none() {
         let listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind");
         std::fs::write(dir.join("ready"), std::process::id().to_string()).unwrap();
         wait_for(&dir.join("connected"), "connection");
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the image the parent test hands over into"
+        )]
         let exe = std::env::var_os(INTO_ENV)
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_exe().expect("this binary"));

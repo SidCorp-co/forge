@@ -41,6 +41,10 @@ impl std::fmt::Display for Backend {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "FORGE_RUNNER_CRED_STORE, the operator forcing a credential backend"
+)]
 fn forced_backend() -> Option<Backend> {
     match std::env::var("FORGE_RUNNER_CRED_STORE").ok().as_deref() {
         Some("keychain") => Some(Backend::Keychain),
@@ -133,6 +137,10 @@ pub fn clear_device_token() -> Result<()> {
 }
 
 pub fn load_pat() -> Result<Option<String>> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "FORGE_PAT, a token the operator hands this process"
+    )]
     if let Ok(tok) = std::env::var("FORGE_PAT") {
         let tok = tok.trim();
         if !tok.is_empty() {
@@ -278,6 +286,10 @@ pub(crate) struct ScopedVar {
 impl ScopedVar {
     /// Sets `key` for the lifetime of the guard.
     pub(crate) fn set(key: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the value ScopedVar puts back when it drops; test only"
+        )]
         let before = std::env::var_os(key);
         std::env::set_var(key, value);
         Self { key, before }
@@ -285,6 +297,10 @@ impl ScopedVar {
 
     /// Unsets `key` for the lifetime of the guard.
     pub(crate) fn unset(key: &'static str) -> Self {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the value ScopedVar puts back when it drops; test only"
+        )]
         let before = std::env::var_os(key);
         std::env::remove_var(key);
         Self { key, before }

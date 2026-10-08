@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 # No doctests: one builds this crate with neither `cfg(test)` nor `test-support`, so `config`'s
-# refusal to resolve a dir outside a test's scratch is absent there, and its code can come from a
-# file no scan reads (ISS-1344). `config::tests` holds this.
+# refusal to resolve a dir outside a test's scratch is absent there, and clippy lints no doctest
+# (ISS-1344). `config::tests` holds this.
 [lib]
 doctest = false
 
@@ -48,11 +48,11 @@ keyring = { workspace = true }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_IO"] }
 
 [dev-dependencies]
-# The lexer `route_scan` reads each source file with, so a comment is no route and a read is
-# counted at its call site (ISS-1344); `span-locations` for the line a route stands on.
-proc-macro2 = { version = "1", features = ["span-locations"] }
 tokio = { workspace = true, features = ["test-util"] }
 # Only the tests need a subscriber: the library emits tracing events and says nothing about where
 # they go, but ISS-1050 criterion 18 is a claim about what the daemon LOG says, and a claim about a
 # log that nothing reads back is carried by the code's good intentions rather than by a check.
 tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

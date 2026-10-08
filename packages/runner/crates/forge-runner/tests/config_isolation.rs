@@ -54,6 +54,10 @@ fn status(env: &[(&str, &Path)]) -> Output {
     // `env_clear` leaves Windows no TMP or TEMP, and the child's temp dir
     // decides what reads as a scratch there.
     for var in ["TMPDIR", "TMP", "TEMP"] {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the temp-dir variables it passes to the child, read by name"
+        )]
         if let Some(value) = std::env::var_os(var) {
             cmd.env(var, value);
         }

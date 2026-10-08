@@ -142,6 +142,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         )?;
         out.flush()?;
     }
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "NO_COLOR, the operator turning colour off"
+    )]
     let mut view = view::View::new(
         args.interval,
         view::colour_wanted(std::env::var_os("NO_COLOR")),

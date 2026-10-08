@@ -8,6 +8,10 @@ use std::process::{Command, Output};
 
 use forge_runner_core::test_scratch::Scratch;
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the test hands its child this process's PATH"
+)]
 fn logs(args: &[&str]) -> Output {
     let home = Scratch::new("logs-cmd");
     Command::new(env!("CARGO_BIN_EXE_forge-runner"))

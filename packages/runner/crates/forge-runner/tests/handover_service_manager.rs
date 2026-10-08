@@ -24,6 +24,10 @@ const DIR_ENV: &str = "FORGE_HANDOVER_EXIT_TEST_DIR";
 /// handover came back.
 #[test]
 fn image() {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the directory the parent test handed this child image"
+    )]
     let Some(dir) = std::env::var_os(DIR_ENV).map(PathBuf::from) else {
         return;
     };

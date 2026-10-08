@@ -123,6 +123,7 @@ pub struct SayArgs {
 }
 
 fn transcript(slug: &str) -> anyhow::Result<std::path::PathBuf> {
+    #[expect(clippy::disallowed_methods, reason = "reads a master's transcript")]
     let base = Config::path()?.with_file_name("master").join(slug);
     Ok(base.join("transcript.log"))
 }
@@ -458,6 +459,10 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "USER or LOGNAME, the operator named in a message"
+)]
 fn whoami() -> String {
     std::env::var("USER")
         .or_else(|_| std::env::var("LOGNAME"))
@@ -465,6 +470,7 @@ fn whoami() -> String {
 }
 
 async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
+    #[expect(clippy::disallowed_methods, reason = "reads the masters' records")]
     let base = Config::path()?.with_file_name("master");
     // Read only, as `forge-runner status` reads it: `Ledger::open` creates the
     // file and migrates it, so a status typed on a box whose CLI is newer than

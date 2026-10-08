@@ -319,6 +319,10 @@ pub fn base_dir() -> Result<PathBuf> {
 /// [`base_dir`] does, and refuses reads as well as writes outside a test's own
 /// scratch: a spawned `forge-runner status` read the live box's ledger.
 pub fn data_dir() -> Result<PathBuf> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the OS data dir data_dir falls back to, guarded below in a test build"
+    )]
     let dir = os_dir(DATA_HOME, dirs_next::data_dir, "data")?;
     #[cfg(any(test, feature = "test-support"))]
     refuse_outside_a_scratch(&dir, "resolves no data dir", DATA_HOME)?;
@@ -330,6 +334,10 @@ pub fn data_dir() -> Result<PathBuf> {
 /// refusal for any home outside a test's own scratch, since a test that wrote
 /// a transcript under the invoking user's home left its directory there.
 pub fn home_dir() -> Result<PathBuf> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the OS home home_dir falls back to, guarded below in a test build"
+    )]
     let dir = os_dir(HOME, dirs_next::home_dir, "home")?;
     #[cfg(any(test, feature = "test-support"))]
     refuse_outside_a_scratch(&dir, "resolves no home", HOME)?;
@@ -348,6 +356,10 @@ fn refuse_outside_a_scratch(dir: &std::path::Path, what: &str, var: &str) -> Res
     )))
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the OS config dir base_dir and Config::path fall back to; base_dir guards it in a test build"
+)]
 fn os_config_dir() -> Result<PathBuf> {
     os_dir(CONFIG_HOME, dirs_next::config_dir, "config")
 }
@@ -361,6 +373,10 @@ const HOME: &str = "HOME";
 /// platform, so a test scoping it is isolated where `dirs_next` ignores it.
 fn os_dir(var: &str, os: fn() -> Option<PathBuf>, what: &str) -> Result<PathBuf> {
     #[cfg(any(test, feature = "test-support"))]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the variable a test build scopes the dir with, taken only where it is a scratch"
+    )]
     if let Some(x) = std::env::var_os(var).map(PathBuf::from) {
         if x.is_absolute() && crate::test_scratch::is_scratch(&x) {
             return Ok(x);
@@ -379,6 +395,10 @@ impl Config {
 
     /// Load config, or a default if the file does not exist yet.
     pub fn load() -> Result<Self> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Config::load reads config.toml where Config::path names it"
+        )]
         let p = Self::path()?;
         if !p.exists() {
             return Ok(Self::default());
@@ -452,8 +472,13 @@ mod tests {
         #[cfg(target_os = "linux")]
         {
             xdg.move_to(&users_own);
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "the test that reading where the config lives is still answered outside a scratch"
+            )]
+            let read = Config::path().unwrap();
             assert_eq!(
-                Config::path().unwrap(),
+                read,
                 users_own.join("forge-runner").join("config.toml"),
                 "reading where the config lives is still answered"
             );
@@ -557,238 +582,329 @@ mod tests {
     /// ISS-1344. A writer under the config dir resolves it through
     /// [`base_dir`], the ledger through [`data_dir`] and a transcript's home
     /// through [`home_dir`], so the test build's refusal reaches all three.
-    /// Every other route to a directory the OS names for the user, in any `.rs`
-    /// file of either crate, is counted here per occurrence by file with what it
-    /// does, and a new one goes red until it is either moved or argued in.
-    /// [`crate::route_scan`] says what a route is: a read is counted where it
-    /// happens, whatever names the variable it reads.
+    /// Every other route `packages/runner/clippy.toml` names, in any target of
+    /// either crate, is counted here per occurrence by file with what it does,
+    /// as clippy resolves it with every lint attribute overridden, so a new one
+    /// goes red until it is either moved or argued in. The spelling of a read
+    /// is the compiler's business, not this test's: two judges beat a token
+    /// scan with spellings it did not know.
     #[test]
     fn every_other_resolution_of_the_config_dir_is_a_counted_reader() {
-        const ALLOWED: &[(&str, usize, &str)] = &[
+        // File, its occurrences on Linux, macOS and Windows, and what they do.
+        const ALLOWED: &[(&str, [usize; 3], &str)] = &[
             (
                 "forge-runner-core/build.rs",
-                1,
-                "stamped: the build's own FORGE_RUNNER_* variables, read through `key`",
+                [3, 3, 3],
+                "the target triple, the package version and the FORGE_RUNNER_* stamps the \
+                 build stamps into the binary",
             ),
             (
                 "forge-runner-core/src/auth/cred_store.rs",
-                2,
-                "ScopedVar's set and unset, each reading the variable it scopes to put it back \
-                 when the guard drops; test only",
+                [4, 4, 4],
+                "FORGE_RUNNER_CRED_STORE and FORGE_PAT, operator overrides; and ScopedVar's set \
+                 and unset, each reading the value it puts back; test only",
+            ),
+            (
+                "forge-runner-core/src/auth/pairing.rs",
+                [1, 1, 1],
+                "FORGE_RUNNER_MACHINE_ID, an operator override",
             ),
             (
                 "forge-runner-core/src/config.rs",
-                10,
-                "os_config_dir, data_dir and home_dir, the guarded routes base_dir, the ledger \
-                 and a transcript's home resolve through: the three variables a test build \
-                 honours in a scratch, os_dir's read of whichever it is handed, and the three OS \
-                 dirs they fall back to; Config::load's read; and the reader the isolation test \
-                 checks",
+                [6, 5, 5],
+                "the three OS dirs base_dir, data_dir and home_dir fall back to, guarded in a test \
+                 build; os_dir's read of the variable a test scopes them with; Config::load's \
+                 read; and, on Linux, the test that reading is still answered outside a scratch",
             ),
             (
                 "forge-runner-core/src/daemon/handover.rs",
-                1,
-                "the environment a handover passes whole to the daemon taking over, a read",
-            ),
-            (
-                "forge-runner-core/src/daemon/serving.rs",
-                8,
-                "config_dir_in, which rebuilds the XDG rule from another process's environment to \
-                 compare it and only reads; its tests, which answer a planted environment; and a \
-                 test of the production rule, which hands it this process's own environment",
-            ),
-            (
-                "forge-runner-core/src/daemon/terminal.rs",
-                6,
-                "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
-                 its move to base_dir; unoverridden_config_dir's two platform arms, a comparison; \
-                 and a test that reads the fake tmux's own variables, none a route, to see them \
-                 put back",
-            ),
-            (
-                "forge-runner-core/src/mcp/config.rs",
-                1,
-                "mcp_read_dir: where session_path, session_dir and session_matches read",
-            ),
-            (
-                "forge-runner-core/src/runner/process.rs",
-                1,
-                "resolve_claude_bin: $HOME for where the claude binary is installed, a read",
-            ),
-            (
-                "forge-runner-core/src/workspace/plugin_sync.rs",
-                2,
-                "~/.claude, Claude Code's own home, which is not the config dir",
-            ),
-            (
-                "forge-runner-core/src/workspace/skill_sync.rs",
-                2,
-                "detect_user_shadow, which reads ~/.claude/skills",
+                [2, 2, 0],
+                "the environment a handover passes whole to the daemon taking over, and the \
+                 listener a replaced image was handed",
             ),
             (
                 "forge-runner-core/src/daemon/pane_path.rs",
-                1,
-                "$HOME/.local/bin, a directory on a pane's PATH, which is not the config dir",
+                [2, 2, 2],
+                "$HOME for $HOME/.local/bin on a pane's PATH, which is not the config dir, and \
+                 the PATH a pane inherits",
+            ),
+            (
+                "forge-runner-core/src/daemon/pool_jobs.rs",
+                [1, 1, 0],
+                "a test reads the PATH the pane was built from",
+            ),
+            (
+                "forge-runner-core/src/daemon/serving.rs",
+                [2, 0, 0],
+                "the Linux test of config_dir_in's production rule, which hands it this \
+                 process's environment and compares it with Config::path",
+            ),
+            (
+                "forge-runner-core/src/daemon/session_tokens.rs",
+                [1, 1, 1],
+                "FORGE_CONTROL_TOKEN, the token the daemon spawned this session with",
+            ),
+            (
+                "forge-runner-core/src/daemon/terminal.rs",
+                [8, 8, 7],
+                "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
+                 its move to base_dir; unoverridden_config_dir's platform arm, a comparison; \
+                 MCP_TOOL_TIMEOUT; and tests reading PATH, MCP_TOOL_TIMEOUT, \
+                 FORGE_TEST_REQUIRE_TMUX and the fake tmux's own variables",
+            ),
+            ("forge-runner-core/src/exe.rs", [1, 1, 1], "the PATH a binary is resolved on"),
+            (
+                "forge-runner-core/src/mcp/config.rs",
+                [1, 1, 1],
+                "mcp_read_dir: where session_path, session_dir and session_matches read",
+            ),
+            (
+                "forge-runner-core/src/runner/claude_code.rs",
+                [1, 1, 1],
+                "MCP_TIMEOUT, an operator value the spawned claude keeps",
+            ),
+            (
+                "forge-runner-core/src/runner/process.rs",
+                [2, 2, 1],
+                "resolve_claude_bin: $HOME for where the claude binary is installed, a read; and \
+                 MCP_TOOL_TIMEOUT",
+            ),
+            (
+                "forge-runner-core/src/workspace/plugin_sync.rs",
+                [2, 2, 2],
+                "CLAUDE_CONFIG_DIR or ~/.claude, Claude Code's own home, which is not the config \
+                 dir",
+            ),
+            (
+                "forge-runner-core/src/workspace/skill_sync.rs",
+                [1, 1, 1],
+                "detect_user_shadow, which reads ~/.claude/skills",
             ),
             (
                 "forge-runner-core/src/workspace/trust.rs",
-                2,
-                "~/.claude.json, Claude Code's trust file, which is not the config dir",
+                [2, 2, 2],
+                "CLAUDE_CONFIG_DIR or ~/.claude.json, Claude Code's trust file, which is not the \
+                 config dir",
             ),
-            ("forge-runner/src/cmd/config.rs", 2, "prints the path"),
-            ("forge-runner/src/cmd/doctor.rs", 1, "reads the config"),
+            (
+                "forge-runner/src/cmd/api.rs",
+                [1, 1, 1],
+                "FORGE_PROJECT_SLUG, the project a pane runs for",
+            ),
+            ("forge-runner/src/cmd/config.rs", [2, 2, 2], "prints the path"),
+            ("forge-runner/src/cmd/doctor.rs", [1, 1, 1], "reads the config"),
+            (
+                "forge-runner/src/cmd/gate.rs",
+                [3, 3, 3],
+                "TMUX_PANE and TMUX, the pane and server a hook runs in",
+            ),
             (
                 "forge-runner/src/cmd/hook.rs",
-                1,
+                [1, 1, 1],
                 "connects to the daemon's socket",
+            ),
+            (
+                "forge-runner/src/cmd/master.rs",
+                [4, 4, 4],
+                "reads transcripts and the masters' records; USER or LOGNAME, the operator a \
+                 message names",
             ),
             (
                 "forge-runner/src/cmd/run.rs",
-                1,
+                [1, 1, 1],
                 "connects to the daemon's socket",
-            ),
-            ("forge-runner/src/cmd/master.rs", 2, "reads transcripts"),
-            (
-                "forge-runner/src/cmd/setup.rs",
-                6,
-                "the projects_root it proposes under home, saved through Config::save; and \
-                 shellexpand's `~` and its test",
             ),
             (
                 "forge-runner/src/cmd/service.rs",
-                5,
-                "the systemd unit, and the launchd plist and log, written by `service install`, \
-                 which no test runs",
+                [2, 2, 0],
+                "the systemd unit and XDG_RUNTIME_DIR on Linux, the launchd plist and log on \
+                 macOS, written by `service install`, which no test runs",
             ),
             (
-                "forge-runner/src/cmd/top/cli_slug.rs",
-                3,
-                "cli_config_dir, the forge CLI's own dir by its own rule, a read; and its test",
+                "forge-runner/src/cmd/setup.rs",
+                [4, 4, 4],
+                "the PATH a binary is looked up on; the projects_root it proposes under home, \
+                 saved through Config::save; and shellexpand's `~` and its test",
+            ),
+            (
+                "forge-runner/src/cmd/start.rs",
+                [1, 1, 0],
+                "the listener a replaced image was handed",
             ),
             (
                 "forge-runner/src/cmd/top/gather.rs",
-                6,
+                [4, 4, 4],
                 "prints the path, hands cli_config_dir home and a reader of this process's \
                  environment, and reads the transcripts under home's .claude/projects for SPEND \
                  (ISS-1375), a read",
             ),
             (
+                "forge-runner/src/cmd/top/mod.rs",
+                [1, 1, 1],
+                "NO_COLOR, the operator turning colour off",
+            ),
+            (
+                "forge-runner/src/cmd/top/panes.rs",
+                [2, 2, 2],
+                "a test reads FORGE_TEST_REQUIRE_TMUX and hands its tmux this process's PATH",
+            ),
+            (
+                "forge-runner/src/cmd/update.rs",
+                [1, 0, 0],
+                "XDG_RUNTIME_DIR, whether systemctl --user can reach the user manager",
+            ),
+            (
                 "forge-runner/tests/config_isolation.rs",
-                7,
-                "the environment it hands each `status` child it spawns: inside the test's \
-                 scratch, or a dir that is no scratch to watch the child refuse it; and the \
-                 temp-dir variables it passes through, read by name",
+                [1, 1, 1],
+                "the temp-dir variables it passes to the child it spawns, read by name",
             ),
             (
                 "forge-runner/tests/dispatch_gate_door.rs",
-                6,
-                "config_home_at, the config home `scoped` hands every child it starts, inside the \
-                 test's scratch; and the test that reads those names off a scoped child's \
-                 environment",
+                [1, 1, 0],
+                "FORGE_TEST_REQUIRE_TMUX, whether this run promised a tmux",
+            ),
+            (
+                "forge-runner/tests/handover_service_manager.rs",
+                [0, 0, 1],
+                "the directory the parent test handed this child image",
+            ),
+            (
+                "forge-runner/tests/logs_command.rs",
+                [1, 1, 1],
+                "the PATH it hands the child it spawns",
             ),
             (
                 "forge-runner/tests/master_status_unplaced.rs",
-                1,
+                [1, 1, 1],
                 "the temp-dir variables it passes to the child it spawns, read by name",
+            ),
+            (
+                "forge-runner/tests/update_handover.rs",
+                [3, 3, 0],
+                "the directory, listener and image the parent test handed this child image",
+            ),
+        ];
+        // A path segment, by text: an admitted home joined to one adds no read clippy can count.
+        const LITERALS: &[(&str, usize, &str)] = &[
+            (
+                "forge-runner/src/cmd/top/cli_slug.rs",
+                1,
+                "cli_config_dir, the forge CLI's own dir by its own rule, a read",
+            ),
+            (
+                "forge-runner/tests/dispatch_gate_door.rs",
+                1,
+                "the macOS config dir under a scratch home it hands a child",
             ),
             (
                 "forge-runner/tests/probation.rs",
                 2,
-                "an_updating_box and update_by_hand: the config home the box writes its release \
-                 URL into and hands the `update` child it spawns, inside the test's scratch",
+                "the config home inside the test's scratch that an `update` child is handed",
+            ),
+            (
+                "forge-runner-core/src/daemon/serving.rs",
+                1,
+                "config_dir_in, which rebuilds the XDG rule from another process's environment \
+                 to compare it, and only reads",
+            ),
+            (
+                "forge-runner-core/src/daemon/terminal.rs",
+                1,
+                "unoverridden_config_dir's Linux arm, a comparison",
             ),
         ];
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        // Every file first, so a `const` one file reads another defines resolves.
-        let mut files = Vec::new();
-        // The whole crate, so a `build.rs`, an example or a bench is read too.
-        let mut stack: Vec<PathBuf> = ["forge-runner-core", "forge-runner"]
+        let column = if cfg!(target_os = "linux") {
+            0
+        } else if cfg!(target_os = "macos") {
+            1
+        } else if cfg!(windows) {
+            2
+        } else {
+            panic!("ALLOWED holds no counts for this platform")
+        };
+
+        let seen = disallowed_occurrences(&crates.join(".."));
+        let want: std::collections::BTreeMap<&str, usize> = ALLOWED
             .iter()
-            .map(|krate| crates.join(krate))
+            .map(|(f, n, _)| (*f, n[column]))
+            .filter(|(_, n)| *n > 0)
             .collect();
-        for root in &stack {
-            assert!(root.join("src").is_dir(), "{} is a crate", root.display());
-        }
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    if p.file_name().is_some_and(|n| n != "target") {
-                        stack.push(p);
-                    }
-                    continue;
-                }
-                if p.extension().and_then(|e| e.to_str()) != Some("rs") {
-                    continue;
-                }
-                let rel = p
-                    .strip_prefix(&crates)
-                    .unwrap()
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let tokens = crate::route_scan::lex(&std::fs::read_to_string(&p).unwrap(), &rel);
-                files.push((rel, tokens));
-            }
-        }
-        let mut consts = crate::route_scan::Consts::new();
-        for (_, tokens) in &files {
-            crate::route_scan::collect_file(tokens, &mut consts);
-        }
-        let mut seen = std::collections::BTreeMap::<String, usize>::new();
-        let mut sites = std::collections::BTreeMap::new();
-        let mut refused = Vec::new();
-        for (rel, tokens) in &files {
-            let in_config = rel == "forge-runner-core/src/config.rs";
-            let scanned = crate::route_scan::routes(tokens, &consts, in_config);
-            refused.extend(
-                scanned
-                    .refused
-                    .iter()
-                    .map(|h| format!("{rel} line {}: {}", h.line, h.what)),
-            );
-            let hits = scanned.routes;
-            if !hits.is_empty() {
-                seen.insert(rel.clone(), hits.len());
-                sites.insert(rel.clone(), hits);
-            }
-        }
-        // Before the allowances: what the scan cannot see through is no count one can admit.
+        let moved = drift(&seen, &want);
         assert!(
-            refused.is_empty(),
-            "the scan refuses what it cannot see through, whatever ALLOWED says:\n{}",
-            refused.join("\n")
+            moved.is_empty(),
+            "a route clippy.toml names that is not `config::base_dir`: a writer moves to it, a \
+             reader is counted here with what it does\n{}",
+            moved.join("\n")
         );
-        let want: std::collections::BTreeMap<String, usize> = ALLOWED
+
+        let mut literal_seen = std::collections::BTreeMap::<String, Vec<String>>::new();
+        for (rel, text) in crate_sources(&crates) {
+            for (n, line) in without_comments(&text).lines().enumerate() {
+                let hits = segment_needles()
+                    .iter()
+                    .map(|needle| line.matches(needle.as_str()).count())
+                    .sum::<usize>();
+                for _ in 0..hits {
+                    literal_seen.entry(rel.clone()).or_default().push(format!(
+                        "line {}: {}",
+                        n + 1,
+                        line.trim()
+                    ));
+                }
+            }
+        }
+        let literal_want: std::collections::BTreeMap<&str, usize> =
+            LITERALS.iter().map(|(f, n, _)| (*f, *n)).collect();
+        let moved = drift(&literal_seen, &literal_want);
+        assert!(
+            moved.is_empty(),
+            "a path segment naming a user directory: build the path from config instead, or \
+             count it here with what it does\n{}",
+            moved.join("\n")
+        );
+
+        // The list itself and the level that enforces it, so neither narrows in silence.
+        let toml_at = |rel: &str| -> toml::Table {
+            toml::from_str(&std::fs::read_to_string(crates.join(rel)).unwrap())
+                .unwrap_or_else(|e| panic!("{rel}: {e}"))
+        };
+        let clippy = toml_at("../clippy.toml");
+        let listed: Vec<(String, bool)> = clippy["disallowed-methods"]
+            .as_array()
+            .expect("clippy.toml lists disallowed-methods")
             .iter()
-            .map(|(f, n, _)| (f.to_string(), *n))
-            .collect();
-        let moved: Vec<String> = seen
-            .keys()
-            .chain(want.keys())
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter(|f| seen.get(*f) != want.get(*f))
-            .map(|f| {
-                let lines: Vec<String> = sites
-                    .get(f)
-                    .into_iter()
-                    .flatten()
-                    .map(|h| format!("    line {}: {}", h.line, h.what))
-                    .collect();
-                format!(
-                    "{f}: {} route(s), {} counted\n{}",
-                    seen.get(f).copied().unwrap_or(0),
-                    want.get(f).copied().unwrap_or(0),
-                    lines.join("\n")
+            .map(|e| {
+                (
+                    e["path"].as_str().unwrap().to_string(),
+                    e.get("reason")
+                        .and_then(toml::Value::as_str)
+                        .is_some_and(|r| !r.trim().is_empty()),
                 )
             })
             .collect();
+        let paths: std::collections::BTreeSet<&str> =
+            listed.iter().map(|(p, _)| p.as_str()).collect();
+        let named: std::collections::BTreeSet<&str> = DISALLOWED.iter().copied().collect();
+        assert_eq!(paths, named, "clippy.toml's disallowed-methods");
         assert!(
-            moved.is_empty(),
-            "a route to the config dir that is not `config::base_dir`: a writer moves to it, \
-             a reader is counted here with what it does\n{}",
-            moved.join("\n")
+            listed.iter().all(|(_, reason)| *reason),
+            "every disallowed method says why"
         );
+        assert_eq!(listed.len(), DISALLOWED.len(), "each path once");
+        let workspace = toml_at("../Cargo.toml");
+        assert_eq!(
+            workspace["workspace"]["lints"],
+            toml::Value::Table(toml::from_str("[clippy]\ndisallowed_methods = \"deny\"").unwrap()),
+            "the workspace denies the list and allows nothing past it"
+        );
+        for krate in ["forge-runner-core", "forge-runner"] {
+            assert_eq!(
+                toml_at(&format!("{krate}/Cargo.toml"))["lints"],
+                toml::Value::Table(toml::from_str("workspace = true").unwrap()),
+                "{krate} takes the workspace's lints and no other"
+            );
+        }
 
         let ledger =
             std::fs::read_to_string(crates.join("forge-runner-core/src/runner/ledger.rs")).unwrap();
@@ -802,14 +918,10 @@ mod tests {
             "the ledger resolves its dir through the guarded route"
         );
 
-        // A doctest builds this crate with no refusal and runs code the scan
-        // may never read; a renamed dependency is `dirs_next` by another name.
-        let manifest = |rel: &str| -> toml::Table {
-            toml::from_str(&std::fs::read_to_string(crates.join(rel)).unwrap())
-                .unwrap_or_else(|e| panic!("{rel}: {e}"))
-        };
+        // A doctest builds this crate with no refusal and runs code clippy never lints; a renamed
+        // dependency is a directory crate the key check below cannot see.
         for krate in ["forge-runner-core", "forge-runner"] {
-            let m = manifest(&format!("{krate}/Cargo.toml"));
+            let m = toml_at(&format!("{krate}/Cargo.toml"));
             let has_lib = m.contains_key("lib") || crates.join(krate).join("src/lib.rs").is_file();
             assert!(
                 !has_lib || runs_no_doctest(&m),
@@ -822,17 +934,17 @@ mod tests {
             "forge-runner-core/Cargo.toml",
             "forge-runner/Cargo.toml",
         ] {
-            let m = toml::Value::Table(manifest(rel));
+            let m = toml::Value::Table(toml_at(rel));
             let renamed = renamed_dependencies(&m, "");
             assert!(
                 renamed.is_empty(),
-                "{rel} renames {renamed:?}, which no identifier count here can see"
+                "{rel} renames {renamed:?}, which the directory-crate check reads by key"
             );
             let other = directory_crates(&m, "");
             assert!(
                 other.is_empty(),
                 "{rel} depends on {other:?}, a crate that names the user's directories, which \
-                 the scan counts only for dirs-next: resolve through config instead"
+                 clippy.toml lists only for dirs-next: resolve through config instead"
             );
         }
         // `doctest = false` keeps `cargo test` from running them, and an
@@ -850,11 +962,8 @@ mod tests {
         let doctests_on: toml::Table = toml::from_str("[lib]\ndoctest = true").unwrap();
         let no_lib_table: toml::Table = toml::from_str("[package]\nname = \"x\"").unwrap();
         assert!(!runs_no_doctest(&doctests_on) && !runs_no_doctest(&no_lib_table));
-        let renamed: toml::Value = toml::from_str(concat!(
-            "[dependencies]\nd = { package = \"dirs-",
-            "next\", version = \"2\" }"
-        ))
-        .unwrap();
+        let renamed: toml::Value =
+            toml::from_str("[dependencies]\nd = { package = \"dirs\", version = \"5\" }").unwrap();
         assert_eq!(renamed_dependencies(&renamed, ""), ["dependencies.d"]);
         let plain_dirs: toml::Value = toml::from_str(
             "[dependencies]\ndirs = \"5\"\n[target.'cfg(unix)'.dev-dependencies]\nhome = \"0.5\"",
@@ -889,6 +998,465 @@ mod tests {
         );
     }
 
+    /// What `packages/runner/clippy.toml` refuses outside an admission.
+    const DISALLOWED: &[&str] = &[
+        "std::env::var",
+        "std::env::var_os",
+        "std::env::vars",
+        "std::env::vars_os",
+        "std::env::home_dir",
+        "dirs_next::home_dir",
+        "dirs_next::cache_dir",
+        "dirs_next::config_dir",
+        "dirs_next::data_dir",
+        "dirs_next::data_local_dir",
+        "dirs_next::executable_dir",
+        "dirs_next::runtime_dir",
+        "dirs_next::audio_dir",
+        "dirs_next::desktop_dir",
+        "dirs_next::document_dir",
+        "dirs_next::download_dir",
+        "dirs_next::font_dir",
+        "dirs_next::picture_dir",
+        "dirs_next::public_dir",
+        "dirs_next::template_dir",
+        "dirs_next::video_dir",
+        "libc::getenv",
+        "libc::getpwuid",
+        "libc::getpwuid_r",
+        "libc::getpwnam",
+        "libc::getpwnam_r",
+        "forge_runner_core::config::Config::path",
+    ];
+
+    /// Every occurrence of a method clippy.toml disallows, by file, as clippy
+    /// resolves it with the lint forced to warn, so no `expect`, `allow`,
+    /// group or inner attribute hides one. Keyed by its span and the macro call
+    /// sites it came through, so a read compiled into the lib and the lib-test
+    /// units counts once and one macro invoked twice counts twice.
+    fn disallowed_occurrences(
+        workspace: &std::path::Path,
+    ) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut cmd = std::process::Command::new(env!("CARGO"));
+        cmd.current_dir(workspace)
+            .args([
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--locked",
+                "--quiet",
+                "--message-format=json",
+                "--",
+                "--force-warn",
+                "clippy::disallowed_methods",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        // The child takes this process's environment as it stands at the spawn, and a test
+        // scoping HOME or PATH holds this lock while it does.
+        let child = {
+            let _env = crate::auth::cred_store::ENV_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            cmd.spawn()
+                .unwrap_or_else(|e| panic!("cargo clippy could not be started: {e}"))
+        };
+        let out = child.wait_with_output().expect("cargo clippy ran");
+        assert!(
+            out.status.success(),
+            "cargo clippy could not count the routes ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let mut sites = std::collections::BTreeMap::<String, Vec<String>>::new();
+        let mut keys = std::collections::BTreeSet::new();
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let Ok(msg) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            let m = &msg["message"];
+            if msg["reason"] != "compiler-message"
+                || m["code"]["code"] != "clippy::disallowed_methods"
+            {
+                continue;
+            }
+            let Some(span) = m["spans"]
+                .as_array()
+                .and_then(|s| s.iter().find(|s| s["is_primary"] == true))
+            else {
+                continue;
+            };
+            let mut key = Vec::new();
+            let mut at = Some(span);
+            while let Some(s) = at {
+                key.push(format!("{}:{}", s["file_name"], s["byte_start"]));
+                at = s["expansion"]["span"]
+                    .as_object()
+                    .map(|_| &s["expansion"]["span"]);
+            }
+            if !keys.insert(key) {
+                continue;
+            }
+            let file = span["file_name"].as_str().unwrap_or("?").replace('\\', "/");
+            let file = file.strip_prefix("crates/").unwrap_or(&file).to_string();
+            sites.entry(file).or_default().push(format!(
+                "line {}: {}",
+                span["line_start"],
+                m["message"].as_str().unwrap_or("?")
+            ));
+        }
+        sites
+    }
+
+    /// Each file whose count moved from `want`, with the sites it holds.
+    fn drift(
+        seen: &std::collections::BTreeMap<String, Vec<String>>,
+        want: &std::collections::BTreeMap<&str, usize>,
+    ) -> Vec<String> {
+        seen.keys()
+            .map(String::as_str)
+            .chain(want.keys().copied())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .filter(|f| seen.get(*f).map_or(0, Vec::len) != want.get(f).copied().unwrap_or(0))
+            .map(|f| {
+                let lines = seen.get(f).into_iter().flatten();
+                format!(
+                    "{f}: {} occurrence(s), {} counted\n{}",
+                    seen.get(f).map_or(0, Vec::len),
+                    want.get(f).copied().unwrap_or(0),
+                    lines
+                        .map(|l| format!("    {l}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            })
+            .collect()
+    }
+
+    /// `text` with every `//` and `/* */` comment blanked, strings and char
+    /// literals kept as they are, and every newline kept so a line number holds.
+    fn without_comments(text: &str) -> String {
+        let c: Vec<char> = text.chars().collect();
+        let mut out = String::with_capacity(text.len());
+        let mut i = 0;
+        let keep_newlines = |out: &mut String, from: &[char]| {
+            out.extend(from.iter().filter(|ch| **ch == '\n'));
+        };
+        while i < c.len() {
+            let next = c.get(i + 1).copied();
+            if c[i] == '/' && next == Some('/') {
+                while i < c.len() && c[i] != '\n' {
+                    i += 1;
+                }
+            } else if c[i] == '/' && next == Some('*') {
+                let (start, mut depth) = (i, 0usize);
+                while i < c.len() {
+                    if c[i] == '/' && c.get(i + 1) == Some(&'*') {
+                        depth += 1;
+                        i += 2;
+                    } else if c[i] == '*' && c.get(i + 1) == Some(&'/') {
+                        depth -= 1;
+                        i += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+                keep_newlines(&mut out, &c[start..i.min(c.len())]);
+            } else if c[i] == 'r' && matches!(next, Some('"') | Some('#')) {
+                let start = i;
+                i += 1;
+                let mut hashes = 0;
+                while c.get(i) == Some(&'#') {
+                    hashes += 1;
+                    i += 1;
+                }
+                if c.get(i) != Some(&'"') {
+                    out.extend(&c[start..i]);
+                    continue;
+                }
+                i += 1;
+                while i < c.len()
+                    && !(c[i] == '"' && (1..=hashes).all(|k| c.get(i + k) == Some(&'#')))
+                {
+                    i += 1;
+                }
+                i = (i + 1 + hashes).min(c.len());
+                out.extend(&c[start..i]);
+            } else if c[i] == '"' {
+                let start = i;
+                i += 1;
+                while i < c.len() && c[i] != '"' {
+                    i += if c[i] == '\\' { 2 } else { 1 };
+                }
+                i = (i + 1).min(c.len());
+                out.extend(&c[start..i]);
+            } else if c[i] == '\'' && (next == Some('\\') || c.get(i + 2) == Some(&'\'')) {
+                let start = i;
+                i += if next == Some('\\') { 3 } else { 2 };
+                while i < c.len() && c[i] != '\'' {
+                    i += 1;
+                }
+                i = (i + 1).min(c.len());
+                out.extend(&c[start..i]);
+            } else {
+                out.push(c[i]);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// A needle in a comment is no path segment, and one in a string is, whatever
+    /// the comment or string around it holds.
+    #[test]
+    fn the_literal_count_reads_code_and_strings_and_no_comment() {
+        let needle = &segment_needles()[0];
+        let src = format!(
+            "let a = 1; // {n}\n/* {n}\n /* nested */ {n} */ let b = 2;\n\
+             let url = \"https://x//\"; let c = {n};\nlet q = '\"'; let r = r#\"{n} // x\"#;\n\
+             let l: &'static str = {n};\n",
+            n = needle
+        );
+        let kept = without_comments(&src);
+        let at: Vec<usize> = kept
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.contains(needle.as_str()))
+            .map(|(n, _)| n + 1)
+            .collect();
+        assert_eq!(at, [4, 5, 6], "{kept}");
+        assert_eq!(
+            kept.lines().count(),
+            src.lines().count(),
+            "every line is kept"
+        );
+    }
+
+    /// The path segments the literal count reads, built so this file holds none of them.
+    fn segment_needles() -> [String; 4] {
+        [
+            format!("\".{}\"", "config"),
+            ["APP", "DATA"].concat(),
+            ["Roaming", "AppData"].concat(),
+            ["Application", " Support"].concat(),
+        ]
+    }
+
+    /// Every `.rs` file of both crates, `build.rs`, tests and benches included,
+    /// by its path under `crates/`.
+    fn crate_sources(crates: &std::path::Path) -> Vec<(String, String)> {
+        let mut stack: Vec<PathBuf> = ["forge-runner-core", "forge-runner"]
+            .iter()
+            .map(|krate| crates.join(krate))
+            .collect();
+        for root in &stack {
+            assert!(root.join("src").is_dir(), "{} is a crate", root.display());
+        }
+        let mut files = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if p.file_name().is_some_and(|n| n != "target") {
+                        stack.push(p);
+                    }
+                    continue;
+                }
+                if p.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let rel = p
+                    .strip_prefix(crates)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                files.push((rel, std::fs::read_to_string(&p).unwrap()));
+            }
+        }
+        files
+    }
+
+    /// ISS-1344 criterion 29. An `env!` or `option_env!` reads the build's
+    /// environment at compile time, and clippy's macro lint cannot see one
+    /// inside an eagerly expanded builtin such as `concat!` or a format
+    /// string. rustc records every such read in the build's dep-info after
+    /// expansion, so this reads that record for every build of either crate
+    /// this run's target dir holds.
+    #[test]
+    fn no_build_of_either_crate_reads_a_user_directory_variable() {
+        let refused = [
+            "HOME".to_string(),
+            "USERPROFILE".to_string(),
+            "XDG_CONFIG_HOME".to_string(),
+            "XDG_DATA_HOME".to_string(),
+            ["APP", "DATA"].concat(),
+            ["LOCALAPP", "DATA"].concat(),
+        ];
+        let exe = std::env::current_exe().expect("this test's own binary");
+        let deps = exe.parent().expect("the deps dir");
+        let own = deps.join(format!("{}.d", exe.file_stem().unwrap().to_string_lossy()));
+        let own_reads = env_deps(&std::fs::read_to_string(&own).unwrap_or_else(|e| {
+            panic!(
+                "this build's own dep-info {} could not be read: {e}",
+                own.display()
+            )
+        }));
+        assert!(
+            own_reads.iter().any(|v| v == "CARGO_MANIFEST_DIR"),
+            "{} records no env!(\"CARGO_MANIFEST_DIR\"), which this crate reads, so the record \
+             is not being read",
+            own.display()
+        );
+        // Every target of either crate as cargo itself names it, so a test, example or bench
+        // in a directory of its own or renamed by a `[[test]]` table is read too.
+        let stems = target_names(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+        assert!(
+            stems.iter().any(|s| s == "forge_runner_core")
+                && stems.iter().any(|s| s == "forge_runner"),
+            "cargo metadata names both crates' libs and bins: {stems:?}"
+        );
+        let ours = |name: &str| {
+            name.strip_suffix(".d")
+                .and_then(|n| n.rsplit_once('-'))
+                .is_some_and(|(stem, hash)| {
+                    stems.iter().any(|s| s == stem) && hash.chars().all(|c| c.is_ascii_hexdigit())
+                })
+        };
+        // The target dir's root, so a `--target` build's records and the host build scripts
+        // it compiled are read wherever cargo put them.
+        let root = deps
+            .ancestors()
+            .find(|d| d.join("CACHEDIR.TAG").is_file())
+            .expect("the target dir this test was built in");
+        let mut profiles = Vec::new();
+        for first in std::fs::read_dir(root).unwrap().flatten() {
+            let first = first.path();
+            if first.join("deps").is_dir() {
+                profiles.push(first.clone());
+            }
+            for second in std::fs::read_dir(&first).into_iter().flatten().flatten() {
+                if second.path().join("deps").is_dir() {
+                    profiles.push(second.path());
+                }
+            }
+        }
+        let listed = |dir: PathBuf| -> Vec<PathBuf> {
+            std::fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path())
+                .collect()
+        };
+        let mut records: Vec<PathBuf> = Vec::new();
+        for profile in &profiles {
+            for p in listed(profile.join("deps"))
+                .into_iter()
+                .chain(listed(profile.join("examples")))
+            {
+                if p.file_name().is_some_and(|n| ours(&n.to_string_lossy())) {
+                    records.push(p);
+                }
+            }
+            for build in listed(profile.join("build")) {
+                if !build
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with("forge-runner"))
+                {
+                    continue;
+                }
+                for f in listed(build) {
+                    let name = f.file_name().unwrap().to_string_lossy().into_owned();
+                    if name.starts_with("build_script_build-") && name.ends_with(".d") {
+                        records.push(f);
+                    }
+                }
+            }
+        }
+        assert!(
+            records.contains(&own),
+            "the scan reads this build's own record"
+        );
+        let read: Vec<String> = records
+            .iter()
+            .flat_map(|p| {
+                let text = std::fs::read_to_string(p).unwrap_or_default();
+                env_deps(&text)
+                    .into_iter()
+                    .filter(|v| refused.contains(v))
+                    .map(|v| format!("{v}, read at compile time by the build {}", p.display()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        assert!(
+            read.is_empty(),
+            "a build of a runner crate read a user directory's variable through env! or \
+             option_env!, which bakes the builder's directory into the binary:\n{}",
+            read.join("\n")
+        );
+        assert_eq!(
+            env_deps("x.d: src/lib.rs\n# env-dep:HOME=/home/x\n# env-dep:TMP\n"),
+            ["HOME", "TMP"],
+            "a value and an unset read both name their variable"
+        );
+    }
+
+    /// Every target of the workspace's crates but their build scripts, by the
+    /// name its dep-info file carries (`-` read as `_`), as `cargo metadata` says.
+    fn target_names(workspace: &std::path::Path) -> Vec<String> {
+        let mut cmd = std::process::Command::new(env!("CARGO"));
+        cmd.current_dir(workspace).args([
+            "metadata",
+            "--no-deps",
+            "--locked",
+            "--format-version=1",
+        ]);
+        let out = {
+            let _env = crate::auth::cred_store::ENV_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            cmd.stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap_or_else(|e| panic!("cargo metadata could not be started: {e}"))
+        }
+        .wait_with_output()
+        .expect("cargo metadata ran");
+        assert!(
+            out.status.success(),
+            "cargo metadata: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let meta: serde_json::Value = serde_json::from_slice(&out.stdout).expect("its JSON");
+        meta["packages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|p| p["targets"].as_array().into_iter().flatten())
+            .filter(|t| {
+                !t["kind"]
+                    .as_array()
+                    .is_some_and(|k| k.iter().any(|k| k == "custom-build"))
+            })
+            .filter_map(|t| Some(t["name"].as_str()?.replace('-', "_")))
+            .collect()
+    }
+
+    /// The variables a dep-info record says the build read.
+    fn env_deps(record: &str) -> Vec<String> {
+        record
+            .lines()
+            .filter_map(|l| l.strip_prefix("# env-dep:"))
+            .map(|v| v.split_once('=').map_or(v, |(name, _)| name).to_string())
+            .collect()
+    }
+
     fn runs_no_doctest(manifest: &toml::Table) -> bool {
         manifest
             .get("lib")
@@ -899,7 +1467,7 @@ mod tests {
 
     /// Every dependency on a crate, other than `dirs-next`, that names the
     /// user's directories, by its dotted path. A list, not a rule: a crate
-    /// missing from it is a route the scan cannot see (ISS-1344's decision).
+    /// missing from it is a route clippy.toml does not name (ISS-1344's decision).
     fn directory_crates(v: &toml::Value, at: &str) -> Vec<String> {
         const NAMED: [&str; 11] = [
             "dirs",

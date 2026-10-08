@@ -107,6 +107,10 @@ fn require_tools() -> anyhow::Result<()> {
     )
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the PATH a binary is looked up on"
+)]
 fn which(bin: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
@@ -287,6 +291,10 @@ fn ensure_projects_root(args: &Args, chosen: &[String], interactive: bool) -> an
         return Ok(());
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the projects_root setup proposes under home, saved through Config::save"
+    )]
     let default = dirs_next::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("forge-projects");
@@ -374,6 +382,7 @@ fn yes_no(prompt: &str, default_yes: bool) -> anyhow::Result<bool> {
 /// be a shell.
 fn shellexpand(input: &str) -> String {
     match input.strip_prefix("~/") {
+        #[expect(clippy::disallowed_methods, reason = "shellexpand's ~")]
         Some(rest) => dirs_next::home_dir()
             .map(|h| h.join(rest).to_string_lossy().into_owned())
             .unwrap_or_else(|| input.to_string()),
@@ -422,6 +431,10 @@ mod tests {
 
     #[test]
     fn a_tilde_path_expands_and_anything_else_is_left_alone() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test of shellexpand's ~ reads the home it expands to"
+        )]
         let home = dirs_next::home_dir().unwrap();
         assert_eq!(
             shellexpand("~/code/forge"),

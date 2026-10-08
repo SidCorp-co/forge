@@ -34,3 +34,6 @@ libc = "0.2"
 
 [dev-dependencies]
 forge-runner-core = { path = "../forge-runner-core", features = ["test-support"] }
+
+[lints]
+workspace = true
