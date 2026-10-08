@@ -12,12 +12,14 @@ import { bindingName } from './channel.js';
 import { ReleaseReadingUnreadableError } from './errors.js';
 import type { CloseVerification, ProbedChannel } from './plan.js';
 import { type Judgement, judgeReadings } from './reading-judge.js';
-import { type LiveState, readLiveCommit, readLiveState } from './verify.js';
+import { type LiveState, probesKeyOf, readLiveCommit, readLiveState } from './verify.js';
 
 /** One live binding's reading: what its probes said, under the name it was read by. */
 export interface BindingReading {
   bindingId: string;
   name: string;
+  /** The probes it was read with (`verify.ts:probesKeyOf`): a reading says nothing about other ones. */
+  probes: string;
   state: LiveState;
 }
 
@@ -45,7 +47,12 @@ const liveStateSchema = z.object({
 });
 
 const bindingsSchema = z.array(
-  z.object({ bindingId: z.string(), name: z.string(), state: liveStateSchema }),
+  z.object({
+    bindingId: z.string(),
+    name: z.string(),
+    probes: z.string(),
+    state: liveStateSchema,
+  }),
 );
 
 /** The stored row as a reading, or a refusal naming the row: a shape this code cannot read is
@@ -83,6 +90,7 @@ export async function takeReading(args: {
     verification.channels.map(async (c) => ({
       bindingId: c.bindingId,
       name: bindingName(c),
+      probes: probesKeyOf(c.verify),
       state: await readLiveState(c.verify),
     })),
   );
@@ -167,6 +175,7 @@ export async function judgeRecordedReadings(args: {
     bindings: args.verification.channels.map((c) => ({
       bindingId: c.bindingId,
       name: bindingName(c),
+      probes: probesKeyOf(c.verify),
       stableReads: c.verify.stableReads ?? 2,
     })),
     readings: await listReadings(args.runId),

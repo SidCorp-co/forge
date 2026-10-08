@@ -21,6 +21,8 @@ export const RELEASE_READING_MAX_AGE_MS = 15 * 60_000;
 export interface JudgedBinding {
   bindingId: string;
   name: string;
+  /** The probes the binding declares now; a reading taken with others is not evidence of them. */
+  probes: string;
   stableReads: number;
 }
 
@@ -64,6 +66,7 @@ function judgeBinding(
   before: string | null,
   claim: string | null,
   now: number,
+  elsewhere: number,
 ): BindingJudgement {
   const { name } = binding;
   const newest = kept.at(-1);
@@ -71,7 +74,10 @@ function judgeBinding(
     return {
       ok: false,
       live: null,
-      reason: `no reading of ${name} is recorded on this batch, so nothing says what it is serving — call \`look\` once the deploy has landed, then finish`,
+      reason:
+        elsewhere > 0
+          ? `the probes declared for ${name} are not the ones its ${elsewhere} recorded reading(s) were taken with, so they say nothing about what these serve — call \`look\`, then finish`
+          : `no reading of ${name} is recorded on this batch, so nothing says what it is serving — call \`look\` once the deploy has landed, then finish`,
     };
   }
   const live = newest.state.identity;
@@ -112,28 +118,35 @@ function judgeBinding(
   };
 }
 
-/** The readings of one binding, oldest first, as many as the run holds. */
-function keptFor(binding: JudgedBinding, readings: readonly ReleaseReading[]): Kept[] {
-  return readings.flatMap((r) => {
+/**
+ * The newest unbroken run of this binding's readings taken with the probes it declares now, oldest
+ * first, and how many of its readings fall outside it: one taken with other probes ends the run.
+ */
+function keptFor(
+  binding: JudgedBinding,
+  readings: readonly ReleaseReading[],
+): { kept: Kept[]; elsewhere: number } {
+  const own = readings.flatMap((r) => {
     const reading = r.bindings.find((b) => b.bindingId === binding.bindingId);
-    return reading ? [{ id: r.id, takenAt: r.takenAt.getTime(), state: reading.state }] : [];
+    return reading ? [{ id: r.id, takenAt: r.takenAt.getTime(), reading }] : [];
   });
+  const kept: Kept[] = [];
+  for (const { id, takenAt, reading } of own.reverse()) {
+    if (reading.probes !== binding.probes) break;
+    kept.unshift({ id, takenAt, state: reading.state });
+  }
+  return { kept, elsewhere: own.length - kept.length };
 }
 
 export function judgeReadings(input: JudgeInput): Judgement {
   const { bindings, readings, commitsBefore, claim, now } = input;
   // Nothing to judge is nothing proved: an empty set answering "ok" would close a roster on no read.
   if (bindings.length === 0) throw new Error('judgeReadings: no binding was named to judge');
-  const judged = bindings.map((binding) => ({
-    binding,
-    verdict: judgeBinding(
-      binding,
-      keptFor(binding, readings),
-      commitsBefore[binding.bindingId] ?? null,
-      claim,
-      now,
-    ),
-  }));
+  const judged = bindings.map((binding) => {
+    const { kept, elsewhere } = keptFor(binding, readings);
+    const before = commitsBefore[binding.bindingId] ?? null;
+    return { binding, verdict: judgeBinding(binding, kept, before, claim, now, elsewhere) };
+  });
   const refused = judged.flatMap(({ binding, verdict }) =>
     verdict.ok ? [] : [{ binding, verdict }],
   );

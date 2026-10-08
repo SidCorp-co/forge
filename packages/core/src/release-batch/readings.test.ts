@@ -88,11 +88,20 @@ describe('takeReading — one read per binding that declares a probe', () => {
     });
 
     const written = inserted.mock.calls[0]?.[0] as {
-      bindings: Array<{ bindingId: string; name: string; state: { identity: string | null } }>;
+      bindings: Array<{
+        bindingId: string;
+        name: string;
+        probes: string;
+        state: { identity: string | null };
+      }>;
       unread: string[];
       takenBy: string;
     };
     expect(written.takenBy).toBe('u-1');
+    expect(written.bindings.map((x) => x.probes)).toEqual([
+      '[["https://one.test/version","commit"]]',
+      '[["https://two.test/version","commit"]]',
+    ]);
     expect(written.bindings.map((x) => [x.bindingId, x.state.identity])).toEqual([
       ['b-1', NEW],
       ['b-2', OLD],
@@ -186,7 +195,7 @@ describe('listReadings', () => {
     runId: 'run-1',
     takenAt: new Date('2026-10-08T10:00:00.000Z'),
     takenBy: 'u-1',
-    bindings: [{ bindingId: 'b-1', name: 'coolify b-1', state }],
+    bindings: [{ bindingId: 'b-1', name: 'coolify b-1', probes: '[]', state }],
     unread: [],
     ...over,
   });
@@ -208,6 +217,10 @@ describe('listReadings', () => {
     ],
     ['bindings that are not a list', { bindings: { 'b-1': state } }],
     ['unread that is not a list of names', { unread: [1, 2] }],
+    [
+      'a binding that does not say which probes it was read with',
+      { bindings: [{ bindingId: 'b-1', name: 'x', state }] },
+    ],
   ])('refuses %s by naming the row, and never guesses it into a reading', async (_why, over) => {
     selected.mockResolvedValue([row(over)]);
 
@@ -232,7 +245,7 @@ describe('viewOf — a reading as an answer carries it', () => {
       takenAt: new Date('2026-10-08T10:00:00.000Z'),
       takenBy: 'u-1',
       unread: ['coolify [eu] b-3'],
-      bindings: [{ bindingId: 'b-1', name: 'coolify b-1', state: state as never }],
+      bindings: [{ bindingId: 'b-1', name: 'coolify b-1', probes: '[]', state: state as never }],
     });
 
     expect(view).toEqual({
@@ -246,12 +259,15 @@ describe('viewOf — a reading as an answer carries it', () => {
 });
 
 describe('judgeRecordedReadings — the readings the database holds, judged by the declared stableReads', () => {
+  const PROBES = '[["https://one.test/version","commit"]]';
   const stored = (id: string, at: string, identity: string) => ({
     id,
     runId: 'run-1',
     takenAt: new Date(at),
     takenBy: 'u-1',
-    bindings: [{ bindingId: 'b-1', name: 'coolify b-1', state: { ...state, identity } }],
+    bindings: [
+      { bindingId: 'b-1', name: 'coolify b-1', probes: PROBES, state: { ...state, identity } },
+    ],
     unread: [],
   });
   const verification = (stableReads?: number) =>
@@ -307,6 +323,27 @@ describe('judgeRecordedReadings — the readings the database holds, judged by t
     const out = await judgeRecordedReadings({ ...args(verification(), null), metadata: {} });
 
     expect(out.ok === false && out.reason).toContain('nothing recorded what was serving');
+  });
+
+  it('does not rest a close on readings taken with probes the binding no longer declares', async () => {
+    selected.mockResolvedValue([
+      stored('r-1', '2026-10-08T10:00:00.000Z', NEW),
+      stored('r-2', '2026-10-08T10:00:10.000Z', NEW),
+    ]);
+    const moved = {
+      kind: 'probed',
+      unread: [],
+      channels: [
+        {
+          ...channel('b-1', 'https://elsewhere.test/version'),
+          verify: { probes: [{ url: 'https://elsewhere.test/version', commitPath: 'commit' }] },
+        },
+      ],
+    } as never;
+
+    const out = await judgeRecordedReadings(args(moved));
+
+    expect(out.ok === false && out.reason).toContain('are not the ones its 2 recorded reading(s)');
   });
 
   it('is judged at the time it is handed, defaulting to now', async () => {

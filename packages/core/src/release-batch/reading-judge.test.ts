@@ -24,8 +24,19 @@ const SHORT = 'b853f813d';
 const T0 = Date.parse('2026-10-08T10:00:00.000Z');
 const SECOND = 1000;
 
-const A: JudgedBinding = { bindingId: 'a', name: 'coolify [web] a', stableReads: 2 };
-const B: JudgedBinding = { bindingId: 'b', name: 'coolify [api] b', stableReads: 2 };
+const PROBES = '[["https://probe.test/version",null]]';
+const A: JudgedBinding = {
+  bindingId: 'a',
+  name: 'coolify [web] a',
+  probes: PROBES,
+  stableReads: 2,
+};
+const B: JudgedBinding = {
+  bindingId: 'b',
+  name: 'coolify [api] b',
+  probes: PROBES,
+  stableReads: 2,
+};
 
 type Say = string | null | 'down' | 'disagree' | 'silent';
 
@@ -80,7 +91,7 @@ function stateOf(say: Say) {
 
 let seq = 0;
 /** One look: what each named binding said, `seconds` after the first one. */
-function look(seconds: number, says: Record<string, Say>): ReleaseReading {
+function look(seconds: number, says: Record<string, Say>, probes: string = PROBES): ReleaseReading {
   seq += 1;
   return {
     id: `reading-${seq}`,
@@ -91,6 +102,7 @@ function look(seconds: number, says: Record<string, Say>): ReleaseReading {
     bindings: Object.entries(says).map(([bindingId, say]) => ({
       bindingId,
       name: bindingId === 'a' ? A.name : B.name,
+      probes,
       state: stateOf(say),
     })),
   };
@@ -373,6 +385,35 @@ describe('every live binding on its own reading', () => {
     const out = judge({ bindings: both, readings });
 
     expect(out).toMatchObject({ ok: true, evidence: readings.map((r) => r.id) });
+  });
+});
+
+describe('readings taken with probes the binding no longer declares', () => {
+  const OTHER = '[["https://moved.test/version",null]]';
+
+  it('are no evidence of the probes declared now, and the refusal says why', () => {
+    const readings = [look(10, { a: NEW }, OTHER), look(20, { a: NEW }, OTHER)];
+
+    expect(refusal({ readings })).toBe(
+      `the probes declared for ${A.name} are not the ones its 2 recorded reading(s) were taken with, so they say nothing about what these serve — call \`look\`, then finish`,
+    );
+  });
+
+  it('close nothing even where they are the newest and green, and fresh looks close it', () => {
+    const stale = [look(10, { a: NEW }, OTHER), look(20, { a: NEW }, OTHER)];
+    const fresh = [look(30, { a: NEW }), look(40, { a: NEW })];
+
+    expect(judge({ readings: stale }).ok).toBe(false);
+    expect(judge({ readings: [...stale, ...fresh] })).toMatchObject({
+      ok: true,
+      evidence: fresh.map((r) => r.id),
+    });
+  });
+
+  it('end the run of readings a close rests on, so two looks with a different probe between are not consecutive', () => {
+    const readings = [look(10, { a: NEW }), look(20, { a: NEW }, OTHER), look(30, { a: NEW })];
+
+    expect(refusal({ readings })).toContain('1 of the 2 consecutive readings');
   });
 });
 

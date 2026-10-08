@@ -153,7 +153,9 @@ than the one the binding served when the batch opened
 (`packages/core/src/release-batch/verify.ts:readingSatisfies`; the build before is
 `metadata.commitBeforeBy`, by binding id). The newest reading must be younger than
 `packages/core/src/release-batch/reading-judge.ts:RELEASE_READING_MAX_AGE_MS`, a bound on the age of
-evidence and not on a wait. Every binding must pass; the refusal names each one that does not. A
+evidence and not on a wait. Each reading carries the probes it was taken with
+(`packages/core/src/release-batch/verify.ts:probesKeyOf`), and a reading taken with probes the
+binding no longer declares ends the run of readings a close may rest on. Every binding must pass; the refusal names each one that does not. A
 healthy site still serving the old build stays red. The door
 (`packages/core/src/release-batch/finish-job.ts:acceptReleaseBatchFinish`) judges the stored readings
 inline, which makes no request, and answers `RELEASE_NOT_VERIFIED` at once where they do not

@@ -312,6 +312,34 @@ describe('each live binding is read', () => {
   }, 40_000);
 });
 
+describe('a binding whose probes changed after the agent looked', () => {
+  it('is refused for want of a reading of the probes it declares now, and closes on a fresh look', async () => {
+    await declare(['a'], 1);
+    const { runId, issueIds } = await batch();
+    sites.a.serving = PUSHED;
+    await fx.look(runId);
+    // The binding now declares the other site, which still serves the old build.
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = jsonb_set(config, '{verify,probes}', ${JSON.stringify([{ url: sites.b.url }])}::jsonb)
+      WHERE project_id = ${projectId} AND provider = 'coolify'
+    `);
+
+    const refused = await refusalOf(service.finishReleaseBatch(runId, actor(), { commit: PUSHED }));
+
+    expect(refused).toBeInstanceOf(errors.ReleaseNotVerifiedError);
+    expect(refused.reason).toContain('are not the ones its 1 recorded reading(s) were taken with');
+    expect((await fx.stored(issueIds[0] as string)).status).toBe('releasing');
+
+    const stillOld = await fx.look(runId);
+    expect(stillOld.judgement).toMatchObject({ closable: false });
+    sites.b.serving = PUSHED;
+    await fx.look(runId);
+    const done = await service.finishReleaseBatch(runId, actor(), { commit: PUSHED });
+    expect(done.closed).toEqual(issueIds);
+  }, 40_000);
+});
+
 describe('what a finish records when it closes on readings', () => {
   it('stamps the readings it rested on on the finish record, and never on a refused one', async () => {
     await declare(['a']);

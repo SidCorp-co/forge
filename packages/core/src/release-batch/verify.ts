@@ -12,6 +12,10 @@ export interface VerifyConfig {
   stableReads?: number;
 }
 
+export function probesKeyOf(cfg: VerifyConfig): string {
+  return JSON.stringify(cfg.probes.map((p) => [p.url, p.commitPath ?? null]).sort());
+}
+
 export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const obj = raw as Record<string, unknown>;
