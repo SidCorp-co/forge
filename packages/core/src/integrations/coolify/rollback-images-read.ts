@@ -11,9 +11,8 @@ export class CoolifyReadFailedError extends Error {
   }
 }
 
-const READ = 'GET /api/v1/applications/<uuid>/rollback-images';
-
-function failure(err: unknown): CoolifyReadFailedError {
+function failure(err: unknown, resourceUuid: string): CoolifyReadFailedError {
+  const READ = `GET /api/v1/applications/${resourceUuid}/rollback-images`;
   const name = err instanceof Error ? err.name : '';
   const said = err instanceof Error ? err.message : String(err);
   if (name === 'AbortError' || name === 'TimeoutError') {
@@ -45,6 +44,6 @@ export async function readRollbackImagesNamingFailure(
     return await client.listRollbackImages(resourceUuid);
   } catch (err) {
     if (err instanceof CoolifyApiError) throw err;
-    throw failure(err);
+    throw failure(err, resourceUuid);
   }
 }

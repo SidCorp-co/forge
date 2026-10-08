@@ -219,6 +219,8 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
     expect(body.message).toContain('Could not reach Coolify');
+    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).not.toContain('<uuid>');
   });
 
   it('answers 424 naming a Coolify that timed out, not a 500', async () => {
@@ -233,14 +235,23 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     );
     const res = await images();
     expect(res.status).toBe(424);
-    expect(JSON.stringify(await res.json())).toContain('Coolify timed out');
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_UNREACHABLE');
+    expect(body.message).toContain('Coolify timed out');
+    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).not.toContain('<uuid>');
   });
 
   it('answers 424 naming a 200 that is not JSON, not a 500', async () => {
     await transportFails((async () => new Response('<html>', { status: 200 })) as typeof fetch);
     const res = await images();
     expect(res.status).toBe(424);
-    expect(JSON.stringify(await res.json())).toContain('something that is not JSON');
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_ANSWER_NOT_JSON');
+    expect(body.code).not.toBe('COOLIFY_UNREACHABLE');
+    expect(body.message).toContain('something that is not JSON');
+    expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
+    expect(body.message).not.toContain('<uuid>');
   });
 
   it('still answers 400 for a caller error, which is not Coolify refusing anything', async () => {
