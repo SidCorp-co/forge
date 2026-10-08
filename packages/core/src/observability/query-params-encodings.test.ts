@@ -149,6 +149,10 @@ describe('a bound value under six characters', () => {
 });
 
 describe('a failed query that bound nothing, beside one that bound values', () => {
+  it('leaves text that only names params as it is, beside a statement that bound nothing', () => {
+    expect(redactQueryParams('route params: id', [parameterless()])).toBe('route params: id');
+  });
+
   it.each([
     ['a parameterless failed query', parameterless],
     ['a refusal at COMMIT', commitRefusal],
@@ -163,17 +167,32 @@ describe('a failed query that bound nothing, beside one that bound values', () =
     );
   });
 
-  it("does not read a rendering as the whole list where it only begins another statement's", () => {
-    const text = 'Failed query: select $1, $2\nparams: ab,cd-other-statement';
-    expect(redactQueryParams(text, failed('ab'))).toBe(
-      `Failed query: select $1, $2\nparams: ${REDACTED}`,
-    );
-  });
-
-  it("keeps what follows a rendering that is the whole list, as pino's join writes it", () => {
-    const own = failed('abcdefgh');
-    expect(redactQueryParams(`${own.message}: boom`, own)).toBe(
-      `Failed query: ${STATEMENT}\nparams: ${REDACTED}: boom`,
-    );
+  it.each([
+    [
+      "begins another statement's list",
+      'ab',
+      'Failed query: select $1, $2\nparams: ab,cd-other-statement',
+    ],
+    [
+      'ends at a line break another value runs on past',
+      'known1',
+      'Failed query: select $1\nparams: known1\nprivate-tail',
+    ],
+    [
+      'opens with a short value quoted',
+      'q9z',
+      'Failed query: select $1, $2\nparams: "q9z",unrelated-secret',
+    ],
+    [
+      'is followed by text another value holds',
+      'abcdefgh',
+      `${failed('abcdefgh').message}: private-tail`,
+    ],
+  ])('redacts to the end where the error in hand %s', (_, v, text) => {
+    for (const t of [text, json(text), json(json(text))]) {
+      const out = redactQueryParams(t, failed(v));
+      expect(out).toMatch(/^Failed query: select/);
+      expect(out).not.toMatch(/cd-other|private-tail|unrelated-secret/);
+    }
   });
 });

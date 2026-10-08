@@ -1,3 +1,4 @@
+import { sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import type { Logger } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -124,12 +125,19 @@ describe('the core logger', () => {
   it('still names the statement, the SQLSTATE and the constraint', () => {
     const { lines, log } = capture();
     log.error({ err: failedInsert() }, 'http.unhandled');
-    const line = JSON.parse(lines[0] ?? '');
-    expect(line.err.query).toContain('insert into "users"');
-    expect(line.err.message).toContain('violates unique constraint "users_email_unique"');
-    expect(line.err.sqlstate).toBe('23505');
-    expect(line.err.constraint).toBe('users_email_unique');
-    expect(line.msg).toBe('http.unhandled');
+    log.error({ err: sealQueryError(failedInsert()) }, 'http.unhandled');
+    for (const raw of lines) {
+      const line = JSON.parse(raw);
+      expect(line.err.query).toContain('insert into "users"');
+      expect(line.err.message).toMatch(/^Failed query: insert into "users"/);
+      expect(line.err.sqlstate).toBe('23505');
+      expect(line.err.constraint).toBe('users_email_unique');
+      expect(line.msg).toBe('http.unhandled');
+    }
+    // A sealed error's text holds no value, so the driver's reason after its params stays.
+    expect(JSON.parse(lines[1] ?? '').err.message).toContain(
+      'violates unique constraint "users_email_unique"',
+    );
   });
 
   it('leaves a line that carries no failed query exactly as pino wrote it', () => {

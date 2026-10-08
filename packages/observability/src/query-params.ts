@@ -32,10 +32,13 @@ function encodings(text: string, levels = 2): string[] {
 
 const LINE_BREAK = '(?:\\n|\\\\+n)';
 
-/** Drizzle's `Failed query: <sql>\nparams: <values>`, raw or escaped, values running to the end. */
-function failedQueryParams(held: string): RegExp {
-  return new RegExp(`(Failed query: [\\s\\S]*?${LINE_BREAK}params: )(?!${held})[\\s\\S]*$`);
-}
+/**
+ * Drizzle's `Failed query: <sql>\nparams: <values>`, raw or escaped, the values running to the end:
+ * no text after them, a known rendering's included, is proof of where they stop.
+ */
+const FAILED_QUERY_PARAMS = new RegExp(
+  `(Failed query: [\\s\\S]*?${LINE_BREAK}params: )[\\s\\S]*$`,
+);
 
 const QUOTE = '\\\\*"';
 
@@ -142,15 +145,6 @@ function occurrences(text: string, needle: string, from: number, to: number): Sp
   return spans;
 }
 
-const PARAMS_END = /^(?:$|[\n\\"':])/;
-
-/** Where `rendering` is the whole list after `params: `: one it only begins is another's. */
-function renderedParams(text: string, rendering: string): Span[] {
-  return occurrences(text, `params: ${rendering}`, 8, 0).filter(([, to]) =>
-    PARAMS_END.test(text.slice(to, to + 1)),
-  );
-}
-
 /**
  * Every span of the ORIGINAL text that carries a bound value, overlapping spans merged, so one
  * redaction cannot rewrite the text another one still has to find.
@@ -160,7 +154,7 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
   for (const r of chain.renderings) {
     // A statement with no values renders none, and an empty span would mark where values end.
     if (r === '') continue;
-    for (const e of encodings(r)) spans.push(...renderedParams(text, e));
+    for (const e of encodings(r)) spans.push(...occurrences(text, `params: ${e}`, 8, 0));
   }
   for (const m of chain.driverMessages) {
     for (const e of encodings(m)) spans.push(...occurrences(text, e, 0, 0));
@@ -229,7 +223,7 @@ function redactText(text: string, chain: ChainReading | null): string {
     at = to;
   }
   out += text.slice(at);
-  out = out.replace(failedQueryParams(held), `$1${held}`);
+  out = out.replace(FAILED_QUERY_PARAMS, `$1${held}`);
   if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
   const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
   return out.split(held).join(REDACTED).replace(token, (_, i) => kept[Number(i)] ?? '');
