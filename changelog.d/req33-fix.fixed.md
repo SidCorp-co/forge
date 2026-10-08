@@ -1,1 +1,0 @@
-**The progress report now agrees with the Requirements list, and a corrected memory keeps its past.** The report holds every requirement, Later included, with the list's dates; a correction keeps the old text as a revision and its writer.

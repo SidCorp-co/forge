@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.198] - 2026-10-08
+
+Progress report covers Later-lane requirements; memory corrections keep writer and earlier text
+
+### Fixed
+
+- **The progress report now agrees with the Requirements list, and a corrected memory keeps its past.** The report holds every requirement, Later included, with the list's dates; a correction keeps the old text as a revision and its writer.
+
+### Security
+
+- **Memory no longer tells you about projects you cannot read.** A memory naming another project's issue or requirement now shows it as another project, not checked, unless you may read that project.
+
 ## [0.4.0-dev.197] - 2026-10-08
 
 Interim progress messages no longer claim an issue was updated when only read
