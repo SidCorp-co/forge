@@ -183,9 +183,7 @@ impl DialogSweep {
         reset: Option<String>,
     ) -> Outcome {
         let resets_in_seconds = match &reset {
-            Some(text) => {
-                usage_limit::resets_in_seconds(text, runner_platform::clock::now_secs()).await
-            }
+            Some(text) => usage_limit::resets_in_seconds(text, runner_platform::clock::now_secs()),
             None => None,
         };
         let detail = match (&reset, resets_in_seconds) {
