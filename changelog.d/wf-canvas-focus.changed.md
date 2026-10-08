@@ -1,1 +1,0 @@
-**A workflow design's canvas gets the room.** Focus mode (F, Esc, `#canvas`) fills the screen; the decision banner is one line with folding details; the facts rail folds away; the canvas keeps 60% of the viewport.
