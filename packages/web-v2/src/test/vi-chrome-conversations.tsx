@@ -138,7 +138,7 @@ const record = (over: Partial<UiCallRecord> & { reading: UiCallRecord["reading"]
 const OK = (summary: string, chips: { field: "status" | "priority" | "createdBy" | "assignee" | "text"; label: string }[] = []) => ({ ok: true as const, summary, undo: noop, chips });
 const navigate = { kind: "action", action: { name: "ui.navigate", params: { route: "issues" } } } as UiCallRecord["reading"];
 
-export const CONVERSATION_SCREENS = [
+export const SCREENS = [
   { name: "Conversation · two projects", render: () => wrap(<ConversationChat projectId={P} conversationId="c-two" />) },
   { name: "Conversation · one-to-one onboarding", render: () => wrap(<ConversationChat projectId={P} conversationId="c-one" />) },
   { name: "Conversation · empty", render: () => wrap(<ConversationChat projectId={P} conversationId="c-empty" />) },

@@ -183,7 +183,7 @@ const withUrl = (qs: string, children: React.ReactNode) => {
   return wrap(children);
 };
 
-export const AGENTS_SCREENS = [
+export const SCREENS = [
   { name: "Agents · runs", render: () => withUrl("", <AgentsScreen access={access} />) },
   { name: "Agents · runs finished", render: () => withUrl("?scope=finished", <AgentsScreen access={access} />) },
   { name: "Agents · runs by box", render: () => withUrl("?group=box&scope=all", <AgentsScreen access={access} />) },

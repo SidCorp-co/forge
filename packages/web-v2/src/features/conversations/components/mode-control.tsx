@@ -45,7 +45,7 @@ interface ModeMeta {
   hint: ProductCopyKey;
 }
 
-/** What each mode is, in the words a person picking between them needs (the locale file's keys). */
+/** What each mode is, in the words a person picking between them needs (the product copy's keys). */
 export const MODES: ModeMeta[] = [
   { mode: "assistant", label: "shell.mode.assistant", hint: "shell.mode.assistantHint" },
   { mode: "agent", label: "shell.mode.agent", hint: "shell.mode.agentHint" },

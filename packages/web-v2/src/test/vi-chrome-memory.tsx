@@ -37,7 +37,7 @@ const BASE: MemoryEntry = {
 const noop = () => {};
 const row = (e: MemoryEntry) => <MemoryEntryRow entry={e} slug="hop" timeZone="UTC" busy={false} onCorrect={noop} onRetire={noop} />;
 
-export const MEMORY_SCREENS: ChromeScreen[] = [
+export const SCREENS: ChromeScreen[] = [
   { name: "Memory row", render: () => <ul>{row(BASE)}</ul> },
   {
     name: "Memory row, retired",

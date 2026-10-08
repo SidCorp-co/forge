@@ -1,21 +1,44 @@
 import { SAID_ENTRIES, type SaidKey } from "@forge/contracts/said";
-import strings from "./product-copy.json";
+import { COPY_FILES } from "./copy-files";
 
-/**
- * The product chrome of What's new and the tours: one locale file (`product-copy.json`), each
- * language a flat map of keys, English underneath. It reads in English unless a caller names a
- * language; a key a language lacks reads in English, and a language the file lacks reads wholly in
- * English. The changelog What's new shows is written in English, so no caller names one yet.
- */
-export type ProductCopyKey = keyof (typeof strings)["en"] | SaidKey;
+// The product chrome, composed from the copy files (`./copy-files`), English underneath. It reads in
+// English unless a caller names a language; a key a language lacks reads in English, and a language
+// no file holds reads wholly in English.
+
+type Words<P, L extends string> = P extends Record<L, infer W> ? keyof W & string : never;
+export type ProductCopyKey = Words<(typeof COPY_FILES)[keyof typeof COPY_FILES], "en"> | SaidKey;
+
+type Strings = Record<string, Record<string, string>>;
+
+/** One map per language over every copy file; a key two files hold is refused, naming both. */
+export function composeCopy(files: Record<string, Strings>): Strings {
+  const out: Strings = {};
+  const owner = new Map<string, string>();
+  for (const [file, part] of Object.entries(files)) {
+    for (const [lang, words] of Object.entries(part)) {
+      out[lang] ??= {};
+      const into = out[lang];
+      for (const [key, text] of Object.entries(words)) {
+        const before = owner.get(`${lang} ${key}`);
+        if (before) throw new Error(`Product copy key "${key}" (${lang}) is in both ${before} and ${file}: a key lives in one copy file.`);
+        owner.set(`${lang} ${key}`, file);
+        into[key] = text;
+      }
+    }
+  }
+  return out;
+}
+
+/** Every language's words as the copy files hold them: what core says has only its vi here. */
+export const PRODUCT_STRINGS: Strings = composeCopy(COPY_FILES as Record<string, Strings>);
 
 // What core says (`@forge/contracts/said`) holds its own English, the one core's text is built
-// from; the file holds only the other languages' words for those keys.
+// from; the copy files hold only the other languages' words for those keys.
 const SAID_EN = Object.fromEntries(Object.entries(SAID_ENTRIES).map(([k, e]) => [k, e.en])) as Record<SaidKey, string>;
-const EN: Record<ProductCopyKey, string> = { ...strings.en, ...SAID_EN };
+const EN = { ...PRODUCT_STRINGS.en, ...SAID_EN } as Record<ProductCopyKey, string>;
 
 const LANGUAGES: Record<string, Partial<Record<ProductCopyKey, string>>> = {
-  ...(strings as unknown as Record<string, Partial<Record<ProductCopyKey, string>>>),
+  ...(PRODUCT_STRINGS as Record<string, Partial<Record<ProductCopyKey, string>>>),
   en: EN,
 };
 

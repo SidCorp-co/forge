@@ -94,7 +94,7 @@ const notificationSettings = () => (
   </Seeded>
 );
 
-export const ACCOUNT_SCREENS: ShellScreen[] = [
+export const SCREENS: ShellScreen[] = [
   { name: "Notifications", render: notifications },
   { name: "Account preferences", render: account },
   { name: "Notification settings", render: notificationSettings },

@@ -189,7 +189,7 @@ export function sentenceCase(v: string): string {
 
 const hintOf = (h: string | undefined) => (h ? h.replace(/^[a-z_-]+: /, "") : null);
 
-/** The locale file's label group of a state family and of its hints; a family with none reads as the contract says it. */
+/** The product copy's label group of a state family and of its hints; a family with none reads as the contract says it. */
 const STATUS_GROUP: Partial<Record<StatusFamily, { label: LabelGroup; hint?: LabelGroup }>> = {
   issue: { label: "issueStatus", hint: "hintIssueStatus" },
   requirement: { label: "requirementState", hint: "hintRequirementState" },
@@ -268,7 +268,7 @@ export const ENUM_FAMILIES = {
 
 export type EnumFamily = keyof typeof ENUM_FAMILIES;
 
-/** The locale file's label group of an enum family. */
+/** The product copy's label group of an enum family. */
 const ENUM_GROUP: Partial<Record<EnumFamily, LabelGroup>> = {
   priority: "issuePriority",
   category: "issueCategory",

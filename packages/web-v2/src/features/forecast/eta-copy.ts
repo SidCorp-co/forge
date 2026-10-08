@@ -2,7 +2,7 @@ import { baseOf, copyLocale, type ProductCopyKey, productCopy } from "@/lib/i18n
 
 // The ETA column's words, in the project's content language (contracts `content-language.ts`): vi
 // where the project writes Vietnamese, English for every other tag. The words are the `eta.*` keys
-// of the one locale file, `lib/i18n/product-copy.json`, read through `productCopy`.
+// of the forecast's copy file, `features/forecast/copy.json`, read through `productCopy`.
 
 const ETA_LANGS = ["vi", "en"] as const;
 export type EtaLang = (typeof ETA_LANGS)[number];

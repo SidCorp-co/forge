@@ -2,7 +2,7 @@ import type { StatusReportDetail } from "@forge/contracts/status-reports";
 import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
-import copy from "@/lib/i18n/product-copy.json";
+import { PRODUCT_STRINGS as copy } from "@/lib/i18n/product-copy";
 import { renderWithQuery } from "@/test/render";
 import { AT, STATUS } from "../status-fixture";
 import { weeklyCron, weeklyOf } from "./report-schedule";

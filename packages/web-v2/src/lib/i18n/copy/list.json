@@ -1,0 +1,18 @@
+{
+  "en": {
+    "list.col.key": "Key",
+    "list.col.meta": "Owner · age",
+    "list.col.state": "State",
+    "list.col.title": "Title",
+    "list.col.waitingOn": "Waiting on",
+    "list.empty": "Nothing to show."
+  },
+  "vi": {
+    "list.col.key": "Mã",
+    "list.col.meta": "Người phụ trách · tuổi",
+    "list.col.state": "Trạng thái",
+    "list.col.title": "Tiêu đề",
+    "list.col.waitingOn": "Đang chờ",
+    "list.empty": "Không có gì để hiển thị."
+  }
+}

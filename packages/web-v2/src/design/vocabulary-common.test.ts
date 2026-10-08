@@ -1,6 +1,6 @@
 import { ENUM_LABELS, STATE_READINGS } from "@forge/contracts/ui-vocabulary";
 import { describe, expect, it } from "vitest";
-import product from "@/lib/i18n/product-copy.json";
+import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { ENUM_COMMON, STATUS_COMMON, enumLabel, statusReading } from "./vocabulary";
 
 // A family with no label group reads its words from `common.*`: every value the contract names has

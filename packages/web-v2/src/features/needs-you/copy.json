@@ -1,0 +1,11 @@
+{
+  "en": {
+    "needs.lastActivity": "Last activity {at}"
+  },
+  "vi": {
+    "needs.lastActivity": "Hoạt động gần nhất {at}",
+    "needsYou.title.designProposed": "{title} · bản sửa {revision} đang đề xuất",
+    "needsYou.title.question": "Một câu hỏi do lượt chạy đặt ra",
+    "needsYou.title.release": "Bản phát hành {version}"
+  }
+}

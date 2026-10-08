@@ -5,7 +5,7 @@
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
 import { labelCopy } from "@/lib/i18n/labels";
-import product from "@/lib/i18n/product-copy.json";
+import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { builtinTemplateTitle, builtinTemplateWords } from "./template-words";
 
 const en = product.en as Record<string, string>;

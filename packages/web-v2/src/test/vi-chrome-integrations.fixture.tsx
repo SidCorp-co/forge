@@ -157,7 +157,7 @@ const clickKey = (key: ProductCopyKey, nth = 0) => () => {
 
 const sectionOf = (render: () => ReactElement, items?: IntegrationSummary[]) => () => <Seeded data={queries(items)}>{render()}</Seeded>;
 
-export const INTEGRATION_SCREENS = [
+export const SCREENS = [
   { name: "Integrations", render: sectionOf(() => <IntegrationsScreen />) },
   { name: "Integrations · add", render: sectionOf(() => <IntegrationsScreen />), act: clickKey("integrations.add") },
   { name: "Integrations · empty", render: () => <Seeded data={[[["integration-connections"], { items: [] }], [["orgs"], []], [["projects", "all"], []]]}><IntegrationsScreen /></Seeded> },

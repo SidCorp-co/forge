@@ -1,0 +1,14 @@
+{
+  "en": {
+    "time.daysAgo": "{n}d ago",
+    "time.hoursAgo": "{n}h ago",
+    "time.minutesAgo": "{n}m ago",
+    "time.secondsAgo": "{n}s ago"
+  },
+  "vi": {
+    "time.daysAgo": "{n} ngày trước",
+    "time.hoursAgo": "{n} giờ trước",
+    "time.minutesAgo": "{n} phút trước",
+    "time.secondsAgo": "{n} giây trước"
+  }
+}

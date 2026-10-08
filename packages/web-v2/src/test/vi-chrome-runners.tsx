@@ -126,7 +126,7 @@ const clickKey = (key: ProductCopyKey, nth = 0) => () => {
   fireEvent.click(el);
 };
 
-export const RUNNER_SCREENS = [
+export const SCREENS = [
   { name: "Runners", render: () => <Seeded data={fleet()}><RunnersScreen /></Seeded> },
   { name: "Runners · device detail", render: () => <Seeded data={projectQueries()}><RunnersScreen /></Seeded>, act: clickKey("runners.device.manage") },
   { name: "Runners · revoke", render: () => <Seeded data={fleet()}><RunnersScreen /></Seeded>, act: clickKey("runners.device.revoke") },

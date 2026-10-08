@@ -202,7 +202,7 @@ const AWAITING_SEED: [QueryKey, unknown][] = [
   ],
 ];
 
-export const OVERVIEW_SCREENS = [
+export const SCREENS = [
   {
     name: "Development overview",
     render: () => (

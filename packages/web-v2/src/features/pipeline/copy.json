@@ -1,0 +1,24 @@
+{
+  "en": {
+    "pipeline.board.empty": "No issues in this column.",
+    "pipeline.board.help": "Click a card to inspect its run · pause / resume / cancel from the panel",
+    "pipeline.board.helpAria": "Pipeline help",
+    "pipeline.board.hint": "One column per state an issue can be in. There is no order between them.",
+    "pipeline.board.lastCheckIn": "Last check-in {clock} · {ago} ago",
+    "pipeline.board.noCheckIn": "No check-in",
+    "pipeline.board.noCheckInRecord": "No check-in on record",
+    "pipeline.board.queued": "Queued",
+    "pipeline.board.title": "Pipeline"
+  },
+  "vi": {
+    "pipeline.board.empty": "Cột này không có issue nào.",
+    "pipeline.board.help": "Bấm vào thẻ để xem lượt chạy · tạm dừng / tiếp tục / huỷ từ bảng bên",
+    "pipeline.board.helpAria": "Trợ giúp pipeline",
+    "pipeline.board.hint": "Mỗi cột là một trạng thái issue có thể ở. Giữa các cột không có thứ tự.",
+    "pipeline.board.lastCheckIn": "Lần báo cuối {clock} · {ago} trước",
+    "pipeline.board.noCheckIn": "Chưa báo",
+    "pipeline.board.noCheckInRecord": "Chưa có lần báo nào được ghi",
+    "pipeline.board.queued": "Đang xếp hàng",
+    "pipeline.board.title": "Pipeline"
+  }
+}

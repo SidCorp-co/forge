@@ -1,0 +1,5 @@
+{
+  "vi": {
+    "questions.rule.unheld": "một lượt chạy đã hỏi một câu mà không issue, requirement hay phản hồi nào giữ, và chỉ màn hình Agent / Lượt chạy nhận được câu trả lời"
+  }
+}

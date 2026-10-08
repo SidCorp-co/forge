@@ -133,7 +133,7 @@ const clickKey = (key: ProductCopyKey) => () => {
   fireEvent.click(el);
 };
 
-export const PROJECT_SETTINGS_SCREENS = [
+export const SCREENS = [
   {
     name: "Project settings · shell and General",
     render: () => {
