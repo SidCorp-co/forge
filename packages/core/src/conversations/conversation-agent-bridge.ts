@@ -21,7 +21,7 @@ import {
 } from '../agent-sessions/index.js';
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
-import { type MessageVerdict, refusalsOf } from '../messaging/contract.js';
+import { refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -29,21 +29,23 @@ import { redispatchConversationAgentTurn } from './conversation-agent-failover.j
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
+  type HeldReply,
+  heldBecause,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
-import { codeAuthored, conversationTransport, screened } from './ports.js';
+import { codeAuthored, conversationTransport, type ScreenedMessage, screened } from './ports.js';
 import { recordDeliveredReply } from './transcript.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
 /**
- * What the venue is told, and what the screen recorded about it.
+ * What the venue is told: the screened reply, a notice that the screen held the reply the session
+ * wrote, or — only where the session left no reply at all — the door's failure sentence.
  */
-type Outcome = {
-  text: string;
-  failure: string | null;
-  passed: MessageVerdict | null;
-};
+type Outcome =
+  | { kind: 'answered'; message: ScreenedMessage }
+  | { kind: 'held'; message: ScreenedMessage; held: HeldReply }
+  | { kind: 'failed'; message: ScreenedMessage; failure: string };
 
 function readProgressFacts(metadata: unknown): ProgressFacts | null {
   const pf = (metadata as Record<string, unknown> | null)?.progressFacts;
@@ -108,13 +110,25 @@ async function stampFailure(sessionId: string, failure: string): Promise<void> {
   await setSessionMarkerField(sessionId, CONVERSATION_AGENT_MARKER, 'failure', failure);
 }
 
+/** Where a held reply can be read, by the venue it was asked in. */
+const HELD_REPLY_IS = {
+  'web-agent-completion':
+    'Use "Show the held reply" on this turn to read it as the session wrote it.',
+  'agent-chat-completion': 'The reply is kept on the Agent session in Forge.',
+} as const;
+
+/** The notice a venue is shown in place of a reply the screen held. Never the "no answer" sentence: there was one. */
+function heldNotice(meta: ConversationAgentMeta, held: HeldReply): string {
+  return `The agent wrote a reply, but the reply check held it back. ${heldBecause(held.refusals)} ${HELD_REPLY_IS[meta.door]}`;
+}
+
 async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta): Promise<Outcome> {
   const messages = session.status === 'completed' ? await readTranscript(session.id) : [];
   const text = session.status === 'completed' ? finalAssistantText(messages) : null;
   if (!text) {
     return {
-      text: meta.replies.failed,
-      passed: null,
+      kind: 'failed',
+      message: codeAuthored(meta.replies.failed),
       failure:
         session.status === 'completed'
           ? 'the session finished without writing a reply'
@@ -133,20 +147,34 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
       throw new Error(`${meta.door} declares no repair; nothing can ask that session again`);
     },
   });
-  if (verdict.kind === 'passed') return { text, failure: null, passed: verdict.verdict };
+  if (verdict.kind === 'passed') {
+    const message = screened(text, meta.door, verdict.verdict);
+    if (!message) {
+      throw new Error(
+        `conversation-agent-bridge: session ${session.id} passed the ${meta.door} screen over a text its proof does not cover`,
+      );
+    }
+    return { kind: 'answered', message };
+  }
+  const held: HeldReply = {
+    at: new Date().toISOString(),
+    text,
+    refusals: refusalsOf(verdict.verdict).map((r) => ({
+      rule: r.rule,
+      why: r.why,
+      quote: r.quote,
+      shape: r.shape,
+    })),
+  };
   logger.warn(
     {
       sessionId: session.id,
       conversationId: meta.conversationId,
-      refusals: refusalsOf(verdict.verdict),
+      rules: held.refusals.map((r) => r.rule),
     },
-    'conversation-agent-bridge: the session reply failed the screen; honest fallback',
+    'conversation-agent-bridge: the screen held the session reply; the room is told why',
   );
-  return {
-    text: meta.replies.failed,
-    passed: null,
-    failure: 'the reply this session wrote could not be shown here',
-  };
+  return { kind: 'held', message: codeAuthored(heldNotice(meta, held)), held };
 }
 
 /**
@@ -200,10 +228,10 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
   }
 
   const outcome = await composeOutcome(session, meta);
-  const message =
-    outcome.failure || !outcome.passed
-      ? codeAuthored(outcome.text)
-      : (screened(outcome.text, meta.door, outcome.passed) ?? codeAuthored(meta.replies.failed));
+  const { message } = outcome;
+  if (outcome.kind === 'held') {
+    await setSessionMarkerField(session.id, CONVERSATION_AGENT_MARKER, 'held', outcome.held);
+  }
 
   try {
     const receipt = await transport.deliver(meta.venue, message);
@@ -225,7 +253,7 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
     return;
   }
 
-  if (outcome.failure) await stampFailure(session.id, outcome.failure);
+  if (outcome.kind === 'failed') await stampFailure(session.id, outcome.failure);
 
   await transport
     .notifySettled?.(meta.venue)

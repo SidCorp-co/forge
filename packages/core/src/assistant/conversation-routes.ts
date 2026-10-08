@@ -206,7 +206,7 @@ conversationRoutes.get('/:id', zValidator('param', idParamSchema), async (c) => 
   const [participants, { messages, windows, agentTurns }, scope, questionnaires, marks] =
     await Promise.all([
       listParticipants(id),
-      roomTail(id),
+      roomTail(id, userId),
       derivedScope(id),
       batchesOfConversation(id),
       threadMarks([conversation], userId),

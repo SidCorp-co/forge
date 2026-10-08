@@ -45,6 +45,7 @@ import { useDeviceVersionLabel, useDevices } from "@/features/runners/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { deriveAgentTasks, deriveFilesChanged } from "../derive";
 import type { ConversationItem } from "../types";
+import { HeldReplyForRun } from "./held-reply-for-run";
 import { LoadedForRun } from "./loaded-for-run";
 
 function fmtNum(n: number | undefined, num: (n: number) => string): string {
@@ -273,6 +274,8 @@ export function ContextRail({
           </Banner>
         </Section>
       )}
+
+      <HeldReplyForRun metadata={session.metadata} />
 
       <LoadedForRun metadata={session.metadata} />
 

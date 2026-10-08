@@ -439,7 +439,9 @@ function LiveTurn({
  */
 function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
   const t = useCopy();
+  const [open, setOpen] = useState(false);
   const failed = turn.state === "failed";
+  const held = turn.held?.reply ? turn.held : null;
   return (
     <div
       data-testid="thread-agent-turn"
@@ -454,6 +456,23 @@ function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
         <p className="fg-caption mt-1 text-subtle">
           {t("conversations.agentTurn.askAgain")}
         </p>
+      )}
+      {held && (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="fg-body-sm mt-1 underline underline-offset-2 hover:text-fg"
+          data-testid="thread-held-reply-toggle"
+        >
+          {t(open ? "conversations.agentTurn.hideHeld" : "conversations.agentTurn.showHeld")}
+        </button>
+      )}
+      {held && open && (
+        <div className="mt-2 border-t border-line pt-2" data-testid="thread-held-reply">
+          <p className="fg-caption text-subtle">{t("conversations.agentTurn.heldBy", { reason: held.reason })}</p>
+          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{held.reply}</p>
+        </div>
       )}
     </div>
   );

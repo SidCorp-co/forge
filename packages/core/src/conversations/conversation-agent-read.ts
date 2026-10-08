@@ -5,6 +5,7 @@ import { agentSessions } from '../db/schema.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
+  heldBecause,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
 
@@ -49,7 +50,7 @@ export async function conversationAgentTurnForWindow(
 }
 
 /** What a person is told about a runner-hosted turn while it is not yet an answer. */
-type ConversationAgentTurnState = 'dispatched' | 'running' | 'delivered' | 'failed';
+type ConversationAgentTurnState = 'dispatched' | 'running' | 'delivered' | 'held' | 'failed';
 
 export interface ConversationAgentTurnRow {
   windowId: string;
@@ -57,6 +58,11 @@ export interface ConversationAgentTurnRow {
   state: ConversationAgentTurnState;
   /** On `failed` only: which failure it was, in the sentence the venue was shown. */
   reason: string | null;
+  /**
+   * The reply the screen held, where it held one: why, for every reader of the room, and the text
+   * as the session wrote it for the person it answered — the session acted as them — and nobody else.
+   */
+  held: { reason: string; reply: string | null } | null;
 }
 
 /**
@@ -64,6 +70,7 @@ export interface ConversationAgentTurnRow {
  */
 export async function readConversationAgentTurns(
   conversationId: string,
+  viewerId: string | null,
 ): Promise<ConversationAgentTurnRow[]> {
   const rows = await db
     .select({
@@ -80,15 +87,29 @@ export async function readConversationAgentTurns(
   const out: ConversationAgentTurnRow[] = [];
   for (const row of [...rows].sort((a, b) => +a.createdAt - +b.createdAt)) {
     const meta = readConversationAgentMeta(row.metadata);
-    if (!meta) continue;
-    out.push({
-      windowId: meta.windowId,
-      sessionId: row.id,
-      state: turnState(row, meta),
-      reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
-    });
+    if (meta) out.push(agentTurnRow(row, meta, viewerId));
   }
   return out;
+}
+
+/** One turn as `viewerId` reads it; null reads as nobody in particular. */
+export function agentTurnRow(
+  row: { id: string; status: string; runtimeState: string | null },
+  meta: ConversationAgentMeta,
+  viewerId: string | null,
+): ConversationAgentTurnRow {
+  return {
+    windowId: meta.windowId,
+    sessionId: row.id,
+    state: turnState(row, meta),
+    reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
+    held: meta.held
+      ? {
+          reason: heldBecause(meta.held.refusals),
+          reply: viewerId !== null && meta.asker?.userId === viewerId ? meta.held.text : null,
+        }
+      : null,
+  };
 }
 
 /**
@@ -110,6 +131,7 @@ export function turnState(
   meta: ConversationAgentMeta,
 ): ConversationAgentTurnState {
   if (meta.failure) return 'failed';
+  if (meta.held) return 'held';
   if (meta.deliveredAt) return 'delivered';
   if (interruptedDelivery(meta)) return 'failed';
   if (meta.claimedAt) return 'running';

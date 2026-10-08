@@ -193,22 +193,40 @@ export const ISSUE_LINK_SHAPE: MessageRule = {
   },
 };
 
+/**
+ * The writer promising later work. "Will check", "will update" and "will look" are a promise only
+ * with the writer as their subject, as the English half already demands "I'll": the same words
+ * describe what a filed issue's acceptance will check, or what the reader will see (2026-10-08, the
+ * reply that filed ISS-395). "Will reply" and "will report back" promise the reader whoever says them.
+ */
 const EMPTY_PROMISE_RE =
-  /sẽ\s+(kiểm tra|phản hồi|báo(\s+lại)?|cập nhật|xem)|đang\s+(kiểm tra|xử lý)|để\s+(mình|tôi)\s+(kiểm tra|xem)|chờ\s+(mình|tôi)|\bI('?ll| will)\s+(check|look into|get back|investigate)\b|\bget back to you\b/i; // i18n-allow: matches the Vietnamese/English "future promise, no result" phrasing being policed
+  /(?:^|[^\p{L}])(?:mình|tôi|em|chúng\s+tôi|bọn\s+mình|bên\s+mình)(?:\s+(?:cũng|vẫn))?\s+sẽ\s+(?:kiểm\s+tra|báo|cập\s+nhật|xem)|sẽ\s+(?:phản\s+hồi|báo\s+lại)|đang\s+(?:kiểm\s+tra|xử\s+lý)|để\s+(?:mình|tôi)\s+(?:kiểm\s+tra|xem)|chờ\s+(?:mình|tôi)|\bI(?:'?ll|\s+will)\s+(?:check|look\s+into|get\s+back|investigate)\b|\bget\s+back\s+to\s+you\b/iu; // i18n-allow: matches the Vietnamese/English "future promise, no result" phrasing being policed
+
+const READER_ANSWERS_RE =
+  /\b(?:bạn|anh|chị|you)\s+(?:(?:chỉ\s+cần\s+|just\s+|can\s+)?(?:trả\s+lời|xác\s+nhận|chọn|đồng\s+ý|nói|cho\s+(?:mình|tôi)\s+biết|confirm|answer|reply|choose|pick|say|tell\s+me|agree|approve))(?![\p{L}\p{N}])/iu; // i18n-allow: matches the Vietnamese/English phrasing of the reader being asked to answer
+
+const SENTENCE_RE = /[^.!?\n]+[.!?]*/g;
 
 /**
  * A promise of a later turn, where the agent has no later turn. The reader owes
  * nothing on a report, so a promise to come back is a message that says nothing.
+ * A promise made in the same sentence that asks the reader to answer is not one:
+ * the reader's answer IS the later turn, and the promise says what it will do.
  */
 export const NO_EMPTY_PROMISE: MessageRule = {
   id: 'no-empty-promise',
   shape: 'report the result you have, or say exactly what is missing',
   example: 'The deploy is done; the one check still red is the integration suite.',
   needs: [],
-  check: (text) =>
-    EMPTY_PROMISE_RE.test(text)
+  check: (text) => {
+    const empty = (text.match(SENTENCE_RE) ?? []).find(
+      (s) => EMPTY_PROMISE_RE.test(s) && !READER_ANSWERS_RE.test(s),
+    );
+    return empty
       ? one(
           'reply promises a future action but there is no follow-up turn — do the work now and report the result, or state exactly what is missing',
+          empty.trim(),
         )
-      : none,
+      : none;
+  },
 };

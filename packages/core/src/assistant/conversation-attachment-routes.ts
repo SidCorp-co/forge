@@ -30,7 +30,7 @@ import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
  * "idle" to either tells the caller something this door never read.
  */
 async function nothingHereToStop(id: string): Promise<RefusalError | null> {
-  const handed = (await readConversationAgentTurns(id)).find(
+  const handed = (await readConversationAgentTurns(id, null)).find(
     (t) => t.state === 'dispatched' || t.state === 'running',
   );
   if (handed) {

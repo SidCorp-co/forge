@@ -1,0 +1,17 @@
+Mình đã ghi yêu cầu này thành issue **ISS-395** ở trạng thái nháp (draft), nên nó chưa được đưa vào làm: [/projects/forge/issues/f4a82b24-bb6b-48b4-913f-8ba57f5af4e2](/projects/forge/issues/f4a82b24-bb6b-48b4-913f-8ba57f5af4e2)
+
+**Điều cần lưu ý trước khi làm:** panel Ask Agent không nằm đè lên trang. Nó chiếm chỗ và đẩy phần nội dung bên trái hẹp lại. Hiện độ rộng tối đa là **900px**. Nếu mặc định mở luôn ở 900px trên laptop màn 1366px, lại đang mở menu bên trái, thì phần trang còn khoảng **200px**. Chỗ đó quá hẹp để đọc danh sách issue hay bảng. Vì vậy yêu cầu "phần bên trái phải responsive" rất quan trọng, và cần thêm một giới hạn để trang không bị ép quá hẹp.
+
+**Issue đã ghi những gì:**
+- Lần đầu mở, panel ở **cỡ lớn** (900px).
+- Có **một nút** trên đầu panel, cạnh nút ghim, để chuyển qua lại giữa **cỡ lớn** và **cỡ nửa** (450px).
+- Phần trang bên trái phải co giãn hợp lý ở cả hai cỡ: không bị tràn ngang, không bị cắt chữ hay chồng lên nhau. Sẽ kiểm tra trên màn 1280px và 1366px.
+- Điện thoại và tablet dọc giữ nguyên như hiện tại (panel trượt ra từ cạnh màn hình).
+
+**Ba điểm mình đã tạm chọn theo đề xuất của mình, bạn xác nhận giúp:**
+
+1. **Màn hình nhỏ:** đề xuất là luôn chừa cho trang tối thiểu khoảng **480px**. Nếu cửa sổ không đủ rộng thì "cỡ lớn" tự thu lại cho vừa, và "cỡ nửa" là một nửa của cỡ đó. Hay bạn muốn lúc nào cũng đúng 900px, chấp nhận trang bên trái rất hẹp?
+2. **Kéo tay:** đề xuất là vẫn cho kéo đổi độ rộng như bây giờ, còn nút chỉ chuyển giữa hai cỡ có sẵn. Trình duyệt vẫn nhớ lựa chọn cuối cùng. Hay bạn muốn bỏ hẳn kéo tay, chỉ còn hai cỡ?
+3. **Người đã từng kéo đổi độ rộng:** đề xuất là chuyển họ về cỡ lớn mới một lần. Hay giữ nguyên độ rộng họ đã chọn?
+
+Bạn trả lời ba điểm này (hoặc chỉ cần nói "đồng ý cả ba"), mình sẽ cập nhật issue và chuyển nó sang trạng thái sẵn sàng để đưa vào làm.

@@ -1,0 +1,1 @@
+**An Agent reply the reply check holds is no longer reported as "the session ended without an answer".** The thread says why it was held, its asker can open the reply, and the session page lists the rules.
