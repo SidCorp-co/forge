@@ -70,7 +70,8 @@ export interface MobileNavDrawerProps {
   railSlug: string | null;
   railProjectName: string | null | undefined;
   activeKey: string;
-  attentionCount: number;
+  /** Undefined until the attention list and the devices have both been read: no figure is stated before then. */
+  attentionCount: number | undefined;
   /** Open-issue count for the rail project (badges the Issues row). */
   openIssuesBadge: number | undefined;
   /** Projects scoped to the active org (ISS-480). */

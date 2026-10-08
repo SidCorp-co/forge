@@ -289,6 +289,11 @@ export interface AttentionCut {
   peopleCut: boolean;
 }
 
+/** Said where the attention read failed: what could not be read, why, and that the figure is unknown. */
+export function attentionReadFailure(reason: string): string {
+  return `Needs you could not be read: ${reason}. How much it holds is unknown, so no count and no "All caught up" is shown.`;
+}
+
 /** The sentence the Needs you tile and its list say in place of a figure when the response cannot support one; null where it can. */
 export function attentionRefusal(view: AttentionView | undefined, slug: string): string | null {
   if (!view) return null;

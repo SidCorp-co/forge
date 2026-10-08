@@ -28,6 +28,8 @@ export interface KpiBandProps {
   needsYouCaption: string;
   /** Said in place of the figure where the response cannot support one: the tile refuses rather than count. */
   needsYouRefusal?: string | null;
+  /** The attention answer is not in yet: the tile says it is reading, and states no figure. */
+  needsYouPending?: boolean;
   /** Open work: the four open states summed, the figure the donut's centre and the nav badge show. */
   openWork: number;
   spendTodayUsd: number;
@@ -50,9 +52,9 @@ export function KpiBand(props: KpiBandProps) {
     {
       icon: "inbox",
       label: "Needs you",
-      value: props.needsYouRefusal ? "—" : String(props.needsYou),
-      caption: props.needsYouRefusal ?? props.needsYouCaption,
-      accent: !props.needsYouRefusal && props.needsYou > 0,
+      value: props.needsYouPending ? "…" : props.needsYouRefusal ? "—" : String(props.needsYou),
+      caption: props.needsYouPending ? "reading what needs you…" : (props.needsYouRefusal ?? props.needsYouCaption),
+      accent: !props.needsYouPending && !props.needsYouRefusal && props.needsYou > 0,
     },
     {
       icon: "board",

@@ -105,7 +105,7 @@ export function buildBottomActiveKey(pathname: string, slug: string | null): str
   return "";
 }
 
-export function workspaceNavItems(attentionCount: number): NavItem[] {
+export function workspaceNavItems(attentionCount: number | undefined): NavItem[] {
   return WORKSPACE_ITEMS.map((it) =>
     it.key === "overview" ? { ...it, badge: attentionCount } : it,
   );
@@ -114,7 +114,7 @@ export function workspaceNavItems(attentionCount: number): NavItem[] {
 /** Compact-rail workspace rows. Derived from WORKSPACE_ITEMS so the compact
  *  and expanded rails can never drift (ISS-433 live-E2E caught this list as a
  *  stale hardcoded duplicate — it was missing the promoted Integrations row). */
-export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
+export function compactWorkspaceRailItems(attentionCount: number | undefined): RailItem[] {
   return WORKSPACE_ITEMS.map((it) => ({
     key: it.key,
     label: it.label,
@@ -137,7 +137,7 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
 
 export function bottomTabItems(
   slug: string | null,
-  attentionCount: number,
+  attentionCount: number | undefined,
   openIssues: number | undefined,
 ): BottomTabItem[] {
   if (slug) {

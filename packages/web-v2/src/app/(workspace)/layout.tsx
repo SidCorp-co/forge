@@ -85,7 +85,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
   const { pinnedIds } = usePinnedProjects();
-  // Rail + bottom-bar Attention badge. `total` already folds in offline runners.
+  // Rail + bottom-bar Attention badge. `total` already folds in offline runners, and is undefined (no badge) until both reads are in.
   const { total: attentionCount } = useAttention();
   // What's New nav badge — shown when the newest changelog entry is unseen.
   const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
