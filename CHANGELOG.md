@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.201] - 2026-10-08
+
+Release requirements drawn as criteria bars; requirement view progress strip
+
+### Added
+
+- **A release page draws each requirement as a bar of its criteria passed.** Each requirement it carries shows passing, failing and not-yet-judged criteria out of its own total, with the count beside it and a screen-reader label.
+
+### Changed
+
+- **A requirement page opens on its progress.** One strip at the top, on every width and in the peek, shows whom it waits on, its step, the next and k/n verified; criteria read as a checklist; history stays folded.
+
 ## [0.4.0-dev.200] - 2026-10-08
 
 Computations run sandboxed on the team's own runner, not Anthropic's container
