@@ -11,7 +11,7 @@
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { extractIssueClaims, turnCreatedIssue } from './issue-tokens.js';
+import { extractIssueClaims } from './issue-tokens.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
 /** Every issue key a message names, read against the project's own rows. */
@@ -52,17 +52,6 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
       }
     }
     breaks.push(...missingKeys(text, f));
-    if (
-      claims.claimsCreation &&
-      !turnCreatedIssue(f.toolCalls) &&
-      claims.urlIds.length === 0 &&
-      claims.issSeqs.length === 0
-    ) {
-      breaks.push({
-        quote: null,
-        why: 'reply claims an issue was created but no `forge new` call was made',
-      });
-    }
     return breaks;
   },
 };

@@ -122,7 +122,7 @@ export async function buildConversationContext(
     // background and often webhook noise.
     const parts = [
       permalink &&
-        `Permalink to this conversation (cite it as the source when you file an issue): ${permalink}`,
+        `Permalink to this conversation (cite it as the source when you record Feedback or a Requirement): ${permalink}`,
       threadBlock &&
         `The message was posted INSIDE A THREAD — the thread below (root message first) is what the user is referring to:\n${threadBlock}`,
       quotedBlock &&

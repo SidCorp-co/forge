@@ -17,12 +17,7 @@ interface IssueClaims {
   urlIds: string[];
   malformedUrlIds: string[];
   issSeqs: number[];
-  claimsCreation: boolean;
 }
-
-const CREATION_CLAIM_RE =
-  // i18n-allow: the regex literal must carry the Vietnamese phrasing of the creation claim it matches
-  /(đã|vừa)\s+tạo\s+(một\s+)?(issue|task)|created\s+(a\s+|an\s+|the\s+|new\s+)*(issue|task)/i; // i18n-allow: matches the Vietnamese phrasing of the claim being policed
 
 export function extractIssueClaims(reply: string, prefixes: readonly string[] = []): IssueClaims {
   const urlIds: string[] = [];
@@ -40,21 +35,21 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
     const seq = Number(m[2]);
     if (!issSeqs.includes(seq)) issSeqs.push(seq);
   }
-  return { urlIds, malformedUrlIds, issSeqs, claimsCreation: CREATION_CLAIM_RE.test(reply) };
+  return { urlIds, malformedUrlIds, issSeqs };
 }
 
-/** A `forge new` or `forge feedback` filing, or a `forge_issues` create in a turn recorded before that tool went. */
-export function turnCreatedIssue(
-  toolCalls: readonly { name: string; arguments: string }[],
-): boolean {
-  return toolCalls.some((t) => {
-    if (t.name === 'forge_issues') return /"action"\s*:\s*"create"/.test(t.arguments);
-    if (t.name !== 'forge') return false;
-    try {
-      const argv = (JSON.parse(t.arguments) as { argv?: unknown }).argv;
-      return Array.isArray(argv) && (argv[0] === 'new' || argv[0] === 'feedback');
-    } catch {
-      return false;
-    }
-  });
+// A reply saying it made an issue: the noun after the verb, or an issue key right after it.
+// i18n-allow: the regex literals carry the Vietnamese phrasing of the creation claim they police
+const ISSUE_NOUN_CLAIM_RE =
+  /(?:(?:đã|vừa)\s+tạo\s+(?:một\s+)?(?:issue|task)|\b(?:created|opened|raised|filed)\s+(?:(?:a|an|the|new)\s+)*(?:issue|task|ticket)\b)/iu; // i18n-allow: matches the Vietnamese phrasing of the claim being policed
+
+/**
+ * The reply claims it created an issue. No chat door can: the kernel refuses a chat credential
+ * `CHAT_FILES_FEEDBACK_NOT_ISSUES`, so the claim is false whatever the turn did.
+ */
+export function claimsIssueCreated(reply: string, prefixes: readonly string[] = []): boolean {
+  if (ISSUE_NOUN_CLAIM_RE.test(reply)) return true;
+  const key = issueTokenRe(prefixes).source;
+  const verbs = '(?:\\bcreated|\\bopened|\\braised|(?:đã|vừa)\\s+tạo)'; // i18n-allow: the Vietnamese creation verb
+  return new RegExp(`${verbs}\\s+(?:\\*\\*)?${key}`, 'iu').test(reply);
 }
