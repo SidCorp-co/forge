@@ -193,12 +193,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       <BatchReleaseDialog
         projectId={projectId}
         selectedIssues={chosen.map(
-          (i): BatchReleaseIssue => ({
-            id: i.id,
-            displayId: i.displayId,
-            title: i.title,
-            closeFailure: i.closeFailure,
-          }),
+          (i): BatchReleaseIssue => ({ id: i.id, displayId: i.displayId, title: i.title }),
         )}
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}

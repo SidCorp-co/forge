@@ -300,21 +300,6 @@ describe("ReleaseGatePanel — a row whose last release failed its close", () =>
     fireEvent.click(screen.getByRole("button", { name: /^Release 2 now$/ }));
     expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
   });
-
-  it("hands its failure to the dialog when it is picked by hand", () => {
-    state({ issues: [...ISSUES, FAILED] });
-    renderPanel();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-7 for release" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Release 1 now$/ }));
-    expect(dialogProps?.selectedIssues).toEqual([
-      {
-        id: "iss-7",
-        displayId: "ISS-7",
-        title: "Ledger rows carry their tenant",
-        closeFailure: FAILED.closeFailure,
-      },
-    ]);
-  });
 });
 
 // An empty state costs what it is worth: a gate holding nothing is one line

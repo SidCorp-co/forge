@@ -21,6 +21,13 @@ expect.extend(matchers);
 
 vi.mock("@sentry/react", () => ({ captureException: vi.fn() }));
 
+/** The roster the dialog reads each listed issue's last close failure off. */
+let rosterIssues: Array<{ id: string; closeFailure: { reason: string; version: string | null } | null }> = [];
+vi.mock("../hooks", async () => {
+  const actual = await vi.importActual<typeof import("../hooks")>("../hooks");
+  return { ...actual, useReleaseRoster: () => ({ data: { issues: rosterIssues } }) };
+});
+
 const REFUSAL =
   "A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.";
 
@@ -81,6 +88,7 @@ function press() {
 }
 
 beforeEach(() => {
+  rosterIssues = [];
   fetchMock.mockReset();
   onClose.mockReset();
   onSuccess.mockReset();
@@ -162,25 +170,11 @@ describe("what the dialog promises before the press", () => {
 
   // ISS-1381 r5: the dialog promised a close the release would fail the same way.
   it("names an issue the last release failed to close as one this release fails the same way", () => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <ToastProvider>
-          <BatchReleaseDialog
-            projectId="proj-1"
-            selectedIssues={[
-              ISSUES[0] as (typeof ISSUES)[number],
-              {
-                ...(ISSUES[1] as (typeof ISSUES)[number]),
-                closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" },
-              },
-            ]}
-            open
-            onClose={onClose}
-            onSuccess={onSuccess}
-          />
-        </ToastProvider>
-      </QueryClientProvider>,
-    );
+    rosterIssues = [
+      { id: "iss-a", closeFailure: null },
+      { id: "iss-b", closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" } },
+    ];
+    draw();
 
     const drawer = screen.getByRole("dialog");
     expect(drawer).not.toHaveTextContent(/closed in one batch/);
