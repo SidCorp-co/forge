@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.171] - 2026-10-08
+
+Forge share links: frozen, scrubbed, expiring, revocable copies of an answer or report
+
+### Added
+
+- **An answer can be shared through a Forge link.** A share freezes one report answer with secrets and email addresses removed, expires within 30 days, is revoked by its creator or an admin, and opens at /s/ read-only.
+
 ## [0.4.0-dev.170] - 2026-10-08
 
 Five standard report queries computed in one step each
