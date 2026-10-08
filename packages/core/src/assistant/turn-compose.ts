@@ -78,6 +78,7 @@ export function reportOfFailure(
     name: req.handleName,
     language: req.replyLanguage ?? 'en',
     askedIn: askedInOf(ctx),
+    question: req.message,
     ...failure,
     calls: ctx.writes?.calls() ?? [],
     draft: found.draft,
@@ -314,6 +315,7 @@ async function screenReply(
     handleName: req.handleName,
     language: req.replyLanguage ?? 'en',
     askedIn: askedInOf(ctx),
+    question: req.message,
     toolResults: () => ctx.writes?.resultTexts() ?? [],
     first: result,
     brokenReport: (attempt) =>

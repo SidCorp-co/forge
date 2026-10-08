@@ -6,7 +6,8 @@
  * tools that answer them exist now, so a reply making the claim with none of them called this
  * turn, or with every such call refused, is sent back to call one. Where the turn was offered none
  * of them (agent mode, a door without the project toolset) the rule has nothing to hold it to and
- * does not judge.
+ * does not judge. A report run (`forge_report`, `forge_template`; REQ-32) grounds every claim but a
+ * decision: no report query reads one.
  *
  * A memory is a dated source, never a current fact (MJ-5). It never grounds what shipped, how far a
  * requirement is, what comes next or what is late. A decision taken from a memory read this turn is
@@ -27,6 +28,8 @@ export const GROUNDING_TOOLS = {
   releases: 'forge_releases',
   release: 'forge_release',
   decisions: 'forge_decisions',
+  report: 'forge_report',
+  template: 'forge_template',
 } as const;
 
 /** The chat's memory read; it grounds only a decision, and only one cited with its date. */
@@ -41,7 +44,8 @@ interface ClaimFamily {
   readonly datedMemoryGrounds?: true;
 }
 
-const { status, requirements, requirement, releases, release, decisions } = GROUNDING_TOOLS;
+const { status, requirements, requirement, releases, release, decisions, report, template } =
+  GROUNDING_TOOLS;
 
 const FAMILIES: readonly ClaimFamily[] = [
   {
@@ -52,7 +56,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:awaiting|waits? (?:on|for)|waiting (?:on|for)) (?:release )?approval\b/i,
       /đã\s+phát\s+hành|(?:tới|đến)\s+(?:tay\s+)?người\s+dùng|bản\s+phát\s+hành|đã\s+ra\s+mắt|chờ\s+(?:phê\s+)?duyệt/i, // i18n-allow: the Vietnamese phrasing of a shipped claim this rule reads
     ],
-    groundedBy: [status, releases, release],
+    groundedBy: [status, releases, release, report, template],
   },
   {
     name: "a requirement's progress",
@@ -62,7 +66,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b\d+\s*(?:\/|of)\s*\d+\s+(?:criteria|BCs?)\b/i,
       /yêu\s+cầu[^.\n]{0,60}(?:đang\s+(?:làm|giao|triển\s+khai)|đã\s+xong|hoàn\s+thành|đã\s+giao|in[_ ]progress|in[_ ]delivery)|\d+\s*\/\s*\d+\s+tiêu\s+chí/i, // i18n-allow: the Vietnamese phrasing of a requirement-progress claim this rule reads
     ],
-    groundedBy: [status, requirements, requirement],
+    groundedBy: [status, requirements, requirement, report, template],
   },
   {
     name: 'what comes next and when',
@@ -70,7 +74,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:roadmap|next release|forecast|ETA|expected (?:on|by|to (?:land|ship|reach))|will (?:ship|reach users|land) (?:on|by|in))\b/i,
       /lộ\s+trình|release\s+kế\s+tiếp|bản\s+kế\s+tiếp|dự\s+kiến/i, // i18n-allow: the Vietnamese phrasing of a roadmap claim this rule reads
     ],
-    groundedBy: [status, releases, release, requirements, requirement],
+    groundedBy: [status, releases, release, requirements, requirement, report, template],
   },
   {
     name: 'what is late or blocked',
@@ -78,7 +82,7 @@ const FAMILIES: readonly ClaimFamily[] = [
       /\b(?:is|are|running|currently)\s+(?:late|overdue|behind schedule)\b|\bnothing is late\b|\bno(?:thing)? (?:is )?(?:late|overdue|blocked)\b/i,
       /đang\s+trễ|bị\s+trễ|không\s+có\s+gì\s+trễ|bị\s+kẹt|đang\s+kẹt/i, // i18n-allow: the Vietnamese phrasing of a lateness claim this rule reads
     ],
-    groundedBy: [status],
+    groundedBy: [status, report, template],
   },
   {
     name: 'what was decided',
@@ -166,7 +170,7 @@ function readThisTurn(f: MessageFacts): Set<string> {
 export const STATUS_CLAIMS_GROUNDED: MessageRule = {
   id: 'status-claims-grounded',
   shape:
-    'state what shipped, how far a requirement is, what comes next, what is late or what was decided only from forge_project_status, forge_requirement(s), forge_release(s) or forge_decisions called this turn; a decision taken from forge_memory is cited with the date the memory speaks as of',
+    'state what shipped, how far a requirement is, what comes next, what is late or what was decided only from forge_project_status, forge_requirement(s), forge_release(s), forge_decisions, forge_report or forge_template called this turn (a report grounds all but a decision); a decision taken from forge_memory is cited with the date the memory speaks as of',
   example: 'I filed it as a draft; tell me if the title needs a change.',
   needs: [],
   check: (text, f) => {

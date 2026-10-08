@@ -2,6 +2,7 @@ import type { Tx } from '../db/client.js';
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
 import type { ProgressFacts } from './facts.js';
+import { isReportTool } from './figures-rule.js';
 import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
@@ -30,6 +31,28 @@ interface ReplyScreenInput {
    * about the tracker is then held to these (`grounding-rule.ts`).
    */
   readonly toolResults?: readonly string[];
+  /**
+   * What the person asked. Given, a figure the reply states is held to the turn's report runs
+   * (`figures-rule.ts`), where the turn was offered a report tool or `restResults` are given; a
+   * number the person typed may be said back.
+   */
+  readonly question?: string;
+  /**
+   * An Agent session's tool results: it runs a report over REST rather than through a tool, so its
+   * figures are held to the runs these results name.
+   */
+  readonly restResults?: readonly string[];
+}
+
+/** What the figures rule reads of this turn, or nothing where the turn could run no report. */
+function figureInput(
+  input: ReplyScreenInput,
+): { asked: string; texts: readonly string[] } | undefined {
+  if (input.question === undefined) return undefined;
+  const sent = input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments);
+  if (input.restResults) return { asked: input.question, texts: [...input.restResults, ...sent] };
+  if (!input.offeredTools?.some(isReportTool)) return undefined;
+  return { asked: input.question, texts: [...(input.toolResults ?? []), ...sent] };
 }
 
 export async function screenReplyAtDoor(
@@ -37,6 +60,7 @@ export async function screenReplyAtDoor(
   input: ReplyScreenInput,
 ): Promise<MessageVerdict> {
   const { audience, intent } = doorCell(door);
+  const figures = figureInput(input);
   const facts = await gatherFacts({
     projectId: input.projectId,
     audience,
@@ -51,6 +75,7 @@ export async function screenReplyAtDoor(
         }
       : {}),
     progress: input.progress,
+    ...(figures ? { figures } : {}),
     ...(input.executor ? { executor: input.executor } : {}),
   });
   const verdict = screenMessage({ audience, intent, segments: input.segments, facts });

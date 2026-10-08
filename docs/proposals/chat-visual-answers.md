@@ -291,14 +291,22 @@ ruling and is not registered.
   held nowhere a share can reach before B3 stores a `ReportDocument`, so a shared output carries
   its blocks and runs with every slot empty. Saving and scheduling a template run through
   `status_reports` is B3 and needs its migration.
-- **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts`) gains the turn's
-  runs and attached blocks. A new rule, `figures-grounded`, refuses a reply whose prose states a
-  count, percentage, date or range that neither an attached block nor a run read this turn holds,
-  quoting the figure and naming the query that would ground it; and refuses a `visual` block whose
-  frame differs from its run's. The existing rules still hold: `status-claims-rule.ts` gains the
-  report queries as grounding tools for its claim families; `creation-claims-rule.ts` refuses "I
-  shared a link" or "I saved this report" where the turn wrote no share or report; `no-empty-promise`
-  refuses "I will prepare the chart" — the block is attached now, or the reply says what is missing.
+- **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts:FigureFacts`) carries
+  the values of the turn's report runs: every run a result of this turn or a block it drew names by
+  id, read from `report_runs` through the `reportRunFrames` message read
+  (`packages/core/src/reports/runs.ts:keptRunFrames`), its own project's and unexpired only. The rule
+  `figures-grounded` (`packages/core/src/messaging/figures-rule.ts`) refuses a reply whose prose
+  states a percentage, a ratio, a count of tracked things or days, a count of a state or a total
+  that no such run holds, quoting the figure; and any number typed into a block's title or labels,
+  flow labels included. Dates, ids, versions, ordinals, quoted sources and numbers the person typed
+  in the question are exempt, by the table in `figure-exemptions.ts`. It judges at the chat doors
+  where the turn could run a report: a turn offered `forge_report` or `forge_template`, and an
+  Agent session, whose REST runs are read from its tool results. A block whose frame differs from
+  its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`).
+  `status-claims-rule.ts` counts the report tools as grounding every claim family but a decision;
+  `creation-claims-rule.ts` refuses "I shared this", a share link, or "I saved the report" where the
+  turn made no share (`POST /api/projects/:id/shares`) or status-report save, and no
+  unverified mark exempts a claim to have written a record.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block, and never drives a write without the person's confirmation
   (REQ-30 BC-4).
