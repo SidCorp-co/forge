@@ -2,7 +2,7 @@
 // (table sorted and cut as the block says, kpi figures with deltas, status rows linking to what they
 // name), each drawn block shows its source, and a block this screen cannot draw is named, never dropped.
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { VisualBlockProvider, VisualBlockView } from ".";
@@ -106,9 +106,9 @@ describe("status-list block", () => {
     show(list);
     const rows = screen.getAllByTestId("status-row");
     expect(rows.map((r) => r.textContent)).toEqual([
-      "ISS-12openwaiting on Ana",
-      "REQ-3agreed",
-      "0.4.0cutwaiting on Bo",
+      "ISS-12Openwaiting on Ana",
+      "REQ-3Agreed",
+      "0.4.0Cutwaiting on Bo",
     ]);
   });
 
@@ -124,12 +124,13 @@ describe("status-list block", () => {
 });
 
 describe("each block shows its source", () => {
-  it("names the run, the query and the moment it was read", () => {
+  it("names the query and the moment it was read, with the run behind its disclosure", () => {
     show({ ...base, kind: "table", columns: ["key"] });
     const note = screen.getByTestId("visual-block-source");
-    expect(note.textContent).toContain("Report run run-7");
     expect(screen.getByTestId("visual-block-query").textContent).toBe("progress-by-requirement");
     expect(note.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-08T09:30:00.000Z");
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-source-detail").textContent).toContain("Report run run-7");
   });
 
   it("refuses a block whose run's query and read time it was not given, by name, never drawing it untraced", () => {

@@ -32,7 +32,12 @@ export function figuresNotInRun(given: unknown, run: ReportFrame, runId: string)
       out.push(
         `frame.fields.${i}: field "${name}" is not one run ${runId} answered; it answered ${run.fields.map((x) => x.name).join(', ')}`,
       );
-    } else if (f.type !== held.type || f.unit !== held.unit || f.label !== held.label) {
+    } else if (
+      f.type !== held.type ||
+      f.unit !== held.unit ||
+      f.label !== held.label ||
+      f.vocabulary !== held.vocabulary
+    ) {
       out.push(
         `frame.fields.${i}: field "${name}" is declared ${said(f)}, but run ${runId} declared it ${said(held)}`,
       );

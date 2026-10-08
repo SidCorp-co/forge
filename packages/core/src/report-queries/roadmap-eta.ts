@@ -20,7 +20,7 @@ const OUTPUT = [
   { name: 'lane', type: 'status', label: 'Lane' },
   { name: 'key', type: 'ref', label: 'Requirement' },
   { name: 'title', type: 'string', label: 'Title' },
-  { name: 'state', type: 'status', label: 'State' },
+  { name: 'state', type: 'status', label: 'State', vocabulary: 'requirement' },
   { name: 'p50At', type: 'date', label: 'Likely by (p50)' },
   { name: 'p85At', type: 'date', label: 'Almost surely by (p85)' },
   { name: 'basis', type: 'string', label: 'Basis' },
