@@ -289,9 +289,10 @@ function shape(tree, roots) {
 
 /**
  * The key a check's verdict is filed under, and how many files it was taken over. `git` is the
- * state a declaration with `git: true` also depends on: the head, and the base it is judged against.
+ * state a declaration with `git: true` also depends on: the head, and the base it is judged against;
+ * `native` is what the native programs it names make of this place (see verify-memo-native.mjs).
  */
-export function keyFor({ check, decl, tree, git, env = process.env }) {
+export function keyFor({ check, decl, tree, git, native = null, env = process.env }) {
   const files = coveredFiles(tree, decl.roots);
   const built = builtFiles(tree.root, decl.built);
   const lines = files.map((f) => `${f}\0${tree.hash(f)}\0${tree.isTracked(f) ? 'T' : 'U'}`);
@@ -307,6 +308,7 @@ export function keyFor({ check, decl, tree, git, env = process.env }) {
     probed: sha(probedState(tree.root, decl.probed).join('\n')),
     shape: sha(shape(tree, decl.roots).join('\n')),
     git: decl.git ? git : null,
+    native: decl.blind ? native : null,
     env: ENV_READ.map((k) => env[k] ?? null),
   };
   return { key: sha(JSON.stringify(body)), count: files.length + built.length };
