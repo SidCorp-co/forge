@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.206] - 2026-10-08
+
+Pending requirement suggestions can be rejected with a reason from the assistant strip
+
+### Fixed
+
+- **A pending suggestion in the requirements list can now be rejected.** The BA assistant strip offers Reject beside Accept and Review, asks for a reason, and the reason shows in the requirement history.
+
 ## [0.4.0-dev.205] - 2026-10-08
 
 Chat answers draw dates the way the Requirements list does
