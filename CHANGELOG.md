@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.180] - 2026-10-08
+
+Chat-panel report tables stay readable; flow diagrams draw arrows
+
+### Changed
+
+- **Chat answers stay readable in the narrow Assistant panel.** Tables scroll sideways with the first column held, show ten rows then "Show all", draw states as badges, and open wide; diagrams scroll and keep their lines.
+
 ## [0.4.0-dev.179] - 2026-10-08
 
 Share links: create, list and revoke them from the web UI
