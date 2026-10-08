@@ -2,7 +2,8 @@
 
 // The project's decision log (JU-5): every decision recorded on a requirement, an issue, a workflow
 // design or a feedback item, newest first, narrowed by requirement (which takes in its issues),
-// workflow, issue, who decided and when. Filters ride the URL so a narrowed log can be shared.
+// workflow, issue, who decided and when. What a person decided is the default; what agents kept is
+// folded away and counted, shown on ask (`by`). Filters ride the URL so a narrowed log can be shared.
 
 import { Input, PageTitle, ProjectLoader, Select, type SelectOption, useUrlParams } from "@/design";
 import type { ReactNode } from "react";
@@ -10,11 +11,12 @@ import { type IssuePick, IssuePicker } from "@/features/issue-picker/issue-picke
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useProjectDecisions } from "../hooks";
+import { DECISION_MAKERS, type DecisionMaker } from "@forge/contracts/comments";
 import type { DecisionFilters } from "../types";
 import { DecisionTarget } from "./decision-target";
-import { DecisionRow } from "./decisions-panel";
+import { DecisionRow, FoldedDecisions } from "./decisions-panel";
 
-const FILTER_KEYS = ["requirement", "workflow", "issue", "who", "since", "until"] as const;
+const FILTER_KEYS = ["requirement", "workflow", "issue", "who", "since", "until", "by"] as const;
 const ANY = "";
 
 function FilterField({ label, children }: { label: string; children: ReactNode }) {
@@ -36,7 +38,13 @@ export interface DecisionFilterOptions {
 export function ProjectDecisions({ projectId, slug, options }: { projectId: string; slug: string; options: DecisionFilterOptions }) {
   const t = useCopy();
   const [params, setParams] = useUrlParams();
-  const filters: DecisionFilters = Object.fromEntries(FILTER_KEYS.flatMap((k) => (params.get(k) ? [[k, params.get(k) as string]] : [])));
+  const filters: DecisionFilters = Object.fromEntries(
+    FILTER_KEYS.flatMap((k) => {
+      const v = params.get(k);
+      if (!v || (k === "by" && !(DECISION_MAKERS as readonly string[]).includes(v))) return [];
+      return [[k, v]];
+    }),
+  );
   const q = useProjectDecisions(projectId, { ...filters, limit: 200 });
   const any: SelectOption = { value: ANY, label: t("decisions.filter.any") };
   const reqOptions = [any, ...options.requirements];
@@ -68,6 +76,7 @@ export function ProjectDecisions({ projectId, slug, options }: { projectId: stri
           <Input type="date" aria-label={t("decisions.filter.until")} value={filters.until ?? ""} onChange={(e) => set("until")(e.target.value)} />
         </FilterField>
       </div>
+      {q.data ? <FoldedDecisions by={q.data.by} folded={q.data.folded} onBy={(by: DecisionMaker) => setParams({ by: by === "people" ? null : by })} /> : null}
       {q.isLoading ? <ProjectLoader label={t("common.decisions.loading")} /> : null}
       {q.isError ? (
         <RefusalLine error={q.error} testid="decisions-refusal" />

@@ -1,4 +1,4 @@
-import { REASON_TEXT_MAX } from '@forge/contracts/comments';
+import { DECISION_MAKERS, DECISION_MAKERS_SHAPE, REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
 import { writtenLangSchema } from '@forge/contracts/written-lang';
 import type { Context } from 'hono';
@@ -38,6 +38,12 @@ export const viewQuery = zValidator(
   'query',
   z.strictObject({ view: z.enum(ANSWER_VIEWS).optional() }),
   invalid('invalid query: view? (summary | full, full by default)'),
+);
+
+export const decisionsQuery = zValidator(
+  'query',
+  z.strictObject({ by: z.enum(DECISION_MAKERS).optional() }),
+  invalid(`invalid query: ${DECISION_MAKERS_SHAPE}`),
 );
 
 export const revisionFields = {

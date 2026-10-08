@@ -6,7 +6,7 @@
 import type { Said } from "./said.js";
 import { z } from "zod";
 import type { WrittenLang } from "./written-lang.js";
-import { type EntityCommentView, REASON_TEXT_MAX } from "./comments.js";
+import { type DecisionMaker, type EntityCommentView, REASON_TEXT_MAX } from "./comments.js";
 import type {
 	FeedbackKind,
 	FeedbackPhase,
@@ -693,6 +693,10 @@ export interface RequirementAnswerView {
 export interface RequirementDecisionsResponse {
 	decisions: EntityCommentView[];
 	answers: RequirementAnswerView[];
+	/** Whose decisions are listed; a person's by default. */
+	by: DecisionMaker;
+	/** How many decisions the other makers hold here, folded away; 0 when `by` is all. */
+	folded: number;
 }
 
 export interface RequirementSummary {

@@ -19333,6 +19333,19 @@
                 }
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "enum": [
+                "people",
+                "agents",
+                "all"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -27492,6 +27505,19 @@
               "minLength": 1,
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "enum": [
+                "people",
+                "agents",
+                "all"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -27509,8 +27535,10 @@
           "requireAuth",
           "assertEmailVerified"
         ],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },

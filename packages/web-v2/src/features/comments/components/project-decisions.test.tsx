@@ -65,4 +65,35 @@ describe("the project's decision log", () => {
     expect(await screen.findByText("No decision matches these filters.")).toBeInTheDocument();
     expect(calls[0]?.path).toBe("/projects/p1/decisions?who=u1&since=2026-10-01&until=2026-10-07&limit=200");
   });
+
+  it("folds away what agents recorded, says how many, and shows them when asked", async () => {
+    const calls = fakeCore((c) =>
+      c.path.startsWith("/projects/p1/decisions")
+        ? {
+            body: c.path.includes("by=all")
+              ? { decisions: [decision("d1", "REQ-14", "requirement", "Referrals keep consent"), { ...decision("d2", "ISS-110", "issue", "Not dispatched this pass"), author: { id: "a1", name: "master", agency: "agent" } }], returned: 2, limit: 200, by: "all", folded: 0 }
+              : { decisions: [decision("d1", "REQ-14", "requirement", "Referrals keep consent")], returned: 1, limit: 200, by: "people", folded: 371 },
+          }
+        : undefined,
+    );
+    const user = userEvent.setup();
+    renderWithQuery(<ProjectDecisions projectId="p1" slug="hop" options={options} />);
+    expect(await screen.findAllByTestId("decision-row")).toHaveLength(1);
+    expect(screen.getByTestId("decisions-folded")).toHaveTextContent("371 records agents kept here, such as a master's pass logs, are folded away.");
+    await user.click(screen.getByRole("button", { name: "Show them" }));
+    await waitFor(() => expect(calls.map((c) => c.path)).toContain("/projects/p1/decisions?by=all&limit=200"));
+    await waitFor(() => expect(screen.getAllByTestId("decision-row")).toHaveLength(2));
+    expect(screen.getByTestId("decisions-folded")).toHaveTextContent("Showing what people decided and what agents recorded.");
+  });
+
+  it("flags a record whose text dates itself after it was recorded", async () => {
+    fakeCore(() => ({
+      body: { decisions: [{ ...decision("d1", "ISS-110", "issue", "Folded"), datedAhead: "2026-10-08T23:00:00.000Z" }, decision("d2", "ISS-111", "issue", "Kept")], returned: 2, limit: 200, by: "all", folded: 0 },
+    }));
+    renderWithQuery(<ProjectDecisions projectId="p1" slug="hop" options={options} />);
+    const rows = await screen.findAllByTestId("decision-row");
+    expect(rows[0]).toHaveTextContent("Its text is dated");
+    expect(rows[0]).toHaveTextContent("later than it was recorded");
+    expect(rows[1]).not.toHaveTextContent("Its text is dated");
+  });
 });
