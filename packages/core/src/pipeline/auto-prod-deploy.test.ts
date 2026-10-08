@@ -8,7 +8,9 @@ vi.mock('../logger.js', () => ({ logger: { warn: vi.fn() } }));
 
 const { projectAutoProdDeploy, readAutoProdDeploy } = await import('./auto-prod-deploy.js');
 
-const declaring = (value: unknown) => [{ agentConfig: { pipelineConfig: { autoProdDeploy: value } } }];
+const declaring = (value: unknown) => [
+  { agentConfig: { pipelineConfig: { autoProdDeploy: value } } },
+];
 
 beforeEach(() => {
   projectRow.mockReset();

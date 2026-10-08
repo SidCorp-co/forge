@@ -57,11 +57,7 @@ export async function criteriaHold(
   // The roster resolver hands this at most one release's part, which bounds the per-issue comment
   // reads below.
   if (waiting.length === 0) return;
-  const auto = await evaluate(
-    'auto-release',
-    async () => await readAutoProdDeploy(projectId),
-    out,
-  );
+  const auto = await evaluate('auto-release', async () => await readAutoProdDeploy(projectId), out);
   if (auto !== true) return;
   // This enumerator reaches no network, so the ONE reading for the roster is the caller's.
   if (!serving) {

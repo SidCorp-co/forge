@@ -155,11 +155,7 @@ async function partOfAutomaticRoster(
   unclaimed: string[],
   out: ReleaseBlocker[],
 ): Promise<{ part: string[]; waiting: number; later: number } | undefined> {
-  const auto = await evaluate(
-    'auto-release',
-    async () => await readAutoProdDeploy(projectId),
-    out,
-  );
+  const auto = await evaluate('auto-release', async () => await readAutoProdDeploy(projectId), out);
   if (auto !== true) return undefined;
   const part = unclaimed.slice(0, RELEASE_ROSTER_LIMIT);
   return { part, waiting: unclaimed.length, later: unclaimed.length - part.length };
