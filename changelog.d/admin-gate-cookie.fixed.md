@@ -1,0 +1,1 @@
+**Signing in to the operator pages no longer fails when the browser also holds another Forge instance's session.** The admin gate sends every session cookie to core, and an ended session returns you to sign-in with a plain message.
