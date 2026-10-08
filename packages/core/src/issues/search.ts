@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
   type IssueStatus,
+  issueCreationChannels,
   issueLabels,
   issuePriorities,
   issueStatuses,
@@ -117,6 +118,10 @@ const searchQuerySchema = z
     assignee: z.uuid().optional(),
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
     origin: z.enum(['detector', 'human']).optional(),
+    /** ISS-1374 — the credential channel an issue was created through. */
+    createdVia: z.enum(issueCreationChannels).optional(),
+    /** ISS-1374 — the token an issue was created with: "which key filed these". */
+    createdViaToken: z.uuid().optional(),
     workState: z.enum(WORK_STATES).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
@@ -291,6 +296,12 @@ searchRoutes.get(
     }
     if (q.origin) {
       both(buildOriginCondition(q.origin));
+    }
+    if (q.createdVia) {
+      both(eq(issues.createdVia, q.createdVia));
+    }
+    if (q.createdViaToken) {
+      both(eq(issues.createdViaTokenId, q.createdViaToken));
     }
     if (q.workState) {
       conditions.push(workStateCondition(q.workState));

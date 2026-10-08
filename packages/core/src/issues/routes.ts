@@ -23,7 +23,13 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+  restActor,
+  restCredential,
+} from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
@@ -192,11 +198,17 @@ issueProjectRoutes.post(
 
     if (input.assigneeId) await assertAssigneeIsMember(projectId, input.assigneeId);
 
+    const credential = restCredential(c);
     let result: Awaited<ReturnType<typeof createIssue>>;
     try {
       result = await createIssue(
         { ...input, projectId },
-        { createdById: userId, createdVia: 'web', actor: restActor(c) },
+        {
+          createdById: userId,
+          createdVia: credential.via,
+          createdViaTokenId: credential.tokenId,
+          actor: restActor(c),
+        },
       );
     } catch (err) {
       throw toHttpCreateError(err);

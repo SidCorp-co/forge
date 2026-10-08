@@ -383,7 +383,7 @@ describe('db/schema — issues', () => {
 
   it('FKs: project cascade, assignee set null, created_by restrict, release batch run set null', () => {
     const cfg = getTableConfig(issues);
-    expect(cfg.foreignKeys).toHaveLength(4);
+    expect(cfg.foreignKeys).toHaveLength(5);
     const byCol = new Map(
       cfg.foreignKeys.map((fk) => [fk.reference().columns[0]?.name ?? '', fk] as const),
     );

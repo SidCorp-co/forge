@@ -2101,6 +2101,13 @@
       "when": 1811030400000,
       "tag": "0324_an_edge_can_hold_until_shipped",
       "breakpoints": true
+    },
+    {
+      "idx": 325,
+      "version": "7",
+      "when": 1811116800000,
+      "tag": "0325_a_create_records_its_credential",
+      "breakpoints": true
     }
   ]
 }

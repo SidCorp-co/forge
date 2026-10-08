@@ -75,11 +75,14 @@ export type CreateIssueInput = {
 
 /**
  * Who is creating. `createdVia` is the channel the origin classifier reads
- * (`creator.ts`), so it must name the real transport, never a default.
+ * (`creator.ts`), so it must name the real transport or credential, never a default.
+ * `createdViaTokenId` is the token that channel came through, or null where none did (a
+ * session) or none is established (ISS-1374).
  */
 export type IssueCreateWriter = {
   createdById: string;
   createdVia: IssueCreatedVia;
+  createdViaTokenId: string | null;
   actor: Actor;
 };
 
@@ -173,6 +176,7 @@ export async function createIssue(
         assigneeId: input.assigneeId ?? null,
         createdById: writer.createdById,
         createdVia: writer.createdVia,
+        createdViaTokenId: writer.createdViaTokenId,
         detectorKey,
         plan: input.plan ?? null,
         acceptanceCriteria: input.acceptanceCriteria ?? null,

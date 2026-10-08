@@ -286,6 +286,8 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
     complexity: row.complexity,
     assigneeId: row.assigneeId,
     reopenCount: row.reopenCount,
+    createdVia: row.createdVia,
+    createdViaTokenId: row.createdViaTokenId,
     plan: row.plan == null ? null : sanitizeUntrusted(row.plan),
     acceptanceCriteria:
       row.acceptanceCriteria == null
@@ -325,6 +327,8 @@ export function serializeListRow(
     complexity: row.complexity,
     assigneeId: row.assigneeId,
     reopenCount: row.reopenCount,
+    createdVia: row.createdVia,
+    createdViaTokenId: row.createdViaTokenId,
     mergedAt: row.mergedAt,
     ...mergeMarkFields(row),
     archivedAt: row.archivedAt,
@@ -657,6 +661,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             {
               createdById: principal.userId,
               createdVia: 'mcp',
+              createdViaTokenId: principal.tokenId,
               actor: principalHookActor(principal),
             },
           );
