@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.172] - 2026-10-08
+
+Chat answers draw charts, roadmap timelines and logic diagrams
+
+### Added
+
+- **A chat answer can now show a chart, a roadmap timeline or a flow diagram.** Charts are drawn to scale from the answer's own data, each with a text alternative.
+
 ## [0.4.0-dev.171] - 2026-10-08
 
 Forge share links: frozen, scrubbed, expiring, revocable copies of an answer or report
