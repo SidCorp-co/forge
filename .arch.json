@@ -407,7 +407,8 @@
     "packages/core/src/timer-registry.ts",
     "packages/core/src/outbox-consumers.ts",
     "packages/web-v2/src/app/(workspace)/layout.tsx",
-    "packages/web-v2/src/app/(workspace)/projects/[slug]/page.tsx"
+    "packages/web-v2/src/app/(workspace)/projects/[slug]/page.tsx",
+    "packages/web-v2/src/lib/i18n/copy-files.ts"
   ],
   "contracts": [
     {
@@ -432,7 +433,7 @@
       "scope": "file",
       "max_modules": 6,
       "status": "locked",
-      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files. The composition roots (packages/core/src/index.ts, route-registry, work-ports, execution-ports, integration-registry, timer-registry, outbox-consumers) are excluded by name: each exists to wire every module at boot, so their fan-out is their purpose, not a blob. So are web-v2's two route composition roots, `app/(workspace)/layout.tsx` and `app/(workspace)/projects/[slug]/page.tsx`, which compose the features once each feature is its own module (TD-S1); a file that is not a composition root is still held to 6 (ISS-225)."
+      "description": "Threshold from the measured distribution: 480 of 530 source files reach 1-3 modules; 6 leaves the 11 real outliers visible without flagging ordinary route files. The composition roots (packages/core/src/index.ts, route-registry, work-ports, execution-ports, integration-registry, timer-registry, outbox-consumers) are excluded by name: each exists to wire every module at boot, so their fan-out is their purpose, not a blob. So are web-v2's two route composition roots, `app/(workspace)/layout.tsx` and `app/(workspace)/projects/[slug]/page.tsx`, which compose the features once each feature is its own module (TD-S1), and `lib/i18n/copy-files.ts`, which lists every feature's copy file so the product copy's key type is exact (it holds imports and one map, nothing else); a file that is not a composition root is still held to 6 (ISS-225)."
     },
     {
       "id": "web-design-is-presentational",

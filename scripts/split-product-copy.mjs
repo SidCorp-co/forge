@@ -2,8 +2,8 @@
 
 // web-v2's product copy lives in copy files owned where each feature lives
 // (`src/features/<domain>/copy.json`) and, for shared chrome, `src/lib/i18n/copy/<area>.json`,
-// composed by `src/lib/i18n/product-copy.ts`. It was one file, `src/lib/i18n/product-copy.json`,
-// which every web lane edited, so nearly every merge of two lanes conflicted on it. This script made
+// listed by `src/lib/i18n/copy-files.ts` and read through `product-copy.ts`. It was one file,
+// `src/lib/i18n/product-copy.json`, which every web lane edited, so nearly every merge of two lanes conflicted on it. This script made
 // the split, and stays because a lane cut before the split still edits the old file: it carries that
 // lane's edits into the copy files mechanically, so nobody re-types keys by hand.
 //
@@ -289,7 +289,7 @@ function check(old, oldRel, files) {
     }
   }
   fail(
-    `${oldRel} is retired: the product copy lives in the copy files each feature owns, composed by src/lib/i18n/product-copy.ts. Carry this file's edits there with \`node scripts/split-product-copy.mjs\` (it reads the merge base during a merge; otherwise name --base <rev>).\n  ${lines.join('\n  ')}${lines.length ? '\n  ' : ''}${living} more key(s) already read the same in their copy file.`,
+    `${oldRel} is retired: the product copy lives in the copy files each feature owns, listed by src/lib/i18n/copy-files.ts. Carry this file's edits there with \`node scripts/split-product-copy.mjs\` (it reads the merge base during a merge; otherwise name --base <rev>).\n  ${lines.join('\n  ')}${lines.length ? '\n  ' : ''}${living} more key(s) already read the same in their copy file.`,
   );
 }
 

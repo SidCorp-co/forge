@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { SAID_ENTRIES } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
-import { COPY_FILES, composeCopy } from "./product-copy";
+import { COPY_FILES } from "./copy-files";
+import { composeCopy } from "./product-copy";
 
 // The product copy is split into files each feature owns, so two lanes adding words to two features
 // touch two files. These hold the split together: every copy file on disk is composed, a key lives in
@@ -27,8 +28,8 @@ const splitCheck = (old: string) => spawnSync(process.execPath, [SPLIT, "--check
 describe("the product copy files", () => {
   it("composes every copy file on disk, and none that is not", () => {
     const composed = new Set(Object.keys(FILES));
-    expect(onDisk().filter((f) => !composed.has(f)), "a copy file product-copy.ts does not compose").toEqual([]);
-    expect([...composed].filter((f) => !existsSync(join(SRC, f))), "a copy file product-copy.ts composes and the disk lacks").toEqual([]);
+    expect(onDisk().filter((f) => !composed.has(f)), "a copy file copy-files.ts does not compose").toEqual([]);
+    expect([...composed].filter((f) => !existsSync(join(SRC, f))), "a copy file copy-files.ts composes and the disk lacks").toEqual([]);
   });
 
   it("gives every English key its vi in the same file, and a vi key with no English is one core says", () => {
