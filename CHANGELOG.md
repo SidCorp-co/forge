@@ -3148,6 +3148,11 @@
 
 ### Fixed
 
+- **A project's admins can see its GitHub App, wherever it was created.** The connections list, its
+  drawer and the repository picker now agree; editing stays with the owner, and a refusal names who can act.
+
+- **A project with no GitHub App is no longer badged "Connected".** The card reads "Not connected" until one is bound.
+
 - **A project with two live deploy bindings is no longer told a release is refused.** Settings listed it as a gap though each binding with a probe is now read; one with none is named as not read.
 
 - **A failed inbound webhook names what failed in the error report.** The report now holds the adapter's own error, tagged with provider, project and binding, where every failure used to read `handler failed`. The sender's response is unchanged.

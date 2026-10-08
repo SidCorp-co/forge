@@ -411,9 +411,28 @@ export interface ConnectionUsage {
   }>;
 }
 
+/**
+ * How a caller reaches a connection (ISS-1216): `owner` — it is theirs; `org` — the org that owns
+ * it counts them a member; `binding` — a binding row points at it from a project they administer,
+ * and nothing else ties them to it.
+ */
+export const CONNECTION_REACH_VALUES = ['owner', 'org', 'binding'] as const;
+export type ConnectionReach = (typeof CONNECTION_REACH_VALUES)[number];
+
+/**
+ * What the caller may do with a connection the directory shows them, stated by the server that
+ * decides it so no screen derives it a second time. Reaching is reading: `canManage` is the owner,
+ * or an owner/admin of the owning org, and a `binding` reach never carries it.
+ */
+export interface ConnectionAccess {
+  reach: ConnectionReach;
+  canManage: boolean;
+}
+
 /** A connection as the workspace directory reads it: the credential plus where it is used. */
 export interface ConnectionDirectoryItem extends ConnectionSummary {
   usage: ConnectionUsage;
+  access: ConnectionAccess;
 }
 
 /** List envelope for connections (`GET /integration-connections`). */

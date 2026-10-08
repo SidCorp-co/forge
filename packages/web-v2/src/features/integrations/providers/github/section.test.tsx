@@ -9,7 +9,8 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ConnectionSummary, IntegrationSummary } from "../../types";
+import type { ConnectionDirectoryItem } from "@forge/contracts";
+import type { IntegrationSummary } from "../../types";
 
 const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
 const CONNECTION = "b1d6b9c2-5f3a-4a1e-9f0e-6c2a7d8e4f10";
@@ -26,7 +27,7 @@ const update = vi.fn();
 const remove = vi.fn();
 
 let items: IntegrationSummary[] = [];
-let connections: ConnectionSummary[] = [];
+let connections: ConnectionDirectoryItem[] = [];
 
 const REPOSITORIES = [
   {
@@ -122,7 +123,7 @@ function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
   } as IntegrationSummary;
 }
 
-function connection(over: Partial<ConnectionSummary> = {}): ConnectionSummary {
+function connection(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryItem {
   return {
     id: CONNECTION,
     ownerType: "org",
@@ -137,8 +138,10 @@ function connection(over: Partial<ConnectionSummary> = {}): ConnectionSummary {
     hasSecrets: true,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-20T00:00:00.000Z",
+    usage: { bindings: [] },
+    access: { reach: "org", canManage: true },
     ...over,
-  } as ConnectionSummary;
+  } as ConnectionDirectoryItem;
 }
 
 /** The measured state: Disconnect left the row behind, switched off and empty. */
@@ -346,6 +349,69 @@ describe("a project with no github binding row at all", () => {
         agentAccess: "none",
       },
     });
+  });
+});
+
+/**
+ * ISS-1216 — which reachable App a project is sent to. The directory now lists an App the caller
+ * can see without being able to bind it, so the screen offers one the server would let this
+ * project bind, and says who can bind the rest instead of walking the caller to a refusal or to a
+ * second App without a word.
+ */
+describe("a project with no binding, offered the Apps the directory lists", () => {
+  const OTHER_ORG = "7d1e0c11-0000-4000-8000-000000000001";
+  const theirs = (over: Partial<ConnectionDirectoryItem> = {}) =>
+    connection({
+      ownerType: "user",
+      ownerId: "someone-else",
+      displayName: "Their App",
+      access: { reach: "binding", canManage: false },
+      ...over,
+    });
+
+  beforeEach(() => {
+    items = [];
+  });
+
+  it("offers an App the caller can manage that this project's own org owns", () => {
+    connections = [connection({ displayName: "Own App" })];
+
+    mount();
+
+    expect(picker()).not.toBeNull();
+    expect(screen.getByText("Own App")).toBeInTheDocument();
+  });
+
+  it("skips a manageable App owned by a different org and offers the compatible one listed after it", () => {
+    connections = [
+      connection({ id: "other-org-app", ownerId: OTHER_ORG, displayName: "Elsewhere App" }),
+      connection({ id: "this-org-app", displayName: "Own App" }),
+    ];
+
+    mount();
+
+    expect(screen.getByText("Own App")).toBeInTheDocument();
+    expect(screen.queryByText("Elsewhere App")).toBeNull();
+  });
+
+  it("does not offer an App another user owns, and says who can bind it before offering a second one", () => {
+    connections = [theirs()];
+
+    mount();
+
+    expect(picker()).toBeNull();
+    expect(screen.getByRole("button", { name: /create github app/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Their App already serves this workspace.*owned by another user, and only its owner can bind it/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing extra where the workspace holds no App at all", () => {
+    connections = [];
+
+    mount();
+
+    expect(screen.queryByText(/already serves this workspace/i)).toBeNull();
   });
 });
 

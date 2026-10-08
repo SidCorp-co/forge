@@ -30,6 +30,7 @@ import { useOrgs } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnections } from "../hooks";
 import { matchesQuery } from "../connection-identity";
+import { connectionInSpace, connectionOwnerLabel } from "../connection-space";
 import { groupConnectionsByApp } from "../connection-groups";
 import { ConnectionEditDrawer } from "./connection-edit-drawer";
 import { ConnectionGroupSection } from "./connection-group";
@@ -68,17 +69,17 @@ export function IntegrationsScreen() {
 
   const all = useMemo(() => connections.data?.items ?? [], [connections.data]);
 
-  // ISS-477 — scope the directory to the active org: a personal org shows the
-  // user's own (`ownerType:'user'`) credentials; a team org shows credentials
-  // it owns. Connections from other orgs (or another principal) never appear.
-  const inScope = useMemo(() => {
-    if (!activeOrg) return all;
-    return all.filter((c) =>
-      activeOrg.isPersonal
-        ? c.ownerType === "user"
-        : c.ownerType === "org" && c.ownerId === activeOrg.id,
-    );
-  }, [all, activeOrg]);
+  // ISS-477 — scope the directory to the active org: a personal org shows the user's own
+  // credentials; a team org shows what it owns, plus what its projects use without it owning it
+  // (ISS-1216). Connections of other orgs (or another principal) never appear.
+  const projectOrgId = useCallback(
+    (id: string) => (projectsQ.data ?? []).find((p) => p.id === id)?.orgId,
+    [projectsQ.data],
+  );
+  const inScope = useMemo(
+    () => all.filter((c) => connectionInSpace(c, activeOrg ?? null, projectOrgId)),
+    [all, activeOrg, projectOrgId],
+  );
 
   const providersPresent = useMemo(
     () => [...new Set(inScope.map((c) => c.provider))].sort(),
@@ -94,8 +95,7 @@ export function IntegrationsScreen() {
   );
 
   const ownerLabel = useCallback(
-    (c: ConnectionDirectoryItem) =>
-      c.ownerType === "org" ? orgNameById.get(c.ownerId) ?? "Organization" : "Personal",
+    (c: ConnectionDirectoryItem) => connectionOwnerLabel(c, (id) => orgNameById.get(id)),
     [orgNameById],
   );
 

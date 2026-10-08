@@ -194,3 +194,25 @@ describe('formatApiError — CLAIM_CONFLICT', () => {
     expect(formatApiError(err)).toBe('Nothing here can be claimed.');
   });
 });
+
+describe('the connection refusals (ISS-1216)', () => {
+  // A 404 under `NOT_FOUND` prints "Not found." and drops the server's sentence, which is what the
+  // connection drawer's red panel showed; these two codes are what keeps the sentence.
+  const reachable =
+    'connection 2679a042 is not one you can reach. Ask its owner, or an admin of a project it is bound to, to bind it to a project you administer.';
+
+  it('prints the server sentence for a connection the caller cannot reach, not "Not found."', () => {
+    const err = new ApiError(404, reachable, 'CONNECTION_NOT_REACHABLE');
+    expect(formatApiError(err)).toBe(reachable);
+  });
+
+  it('prints the server sentence for a connection the caller may read but not change', () => {
+    const sentence = 'you can see connection 2679a042 but not change it: Ask its owner.';
+    const err = new ApiError(403, sentence, 'CONNECTION_NOT_MANAGEABLE');
+    expect(formatApiError(err)).toBe(sentence);
+  });
+
+  it('still prints the generic phrase for a plain NOT_FOUND, which is what the named codes are not', () => {
+    expect(formatApiError(new ApiError(404, 'connection not found', 'NOT_FOUND'))).toBe('Not found.');
+  });
+});

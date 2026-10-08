@@ -10,6 +10,7 @@
 // (the list is owner-scoped); org-owned → org owner/admin edits, every other
 // org member gets a read-only drawer that can still drill into projects.
 
+import type { ConnectionDirectoryItem } from "@forge/contracts";
 import Link from "next/link";
 import { Suspense, lazy, useMemo, useState } from "react";
 import {
@@ -422,7 +423,7 @@ export function ConnectionEditDrawer({
   connection,
   onClose,
 }: {
-  connection: ConnectionSummary | null;
+  connection: ConnectionDirectoryItem | null;
   onClose: () => void;
 }) {
   const canManage = useCanManageConnection(connection);
