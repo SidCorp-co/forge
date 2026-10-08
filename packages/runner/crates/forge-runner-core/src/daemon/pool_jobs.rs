@@ -1128,10 +1128,10 @@ impl Panes for TmuxPanes {
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
-        let path = crate::daemon::pane_path::for_pane()
+        let vars = crate::daemon::pane_path::for_pane()
             .map_err(|u| Error::Other(format!("{name} was not placed: {u}")))?;
         let mut env = env.to_vec();
-        env.push(path);
+        env.extend(vars);
         let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, servers)?;
         terminal::ensure(name, cwd, &argv, &env, None).await?;
         terminal::brief_new_pane(name, prompt).await
@@ -4112,12 +4112,14 @@ mod own_exe_reporting_tests {
         }
     }
 
-    /// ISS-1325 criterion 13, at a job pane: on a server started before the
-    /// daemon had `TMPDIR`, the pane's own `/proc/<pid>/environ` carries it.
+    /// ISS-1325 criterion 13 and ISS-1332 criterion 1, at a job pane: on a
+    /// server started before the daemon had `TMPDIR`, the pane's own
+    /// `/proc/<pid>/environ` carries the daemon's `TMPDIR` and the `forge` its
+    /// PATH resolves.
     #[cfg(target_os = "linux")]
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
-    async fn a_job_pane_on_an_older_server_carries_the_daemons_tmpdir() {
+    async fn a_job_pane_on_an_older_server_carries_the_daemons_tmpdir_and_cli() {
         use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
         let _serial = terminal::testing::ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -4133,6 +4135,10 @@ mod own_exe_reporting_tests {
         terminal::testing::write_shim(
             &stub_dir.join("claude"),
             &format!("#!/bin/sh\n{probe}exec sleep 603\n"),
+        );
+        terminal::testing::write_shim(
+            &stub_dir.join("forge"),
+            &format!("#!/bin/sh\n{probe}exit 0\n"),
         );
         let _claude =
             crate::runner::process::testing::StubClaude::installed(&stub_dir.join("claude"));
@@ -4163,6 +4169,12 @@ mod own_exe_reporting_tests {
             seen.get("TMPDIR").map(String::as_str),
             tmp.path().to_str(),
             "the job pane carries the daemon's TMPDIR"
+        );
+        assert_eq!(
+            seen.get(crate::daemon::pane_path::CLI_ENV)
+                .map(String::as_str),
+            stub_dir.join("forge").to_str(),
+            "and the forge its PATH resolves"
         );
     }
 }

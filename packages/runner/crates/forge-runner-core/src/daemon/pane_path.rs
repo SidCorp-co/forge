@@ -116,8 +116,28 @@ impl std::fmt::Display for Unresolved {
     }
 }
 
-/// `("PATH", <built>)` for a pane placed now, or why none can be.
-pub fn for_pane() -> Result<(String, String), Unresolved> {
+/// The variable that names the `forge` CLI this daemon intends a pane to call
+/// (ISS-1332).
+pub const CLI_ENV: &str = "FORGE_CLI_PATH";
+
+const CLI: &str = "forge";
+
+/// The first `forge` on `path`, as the absolute path it was found at, or `None`
+/// where there is none or the first is at a relative entry: a relative entry
+/// names a different file from every directory a pane is in, and the next match
+/// is another copy than the one the PATH puts first.
+pub fn cli_on(path: &OsStr) -> Option<PathBuf> {
+    for dir in std::env::split_paths(path) {
+        if let Ok(found) = which::which_in(CLI, Some(&dir), Path::new(".")) {
+            return (dir.is_absolute() && found.is_absolute()).then_some(found);
+        }
+    }
+    None
+}
+
+/// What a pane placed now is started with from this module: its PATH, and the
+/// `forge` that PATH resolves where it resolves one, or why no pane can be.
+pub fn for_pane() -> Result<Vec<(String, String)>, Unresolved> {
     let own = crate::exe::own().ok().map(|o| o.path);
     let claude = PathBuf::from(crate::runner::process::resolve_claude_bin());
     let claude = claude.is_absolute().then_some(claude);
@@ -137,13 +157,38 @@ pub fn for_pane() -> Result<(String, String), Unresolved> {
     let gone = missing(&path, &required_here());
     let shown = path.to_string_lossy().into_owned();
     if gone.is_empty() {
-        Ok(("PATH".to_string(), shown))
+        let mut vars = vec![("PATH".to_string(), shown)];
+        if let Some(cli) = cli_on(&path).as_deref().and_then(Path::to_str) {
+            vars.push((CLI_ENV.to_string(), cli.to_string()));
+        }
+        Ok(vars)
     } else {
         Err(Unresolved {
             missing: gone.into_iter().map(str::to_string).collect(),
             path: shown,
             claude: claude.map(|c| c.to_string_lossy().into_owned()),
         })
+    }
+}
+
+/// The paragraph of a master's brief on which `forge` to call, written from
+/// what `env` is about to hand the pane, so it never describes a variable the
+/// pane does not have.
+pub fn cli_brief(env: &[(String, String)]) -> String {
+    match env.iter().find(|(k, _)| k == CLI_ENV) {
+        Some((_, path)) => format!(
+            "\n## Which `forge`\n\nThis pane was started with `{CLI_ENV}={path}`, the `forge` CLI \
+this daemon resolved on the PATH it built for you. Run it as `\"${CLI_ENV}\"` in place of the bare word \
+`forge`, so the copy you call is the one this daemon intends. If `{CLI_ENV}` is unset, use the bare \
+`forge`. If it is set and that path will not run, report the error and stop: do not fall through to \
+another `forge`, which would run verbs from one build against a daemon from another.\n"
+        ),
+        None => format!(
+            "\n## Which `forge`\n\n`{CLI_ENV}` was not exported to this pane: this daemon found no \
+`forge` on the PATH it built for you, so nothing here says which copy the bare word `forge` resolves \
+to. If a `forge` command fails or answers as a different build than this daemon, report that and stop \
+rather than reaching for another copy.\n"
+        ),
     }
 }
 
@@ -341,5 +386,155 @@ mod tests {
         .to_string();
         assert!(!said.contains("the `claude` it resolved"), "{said}");
         assert!(said.contains("it resolved to no absolute path"), "{said}");
+    }
+
+    fn forge_in(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        executable(&dir.join("forge"));
+    }
+
+    /// ISS-1332 criteria 1 and 2.
+    #[test]
+    fn the_cli_is_the_first_forge_on_the_path() {
+        let p = Planted::new();
+        let second = p.root.join("second");
+        forge_in(&second);
+        let path = std::env::join_paths([p.home().join(".local/bin"), second.clone()]).unwrap();
+        assert_eq!(
+            cli_on(&path),
+            Some(p.home().join(".local/bin/forge")),
+            "the first, as found and not as a symlink resolves"
+        );
+        let reversed = std::env::join_paths([second.clone(), p.home().join(".local/bin")]).unwrap();
+        assert_eq!(cli_on(&reversed), Some(second.join("forge")));
+    }
+
+    /// ISS-1332 criterion 3.
+    #[test]
+    fn a_path_with_no_forge_exports_nothing() {
+        let p = Planted::new();
+        let empty = p.root.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(cli_on(empty.as_os_str()), None);
+        assert_eq!(cli_on(OsStr::new("")), None);
+    }
+
+    /// ISS-1332 criteria 5 and 6.
+    #[test]
+    fn a_forge_at_a_relative_entry_is_not_exported_and_the_next_match_is_not_taken() {
+        let p = Planted::new();
+        let here = std::env::current_dir().unwrap();
+        let up = "../".repeat(here.components().count().saturating_sub(1));
+        let relative = PathBuf::from(format!(
+            "{up}{}",
+            p.home()
+                .join(".local/bin")
+                .to_string_lossy()
+                .trim_start_matches('/')
+        ));
+        assert!(relative.is_relative());
+        assert!(
+            which::which_in("forge", Some(&relative), Path::new(".")).is_ok(),
+            "the relative entry does resolve a forge from here, so the refusal below is the rule's and not a miss"
+        );
+        let later = p.root.join("later");
+        forge_in(&later);
+        let path = std::env::join_paths([relative.clone(), later.clone()]).unwrap();
+        assert_eq!(
+            cli_on(&path),
+            None,
+            "relative first: nothing, and not the later copy"
+        );
+        let path = std::env::join_paths([later.clone(), relative]).unwrap();
+        assert_eq!(cli_on(&path), Some(later.join("forge")));
+    }
+
+    fn world(
+        p: &Planted,
+    ) -> (
+        crate::auth::cred_store::ScopedVar,
+        crate::auth::cred_store::ScopedVar,
+    ) {
+        use crate::auth::cred_store::ScopedVar;
+        (
+            ScopedVar::set("HOME", p.home()),
+            ScopedVar::set("PATH", p.root.join("system-bin")),
+        )
+    }
+
+    /// ISS-1332 criterion 1, as `for_pane` hands it on: the variable is the
+    /// `forge` the PATH it built resolves, an absolute path to an executable.
+    #[test]
+    fn a_pane_is_handed_the_forge_its_path_resolves() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let p = Planted::new();
+        std::fs::create_dir_all(p.root.join("system-bin")).unwrap();
+        let _w = world(&p);
+        let _claude = crate::runner::process::testing::StubClaude::installed(&p.claude());
+        let _req = testing::Requiring::installed(&["forge"]);
+        let vars = for_pane().expect("a forge resolves");
+        let cli = vars
+            .iter()
+            .find(|(k, _)| k == CLI_ENV)
+            .map(|(_, v)| PathBuf::from(v))
+            .expect("the variable is handed");
+        assert_eq!(cli, p.home().join(".local/bin/forge"));
+        assert!(cli.is_absolute() && cli.is_file());
+        let path = vars
+            .iter()
+            .find(|(k, _)| k == "PATH")
+            .expect("and the PATH");
+        assert_eq!(cli_on(OsStr::new(&path.1)), Some(cli));
+    }
+
+    /// ISS-1332 criteria 3 and 4: with plugins off and no `forge` anywhere the
+    /// pane is placed, and has no variable rather than an empty one.
+    #[test]
+    fn a_pane_with_no_forge_is_placed_without_the_variable() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let p = Planted::new();
+        std::fs::create_dir_all(p.root.join("system-bin")).unwrap();
+        std::fs::remove_file(p.home().join(".local/bin/forge")).unwrap();
+        let _w = world(&p);
+        let _claude = crate::runner::process::testing::StubClaude::installed(&p.claude());
+        let _req = testing::Requiring::installed(&[]);
+        let vars = for_pane().expect("plugins are off, so nothing requires forge");
+        assert!(vars.iter().any(|(k, _)| k == "PATH"));
+        assert!(
+            !vars.iter().any(|(k, _)| k == CLI_ENV),
+            "no variable, which is not an empty one: {vars:?}"
+        );
+    }
+
+    /// ISS-1332 criteria 7 and 8: the brief is written from what is exported.
+    #[test]
+    fn the_brief_names_the_variable_and_the_ladder_where_it_is_exported() {
+        let said = cli_brief(&[(CLI_ENV.to_string(), "/home/x/.local/bin/forge".to_string())]);
+        for part in [
+            "FORGE_CLI_PATH=/home/x/.local/bin/forge",
+            "\"$FORGE_CLI_PATH\"",
+            "If `FORGE_CLI_PATH` is unset, use the bare `forge`",
+            "report the error and stop",
+            "do not fall through to another `forge`",
+        ] {
+            assert!(said.contains(part), "`{part}` missing: {said}");
+        }
+    }
+
+    #[test]
+    fn the_brief_says_none_was_exported_where_none_was() {
+        let said = cli_brief(&[("PATH".to_string(), "/a".to_string())]);
+        assert!(
+            said.contains("`FORGE_CLI_PATH` was not exported to this pane"),
+            "{said}"
+        );
+        assert!(
+            !said.contains("\"$FORGE_CLI_PATH\""),
+            "it names no variable the pane lacks: {said}"
+        );
     }
 }
