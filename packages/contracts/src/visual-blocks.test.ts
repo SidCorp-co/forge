@@ -6,6 +6,8 @@ import {
   checkBlock,
   checkBlocks,
   isSensible,
+  kpiFigures,
+  tableRows,
   VISUAL_BLOCK_KINDS,
   type VisualBlock,
   type VisualBlockKind,
@@ -270,5 +272,30 @@ describe("a block whose frame is not what it says", () => {
       const again = checkBlock(JSON.parse(JSON.stringify(r.block)));
       expect(again.ok && (again.block as VisualBlock)).toEqual(r.block);
     }
+  });
+});
+
+describe("what a block shows, shared by the text fallback and the screen", () => {
+  const checked = (kind: VisualBlockKind) => {
+    const r = checkBlock(good[kind]);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r.block;
+  };
+
+  it("sorts a table's rows as the block says and cuts them to its limit", () => {
+    const table = checked("table") as VisualBlock & { kind: "table" };
+    expect(tableRows(table).map((r) => r.key)).toEqual(["REQ-1", "REQ-2"]);
+    expect(tableRows({ ...table, limit: 1 }).map((r) => r.key)).toEqual(["REQ-1"]);
+    const { sort: _sort, ...unsorted } = table;
+    expect(tableRows(unsorted).map((r) => r.key)).toEqual(["REQ-2", "REQ-1"]);
+  });
+
+  it("reads each kpi figure from its row, with a signed delta", () => {
+    const kpi = checked("kpi") as VisualBlock & { kind: "kpi" };
+    expect(kpiFigures(kpi)).toEqual([
+      { label: "Proven", value: "3", delta: "+2" },
+      { label: "All", value: "9" },
+    ]);
+    expect(kpiFigures({ ...kpi, row: 1 })[0]).toEqual({ label: "Proven", value: "8", delta: "-1" });
   });
 });

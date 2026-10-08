@@ -43,7 +43,10 @@ export type CanonicalBlock =
   | { type: "thinking"; thinking?: string; durationMs?: number }
   // Structured messages a service writes (ISS-63), drawn by features/onboarding, never by the session renderer.
   | { type: "questionnaire" | "questionnaire_answers"; batchId?: string }
-  | { type: "designs"; designs?: { heading: string; workflowIds: string[]; approve?: boolean } };
+  | { type: "designs"; designs?: { heading: string; workflowIds: string[]; approve?: boolean } }
+  // A report block a service wrote, drawn through features/visual-blocks, and a stored entry core did not know, kept so it can be named.
+  | { type: "visual"; visual?: unknown }
+  | { type: "unsupported"; unsupported?: string };
 
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
  * shape the shared `AttachmentList` renderer accepts. */
@@ -112,7 +115,9 @@ export type RenderBlock =
   | { type: "text"; text: string }
   | { type: "tool"; tool: ToolCallData }
   | { type: "todos"; todos: AgentTodo[] }
-  | { type: "thinking"; text?: string; durationMs?: number; count?: number };
+  | { type: "thinking"; text?: string; durationMs?: number; count?: number }
+  | { type: "visual"; block: unknown }
+  | { type: "unsupported"; name: string };
 
 /**
  * A flattened, render-ready conversation entry. Each persisted turn maps to
@@ -261,6 +266,8 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
   };
 }
 
+const STRUCTURED_ELSEWHERE: ReadonlySet<string> = new Set(["questionnaire", "questionnaire_answers", "designs"]);
+
 function assistantBlocks(entry: MessageEntry): RenderBlock[] {
   const out: RenderBlock[] = [];
   if (entry.blocks?.length) {
@@ -278,8 +285,16 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
           ...(b.thinking ? { text: b.thinking } : {}),
           ...(b.durationMs !== undefined ? { durationMs: b.durationMs } : {}),
         });
-      } else if (b.type === "text" && b.text) {
-        out.push({ type: "text", text: b.text });
+      } else if (b.type === "text") {
+        if (b.text) out.push({ type: "text", text: b.text });
+      } else if (b.type === "visual") {
+        out.push({ type: "visual", block: b.visual });
+      } else if (STRUCTURED_ELSEWHERE.has(b.type)) {
+        // a questionnaire, its answers and a designs list are drawn by features/onboarding, off the thread's live data
+      } else {
+        // a stored block of a kind this screen does not know is named, never left out
+        const named = b.type === "unsupported" ? b.unsupported : b.type;
+        out.push({ type: "unsupported", name: typeof named === "string" && named !== "" ? named : "nameless" });
       }
     }
   } else {

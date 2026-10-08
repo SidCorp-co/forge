@@ -18,7 +18,7 @@ export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
 export { changedTracedOf, planDriftOf } from './plan-drift.js';
-export { readRequirementAs, requirementIdIn, rowIn } from './read.js';
+export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
 export {
   createRequirementIn,
   newRevisionIn,

@@ -20,6 +20,7 @@ import { isStructured, StructuredMessage } from "@/features/onboarding/component
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
+import { VisualBlockProvider } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
@@ -298,6 +299,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
 }
 
 export function ConversationThread({
+  projectSlug,
   messages,
   windows,
   outbox = [],
@@ -308,6 +310,8 @@ export function ConversationThread({
   onRetry,
   afterEntry,
 }: {
+  /** The project's slug, for the links a report block's refs open; plain text until it is known. */
+  projectSlug?: string | undefined;
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   /** What this browser has accepted and the server has not confirmed (ISS-1031). */
@@ -337,6 +341,7 @@ export function ConversationThread({
   }, undefined);
   return (
     <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
+    <VisualBlockProvider value={{ projectSlug }}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said")
@@ -406,6 +411,7 @@ export function ConversationThread({
         );
       })}
     </div>
+    </VisualBlockProvider>
     </DisclosureScope>
   );
 }

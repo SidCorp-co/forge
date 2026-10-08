@@ -127,6 +127,7 @@ import {
   registerReleaseBatchFinish,
   releaseVersionsAmong,
 } from './release-batch/index.js';
+import { registerReportQueries } from './report-queries/index.js';
 import {
   embedRequirementHead,
   provideInterfaceContracts,
@@ -354,6 +355,7 @@ if (isMain) {
   }
   await logUnprovenPatPeppers();
   registerAllIntegrations();
+  registerReportQueries();
   await registerDeployWorker();
   await seedBuiltinSkills(db);
   await runOnceBackfills();
