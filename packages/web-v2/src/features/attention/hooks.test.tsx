@@ -65,11 +65,13 @@ describe("useAttention", () => {
     await waitFor(() => expect(slow.result.current.devicesRead).toBe("read"));
     expect(slow.result.current.read).toBe("pending");
     expect(slow.result.current.total).toBeUndefined();
+    expect(slow.result.current.badge).toEqual({ badgeRead: "pending" });
 
     server.attention = async () => response;
     const done = renderHook(() => useAttention(), { wrapper: wrapper() });
     await waitFor(() => expect(done.result.current.total).toBe(1));
     expect(done.result.current.read).toBe("read");
+    expect(done.result.current.badge).toEqual({ badge: 1 });
   });
 
   it("states no total when the attention read answered 500, though the devices read came in", async () => {
@@ -80,6 +82,7 @@ describe("useAttention", () => {
     await waitFor(() => expect(result.current.read).toBe("failed"));
     expect(result.current.total).toBeUndefined();
     expect(String(result.current.error)).toContain("Internal Server Error");
+    expect(result.current.badge).toEqual({ badgeRead: "failed" });
   });
 
   it("states no total while the devices are unread: an offline runner would be missing from it", async () => {
@@ -88,6 +91,7 @@ describe("useAttention", () => {
     await waitFor(() => expect(result.current.read).toBe("read"));
     expect(result.current.devicesRead).toBe("pending");
     expect(result.current.total).toBeUndefined();
+    expect(result.current.badge).toEqual({ badgeRead: "pending" });
   });
 
   it("states no total when the devices read failed, and names which of the two did", async () => {
@@ -98,5 +102,24 @@ describe("useAttention", () => {
     await waitFor(() => expect(result.current.devicesRead).toBe("failed"));
     expect(result.current.read).toBe("read");
     expect(result.current.total).toBeUndefined();
+    expect(result.current.badge).toEqual({ badgeRead: "failed" });
+  });
+
+  it("states a read zero as a zero, and a refetch that fails over a held count as failed rather than as the count", async () => {
+    server.attention = async () => ({ ...response, awaitingInput: [] });
+    const zero = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(zero.result.current.read).toBe("read"));
+    await waitFor(() => expect(zero.result.current.devicesRead).toBe("read"));
+    expect(zero.result.current.badge).toEqual({ badge: 0 });
+
+    server.attention = async () => response;
+    const held = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(held.result.current.badge).toEqual({ badge: 1 }));
+    server.attention = async () => {
+      throw new Error("Internal Server Error");
+    };
+    await held.result.current.refetch();
+    await waitFor(() => expect(held.result.current.read).toBe("failed"));
+    expect(held.result.current.badge).toEqual({ badgeRead: "failed" });
   });
 });

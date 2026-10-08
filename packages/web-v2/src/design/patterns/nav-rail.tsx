@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/design/icons/icon";
 import { Kicker } from "@/design/primitives/kicker";
 import { Tooltip } from "@/design/primitives/tooltip";
 import { ProjectMark } from "@/design/primitives/project-mark";
+import { badgeFace, type BadgeRead } from "./badge-read";
 import { Menu, type MenuItem } from "./menu";
 
 export interface NavItem {
@@ -16,6 +17,8 @@ export interface NavItem {
    *  small badge beside the label, or as a count dot on the icon when collapsed.
    *  Falsy / 0 hides it. */
   badge?: number;
+  /** Set where the figure is not read: it is no statement, a held `badge` included, and the row says why. */
+  badgeRead?: BadgeRead;
 }
 
 /** A titled group of project-tier nav items (e.g. Work / Insight / Config). */
@@ -79,19 +82,14 @@ function NavRow({
   collapsed?: boolean;
   onClick?: () => void;
 }) {
-  const count = item.badge && item.badge > 0 ? item.badge : 0;
-  const badgeLabel = count > 99 ? "99+" : String(count);
+  const face = badgeFace(item);
   const btn = (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       aria-label={
-        collapsed
-          ? count > 0
-            ? `${item.label}, ${count} need attention`
-            : item.label
-          : undefined
+        face && (collapsed || face.state !== "count") ? `${item.label}, ${face.phrase}` : collapsed ? item.label : undefined
       }
       title={undefined}
       className={cn(
@@ -106,12 +104,12 @@ function NavRow({
         // Icon-only: anchor a count dot on the top-right of the glyph.
         <span className="relative inline-flex">
           <Icon name={item.icon} size={17} style={active ? { color: "var(--accent)" } : undefined} />
-          {count > 0 && (
+          {face && (
             <span
               className="absolute -right-2 -top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 font-semibold"
-              style={{ fontSize: "var(--text-9-5)", lineHeight: "14px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+              style={{ fontSize: "var(--text-9-5)", lineHeight: "14px", color: face.color, background: face.background }}
             >
-              {badgeLabel}
+              {face.text}
             </span>
           )}
         </span>
@@ -119,12 +117,12 @@ function NavRow({
         <>
           <Icon name={item.icon} size={17} style={active ? { color: "var(--accent)" } : undefined} />
           <span className="flex-1 text-left">{item.label}</span>
-          {count > 0 && (
+          {face && (
             <span
               className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
-              style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+              style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: face.color, background: face.background }}
             >
-              {badgeLabel}
+              {face.text}
             </span>
           )}
         </>
@@ -134,7 +132,7 @@ function NavRow({
   // Tooltip surfaces the label in icon-only mode — but expanding the rail also
   // reveals labels, so discoverability is NOT hover-dependent.
   return collapsed ? (
-    <Tooltip label={count > 0 ? `${item.label} · ${count}` : item.label} side="bottom">
+    <Tooltip label={face ? `${item.label} · ${face.state === "count" ? face.text : face.phrase}` : item.label} side="bottom">
       {btn}
     </Tooltip>
   ) : (

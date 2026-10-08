@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners/hooks";
+import { badgeFigure } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
 import type { AttentionItem, AttentionRead, AttentionView } from "./types";
 
@@ -18,7 +19,8 @@ export function queryRead(q: { isError: boolean; data: unknown }): AttentionRead
  * offline-runner count so the rail badge and the screen agree, and is undefined
  * until both have been read: a count of what one of them has not yet said is not a count.
  * `read` and `devicesRead` say which of the two answered, and a reader states a figure, a
- * badge or an empty list only from `read`.
+ * badge or an empty list only from `read`. `badge` is what the rails carry: the count where both were
+ * read, else the read on its way or failed, never a held count after a failed refetch.
  */
 export function useAttention() {
   const attentionQ = useQuery({
@@ -74,12 +76,14 @@ export function useAttention() {
 
   const read = queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
+  const badge = useMemo(() => badgeFigure([read, devicesRead], view.total), [read, devicesRead, view.total]);
 
   return {
     view,
     total: read === "read" && devicesRead === "read" ? view.total : undefined,
     read,
     devicesRead,
+    badge,
     error: attentionQ.error,
     devicesError: devicesQ.error,
     refetch: () => {

@@ -11,9 +11,10 @@ describe('formatPipelineConfigError', () => {
       { stagesMissingSkill: ['open'] },
     );
     const msg = formatPipelineConfigError(err);
-    expect(msg).toContain('Auto triage');
+    expect(msg).toContain('Open needs a registered skill');
     expect(msg).toMatch(/register a skill/i);
-    expect(msg).toMatch(/toggle off/i);
+    expect(msg).toMatch(/automatic running off/i);
+    expect(msg).not.toMatch(/toggle|Auto /i);
   });
 
   it('handles AUTO_STAGE_NEEDS_SKILL the same way', () => {
@@ -21,7 +22,7 @@ describe('formatPipelineConfigError', () => {
       stagesMissingSkill: ['developed'],
     });
     const msg = formatPipelineConfigError(err);
-    expect(msg).toContain('Auto review');
+    expect(msg).toContain('Developed');
   });
 
   it('names multiple missing-skill stages', () => {
@@ -29,8 +30,7 @@ describe('formatPipelineConfigError', () => {
       stagesMissingSkill: ['open', 'testing'],
     });
     const msg = formatPipelineConfigError(err);
-    expect(msg).toContain('Auto triage');
-    expect(msg).toContain('Auto test');
+    expect(msg).toContain('Open, Testing');
   });
 
   it('reports blocking issue count for STAGE_HAS_ISSUES', () => {
@@ -39,7 +39,7 @@ describe('formatPipelineConfigError', () => {
       blockingIssueIds: ['x', 'y'],
     });
     const msg = formatPipelineConfigError(err);
-    expect(msg).toContain('Auto review');
+    expect(msg).toContain('Can\'t disable Developed');
     expect(msg).toContain('2');
     expect(msg).toMatch(/move or close/i);
   });
@@ -49,7 +49,7 @@ describe('formatPipelineConfigError', () => {
       unreachable: ['testing'],
     });
     const msg = formatPipelineConfigError(err);
-    expect(msg).toContain('Auto test');
+    expect(msg).toContain('Testing');
     expect(msg).toMatch(/no forward path/i);
   });
 
@@ -58,12 +58,12 @@ describe('formatPipelineConfigError', () => {
     expect(formatPipelineConfigError(err)).toMatch(/Open stage can't be disabled/i);
   });
 
-  it('falls back to the raw status name for non-toggle stages', () => {
+  it('names a stage by the status vocabulary, and keeps the raw name of one it does not hold', () => {
     const err = new ApiError(409, 'x', 'STAGE_HAS_ISSUES', {
-      stagesBlocked: ['waiting'],
+      stagesBlocked: ['waiting', 'not_a_status'],
       blockingIssueIds: ['a'],
     });
-    expect(formatPipelineConfigError(err)).toContain('waiting');
+    expect(formatPipelineConfigError(err)).toContain('Waiting, not_a_status');
   });
 
   it('falls back to formatApiError when details is missing/odd', () => {

@@ -1,19 +1,38 @@
-// ISS-1156 — the Attention badge states a figure only where the attention read was read in full: an
-// undefined count (not yet read, or failed) is carried to every rail as no badge, never as 0.
+// ISS-1156 — the Attention badge states a figure only where both reads were read in full. A read on
+// its way or failed is carried to every rail as a mark of its own, never as a count and never as no
+// badge: a failure drawn as nothing owed is the silence this repairs.
 
 import { describe, expect, it } from "vitest";
 import { bottomTabItems, compactWorkspaceRailItems, workspaceNavItems } from "./nav-model";
 
+const rows = (b: Parameters<typeof workspaceNavItems>[0]) => {
+  const found = [
+    workspaceNavItems(b).find((i) => i.key === "overview"),
+    compactWorkspaceRailItems(b).find((i) => i.key === "overview"),
+    bottomTabItems(null, b, undefined).find((i) => i.key === "attention"),
+  ];
+  return found.map((row) => {
+    if (!row) throw new Error("a row the nav model must carry is missing");
+    return row;
+  });
+};
+
 describe("the Attention badge", () => {
   it("carries a read count to the rail rows and the bottom bar", () => {
-    expect(workspaceNavItems(4).find((i) => i.key === "overview")?.badge).toBe(4);
-    expect(compactWorkspaceRailItems(4).find((i) => i.key === "overview")?.badge).toBe(4);
-    expect(bottomTabItems(null, 4, undefined).find((i) => i.key === "attention")?.badge).toBe(4);
+    for (const row of rows({ badge: 4 })) {
+      expect(row.badge).toBe(4);
+      expect(row.badgeRead).toBeUndefined();
+    }
   });
 
-  it("carries an unread count as no badge on every one of them", () => {
-    expect(workspaceNavItems(undefined).find((i) => i.key === "overview")?.badge).toBeUndefined();
-    expect(compactWorkspaceRailItems(undefined).find((i) => i.key === "overview")?.badge).toBeUndefined();
-    expect(bottomTabItems(null, undefined, undefined).find((i) => i.key === "attention")?.badge).toBeUndefined();
+  it("carries a read on its way, and one that failed, as a state of their own on every one of them", () => {
+    for (const row of rows({ badgeRead: "pending" })) {
+      expect(row.badgeRead).toBe("pending");
+      expect(row.badge).toBeUndefined();
+    }
+    for (const row of rows({ badgeRead: "failed" })) {
+      expect(row.badgeRead).toBe("failed");
+      expect(row.badge).toBeUndefined();
+    }
   });
 });

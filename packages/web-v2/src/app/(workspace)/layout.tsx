@@ -85,8 +85,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
   const { pinnedIds } = usePinnedProjects();
-  // Rail + bottom-bar Attention badge. `total` already folds in offline runners, and is undefined (no badge) until both reads are in.
-  const { total: attentionCount } = useAttention();
+  // Rail + bottom-bar Attention badge. The count folds in offline runners and is stated only once both reads are in; a read on its way or failed carries its own mark.
+  const { badge: attentionBadge } = useAttention();
   // What's New nav badge — shown when the newest changelog entry is unseen.
   const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
@@ -211,7 +211,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   );
 
   // Attention is folded into Overview — its live count rides Overview's badge.
-  const railItems = useMemo<NavItem[]>(() => workspaceNavItems(attentionCount), [attentionCount]);
+  const railItems = useMemo<NavItem[]>(() => workspaceNavItems(attentionBadge), [attentionBadge]);
 
   // Rail project context — switcher glyph + the console rollup (liveRuns /
   // openIssues badges). See useRailProjectData.
@@ -221,8 +221,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // Compact-rail tiers — derived from the shared nav model (ISS-433: never
   // hand-duplicate these lists) with the live Attention / open-issues badges.
   const compactWorkspaceItems = useMemo<RailItem[]>(
-    () => compactWorkspaceRailItems(attentionCount),
-    [attentionCount],
+    () => compactWorkspaceRailItems(attentionBadge),
+    [attentionBadge],
   );
   const compactProjectItems = useMemo<RailItem[] | null>(
     () => (compactActiveProject ? projectRailItems(railConsole?.openIssues) : null),
@@ -256,7 +256,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // project's ProjectMark glyph for parity with the desktop rail/flyout
   // (folder icon fallback when no rail project is resolved yet).
   const bottomItems: BottomTabItem[] = useMemo(() => {
-    const items = bottomTabItems(slug, attentionCount, railConsole?.openIssues);
+    const items = bottomTabItems(slug, attentionBadge, railConsole?.openIssues);
     if (!slug || !projectMark) return items;
     return items.map((it) =>
       it.key === "switcher"
@@ -274,7 +274,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           }
         : it,
     );
-  }, [slug, attentionCount, railConsole, projectMark]);
+  }, [slug, attentionBadge, railConsole, projectMark]);
 
   // Chat lights the "Chat" tab while the mobile chat overlay is open, taking
   // priority over the route-derived key (ISS-681).
@@ -419,7 +419,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railSlug={railSlug}
         railProjectName={railProject?.name}
         activeKey={activeKey}
-        attentionCount={attentionCount}
+        attention={attentionBadge}
         openIssuesBadge={railConsole?.openIssues}
         scopedProjects={scopedProjects}
         onNavigate={navigate}

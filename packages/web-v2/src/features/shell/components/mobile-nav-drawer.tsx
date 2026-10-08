@@ -7,6 +7,7 @@
 // state and closes it on route change.
 import { useEffect } from "react";
 import { Icon, ProjectMark } from "@/design";
+import { badgeFace, type BadgeFigure, type BadgeRead } from "@/design/patterns/badge-read";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
@@ -30,18 +31,22 @@ function DrawerNavButton({
   leading,
   label,
   badge,
+  badgeRead,
 }: {
   active: boolean;
   onClick: () => void;
   leading: React.ReactNode;
   label: string;
   badge?: number;
+  badgeRead?: BadgeRead;
 }) {
+  const face = badgeFace({ badge, badgeRead });
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? "page" : undefined}
+      aria-label={face && face.state !== "count" ? `${label}, ${face.phrase}` : undefined}
       className={cn(
         "flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
@@ -49,8 +54,8 @@ function DrawerNavButton({
     >
       {leading}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {badge != null && badge > 0 && (
-        <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{badge}</span>
+      {face && (
+        <span className="fg-caption rounded-pill bg-app px-1.5 text-muted">{face.text}</span>
       )}
     </button>
   );
@@ -70,8 +75,8 @@ export interface MobileNavDrawerProps {
   railSlug: string | null;
   railProjectName: string | null | undefined;
   activeKey: string;
-  /** Undefined until the attention list and the devices have both been read: no figure is stated before then. */
-  attentionCount: number | undefined;
+  /** A count only where the attention list and the devices were both read; else the read that is pending or failed. */
+  attention: BadgeFigure;
   /** Open-issue count for the rail project (badges the Issues row). */
   openIssuesBadge: number | undefined;
   /** Projects scoped to the active org (ISS-480). */
@@ -95,7 +100,7 @@ export function MobileNavDrawer({
   railSlug,
   railProjectName,
   activeKey,
-  attentionCount,
+  attention,
   openIssuesBadge,
   scopedProjects,
   onNavigate,
@@ -153,7 +158,8 @@ export function MobileNavDrawer({
           }}
           leading={<Icon name={it.icon} size={18} />}
           label={it.label}
-          badge={it.key === "attention" ? attentionCount : undefined}
+          badge={it.key === "attention" ? attention.badge : undefined}
+          badgeRead={it.key === "attention" ? attention.badgeRead : undefined}
         />
       ))}
     </>

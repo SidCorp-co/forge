@@ -1,4 +1,5 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
+import type { BadgeFigure } from "@/design/patterns/badge-read";
 import type { RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
@@ -105,21 +106,21 @@ export function buildBottomActiveKey(pathname: string, slug: string | null): str
   return "";
 }
 
-export function workspaceNavItems(attentionCount: number | undefined): NavItem[] {
+export function workspaceNavItems(attention: BadgeFigure): NavItem[] {
   return WORKSPACE_ITEMS.map((it) =>
-    it.key === "overview" ? { ...it, badge: attentionCount } : it,
+    it.key === "overview" ? { ...it, ...attention } : it,
   );
 }
 
 /** Compact-rail workspace rows. Derived from WORKSPACE_ITEMS so the compact
  *  and expanded rails can never drift (ISS-433 live-E2E caught this list as a
  *  stale hardcoded duplicate — it was missing the promoted Integrations row). */
-export function compactWorkspaceRailItems(attentionCount: number | undefined): RailItem[] {
+export function compactWorkspaceRailItems(attention: BadgeFigure): RailItem[] {
   return WORKSPACE_ITEMS.map((it) => ({
     key: it.key,
     label: it.label,
     icon: it.icon,
-    ...(it.key === "overview" ? { badge: attentionCount } : {}),
+    ...(it.key === "overview" ? attention : {}),
   }));
 }
 
@@ -137,7 +138,7 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
 
 export function bottomTabItems(
   slug: string | null,
-  attentionCount: number | undefined,
+  attention: BadgeFigure,
   openIssues: number | undefined,
 ): BottomTabItem[] {
   if (slug) {
@@ -151,7 +152,7 @@ export function bottomTabItems(
   }
   return [
     { key: "projects", label: "Projects", icon: "folder" },
-    { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
+    { key: "attention", label: "Attention", icon: "inbox", ...attention },
     { key: "search", label: "Search", icon: "search" },
     { key: "you", label: "You", icon: "settings" },
   ];
