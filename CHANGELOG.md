@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.146] - 2026-10-08
+
+One path per helper after parallel lanes, and provider-verified releases name their checker
+
+### Fixed
+
+- **A release verified by its provider says so in words.** The status report and the release's verified line read "checked by what production's provider serves" where they read "what serves", with no name, in English and Vietnamese.
+
 ## [0.4.0-dev.145] - 2026-10-08
 
 One approval clears every design whose only change is a moved base pin
