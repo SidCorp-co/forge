@@ -331,10 +331,15 @@ export function planCriteria(
     }
     if (!prior) {
       const known = [...byCode.keys(), ...ownCodes].filter((k, n, all) => all.indexOf(k) === n);
+      const codes = known.sort((a, b) => codeNumber(a) - codeNumber(b)).join(', ') || 'none';
+      const where =
+        ownCodes.size > 0
+          ? 'neither a live criterion of the revision this one is based on nor one this draft holds'
+          : 'not a live criterion of the revision this one is based on';
       refusals.push({
         code: 'CRITERION_CODE_UNKNOWN',
         path: `/criteria/${i}/code`,
-        detail: `${c.code} is neither a live criterion of the revision this one is based on nor one this draft holds (${known.sort((a, b) => codeNumber(a) - codeNumber(b)).join(', ') || 'none'}); a new criterion names no code and is given the next one.`,
+        detail: `${c.code} is ${where} (${codes}); a new criterion carries no code: leave \`code\` out and it is given the next one when the revision is written.`,
       });
       return;
     }

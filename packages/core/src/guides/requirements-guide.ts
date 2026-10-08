@@ -38,7 +38,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
    that code (reworded under it, or unchanged), one naming no code takes the next code never used,
    and a live code you leave out is retired. A code is never reissued, which is what lets an issue's
    trace to BC-3 mean the same thing next month. Naming a code the base does not hold is
-   \`CRITERION_CODE_UNKNOWN\`; naming one twice \`CRITERION_CODE_DUPLICATE\`. A \`scenario\` criterion
+   \`CRITERION_CODE_UNKNOWN\`; naming one twice \`CRITERION_CODE_DUPLICATE\`. A \`revision_diff\`
+   suggestion is held to the same rules where it is proposed, not first at its accept: a new
+   criterion in it carries no code. A \`scenario\` criterion
    must read Given / When / Then, each starting a line (\`CRITERION_SCENARIO_UNPARSEABLE\`).
    What the input leaves unsettled goes in \`spec.openQuestions\` (\`{ question, whoAnswers, blocking }\`):
    each is asked as a question on the requirement and keeps its \`questionId\`, which a later revision

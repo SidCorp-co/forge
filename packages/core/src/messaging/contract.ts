@@ -13,6 +13,11 @@ export interface RuleBreak {
   readonly quote: string | null;
   /** Why it broke, phrased as the message's own problem. */
   readonly why: string;
+  /**
+   * Set where the rule could not run, as why, in the words the person is told: the message is held
+   * for want of the check, not for a claim the check found false, and a reply that ends held says so.
+   */
+  readonly unchecked?: string;
 }
 
 /** What a rule needs gathered before it can judge anything. */
@@ -35,6 +40,8 @@ export interface MessageRefusal {
   readonly quote: string | null;
   readonly shape: string;
   readonly example: string;
+  /** The rule could not run, and why (`RuleBreak.unchecked`). */
+  readonly unchecked?: string;
 }
 
 declare const judgedByTheScreen: unique symbol;

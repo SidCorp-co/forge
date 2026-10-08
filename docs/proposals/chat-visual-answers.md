@@ -472,7 +472,9 @@ ruling and is not registered.
   or save (`forge_template_save`, or the status-report POST), and no unverified mark exempts a claim
   to have written a record. A reply the screen holds with no rewrite passing goes out as a line that
   names what it stated that nothing backed (`conversations/fallback-replies.ts:heldFallbackReply`),
-  never as a check that could not run (ISS-420).
+  never as a check that could not run (ISS-420); where a check the reply needed truly could not run
+  (the progress snapshot was not computed), the line names that check and why, and never says
+  nothing failed (`RuleBreak.unchecked` in `packages/core/src/messaging/contract.ts`).
 - **A block waits on its reply.** A block is never written into the room when it is drawn: it is
   staged outside `conversation_messages`, so neither the room's REST read nor its socket can show
   it, and is posted just above the reply only once that reply passes the reply check. A chat turn

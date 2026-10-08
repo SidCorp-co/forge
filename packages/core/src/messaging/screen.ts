@@ -53,6 +53,7 @@ function refusalsFor(rule: MessageRule, text: string, facts: MessageFacts): Mess
     quote: b.quote,
     shape: rule.shape,
     example: rule.example,
+    ...(b.unchecked ? { unchecked: b.unchecked } : {}),
   }));
 }
 

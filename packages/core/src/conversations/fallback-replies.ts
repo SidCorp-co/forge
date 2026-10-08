@@ -150,6 +150,22 @@ const heldLine = (name: string, claims: readonly HeldClaim[]): string => {
   return `${name} wrote an answer, but the reply check held it${why ? `: ${why}` : ''}. No rewrite fixed that, so the answer was not sent. Nothing failed; asking again, or asking for one thing at a time, may get an answer it can check.`;
 };
 
+/** A check the reply needed that could not run: the rule's name, and why it could not. */
+export interface UncheckedRule {
+  readonly rule: string;
+  readonly why: string;
+}
+
+/**
+ * The line a reply goes out as when a check it needed could not run (REQ-30 BC-9): which check and
+ * why, so a failure on Forge's side reads as one and never as a held claim with "nothing failed".
+ */
+const uncheckedLine = (name: string, unchecked: readonly UncheckedRule[]): string => {
+  const byRule = new Map(unchecked.map((u) => [u.rule, u.why]));
+  const which = [...byRule].map(([rule, why]) => `the ${rule} check, because ${why}`).join('; ');
+  return `${name} wrote an answer, but a reply check it needed could not run: ${which}. So the answer was not sent. This failed on Forge's side and is not about your question; asking again may get an answer once the check can run.`;
+};
+
 const EMPTY: Line = {
   en: (name) => `Sorry, ${name} could not put together an answer to this. Could you rephrase it?`,
   vi: (name) =>
@@ -300,8 +316,11 @@ export function turnFailureReason(code: TurnFailureCode, name: string): string {
 export const errorFallbackReply = (name: string, lang: ReplyLanguage = 'en'): string =>
   ERROR[lang](name);
 
-export const heldFallbackReply = (name: string, claims: readonly HeldClaim[] = []): string =>
-  heldLine(name, claims);
+export const heldFallbackReply = (
+  name: string,
+  claims: readonly HeldClaim[] = [],
+  unchecked: readonly UncheckedRule[] = [],
+): string => (unchecked.length > 0 ? uncheckedLine(name, unchecked) : heldLine(name, claims));
 
 export const emptyFallbackReply = (name: string, lang: ReplyLanguage = 'en'): string =>
   EMPTY[lang](name);

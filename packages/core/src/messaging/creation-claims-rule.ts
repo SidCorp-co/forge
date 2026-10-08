@@ -2,7 +2,8 @@
  * The rule that holds a reply's claim to have made a record against what the turn actually did.
  *
  * Chat records Feedback (`forge_feedback`) or a Requirement draft or revision
- * (`forge_requirement_draft`, `forge_requirement_revise`) after the person confirms, and never an
+ * (`forge_requirement_draft`, `forge_requirement_revise`; at a requirement's BA door `ba_suggest` and
+ * `ba_suggest_requirement`) after the person confirms, and never an
  * issue (owner ruling 2026-10-08: the kernel refuses a chat credential `CHAT_FILES_FEEDBACK_NOT_ISSUES`).
  * So "I recorded this as FB-112" is true only where this turn wrote a Feedback, and "I created an
  * issue" is false whatever the turn did. An Agent session has no record tools; its write is a REST
@@ -112,10 +113,19 @@ function feedbackWritten(calls: readonly Call[]): boolean {
   });
 }
 
-/** Whether the turn wrote the requirement `ref` names: any draft, a revision of that REQ, or a REST POST. */
+/**
+ * The BA door's writes: a suggestion on the room's requirement (`ba_suggest`), or a first
+ * requirement proposed from a journey (`ba_suggest_requirement`). The door holds no other write, so
+ * its true "I drafted r2 of REQ-32" rests on one of them (QA on forge-dev 2026-10-08, REQ-32's room:
+ * the claim was held with only the chat's requirement tools known, and no rewrite could pass).
+ */
+const BA_REQUIREMENT_WRITES = ['ba_suggest', 'ba_suggest_requirement'] as const;
+
+/** Whether the turn wrote the requirement `ref` names: any draft, a revision of that REQ, a BA suggestion, or a REST POST. */
 function requirementWritten(calls: readonly Call[], ref: string | null): boolean {
   return writes(calls).some((c) => {
     if (named(c, 'forge_requirement_draft') || restPost(c, 'requirements')) return true;
+    if (BA_REQUIREMENT_WRITES.some((tool) => named(c, tool))) return true;
     if (!named(c, 'forge_requirement_revise')) return false;
     if (ref === null) return true;
     try {
@@ -154,7 +164,7 @@ function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
       const what = c.kind === 'feedback' ? 'Feedback' : 'a Requirement draft or revision';
       breaks.push({
         quote: body,
-        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this turn made no ${c.kind === 'feedback' ? '`forge_feedback` call or POST to the feedback route' : '`forge_requirement_draft` or `forge_requirement_revise` call or POST to the requirements route'}`,
+        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this turn made no ${c.kind === 'feedback' ? '`forge_feedback` call or POST to the feedback route' : 'requirement write (`forge_requirement_draft`, `forge_requirement_revise`, at a requirement\'s BA door `ba_suggest` or `ba_suggest_requirement`, or a POST to the requirements route) that succeeded'}`,
       });
     }
   }

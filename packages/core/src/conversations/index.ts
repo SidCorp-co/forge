@@ -41,6 +41,7 @@ export {
   findingsWords,
   type HeldClaim,
   heldFallbackReply,
+  type UncheckedRule,
   isTurnFailureCode,
   nothingMoreReply,
   partialReplyWords,
