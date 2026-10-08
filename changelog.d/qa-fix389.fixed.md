@@ -1,1 +1,0 @@
-**A question's `about` sent in any other shape is refused `QUESTION_ABOUT_SHAPE`, and a provider-checked release names its provider.** The refusal names what was sent and the one object shape; the status line now says "what Autoflow serves".
