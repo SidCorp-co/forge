@@ -21,12 +21,34 @@ expect.extend(matchers);
 
 vi.mock("@sentry/react", () => ({ captureException: vi.fn() }));
 
-/** The roster the dialog reads each listed issue's last close failure off. */
-let rosterIssues: Array<{ id: string; closeFailure: { reason: string; version: string | null } | null }> = [];
-vi.mock("../hooks", async () => {
-  const actual = await vi.importActual<typeof import("../hooks")>("../hooks");
-  return { ...actual, useReleaseRoster: () => ({ data: { issues: rosterIssues } }) };
-});
+/** The roster the dialog reads each listed issue's last close failure off, answered on its own route. */
+type Failure = { reason: string; version: string | null } | null;
+let rosterFailures: Record<string, Failure> = {};
+const rosterFetch = vi.fn();
+
+function rosterAnswer(): Response {
+  const issues = Object.entries(rosterFailures).map(([id, closeFailure]) => ({
+    id,
+    displayId: id,
+    title: id,
+    mergedAt: null,
+    waitingDays: null,
+    claimedByRunId: null,
+    closeRefusals: [],
+    closeFailure,
+  }));
+  return new Response(
+    JSON.stringify({
+      gateStatus: "awaiting_release",
+      channels: ["coolify"],
+      releaseRunnerLabel: null,
+      baseBranch: "main",
+      nextCutAt: null,
+      issues,
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
 
 const REFUSAL =
   "A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.";
@@ -72,8 +94,19 @@ function dialog(open: boolean): ReactElement {
   );
 }
 
-function draw() {
-  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+/** `read: false` leaves the roster to the dialog's own request, unanswered until that answers. */
+function draw({ read = true }: { read?: boolean } = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  if (read) {
+    client.setQueryData(["release-roster", "proj-1"], {
+      gateStatus: "awaiting_release",
+      channels: ["coolify"],
+      releaseRunnerLabel: null,
+      baseBranch: "main",
+      nextCutAt: null,
+      issues: [],
+    });
+  }
   const wrap = (node: ReactElement) => (
     <QueryClientProvider client={client}>
       <ToastProvider>{node}</ToastProvider>
@@ -88,11 +121,15 @@ function press() {
 }
 
 beforeEach(() => {
-  rosterIssues = [];
+  rosterFailures = {};
   fetchMock.mockReset();
+  rosterFetch.mockReset();
+  rosterFetch.mockImplementation(async () => rosterAnswer());
   onClose.mockReset();
   onSuccess.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("fetch", (input: unknown, init?: RequestInit) =>
+    String(input).includes("/release-batches/roster") ? rosterFetch(input, init) : fetchMock(input, init),
+  );
 });
 afterEach(() => {
   cleanup();
@@ -169,23 +206,52 @@ describe("what the dialog promises before the press", () => {
   });
 
   // ISS-1381 r5: the dialog promised a close the release would fail the same way.
-  it("names an issue the last release failed to close as one this release fails the same way", () => {
-    rosterIssues = [
-      { id: "iss-a", closeFailure: null },
-      { id: "iss-b", closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" } },
-    ];
-    draw();
+  it("names an issue the last release failed to close as one this release fails the same way", async () => {
+    rosterFailures = {
+      "iss-a": null,
+      "iss-b": { reason: "the database refused the write (23514)", version: "0.6.0" },
+    };
+    draw({ read: false });
 
     const drawer = screen.getByRole("dialog");
+    const failing = await within(drawer).findByTestId("fails-the-same-way-ISS-2");
+    expect(String(rosterFetch.mock.calls[0]?.[0])).toContain("/projects/proj-1/release-batches/roster");
     expect(drawer).not.toHaveTextContent(/closed in one batch/);
     expect(drawer).toHaveTextContent(
       "The following 2 issues will be released together. This release fails to close ISS-2 the same way the last one did, until whoever operates Forge fixes it; only ISS-1 is closed. This cannot be undone.",
     );
-    const failing = within(drawer).getByTestId("fails-the-same-way-ISS-2");
     expect(failing).toHaveTextContent(
       "The last release (version 0.6.0) could not close this: the database refused the write (23514).",
     );
     expect(within(drawer).queryByTestId("fails-the-same-way-ISS-1")).toBeNull();
+  });
+
+  it("promises no close and holds the press until the roster is read", async () => {
+    let release: (r: Response) => void = () => {};
+    rosterFetch.mockImplementationOnce(() => new Promise<Response>((done) => (release = done)));
+    rosterFailures = { "iss-b": { reason: "the database refused the write (23514)", version: null } };
+    draw({ read: false });
+
+    const drawer = screen.getByRole("dialog");
+    expect(drawer).toHaveTextContent("Reading whether the last release failed to close any of them");
+    expect(drawer).not.toHaveTextContent(/closed in one batch/);
+    expect(screen.getByRole("button", { name: /release 2 now/i })).toBeDisabled();
+
+    release(rosterAnswer());
+    expect(await within(drawer).findByTestId("fails-the-same-way-ISS-2")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /release 2 now/i })).not.toBeDisabled();
+  });
+
+  it("says the roster could not be read, promises no close, and offers to read it again", async () => {
+    rosterFetch.mockImplementation(async () => new Response("<html>bad gateway</html>", { status: 502 }));
+    draw({ read: false });
+
+    const drawer = screen.getByRole("dialog");
+    const alert = await within(drawer).findByRole("alert");
+    expect(alert).toHaveTextContent("could not be read");
+    expect(drawer).not.toHaveTextContent(/closed in one batch/);
+    expect(screen.getByRole("button", { name: /release 2 now/i })).toBeDisabled();
+    expect(within(alert).getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
 
