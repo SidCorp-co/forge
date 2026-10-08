@@ -185,6 +185,7 @@ agentSessionRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
     kind: metadataType ? kindFromQuery(metadataType, badRequest) : undefined,
     issueId,
     privateChatsOf,
+    viewerId: userId,
     archived: archived === 'true',
     page,
     pageSize,

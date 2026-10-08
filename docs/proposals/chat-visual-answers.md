@@ -392,7 +392,22 @@ ruling and is not registered.
   screens the reply with those blocks, releases them with a reply that passes, keeps them on a held
   reply, where only its asker reads them under "Show the held reply", and names them under
   `droppedBlocks` when no reply goes out. A turn token whose block cannot wait — an assistant turn's,
-  a session that is gone, another room, a reply already taken — is refused by name.
+  a session that is gone, another room, a reply already taken — is refused by name. A turn that
+  outruns 90 seconds closes its window on a partial reply with `continuing: true` and the bound
+  `continuesUntil` (its ceiling, 30 s for a handle past its abort, 30 s for delivery); the rest's
+  decision and its `droppedBlocks` are written onto that record as `continued`
+  (`packages/core/src/assistant/route-window.ts:recordContinuation`), or `undetermined` at the bound.
+- **A turn's draft and tool calls reach its asker alone.** While a turn runs, the person it acts as
+  is sent the stream in full, the draft labelled "Draft, not yet checked" until the verdict frame
+  swaps it for the reply that went out or takes it back; every other reader is sent only that it
+  works and its tools by name and time. The split is taken at the fan-out
+  (`packages/core/src/assistant/conversation-adapter.ts:publishEphemeralByViewer`), never in the
+  web. An Agent-mode turn's session — transcript, listing, live frames — is its asker's alone, an
+  admin included (`packages/core/src/agent-sessions/session-access.ts:conversationTurnAskerOf`).
+  Standards: Slack's `chat.postEphemeral` shows a message to one user in a shared channel, and
+  Teams streams a bot's reply in one-on-one chats only, a group seeing the finished message.
+  Divergence: a group room here streams to its asker, and shows the others tool names, which Teams
+  shows nobody.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
   never drives a write without the person's confirmation (REQ-30 BC-4).

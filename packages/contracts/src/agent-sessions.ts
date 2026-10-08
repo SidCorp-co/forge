@@ -10,6 +10,7 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"SESSION_TERMINATED",
 	"SESSION_OWNER_FORBIDDEN",
 	"AGENT_CHAT_OWNER_FORBIDDEN",
+	"CONVERSATION_TURN_ASKER_ONLY",
 	"TURN_STALE",
 	"TURN_NOT_USER",
 	"NO_PROMPT",
@@ -35,7 +36,11 @@ export const AGENT_SESSION_REFUSAL_STATUSES = {
 	SESSION_CANCELLED: 409,
 	SEND_SEQ_UNKNOWN: 404,
 	SEND_ALREADY_SETTLED: 409,
+	CONVERSATION_TURN_ASKER_ONLY: 403,
 } as const satisfies RefusalStatuses<AgentSessionRefusalCode>;
+
+/** The metadata key a session carries when its answer belongs to a conversation turn. */
+export const CONVERSATION_AGENT_MARKER = "conversationAgent";
 
 /** Who asked, as a session's metadata carries it so a failover can mint again. */
 export interface SessionAsker {

@@ -19,7 +19,7 @@ const table: StagedBlock = {
 
 const handed: { text: string; blocks: readonly StagedBlock[] }[] = [];
 let failDelivery = false;
-let ends: 'answer' | 'decline' = 'answer';
+let ends: 'answer' | 'decline' | 'decline-late' = 'answer';
 
 vi.mock('../conversations/index.js', () => ({
   codeAuthored: (text: string) => ({ text, proof: null }),
@@ -36,6 +36,13 @@ vi.mock('../conversations/index.js', () => ({
   }),
   openConversation: async () => ({ id: 'c-1' }),
   recordDeliveredReply: async () => undefined,
+  nothingMoreReply: () => 'nothing more to add',
+  partialReplyWords: () => ({
+    head: () => 'still working',
+    did: 'did',
+    read: () => 'read',
+    nothingYet: 'nothing yet',
+  }),
 }));
 vi.mock('./turn-compose.js', () => ({
   composeReply: async (ctx: {
@@ -46,7 +53,8 @@ vi.mock('./turn-compose.js', () => ({
     };
   }) => {
     await ctx.stage.stage.hold(table);
-    if (ends === 'decline') return { send: false, reason: 'nothing-to-say', ended: 'declined' };
+    if (ends === 'decline-late') await new Promise((r) => setTimeout(r, 60));
+    if (ends !== 'answer') return { send: false, reason: 'nothing-to-say', ended: 'declined' };
     ctx.stage.settle(0);
     return {
       send: true,
@@ -65,12 +73,14 @@ vi.mock('../lib/error-tracking.js', () => ({ reportFailure: () => undefined }));
 
 const { runConversationTurn } = await import('./turn-runner.js');
 
-const run = () =>
+const run = (budget?: { partialAfterMs: number; ceilingMs: number }) =>
   runConversationTurn({
     door: 'web-chat-reply',
     venue: { adapter: 'web', externalId: 'room-1', shape: 'direct', projectId: 'p-1' },
     authority: { origin: 'message' },
     message: 'where does REQ-1 stand?',
+    handleName: 'forge',
+    ...(budget ? { budget } : {}),
   } as never);
 
 beforeEach(() => {
@@ -111,6 +121,25 @@ describe("a chat turn's blocks go out with the reply that releases them", () => 
           why: 'the turn sent none of its own words (a code-authored line, or nothing), so nothing it drew is shown',
         },
       ],
+    });
+  });
+});
+
+describe('a turn that runs past its first ceiling', () => {
+  it('names the block its rest drew and dropped on the rest, waited on until a stated bound', async () => {
+    ends = 'decline-late';
+    const started = Date.now();
+    const outcome = await run({ partialAfterMs: 10, ceilingMs: 5000 });
+    expect(outcome).toMatchObject({ kind: 'delivered' });
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    expect(continuation, 'the turn outran its first ceiling').toBeDefined();
+    // the ceiling, the 30 s a handle is given past its abort, and the 30 s its delivery is given
+    const bound = (continuation?.until.getTime() ?? 0) - started;
+    expect(bound).toBeGreaterThanOrEqual(65_000);
+    expect(bound).toBeLessThan(66_000);
+    expect(await continuation?.rest).toMatchObject({
+      kind: 'delivered',
+      droppedBlocks: [{ kind: 'table', runId: 'r' }],
     });
   });
 });

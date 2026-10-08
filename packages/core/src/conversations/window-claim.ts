@@ -4,7 +4,7 @@
  * that took the window from it.
  */
 
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import {
   type ConversationAdapter,
@@ -47,6 +47,33 @@ export async function closeWindow(
     )
     .returning(windowSelection);
   return (row as ConversationWindowRow | undefined) ?? null;
+}
+
+/**
+ * Write how the rest of a continued turn settled onto the window it closed under. A window closed on
+ * a partial reply carries `continuing: true` and keeps its record open for exactly this one write:
+ * `continued` names the rest's decision and the blocks it dropped, and `continuing` turns false. A
+ * second write, a window never closed as continuing, or a claim that moved on writes nothing.
+ */
+export async function settleContinuedWindow(
+  args: { windowId: string; claim: WindowClaim; continued: Record<string, unknown> },
+  tx: Executor = defaultDb,
+): Promise<boolean> {
+  const rows = await tx
+    .update(conversationWindows)
+    .set({
+      decisionDetail: sql`${conversationWindows.decisionDetail} || jsonb_build_object('continuing', false, 'continued', ${JSON.stringify(args.continued)}::jsonb)`,
+    })
+    .where(
+      and(
+        eq(conversationWindows.id, args.windowId),
+        isNotNull(conversationWindows.closedAt),
+        heldBy(args.claim),
+        sql`${conversationWindows.decisionDetail} ->> 'continuing' = 'true'`,
+      ),
+    )
+    .returning({ id: conversationWindows.id });
+  return rows.length > 0;
 }
 
 interface SplitTailArgs {

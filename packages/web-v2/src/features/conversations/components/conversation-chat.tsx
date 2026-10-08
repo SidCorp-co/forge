@@ -22,7 +22,6 @@ import {
 } from "@/features/session/components/turn-stage";
 import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
-import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import {
@@ -37,7 +36,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
-import type { ConversationMode, OutboxMessage } from "../types";
+import { type ConversationMode, liveRenderBlocks, type OutboxMessage } from "../types";
 import { ComposerFooter, RoomEmpty, RoomHeader, RoomLoading, RoomUnreadable, useComposerPlaceholder } from "./conversation-room-parts";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
@@ -115,10 +114,10 @@ export function ConversationChat({
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const streaming = busy || progress != null;
 
-  const liveBlocks = progress ? parseMessages([progress.entry])[0]?.blocks : undefined;
+  const liveBlocks = progress ? liveRenderBlocks(progress) : undefined;
   const stage = turnStageOf({
     // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
-    live: streaming && !progress?.replaced,
+    live: streaming && !progress?.replaced && !progress?.verdict,
     ...(progress ? { blocks: liveBlocks } : {}),
   });
   const doing = stage === "working" ? turnDoing(liveBlocks, t) : null;

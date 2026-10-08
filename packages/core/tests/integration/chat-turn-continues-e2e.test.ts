@@ -238,7 +238,7 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
       budget: { partialAfterMs: 400, ceilingMs: 10_000 },
     });
     expect(outcome.kind).toBe('delivered');
-    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;
     expect(continuation, 'the turn outran its first ceiling and must keep working').toBeDefined();
 
     const partial = await said(room.id);
@@ -271,7 +271,7 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
       tools: trackerTools(t),
       budget: { partialAfterMs: 300, ceilingMs: 1200 },
     });
-    const continuation = outcome.kind === 'delivered' ? outcome.continuation : undefined;
+    const continuation = outcome.kind === 'delivered' ? outcome.continuation?.rest : undefined;
     expect(continuation).toBeDefined();
     await continuation;
     const both = await said(room.id);

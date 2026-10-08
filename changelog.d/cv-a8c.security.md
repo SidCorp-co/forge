@@ -1,0 +1,1 @@
+**Only the person who asked sees a chat turn's draft and tool calls while it runs.** Everyone else in the room sees that it is working and which tools ran; an Agent-mode turn's session is the asker's alone.

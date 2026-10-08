@@ -196,11 +196,10 @@ export interface ConversationTurnRequest {
  */
 export type TurnOutcome =
   /**
-   * `continuation`: the delivered text was a partial reply, and this settles once the rest of the
-   * turn has been posted to the same thread, or the line saying why it was not.
+   * `continuation`: the delivered text was a partial reply; see {@link ContinuedRest}.
    */
   (
-    | { kind: 'delivered'; messageId: string | null; continuation?: Promise<TurnOutcome> }
+    | { kind: 'delivered'; messageId: string | null; continuation?: ContinuedRest }
     | { kind: 'stopped'; reason: string }
     | { kind: 'superseded'; reason: string }
     | { kind: 'diverted'; reason: string }
@@ -224,6 +223,16 @@ export type TurnOutcome =
     /** The blocks the turn drew that nobody will see, and why: named in the window's record, never silent. */
     droppedBlocks?: readonly DroppedBlock[];
   };
+
+/**
+ * The rest of a turn that posted a partial reply. `rest` settles once it has been posted to the same
+ * thread, or the line saying why it was not; `until` is the latest it is waited on, past which its
+ * window's record says it never settled.
+ */
+export interface ContinuedRest {
+  rest: Promise<TurnOutcome>;
+  until: Date;
+}
 
 export const REPLY_NOT_DELIVERED = 'REPLY_NOT_DELIVERED';
 export const REPLY_NOT_DELIVERED_REASON = 'the reply could not be pushed to this conversation';

@@ -2,14 +2,17 @@
 // reader of it. Light on purpose: the question origin and the thread marks read it without loading
 // the turn machinery.
 
-import { readSessionAsker, type SessionAsker } from '@forge/contracts/agent-sessions';
+import {
+  CONVERSATION_AGENT_MARKER,
+  readSessionAsker,
+  type SessionAsker,
+} from '@forge/contracts/agent-sessions';
 import type { MemberLens } from '../db/schema.js';
 import { type DroppedBlock, type StagedBlock, stagedBlocksOf } from '../lib/staged-block.js';
 import type { ConversationVenue } from './ports.js';
 import type { ConversationImage } from './store.js';
 
-/** The metadata key a session carries when its answer belongs to a conversation. */
-export const CONVERSATION_AGENT_MARKER = 'conversationAgent';
+export { CONVERSATION_AGENT_MARKER };
 
 /** What the venue is shown when this lane has no model answer to give it. */
 interface ConversationAgentReplies {

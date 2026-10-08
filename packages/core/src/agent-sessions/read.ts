@@ -11,7 +11,7 @@ import {
 } from '../db/schema.js';
 import { sessionWorksIssue } from '../lib/issue-run-group.js';
 import { extractTurnPreview } from './chat-preview.js';
-import { ownerPrivateChatSql } from './session-access.js';
+import { conversationTurnListedTo, ownerPrivateChatSql } from './session-access.js';
 import { transcriptLength } from './turns-helpers.js';
 import {
   canonicalSessionId,
@@ -85,12 +85,17 @@ type AgentSessionQuery = {
   issueId?: string | undefined;
   /** Whose person-opened chats the rows hold besides project-wide sessions; null holds everyone's. */
   privateChatsOf: string | null;
+  /** Who reads the rows: a conversation turn's session is listed to its asker alone. */
+  viewerId: string;
   limit: number;
 };
 
 /** The lean rows an agent lists sessions with, newest first. */
 export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
-  const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
+  const conds: SQL[] = [
+    eq(agentSessions.projectId, q.projectId),
+    conversationTurnListedTo(q.viewerId),
+  ];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
   if (q.issueId) conds.push(sessionWorksIssue(q.issueId));
   if (q.privateChatsOf !== null) {
@@ -215,6 +220,8 @@ export type AgentSessionListFilter = {
   issueId?: string | undefined;
   /** Whose person-opened chats the page holds besides project-wide sessions; null holds everyone's. */
   privateChatsOf: string | null;
+  /** Who reads the page: a conversation turn's session, and its last message, are listed to its asker alone. */
+  viewerId: string;
   archived: boolean;
   page: number;
   pageSize: number;
@@ -225,7 +232,7 @@ export type AgentSessionListFilter = {
  * rolled up in one bounded query over the page's ids (ISS-391).
  */
 export async function listAgentSessionsPage(f: AgentSessionListFilter) {
-  const conditions: SQL[] = [];
+  const conditions: SQL[] = [conversationTurnListedTo(f.viewerId)];
   if ('projectId' in f.scope) {
     conditions.push(eq(agentSessions.projectId, f.scope.projectId));
   } else {

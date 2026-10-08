@@ -18,6 +18,7 @@ import {
   closeWindow,
   newRequestTrack,
   type StoredConversationMessage,
+  settleContinuedWindow,
   statusAfterThrow,
   windowDeliveryKey,
 } from '../conversations/index.js';
@@ -28,8 +29,10 @@ import type {
   ConversationWindowDecision,
 } from '../db/schema-conversations.js';
 import { logger } from '../lib/logger.js';
+import type { ContinuedRest, TurnOutcome } from './turn-request.js';
 import type { ConversationTurnRequest } from './turn-runner.js';
 import { decide } from './window-decision.js';
+import { routedOutcome } from './window-outcome.js';
 
 /** Everything the neutral runner takes bar what the window itself settles. */
 export type WindowTurnInputs = Omit<
@@ -115,6 +118,10 @@ export interface RoutedWindow {
    * The claim moved on under this route, so the window is another holder's now.
    */
   superseded?: true;
+  /** The turn posted a partial reply and works on: the window closes, its record waits on this. */
+  continuation?: ContinuedRest;
+  /** Settles once the continued turn's rest is written onto the closed window's record. */
+  continued?: Promise<void>;
 }
 
 /**
@@ -143,7 +150,8 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
       detail: closeDetail(window, cut.current, result.detail),
       claim,
     });
-    return result;
+    if (!result.continuation) return result;
+    return { ...result, continued: recordContinuation(window, claim, result.continuation) };
   } catch (err) {
     logger.error(
       { err, windowId: window.id, conversationId: window.conversationId },
@@ -161,6 +169,71 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
     });
     return { decision: 'unreachable' };
   }
+}
+
+const UNSETTLED = Symbol('unsettled');
+
+/**
+ * A window closes on a partial reply so the room is not held for the rest of the turn, but its
+ * record stays open until the rest settles: the rest's decision, and the blocks it drew that nobody
+ * will see, are written onto it. It is waited on until `until` — the turn's ceiling from its start,
+ * the grace a handle is given past its abort, and the grace its delivery is given — and a rest that
+ * has not settled by then is written as unsettled rather than left reading `continuing` for ever.
+ */
+async function recordContinuation(
+  window: RouteWindowArgs['window'],
+  claim: NonNullable<ReturnType<typeof claimOf>>,
+  continuation: ContinuedRest,
+): Promise<void> {
+  const where = { windowId: window.id, conversationId: window.conversationId };
+  try {
+    const settled = await settledBy(continuation.rest, continuation.until);
+    const continued =
+      settled === UNSETTLED
+        ? {
+            decision: 'undetermined',
+            reason: 'the rest of the turn had not settled by the bound its record waits for',
+            unsettledAt: continuation.until.toISOString(),
+          }
+        : continuedOf(settled);
+    if (!(await settleContinuedWindow({ windowId: window.id, claim, continued }))) {
+      logger.warn(
+        { ...where, continued },
+        'conversations: the rest of a continued turn found no open record on its window',
+      );
+    }
+  } catch (err) {
+    logger.error({ err, ...where }, 'conversations: the rest of a continued turn was not recorded');
+  }
+}
+
+function continuedOf(outcome: TurnOutcome): Record<string, unknown> {
+  const { decision, detail } = routedOutcome(outcome);
+  return {
+    decision,
+    ...(detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : {}),
+  };
+}
+
+/** The rest's outcome if it settles by `until`, else {@link UNSETTLED}. */
+function settledBy(
+  rest: Promise<TurnOutcome>,
+  until: Date,
+): Promise<TurnOutcome | typeof UNSETTLED> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(UNSETTLED), Math.max(0, until.getTime() - Date.now()));
+    t.unref?.();
+    rest.then(
+      (outcome) => {
+        clearTimeout(t);
+        resolve(outcome);
+      },
+      (err: unknown) => {
+        clearTimeout(t);
+        reject(err);
+      },
+    );
+  });
 }
 
 /**

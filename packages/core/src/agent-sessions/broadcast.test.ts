@@ -115,6 +115,18 @@ describe("a person's chat frames reach only the people who may read it", () => {
     expect(roomsReached()).toEqual(['device:d-1', 'project:p-1']);
   });
 
+  it("a conversation turn's frames reach its asker alone, never an admin or the project", async () => {
+    const turn = {
+      ...personChat,
+      userId: MEMBER,
+      metadata: { unattended: true, conversationAgent: { asker: { userId: MEMBER } } },
+    };
+    broadcastTurnAppended(turn, { turnId: 't-1', turnIndex: 0, role: 'assistant' });
+    broadcastSession(turn, 'agent-session.updated');
+    await settle();
+    expect(roomsReached()).toEqual([`user:${MEMBER}`]);
+  });
+
   it('a session.changed for a private chat is told only to the named people', async () => {
     await handlers.get('session.changed')?.({
       sessionId: 's-chat',
@@ -141,6 +153,17 @@ describe('the read gate names the same chats the frames hide', () => {
     expect(() => assertAgentChatOwner(personChat, member, MEMBER)).toThrow(
       /only the conversation's owner/,
     );
+  });
+  it("refuses everyone but its asker a conversation turn's session, an admin included", () => {
+    const turn = {
+      ...personChat,
+      userId: OWNER,
+      metadata: { unattended: true, conversationAgent: { asker: { userId: OWNER } } },
+    };
+    const admin = { ...member, role: 'admin' as const };
+    expect(() => assertAgentChatOwner(turn, admin, ADMIN)).toThrow(/only the person it answered/);
+    expect(() => assertAgentChatOwner(turn, member, MEMBER)).toThrow(/only the person it answered/);
+    expect(() => assertAgentChatOwner(turn, member, OWNER)).not.toThrow();
   });
   it('admits the owner, and admits anyone to an unattended chat', () => {
     expect(() => assertAgentChatOwner(personChat, member, OWNER)).not.toThrow();

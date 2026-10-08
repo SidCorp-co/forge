@@ -106,8 +106,10 @@ export function useUiSnapshot(slug: string | undefined) {
 }
 
 /**
- * Applies each ui_* call the assistant makes in this room, once, as it arrives — from the live turn or
- * the settled row, whichever lands first — and keeps what each did so its card can undo it.
+ * Applies each ui_* call the assistant makes in this room, once, as it arrives in the live turn, and
+ * keeps what each did so its card can undo it. Only the person a turn answers is sent its live tool
+ * calls (REQ-32 criterion 6), so a call is applied in their browser alone; a call first read off a
+ * settled row — another member's turn, or one from before this page opened — is shown, never applied.
  */
 export function useUiActions(args: {
   slug: string;
@@ -141,18 +143,19 @@ export function useUiActions(args: {
 
   useEffect(() => {
     if (!args.ready) return;
-    const calls = [
-      ...args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks)),
-      ...(args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]) : []),
-    ];
-    if (history.current === null) history.current = new Set(calls.map((c) => c.callId));
+    const live = args.progress ? uiCallsOf(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]) : [];
+    const settled = args.messages.flatMap((m) => uiCallsOf(m.id, m.blocks));
+    if (history.current === null) history.current = new Set(live.map((c) => c.callId));
     const seen = history.current;
-    const fresh = calls.filter((c) => !records[c.callId] && !applied.current.has(c.callId));
+    const liveIds = new Set(live.map((c) => c.callId));
+    const fresh = [...live, ...settled.filter((c) => !liveIds.has(c.callId))].filter(
+      (c) => !records[c.callId] && !applied.current.has(c.callId),
+    );
     if (fresh.length === 0) return;
     const added: Record<string, UiCallRecord> = {};
     for (const c of fresh) {
       applied.current.add(c.callId);
-      if (seen.has(c.callId)) {
+      if (seen.has(c.callId) || !liveIds.has(c.callId)) {
         added[c.callId] = c;
         continue;
       }
