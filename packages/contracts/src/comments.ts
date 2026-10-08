@@ -6,6 +6,11 @@ import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
 import { REASON_TEXT_MAX } from "./reason-text.js";
 import { NODE_DECISION_SHAPE, nodeDecisionSchema } from "./workflow-health.js";
+import {
+	WRITTEN_LANG_SHAPE,
+	type WrittenLang,
+	writtenLangSchema,
+} from "./written-lang.js";
 
 export const COMMENT_SCOPES = [
 	"issue",
@@ -84,25 +89,27 @@ export const createEntityCommentRequestSchema = z.strictObject({
 	format: z.enum(["markdown", "html"]).optional(),
 	parentId: z.uuid().optional(),
 	decision: decisionFieldsSchema.optional(),
+	writtenLang: writtenLangSchema.optional(),
 });
 
 export type CreateEntityCommentRequest = z.infer<
 	typeof createEntityCommentRequestSchema
 >;
 
-export const CREATE_ENTITY_COMMENT_SHAPE = `{ intent: ${COMMENT_INTENTS.join(" | ")}, body? (required unless intent is decision), format?: markdown | html, parentId?, decision?: ${DECISION_FIELDS_SHAPE} (required when intent is decision, refused otherwise) }`;
+export const CREATE_ENTITY_COMMENT_SHAPE = `{ intent: ${COMMENT_INTENTS.join(" | ")}, body? (required unless intent is decision), format?: markdown | html, parentId?, decision?: ${DECISION_FIELDS_SHAPE} (required when intent is decision, refused otherwise), ${WRITTEN_LANG_SHAPE} }`;
 
 export const editEntityCommentRequestSchema = z.strictObject({
 	body: z.string().max(COMMENT_BODY_MAX).optional(),
 	format: z.enum(["markdown", "html"]).optional(),
 	decision: decisionFieldsSchema.optional(),
+	writtenLang: writtenLangSchema.optional(),
 });
 
 export type EditEntityCommentRequest = z.infer<
 	typeof editEntityCommentRequestSchema
 >;
 
-export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE} } — at least one; decision only on a decision`;
+export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE}, ${WRITTEN_LANG_SHAPE} } — body or decision, or both; decision only on a decision`;
 
 const ref = z.string().trim().min(1).max(200);
 
@@ -146,6 +153,8 @@ export interface EntityCommentView {
 	body: string | null;
 	format: "markdown" | "html";
 	decision: DecisionFields | null;
+	/** The language the body was written in; null when unknown or withheld. */
+	writtenLang: WrittenLang | null;
 	parentId: string | null;
 	author: CommentAuthorView;
 	withheld: boolean;

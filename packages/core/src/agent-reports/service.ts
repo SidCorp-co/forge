@@ -41,6 +41,7 @@ const reportColumns = {
   target: agentReports.target,
   targetRef: agentReports.targetRef,
   summary: agentReports.summary,
+  writtenLang: agentReports.writtenLang,
   detail: agentReports.detail,
   suggestion: agentReports.suggestion,
   signalKey: agentReports.signalKey,

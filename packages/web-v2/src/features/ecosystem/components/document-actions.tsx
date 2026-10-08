@@ -11,6 +11,7 @@ import { refusalsOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
 import { type DocumentView, REPLY_TYPES } from "../types";
 import { ReadOnlyNotice, RefusalNotice } from "./notices";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 export type Role = ProjectListItem["role"];
 
@@ -41,6 +42,7 @@ export function ReasonAction({
   run: (reason: string, extra: string) => Promise<unknown>;
   variant?: "secondary" | "danger" | "primary";
 }) {
+  const t = useCopy();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   const [more, setMore] = useState("");
@@ -64,9 +66,9 @@ export function ReasonAction({
             <Input aria-label={extra.label} placeholder={extra.placeholder} value={more} onChange={(e) => setMore(e.target.value)} />
           ) : null}
           <Textarea
-            aria-label={`${label}: reason`}
+            aria-label={t("ecosystem.reason.aria", { label })}
             rows={2}
-            placeholder={reason === "required" ? "Why (both sides read it)" : "Why (optional)"}
+            placeholder={t(reason === "required" ? "ecosystem.reason.required" : "ecosystem.reason.optional")}
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
@@ -81,7 +83,7 @@ export function ReasonAction({
               {confirmLabel}
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Cancel
+              {t("ecosystem.reason.cancel")}
             </Button>
           </div>
         </div>

@@ -6,6 +6,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { saidDisagreements } from '@forge/contracts/said';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -229,6 +230,9 @@ describe('a base approved at a new revision, with designs that only need their p
       expect(latest.decidedBy, flow).toBe(ownerId);
       expect(latest.reason, flow).toContain(actId);
       expect(latest.reason, flow).toContain('access r1 → r2');
+      // the act's reason is Forge's own sentence, so a vi reader reads it in vi (ISS-368)
+      expect(latest.says?.reason?.key, flow).toBe('designs.reason.repinOnly');
+      expect(saidDisagreements(d), flow).toEqual([]);
       const filedByMaster = flow === 'complaint-intake' || flow === 'campaign-ux';
       expect(latest.proposedBy, flow).toBe(filedByMaster ? agentId : ownerId);
     }

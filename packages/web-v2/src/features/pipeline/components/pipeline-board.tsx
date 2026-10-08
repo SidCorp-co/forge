@@ -23,6 +23,7 @@ import {
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { formatApiError } from "@/lib/api/error";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { boardColumns, cardStatus, formatUsd, groupIssuesByColumn, runsByIssue } from "../derive";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
@@ -58,7 +59,9 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const runsQ = useProjectRuns(projectId);
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
-  const groups = useMemo(() => groupIssuesByColumn(issuesQ.data?.items), [issuesQ.data]);
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const groups = useMemo(() => groupIssuesByColumn(issuesQ.data?.items, language), [issuesQ.data, language]);
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
@@ -79,16 +82,14 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
     >
       {!embedded && (
         <>
-        <PageTitle hint="One column per state an issue can be in. There is no order between them.">
-          Pipeline
-        </PageTitle>
+        <PageTitle hint={t("pipeline.board.hint")}>{t("pipeline.board.title")}</PageTitle>
         <TopBarActions>
           <LiveDot state="live" />
           <Tooltip
             side="bottom"
-            label="Click a card to inspect its run · pause / resume / cancel from the panel"
+            label={t("pipeline.board.help")}
           >
-            <IconButton icon="help" variant="ghost" size="sm" aria-label="Pipeline help" />
+            <IconButton icon="help" variant="ghost" size="sm" aria-label={t("pipeline.board.helpAria")} />
           </Tooltip>
         </TopBarActions>
         </>
@@ -118,11 +119,11 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
               title={group.title}
               color={group.color}
               count={group.issues.length}
-              emptyHint="No issues in this column."
+              emptyHint={t("pipeline.board.empty")}
             >
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
-                const card = cardStatus(issue, run);
+                const card = cardStatus(issue, run, Date.now(), language);
                 return (
                   <KanbanCard
                     key={issue.id}

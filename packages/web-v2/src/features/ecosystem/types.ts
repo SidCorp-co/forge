@@ -1,6 +1,8 @@
 // The channel and contract shapes as core serves them (core `ecosystem/channel-schema.ts`,
 // `channel-view.ts`, `channel-register.ts`, `api-page.ts`, `contract/party-read.ts`).
 
+import type { Copy } from "@/lib/i18n/product-copy";
+
 export const DOCUMENT_TYPES = [
   "change-notice",
   "acknowledgement",
@@ -178,6 +180,11 @@ export const TYPE_LABEL: Record<string, string> = {
   "change-request": "Change request",
   decision: "Decision",
 };
+
+/** A document type's name in the reader's language; a type this build does not know reads as sent. */
+export function typeLabel(type: string, t: Copy): string {
+  return type in TYPE_LABEL ? t(`ecosystem.type.${type as "rfi"}`) : type;
+}
 
 export type GateMode = "publish" | "approve";
 export type ReplyWindowType = "change-notice" | "rfi" | "change-request";

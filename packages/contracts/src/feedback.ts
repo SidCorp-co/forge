@@ -3,6 +3,7 @@
 // request schemas and the response shapes from here.
 
 import { z } from "zod";
+import { WRITTEN_LANG_SHAPE, type WrittenLang, writtenLangSchema } from "./written-lang.js";
 import type {
 	AgentReportKind,
 	AgentReportSeverity,
@@ -357,10 +358,12 @@ export const createFeedbackRequestSchema = z.strictObject({
 	title: z.string().trim().min(1).max(FEEDBACK_LIMITS.title),
 	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
 	whereSeen: z.string().trim().max(FEEDBACK_LIMITS.whereSeen).optional(),
+	/** The language the title and body are written in; absent, the writer's own (`@forge/contracts/written-lang`). */
+	writtenLang: writtenLangSchema.optional(),
 	...feedbackTargetFields,
 });
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
-export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
+export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), ${WRITTEN_LANG_SHAPE} }`;
 
 const carrierFields = {
 	/** One issue that carries the route, or every one of them as a list (ISS-265). */
@@ -479,8 +482,9 @@ export const feedbackMessageRequestSchema = z.strictObject({
 	audience: z.enum(FEEDBACK_MESSAGE_AUDIENCES),
 	text: z.string().max(FEEDBACK_LIMITS.message),
 	relayed: z.boolean().optional(),
+	writtenLang: writtenLangSchema.optional(),
 });
-export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text, relayed?: boolean }`;
+export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.join(" | ")}, text, relayed?: boolean, ${WRITTEN_LANG_SHAPE} }`;
 
 export const feedbackEmptyRequestSchema = z.strictObject({});
 export const FEEDBACK_EMPTY_SHAPE = "{}";
@@ -582,6 +586,8 @@ export interface FeedbackMessageView {
 	id: string;
 	audience: FeedbackMessageAudience;
 	text: string;
+	/** The language `text` was written in; null where it was written before that was stored, or is withheld. */
+	writtenLang: WrittenLang | null;
 	sentBy: string;
 	sentByName: string | null;
 	sentAgency: "human" | "agent";
@@ -650,6 +656,8 @@ export interface FeedbackSummary
 	id: string;
 	key: string;
 	title: string;
+	/** The language the title and body were written in; null where it was written before that was stored, or is withheld. */
+	writtenLang: WrittenLang | null;
 	kind: FeedbackKind;
 	severity: FeedbackSeverity;
 	status: FeedbackStatus;

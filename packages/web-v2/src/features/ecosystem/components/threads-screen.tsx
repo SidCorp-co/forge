@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { Badge, type BadgeProps, Button, NativeSelect, PageTitle, ProjectMark, SegmentedControl, Tooltip } from "@/design";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { type Copy, copyLocale } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
 import { useChannelWrite, useMyEcosystems } from "../hooks";
-import { daysUntil, INBOX_LABEL, INBOX_TIP, type InboxRow, inView, replyDraft } from "../inbox";
+import { daysUntil, type InboxRow, inboxLabel, inboxTip, inView, replyDraft } from "../inbox";
 import { ecosystemRoutes, INBOX_VIEWS, type InboxView } from "../routes";
-import { DOCUMENT_TYPES, TYPE_LABEL, type WorkspaceDraft, type WorkspaceRead } from "../types";
+import { DOCUMENT_TYPES, typeLabel, type WorkspaceDraft, type WorkspaceRead } from "../types";
 import { projectMarkProps } from "../bus";
 import { ReasonAction } from "./document-actions";
 import { InlineGate } from "./gate-panel";
@@ -23,23 +25,10 @@ export interface ThreadsFilters {
 
 const COUNTED: ReadonlySet<InboxView> = new Set(["needs-me", "waiting", "overdue", "held", "working"]);
 
-const REPLY_NOUN: Record<string, string> = {
-  "change-notice": "an acknowledgement",
-  rfi: "an answer",
-  "change-request": "a decision",
-};
-
-const SEND_LABEL: Record<string, string> = {
-  "change-notice": "Send acknowledgement",
-  rfi: "Send answer",
-  "change-request": "Send decision",
-};
-
-const WRITE_LABEL: Record<string, string> = {
-  "change-notice": "Acknowledge",
-  rfi: "Answer",
-  "change-request": "Decide",
-};
+/** A reply's words by the document type it answers: `ecosystem.<what>.<type>`, else the type-less `…other`. */
+const REPLY_TYPES: ReadonlySet<string> = new Set(["change-notice", "rfi", "change-request"]);
+const replyWord = (t: Copy, what: "reply" | "send" | "write", type: string) =>
+  t(`ecosystem.${what}.${REPLY_TYPES.has(type) ? (type as "rfi") : "other"}`);
 
 type Pill = { text: string; tone: NonNullable<BadgeProps["tone"]>; tip?: string };
 
@@ -48,28 +37,32 @@ function StatusPill({ pill }: { pill: Pill }) {
   return pill.tip ? <Tooltip label={pill.tip}>{el}</Tooltip> : el;
 }
 
-const shortDate = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+const shortDate = (iso: string, language: string) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(copyLocale(language), { month: "short", day: "numeric", timeZone: "UTC" });
 
 interface Ctx {
   read: WorkspaceRead;
   mine: ReadonlySet<string>;
   slug: (id: string) => string;
+  t: Copy;
+  language: string;
 }
 
 function pillOf(row: InboxRow, draft: WorkspaceDraft | null, ctx: Ctx): Pill {
+  const { t } = ctx;
   const owesMine = row.owner.some((o) => ctx.mine.has(o));
-  if (row.hold?.action === "hold") return { text: "Held", tone: "amber", tip: row.hold.reason ?? "Held: the masters on this thread stop until it is released" };
-  if (row.state !== "published") return { text: row.state === "withdrawn" ? "Withdrawn" : "Superseded", tone: "neutral" };
-  if (owesMine && draft?.state === "submitted") return { text: "Needs approval", tone: "amber", tip: "The reply waits at your project's approve gate" };
+  // a hold's reason is its holder's words, shown as written
+  if (row.hold?.action === "hold") return { text: t("ecosystem.pill.held"), tone: "amber", tip: row.hold.reason ?? t("ecosystem.pill.heldTip") };
+  if (row.state !== "published") return { text: t(row.state === "withdrawn" ? "ecosystem.pill.withdrawn" : "ecosystem.pill.superseded"), tone: "neutral" };
+  if (owesMine && draft?.state === "submitted") return { text: t("ecosystem.pill.needsApproval"), tone: "amber", tip: t("ecosystem.pill.needsApprovalTip") };
   if (row.overdue && row.dueBy) {
     const late = -daysUntil(row.dueBy);
-    return { text: `Overdue · ${late} day${late === 1 ? "" : "s"}`, tone: "red", tip: `Due ${row.dueBy}` };
+    return { text: late === 1 ? t("ecosystem.pill.overdueOne") : t("ecosystem.pill.overdueMany", { n: late }), tone: "red", tip: t("ecosystem.pill.due", { date: row.dueBy }) };
   }
-  if (row.open && owesMine) return row.dueBy ? { text: `Due ${shortDate(row.dueBy)}`, tone: "cobalt", tip: row.dueBy } : { text: "Owed", tone: "cobalt" };
-  if (row.open) return { text: `Waiting on ${row.owner.map(ctx.slug).join(", ")}`, tone: "neutral" };
-  if (row.recipients.some((r) => r.status === "answered")) return { text: "Answered", tone: "green" };
-  return { text: "Notice", tone: "neutral", tip: "Owes no reply" };
+  if (row.open && owesMine) return row.dueBy ? { text: t("ecosystem.pill.due", { date: shortDate(row.dueBy, ctx.language) }), tone: "cobalt", tip: row.dueBy } : { text: t("ecosystem.pill.owed"), tone: "cobalt" };
+  if (row.open) return { text: t("ecosystem.pill.waitingOn", { who: row.owner.map(ctx.slug).join(", ") }), tone: "neutral" };
+  if (row.recipients.some((r) => r.status === "answered")) return { text: t("ecosystem.pill.answered"), tone: "green" };
+  return { text: t("ecosystem.pill.notice"), tone: "neutral", tip: t("ecosystem.pill.noticeTip") };
 }
 
 function SendDraft({ projectId, draft, label }: { projectId: string; draft: WorkspaceDraft; label: string }) {
@@ -92,8 +85,8 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
   if (held && row.thread) {
     return (
       <ReasonAction
-        label="Release hold"
-        confirmLabel="Release"
+        label={ctx.t("ecosystem.action.releaseHold")}
+        confirmLabel={ctx.t("ecosystem.action.release")}
         reason="optional"
         run={(reason) => ecosystemApi.hold(party, row.thread as string, "release", reason || undefined)}
       />
@@ -109,9 +102,9 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
             href={ecosystemRoutes.compose(slug, { draft: draft.id })}
             className="inline-flex items-center rounded-md border border-line bg-surface px-2.5 py-0.5 text-12 font-semibold text-fg hover:bg-hover"
           >
-            Edit
+            {ctx.t("ecosystem.action.edit")}
           </Link>
-          <SendDraft projectId={owing} draft={draft} label={SEND_LABEL[row.type] ?? "Send"} />
+          <SendDraft projectId={owing} draft={draft} label={replyWord(ctx.t, "send", row.type)} />
         </span>
       );
     }
@@ -121,14 +114,14 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
         href={ecosystemRoutes.compose(slug, { inReplyTo: row.number, ecosystem: row.ecosystem })}
         className="inline-flex items-center rounded-md bg-accent px-2.5 py-0.5 text-12 font-semibold text-on-accent"
       >
-        {WRITE_LABEL[row.type] ?? "Reply"}
+        {replyWord(ctx.t, "write", row.type)}
       </Link>
     );
   }
   return row.thread ? (
     <ReasonAction
-      label="Hold thread"
-      confirmLabel="Hold"
+      label={ctx.t("ecosystem.action.holdThread")}
+      confirmLabel={ctx.t("ecosystem.action.hold")}
       reason="required"
       run={(reason) => ecosystemApi.hold(party, row.thread as string, "hold", reason)}
     />
@@ -138,9 +131,11 @@ function Actions({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | n
 // the line under a row says who is writing the reply only when core holds that reply: an unsent draft from one of the reader's projects; a master's progress beyond it is not served, so no other line is drawn
 function MasterLine({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft | null; ctx: Ctx }) {
   if (!draft) return null;
-  const who = draft.authoredBy.kind === "agent" ? `${ctx.slug(draft.from)} master` : `${ctx.slug(draft.from)}`;
-  const what = REPLY_NOUN[row.type] ?? "a reply";
-  const state = draft.state === "submitted" ? " · at the approve gate" : draft.state === "returned" ? " · returned to the writer" : "";
+  const { t } = ctx;
+  const what = replyWord(t, "reply", row.type);
+  const project = ctx.slug(draft.from);
+  const drafted = t(draft.authoredBy.kind === "agent" ? "ecosystem.drafted.master" : "ecosystem.drafted.person", { project, what });
+  const state = draft.state === "submitted" ? t("ecosystem.drafted.atGate") : draft.state === "returned" ? t("ecosystem.drafted.returned") : "";
   return (
     <span className="flex min-w-0 items-center gap-1.5 whitespace-nowrap text-12 text-muted">
       <ProjectMark {...projectMarkProps(ctx.slug(draft.from))} size={18} />
@@ -148,7 +143,7 @@ function MasterLine({ row, draft, ctx }: { row: InboxRow; draft: WorkspaceDraft 
         <i className="forge-pulse inline-block h-[7px] w-[7px] flex-none rounded-full" style={{ background: "var(--green-500)" }} />
       ) : null}
       <span className="truncate">
-        {who} drafted {what}
+        {drafted}
         {state}
       </span>
     </span>
@@ -166,7 +161,7 @@ function Row({ row, ctx }: { row: InboxRow; ctx: Ctx }) {
       )}
     >
       <span className="grid gap-0.5">
-        <b className="text-12-5">{TYPE_LABEL[row.type] ?? row.type}</b>
+        <b className="text-12-5">{typeLabel(row.type, ctx.t)}</b>
         {party ? (
           <Link href={ecosystemRoutes.document(ctx.slug(party), row.number)} className="font-mono text-11 text-subtle hover:underline">
             {row.number}
@@ -201,6 +196,7 @@ function Select({
   options: { value: string; label: string }[];
   onChange: (v: string | null) => void;
 }) {
+  const t = useCopy();
   return (
     <span className="w-[150px]">
       <NativeSelect
@@ -208,16 +204,17 @@ function Select({
         className="py-1 pl-2.5 text-12 font-semibold"
         value={value}
         onChange={(e) => onChange(e.target.value || null)}
-        options={[{ value: "", label: `${label}: all` }, ...options]}
+        options={[{ value: "", label: t("ecosystem.threads.filterAll", { label }) }, ...options]}
       />
     </span>
   );
 }
 
 function Header({ action }: { action?: React.ReactNode }) {
+  const t = useCopy();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-3">
-      <PageTitle className="text-[22px] font-bold">Threads</PageTitle>
+      <PageTitle className="text-[22px] font-bold">{t("ecosystem.threads.title")}</PageTitle>
       {action ? <span className="ml-auto">{action}</span> : null}
     </div>
   );
@@ -236,23 +233,24 @@ function ViewBar({
   read: WorkspaceRead;
   count: (v: InboxView) => number;
 }) {
+  const t = useCopy();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2">
       <SegmentedControl<InboxView | "">
         value={view ?? ""}
         onChange={(v) => onParam("view", v === "needs-me" ? null : v)}
-        options={INBOX_VIEWS.map((v) => ({ value: v, label: INBOX_LABEL[v], title: INBOX_TIP[v], ...(COUNTED.has(v) ? { count: count(v) } : {}) }))}
+        options={INBOX_VIEWS.map((v) => ({ value: v, label: inboxLabel(v, t), title: inboxTip(v, t), ...(COUNTED.has(v) ? { count: count(v) } : {}) }))}
       />
       <span className="ml-auto flex flex-wrap gap-2">
-        <Select label="Type" value={filters.type ?? ""} onChange={(v) => onParam("type", v)} options={DOCUMENT_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} />
+        <Select label={t("ecosystem.threads.filter.type")} value={filters.type ?? ""} onChange={(v) => onParam("type", v)} options={DOCUMENT_TYPES.map((d) => ({ value: d, label: typeLabel(d, t) }))} />
         <Select
-          label="Ecosystem"
+          label={t("ecosystem.threads.filter.ecosystem")}
           value={filters.ecosystem ?? ""}
           onChange={(v) => onParam("ecosystem", v)}
           options={read.ecosystems.map((e) => ({ value: e.id, label: e.name }))}
         />
         <Select
-          label="Project"
+          label={t("ecosystem.threads.filter.project")}
           value={filters.project ?? ""}
           onChange={(v) => onParam("project", v)}
           options={read.projects.filter((p) => read.mine.includes(p.id)).map((p) => ({ value: p.id, label: p.slug }))}
@@ -263,14 +261,16 @@ function ViewBar({
 }
 
 export function ThreadsScreen({ filters, onParam }: { filters: ThreadsFilters; onParam: (key: keyof ThreadsFilters, value: string | null) => void }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const reading = readingOf(useMyEcosystems());
   const view: InboxView | null = filters.view === null ? "needs-me" : (INBOX_VIEWS as readonly string[]).includes(filters.view) ? (filters.view as InboxView) : null;
-  if (reading.kind === "loading") return <div className="grid gap-4"><Header /><Loading what="your threads" /></div>;
-  if (reading.kind === "unread") return <div className="grid gap-4"><Header /><UnreadNotice what="Your threads" refusals={reading.refusals} /></div>;
+  if (reading.kind === "loading") return <div className="grid gap-4"><Header /><Loading what={t("ecosystem.threads.loading")} /></div>;
+  if (reading.kind === "unread") return <div className="grid gap-4"><Header /><UnreadNotice what={t("ecosystem.threads.unread")} refusals={reading.refusals} /></div>;
   const read = reading.value;
   const mine = new Set(read.mine);
   const slugs = new Map(read.projects.map((p) => [p.id, p.slug]));
-  const ctx: Ctx = { read, mine, slug: (id) => slugs.get(id) ?? `project ${id.slice(0, 8)}` };
+  const ctx: Ctx = { read, mine, slug: (id) => slugs.get(id) ?? t("ecosystem.threads.unknownProject", { id: id.slice(0, 8) }), t, language };
   const scoped = read.threads.filter(
     (r) =>
       (!filters.ecosystem || r.ecosystem === filters.ecosystem) &&
@@ -289,7 +289,7 @@ export function ThreadsScreen({ filters, onParam }: { filters: ThreadsFilters; o
               href={ecosystemRoutes.compose(composer.slug, { ecosystem: filters.ecosystem ?? undefined })}
               className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-13 font-semibold text-on-accent"
             >
-              + New document
+              {t("ecosystem.threads.newDocument")}
             </Link>
           ) : undefined
         }
@@ -297,13 +297,13 @@ export function ThreadsScreen({ filters, onParam }: { filters: ThreadsFilters; o
       <ViewBar view={view} filters={filters} onParam={onParam} read={read} count={count} />
       {view === null ? (
         <RefusalNotice
-          title="Not a Threads view"
-          refusals={[{ code: "INBOX_VIEW_UNKNOWN", path: "?view", detail: `“${filters.view}” is not one of ${INBOX_VIEWS.join(", ")}; pick one above.` }]}
+          title={t("ecosystem.threads.notAView")}
+          refusals={[{ code: "INBOX_VIEW_UNKNOWN", path: "?view", detail: t("ecosystem.threads.notAViewDetail", { view: filters.view ?? "", views: INBOX_VIEWS.map((v) => inboxLabel(v, t)).join(", ") }) }]}
         />
       ) : read.ecosystems.length === 0 ? (
-        <p className="fg-caption">None of your projects is in an ecosystem yet, so there is no thread to read.</p>
+        <p className="fg-caption">{t("ecosystem.threads.noEcosystem")}</p>
       ) : rows.length === 0 ? (
-        <p className="fg-caption border-t border-line-subtle pt-3">Nothing under {INBOX_LABEL[view]}.</p>
+        <p className="fg-caption border-t border-line-subtle pt-3">{t("ecosystem.threads.nothingUnder", { view: inboxLabel(view, t) })}</p>
       ) : (
         <ul className="border-t border-line-subtle">
           {rows.map((r) => (

@@ -1,6 +1,7 @@
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { ISSUE_ADMIT_PERMISSION, ISSUE_INITIAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueCreateRefusalCode } from '@forge/contracts/issues';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { eq } from 'drizzle-orm';
 import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
@@ -9,6 +10,7 @@ import { type IssueStatus, issueLabels, issues } from '../db/schema.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionRefusalFor, projectResource } from '../permissions/index.js';
 import type { Actor } from './activity.js';
@@ -69,6 +71,8 @@ export type CreateIssueInput = {
   acceptanceCriteria?: string | null | undefined;
   sessionContext?: unknown;
   releaseNotes?: unknown;
+  /** The language the title and body are written in, as the writer declared it; absent, the writer's own (`writtenLangFor`). */
+  writtenLang?: WrittenLang | null | undefined;
 };
 
 /**
@@ -119,7 +123,22 @@ export async function insertIssueRow(
   values: typeof issues.$inferInsert,
   by: { actor: Actor; labelIds?: readonly string[] },
 ): Promise<IssueCreateRow> {
-  const [inserted] = await tx.insert(issues).values(values).returning();
+  // the language its title and body were written in: the caller's where it copies them from a row
+  // that holds one, else the writer's (`writtenLangFor`)
+  const writtenLang =
+    values.writtenLang !== undefined
+      ? values.writtenLang
+      : await writtenLangFor(
+          { userId: by.actor.type === 'user' ? by.actor.id : null, agency: by.actor.agency },
+          values.projectId,
+          null,
+          tx,
+          [values.title, values.description].join('\n'),
+        );
+  const [inserted] = await tx
+    .insert(issues)
+    .values({ ...values, writtenLang })
+    .returning();
   if (!inserted) throw new Error('issues: insert returned no row');
   await emitEvent(tx, 'issue.created', {
     issueId: inserted.id,
@@ -246,6 +265,7 @@ async function writeBirth(tx: Tx, birth: Birth) {
       acceptanceCriteria: input.acceptanceCriteria ?? null,
       sessionContext: (split?.rest ?? null) as IssueCreateRow['sessionContext'],
       releaseNotes: (input.releaseNotes ?? null) as IssueCreateRow['releaseNotes'],
+      ...(input.writtenLang ? { writtenLang: input.writtenLang } : {}),
     },
     { actor: writer.actor, labelIds: labelIds.map((l) => l.labelId) },
   );

@@ -1,3 +1,4 @@
+import { type Said, sayEn } from '@forge/contracts/said';
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -178,8 +179,12 @@ interface UpdateConnectionPatch {
   displayName?: string | null;
   active?: boolean;
   lastHealthStatus?: string | null;
-  /** The sentence behind the status. Cleared with `null` so a stale reason never outlives it. */
-  lastHealthDetail?: string | null;
+  /**
+   * The sentence behind the status, as said: stored as its English (`last_health_detail`, the field
+   * the plugin reads) beside the said form a page reads in its own language. Cleared with `null`
+   * so a stale reason never outlives it.
+   */
+  lastHealthDetail?: Said | null;
   lastHealthAt?: Date | null;
   inboundEndpointObserved?: ObservedEndpoint | null;
   breakerOpenedAt?: Date | null;
@@ -197,7 +202,10 @@ export async function updateConnection(
   if (patch.displayName !== undefined) set.displayName = patch.displayName;
   if (patch.active !== undefined) set.active = patch.active;
   if (patch.lastHealthStatus !== undefined) set.lastHealthStatus = patch.lastHealthStatus;
-  if (patch.lastHealthDetail !== undefined) set.lastHealthDetail = patch.lastHealthDetail;
+  if (patch.lastHealthDetail !== undefined) {
+    set.lastHealthDetail = patch.lastHealthDetail === null ? null : sayEn(patch.lastHealthDetail);
+    set.lastHealthSays = patch.lastHealthDetail;
+  }
   if (patch.lastHealthAt !== undefined) set.lastHealthAt = patch.lastHealthAt;
   if (patch.inboundEndpointObserved !== undefined)
     set.inboundEndpointObserved = patch.inboundEndpointObserved;
@@ -330,7 +338,7 @@ export async function writeConnectionSecrets(
   at: Date,
   health?: {
     status: NonNullable<(typeof integrationConnections.$inferInsert)['lastHealthStatus']>;
-    detail: string;
+    detail: Said;
   },
 ): Promise<void> {
   await tx
@@ -339,7 +347,12 @@ export async function writeConnectionSecrets(
       secretsEnc,
       updatedAt: at,
       ...(health
-        ? { lastHealthStatus: health.status, lastHealthDetail: health.detail, lastHealthAt: at }
+        ? {
+            lastHealthStatus: health.status,
+            lastHealthDetail: sayEn(health.detail),
+            lastHealthSays: health.detail,
+            lastHealthAt: at,
+          }
         : {}),
     })
     .where(eq(integrationConnections.id, connectionId));

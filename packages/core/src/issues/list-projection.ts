@@ -17,6 +17,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   projectId: issues.projectId,
   issSeq: issues.issSeq,
   title: issues.title,
+  writtenLang: issues.writtenLang,
   status: issues.status,
   waitingKind: issues.waitingKind,
   priority: issues.priority,

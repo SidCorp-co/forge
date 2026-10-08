@@ -12,6 +12,7 @@ import {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { withAskedQuestions } from './clarity.js';
@@ -104,6 +105,13 @@ export async function writeRevision(input: {
         reason: stored.reason.trim(),
         authorId: actor.userId,
         authorAgency: actor.agency,
+        writtenLang: await writtenLangFor(
+          actor,
+          projectId,
+          write.writtenLang,
+          tx,
+          [write.reason, write.changeSummary, write.tldr].join('\n'),
+        ),
       })
       .where(revisionWhere(row.id, target.revision));
     const own = await resetDraftCriteria(tx, row.id, target.revision);

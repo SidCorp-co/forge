@@ -9,6 +9,8 @@ import "@/features/workflows/canvas/canvas.css";
 import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
 import { layoutGraph, type Placed, rounded } from "@/features/workflows/canvas/layout";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { ModuleLevelCoupling, ModuleRollupRow } from "../types";
 
 const MAX_COLS = 4;
@@ -37,6 +39,7 @@ interface CouplingEdgeData extends Record<string, unknown> {
 }
 
 function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
+  const t = useCopy();
   const { row: r, act } = data;
   const key = keyOf(r);
   const s = r.standing;
@@ -52,7 +55,7 @@ function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
     <div
       role="button"
       tabIndex={0}
-      aria-label={`${r.name}: ${s.childCount} child modules, ${s.open} open issues. Enter opens it.`}
+      aria-label={t("modules.map.nodeAria", { name: r.name, children: s.childCount, open: s.open })}
       aria-pressed={data.on}
       className="wfc-card"
       style={{ width: W, height: H, ["--tc" as string]: data.on ? "var(--link)" : "var(--wf-slate)" }}
@@ -67,10 +70,8 @@ function ModuleCard({ data }: NodeProps & { data: ModuleNodeData }) {
       <Handle type="target" position={Position.Top} isConnectable={false} />
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
       <h3 className="truncate">{r.name}</h3>
-      <p>{s.childCount ? `${s.childCount} child modules` : "No child modules"}</p>
-      <p>
-        Open {s.open} · Requirements {s.requirements.length}
-      </p>
+      <p>{s.childCount ? t("modules.children", { n: s.childCount }) : t("modules.noChildren")}</p>
+      <p>{t("modules.openRequirements", { open: s.open, n: s.requirements.length })}</p>
     </div>
   );
 }
@@ -104,10 +105,8 @@ function CouplingEdge({ id, data }: EdgeProps & { data: CouplingEdgeData }) {
 const NODE_TYPES = { module: memo(ModuleCard) };
 const EDGE_TYPES = { coupling: memo(CouplingEdge) };
 
-function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string): string {
-  const a = name(c.aId);
-  const b = name(c.bId);
-  return `${a} and ${b}: ${c.sharedIssues} issues carry both sides`;
+function edgeTitle(c: ModuleLevelCoupling, name: (id: string) => string, t: Copy): string {
+  return t("modules.map.edgeTitle", { a: name(c.aId), b: name(c.bId), n: c.sharedIssues });
 }
 
 const edgeLabel = (c: ModuleLevelCoupling) => String(c.weight);
@@ -139,6 +138,7 @@ export function ModuleMap({
   onSelect: (key: string) => void;
   onOpen: (key: string) => void;
 }) {
+  const t = useCopy();
   const [wrap, width] = useWidth();
   const cols = Math.max(1, Math.min(MAX_COLS, rows.length, Math.floor((width - 2 * PAD + 20) / COL)));
   const ids = useMemo(() => new Set(rows.map((r) => r.id)), [rows]);
@@ -197,12 +197,12 @@ export function ModuleMap({
         width: 1 + 5 * Math.sqrt(c.weight / max),
         label: edgeLabel(c),
         labelAt: routed.label,
-        title: edgeTitle(c, name),
+        title: edgeTitle(c, name, t),
         dim: selectedId !== null && c.aId !== selectedId && c.bId !== selectedId,
       };
       return [{ id, source: c.aId, target: c.bId, type: "coupling", data, selectable: false, focusable: false }];
     });
-  }, [placed, drawn, rows, selectedId]);
+  }, [placed, drawn, rows, selectedId, t]);
 
   // Fit: as large as the width holds, never above 100%; the map is as tall as the fitted drawing.
   const at = placed;
@@ -215,7 +215,7 @@ export function ModuleMap({
     <div
       ref={wrap}
       role="group"
-      aria-label={`Map of ${rows.length} modules and ${drawn.length} couplings between them`}
+      aria-label={t("modules.map.aria", { n: rows.length, couplings: drawn.length })}
       className="wfc"
       style={{ height, minHeight: 0 }}
       data-ready={placed !== null}

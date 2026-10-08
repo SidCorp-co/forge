@@ -6,6 +6,7 @@ import { type AgentQuestion, currentRoundOf } from "@/features/questions/types";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { useAnswerGate, useGateQuestion } from "../hooks";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
+import { useCopy } from "@/lib/i18n/interface-language";
 
 type GateDecision =
   | { kind: "notice"; notice: React.ReactNode }
@@ -27,13 +28,14 @@ type GateDecision =
  */
 function useGateDecision(projectId: string, questionId: string | null): GateDecision {
   const reading = readingOf(useGateQuestion(projectId, questionId));
+  const t = useCopy();
   const answer = useAnswerGate(projectId);
   const [note, setNote] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
-  if (reading.kind === "loading") return { kind: "notice", notice: <Loading what="the approve gate" /> };
-  if (reading.kind === "unread") return { kind: "notice", notice: <UnreadNotice what="The approve gate" refusals={reading.refusals} /> };
+  if (reading.kind === "loading") return { kind: "notice", notice: <Loading what={t("ecosystem.gate.loading")} /> };
+  if (reading.kind === "unread") return { kind: "notice", notice: <UnreadNotice what={t("ecosystem.gate.unread")} refusals={reading.refusals} /> };
   const q = reading.value;
-  if (!q) return { kind: "notice", notice: <p className="fg-caption">No open gate question waits on this document.</p> };
+  if (!q) return { kind: "notice", notice: <p className="fg-caption">{t("ecosystem.gate.none")}</p> };
   const current = currentRoundOf(q);
   const round = current?.round;
   if (round === undefined) {
@@ -41,8 +43,8 @@ function useGateDecision(projectId: string, questionId: string | null): GateDeci
       kind: "notice",
       notice: (
         <UnreadNotice
-          what="The approve gate's round"
-          refusals={[{ code: "QUESTION_ROUND_UNREAD", path: "", detail: `question ${q.id} came back with no round to answer.` }]}
+          what={t("ecosystem.gate.roundUnread")}
+          refusals={[{ code: "QUESTION_ROUND_UNREAD", path: "", detail: t("ecosystem.gate.roundUnreadDetail", { id: q.id }) }]}
         />
       ),
     };
@@ -60,7 +62,7 @@ function useGateDecision(projectId: string, questionId: string | null): GateDeci
     },
     locked: (optionId) => Boolean(q.options.find((o) => o.id === optionId)?.locked),
     pending: (optionId) => answer.isPending && chosen === optionId,
-    refusal: answer.isError ? <RefusalNotice title="The gate refused that answer" refusals={refusalsOf(answer.error)} /> : null,
+    refusal: answer.isError ? <RefusalNotice title={t("ecosystem.gate.refused")} refusals={refusalsOf(answer.error)} /> : null,
   };
 }
 
@@ -107,6 +109,7 @@ export function GatePanel({ projectId, slug, questionId }: { projectId: string; 
 
 /** The same gate, as the two buttons at the end of a Threads row. */
 export function InlineGate({ projectId, questionId }: { projectId: string; questionId: string | null }) {
+  const t = useCopy();
   const gate = useGateDecision(projectId, questionId);
   const [returning, setReturning] = useState(false);
   if (gate.kind === "notice") return gate.notice;
@@ -114,18 +117,18 @@ export function InlineGate({ projectId, questionId }: { projectId: string; quest
     <span className="grid justify-items-end gap-1.5">
       {returning ? (
         <span className="flex gap-1.5">
-          <Input aria-label="Why it goes back" placeholder="Why it goes back" value={gate.note} onChange={(e) => gate.setNote(e.target.value)} />
+          <Input aria-label={t("ecosystem.gate.whyBack")} placeholder={t("ecosystem.gate.whyBack")} value={gate.note} onChange={(e) => gate.setNote(e.target.value)} />
           <Button size="sm" disabled={!gate.note.trim() || gate.locked("return")} loading={gate.pending("return")} onClick={() => gate.decide("return")}>
-            Return
+            {t("ecosystem.gate.return")}
           </Button>
         </span>
       ) : (
         <span className="flex gap-1.5">
           <Button size="sm" disabled={gate.locked("return")} onClick={() => setReturning(true)}>
-            Return…
+            {t("ecosystem.gate.returnOpen")}
           </Button>
           <Button size="sm" variant="primary" disabled={gate.locked("approve")} loading={gate.pending("approve")} onClick={() => gate.decide("approve")}>
-            Approve
+            {t("ecosystem.gate.approve")}
           </Button>
         </span>
       )}

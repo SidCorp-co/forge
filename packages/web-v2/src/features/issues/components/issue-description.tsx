@@ -6,6 +6,7 @@
 // `description`, and until now nothing in the browser sent it, so a description
 // typed wrong at create stayed wrong forever.
 
+import { WrittenMark } from "@/lib/i18n/written";
 import { useState } from "react";
 import { BodyView, Button, Skeleton, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -61,6 +62,7 @@ export function IssueDescription({
         }
       >
         {t("issues.description.title")}
+        <WrittenMark lang={issue.writtenLang} />
       </ViewHeading>
       <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
       {editing ? (
@@ -97,12 +99,9 @@ export function IssueDescription({
           }
         />
       ) : issue.description ? (
-        <BodyView
-          body={issue.description}
-          format={issue.descriptionFormat}
-          nodes={issue.descriptionNodes}
-          renderArtifact={renderArtifact}
-        />
+        <div lang={issue.writtenLang ?? undefined}>
+          <BodyView body={issue.description} format={issue.descriptionFormat} nodes={issue.descriptionNodes} renderArtifact={renderArtifact} />
+        </div>
       ) : (
         <p className="fg-body-sm text-muted">
           {canWrite ? t("issues.description.emptyWritable") : t("issues.description.empty")}

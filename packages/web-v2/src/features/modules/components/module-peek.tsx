@@ -6,6 +6,7 @@
 
 import { CoverageBar, PeekHead, PeekPanel, type PeekState } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useModuleDetail } from "../hooks";
 import { ActivityBars, AttentionBadge, ModuleAction, ModuleBanner, openSegments } from "./module-bits";
 import { ModuleFacts } from "./module-facts";
@@ -23,18 +24,20 @@ export function ModulePeek({
   peek: PeekState;
   onOpenFull: () => void;
 }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const q = useModuleDetail(projectId, moduleSlug);
   return (
-    <PeekPanel peek={peek} listLabel="Modules" noun="Module" onOpenFull={onOpenFull} testId="module-peek">
-      <QueryBoundary query={q} loadingLabel="loading module…">
+    <PeekPanel peek={peek} listLabel={t("modules.title")} noun={t("modules.noun")} onOpenFull={onOpenFull} testId="module-peek">
+      <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(d) => (
           <>
-            <PeekHead noun="Module" itemKey={d.module.path} badge={<AttentionBadge group={d.standing.attentionGroup} />} title={d.module.name} action={<ModuleAction standing={d.standing} slug={slug} />} />
+            <PeekHead noun={t("modules.noun")} itemKey={d.module.path} badge={<AttentionBadge group={d.standing.attentionGroup} />} title={d.module.name} action={<ModuleAction standing={d.standing} slug={slug} />} />
             {d.standing.attentionGroup !== "quiet" ? <ModuleBanner standing={d.standing} slug={slug} className="px-[18px]" /> : null}
             <div className="grid gap-4 px-[18px] pb-2 pt-4">
-              {d.standing.open > 0 ? <CoverageBar segments={openSegments(d.standing)} /> : <p className="text-12-5 text-subtle">Nothing is open in this module.</p>}
+              {d.standing.open > 0 ? <CoverageBar segments={openSegments(d.standing, language)} /> : <p className="text-12-5 text-subtle">{t("modules.nothingOpen")}</p>}
               <div className="flex items-end justify-between gap-3">
-                <span className="text-12-5 font-medium text-muted">Last {d.activity.days.length} days</span>
+                <span className="text-12-5 font-medium text-muted">{t("modules.lastDays", { n: d.activity.days.length })}</span>
                 <ActivityBars days={d.activity.days} height={24} barWidth={7} />
               </div>
             </div>

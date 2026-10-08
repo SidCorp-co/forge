@@ -4,7 +4,7 @@
  * matching row, naming its rule, reason and source.
  */
 
-import { say } from '@forge/contracts/said';
+import { say, verbatim } from '@forge/contracts/said';
 import type {
   HealthNode,
   MarkerAspect,
@@ -46,7 +46,11 @@ export function outdatedMarkers(
       out.add(c.targets.map(planned), {
         kind: 'outdated',
         rule: 'outdated.criterion_reworded',
-        reason: `${c.requirementKey} ${c.code} reworded in r${c.sinceRevision} after design r${f.approvedRevision} was approved`,
+        reason: say('workflows.marker.reworded', {
+          key: `${c.requirementKey} ${c.code}`,
+          since: c.sinceRevision,
+          approved: f.approvedRevision ?? 0,
+        }),
         source: {
           type: 'requirement_criterion',
           key: `${c.requirementKey} ${c.code}`,
@@ -67,7 +71,11 @@ export function outdatedMarkers(
         out.add([{ kind: 'step', step: s.id, layer: 'planned' }], {
           kind: 'outdated',
           rule: 'outdated.contract_breaking',
-          reason: `${c.provider}/${c.slug} v${pin.newestBreaking.version} is breaking; the baseline pins v${pin.pinnedVersion}`,
+          reason: say('workflows.marker.contractBreaking', {
+            contract: `${c.provider}/${c.slug}`,
+            v: pin.newestBreaking.version,
+            pinned: String(pin.pinnedVersion),
+          }),
           source: {
             type: 'contract_version',
             key: `${c.provider}/${c.slug}@${pin.newestBreaking.version}`,
@@ -96,7 +104,7 @@ export function outdatedMarkers(
         out.add(changed.map(planned), {
           kind: 'outdated',
           rule: 'outdated.built_behind',
-          reason: `built against r${j.revision}, the step changed in r${dA}`,
+          reason: say('workflows.marker.builtBehind', { built: j.revision, changed: dA }),
           source: {
             type: 'criterion_verdict',
             key: `${b.issueKey} r${j.revision}`,
@@ -123,7 +131,10 @@ export function outdatedMarkers(
     out.add(targets, {
       kind: 'outdated',
       rule: 'outdated.drift',
-      reason: `the code moved under this step at ${short(obs.atSha)}: ${obs.document.drift.reason}`,
+      reason: say('workflows.marker.drift', {
+        sha: short(obs.atSha),
+        why: verbatim(obs.document.drift.reason),
+      }),
       source: { type: 'workflow_observation', key: obs.atSha, href: link.observation() },
       waitingOn: masterOwes(say('workflows.act.observeAgain'), ruleCode('outdated.drift')),
       since: iso(obs.createdAt),
@@ -137,7 +148,7 @@ export function needsUpdateMarkers(f: HealthFacts, out: Markers, diff: DesignDif
     out.add(fb.target ? [planned(fb.target)] : [], {
       kind: 'needs_update',
       rule: 'needs_update.feedback_open',
-      reason: fb.title,
+      reason: verbatim(fb.title),
       source: { type: 'feedback', key: fb.key, href: link.feedback(fb.key) },
       waitingOn: fb.waitingOn,
       since: iso(fb.createdAt),
@@ -149,7 +160,7 @@ export function needsUpdateMarkers(f: HealthFacts, out: Markers, diff: DesignDif
     out.add(s.targets.map(planned), {
       kind: 'needs_update',
       rule: 'needs_update.suggestion_accepted',
-      reason: s.reason,
+      reason: verbatim(s.reason),
       source: { type: 'suggestion', key: s.id, href: null },
       waitingOn: masterOwes(
         say('workflows.act.proposeRevision'),
@@ -170,7 +181,7 @@ export function needsUpdateMarkers(f: HealthFacts, out: Markers, diff: DesignDif
       out.add([{ kind: 'step', step: id, layer: 'planned' }], {
         kind: 'needs_update',
         rule: 'needs_update.revision_changes',
-        reason: `r${p.revision} changes this step`,
+        reason: say('workflows.marker.changesStep', { r: p.revision }),
         source,
         waitingOn: p.waitingOn,
         since: iso(p.proposedAt),
@@ -183,7 +194,7 @@ export function needsUpdateMarkers(f: HealthFacts, out: Markers, diff: DesignDif
         {
           kind: 'needs_update',
           rule: 'needs_update.revision_changes',
-          reason: `r${p.revision} changes this line`,
+          reason: say('workflows.marker.changesLine', { r: p.revision }),
           source,
           waitingOn: p.waitingOn,
           since: iso(p.proposedAt),
@@ -213,7 +224,11 @@ export function problemMarkers(
       out.add(targets, {
         kind: 'has_problem',
         rule: 'has_problem.verdict_fail',
-        reason: `${b.issueKey} criterion ${v.n} failed${v.reason ? `: ${v.reason}` : ''}`,
+        reason: say('workflows.marker.verdictFail', {
+          key: b.issueKey,
+          n: v.n,
+          why: v.reason ? say('workflows.marker.colonWhy', { why: verbatim(v.reason) }) : null,
+        }),
         source: {
           type: 'criterion_verdict',
           key: `${b.issueKey} #${v.n}`,
@@ -228,7 +243,7 @@ export function problemMarkers(
       out.add(targets, {
         kind: 'has_problem',
         rule: 'has_problem.reopened',
-        reason: `${b.issueKey} was reopened and is not closed again`,
+        reason: say('workflows.marker.reopened', { key: b.issueKey }),
         source: { type: 'issue', key: b.issueKey, href: link.issue(b.issueKey) },
         waitingOn: repair,
         since: iso(b.updatedAt),
@@ -240,7 +255,7 @@ export function problemMarkers(
       out.add(targets, {
         kind: 'has_problem',
         rule: run.state === 'stuck' ? 'has_problem.run_stuck' : 'has_problem.run_failed',
-        reason: run.rule,
+        reason: run.says.rule,
         source: { type: 'run', key: run.id, href: link.run(run.id) },
         waitingOn: masterOwes(
           say('workflows.act.recoverRun', { state: run.state }),
@@ -273,7 +288,7 @@ export function removeMarkers(
       out.add([{ kind: 'step', step: id, layer: 'planned' }], {
         kind: 'remove_proposed',
         rule: 'remove_proposed.revision',
-        reason: `r${p.revision} removes this step`,
+        reason: say('workflows.marker.removesStep', { r: p.revision }),
         source,
         waitingOn: p.waitingOn,
         since: iso(p.proposedAt),
@@ -291,8 +306,8 @@ export function removeMarkers(
           kind: 'remove_proposed',
           rule: 'remove_proposed.revision',
           reason: moved
-            ? `r${p.revision} rewires this line to ${moved.to}`
-            : `r${p.revision} removes this line`,
+            ? say('workflows.marker.rewires', { r: p.revision, to: moved.to })
+            : say('workflows.marker.removesLine', { r: p.revision }),
           source,
           waitingOn: p.waitingOn,
           since: iso(p.proposedAt),
@@ -305,7 +320,7 @@ export function removeMarkers(
     out.add(s.targets.map(planned), {
       kind: 'remove_proposed',
       rule: 'remove_proposed.suggestion',
-      reason: s.reason,
+      reason: verbatim(s.reason),
       source: { type: 'suggestion', key: s.id, href: null },
       waitingOn: wait(
         'person',
@@ -397,7 +412,7 @@ export function provenanceOf(
     out.add([{ kind: 'step', step: id, layer: 'planned' }], {
       kind: 'upcoming',
       rule: 'provenance.planned_only',
-      reason: `no code builds this yet (observed at ${short(obs.atSha)})`,
+      reason: say('workflows.marker.unbuilt', { sha: short(obs.atSha) }),
       source,
       waitingOn: placeholder,
       since,
@@ -407,7 +422,7 @@ export function provenanceOf(
     out.add([{ kind: 'edge', ...e, layer: 'planned' }], {
       kind: 'upcoming',
       rule: 'provenance.planned_only',
-      reason: `no code builds this yet (observed at ${short(obs.atSha)})`,
+      reason: say('workflows.marker.unbuilt', { sha: short(obs.atSha) }),
       source,
       waitingOn: placeholder,
       since,
@@ -420,7 +435,7 @@ export function provenanceOf(
     out.add([target], {
       kind: 'wrong',
       rule: 'provenance.diverged',
-      reason: `the code differs from the plan in ${pair.aspects.join(', ')}`,
+      reason: say('workflows.marker.diverged', { aspects: pair.aspects.join(', ') }),
       source,
       waitingOn: placeholder,
       since,
@@ -442,7 +457,7 @@ export function provenanceOf(
     out.add([target], {
       kind: 'wrong',
       rule: 'provenance.diverged',
-      reason: `the code differs from the plan in ${aspects.join(', ')}`,
+      reason: say('workflows.marker.diverged', { aspects: aspects.join(', ') }),
       source,
       waitingOn: placeholder,
       since,
@@ -454,7 +469,7 @@ export function provenanceOf(
     out.add([target], {
       kind: 'not_in_design',
       rule: 'provenance.observed_only',
-      reason: 'the code holds this, the design does not',
+      reason: say('workflows.marker.observedOnly'),
       source,
       waitingOn: placeholder,
       since,

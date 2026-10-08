@@ -8,6 +8,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import { refused } from '../lib/refusal.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
@@ -131,6 +132,21 @@ issueRoutes.patch(
       throw toHttpCreateError(err);
     }
     Object.assign(updates, collected.updates);
+    // a rewritten title or body is stored with the language its writer wrote it in; a declared
+    // language alone restates the language of the text as it stands
+    if (
+      updates.title !== undefined ||
+      updates.description !== undefined ||
+      patch.writtenLang !== undefined
+    ) {
+      updates.writtenLang = await writtenLangFor(
+        { userId, agency: restActor(c).agency },
+        issue.projectId,
+        patch.writtenLang ?? null,
+        undefined,
+        [updates.title ?? issue.title, updates.description ?? issue.description].join('\n'),
+      );
+    }
     if (patch.metadata !== undefined) {
       const baseRaw = patch.metadata?.branchConfig?.baseBranch;
       if (typeof baseRaw === 'string' && isSelfReferentialBranch(baseRaw, issue.issSeq)) {

@@ -56,6 +56,8 @@ export async function fileContractChangeIn(
     dueAt: f.dueAt,
     reportedBy: f.filer.userId,
     reporterAgency: f.filer.agency,
+    // core writes this item's title and body itself, in English
+    writtenLang: 'en',
     scrubbed: title.scrubbed,
     redactions: title.redactions + body.redactions,
     dedupKey,

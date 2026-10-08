@@ -21,6 +21,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
 import { providerLabel } from "../providers/registry";
+import { healthSentence } from "../providers/shared";
 import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
 import { Pill, scopeLabel } from "./status-pill";
@@ -64,13 +65,14 @@ function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
 
 function VerifyResult({ result }: { result: IntegrationTestResult | { errorMessage: string } }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   if ("errorMessage" in result) {
     return <p className="fg-body-sm text-[var(--red-600)]">{result.errorMessage}</p>;
   }
   const ok = result.status === "ok";
   return (
     <p className={`fg-body-sm ${ok ? "text-[var(--green-600)]" : "text-[var(--red-600)]"}`}>
-      {ok ? t("integrations.mcp.verified") : t("integrations.mcp.verifyFailed", { reason: result.message ?? result.status })}
+      {ok ? t("integrations.mcp.verified") : t("integrations.mcp.verifyFailed", { reason: healthSentence(result, language) ?? result.status })}
     </p>
   );
 }

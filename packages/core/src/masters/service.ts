@@ -10,6 +10,7 @@ import type {
   MasterVerb,
 } from '@forge/contracts/master-standing';
 import type { MasterFacts, MasterVerdictAnswer } from '@forge/contracts/master-verdict';
+import { sayEn } from '@forge/contracts/said';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
@@ -265,9 +266,10 @@ async function recordOutdated(
   }
   const now: MasterOutdated = {
     since: was?.since ?? new Date().toISOString(),
-    why: hold.why,
-    heldBy: hold.heldBy,
+    why: sayEn(hold.why),
+    heldBy: hold.heldBy.map(sayEn),
     draining: hold.drain,
+    says: { why: hold.why, heldBy: hold.heldBy },
   };
   if (was && JSON.stringify(was) === JSON.stringify(now)) return;
   await mergeSessionMetadata(sessionId, { outdated: scrubSecretsDeep(now) });

@@ -2922,6 +2922,13 @@
       "breakpoints": true
     },
     {
+      "idx": 456,
+      "version": "7",
+      "when": 1822348800000,
+      "tag": "0456_a_written_text_carries_its_language",
+      "breakpoints": true
+    },
+    {
       "idx": 459,
       "version": "7",
       "when": 1822608000000,

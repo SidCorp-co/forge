@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { RepinActResult, RepinPlan } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
@@ -252,11 +253,13 @@ async function takeStep(
     projectId: string;
     step: RepinStep;
     actor: WorkflowWriter;
-    reason: string;
+    /** Forge's own sentence naming the act: stored in English beside the sentence it was said from. */
+    reason: Said;
     pending?: StoredDesign;
   },
 ): Promise<number> {
-  const { projectId, step, actor, reason } = input;
+  const { projectId, step, actor } = input;
+  const reason = sayEn(input.reason);
   const d = step.design;
   const row = await readWorkflow(tx, d.id);
   if (!row || row.revision !== d.revision) {
@@ -309,6 +312,7 @@ async function takeStep(
     revision,
     decision: 'approve',
     reason,
+    reasonSays: input.reason,
     decider: actor,
   });
   return revision;
@@ -352,10 +356,21 @@ export async function repinAs(input: {
       const plan = planRepins(base.flow, loaded.designs, include);
       const refusals = namedRefusals(input.designs, loaded, plan, base.flow);
       if (refusals.length > 0) throw actRefused(refusals);
-      const words = `"approve ${plan.ready.length} pin-only ${plan.ready.length === 1 ? 'change' : 'changes'} → r${base.approvedRevision}" on ${base.flow}`;
+      const actWords = say('designs.act.repinBatch', {
+        n: plan.ready.length,
+        changes: plan.ready.length === 1 ? 'change' : 'changes',
+        r: base.approvedRevision ?? 0,
+      });
       const approved: RepinActResult['approved'] = [];
       for (const step of plan.ready) {
-        const reason = `Pin-only re-pin, approved together in act ${act} (${words}): ${pinWords(step)}. Nothing else changed: with the pins set aside the design's canonical fingerprint is ${step.change.fingerprint.slice(0, 12)}, as approved r${step.design.approvedRevision} has it.`;
+        const reason = say('designs.reason.repinOnly', {
+          act,
+          actWords,
+          flow: base.flow,
+          pins: pinWords(step),
+          fp: step.change.fingerprint.slice(0, 12),
+          r: step.design.approvedRevision ?? 0,
+        });
         const pending = loaded.pending.get(step.design.id);
         const revision = await takeStep(tx, {
           projectId,

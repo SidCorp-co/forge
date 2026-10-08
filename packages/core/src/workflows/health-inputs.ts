@@ -307,7 +307,15 @@ export async function buildsOf(
       judgedAgainst: mine
         .filter((v) => v.design_workflow_id === b.workflow_id && v.design_revision !== null)
         .map((v) => ({ revision: Number(v.design_revision), at: new Date(v.created_at) })),
-      run: run ? { id: run.id, state: run.state, since: run.since, rule: run.rule } : null,
+      run: run
+        ? {
+            id: run.id,
+            state: run.state,
+            since: run.since,
+            rule: run.rule,
+            says: { rule: run.says.rule },
+          }
+        : null,
     };
   });
 }

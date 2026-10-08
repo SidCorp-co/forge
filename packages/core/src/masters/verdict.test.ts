@@ -1,5 +1,18 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { limitHeld, type MasterJudged, masterVerdict, nudgeDue } from './verdict.js';
+import {
+  limitHeld,
+  type MasterJudged,
+  masterVerdict as masterVerdict_,
+  nudgeDue,
+} from './verdict.js';
+
+/** Every verdict's English is the sentence it says (`saidDisagreements`). */
+const masterVerdict = ((...a: Parameters<typeof masterVerdict_>) => {
+  const v = masterVerdict_(...a);
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+}) as typeof masterVerdict_;
 
 // ADR 0009, What core takes over: Placement and Retirement were the runner's ensure_master and sweep;
 // each case below is one branch of the verdict the box now asks core for and obeys.

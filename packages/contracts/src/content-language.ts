@@ -220,7 +220,7 @@ export function contentLanguageRecord(
 export const SCRIPT_CHECK_MIN_WORDS = 6;
 
 // the letters Vietnamese spells with and English never does: đ, the vowel marks, and the five tone marks
-const VIETNAMESE_LETTER =
+export const VIETNAMESE_LETTER =
 	/[àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
 
 /**

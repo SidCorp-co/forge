@@ -1,4 +1,5 @@
 import { approvalPermission } from '@forge/contracts/permissions';
+import { type Said, verbatim } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
 import type { PinOnlyChange } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
@@ -167,6 +168,8 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       decidedByName: name(d.decidedByUser),
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
+      // Forge's own sentence by key; a decider's words as they wrote them
+      says: { reason: d.reasonSays ?? (d.reason ? verbatim(d.reason) : null) },
       state: revisionStateOf(d, head),
       changes: revisionChangesOf(designs[at + 1]?.document, d.document),
     })),
@@ -262,12 +265,21 @@ export async function recordDecision(
     revision: number;
     decision: DesignDecision;
     reason: string | null;
+    /** `reason` as said, where Forge composed it; absent where the decider wrote it. */
+    reasonSays?: Said | null;
     decider: WorkflowWriter;
   },
 ): Promise<{ parked: boolean; approved: DesignIssueOutcome | null }> {
   const { projectId, row, designIssueId, revision, decision, reason, decider } = input;
   const id = row.id;
-  await decideDesign(tx, { workflowId: id, revision, decision, userId: decider.userId, reason });
+  await decideDesign(tx, {
+    workflowId: id,
+    revision,
+    decision,
+    userId: decider.userId,
+    reason,
+    reasonSays: input.reasonSays ?? null,
+  });
   await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
     writer: decider,
     reason,

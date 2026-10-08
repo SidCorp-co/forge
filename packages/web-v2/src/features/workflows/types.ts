@@ -1,5 +1,6 @@
 import type { ApprovalPermission } from "@forge/contracts/permissions";
 import type { DesignRevisionState } from "@forge/contracts/design-status";
+import type { Said } from "@forge/contracts/said";
 import type { DesignListReading } from "@forge/contracts/workflows";
 import type {
   Boundary,
@@ -153,6 +154,8 @@ export interface DesignRevision {
   decidedByName: string | null;
   decidedAt: string | null;
   reason: string | null;
+  /** `reason` as said: Forge's own sentence by key, a decider's words verbatim. */
+  says: { reason: Said | null };
   state: DesignRevisionState;
   /** Against the revision before it, as core diffed them; null on the first. */
   changes: RevisionChanges | null;

@@ -5,6 +5,7 @@ import {
   type MasterSinceNudge,
   type MasterVerdict,
 } from '@forge/contracts/master-verdict';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { subagentOver } from '../devices/index.js';
 
 /**
@@ -35,6 +36,9 @@ export interface MasterRecord {
 }
 
 const minutes = (seconds: number) => Math.floor(seconds / 60);
+
+/** A verdict's reason: its English for the box beside the sentence it was rendered from. */
+const because = (s: Said) => ({ because: sayEn(s), says: { because: s } });
 
 function runnerAccepts(status: string): boolean {
   return status !== 'draining' && status !== 'disabled';
@@ -68,98 +72,102 @@ function withheld(facts: MasterJudged, record: MasterRecord): MasterVerdict | nu
     return {
       act: 'withhold',
       reason: 'standing_unreadable',
-      because:
-        'the box cannot read whether its owner stood this project down, and a box that cannot tell a stood-down project from a driving one must not decide it is driving',
+      ...because(say('masters.verdict.standingUnreadable')),
     };
   }
   if (facts.standing === 'stood_down' && facts.pane === 'alive') {
     return {
       act: 'leave',
       reason: 'stood_down',
-      because:
-        'its owner stood this master down and a pane is up anyway; it is neither driven nor ended, since the box ends no pane its owner did not ask it to',
+      ...because(say('masters.verdict.stoodDownAlive')),
     };
   }
   if (facts.restarting !== null) {
     return {
       act: 'withhold',
       reason: 'restarting',
-      because: `the box is handing over to a new build (${facts.restarting}) and admits no new work`,
+      ...because(say('masters.verdict.restarting', { cause: facts.restarting })),
     };
   }
   if (!runnerAccepts(record.runnerStatus)) {
     return {
       act: 'withhold',
       reason: 'runner_not_accepting',
-      because: `this box's runner for the project is ${record.runnerStatus}, so it takes no new work and places no master`,
+      ...because(say('masters.verdict.runnerNotAccepting', { status: record.runnerStatus })),
     };
   }
   if (facts.standing === 'stood_down') {
     return {
       act: 'withhold',
       reason: 'stood_down',
-      because: 'its owner stood this master down; none is placed until it is stood up',
+      ...because(say('masters.verdict.stoodDown')),
     };
   }
   if (!facts.terminal) {
     return {
       act: 'withhold',
       reason: 'no_terminal',
-      because: 'the box has no terminal multiplexer, so it can host no master pane',
+      ...because(say('masters.verdict.noTerminal')),
     };
   }
   return null;
 }
 
 /** Why a master that has had no work for the idle window still stays, or null where it may be retired. */
-export function idleStay(facts: MasterJudged): string | null {
+export function idleStay(facts: MasterJudged): Said | null {
   const { noWorkForSeconds, pane, children } = facts.idle;
   const window = MASTER_IDLE_BEFORE_RETIRE_SECONDS;
   if (noWorkForSeconds === null || noWorkForSeconds < window) {
-    return 'there was work inside the idle window';
+    return say('masters.verdict.idleWindowWork');
   }
   if (children.unfinished.length > 0) {
-    return `child runs whose close has not finished: ${children.unfinished.join(', ')}`;
+    return say('masters.verdict.childrenUnfinished', { names: children.unfinished.join(', ') });
   }
-  if (!pane) return 'the box has heard no hook from its pane, so whether a turn runs is not known';
-  if (pane.doing !== 'idle') return `its pane is ${pane.doing}`;
+  if (!pane) return say('masters.verdict.paneUnheard');
+  if (pane.doing !== 'idle') return say('masters.verdict.paneDoing', { doing: pane.doing });
   if (pane.lastEventAgoSeconds < window) {
-    return `its pane reported \`${pane.lastEvent}\` ${minutes(pane.lastEventAgoSeconds)}m ago`;
+    return say('masters.verdict.paneReported', {
+      event: pane.lastEvent,
+      m: minutes(pane.lastEventAgoSeconds),
+    });
   }
   if (children.lastClosedAgoSeconds !== null && children.lastClosedAgoSeconds < window) {
-    return `a child run closed ${minutes(children.lastClosedAgoSeconds)}m ago`;
+    return say('masters.verdict.childClosed', { m: minutes(children.lastClosedAgoSeconds) });
   }
   return null;
 }
 
-function retireBecause(facts: MasterJudged): string {
+function retireBecause(facts: MasterJudged): Said {
   const { noWorkForSeconds, pane, children } = facts.idle;
   const declared =
     children.total === 0
-      ? 'it declared no child run'
-      : `all ${children.total} child run(s) it declared are closed${
-          children.lastClosedAgoSeconds === null
-            ? ''
-            : `, the last ${minutes(children.lastClosedAgoSeconds)}m ago`
-        }`;
-  return `idle: its pane's last hook was \`${pane?.lastEvent}\` ${minutes(
-    pane?.lastEventAgoSeconds ?? 0,
-  )}m ago with no turn running, nothing was claimable for ${minutes(
-    noWorkForSeconds ?? 0,
-  )}m, and ${declared}`;
+      ? say('masters.verdict.noChildDeclared')
+      : say('masters.verdict.childrenClosed', {
+          n: children.total,
+          last:
+            children.lastClosedAgoSeconds === null
+              ? null
+              : say('masters.verdict.lastClosedAgo', { m: minutes(children.lastClosedAgoSeconds) }),
+        });
+  return say('masters.verdict.retire', {
+    event: String(pane?.lastEvent),
+    m: minutes(pane?.lastEventAgoSeconds ?? 0),
+    idle: minutes(noWorkForSeconds ?? 0),
+    declared,
+  });
 }
 
 /** Why the successor of a replaced pane could not resume its conversation, or null where it could. */
-function unresumable(facts: MasterJudged): string | null {
+function unresumable(facts: MasterJudged): Said | null {
   const { id, transcript } = facts.conversation;
   if (id === null) {
-    return 'the box has recorded no conversation for it, so a successor would start cold, without what it was doing';
+    return say('masters.verdict.noConversation');
   }
   if (transcript === 'absent') {
-    return `its conversation ${id} has no transcript on the box, so a successor would start cold, without what it was doing`;
+    return say('masters.verdict.noTranscript', { id });
   }
   if (transcript === 'unlocatable') {
-    return `the box has no home directory to find conversation ${id}'s transcript under, so a successor could not be shown to resume it`;
+    return say('masters.verdict.noHome', { id });
   }
   return null;
 }
@@ -171,20 +179,20 @@ function unresumable(facts: MasterJudged): string | null {
  * successor would start cold is not drained, since nothing would be placed in its stead.
  */
 export interface OutdatedHold {
-  why: string;
-  heldBy: string[];
+  why: Said;
+  heldBy: Said[];
   drain: boolean;
 }
 
 /** The runs a pane holds, split by whether core reads each one's subagent as over, and why. */
-function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: string[] } {
+function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: Said[] } {
   const working: string[] = [];
-  const over: string[] = [];
+  const over: Said[] = [];
   if (holding.kind !== 'these') return { working, over };
   for (const run of holding.runs) {
     const ended = subagentOver(run.subagent);
     if (ended === null) working.push(run.name);
-    else over.push(`${run.name} — ${ended}`);
+    else over.push(say('masters.verdict.inherited', { name: run.name, ended }));
   }
   return { working, over };
 }
@@ -197,45 +205,43 @@ function heldRuns(holding: MasterFacts['holding']): { working: string[]; over: s
  * by name: it was placed by a build older than any that records one, or adopted by a box that never
  * placed it, and what it runs on is not known.
  */
-export function outdatedWhy(facts: Pick<MasterFacts, 'placement'>): string | null {
+export function outdatedWhy(facts: Pick<MasterFacts, 'placement'>): Said | null {
   const placement = facts.placement;
   if (!placement) return null;
   if (placement.unreadable !== null) {
-    return `the record of what it was placed with is not one this build reads (${placement.unreadable}), so whether it runs on what this box hands a pane now is not known`;
+    return say('masters.verdict.placementUnreadable', { why: placement.unreadable });
   }
   const { placed, now } = placement;
   if (placed === null) {
-    return 'this box holds no record of what it was placed with, so whether it runs on what this box hands a pane now is not known';
+    return say('masters.verdict.placementUnrecorded');
   }
   const changed = Object.keys(placed)
     .filter((name) => now[name] !== undefined && now[name] !== placed[name])
     .sort()
-    .map((name) => `${name} (placed ${placed[name]}, now ${now[name]})`);
-  return changed.length === 0
-    ? null
-    : `what it runs on changed since it was placed: ${changed.join('; ')}`;
+    .map((name) =>
+      say('masters.verdict.inputChanged', {
+        name,
+        placed: String(placed[name]),
+        now: String(now[name]),
+      }),
+    );
+  return changed.length === 0 ? null : say('masters.verdict.inputsChanged', { changed });
 }
 
 /** Null where the pane is current, unjudged or absent. */
 export function outdatedHold(facts: MasterJudged): OutdatedHold | null {
   const why = outdatedWhy(facts);
   if (facts.pane !== 'alive' || why === null) return null;
-  const heldBy: string[] = [];
-  if (!workWaits(facts)) {
-    heldBy.push('its project has no admissible work, so a successor would have nothing to take up');
-  }
+  const heldBy: Said[] = [];
+  if (!workWaits(facts)) heldBy.push(say('masters.verdict.heldNoWork'));
   const { holding, turn } = facts;
   const { working } = heldRuns(holding);
   if (working.length > 0) {
-    heldBy.push(
-      `it holds ${working.length} open run(s) whose subagent may still be working: ${working.join('; ')}`,
-    );
+    heldBy.push(say('masters.verdict.heldRuns', { n: working.length, names: working.join('; ') }));
   }
-  if (holding.kind === 'unknown') heldBy.push(holding.why);
-  if (turn.kind === 'in_turn') heldBy.push(turn.what);
-  if (turn.kind === 'unknown') {
-    heldBy.push('neither its hooks nor its transcript can say whether its turn is over');
-  }
+  if (holding.kind === 'unknown') heldBy.push(verbatim(holding.why));
+  if (turn.kind === 'in_turn') heldBy.push(verbatim(turn.what));
+  if (turn.kind === 'unknown') heldBy.push(say('masters.verdict.heldTurnUnknown'));
   const cold = unresumable(facts);
   if (cold) heldBy.push(cold);
   return { why, heldBy, drain: cold === null };
@@ -250,11 +256,11 @@ function outdatedReplace(facts: MasterJudged, hold: OutdatedHold): MasterVerdict
     reason: 'outdated',
     resume: facts.conversation.id,
     nudge: passAsked(facts),
-    because: `outdated (${hold.why}) and ${
+    ...because(
       inherited.length === 0
-        ? 'holds no run and no turn'
-        : `holds no turn and no run still working; its successor inherits ${inherited.join('; ')}`
-    }`,
+        ? say('masters.verdict.replaceIdle', { why: hold.why })
+        : say('masters.verdict.replaceInherits', { why: hold.why, runs: inherited }),
+    ),
   };
 }
 
@@ -262,32 +268,35 @@ function outdatedReplace(facts: MasterJudged, hold: OutdatedHold): MasterVerdict
  * A kept pane's account of being outdated: why, what its replacement waits on, and whether it
  * drains. Being outdated decides replacement only, so the pane is nudged on a current master's timing.
  */
-function outdatedKept(hold: OutdatedHold): string {
-  return `outdated (${hold.why}), and its replacement waits: ${hold.heldBy.join('; ')}. ${
-    hold.drain
-      ? 'It drains meanwhile: it is driven for the work it is owed and takes no new run, so what it holds runs out'
-      : 'It is not drained, since its successor would start cold and nothing would be placed in its stead'
-  }`;
+function outdatedKept(hold: OutdatedHold): Said {
+  return say(hold.drain ? 'masters.verdict.keptDrains' : 'masters.verdict.keptCold', {
+    why: hold.why,
+    held: hold.heldBy,
+  });
 }
 
 /** A pane the box cannot hear is ended only where a successor would be placed in its stead. */
 export function deafVerdict(facts: MasterJudged): MasterVerdict {
   const left = !workWaits(facts)
-    ? 'this project has no admissible work, so no replacement would be placed in its stead'
+    ? say('masters.verdict.deafNoWork')
     : facts.serversReadable !== true
-      ? "the box could not read the project's declared MCP servers, so no replacement would be placed in its stead"
+      ? say('masters.verdict.deafNoServers')
       : facts.conversation.elsewhere !== 'none'
-        ? 'its conversation may still run as a background session on the box, so a replacement would exit at once'
+        ? say('masters.verdict.deafElsewhere')
         : null;
-  if (left)
-    return { act: 'leave', reason: 'deaf', because: `its pane cannot be heard and ${left}` };
+  if (left) {
+    return {
+      act: 'leave',
+      reason: 'deaf',
+      ...because(say('masters.verdict.deafLeave', { left })),
+    };
+  }
   return {
     act: 'replace',
     reason: 'deaf',
     resume: resumeOf(facts),
     nudge: passAsked(facts),
-    because:
-      'its pane holds a capability for a session core has since replaced, so every declaration it makes is refused',
+    ...because(say('masters.verdict.deafReplace')),
   };
 }
 
@@ -300,28 +309,26 @@ function retryOwed(since: MasterSinceNudge): boolean {
  * limited master is asked again every refresh window whatever its pane says; the same work is asked
  * again only once the window has passed and the last nudge started no turn or ended in a failure.
  */
-export function nudgeDue(
-  facts: MasterJudged,
-  passOpen: boolean,
-): { due: boolean; because: string } {
+export function nudgeDue(facts: MasterJudged, passOpen: boolean): { due: boolean; because: Said } {
   const { last, digest, since } = facts.nudge;
   const windowPassed = last !== null && last.agoSeconds >= MASTER_NUDGE_REFRESH_SECONDS;
-  if (!passAsked(facts)) return { due: false, because: 'nothing is owed a pass' };
-  if (last === null) return { due: true, because: 'it has not been nudged about this work' };
+  const due = (d: boolean, s: Said) => ({ due: d, because: s });
+  if (!passAsked(facts)) return due(false, say('masters.verdict.nudgeNothingOwed'));
+  if (last === null) return due(true, say('masters.verdict.nudgeNever'));
   if (limitHeld(facts.limit)) {
     return windowPassed
-      ? { due: true, because: 'it sits behind its account limit and the refresh window has passed' }
-      : { due: false, because: 'it sits behind its account limit and was asked inside the window' };
+      ? due(true, say('masters.verdict.nudgeLimitPassed'))
+      : due(false, say('masters.verdict.nudgeLimitInside'));
   }
   if (last.digest !== digest) {
     return passOpen
-      ? { due: false, because: 'the work changed and its pass is still open' }
-      : { due: true, because: 'the work changed since its last nudge' };
+      ? due(false, say('masters.verdict.nudgeChangedOpen'))
+      : due(true, say('masters.verdict.nudgeChanged'));
   }
   if (windowPassed && retryOwed(since)) {
-    return { due: true, because: `its last nudge read ${since} and the refresh window has passed` };
+    return due(true, say('masters.verdict.nudgeRetry', { since }));
   }
-  return { due: false, because: `its last nudge read ${since}` };
+  return due(false, say('masters.verdict.nudgeRead', { since }));
 }
 
 function resumeOf(facts: MasterJudged): string | null {
@@ -333,23 +340,21 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
     return {
       act: 'withhold',
       reason: 'nothing_owed',
-      because: 'it has nothing claimable and no pane of its own running',
+      ...because(say('masters.verdict.nothingClaimable')),
     };
   }
   if (facts.conversation.elsewhere === 'running') {
     return {
       act: 'withhold',
       reason: 'conversation_elsewhere',
-      because:
-        'its last pane exited because a process on the box still runs its conversation as a background session; a pane placed again would exit the same way',
+      ...because(say('masters.verdict.conversationElsewhere')),
     };
   }
   if (facts.conversation.elsewhere === 'unreadable') {
     return {
       act: 'withhold',
       reason: 'conversation_unaskable',
-      because:
-        'its last pane exited over a background session and the box cannot read its process table to tell whether one still runs it',
+      ...because(say('masters.verdict.conversationUnaskable')),
     };
   }
   const resume = resumeOf(facts);
@@ -357,12 +362,13 @@ function placeVerdict(facts: MasterJudged): MasterVerdict {
     act: 'place',
     resume,
     nudge: passAsked(facts),
-    because:
+    ...because(
       resume !== null
-        ? `work waits; resuming conversation ${resume}`
+        ? say('masters.verdict.placeResume', { id: resume })
         : facts.conversation.id === null
-          ? 'work waits; starting cold, as no conversation is recorded for it'
-          : `work waits; starting cold, as conversation ${facts.conversation.id} has no transcript on the box`,
+          ? say('masters.verdict.placeColdNone')
+          : say('masters.verdict.placeColdNoTranscript', { id: facts.conversation.id }),
+    ),
   };
 }
 
@@ -377,18 +383,20 @@ export function masterVerdict(facts: MasterJudged, record: MasterRecord): Master
   if (held) return held;
   if (facts.pane === 'absent') return placeVerdict(facts);
   if (!workWaits(facts) && facts.work.jobPanes === 0 && idleStay(facts) === null) {
-    return { act: 'retire', because: retireBecause(facts) };
+    return { act: 'retire', ...because(retireBecause(facts)) };
   }
   const outdated = outdatedHold(facts);
   const replace = outdated ? outdatedReplace(facts, outdated) : null;
   if (replace) return replace;
   if (facts.capability === 'stale') return deafVerdict(facts);
   const nudge = nudgeDue(facts, record.passOpen);
-  if (!outdated) return { act: 'keep', nudge: nudge.due, drain: false, because: nudge.because };
+  if (!outdated) return { act: 'keep', nudge: nudge.due, drain: false, ...because(nudge.because) };
   return {
     act: 'keep',
     nudge: nudge.due,
     drain: outdated.drain,
-    because: `${outdatedKept(outdated)}; nudge: ${nudge.because}`,
+    ...because(
+      say('masters.verdict.keptNudge', { kept: outdatedKept(outdated), nudge: nudge.because }),
+    ),
   };
 }

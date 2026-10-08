@@ -5,6 +5,7 @@
 // whose turn it is or by what each item is about. Whose turn comes from core's read model
 // (`feedback/read.ts`); the URL carries the view (`?group=…&q=…&peek=FB-n`).
 
+import { Written } from "@/lib/i18n/written";
 import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
@@ -153,7 +154,7 @@ const rowOf =
     return {
       key: r.key,
       href: feedbackHref(slug, r.key),
-      title: r.title,
+      title: <Written text={r.title} lang={r.writtenLang} />,
       facts: [
         ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
         enumLabel("feedbackKind", r.kind, language),

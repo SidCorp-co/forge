@@ -390,6 +390,32 @@ mod tests {
         }
     }
 
+    /// A park described in prose wakes nobody when the mark lands, a business question asked with
+    /// no `about` never reaches its requirement, a carried artifact left unsaid is verified on the
+    /// wrong release, a silent abort blocks the next cut, and a pin-only dependent proposed again is
+    /// one review per design where one act clears them all: the skill names each act and its refusal.
+    #[test]
+    fn the_skill_teaches_the_acts_that_name_what_they_wait_on() {
+        for word in [
+            "`awaitsMerge: {issueId}`",
+            "`QUESTION_MERGE_ALREADY_MARKED`",
+            "`about`",
+            "`QUESTION_ABOUT_ON_MERGE_WAIT`",
+            "`carriedBy`",
+            "`ARTIFACT_CARRIER_SHIPPED`",
+            "`carried`",
+            "/release-batches/<runId>/carried",
+            "`RELEASE_VERSION_UNDECIDED`",
+            "/design/repins",
+            "`WORKFLOW_REPIN_PENDING_CHANGE`",
+        ] {
+            assert!(
+                ASSET.contains(word),
+                "forge-master-skill.md no longer names {word}, so a master parks, asks, marks or aborts without saying what the act waits on or carries"
+            );
+        }
+    }
+
     #[test]
     fn the_skill_reads_its_methods_from_the_core_it_talks_to() {
         for door in [

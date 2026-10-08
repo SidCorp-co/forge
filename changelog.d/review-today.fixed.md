@@ -1,1 +1,0 @@
-**A release verified by its provider says so in words.** The status report and the release's verified line read "checked by what production's provider serves" where they read "what  serves", with no name, in English and Vietnamese.

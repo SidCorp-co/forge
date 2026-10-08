@@ -27,6 +27,7 @@ const view = (over: Partial<AgentReportView> = {}): AgentReportView => ({
   summary: 'forge record verdict refuses every verdict',
   detail: null,
   suggestion: null,
+  writtenLang: null,
   signalKey: 'self_report:tool:forge record:bug',
   sessionId: null,
   scheduleRunId: null,

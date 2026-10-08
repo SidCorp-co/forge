@@ -52,6 +52,8 @@ export interface ConnectionSummary {
   lastHealthStatus: string | null;
   /** The sentence behind a non-ok status, where the adapter recorded one (never secret bytes). */
   lastHealthDetail?: string | null;
+  /** `lastHealthDetail` as said; null on a row recorded before it was kept. */
+  lastHealthSays?: Said | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;
   /** The health above, bucketed by core's one rule; readers show this rather than re-deriving it. */
@@ -95,6 +97,8 @@ export interface BindingSummary {
   connectionActive: boolean;
   lastHealthStatus: string | null;
   lastHealthDetail?: string | null;
+  /** `lastHealthDetail` as said; null on a row recorded before it was kept. */
+  lastHealthSays?: Said | null;
   lastHealthAt: string | null;
   breakerOpenedAt: string | null;
   /** True when the connection stores an encrypted credential. */
@@ -163,7 +167,10 @@ export interface IntegrationDeliveryRow {
 
 export interface IntegrationHealthResult {
   status: 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
+  /** `says` in English. */
   message?: string;
+  /** `message` as said: the adapter's own sentence by key, a provider's verbatim. */
+  says?: { message: Said };
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
   diagnostics?: Record<string, unknown>;
 }

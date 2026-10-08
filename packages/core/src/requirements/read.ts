@@ -14,7 +14,6 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
-  type CriterionForm,
   type RequirementStatus,
   type RevisionState,
   requirementBaselinePins,
@@ -30,7 +29,7 @@ import type { ReadDoor } from '../feedback/index.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { type Person, peopleOf } from '../lib/people.js';
+import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
@@ -43,6 +42,7 @@ import { historyOf } from './history-read.js';
 import { dedupCheckOf } from './near-duplicate.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
+import { criterionView, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, type ReadinessAtHead, signoffRefusal } from './rules.js';
 import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
 import { approvalRequiredIn, standingsOf } from './standing-read.js';
@@ -53,8 +53,7 @@ export interface RequirementActor {
 }
 
 export type Row = typeof requirements.$inferSelect;
-export type RevisionRow = typeof requirementRevisions.$inferSelect;
-export type CriterionRow = typeof requirementCriteria.$inferSelect;
+export type { CriterionRow, RevisionRow } from './revision-view.js';
 
 /** Where a requirement ref (uuid, `REQ-n` or `n`) names a row of `projectId`; null for neither shape. */
 function refWhere(projectId: string, ref: string) {
@@ -102,15 +101,6 @@ export async function signerRefusal(
       !!requestedBy && (await permissionFactsOf(actor.userId, requestedBy.id)).role !== null,
   });
 }
-
-export const criterionView = (c: CriterionRow) => ({
-  id: c.id,
-  code: c.code,
-  body: c.body,
-  form: c.form as CriterionForm,
-  sinceRevision: c.sinceRevision,
-  retiredRevision: c.retiredRevision,
-});
 
 export async function linkedDesigns(
   tx: Tx,
@@ -437,35 +427,6 @@ export async function detailOf(
     bindings,
     questions,
     unclear: questions.filter((q) => q.status === 'open').length,
-  };
-}
-
-function revisionView(
-  r: RevisionRow,
-  criteria: readonly CriterionRow[],
-  people: ReadonlyMap<string, Person>,
-) {
-  const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
-  return {
-    revision: r.revision,
-    state: r.state as RevisionState,
-    baseRevision: r.baseRevision,
-    spec: r.spec as RequirementSpec,
-    tldr: r.tldr,
-    changeSummary: r.changeSummary,
-    reason: r.reason,
-    authorId: r.authorId,
-    authorName: name(r.authorId),
-    authorKind: people.get(r.authorId)?.kind ?? ('human' as const),
-    createdAt: r.createdAt.toISOString(),
-    proposedAt: r.proposedAt?.toISOString() ?? null,
-    decidedBy: r.decidedBy,
-    decidedByName: name(r.decidedBy),
-    decidedAt: r.decidedAt?.toISOString() ?? null,
-    returnReason: r.returnReason,
-    acceptReason: r.acceptReason,
-    fromSuggestionId: r.fromSuggestionId,
-    criteria: liveAt(criteria, r.revision).map(criterionView),
   };
 }
 
