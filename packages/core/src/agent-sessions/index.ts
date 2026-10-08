@@ -1,4 +1,5 @@
 export { persistSessionAttachment } from './attachment-service.js';
+export { type ChatDoor, chatDoorOfToken } from './chat-door.js';
 export { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 export {
   dispatchInteractiveTurn,

@@ -12,8 +12,6 @@ const CLI_TOOL = 'forge';
  *  already bounds what a turn can be holding. */
 const MAX_ATTACHED = 10;
 
-const ISSUE_KEY = /\bISS-\d+\b/;
-
 interface CliRun {
   exitCode: number;
   stdout: string;
@@ -59,8 +57,7 @@ function runOf(result: CallToolResult): CliRun | null {
   }
 }
 
-function landedOn(argv: readonly string[], stdout: string): string | null {
-  if (argv[0] === 'new') return stdout.match(ISSUE_KEY)?.[0] ?? null;
+function landedOn(argv: readonly string[]): string | null {
   if (argv[0] === 'comment' && argv.includes('-')) return argv[1] ?? null;
   return null;
 }
@@ -113,11 +110,12 @@ async function attach(
 }
 
 /**
- * Wrap `inner` so a `forge new` or a `forge comment … -` that LANDS in this turn
- * is followed by `forge attach issue <key> <files>` carrying the turn's images,
- * and the model reads the attach result beside the write's. Every other call,
- * a write that did not land, and every turn with no images pass through
- * untouched.
+ * Wrap `inner` so a `forge comment … -` that LANDS in this turn is followed by
+ * `forge attach issue <key> <files>` carrying the turn's images, and the model
+ * reads the attach result beside the write's. Every other call, a write that did
+ * not land, and every turn with no images pass through untouched. A Feedback item
+ * the turn records carries the images itself (`feedback/tool.ts`, from
+ * `ChatTurnFacts.images`), since a chat files no issue to attach them to.
  */
 export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[]): ChatToolset {
   const { kept, cut } = withinPersistLimits(images);
@@ -130,7 +128,7 @@ export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[])
       const argv = argvOf(argsJson);
       const run = runOf(result);
       if (!argv || !run || run.exitCode !== 0) return result;
-      const target = landedOn(argv, run.stdout);
+      const target = landedOn(argv);
       if (!target) return result;
       const block = await attach(inner, target, kept, cut);
       return { ...result, content: [...result.content, block] };

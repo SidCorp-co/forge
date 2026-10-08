@@ -127,9 +127,15 @@ export const ISSUE_CREATE_REFUSAL_CODES = [
 	"ISSUE_CREATE_REFUSED",
 	"INVALID_STATUS",
 	"INVALID_DETECTOR_KEY",
+	"CHAT_FILES_FEEDBACK_NOT_ISSUES",
 ] as const;
 export type IssueCreateRefusalCode =
 	(typeof ISSUE_CREATE_REFUSAL_CODES)[number];
+
+/** A chat door's credential is refused an issue whoever holds it: it files Feedback or a Requirement. */
+export const ISSUE_CREATE_REFUSAL_STATUSES = {
+	CHAT_FILES_FEEDBACK_NOT_ISSUES: 403,
+} as const satisfies RefusalStatuses<IssueCreateRefusalCode>;
 
 export const ISSUE_TAKE_REFUSAL_CODES = [
 	"ISSUE_TAKE_REFUSED",

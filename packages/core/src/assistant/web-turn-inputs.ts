@@ -185,7 +185,7 @@ async function divertToAgent(
     asker: authority,
     conversationContext: await args.window.conversationContext(),
     ...(args.window.images.length ? { images: args.window.images } : {}),
-    persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
+    persona: webAgentConversationPersona(args.project, args.askedBy),
     door: 'web-agent-completion',
     replies,
     ackAfterMs: null,

@@ -53,6 +53,8 @@ export interface ChatTurnFacts {
   /** The handle participant answering for this project in the room; null where none is in it. */
   handleUserId: string | null;
   ecosystemId?: string | null;
+  /** The images the speaker sent with this message, which a Feedback item the turn records carries. */
+  images?: readonly { name: string; mime: string; dataBase64: string }[];
 }
 
 /**

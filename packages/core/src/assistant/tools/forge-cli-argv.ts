@@ -9,7 +9,6 @@ import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
 
 const CHAT_JOB_VERBS: readonly string[] = [
   'issue',
-  'new',
   'comment',
   'attach',
   'next',
@@ -22,6 +21,15 @@ const CHAT_JOB_VERBS: readonly string[] = [
 /** `forge knowledge` sub-verbs a room may reach: the reads. `write` and `delete` are a run's, not a room's. */
 const KNOWLEDGE_READS: ReadonlySet<string> = new Set(['list', 'get', 'search']);
 
+/**
+ * A chat files no issue (owner ruling 2026-10-08): what a person reports or wishes is recorded as
+ * Feedback or a Requirement, and issues come from those. The kernel refuses a chat credential
+ * `CHAT_FILES_FEEDBACK_NOT_ISSUES` whatever route it takes; this says so before the CLI runs.
+ */
+export const CHAT_FILES_NO_ISSUE =
+  '`forge new` is not open from chat: a chat files no issue — issues come from requirement breakdown or feedback triage. ' +
+  'Record a problem or a wish with forge_feedback (linked to the requirement it touches), or a change to how the product should behave with forge_requirement_draft / forge_requirement_revise — after the person confirmed what you restated.';
+
 /** What the per-turn config's `withheld` carries: every CLI verb the job does not offer. */
 export function chatWithheld(): string[] {
   return withheldForJob(CHAT_JOB_VERBS);
@@ -32,6 +40,7 @@ export function admitVerb(argv: readonly string[]): string | null {
   const [verb, sub] = argv;
   if (verb === undefined) return 'nothing to run: give at least a verb, or `-h`.';
   if (verb === '-h' || verb === '--help') return null;
+  if (verb === 'new') return CHAT_FILES_NO_ISSUE;
   if (!CHAT_JOB_VERBS.includes(verb)) {
     return (
       `\`forge ${verb}\` is not open from chat. What is: ${CHAT_JOB_VERBS.join(', ')}, and \`-h\` on any of them. ` +

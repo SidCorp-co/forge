@@ -1,0 +1,1 @@
+**A chat records Feedback or a Requirement, never an issue.** The assistant and Agent-mode sessions restate the request and confirm before writing; core refuses an issue from any chat credential, CHAT_FILES_FEEDBACK_NOT_ISSUES.

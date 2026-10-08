@@ -20,13 +20,11 @@ const input = z
 
 const DESCRIPTION = [
   'Run the `forge` CLI as the person you are talking to, scoped to this project.',
-  'This is the tracker: filing, reading, searching, comments, status, guides.',
+  'This is the tracker: reading, searching, comments, status, guides.',
   readFormsLine(),
   'Send one as it stands, `-` being where `body` is substituted; do NOT guess a flag.',
   '`-h` is for a verb whose form this description does not carry.',
-  '`new` reads the body against the sections that category owes, refuses a filing missing one',
-  'naming the heading, folds onto a near neighbour when it finds one, and takes `--with ISS-45` for',
-  'a relates edge or `--new` to file anyway and say what it passed over.',
+  'It files no issue: a report or a wish is recorded with forge_feedback or forge_requirement_draft.',
 ].join(' ');
 
 export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
