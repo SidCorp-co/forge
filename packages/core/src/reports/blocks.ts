@@ -12,6 +12,7 @@ import type { ExecutionFacts } from '@forge/contracts/report-executions';
 import type { ReportFrame, ReportRunFacts } from '@forge/contracts/report-queries';
 import {
   blockToText,
+  UTC_READING,
   checkBlock,
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
@@ -243,7 +244,7 @@ export async function attachVisualBlock(args: {
       'REPORT_BLOCK_REFUSED',
       checked.refusals.map((r) => r.message),
     );
-  const drawn = blockToText(checked.block);
+  const drawn = blockToText(checked.block, UTC_READING);
   // a computed block says so wherever it is read as text, not only where it is drawn
   const text = execution
     ? `${drawn}\n\nComputed by execution ${execution.executionId} (${execution.language} on ${execution.adapter}), not read from a report.`

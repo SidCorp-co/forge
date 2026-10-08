@@ -406,13 +406,37 @@ function duration(ms: number): string {
 
 /**
  * How a screen reads an instant: the viewer's own words and timezone. The contract cannot know
- * either, so a reading is handed in by whoever draws the text; without one an instant keeps its
- * ISO form, which is what a stored or exported fallback carries.
+ * either, so a reading is handed in by whoever draws the text: a screen its viewer's clock, a
+ * server-made text (`UTC_READING`) UTC. Without one an instant keeps its ISO form.
  */
 export interface InstantReading {
   /** An ISO instant or date inside a cell, as a person reads it. */
   instant(iso: string): string;
 }
+
+const UTC_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** A bare calendar day, or midnight UTC: a day with no time of its own, which no timezone moves. */
+const UTC_DAY_ONLY = /^\d{4}-\d{2}-\d{2}(?:T00:00(?::00(?:\.0+)?)?Z)?$/;
+
+/**
+ * The reading of a text no viewer is behind (a report's Markdown export, a CSV, the run text a
+ * stored report keeps): every instant in UTC and says so, "Oct 4, 18:19 UTC", a calendar day as
+ * "Oct 4". An instant that is not one stays as it was written.
+ */
+export const UTC_READING: InstantReading = {
+  instant(iso) {
+    const day = (at: Date) => `${UTC_MONTHS[at.getUTCMonth()]} ${at.getUTCDate()}`;
+    if (UTC_DAY_ONLY.test(iso)) {
+      const at = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+      return Number.isNaN(at.getTime()) ? iso : day(at);
+    }
+    const at = new Date(iso);
+    if (Number.isNaN(at.getTime())) return iso;
+    const clock = `${String(at.getUTCHours()).padStart(2, "0")}:${String(at.getUTCMinutes()).padStart(2, "0")}`;
+    return `${day(at)}, ${clock} UTC`;
+  },
+};
 
 /** An ISO-8601 instant or calendar date, wherever it stands inside a sentence. */
 const ISO_INSTANT = /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
@@ -487,10 +511,10 @@ function csvField(text: string): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function csvCell(field: ReportField, cell: ReportCell | undefined): string {
+function csvCell(field: ReportField, cell: ReportCell | undefined, reading?: InstantReading): string {
   if (cell === null || cell === undefined) return "";
   if (typeof cell === "number") return field.type === "duration" ? cellText(field, cell) : String(cell);
-  const text = cellText(field, cell);
+  const text = cellText(field, cell, reading);
   return FORMULA_LEAD.test(text) ? `'${text}` : text;
 }
 
@@ -505,13 +529,14 @@ export const CSV_BOM = "\uFEFF";
  * row of the column labels, then the rows the table shows, sorted and cut as the block says. A cell
  * reads as the table reads it (a state as its label, a duration spoken), except that an empty cell is
  * empty and a number is bare, its unit in the heading. A text cell a spreadsheet would run as a
- * formula opens with an apostrophe.
+ * formula opens with an apostrophe. A date reads as `reading` reads it; a server export hands
+ * `UTC_READING`, so no cell carries raw ISO.
  */
-export function tableCsv(b: VisualBlockOf<"table">): string {
+export function tableCsv(b: VisualBlockOf<"table">, reading?: InstantReading): string {
   const fields = b.columns.flatMap((c) => b.frame.fields.filter((f) => f.name === c));
   const lines = [
     fields.map((f) => csvField(csvHeading(f))).join(","),
-    ...tableRows(b).map((row) => fields.map((f) => csvField(csvCell(f, row[f.name]))).join(",")),
+    ...tableRows(b).map((row) => fields.map((f) => csvField(csvCell(f, row[f.name], reading))).join(",")),
   ];
   return `${CSV_BOM}${lines.join("\r\n")}\r\n`;
 }
@@ -678,7 +703,7 @@ export function shownFrame(block: VisualBlock): ReportFrame | null {
   };
 }
 
-/** The plain-text fallback of a block that passed `checkBlock`; a screen passes its `reading` so no instant stays ISO. */
+/** The plain-text fallback of a block that passed `checkBlock`; whoever draws it passes a `reading` (a screen its viewer's, a server `UTC_READING`) so no instant stays ISO. */
 export function blockToText(block: VisualBlock, reading?: InstantReading): string {
   return (BLOCK_KINDS[block.kind] as BlockKindEntry<typeof block.kind>).toText(block as never, reading);
 }

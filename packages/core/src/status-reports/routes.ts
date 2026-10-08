@@ -6,7 +6,7 @@ import {
   reportDocumentMarkdown,
   type StatusReportRefusalCode,
 } from '@forge/contracts/status-reports';
-import { tableCsv } from '@forge/contracts/visual-blocks';
+import { UTC_READING, tableCsv } from '@forge/contracts/visual-blocks';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
@@ -243,7 +243,7 @@ statusReportRoutes.get(
         '/block',
       );
     }
-    return c.body(tableCsv(named), 200, {
+    return c.body(tableCsv(named, UTC_READING), 200, {
       'content-type': 'text/csv; charset=utf-8',
       'content-disposition': `attachment; filename="${exportName(templateId, detail.report.asOf, 'csv', block)}"`,
     });
