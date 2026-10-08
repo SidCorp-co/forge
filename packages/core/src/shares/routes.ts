@@ -13,7 +13,13 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { rateLimit } from '../middleware/rate-limit.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
-import { createShare, listShares, openShare, revokeShare } from './service.js';
+import {
+  createShare,
+  listShares,
+  openShare,
+  revokeShare,
+  shareAudienceOptions,
+} from './service.js';
 
 const projectParam = z.strictObject({ id: z.uuid() });
 const shareParam = z.strictObject({ id: z.uuid(), shareId: z.uuid() });
@@ -43,6 +49,20 @@ projectShareRoutes.get(
     const { id: projectId } = c.req.valid('param');
     requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
     return c.json({ shares: await listShares(projectId) });
+  },
+);
+
+projectShareRoutes.get(
+  '/:id/shares/audiences',
+  zValidator(
+    'param',
+    projectParam,
+    invalid('invalid path: /api/projects/<project>/shares/audiences'),
+  ),
+  async (c) => {
+    const { id: projectId } = c.req.valid('param');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    return c.json({ audiences: await shareAudienceOptions(projectId, access) });
   },
 );
 

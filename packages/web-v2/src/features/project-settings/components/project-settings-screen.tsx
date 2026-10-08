@@ -22,6 +22,7 @@ import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
+import { SharesSection } from "./shares-section";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	general: "settings.project.section.general",
@@ -94,7 +95,14 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 			<PageContainer>
 				<div className={tab === "connections" ? undefined : "max-w-4xl"}>
 					{tab === "general" && <GeneralSection project={project} canEdit={canEdit} />}
-					{tab === "people" && <MembersTab projectId={project.id} canEdit={canManage} />}
+					{tab === "people" && (
+						<>
+							<MembersTab projectId={project.id} canEdit={canManage} />
+							<div id="shares" className="scroll-mt-24 border-t border-line">
+								<SharesSection projectId={project.id} isAdmin={canManage} />
+							</div>
+						</>
+					)}
 					{tab === "work" && (
 						<>
 							<div id="modules" className="scroll-mt-24">

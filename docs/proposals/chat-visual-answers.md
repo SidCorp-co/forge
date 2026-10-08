@@ -256,6 +256,12 @@ ruling and is not registered.
   stands only while its creator still holds the permission that created it (`shares.write`, or
   `shares.public` for a `link` share), read on every open, so a creator who leaves the project or
   loses that permission stops their links on the next request.
+- **Offered, never guessed.** `GET /api/projects/:id/shares/audiences` answers each audience as open
+  or with the refusal creating it would answer, from the same checks
+  (`packages/core/src/shares/service.ts:shareAudienceOptions`). The web's Share action on an
+  answer with a report block or a template's output reads it before offering "Anyone with the
+  link", shows the link once, and Project settings → People lists and revokes the project's links
+  (`packages/web-v2/src/features/shares/components/share-list.tsx:ShareList`).
 - **Read-only.** The page `/s/[token]` draws the snapshot as data — each block by its text fallback
   (`packages/web-v2/src/features/shares/components/shared-answer.tsx:SharedBlock`) while the web block
   registry holds no renderer for it — with no actions, no navigation and no live reads; for the `link` audience, `ref` cells render as text,

@@ -3,11 +3,14 @@
 // it is unexpired, unrevoked, and its creator still holds the permission that made it, so a creator
 // who leaves the project takes their links with them on the next request.
 
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import type { ReportDocument } from '@forge/contracts/report-templates';
 import {
+  SHARE_AUDIENCES,
   SHARE_TOKEN_SHAPE,
   type ShareAudience,
+  type ShareAudienceOption,
   type ShareCreate,
   type ShareCreated,
   type ShareLinkView,
@@ -20,6 +23,7 @@ import { shareLinks } from '../db/schema.js';
 import { effectiveProjectRole, type ProjectAccess } from '../lib/authz.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { RULES } from '../lib/rate-limits.js';
+import { RefusalError } from '../lib/refusal.js';
 import { consumeRateLimit } from '../middleware/rate-limit.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { forgeLink } from './forge-link.js';
@@ -66,6 +70,46 @@ async function rowOf(projectId: string, shareId: string): Promise<Row> {
 }
 
 /**
+ * What creating a share for `audience` asks of its creator and project, before any subject is read:
+ * `shares.write`, and for a link share `shares.public` and a data policy that lets data leave.
+ */
+function admitAudience(
+  access: ProjectAccess,
+  audience: ShareAudience,
+  level: SensitiveDataLevel,
+  projectId: string,
+): void {
+  requireHeld(access, 'shares.write', 'creating a share');
+  if (audience !== 'link') return;
+  requireHeld(access, 'shares.public', 'creating a share open to anyone holding its link');
+  linkEgress(level, projectId, null);
+}
+
+/**
+ * For each audience, whether the caller may create a share for it now: open, or the refusal
+ * creating one would answer, by code and core's own sentence. The checks are `createShare`'s own,
+ * so a screen offering an audience never guesses which one it may offer.
+ */
+export async function shareAudienceOptions(
+  projectId: string,
+  access: ProjectAccess,
+): Promise<ShareAudienceOption[]> {
+  requireHeld(access, 'project.read');
+  const level = await dataPolicyOf(projectId);
+  return SHARE_AUDIENCES.map((audience) => {
+    try {
+      admitAudience(access, audience, level, projectId);
+      return { audience, refusal: null };
+    } catch (err) {
+      if (!(err instanceof RefusalError)) throw err;
+      const lead = err.refusals[0];
+      if (!lead) throw err;
+      return { audience, refusal: { code: lead.code, message: lead.detail } };
+    }
+  });
+}
+
+/**
  * Freeze the subject as the creator reads it now, scrub it, and keep it behind a fresh token. A link
  * share needs `shares.public` and a project whose data policy lets data leave; every share needs
  * `shares.write`. The link is answered once, here.
@@ -78,12 +122,8 @@ export async function createShare(args: {
   body: ShareCreate;
 }): Promise<ShareCreated> {
   const { projectId, access, body } = args;
-  requireHeld(access, 'shares.write', 'creating a share');
-  if (body.audience === 'link') {
-    requireHeld(access, 'shares.public', 'creating a share open to anyone holding its link');
-  }
   const level = await dataPolicyOf(projectId);
-  if (body.audience === 'link') linkEgress(level, projectId, null);
+  admitAudience(access, body.audience, level, projectId);
   const document = await shareSubjectSource(body.subjectKind).freeze({
     projectId,
     subjectId: body.subjectId,

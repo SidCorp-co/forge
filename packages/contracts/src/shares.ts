@@ -106,11 +106,39 @@ export const ShareLinkViewSchema = z
   .strict();
 export type ShareLinkView = z.infer<typeof ShareLinkViewSchema>;
 
+/** Where a share stands for a reader of its list: still opening, past its date, or revoked. */
+export const SHARE_STATES = ["active", "expired", "revoked"] as const;
+export type ShareState = (typeof SHARE_STATES)[number];
+
+/**
+ * A listed share's state, read off its own fields at `now`: a revocation outranks an expiry. A share
+ * whose creator has left still reads `active` here; opening it is what answers not available.
+ */
+export function shareStateOf(
+  share: Pick<ShareLinkView, "revokedAt" | "expiresAt">,
+  now: number = Date.now(),
+): ShareState {
+  if (share.revokedAt !== null) return "revoked";
+  return Date.parse(share.expiresAt) <= now ? "expired" : "active";
+}
+
 /** What creating a share answers: the share, and the one time its link is shown. */
 export const ShareCreatedSchema = z
   .object({ share: ShareLinkViewSchema, url: z.string().min(1) })
   .strict();
 export type ShareCreated = z.infer<typeof ShareCreatedSchema>;
+
+/**
+ * Whether the asker may create a share for one audience, read by core with the same checks creating
+ * one makes: open, or the refusal creating it would answer, by its code and core's own sentence.
+ */
+export const ShareAudienceOptionSchema = z
+  .object({
+    audience: z.enum(SHARE_AUDIENCES),
+    refusal: z.object({ code: z.string().min(1), message: z.string().min(1) }).strict().nullable(),
+  })
+  .strict();
+export type ShareAudienceOption = z.infer<typeof ShareAudienceOptionSchema>;
 
 /** Opening a share: the token travels in the body, never in a path a log or a proxy keeps. */
 export const ShareOpenSchema = z.object({ token: z.string().min(1).max(200) }).strict();

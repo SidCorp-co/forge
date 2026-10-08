@@ -20,6 +20,8 @@ import { isStructured, StructuredMessage } from "@/features/onboarding/component
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
+import { settingsHref } from "@/features/project-settings/sections";
+import { ShareAction, shareSubjectOf } from "@/features/shares";
 import { runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
@@ -133,7 +135,7 @@ function spokenAt(iso: string, time: ReturnType<typeof useTimeFormat>): { label:
  * Read-only affordances only: a conversation is an append-only log, so nothing
  * here rewrites a turn (ISS-1004's rule, which stands).
  */
-function MessageActions({ message }: { message: ConversationMessage }) {
+function MessageActions({ message, share }: { message: ConversationMessage; share?: ShareScope | undefined }) {
   const [copied, setCopied] = useState(false);
   const t = useCopy();
   const when = spokenAt(message.createdAt, useTimeFormat());
@@ -167,7 +169,27 @@ function MessageActions({ message }: { message: ConversationMessage }) {
       >
         {copied ? t("shell.thread.copied") : t("shell.thread.copy")}
       </button>
+      {share && <ShareOf message={message} share={share} />}
     </div>
+  );
+}
+
+/** The project an answer is shared from, and the slug that names where its links are listed. */
+interface ShareScope {
+  projectId: string;
+  projectSlug: string | undefined;
+}
+
+/** Share, beside Copy, on an answer that holds a report block or a template's output; else nothing. */
+function ShareOf({ message, share }: { message: ConversationMessage; share: ShareScope }) {
+  const subject = shareSubjectOf(message);
+  if (!subject) return null;
+  return (
+    <ShareAction
+      projectId={share.projectId}
+      subject={subject}
+      manageHref={share.projectSlug ? settingsHref(share.projectSlug, "people", "shares") : undefined}
+    />
   );
 }
 
@@ -196,11 +218,13 @@ function Said({
   withdrawn,
   newestAgentId,
   firstDesigns,
+  share,
 }: {
   message: ConversationMessage;
   withdrawn?: string;
   newestAgentId?: string;
   firstDesigns?: boolean;
+  share?: ShareScope | undefined;
 }) {
   const t = useCopy();
   // a questionnaire, its answers and a designs list are structured messages a service wrote;
@@ -249,7 +273,7 @@ function Said({
     <div className="flex flex-col gap-2">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
-      <MessageActions message={message} />
+      <MessageActions message={message} share={share} />
     </div>
   );
 }
@@ -299,6 +323,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
 }
 
 export function ConversationThread({
+  projectId,
   projectSlug,
   messages,
   windows,
@@ -310,6 +335,8 @@ export function ConversationThread({
   onRetry,
   afterEntry,
 }: {
+  /** The project the room is about, so an answer holding a report can be shared from it. */
+  projectId?: string | undefined;
   /** The project's slug, for the links a report block's refs open; plain text until it is known. */
   projectSlug?: string | undefined;
   messages: ConversationMessage[];
@@ -353,6 +380,7 @@ export function ConversationThread({
                 {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
                 {...(newestAgentId ? { newestAgentId } : {})}
                 firstDesigns={entry.message.id === firstDesignsId}
+                share={projectId ? { projectId, projectSlug } : undefined}
               />
               {afterEntry?.(entry.message.id)}
             </div>

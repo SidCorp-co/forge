@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { ExecutionRequestSchema, ExecutionResultSchema, ExecutorDescriptorSchema } from "./report-executions.js";
-import { SHARE_MAX_EXPIRY_DAYS, ShareCreateSchema, ShareLinkViewSchema, ShareTargetDescriptorSchema } from "./shares.js";
+import {
+  SHARE_MAX_EXPIRY_DAYS,
+  ShareAudienceOptionSchema,
+  ShareCreateSchema,
+  ShareLinkViewSchema,
+  ShareTargetDescriptorSchema,
+  shareStateOf,
+} from "./shares.js";
 
 describe("a share", () => {
   const make = { subjectKind: "message", subjectId: "m1", audience: "members" };
@@ -53,5 +60,21 @@ describe("the executor port", () => {
     const res = { executionId: "x", adapter: "e2b", exit: 0, durationMs: 5, frames: [], logs: { stdout: "", stderr: "" } };
     expect(ExecutionResultSchema.safeParse(res).success).toBe(true);
     expect(ExecutionResultSchema.safeParse({ ...res, image: "data:" }).success).toBe(false);
+  });
+});
+
+describe("a listed share's state", () => {
+  const at = Date.parse("2026-10-08T10:00:00Z");
+  it("reads active before its date, expired on it, and revoked over either", () => {
+    expect(shareStateOf({ revokedAt: null, expiresAt: "2026-10-09T10:00:00Z" }, at)).toBe("active");
+    expect(shareStateOf({ revokedAt: null, expiresAt: "2026-10-08T10:00:00Z" }, at)).toBe("expired");
+    expect(shareStateOf({ revokedAt: "2026-10-01T10:00:00Z", expiresAt: "2026-10-01T09:00:00Z" }, at)).toBe("revoked");
+    expect(shareStateOf({ revokedAt: "2026-10-08T09:00:00Z", expiresAt: "2026-10-09T10:00:00Z" }, at)).toBe("revoked");
+  });
+  it("answers an audience open, or refused by code and sentence, and nothing looser", () => {
+    expect(ShareAudienceOptionSchema.safeParse({ audience: "members", refusal: null }).success).toBe(true);
+    expect(ShareAudienceOptionSchema.safeParse({ audience: "link", refusal: { code: "SHARE_EGRESS_FORBIDDEN", message: "no" } }).success).toBe(true);
+    expect(ShareAudienceOptionSchema.safeParse({ audience: "link", refusal: { code: "", message: "no" } }).success).toBe(false);
+    expect(ShareAudienceOptionSchema.safeParse({ audience: "link" }).success).toBe(false);
   });
 });
