@@ -12,6 +12,7 @@ import {
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
+import { withSentryCause } from '../middleware/error.js';
 import { verifyHmacSignature } from './hmac.js';
 
 const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
@@ -163,10 +164,17 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
         { err, slug, provider: map.provider, bindingId: pair.binding.id },
         'integration adapter: handler threw',
       );
-      throw new HTTPException(500, {
-        message: 'handler failed',
-        cause: { code: 'HANDLER_FAILED' },
-      });
+      throw withSentryCause(
+        new HTTPException(500, { message: 'handler failed', cause: { code: 'HANDLER_FAILED' } }),
+        {
+          error: err,
+          tags: {
+            'webhook.provider': map.provider,
+            'webhook.slug': slug,
+            'webhook.binding_id': pair.binding.id,
+          },
+        },
+      );
     }
   }
 
