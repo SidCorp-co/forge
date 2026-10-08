@@ -9,7 +9,7 @@ outside the `(workspace)` group, whose layout redirects a signed-out visitor to 
 | Home | Audience | Read at |
 |---|---|---|
 | `packages/web-v2/content/help/*.md`, bundled as `HELP_DOCS` | `user`, `assistant-setup` — each page's own front-matter | `/guides?path=<slug>` |
-| `packages/core/src/guides/registry.ts`, fetched from `GET <core>/api/guides` | `agent` | `/guides/<slug>`, and as markdown at `<core>/api/guides/<slug>.md` |
+| `packages/core/src/guides/content/*.md`, listed in `packages/core/src/guides/registry.ts` and fetched from `GET <core>/api/guides` | `agent` | `/guides/<slug>`, and as markdown at `<core>/api/guides/<slug>.md` |
 
 These are two of Forge's four documentation homes; which page belongs in which is
 `docs/modules/guides/where-a-page-lives.md`.

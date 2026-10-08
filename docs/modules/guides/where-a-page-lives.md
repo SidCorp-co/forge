@@ -11,7 +11,7 @@ without a release. How the code works is not shipped at all.
 | Home | Describes | `audience` | Ships | Declared by | Checked by |
 |---|---|---|---|---|---|
 | `packages/web-v2/content/help/` | how to use Forge, on its screens | `user`, `assistant-setup` | the web build | each page's front-matter | `readPage` and `readAudience` in `packages/web-v2/scripts/help-frontmatter.mjs`, at `pnpm gen:help` |
-| `packages/core/src/guides/registry.ts`, served at `/api/guides` | a rule of the system agents are held to | `agent` | core | `audience` on each `ForgeGuide` in `packages/core/src/guides/types.ts` | the type, and `packages/core/src/guides/registry.test.ts` |
+| `packages/core/src/guides/content/<slug>.md`, listed in `packages/core/src/guides/registry.ts` and served at `/api/guides` | a rule of the system agents are held to | `agent` | core | `audience` on each `ForgeGuide` in `packages/core/src/guides/types.ts` | the type, and `packages/core/src/guides/registry.test.ts` |
 | the `integration_guides` table | an external service, per organisation | `agent` | the database | the home: `resolveGuide` and `resolveGuideIndex` in `packages/core/src/guides/integration-guides.ts` set it on every row they return | `packages/core/src/guides/integration-guides.test.ts` |
 | `docs/` | how the code works | none | never | — | — |
 
@@ -29,6 +29,24 @@ without a release. How the code works is not shipped at all.
   `integration-<provider>`, and a row shadows the code default of the same slug.
 - **The code describes itself.** `docs/` is read in the repository by contributors, operators and
   coding sessions, and is never served to anyone.
+
+## How a registry guide's body reaches core
+
+`packages/core/src/guides/registry.ts` holds each guide's slug, title, summary, version and place in the list; the body is the
+markdown file `packages/core/src/guides/content/<slug>.md`, and a prose change is a diff in that file
+and nowhere else. `packages/core/scripts/gen-guide-content.mjs` embeds the folder as
+`packages/core/src/guides/content.generated.ts` on every `build` and `dev`, so the bodies travel inside
+`dist` and the image has no folder to forget to copy. `guideBody` in
+`packages/core/src/guides/guide-content.ts` reads one: a `{{NAME}}` in a file marks a value the code
+owns (a note another module exports, a route), the guide supplies it, and a name with no value, a value
+with no name, and a slug with no file are each refused by name when the guide is first read.
+`packages/core/src/guides/guide-content.test.ts` plants each of those and a generated module that has
+drifted from its folder. Two guides compute their body from code and keep it there:
+`packages/core/src/guides/capability-guide.ts` and
+`packages/core/src/guides/assistant-method-guide.ts`. The web build's help pages use the same idea in
+`packages/web-v2/scripts/gen-help-content.mjs`, with front-matter, which a registry guide does not
+carry; the two cannot share a script, because each image's build context holds `packages/` and not the
+root `scripts/`.
 
 ## The registry is not the whole corpus
 

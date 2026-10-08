@@ -1,0 +1,23 @@
+## Issue dependencies
+
+### Relation kinds
+Edges are directional `fromIssue --kind--> toIssue`:
+- `blocks` — **the only kind that affects dispatch.** A → blocks → B means B is held out of the set a master reads until A reaches `developed`. The statuses that release B are `developed`, `testing`, `awaiting_release` and `closed`; every other status on A, `in_progress` and `on_hold` and `needs_info` included, keeps holding it. A reopened A blocks again. **It is A's STATUS and not A's `merged_at`**: a blocker whose code has landed but which is parked short of `developed` still holds B, and no gate anywhere in Forge reads `merged_at` to release a dependent. Retracting the edge — re-send it with `validUntil` in the past — and dropping A, which expires its edges for the same reason, both take B out of the held set **as far as Forge is concerned**. They do not yet release it at the master: `forge next` and `forge advance` in the `forge` plugin read the blocker's status and never the edge's expiry, so a B released this way is offered by Forge and still declined there until forge-plugin ISS-347 lands. Moving A forward is the route that works on both today.
+- `relates`, `duplicates`, `parent` — grouping labels, no dispatch effect.
+- `decomposes` — epic → child. {{WORK_EVIDENCE_WAIVER_NOTE}} Ordering between the two is still a `blocks` edge.
+
+### Setting a blocks edge — avoid the create-then-block race
+- Blocker known **at create time** → pass it in the create call itself (`data.relations: [{ kind: 'blocks', dependsOnId }]`), committed before the issue dispatches. This is atomic.
+- Both issues already exist → `forge_issues action=update` with `data.relations: [{ kind: 'blocks', dependsOnId }]`, relative to the issue you are updating (`dependsOnId` = it blocks me, `blocksId` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with `from` = the blocker — that route needs a paired-device token.
+- Red flag: creating the new issue at `open` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
+- Verify, don't assume: `forge_issues action=get` returns `relations.blocks` and `relations.blockedBy`, each edge flagged `expired` once its `validUntil` has passed. Retract an edge by re-sending it with `validUntil` in the past — the write reports `updated: true`.
+
+### An issue bigger than one change
+Splitting is ordinary work, not a lifecycle. Nothing parks a parent, nothing promotes a draft for you, and no edge holds a parent's own work back.
+
+- Most of the time the halves belong to ONE session: plan them as ordered steps and build them on one branch, in order.
+- When a half genuinely ships on its own, file it as its own issue at `open`, and if it must land first give the dependent a `blocks` edge naming it. Each issue then carries its own plan, criteria and review.
+- Never file the halves at `draft` expecting something to wake them. `draft` dispatches nothing, and no approval cascades it.
+
+### Recording a note without triggering a pipeline run
+Create the issue at `draft`, never `open` — `open` auto-triages and spawns a pipeline run, burning a runner slot for something that was only meant to be a note.

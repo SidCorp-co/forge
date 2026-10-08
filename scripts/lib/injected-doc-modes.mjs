@@ -3,8 +3,11 @@ const TRANSITION_VERB =
 
 const MODE_NAMES = ['staged', 'autonomous'];
 
-/** Statuses named on a line that renders from project data are the project's own, not a claim. */
-const PROJECT_RESOLVED = /\$\{/;
+/**
+ * Statuses named on a line that renders from project data are the project's own, not a claim. A
+ * markdown body marks that place `{{NAME}}`, where a template literal wrote `${NAME}`.
+ */
+const PROJECT_RESOLVED = /\$\{|\{\{/;
 
 function statusAlternation(statuses) {
   return statuses.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
@@ -34,6 +37,11 @@ export function extractBodies(src, openers) {
     }
   }
   return bodies;
+}
+
+/** A markdown body is its file, so the body starts on line 1. */
+export function markdownBodies(src) {
+  return src.trim() === '' ? [] : [{ startLine: 1, text: src }];
 }
 
 export function isModeQualified(line) {

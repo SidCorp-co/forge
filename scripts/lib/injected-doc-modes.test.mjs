@@ -8,6 +8,7 @@ import {
   checkSurface,
   extractBodies,
   isModeQualified,
+  markdownBodies,
   sentencesOf,
   stepClaimsInSentence,
   transitionsOnLine,
@@ -135,6 +136,22 @@ describe('extractBodies', () => {
 
   it('returns nothing when the opener matches no declaration, so the CLI can fail closed', () => {
     expect(extractBodies('const A = `hi`;', ['body:'])).toEqual([]);
+  });
+});
+
+describe('markdownBodies', () => {
+  it('reads a whole file as one body that starts on line 1', () => {
+    expect(markdownBodies('## A\n\nline\n')).toEqual([{ startLine: 1, text: '## A\n\nline\n' }]);
+  });
+
+  it('returns nothing for an empty file, so the CLI can fail closed', () => {
+    expect(markdownBodies('\n')).toEqual([]);
+  });
+
+  it('leaves a line that holds a {{NAME}} placeholder to the code that fills it, as it left a ${NAME}', () => {
+    const line = 'Then {{NOTE}} move it `waiting` → `approved` to release the gate';
+    expect(transitionsOnLine(line, ALL, DRIVER)).toEqual([]);
+    expect(transitionsOnLine(line.replace('{{NOTE}} ', ''), ALL, DRIVER)).not.toEqual([]);
   });
 });
 

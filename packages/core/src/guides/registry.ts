@@ -7,6 +7,9 @@
 // Why a code module, and which pages belong here rather than in another of the four
 // documentation homes: docs/modules/guides/where-a-page-lives.md.
 //
+// A body is `content/<slug>.md`, embedded at build (`guide-content.ts`); `capability-guide.ts` and
+// `assistant-method-guide.ts` compute theirs from code and keep it there.
+//
 // Altitude rule for every body (NT1 — teach how to use the capability well:
 // ordering, gotchas, cardinal rules). Do NOT re-dump tool schemas (Tool
 // Search already supplies those) and do not restate the status ladder /
@@ -20,6 +23,7 @@ import {
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
 import { CAPABILITY_GUIDE } from './capability-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
+import { guideBody } from './guide-content.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import type { ForgeGuide } from './types.js';
 
@@ -34,26 +38,10 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
     version: 3,
-    body: `## Project settings & test credentials
-
-Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
-
-- **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`environments\` — both sides of the deployment: \`preview\` (\`{url, apiUrl, urls[]}\`, or null where the project has no preview side), \`live\` (\`{url, apiUrl, commitUrl, commitPath}\` — the address a release ships to), \`testCredentials\` for logging in as a test user, and \`limits\`, which says what this environment does NOT have. This is the ONLY place test credentials live.
-- **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides, and the per-stage model, budget and tool policy), \`plugins\`, categories. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
-
-  ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
-
-### Rules
-1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
-2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
-3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
-4. \`environments.preview: null\` means this project HAS no preview side — a one-box project saying so, not a setting somebody forgot. Test against \`environments.live\` and don't invent a staging host. Equally, an empty \`environments.live.url\` is not permission to guess one: nothing in Forge derives a hostname from another.
-5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
-
-### Common mistake this guide exists to prevent
-An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The credentials were one tool call away, on \`forge_projects.get\`.
-
-The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspaceSetup\` exists so that happens once.`,
+    body: guideBody('project-settings-and-test-credentials', {
+      ALWAYS_INJECT_GUARANTEE_NOTE,
+      ALWAYS_INJECT_ENFORCEMENT_NOTE,
+    }),
   },
   {
     slug: 'issue-dependencies',
@@ -62,29 +50,7 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     summary:
       'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
     version: 8,
-    body: `## Issue dependencies
-
-### Relation kinds
-Edges are directional \`fromIssue --kind--> toIssue\`:
-- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B is held out of the set a master reads until A reaches \`developed\`. The statuses that release B are \`developed\`, \`testing\`, \`awaiting_release\` and \`closed\`; every other status on A, \`in_progress\` and \`on_hold\` and \`needs_info\` included, keeps holding it. A reopened A blocks again. **It is A's STATUS and not A's \`merged_at\`**: a blocker whose code has landed but which is parked short of \`developed\` still holds B, and no gate anywhere in Forge reads \`merged_at\` to release a dependent. Retracting the edge — re-send it with \`validUntil\` in the past — and dropping A, which expires its edges for the same reason, both take B out of the held set **as far as Forge is concerned**. They do not yet release it at the master: \`forge next\` and \`forge advance\` in the \`forge\` plugin read the blocker's status and never the edge's expiry, so a B released this way is offered by Forge and still declined there until forge-plugin ISS-347 lands. Moving A forward is the route that works on both today.
-- \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
-- \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
-
-### Setting a blocks edge — avoid the create-then-block race
-- Blocker known **at create time** → pass it in the create call itself (\`data.relations: [{ kind: 'blocks', dependsOnId }]\`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → \`forge_issues action=update\` with \`data.relations: [{ kind: 'blocks', dependsOnId }]\`, relative to the issue you are updating (\`dependsOnId\` = it blocks me, \`blocksId\` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with \`from\` = the blocker — that route needs a paired-device token.
-- Red flag: creating the new issue at \`open\` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
-- Verify, don't assume: \`forge_issues action=get\` returns \`relations.blocks\` and \`relations.blockedBy\`, each edge flagged \`expired\` once its \`validUntil\` has passed. Retract an edge by re-sending it with \`validUntil\` in the past — the write reports \`updated: true\`.
-
-### An issue bigger than one change
-Splitting is ordinary work, not a lifecycle. Nothing parks a parent, nothing promotes a draft for you, and no edge holds a parent's own work back.
-
-- Most of the time the halves belong to ONE session: plan them as ordered steps and build them on one branch, in order.
-- When a half genuinely ships on its own, file it as its own issue at \`open\`, and if it must land first give the dependent a \`blocks\` edge naming it. Each issue then carries its own plan, criteria and review.
-- Never file the halves at \`draft\` expecting something to wake them. \`draft\` dispatches nothing, and no approval cascades it.
-
-### Recording a note without triggering a pipeline run
-Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spawns a pipeline run, burning a runner slot for something that was only meant to be a note.`,
+    body: guideBody('issue-dependencies', { WORK_EVIDENCE_WAIVER_NOTE }),
   },
   {
     slug: 'memory-and-knowledge',
@@ -93,25 +59,7 @@ Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spaw
     summary:
       'The two context tiers (memory and knowledge), recall-first discipline, and the verify-at-recall feedback loop.',
     version: 1,
-    body: `## Memory & knowledge
-
-Forge separates durable context into three tiers, each with a different job:
-
-- **\`forge_memory\`** — per-project semantic search over accumulated notes, decisions, fix-patterns, policies. Not auto-loaded into any prompt; you recall it deliberately. \`search({ projectId, query, topK, sourceFilter? })\` returns scored hits; \`write({ projectId, source, sourceRef, textContent, metadata? })\` upserts on the natural key \`(projectId, source, sourceRef)\` — reusing a \`sourceRef\` refines the existing entry instead of duplicating it.
-- **\`forge_knowledge\`** — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
-- **\`forge_knowledge\` with \`injection: always\`** — entries rendered verbatim into every pipeline preamble for this project, as against \`on_demand\`, which reaches the prompt as a slug the agent fetches when it needs the text.
-
-### Recall-first discipline
-Before you design, reproduce, or fix something non-trivial: recall what prior work already established for the area you're about to touch, so you neither contradict a settled decision nor rediscover it from scratch. Run one or two focused queries on the concrete nouns of the task — a generic query on the whole project wastes a call and returns noise.
-
-### Verify at recall — the loop that keeps memory clean
-A memory hit is point-in-time. Once you've checked it against the live code:
-- If it still holds → report \`forge_memory.feedback({ ..., verdict: 'confirmed' })\`. This protects the entry from decay.
-- If it's been superseded → report \`verdict: 'outdated', evidence: '<what disproved it>'\`. This archives it immediately instead of letting the next agent trip over the same stale claim.
-A verification you silently do but never report is a cleaning signal thrown away — the entry stays stale for the next reader.
-
-### Capturing a new lesson
-Only when it's reusable by a *different* agent on a *different* issue — a convention, a non-obvious gotcha, a fix pattern. Issue-specific detail belongs in that issue's \`sessionContext\`, not memory. Search first (\`sourceFilter: ['knowledge']\`) before writing, to avoid duplicating an existing entry under a different \`sourceRef\`.`,
+    body: guideBody('memory-and-knowledge'),
   },
   {
     slug: 'deploy-safety',
@@ -120,19 +68,7 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
     summary:
       'Confirm before an outward-facing deploy, poll status in the foreground, and what a failed deployment means for status.',
     version: 1,
-    body: `## Deploy safety
-
-Deploys via \`forge_coolify_deploy\` are hard to reverse and affect a shared, externally-visible environment — treat every call with the same care as a production push.
-
-### Before you deploy
-- Confirm you're targeting the intended environment. An explicit integration/service scope is a hard filter — don't rely on defaults picking the right one, especially near a release, when it's easy to accidentally redeploy production mid-pipeline instead of a staging target.
-- A production deploy outside the release stage's human-confirm gate is a red flag, not a shortcut — don't bypass it just because you're blocked.
-
-### While it runs — poll in the foreground
-A pipeline step is a single, one-shot turn: when it ends, the whole process group is killed, including anything you backgrounded. If you background the deploy-status poll and then end your turn, the job may report success or failure and you will never see it — the issue is left parked with no verification. Poll in the foreground so the turn blocks until you actually have the answer. If the wait would blow your time budget, hand off cleanly (comment + status) rather than backgrounding and exiting.
-
-### After it lands
-Verify liveness on the deployed environment before declaring success — a deploy that "succeeded" per the platform can still serve a broken app. On a failed deployment: report it, do not silently retry into a loop, and do not leave the issue in a state that implies success.`,
+    body: guideBody('deploy-safety'),
   },
   {
     slug: 'google-sheets',
@@ -141,40 +77,7 @@ Verify liveness on the deployed environment before declaring success — a deplo
     summary:
       'How a project reaches a Sheet without holding a Google key: which sheet a call resolves to, what update does that append does not, and what each refusal means.',
     version: 1,
-    body: `## Google Sheets through Forge
-
-The credential is a Google **service account** held by Forge. You never receive it, no MCP server config carries it, and nothing writes it to the box you are running on. \`forge_google_sheets\` resolves the project's binding server-side and core makes the Google call.
-
-### The one thing that is not Forge's to fix
-A service account reaches only the sheets that have been **shared with its \`client_email\`** — Viewer for reads, Editor for writes — exactly as if it were a colleague. A sheet nobody shared is a \`403\` however correct the credential is, and the refusal says so. \`list\` prints the \`clientEmail\` to share with; a human does the sharing in Google.
-
-### Which spreadsheet a call is about
-\`spreadsheetId\` is the segment between \`/d/\` and \`/edit\` in the sheet's URL. It is optional:
-- omitted → the spreadsheet the project's binding declares as its **default**;
-- given → that one, for this call only;
-- neither → **refused**. No sheet is guessed, ever.
-
-### Order of operations
-1. \`list\` — is there a binding at all, is it on, which account, which default sheet.
-2. \`info\` — the title and the **tab names**. Do this before naming a range: a range naming a tab that does not exist is refused by Google, not returned empty.
-3. \`read\` — \`range\` in A1 notation (\`Sheet1!A1:D50\`, or a bare tab name for all of it). Trailing empty cells are not padded, so a short row comes back as a short array — index by header position you read, not by a length you assumed.
-
-### Writing: \`update\` overwrites, \`append\` adds
-- \`update\` replaces the cells of \`range\`. It inserts nothing: three rows written over a ten-row range leave rows four to ten exactly as they were. That is the trap — an \`update\` used to "replace the table" leaves the old tail behind.
-- \`append\` adds rows after the last non-empty row of the table \`range\` names, and tells you the range it actually wrote.
-- Values land as a person typing them would leave them: \`2026-09-16\` becomes a date, \`=SUM(A1:A9)\` becomes a formula. Send a leading apostrophe if you mean the literal text.
-
-### A sheet is somebody's working document
-Read before you write, and write the narrowest range that does the job. There is no undo through this tool; the undo is a person's, in Google's own version history.
-
-### The five refusals, and what each one is asking you to do
-- **no Google connection on this project** — nothing is bound. A human connects one in Settings → Integrations.
-- **the binding is switched off** — it exists and somebody disabled it. Do not work around it; ask why.
-- **no spreadsheet named and no default declared** — pass \`spreadsheetId\`, or ask for a default to be set.
-- **Google rejected the service account** — the key was revoked or the account deleted. A human re-enters it; retrying cannot help.
-- **Google refused the sheet** — the credential is fine and the sheet is not shared with \`client_email\`. This is the common one.
-
-None of the five returns an empty success. If you got rows back, they came from Google.`,
+    body: guideBody('google-sheets'),
   },
   {
     slug: 'what-is-an-issue',
@@ -183,61 +86,7 @@ None of the five returns an empty success. If you got rows back, they came from 
     summary:
       'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
     version: 2,
-    body: `## What is an issue?
-
-An issue is a unit of **work** — not a note, not a question, not a record of something already done.
-
-> An issue is a unit of work with a named deliverable and an owner, whose completion someone other than the author can verify.
-
-### The four gates — file it only if it passes all four
-
-| # | Gate | Ask | If it fails |
-|---|---|---|---|
-| 1 | **Deliverable** | When this is done, what *thing* exists? A diff, a merged branch, a changed config, a deleted file. | If "done" produces only TEXT — an answer, a note, a record — it is not an issue |
-| 2 | **Executable** | Can whoever picks it up finish it with what the description says? | If step one is "someone must decide X", the decision is the blocker and the issue does not exist yet |
-| 3 | **Verifiable exit** | Can a second person tell done from not-done by observing behaviour? | Clarify it first |
-| 4 | **Owner + due signal** | Who will look at it, and what makes it speak up if forgotten? | No owner and no aging signal means filing it BURIES it |
-
-Gate 4 is the one that gets skipped. \`draft\` means *not yet time to work on this* — never *not sure this is work*. A \`draft\` nobody owns and nothing ages is a write-only queue.
-
-### Where it goes instead
-
-| You have | It is | Put it |
-|---|---|---|
-| A session log or summary of what you did | a record | a handoff doc, or project memory |
-| A note, learning, or convention | knowledge | \`forge_memory_write\` (durable business logic → repo \`docs/\`) |
-| An open question needing a human decision | a decision | a comment on the issue that raised it + \`waiting\` if it blocks that issue; a standing policy question → \`docs/proposals/<topic>.md\` marked *pending sign-off* |
-| An audit or scan finding | an observation | memory, until it becomes work with a deliverable |
-| A fix you already made by hand | a record | move the status, capture the learning in memory |
-
-### Residuals — fix them, don't file them
-
-Under-filing ships bugs. Measured case: four separate stages flagged an unauthenticated data leak, each asked for a follow-up to be filed, none was, and the leak shipped.
-
-Filing was the wrong correction. Measured 2026-08-18 on forge-dev: 30 open \`draft\`s, the oldest untouched for 54 days, most of them fixable defects a stage deferred rather than fixed — two of them (ISS-791, ISS-845) describing drafts being filed and forgotten while themselves sitting filed and forgotten.
-
-So anything a stage wants to hand onward routes as:
-
-1. **You can fix it here** → **fix it**, and declare it under \`Extra fixes:\` in your comment. This is the default and covers most residuals. A declared extra fix is authorized work, not scope-creep — review judges it on merit.
-2. **It must not ship without other work** → a \`blocks\` edge onto the issue that would otherwise ship without it.
-3. **It needs a human decision** → \`waiting\` + \`waitingKind\` + \`reason\` when it blocks this issue; a standing policy question → a line in \`docs/proposals/\`.
-
-Filing a NEW issue is not on that list. If it fits none of the three, say it in a comment on the issue you are already working on — silence is the only thing that is never acceptable.
-
-### When you find one that is not work — act on it, don't leave it
-
-Finding a filed item that fails the gates is not someone else's job. You are the cheapest person to fix it, because you have just read it.
-
-1. **Comment first** — which gate it fails, and where the content went (the memory entry, the proposals file, the issue it duplicates). A status move with no comment leaves the next reader unable to tell why.
-2. **Then move it**: \`needs_info\` when a human owes you requirements and it could become real work; \`dropped\` when it is not work at all.
-3. **Non-work leaves by \`dropped\`, never by \`closed\`.** \`closed\` means the work shipped, and a close that cannot show it — no \`merged_at\` on the row — is refused by name (\`CLOSE_REQUIRES_SHIPPED\`). \`dropped\` is terminal without the claim, and it expires this issue's outgoing \`blocks\` edges so nothing is left waiting on an issue that can never land.
-
-Do not move it INTO \`draft\` — nothing may transition into \`draft\`, by design. \`dropped\` is the exit for something that turned out not to be work.
-
-### Then read
-Statuses, the four exits from \`draft\`, and the description contract: guide \`pipeline-and-issue-lifecycle\`. Which tool for which intent: guide \`agent-setup\`.
-
-Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.md\`.`,
+    body: guideBody('what-is-an-issue'),
   },
   {
     slug: 'writing-an-issue',
@@ -246,56 +95,7 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
     summary:
       'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
     version: 2,
-    body: `## Writing an issue
-
-A reader must get the problem in about fifteen seconds. How you get them there depends on which of three things you are writing, so pick the shape FIRST — most of the unreadable issue bodies in this tracker are the wrong shape, not bad writing.
-
-| You are writing | Shape | Required |
-|---|---|---|
-| **One symptom** with one cause — a missing focus ring, a rule to add, a slice already scoped elsewhere | Opening line, then **Evidence** | 2 blocks |
-| **A problem** whose cost, spread or mechanism a reader will not guess | The six blocks below | 4 blocks + Evidence |
-| **An epic or a design record** — locked decisions, tiers, children | The six blocks below, then a **Decisions** block kept intact | 4 blocks + Decisions + Evidence |
-
-Do not inflate the first shape into the second. A diagram of *"tab to the toggle → no ring appears"* has two nodes and tells the reader nothing the title did not; a *Who it hurts* table with one row is a sentence in a costume. Both make the issue longer and no clearer, which is the one thing this format exists to prevent.
-
-Do not compress the third shape into the second either. In an epic the locked decisions ARE the deliverable, and an agent that re-derives a rejected option has done the work twice. Summarise the problem in the four blocks, then keep every decision, its rejected alternatives and its sequencing under **Decisions**. The four blocks are for the reader deciding whether to care; **Decisions** is for whoever builds it.
-
-The six blocks, in this order. The last two appear only when they earn it.
-
-| Block | Rule |
-|---|---|
-| **Opening line** | One or two sentences in a blockquote: what is wrong, and what it costs. Plain language — no function, table or file names. |
-| **Who it hurts** | A table, at most four rows: *who · what they hit · how often or how wide*. If no row can be filled, this is probably not an issue — check the four gates in \`what-is-an-issue\`. |
-| **Now → wanted** | Exactly one diagram, at most eight nodes. It replaces a paragraph; it never accompanies one. |
-| **What to do** | At most six bullets, each an outcome someone can observe. Not function names — and not acceptance criteria, which are decided when the issue RUNS, not when it is filed. |
-| **Waiting on a decision** | Only when genuinely blocked. State the question and what each answer costs. |
-| **Evidence** | Always last. Every row carries *date · what was measured · source*. If it cannot be measured it is an opinion — cut it. |
-
-### Technical detail is placed, not deleted
-
-\`file:line\`, column names, SQL, commit hashes, schema fields: these belong in **Evidence**, or in a comment. Never in the first four blocks.
-
-This is a placement rule, not a ban. A verified constraint — *"this table has no \`started_at\` column"* — cost real work to establish, and whoever builds the thing still needs it. Its problem is standing in the reader's way, not existing.
-
-### Diagrams
-
-A fenced \`mermaid\` block renders as a diagram in issue descriptions, plans and comments. Prefer it over prose and over ASCII art: it is a few hundred characters, and an agent reading the issue through MCP still understands it as text.
-
-\`\`\`mermaid
-flowchart LR
-  A["Rebase finishes"] --> B{"Can the warning<br/>be cleared?"}
-  B -->|no path exists| C["Still flagged stale"]
-\`\`\`
-
-### When mermaid is not enough
-
-Attach a self-contained \`.html\` file. It renders inline as a sandboxed artifact, in issues and in comments alike.
-
-Do NOT paste that HTML into the description. The description is truncated before it reaches an agent's prompt (8,000 characters by default), and a styled page is large enough on its own to push the real content past that limit — the agent then receives markup and loses the requirements. An attachment sits outside the prompt path, so it costs nothing.
-
-### Comments
-
-Same discipline, shorter. Lead with the outcome, put the trace underneath. A comment is the right home for detail the description should not carry — which is what makes the placement rule above affordable.`,
+    body: guideBody('writing-an-issue'),
   },
   {
     slug: 'pipeline-and-issue-lifecycle',
@@ -304,171 +104,7 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
     summary:
       'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
     version: 10,
-    body: `## Pipeline & issue lifecycle
-
-### An issue is a unit of WORK — draft vs open
-\`draft\` never dispatches; \`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. Creating a note-only issue at \`open\` is the single most common way to accidentally start unwanted pipeline work.
-
-But \`draft\` is not a notepad either. Apply the test before you create anything: **an issue is work someone must do.** If nothing needs doing, it is not an issue — \`draft\` makes it invisible, not appropriate, and nobody ever opens the issue list looking for documentation. A note, learning, decision or record goes to \`forge_memory_write\` (durable business logic → repo \`docs/\`). Keep \`draft\` for follow-ups that need work later. Red flags: \`open-as-note\` AND \`draft-as-note\`.
-
-### Working an issue directly, outside the pipeline
-\`draft\` vs \`open\` is not the whole choice. \`draft\` has **four** exits, and picking the wrong one is what makes a direct session expensive:
-
-| You have | Set | Why |
-|---|---|---|
-| Finished the work entirely by hand; the pipeline has nothing left to do | \`closed\` | See the \`merged_at\` warning below before you do this |
-| Written AND pushed the \`ISS-*\` branch yourself | \`developed\` **+ \`sessionContext.branch\`** | \`developed\` is the review rung — it says the code exists and owes a proof. The branch field, not the status, is what says WHERE it exists, so set both. Walking \`open\` instead re-runs the whole thing over already-finished work |
-| Started it, still building, branch not pushed | \`in_progress\` | Same rung. Dispatches nothing — promoting instead is what races an agent into the worktree you are in |
-| Not started it; you want the pipeline to do the whole thing | \`open\` | The one status that dispatches; the driver takes it from there |
-| Decided against it; the work will not happen | \`dropped\` | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
-| Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
-
-Two are easy to mix up. \`developed\` vs \`in_progress\` is the pushed/not-pushed line, and \`sessionContext.branch\` is what makes \`developed\` actionable — the rung without the branch is a review request naming no code. And \`dropped\` is the one people reach for \`closed\` instead of.
-
-### A status says WHERE the work is, never WHAT exists
-Every status answers one question — which gate the work sits at, and whose move is next. That is the whole of what it claims, it is declared per status in \`pipeline/status-assertions.ts\`, and there is no field in that declaration in which a status could claim anything else. So do not read a rung as a promise that code was written, pushed or merged, and never refuse a rung because you cannot make such a promise true.
-
-The evidence questions are answered by three row fields instead, and you read them directly: \`merged_at\` (it landed), \`sessionContext.branch\` (a branch exists), and the implementation handoff's \`commitSha\`. \`merged_at\` is caller-asserted rather than verified — \`mark_merged\` writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
-
-This is why work you built and pushed but cannot merge yourself stays at \`in_progress\` with \`sessionContext.branch\` set: the branch field says the code exists, and the rung says only that a session holds the issue. Four runs on 2026-09-06 reached that identical state and recorded four different statuses because the promise was undefined (ISS-940). One more consequence worth knowing: on this lane \`open\` is the ONLY status a job is dispatched at, so every other live status is already waiting on a person — reaching one is not how you ask for work to continue.
-
-**\`closed\` means the work shipped, and \`dropped\` is the exit for everything else.** A close is refused (\`CLOSE_REQUIRES_SHIPPED\`) while the issue carries no \`merged_at\`, and the database refuses the same TRANSITION whatever route it took: \`trg_issues_closed_means_shipped\` names the issue and the rule on any UPDATE moving a row into \`closed\` with no claim, on any INSERT creating one there, and on any write clearing the claim from under a row already standing there — raw SQL included. **The rule governs the transition and not the state**, so rows closed before it landed keep what they hold: they still read \`closed\` with no \`merged_at\`, they are still writable, and migration \`0304_closed_means_shipped\` counted them in a \`NOTICE\` when it ran rather than deciding for them. Whoever owns such a row marks it merged where the work landed, or moves it to \`dropped\` where it did not; \`docs/proposals/closes-that-predate-the-shipped-rule.md\` carries the terms. Use \`dropped\` for anything discarded: a note, a question, a duplicate, something already done. Where the work DID land outside the pipeline, claim it first with \`forge_issues\` \`mark_merged\`, naming the commit it landed at in \`data.commit\` where there is one, then close; a \`landing\` is refused on a project whose work lands in git, so an issue there whose change lands no file in the repository declares \`landingShape: outside_git\` on itself first and is then marked with its \`landing\`. On a project whose work lands outside git — kind \`website\`, whose store is the source of truth — a timestamp names nothing that landed, so the mark carries \`data.landing\` (the live URL, CMS entry or storefront resource the work now is) and a close whose mark names none is refused the same way; a commit is not asked for there.
-
-One thing about \`dropped\` is worth knowing before you reach for it: **it releases the dependents it was holding, and you do not retract their edges by hand.** \`issues/drop-cascade.ts\` expires this issue's outgoing \`blocks\` edges inside the same transaction that moves the status, and names the dependents it freed back to you, so a rollback takes the expiry with it. That is the companion half of the rule above — \`closed\` claims the work shipped, \`dropped\` claims only that it will not happen, and neither leaves an issue waiting on something that can never land. The guidance here said the opposite until ISS-1108, and told readers to retract the edges themselves.
-
-### The status set, and it is closed
-
-Fourteen statuses. Which party owes the next move at each, and the two hops the system
-actually refuses: the run/job invariant in \`CLAUDE.md\`.
-
-\`\`\`
-              ┌──────────────────── needs_info / on_hold ────────────────────┐  (from ANY live
-              │                                                             │   rung, back to
-draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ developed ─▶ testing ─▶ awaiting_release ─▶ releasing ─▶ closed
-  │                                          │              │          │                                 │           │
-  └─▶ dropped                                │              └─▶ reopen ◀─┘ (a failed check)               └─▶ reopen ─┘
-                                             └──▶ closed (project with no release gate)
-\`\`\`
-
-| Status | Claims | Whose move is next |
-|---|---|---|
-| \`draft\` | filed, not admitted | whoever triages it |
-| \`open\` | claimable. **The only status that dispatches** | a master, by claiming |
-| \`confirmed\` | a reader has said what the issue is, against the code | whoever executes it |
-| \`approved\` | a decision, a plan and criteria exist — object now, not after | whoever builds it |
-| \`in_progress\` | a session holds it | the run |
-| \`developed\` | the code exists and owes a proof | whoever reviews it |
-| \`testing\` | the proof is being run | whoever is testing it |
-| \`awaiting_release\` | merged to the base branch, waiting for production | a person, by pressing RELEASE |
-| \`releasing\` | a release was triggered and is running | the release batch |
-| \`needs_info\` | a question a person owes an answer to | a person, by answering |
-| \`on_hold\` | a pause a person chose — **not** a question | the person who paused it |
-| \`reopen\` | a person disagreed with a close | a person, by routing it |
-| \`closed\` | done — nothing enters it without \`merged_at\` | nobody |
-| \`dropped\` | ended **without** stamping \`merged_at\` — it was not work | nobody |
-
-\`needs_info\` and \`on_hold\` are enterable from **every** rung and from each other. \`draft\` cannot park (it already is a resting place) and \`closed\`/\`dropped\` cannot: a park after an end is a reopen, and \`closed → reopen\` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
-
-**Leaving a park returns to the rung it left** — any of \`open\`, \`confirmed\`, \`approved\`, \`in_progress\`, \`developed\`, \`testing\` or \`awaiting_release\`, not always \`open\`. A park taken at \`awaiting_release\` is work already merged and waiting for production; sending it to \`open\` dispatches a fresh agent onto shipped work and loses its place at the gate. Today \`pipeline/answer-resume.ts\` sends an answered \`needs_info\` to \`confirmed\` once its last open question is answered — the rung that says its requirements are settled — or to \`open\` on a project whose \`poolBacklog.statuses\` admit nothing at \`confirmed\`, saying why on the thread; whatever rung it left, because nothing records where the park came from. So park at \`needs_info\` only for want of a requirement, and to ask a person about finished work, ask with \`forge_questions\` and leave the rung alone: a question marks its issue as waiting on a person and moves nothing, and an answer at any rung but \`needs_info\` moves nothing either.
-
-**A failed check goes to \`reopen\`, not backwards down the ladder.** On the **staged** lane, \`developed → reopen\` and \`testing → reopen\` are the two rejection exits, and \`reopen\` routes to \`in_progress\` (rework) or back to \`developed\` (the proof was wrong, the code was not). On the **autonomous** lane neither rung is a driver status, so the agent never writes them; a person does, from the board. \`isReopenEntry\` counts both as real rejections in the quality metric on either lane; only \`in_progress → reopen\` is excluded, because that one is the system recovering a dead run — which is why it is the one shape both modes produce.
-
-**Only \`finish\` and \`abort\` may write out of \`releasing\`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to \`reopen\` with the reason attached.
-
-**Three retired statuses, and the trap is that all three still WORK.**
-
-| Retired | What happens if you write it |
-|---|---|
-| \`deploying\` \`pass\` \`staging\` | gone from the enum — \`forge_issues.update\` **refuses** them, so you find out at once |
-| \`clarified\` \`tested\` | still in the enum for rows that already hold them, so the write **SUCCEEDS silently**. Nothing dispatches at either, so the issue is stranded until a person moves it by hand |
-| \`released\` | renamed to \`awaiting_release\` (migration 0228). The old name is refused. It was the past tense of an action that had not happened, and it doubled as the release *trigger* because there was no button; the button and \`releasing\` took that job |
-| \`waiting\` | still written, still being retired. An agent's \`waiting\` is rewritten to \`needs_info\` on an autonomous project |
-
-\`tested\` is the one to watch: forge-plugin still writes it where this chain says \`testing\`, and one project names it in \`poolBacklog.statuses\`. Until both move, treat a row at \`tested\` as a row at \`testing\` that owes a status fix (ISS-1022).
-
-**\`confirmed\` and \`approved\` are NOT retired, and were for one day.** They were cut on 2026-09-10 with \`clarified\` and \`tested\`, on the rule that a rung earns its place only where a **different party** owes the next move at it — and under the single-driver pipeline one agent walked all four, so none of them did. The wave model splits triage from execution, which is exactly that party boundary, and forge-plugin's own ladder never stopped naming the two: a kernel calling them retired was the half that was wrong (ISS-976). Nothing dispatches at either, so a row resting on one reaches a master only where its project declares the status in \`poolBacklog.statuses\`.
-
-Measured 2026-09-10, and it is why the other two stayed cut: while the default chain in the prompt named all six of the old middle rungs, agents walked them — **153 hops across 4 projects in 3 hours**, leaving **45 issues** standing on a status no job dispatches at. \`clarified\` and \`tested\` only ever recorded that a phase inside one session had finished, which the handoff already says.
-
-### What is actually enforced, and what is only advice
-The runtime gate is permissive: **any status may move to any status, except that nothing may move INTO \`draft\`**, and \`draft\` itself may only leave to \`open\`, \`in_progress\`, \`developed\`, \`closed\` or \`dropped\`. Two content rules sit beside it. **Nothing may ENTER \`closed\` while \`merged_at\` is null**, whatever the gate lists — so \`draft\` -> \`closed\` is a move the gate offers and the rule refuses, because a draft carries no claim until somebody marks one. And **an agent may not write \`closed\` while \`releaseNotes\` is null**, because \`closed\` is what every reader takes as shipped and a shipped issue with nothing written for it is the record lying. One exemption, and it is narrow: a HUMAN close, because an operator making the claim deliberately owns it. The batch release is not a second — it is refused earlier instead, at the claim, with \`RELEASE_RECORD_MISSING\`. What this guarantees is that a note exists ON THE ISSUE before an automated close; it does not guarantee a line reached \`CHANGELOG.md\`, which is a git artifact core never reads. \`dropped\` is legal, and it is a dead end by **convention, not by the gate**: the \`transitions\` map offers it no exit because reopening a dropped issue would carry \`merged_at\` NULL into an issue that then ships, so re-filing is the correct move. The discard for non-work is \`dropped\`, per **\`closed\` means the work shipped** above.
-
-The status ladder you see in prompts, in the UI's next-state suggestions, and in the \`transitions\` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (\`TRANSITION_REASON_REQUIRED\` on a park with no rationale, \`WAITING_KIND_REQUIRED\` on a \`waiting\` that does not say which kind, \`RELEASE_RECORD_REQUIRED\` on a close with no \`releaseNotes\` — set the field and close again, \`{ section: 'Skip', userFacing: '-' }\` is a complete answer, \`ILLEGAL_TRANSITION\` on either half of the rule above — \`draft\` as a target, or a \`draft\` leaving to anything else) — reason from that error, never from the shape of the ladder.
-
-### The description is a requirements contract, not an implementation script
-A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.
-
-**Belongs** — the stable half, owned by the requester: the outcome and who it serves; business and domain rules; invariants stated as behaviour; what the user must see when it fails; explicit out-of-scope; acceptance criteria as observable outcomes; external-system facts the repo cannot know (a vendor API's required call order) — labelled as unverified reference material, not as instructions.
-
-**Does not belong** — the volatile half, owned by plan and code reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design that the plan step exists to decide on a staged project, and the driver's planning phase on an autonomous one.
-
-Two rules follow, both enforced at triage:
-- **Never promote a description's implementation claim to a verified fact.** Either check it against the live repo in this run and say you did, or record it as "claimed by author, unverified". Writing "(verified: …)" without checking costs a whole downstream run.
-- **When a prescriptive description arrives anyway** — common, humans paste vendor docs and audit output — DEMOTE it, don't delete it. Move the prose under "Reference material from the author — UNVERIFIED, verify against the repo before relying on it" and keep the requirement/AC section authoritative. Don't silently trust it; don't throw away genuine third-party knowledge either.
-
-### Status is always the last action
-Within a pipeline step: do your real work, post your findings/decision comment, write your handoff — status transition comes **last**, after all of that. The next step only picks the issue up once status has actually moved, so setting it early (before the comment lands) means the next step can start reading a half-written record.
-
-### Bounce states, reachable from anywhere
-\`needs_info\` (requirements missing/unclear), \`waiting\` (blocked on a human decision), \`reopen\` (regression or failed check), \`on_hold\` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. \`on_hold\` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at \`draft\`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
-
-### Leaving a park is symmetric with entering one
-Entering \`waiting\`/\`on_hold\` is free from anywhere, and so is leaving. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no \`unblock\` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read \`pipelineHealth.waitingOn\`.
-
-An earlier version of this pipeline refused every non-human exit from a park. It cost four refused resume attempts on one issue (ISS-163) and produced no work; RFC 0002 removed it.
-
-### \`waiting\` means one thing, in two flavours
-**A human is needed.** Only an agent or a human ever writes it — no failure path, no gate, nothing in core. Two authored kinds:
-
-| Kind | What it means | What unblocks it |
-|---|---|---|
-| \`needs_decision\` | a person must decide something the agent cannot (a tradeoff, a scope call, an approval) | the decision, then any status write |
-| \`needs_resource\` | a person must supply something the agent cannot create (a test account, credentials, third-party data) | the resource, then any status write |
-
-The kind is REQUIRED and core never guesses it. A plan awaiting approval and a tradeoff awaiting a call are both \`needs_decision\`.
-
-**A step that cannot RUN is not \`waiting\`.** No runner, provider quota, project budget, retries spent — the JOB is \`held\` and the issue stays at its stage. \`pipelineHealth.waitingOn.reason = 'job_held'\` names the condition, and nothing is being asked of you: a capacity hold resumes itself when capacity returns.
-
-### \`needs_info\` is a question, and a question has an answer box
-
-It takes **two** fields, and they are not the same sentence:
-
-| Field | Says | Required |
-|---|---|---|
-| \`reason\` | why the work stopped | yes — 422 without it |
-| \`needs\` | what a person must supply for it to start again | no, and send it anyway |
-
-\`needs\` mints a free-text question in the SAME transaction as the status write and the reason comment, so a park either carries its question or does not commit. **That question is the only thing a person can answer** — the comment lane that used to revive a park was cut on 2026-09-13. Omitting \`needs\` does not skip the question: it mints one saying the run did not say what would settle this, which is true and is a worse thing to have said — unless a question blocked on a person is already open on the issue, which is then the question the park waits on, and nothing is asked twice.
-
-Write it as the ask, not as the reason again. *"Choose: (a) accept the landed part and close with criterion 35 recorded as failing, or (b) keep this open and the turn runner is its remaining work"* is answerable. *"blocked on a decision"* is the reason wearing the ask's clothes.
-
-**Who answers, and how.** A person, on the issue page, in the project's chat room, or at \`POST /api/questions/:id/answer { text | optionId, round }\` — session only, a PAT is refused, and \`round\` is required because an answer binds to the round the person was shown. Then, in order: a live session is sent the answer on stdin; a box that registered a waiter reads it back itself and nothing is dispatched; otherwise the issue moves to \`confirmed\` (or \`open\`, where the project admits nothing at \`confirmed\`) with the answer on the record.
-
-**The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a \`needs\` sent by a human-owned token reaches no reader.
-
-### Stopping the pipeline costs you a written reason
-\`reopen\`, \`waiting\` and \`needs_info\` are the three statuses that stop the pipeline, and all three are **rejected without a \`reason\`** (422). Pass it on the \`forge_issues\` call (\`note\` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. \`waiting\` additionally requires \`waitingKind\`, and \`waitingKind\` is REFUSED on every other target (422 \`WAITING_KIND_NOT_APPLICABLE\`) — no other target takes it, so put the ask in \`reason\`.
-
-Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
-
-Write the reason for the person who will read it, not for the audit trail. "blocked" is not a reason. "Need a Stripe test account with 3DS enabled — I cannot create one, and the checkout AC cannot be walked without it" is: it says what is needed, why the agent cannot get it, and what it unblocks.
-
-This replaced a check on WHO answered a \`needs_info\` question. That check existed because the question itself was invisible, so the only thing left to police was the answer's author. A question on the record needs no such policing.
-
-There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
-
-### \`merged_at\` is written deliberately, and by nothing else
-Two things write it: \`forge_issues\` \`mark_merged\`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the \`mergeStates.baseBranch\` rule that once stamped it on the way out of a state was removed before that. \`unmark\` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a \`closed\` issue — \`closed\` means the work shipped, so reopen it first and take \`dropped\` from there where the work never landed.
-
-### Derived fields you don't hand-set
-- \`plan\` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: \`plan-by-hand\`.
-- \`acceptanceCriteria\` — written by **clarify/plan**. Draft ACs from the requester belong in \`description\` prose, not in this field.
-- \`merged_at\` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **caller-asserted, never verified against git** — so before stamping it, confirm the commit is actually reachable from the target branch, and never read someone else's \`merged_at\` as proof a merge happened.
-
-When you report an issue, fill \`title\`, \`description\`, \`priority\`, \`category\` — and leave the rest to the pipeline.
-
-### A crash is not a reason to hold
-If your job fails mechanically (process crash, non-zero exit), the system itself reverts the issue to the stage's entry status and re-dispatches with a retry budget — you never need to (and shouldn't) set \`on_hold\` to paper over that.`,
+    body: guideBody('pipeline-and-issue-lifecycle'),
   },
   {
     slug: 'attachments-and-uploads',
@@ -477,22 +113,7 @@ If your job fails mechanically (process crash, non-zero exit), the system itself
     summary:
       'Presigned-URL upload flow vs base64, and how to read the content of an existing attachment.',
     version: 1,
-    body: `## Attachments & uploads
-
-### Writing an attachment — presigned URL, not base64
-For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL pattern instead of inlining base64 bytes into a tool call: request an upload URL, then upload the file straight to storage. Base64 in a request body is slow to transmit and burns context tokens carrying bytes that don't need to pass through the model at all.
-
-### Reading an attachment's content
-\`forge_uploads\` with \`action=fetch\` reads an **existing** attachment by \`{ target: "issue" | "comment", attachmentId }\`:
-- Images (png/jpeg/gif/webp) come back as a viewable image block — use this whenever an issue or comment references a screenshot you need to actually look at, not just acknowledge.
-- Text/markdown comes back inline.
-- PDFs, video, and oversized files come back as metadata + a download URL only — fetch does not try to inline everything.
-
-### The typical flow
-1. Create the comment or issue update that will carry the attachment.
-2. Request a presigned upload URL from \`forge_uploads\`.
-3. Upload the file directly to the returned URL.
-4. Later, any reader (including a different agent) calls \`action=fetch\` on that attachment to see its actual content — never assume a filename or mime type tells you enough; fetch it when the content matters to the task.`,
+    body: guideBody('attachments-and-uploads'),
   },
   {
     slug: 'agent-setup',
@@ -501,55 +122,7 @@ For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL patt
     summary:
       'Start here: what Forge owns, the recall-first rule, draft vs open, and the red flags that waste a runner slot.',
     version: 2,
-    body: `## Working in a Forge-managed repo
-
-If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
-and durable memory live in Forge, not in the repo. Read this before your first write.
-
-### The one rule that saves the most time
-**Recall before you design.** Project memory is NOT loaded into your context automatically —
-\`forge_memory_search({ projectId, query, topK: 5 })\` is a call you have to make. Skipping it is how
-agents rediscover settled decisions, or contradict them. Treat every hit as point-in-time: verify it
-against live code or git before you rely on it.
-
-### What Forge owns, and the tool for each
-| You need | Call |
-|---|---|
-| Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
-| Ordering between issues | \`forge_issues.create\`/\`.update\` with \`data.relations\`, or \`forge_project_pm action=set_dependency\` (\`from\` = the blocker; needs a paired device) |
-| Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
-| Pipeline gates | \`forge_config\` |
-| The project's own prose | \`forge_knowledge\` |
-| A decision, learning or convention worth keeping | \`forge_memory_write\` |
-| Deeper per-package detail | \`forge_knowledge\` (list/get/search) |
-| What Forge is and can do, by area | the \`what-forge-is\` guide |
-| How a Forge feature actually works | \`forge_guide\` — or fetch these same bytes at \`/api/guides/<slug>.md\` |
-
-### draft vs open — the costly one
-\`open\` auto-triages and immediately spawns a pipeline run, burning a runner slot. \`draft\` never
-dispatches. So:
-- Work you want an agent to pick up now → \`open\`.
-- Work for later, or a follow-up you just want recorded → \`draft\`.
-- A note, learning or decision → **not an issue at all**; write it to memory. Nobody browses the
-  issue list for notes.
-
-### Red flags
-- **prose-deps** — describing an ordering in text instead of setting a \`blocks\` edge. Only the edge
-  gates dispatch; prose gates nothing.
-- **open-as-note** / **draft-as-note** — filing a note as an issue.
-- **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
-  those are written by the clarify and plan steps, on an autonomous one by the driver's own
-  clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`)
-  without reading it first. These are replace-not-merge; send a complete entry.
-- **skip-recall** — see above.
-- **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
-  no recorded learning.
-
-### Writing an issue
-Fill \`title\`, \`description\`, \`priority\`, \`category\`. Keep the description a **requirements
-contract** — outcome, business rules, invariants, what is out of scope. Not an implementation script
-naming files and endpoints: those claims go stale and, in practice, outrank live exploration.`,
+    body: guideBody('agent-setup'),
   },
   {
     slug: 'update-pipeline-reconcile',
@@ -558,78 +131,7 @@ naming files and endpoints: those claims go stale and, in practice, outrank live
     summary:
       'Every field the Master agent and verifiers receive, what each one is worth trusting, and the refusal contract that runs before either agent starts.',
     version: 1,
-    body: `## Update Pipeline — reconcile bundle reference
-
-Reference for Update Pipeline stage ② (Reconcile). The decision rules live in the agents' own
-instructions; this is the data dictionary and the surrounding contract. Read it when you need the
-meaning of a field, not to decide a verdict.
-
-### How a reconcile run happens
-\`\`\`
-⓪ AUTHOR    a human writes an Update Packet { change · story · intent_class · applies_to }
-① ENFORCE   whatever is expressible as platform policy ships as CODE → every project at once,
-            and emits the currently-effective invariant set
-② RECONCILE per project: Master agent reads the bundle → verdict + gate
-            → 3 independent verifiers vote → publish, park for a human, or escalate
-③ CONVERGE  new hash → manifest → runner pulls (including deletes)
-④ OBSERVE   runner reports what is ACTUALLY on disk; each job records the hash it ran with
-⑤ AUDIT     every state change writes an event in the same transaction
-\`\`\`
-
-### The bundle
-\`ReconcileBundleSnapshot\` — read fresh at trigger time, never from an older snapshot.
-
-| Field | What it is | Trust |
-|---|---|---|
-| \`change\` | the diff description | authored |
-| \`story\` | **why** this change exists and what it must not break | human, mandatory |
-| \`intentClass\` | \`invariant\` / \`procedure\` / \`enhancement\` | sets adaptation latitude |
-| \`appliesTo\` | which skill the packet targets | authored |
-| \`provenance\` | commit, author, version | derived |
-| \`runningBody\` | the body **observed on the project's device** — not the copy Forge stores | observed |
-| \`runningHash\` | hash of that observed body | observed |
-| \`charter\` | the project's Divergence Charter: differences the owner declared intentional. \`null\` when none exists | human |
-| \`knowledge_entries\` | the project's own prose; an \`always\` entry is injected into every agent on this project | knowledge store |
-| \`pipelineConfig\` | the project's pipeline configuration | project config |
-| \`recentRunEvidence\` | recent runs of the stage this skill serves | observed |
-| \`priorReconcileHistory\` | earlier reconcile runs for this same skill | observed |
-| \`invariantSet\` | the platform invariants in force right now (stage ① output) | hard constraint |
-| \`mustNotBreak\` | assertions derived from non-revertable charter entries | absolute |
-| \`sources\` | per-field provenance label: \`human\` / \`from-code\` / \`observed-from-run\` / \`agent-assertion\` | — |
-| \`readAt\` | when the bundle was assembled | freshness stamp |
-
-Two fields are easy to misread. \`runningBody\` is what a device reported, so it may differ from what
-Forge pushed — that difference is the whole point of having it. \`mustNotBreak\` is not advisory; an
-entry there came from an incident.
-
-### The refusal contract (C1–C5)
-The server validates these **before** either agent runs. A missing input is a refusal, not a
-degraded run — there is no best-effort mode.
-
-| | Guarantee | Born from |
-|---|---|---|
-| C1 | **Sufficient** — every decision-relevant input present | agents coding against \`plan: null\` |
-| C2 | **Fresh** — read at decision time, with a \`readAt\` stamp | a stale session context reopened a passing issue |
-| C3 | **Sourced** — every fact carries a provenance label | an agent wrote its own guess into a verified-ground-truth field |
-| C4 | **No fabrication** — \`story\` must be human, \`runningBody\` must be observed | same incident |
-| C5 | **Deterministic** — same packet + same project state ⇒ same bundle | so a differing outcome is a model problem, not an input problem |
-
-A refusal is recorded with the specific missing input. If you triggered a run and got one, the
-message names exactly what to fix.
-
-### Verdicts and the gate
-The Master agent returns one of \`no-op\` / \`apply\` / \`apply-with-adaptation\` / \`escalate\`, and
-**declares the gate itself** — \`auto\` (publishes once a majority of verifiers pass) or \`human\`
-(parks for the owner). No server-side rule overrides that declaration; the verifiers re-judge it
-adversarially instead.
-
-There is **no automatic revert.** A wrong \`auto\` reaches every runner on the project, and the only
-recovery is a manual step back to the run's \`lastGoodBody\`. That asymmetry is why the instructions
-tell both agents to prefer \`human\` when uncertain.
-
-### Failure containment
-A failure at any stage keeps the last-good body running. The skill is never left empty and never
-silently changed, and the run records why it stopped.`,
+    body: guideBody('update-pipeline-reconcile'),
   },
   {
     slug: 'module-taxonomy-migration',
@@ -638,85 +140,7 @@ silently changed, and the run records why it stopped.`,
     summary:
       'Turn an existing module convention — a projectFact list and `**Module:**` comment tags — into kind=module labels and primary attributions, idempotently, without deleting anything.',
     version: 1,
-    body: `## Migrating a project onto the module taxonomy
-
-For a project that already names its modules somewhere ELSE — a knowledge entry, a wiki page,
-a \`**Module:** billing\` line agents were told to write on every issue — and now wants them as first
-class \`kind:"module"\` labels with a primary per issue.
-
-This runs against a DEPLOYED Forge over MCP or REST. It is not a repo change, and Forge ships no
-command that does it for you: the mapping from an old convention to a taxonomy is a judgement, and
-the pass below is the shape that keeps that judgement re-runnable.
-
-### The two idempotency keys
-Everything here rests on these. Get them wrong and a second run doubles the data.
-
-| Pass | Key | Already-done test |
-|---|---|---|
-| Create the module | \`(projectId, label name)\` | a label with that exact name exists — if it is \`kind:"label"\`, PROMOTE it to \`kind:"module"\` rather than creating a second row under a different name |
-| Attribute an issue | \`(issueId, labelId, isPrimary)\` | the issue's \`labels[]\` already has that entry with \`isPrimary:true\` |
-
-Label names are not unique in the database. The name is the key **you** are choosing to treat as
-one, which is why the promote-don't-duplicate rule above is not optional: create-if-absent keyed on
-a name that already exists as a plain label leaves the project with two rows called \`billing\`, and
-only one of them can ever be a primary.
-
-### Pass 0 — dry run, reads only
-Produce the whole plan before writing anything. Nothing in this pass writes.
-
-1. Read the source of truth for the module list (the knowledge entry, the doc, whatever it is)
-   and the project's existing labels (\`forge_issues\` filters, or \`GET /api/projects/:id/labels\`).
-2. For each intended module, classify it: **absent** (will create), **exists as a plain label**
-   (will promote), **exists as a module** (skip).
-3. List every issue carrying the old tag. Classify each: **no primary** (will attribute),
-   **primary already correct** (skip), **primary is a DIFFERENT module** (do not touch — that is a
-   disagreement between the old tag and someone's deliberate choice, and it is a human's to settle).
-4. Print the four counts: to-create, to-promote, to-attribute, conflicts. **Read them before the
-   write pass.** A to-create count equal to the whole module list on a SECOND run means your name
-   key is not matching — stop, do not write.
-
-### Pass 1 — create the modules
-Parents before children, so \`parentId\` has something to point at. A module's parent must itself be
-a module in the same project, and the hierarchy must stay acyclic; Forge refuses the rest by code
-(\`PARENT_NOT_MODULE\`, \`CIRCULAR_HIERARCHY\`, \`INVALID_PARENT\`). A refusal here is information —
-it means your source list disagrees with itself. Do not work around it by flattening.
-
-Colour is optional; a module created without one gets a stable colour derived from its name.
-
-### Pass 2 — attribute the issues
-For each issue in the to-attribute list, send the label set with the module as an object:
-
-\`\`\`
-forge_issues.update({ documentId, labels: [{ labelId: "billing", isPrimary: true }, ...existing] })
-\`\`\`
-
-\`labels\` REPLACES the set — read the issue's current \`labels[]\` and send it back WITH the module
-entry, or you will silently strip every other label the issue had. That is the one way this pass
-loses data, and it is not the migration doing it, it is a partial payload.
-
-At most one entry may be primary, and it must be a module; both are refused rather than half-applied.
-
-### What this migration must NOT do
-- **Do not delete the old tags.** The \`**Module:**\` comment lines stay exactly where they are. They
-  become dead weight, not a second source of truth, and leaving them costs nothing while deleting
-  them destroys the only record of what the attribution was derived from.
-- **Do not clear or re-point a primary somebody set by hand.** Conflicts are reported, not resolved.
-- **Do not invent a module for an issue that has no tag.** An issue with no primary is a normal
-  state. Forge requires no primary at any status.
-
-### Verify
-Re-run pass 0. On a clean migration it reports zero to-create, zero to-promote, zero to-attribute,
-and the same conflict list as before. Spot-check one issue per module through
-\`forge_issues.get\` → \`labels[]\` and confirm exactly one entry has \`isPrimary:true\`. Then check
-the filter the taxonomy exists for: \`forge_issues.list\` with \`filters.module\` returns the issues
-you attributed and nothing else.
-
-### After the migration
-Nothing else to switch on. A project whose labels include a \`kind:"module"\` row gets a
-**Module attribution** section in every pipeline agent's system prompt automatically, naming its
-modules and the \`isPrimary\` field — so new issues get attributed by the agents that work them, and
-the old convention has no second half to maintain. A project with no module labels gets no such
-section, which is why this migration is what turns the feature on.`,
+    body: guideBody('module-taxonomy-migration'),
   },
   CONFORMANCE_GUIDE,
   ASSISTANT_METHOD_GUIDE,

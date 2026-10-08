@@ -9,6 +9,7 @@
     "includes": [
       "**",
       "!**/dist",
+      "!**/*.generated.ts",
       "!**/coverage",
       "!**/node_modules",
       "!**/.worktrees"

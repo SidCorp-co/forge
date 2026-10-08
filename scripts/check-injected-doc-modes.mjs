@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { checkSurface, extractBodies } from './lib/injected-doc-modes.mjs';
+import { checkSurface, extractBodies, markdownBodies } from './lib/injected-doc-modes.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -14,9 +14,9 @@ const SOURCES = {
   steps: 'packages/core/src/pipeline/registry.ts',
 };
 
+const GUIDE_CONTENT_DIR = 'packages/core/src/guides/content';
+
 const SURFACES = [
-  { file: 'packages/core/src/guides/registry.ts', openers: ['body:'] },
-  { file: 'packages/core/src/guides/conformance-guide.ts', openers: ['body:'] },
   { file: 'packages/core/src/assistant/prompt/base.ts', openers: ['text:'] },
   { file: 'packages/core/src/assistant/prompt/tools.ts', openers: ['text:'] },
   {
@@ -31,6 +31,14 @@ const SURFACES = [
 
 const COMPOSED_ONLY = [
   { file: 'packages/core/src/guides/assistant-method-guide.ts', openers: ['body:'] },
+];
+
+// Guide bodies live in GUIDE_CONTENT_DIR, one markdown file each. These modules hold only a guide's
+// metadata, so a `body:` template literal appearing in one is a body this gate would never read.
+const BODIES_IN_CONTENT = [
+  'packages/core/src/guides/registry.ts',
+  'packages/core/src/guides/conformance-guide.ts',
+  'packages/core/src/guides/records-guide.ts',
 ];
 
 class CannotRun extends Error {}
@@ -109,10 +117,35 @@ function main() {
       }
     }
 
-    for (const surface of SURFACES) {
-      const extracted = extractBodies(read(surface.file), surface.openers);
+    for (const file of BODIES_IN_CONTENT) {
+      const stray = extractBodies(read(file), ['body:']);
+      if (stray.length > 0) {
+        throw new CannotRun(
+          `${file}: carries ${stray.length} body: literal(s), which this gate would never read — move each into ${GUIDE_CONTENT_DIR}/<slug>.md`,
+        );
+      }
+    }
+
+    const guideFiles = readdirSync(resolve(ROOT, GUIDE_CONTENT_DIR))
+      .filter((f) => f.endsWith('.md'))
+      .sort();
+    if (guideFiles.length === 0) throw new CannotRun(`${GUIDE_CONTENT_DIR}: no guide bodies found`);
+    const guideSurfaces = guideFiles.map((f) => {
+      const file = `${GUIDE_CONTENT_DIR}/${f}`;
+      return { file, extracted: markdownBodies(read(file)), what: 'markdown body' };
+    });
+
+    for (const surface of [
+      ...SURFACES.map((s) => ({
+        file: s.file,
+        extracted: extractBodies(read(s.file), s.openers),
+        what: `${s.openers.join('/')} bodies`,
+      })),
+      ...guideSurfaces,
+    ]) {
+      const { extracted } = surface;
       if (extracted.length === 0) {
-        throw new CannotRun(`${surface.file}: no ${surface.openers.join('/')} bodies extracted`);
+        throw new CannotRun(`${surface.file}: no ${surface.what} extracted`);
       }
       bodies += extracted.length;
       const r = checkSurface(
