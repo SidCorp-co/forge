@@ -215,24 +215,24 @@ export function builtFiles(root, dirs = []) {
 }
 
 /**
- * The paths a check only stats, which exist under `paths`: a file, or every file under a directory.
- * Their names are all a stat can say, so the key holds those and not what is in them.
+ * What a check that only stats `paths` can learn from them: what is there, of what kind, and how big
+ * a file is. Never what is inside, and never when it was written, which would move on every build.
  */
-export function probedNames(root, paths = []) {
-  const names = new Set();
+export function probedState(root, paths = []) {
+  const state = [];
+  const note = (rel, st) => state.push(`${rel}${st.isDirectory() ? '/' : `\0${st.size}`}`);
   for (const p of paths) {
     const st = lstatOrNull(join(root, p));
     if (!st) continue;
-    if (!st.isDirectory()) {
-      names.add(p);
-      continue;
-    }
-    names.add(`${p}/`);
+    note(p, st);
+    if (!st.isDirectory()) continue;
     for (const name of readdirSync(join(root, p), { recursive: true })) {
-      names.add(`${p}/${String(name).split('\\').join('/')}`);
+      const rel = `${p}/${String(name).split('\\').join('/')}`;
+      const inner = lstatOrNull(join(root, rel));
+      if (inner) note(rel, inner);
     }
   }
-  return [...names].sort();
+  return state.sort();
 }
 
 function lstatOrNull(abs) {
@@ -281,7 +281,7 @@ export function keyFor({ check, decl, tree, git, env = process.env }) {
     files: sha(lines.join('\n')),
     built: sha(built.map((f) => `${f}\0${tree.hash(f)}`).join('\n')),
     listed: sha(named.join('\n')),
-    probed: sha(probedNames(tree.root, decl.probed).join('\n')),
+    probed: sha(probedState(tree.root, decl.probed).join('\n')),
     shape: sha(shape(tree, decl.roots).join('\n')),
     git: decl.git ? git : null,
     env: ENV_READ.map((k) => env[k] ?? null),

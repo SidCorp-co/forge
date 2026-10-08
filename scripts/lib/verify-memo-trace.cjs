@@ -31,7 +31,7 @@ const READS = [
   'realpath',
   'realpathSync',
 ];
-/** Calls that learn whether a path is there and of what kind, and nothing a link or a file says. */
+/** Calls that learn whether a path is there, of what kind and how big, and nothing a link or a file says. */
 const PROBES = [
   'stat',
   'statSync',

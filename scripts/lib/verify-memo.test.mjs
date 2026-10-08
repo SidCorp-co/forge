@@ -121,18 +121,21 @@ describe('the key', () => {
     expect(key(built).key).not.toBe(builtBefore);
   });
 
-  it('holds a single built file by content, and a probed path by whether it is there and not by what it holds', () => {
+  it('holds a single built file by content, and a probed path by its name, kind and size and not by what it holds', () => {
     put('.gitignore', 'gen.d.ts\nbuildinfo\n');
     commit();
     put('gen.d.ts', 'one');
     put('buildinfo', 'one');
     const both = { roots: ['src'], built: ['gen.d.ts'], probed: ['buildinfo'] };
     const before = key(both).key;
-    put('buildinfo', 'two, a longer text');
+    put('buildinfo', 'two');
     expect(key(both).key).toBe(before);
+    put('buildinfo', 'two, a longer text');
+    const resized = key(both).key;
+    expect(resized).not.toBe(before);
     put('gen.d.ts', 'two');
     const built = key(both).key;
-    expect(built).not.toBe(before);
+    expect(built).not.toBe(resized);
     rmSync(join(root, 'buildinfo'));
     expect(key(both).key).not.toBe(built);
   });
@@ -519,6 +522,7 @@ if (process.env.PEEK) readFileSync(process.env.PEEK);
 if (process.env.IMPORT) await import(process.env.IMPORT);
 if (process.env.PROBE) existsSync(process.env.PROBE);
 if (process.env.STAT) statSync(process.env.STAT);
+if (process.env.SIZED && statSync(process.env.SIZED).size > 10) bad.push('size');
 if (process.env.STREAM) await new Promise((done) => createReadStream(process.env.STREAM).on('data', () => {}).on('close', done));
 if (process.env.ASYNC) await (await import('node:fs/promises')).readFile(process.env.ASYNC);
 if (process.env.SHELLED) {
@@ -625,12 +629,26 @@ describe('a check taken through the memo', () => {
     const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
     expect(run(m, { STAT: outside }).verdict.code).toBe(0);
     expect(listEntries(dir)).toHaveLength(1);
-    put('docs/n.md', 'the content moves, the name does not');
+    put('docs/n.md', 'NOTE');
     const again = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
     expect(run(again, { STAT: outside }).plan.kind).toBe('hit');
     rmSync(outside);
     const gone = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
     expect(run(gone, { STAT: outside }).plan.kind).toBe('miss');
+  });
+
+  it('goes red when a probed file grows past what the check allows, through a store that holds the green', () => {
+    const sized = join(root, 'docs/n.md');
+    const probed = { c: { roots: ['check.mjs', 'src'], probed: ['docs/n.md'] } };
+    const plan = () =>
+      new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(plan(), { SIZED: sized }).verdict.code).toBe(0);
+    expect(run(plan(), { SIZED: sized }).plan.kind).toBe('hit');
+    put('docs/n.md', 'a note grown well past ten bytes');
+    const grown = run(plan(), { SIZED: sized });
+    expect(grown.plan.kind).toBe('miss');
+    expect(grown.status).toBe(1);
+    expect(listEntries(dir)).toHaveLength(1);
   });
 
   it('refuses a module the check imports from outside its declaration', () => {

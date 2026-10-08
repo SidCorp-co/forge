@@ -1,7 +1,7 @@
 // What each `verify` check reads, so a passed verdict can be filed under the content of exactly
 // that. `roots` are the paths whose files the check reads whole; `listed` are directories it only
 // lists; `built` is output git ignores that it still reads, whose content the key holds; `probed`
-// is output git ignores that it only stats, whose names the key holds; `git: true` is a check that
+// is output git ignores that it only stats, whose names, kinds and sizes the key holds; `git: true` is a check that
 // also asks git about history or its base branch, which every scoped form does; `derived` is a
 // cache the tool keeps inside a root; `blind` names the native programs it runs, which the trace
 // cannot see. A check that cannot name its inputs is `uncached` with the reason. Over-naming costs

@@ -68,7 +68,7 @@ if (process.argv.includes('--changed')) {
 console.log('comment-budget: ' + n + ' file(s) scanned');
 `;
 
-describe('each gate form on a clean tree with the memo on and an empty store', () => {
+describe('the whole and the scoped form of a check that asks git, each through the memo from an empty store', () => {
   let root;
   let dir;
   const sh = (...argv) => spawnSync(argv[0], argv.slice(1), { cwd: root, encoding: 'utf8' });
