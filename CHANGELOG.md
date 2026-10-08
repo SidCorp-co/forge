@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.203] - 2026-10-08
+
+Schedule scripts and chat computations share one read-only QuickJS sandbox
+
+### Fixed
+
+- **A script can no longer reach the server process.** Schedule scripts and chat computations run in one QuickJS isolate with time, memory and output caps, and read their own project by GET only, as their owner, each read recorded.
+- **A chat makes no change you did not agree to on its card.** Every chat write is held for Record it or refused by name, such as deletes, secrets and channel documents, and cards name issues by key and title.
+- **A requirement's criteria now show each verdict as a word and a mark, not colour alone.** The facts rail no longer repeats the state, counts or a second waiting-on, and Decisions never shows another requirement's rows.
+
 ## [0.4.0-dev.202] - 2026-10-08
 
 Computations no longer run on the team runner; the runner sandbox is removed
