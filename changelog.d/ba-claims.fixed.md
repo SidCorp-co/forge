@@ -1,1 +1,0 @@
-**The requirement assistant checks its figures too.** Ask Agent on a requirement page now holds a number it did not read from Forge, your own included, exactly as the project assistant does; figures it read pass unchanged.
