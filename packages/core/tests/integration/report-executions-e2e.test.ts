@@ -10,7 +10,6 @@ import {
   sweepExpiredExecutions,
   unregisterExecutorForTest,
 } from '../../src/reports/index.js';
-import { createRunnerSandboxExecutor, RUNNER_SANDBOX_ID } from '../../src/runners/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
@@ -96,13 +95,14 @@ beforeEach(() => {
   durationMs = 40;
 });
 
-describe('with no sandbox able to run it', () => {
-  it('refuses every computation by name while no runner of the project can run one', async () => {
+describe('with no sandbox registered', () => {
+  it('refuses every computation by name: the runner sandbox is gone and nothing is sent', async () => {
     const run = await runQuery();
     const res = await compute({ language: 'python', script, inputs: [run.runId] });
     expect([res.status, code(res)]).toEqual([503, 'EXECUTOR_UNAVAILABLE']);
-    expect(detail(res)).toContain('no sandbox can run this computation now, so nothing was sent');
-    expect(detail(res)).toContain(`${RUNNER_SANDBOX_ID}: the runner box`);
+    expect(detail(res)).toContain('no sandbox executor is enabled on this deployment');
+    expect(detail(res)).toContain('the runner sandbox was removed (REQ-32 r6)');
+    expect(execute).not.toHaveBeenCalled();
   });
 });
 
@@ -291,8 +291,6 @@ describe('a computation refused before the executor sees it', () => {
     });
     const thirdParty = { ...fake, id: 'third-party-sandbox', dataLeavesTo: 'vendor.example' };
     unregisterExecutorForTest(fake.id);
-    // the team runner's sandbox is admitted by any setting; out of the way, only the barred one is left
-    unregisterExecutorForTest(RUNNER_SANDBOX_ID);
     registerExecutor(thirdParty);
     try {
       const res = await compute(
@@ -304,7 +302,6 @@ describe('a computation refused before the executor sees it', () => {
       expect(detail(res)).toContain('third-party-sandbox sends the data to vendor.example');
     } finally {
       unregisterExecutorForTest(thirdParty.id);
-      registerExecutor(createRunnerSandboxExecutor());
       registerExecutor(fake);
     }
     expect(execute).not.toHaveBeenCalled();
