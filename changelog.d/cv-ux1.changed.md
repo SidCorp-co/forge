@@ -1,1 +1,0 @@
-**Chat answers stay readable in the narrow Assistant panel.** Tables scroll sideways with the first column held, show ten rows then "Show all", draw states as badges, and open wide; diagrams scroll and keep their lines.
