@@ -118,6 +118,15 @@ describe("the Issues strip", () => {
     expect(capturedOpts?.filter).toBe("all");
   });
 
+  it("drops a Finished outcome cut when another segment is chosen, so it cannot empty that list", () => {
+    mountAt("?filter=finished&status=closed");
+    expect(capturedOpts?.status).toEqual(["closed"]);
+    fireEvent.click(segment(WORK_STATE_LABELS.in_flight).button);
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("filter")).toBe("in_flight");
+    expect(params.has("status")).toBe(false);
+  });
+
   it("moves the list to a state when its segment is chosen", () => {
     mountAt("");
     fireEvent.click(segment(WORK_STATE_LABELS.in_flight).button);

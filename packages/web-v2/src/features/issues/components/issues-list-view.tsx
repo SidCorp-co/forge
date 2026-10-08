@@ -413,7 +413,7 @@ export function IssuesListView({
             options={tabs}
             value={filter}
             onChange={(v) =>
-              setParams({ filter: v !== "all" ? v : "", page: "" })
+              setParams({ filter: v !== "all" ? v : "", status: "", page: "" })
             }
           />
         </div>

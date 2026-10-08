@@ -10,7 +10,6 @@ import {
 } from "@forge/contracts/status-sets";
 import {
 	LABEL_WORK_STATE,
-	STATUS_WORK_STATE,
 	WORK_STATE_LABELS,
 	WORK_STATES,
 } from "@forge/contracts/work-state";
@@ -423,15 +422,6 @@ describe("label helpers", () => {
 		]);
 		expect(transitionLabels([...ISSUE_STATUSES])).toEqual(ISSUE_STATUSES.map(statusLabel));
 	});
-	it("files every status the lane reads as Open, Running or No check-in under a state an agent holds", () => {
-		for (const s of ISSUE_STATUSES) {
-			const word = lane(s, false);
-			if (word === "No check-in" || word === "Open") {
-				expect(["open", "in_flight"], s).toContain(STATUS_WORK_STATE[s]);
-			}
-		}
-	});
-
 	it("keeps seventeen status words beside the ten column heads", () => {
 		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
 	});

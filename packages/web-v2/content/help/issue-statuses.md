@@ -36,7 +36,7 @@ tabs, to issues a person filed or issues a detector filed.
 | Status | Who holds it | What you do |
 |---|---|---|
 | **Draft** | you | Nothing is running. Open it when you are ready to start it. |
-| **Open** | an agent | Nothing. It has been picked up. |
+| **Open** | an agent | Nothing. It is queued for an agent and shows as *Open, not picked up* until one starts it. |
 | **In progress** | an agent | Nothing. |
 | **Developed**, **Testing** | an agent | Nothing. |
 | **Tested** | **you** | Review it for release. It passed its checks and has not been released. |
