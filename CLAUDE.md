@@ -19,8 +19,16 @@ number.
 
 ## Commands
 
-**`pnpm verify` when you finish coding, before you push** — the conformance entrypoint. Hooks only
-make it arrive sooner; a contributor with no plugin installed is held to exactly the same bar.
+**A run tests its own scope, not the project** (`REQ-36`; owner, 2026-10-09: no sledgehammer for a
+nut). Before coding, name the pattern each criterion reuses (`file:symbol`) or the new one you
+propose, the modules and contracts you touch, and how you will prove each criterion. Prove it by
+running it — start the service (core on a throwaway Postgres through the integration harness, or the
+web dev server) and exercise the criterion's happy, negative and boundary cases — and keep the probe.
+Then run `pnpm tc:changed` and only the DIRECT tests: the test files you touched and those beside each
+source you touched (`npx vitest run <files>` in the package), plus integration files you touched, by
+path. Not the whole suites, not `pnpm test:changed` (its import graph widens a one-file change to most
+of the tree). `pnpm verify` — the conformance entrypoint — runs at merge; the whole suites run nightly
+and before a release cut.
 
 **The gate is CI, not your laptop.** `verify` declares the test suites and the build rather than
 running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is red — the one
@@ -44,10 +52,10 @@ is the defect.
 
 **A pull request is gated before it lands; a direct push to `main`, after.**
 
-**`pnpm test:changed` is the loop** — it selects by import graph and says so. What makes a run
-proof is where it ran. On `dev` the core unit and integration suites and the web suite are tracked
-again (ISS-172's QA phase; `pnpm --filter @forge/core test:integration` runs every migration on a
-throwaway Postgres, `pnpm --filter web-v2 test` runs the web suite under jsdom). The Rust tests remain.
+**What makes a run proof is where it ran.** On `dev` the core unit and integration suites and the
+web suite are tracked again (ISS-172's QA phase; `pnpm --filter @forge/core test:integration` runs
+every migration on a throwaway Postgres, `pnpm --filter web-v2 test` runs the web suite under jsdom),
+at merge batches, nightly and before a release cut — not in each run. The Rust tests remain.
 
 **The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.
 `pnpm tc:changed` typechecks the packages your branch touched, and every package importing one,
