@@ -90,7 +90,7 @@ export function pulseActionsOf(
       records: work.liveUnmeasured.shown.map((p) => ({
         key: p.id,
         label: p.name,
-        ...detailOf(verbatim(p.reason)),
+        ...detailOf(p.says.reason),
         href: `/projects/${p.slug}`,
         ageSeconds: null,
       })),

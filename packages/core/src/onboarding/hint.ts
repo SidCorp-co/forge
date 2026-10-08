@@ -9,6 +9,7 @@ import {
   type OnboardingView,
   QUESTIONNAIRE_DUE_DAYS,
 } from '@forge/contracts/onboarding';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 
 const DAY_MS = 86_400_000;
 
@@ -23,29 +24,53 @@ export function batchDue(postedAt: Date, now: Date) {
 }
 
 const LIVE = new Set<string>(LIVE_JOB_STATUSES);
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const OPEN = { action: 'open', actionLabel: 'Open onboarding' } as const;
-const START = { action: 'start', actionLabel: 'Ask for designs', mayReanalyze: false } as const;
+const designs = (n: number) =>
+  say(n === 1 ? 'onboarding.hint.designOne' : 'onboarding.hint.designMany', { n });
+
+/** A hint whose words are rendered from what it says. */
+function hint(
+  tone: OnboardingHint['tone'],
+  lead: Said,
+  text: Said,
+  action: OnboardingHint['action'],
+  actionLabel: Said,
+  mayReanalyze: boolean,
+): OnboardingHint {
+  return {
+    tone,
+    lead: sayEn(lead),
+    text: sayEn(text),
+    action,
+    actionLabel: sayEn(actionLabel),
+    mayReanalyze,
+    says: { lead, text, actionLabel },
+  };
+}
 
 /** The project's system-context design, by its template: none, drafted but not approved, or approved. */
 export type SystemContextState = 'none' | 'unapproved' | 'approved';
 
 function noOnboardingHint(systemContext: SystemContextState): OnboardingHint | null {
   if (systemContext === 'approved') return null;
+  const ask = say('onboarding.hint.askForDesigns');
   if (systemContext === 'unapproved') {
-    return {
-      tone: 'you',
-      lead: 'System context not approved yet.',
-      text: 'A system-context design is drafted; approve it in Workflows, or let the agent draft the rest.',
-      ...START,
-    };
+    return hint(
+      'you',
+      say('onboarding.hint.contextUnapproved'),
+      say('onboarding.hint.contextDrafted'),
+      'start',
+      ask,
+      false,
+    );
   }
-  return {
-    tone: 'you',
-    lead: 'No system context yet.',
-    text: 'The agent can read the code, draft the key designs and ask what it cannot tell.',
-    ...START,
-  };
+  return hint(
+    'you',
+    say('onboarding.hint.noContext'),
+    say('onboarding.hint.agentCan'),
+    'start',
+    ask,
+    false,
+  );
 }
 
 function openBatchHint(
@@ -54,39 +79,46 @@ function openBatchHint(
   mayReanalyze: boolean,
 ): OnboardingHint {
   const tone = batch.overdue ? 'attention' : 'you';
-  const tail = `Open questions ${batch.open}${batch.overdue ? ` · waiting ${batch.waitingDays} days` : ''}`;
+  const tail = say('onboarding.hint.openQuestions', {
+    n: batch.open,
+    waiting: batch.overdue ? say('onboarding.hint.waitingDays', { n: batch.waitingDays }) : null,
+  });
   return batch.round === 1
-    ? {
+    ? hint(
         tone,
-        lead: 'No system context yet.',
-        text: `The agent read the code and drafted ${plural(drafted, 'design')} · ${tail}`,
-        action: 'continue',
-        actionLabel: 'Answer the questions',
+        say('onboarding.hint.noContext'),
+        say('onboarding.hint.readAndDrafted', { designs: designs(drafted), tail }),
+        'continue',
+        say('onboarding.hint.answerQuestions'),
         mayReanalyze,
-      }
-    : {
+      )
+    : hint(
         tone,
-        lead: 'Onboarding:',
-        text: `follow-up round waits on you · ${tail}`,
-        action: 'continue',
-        actionLabel: 'Continue onboarding',
+        say('onboarding.hint.onboardingLead'),
+        say('onboarding.hint.followUp', { tail }),
+        'continue',
+        say('onboarding.hint.continue'),
         mayReanalyze,
-      };
+      );
 }
 
 /** A live job's line: what the run read model says it waits on, else that it runs. */
-function liveJobText(job: NonNullable<OnboardingView['job']>): string {
+function liveJobText(job: NonNullable<OnboardingView['job']>): Said {
   const w = job.waitingOn;
-  if (w?.kind === 'gate') return `Waits on the ${w.gate} gate; the project works meanwhile.`;
+  if (w?.kind === 'gate') return say('onboarding.hint.waitsGate', { gate: w.gate });
   if (w?.kind === 'machine') {
-    return `Waiting on ${w.who}${w.act ? `: ${w.act}` : ''}; the project works meanwhile.`;
+    return say('onboarding.hint.waitingOnMachine', {
+      who: w.says.who,
+      act: w.act ? say('onboarding.hint.colonAct', { act: w.says.act }) : null,
+    });
   }
   if (w && w.kind !== 'none') {
-    return `Waits on ${w.who}${w.act ? ` to ${w.act}` : ''}; the project works meanwhile.`;
+    return say('onboarding.hint.waitsOn', {
+      who: w.says.who,
+      act: w.act ? say('onboarding.hint.toAct', { act: w.says.act }) : null,
+    });
   }
-  return job.status === 'queued'
-    ? 'The analysis job is queued for a runner; the project works meanwhile.'
-    : 'One analysis job is running; the project works meanwhile.';
+  return say(job.status === 'queued' ? 'onboarding.hint.jobQueued' : 'onboarding.hint.jobRunning');
 }
 
 // the hint is derived, never stored: it says what the onboarding's own rows say now, and it
@@ -103,45 +135,47 @@ export function hintOf(
   const approved = view.designs.filter((d) => d.designStatus === 'approved').length;
   const live = view.job !== null && LIVE.has(view.job.status);
   const mayReanalyze = !live;
+  const open = say('onboarding.hint.openOnboarding');
   if (view.status === 'done') {
     if (drafted > 0 && approved === drafted) return null;
-    return {
-      tone: 'ready',
-      lead: 'Onboarding done.',
-      text: `${plural(drafted - approved, 'design')} wait on your approval.`,
-      ...OPEN,
+    return hint(
+      'ready',
+      say('onboarding.hint.done'),
+      say('onboarding.hint.waitApproval', { designs: designs(drafted - approved) }),
+      'open',
+      open,
       mayReanalyze,
-    };
+    );
   }
   if (view.job && live) {
-    return {
-      tone:
-        view.job.waitingOn?.kind === 'you' || view.job.waitingOn?.kind === 'person' ? 'you' : 'run',
-      lead:
-        view.job.phase === 'revise'
-          ? 'Onboarding: updating designs.'
-          : 'Onboarding: reading the code.',
-      text: liveJobText(view.job),
-      ...OPEN,
+    return hint(
+      view.job.waitingOn?.kind === 'you' || view.job.waitingOn?.kind === 'person' ? 'you' : 'run',
+      say(view.job.phase === 'revise' ? 'onboarding.hint.updating' : 'onboarding.hint.reading'),
+      liveJobText(view.job),
+      'open',
+      open,
       mayReanalyze,
-    };
+    );
   }
   if (view.openBatch) return openBatchHint(view.openBatch, drafted, mayReanalyze);
   if (view.job?.status === 'failed') {
-    return {
-      tone: 'err',
-      lead: 'Onboarding analysis failed.',
-      text: 'The last code map stays.',
-      action: 'reanalyze',
-      actionLabel: 'Ask for a re-analysis',
+    return hint(
+      'err',
+      say('onboarding.hint.failed'),
+      say('onboarding.hint.mapStays'),
+      'reanalyze',
+      say('onboarding.hint.askReanalysis'),
       mayReanalyze,
-    };
+    );
   }
-  return {
-    tone: 'run',
-    lead: 'Onboarding in progress.',
-    text: drafted ? `${plural(drafted, 'design')} drafted.` : 'Waiting for the analysis.',
-    ...OPEN,
+  return hint(
+    'run',
+    say('onboarding.hint.inProgress'),
+    drafted
+      ? say('onboarding.hint.drafted', { designs: designs(drafted) })
+      : say('onboarding.hint.waitingAnalysis'),
+    'open',
+    open,
     mayReanalyze,
-  };
+  );
 }

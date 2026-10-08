@@ -1,3 +1,4 @@
+import type { WrittenLang } from "./written-lang.js";
 import type { IssueMove, IssueStatus } from "./issue-machine.js";
 import type { Said } from "./said.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
@@ -205,6 +206,8 @@ export interface IssueStandingRow {
 	id: string;
 	key: string;
 	title: string;
+	/** The language title and description were written in; null when not kept. */
+	writtenLang: WrittenLang | null;
 	status: IssueStatus;
 	priority: string;
 	category: string | null;

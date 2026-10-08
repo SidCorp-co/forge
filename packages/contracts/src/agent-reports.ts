@@ -3,6 +3,7 @@
 // agent says about the harness it ran under; a person's report on the product is feedback (FB-n).
 
 import { z } from "zod";
+import type { WrittenLang } from "./written-lang.js";
 import type { FeedbackPhase, FeedbackRoute } from "./feedback.js";
 
 export const AGENT_REPORT_KINDS = [
@@ -87,6 +88,8 @@ export interface AgentReportView {
 	summary: string;
 	detail: string | null;
 	suggestion: string | null;
+	/** The language summary, detail and suggestion were written in; null when not kept. */
+	writtenLang: WrittenLang | null;
 	signalKey: string;
 	sessionId: string | null;
 	scheduleRunId: string | null;

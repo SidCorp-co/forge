@@ -15,9 +15,10 @@ import type {
   MasterVerb,
   MasterWaitingOn,
 } from '@forge/contracts/master-standing';
-import { say, sayEn } from '@forge/contracts/said';
+import { saidSchema, say, sayEn } from '@forge/contracts/said';
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import { type SQL, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import {
@@ -360,5 +361,21 @@ export function storedOutdated(stored: unknown): MasterOutdated | null {
   ) {
     return null;
   }
-  return { since: o.since, why: o.why, heldBy: o.heldBy as string[], draining: o.draining };
+  const says = storedSays(o.says);
+  return {
+    since: o.since,
+    why: o.why,
+    heldBy: o.heldBy as string[],
+    draining: o.draining,
+    ...(says ? { says } : {}),
+  };
+}
+
+/** What a stored outdated record said, where it was written with its sentences; a record written before them carries none. */
+function storedSays(v: unknown): MasterOutdated['says'] | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Record<string, unknown>;
+  const why = saidSchema.safeParse(o.why);
+  const heldBy = z.array(saidSchema).safeParse(o.heldBy);
+  return why.success && heldBy.success ? { why: why.data, heldBy: heldBy.data } : null;
 }

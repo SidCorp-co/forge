@@ -5,17 +5,16 @@
  */
 
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
-import { type Said, say, sayEn } from '@forge/contracts/said';
+import { say, verbatim } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
 import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import type { DesignRepinGroup } from './ports.js';
+import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
-interface DesignRow {
+interface DesignRow extends RowTitle {
   entity: NeedsYouEntity;
   key: string;
-  title: string;
-  says?: { title: Said };
   standing: Standing;
   touchedAt: string | null;
 }
@@ -42,8 +41,7 @@ export function repinRowOf(group: DesignRepinGroup, canDecide: boolean): DesignR
   return {
     entity: 'workflow',
     key: group.flow,
-    title: sayEn(title),
-    says: { title },
+    ...composedTitle(title),
     standing: {
       attentionGroup: 'needs_you',
       waitingOn: canDecide
@@ -64,7 +62,9 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     return {
       entity: 'workflow',
       key: h.flow,
-      title: `${p.title} · revision ${p.revision} proposed`,
+      ...composedTitle(
+        say('needsYou.title.designProposed', { title: verbatim(p.title), revision: p.revision }),
+      ),
       standing: { attentionGroup: 'needs_you', waitingOn: p.waitingOn },
       touchedAt: p.proposedAt,
     };
@@ -73,7 +73,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
   return {
     entity: 'workflow',
     key: h.flow,
-    title: h.flow,
+    ...writtenTitle(h.flow, null),
     standing: {
       attentionGroup: 'needs_you',
       waitingOn: waitingOn(

@@ -2,7 +2,7 @@
 // edge master.declared; REQ-15 BC-6, ISS-106): the runner declares its slots and opens and closes each pass,
 // core stores them, and `GET /api/projects/:id/masters/standing` serves them so no screen guesses.
 
-import { type Said, say, sayEn, verbatim } from "./said.js";
+import { type Said, say, sayEn } from "./said.js";
 import { z } from "zod";
 
 /** The path a `master.wake` frame points a master at. */
@@ -71,6 +71,8 @@ export interface MasterRefusal {
 	code: MasterRefusalCode;
 	path: string;
 	detail: string;
+	/** The sentence `detail` was rendered from. */
+	says: { detail: Said };
 }
 
 export const MASTER_JOB_PANES_MAX = 64;
@@ -308,6 +310,8 @@ export interface MasterOutdated {
 	/** Every reason its replacement waits on, as the last verdict named them. */
 	heldBy: string[];
 	draining: boolean;
+	/** The sentences `why` and `heldBy` were rendered from; absent on a record stored before core wrote them. */
+	says?: { why: Said; heldBy: Said[] };
 }
 
 /** What the box's `PermissionRequest` hook answered for a project, read off the device's gate report. */
@@ -334,10 +338,10 @@ export interface MasterPassList {
 
 export const NO_MASTER_SLOTS = sayEn(say("overview.signal.noSlotsNote"));
 
-/** What a project's slots line says when no live master declared slots for it, a box's refusal as it wrote it; null when one did. */
+/** What a project's slots line says when no live master declared slots for it, or core's refusal of a box that declared none; null when one did. */
 export function slotsNoteSaid(standing: Pick<MasterStanding, "slots">): Said | null {
 	if (!standing.slots) return say("overview.signal.noSlotsNote");
-	return standing.slots.undeclared ? verbatim(standing.slots.undeclared.detail) : null;
+	return standing.slots.undeclared ? standing.slots.undeclared.says.detail : null;
 }
 
 /** `slotsNoteSaid` in English. */

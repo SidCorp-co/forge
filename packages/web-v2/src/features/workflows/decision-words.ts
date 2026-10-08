@@ -2,6 +2,8 @@ import type { DesignApprovalBlock, DesignBaseFault, DesignLeftStale } from "@for
 import { statusReading } from "@/design";
 import type { Refusal } from "@/lib/api/refusals";
 import { type Copy, copyLocale } from "@/lib/i18n/product-copy";
+import { said } from "@/lib/i18n/said";
+import type { DesignRevision } from "./types";
 
 // A design decision refusal in the viewer's language, worded from the facts core carries beside its
 // detail (the refusal's code and params), never from the English detail itself; a refusal without
@@ -49,3 +51,7 @@ export function decisionRefusalWords(r: Refusal, t: Copy, language: string): str
       return null;
   }
 }
+
+/** A decision's reason in the viewer's language where Forge composed it (a re-pin act), else as its decider wrote it. */
+export const revisionReason = (r: Pick<DesignRevision, "reason" | "says">, language: string): string | null =>
+  r.says.reason ? said(r.says.reason, language) : r.reason;

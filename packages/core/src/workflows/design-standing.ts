@@ -2,6 +2,7 @@ import type { DesignRevisionState, DesignStatus } from '@forge/contracts/design-
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type {
+  DesignBaseFault,
   DesignBuildGate,
   DesignListReading,
   DesignWaitingKind,
@@ -20,7 +21,20 @@ interface DesignStandingInput extends DesignHeadFacts {
   latest: { revision: number; author: string | null } | null;
   canDecide: boolean;
   /** The refusal approving the proposed revision would meet on its bases now (`standingBaseRefusal`). */
-  baseUnapproved?: { code: string; detail: string } | null;
+  baseUnapproved?: { revision: number; bases: readonly DesignBaseFault[] } | null;
+}
+
+/** A base the proposed revision rests on, said from the refusal's facts rather than its English detail. */
+function baseSaid(b: DesignBaseFault): Said {
+  if (b.state === 'missing') return say('designs.base.missing', { flow: b.workflow });
+  if (b.state === 'stale' && b.approvedRevision !== null) {
+    return say('designs.base.stale', {
+      flow: b.workflow,
+      r: b.revision,
+      approved: b.approvedRevision,
+    });
+  }
+  return say('designs.base.unapproved', { flow: b.workflow, r: b.revision });
 }
 
 const wait = (kind: DesignWaitingKind, who: Said, act: Said, rule: Said): DesignWaitingOn =>
@@ -61,9 +75,9 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
           'agent',
           writer,
           say('designs.act.repin'),
-          say('designs.rule.baseUnapproved', {
-            code: input.baseUnapproved.code,
-            detail: input.baseUnapproved.detail,
+          say('designs.rule.baseUnapprovedAt', {
+            r: input.baseUnapproved.revision,
+            bases: input.baseUnapproved.bases.map(baseSaid),
           }),
         );
       }

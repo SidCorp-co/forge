@@ -1,4 +1,5 @@
 import { decisionFieldsSchema } from '@forge/contracts/comments';
+import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../body/formats.js';
 import { bodyRefusalHttp, rethrowBodyInvalid } from '../body/http-error.js';
@@ -30,9 +31,16 @@ export const commentCreateSchema = z
     parentId: z.uuid().optional(),
     intent: intentField,
     decision: decisionFieldsSchema.optional(),
+    writtenLang: writtenLangSchema.optional(),
   })
   .strict();
 
-export const commentBodySchema = z.object({ body: commentBodyField, format: formatField }).strict();
+export const commentBodySchema = z
+  .object({
+    body: commentBodyField,
+    format: formatField,
+    writtenLang: writtenLangSchema.optional(),
+  })
+  .strict();
 
 export { bodyRefusalHttp, rethrowBodyInvalid };

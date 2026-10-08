@@ -3,7 +3,9 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { say, sayEn, verbatim } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
+import { revisionReason } from "../decision-words";
 import type { DesignRevision, WorkflowDesign, WorkflowRecord } from "../types";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 import { WorkflowDesignPage } from "./workflow-design-page";
@@ -22,8 +24,8 @@ const body = {
   edges: [],
 };
 
-const revision = (over: Partial<DesignRevision>): DesignRevision =>
-  ({
+const revision = (over: Partial<DesignRevision>): DesignRevision => {
+  const r = {
     revision: 1,
     document: body,
     proposedBy: "u-1",
@@ -36,7 +38,9 @@ const revision = (over: Partial<DesignRevision>): DesignRevision =>
     reason: NOTE,
     state: "approved",
     ...over,
-  }) as DesignRevision;
+  };
+  return { ...r, says: over.says ?? { reason: r.reason ? verbatim(r.reason) : null } } as DesignRevision;
+};
 
 const design = (r: DesignRevision): WorkflowDesign =>
   ({
@@ -93,5 +97,22 @@ describe("an approval's note where the design is read", () => {
     const returned = screen.getByTestId("revision-row");
     expect(within(returned).getByText("Reason")).toBeInTheDocument();
     expect(within(returned).queryByText("Approval note")).toBeNull();
+  });
+
+  it("reads a re-pin act's reason in the reader's language, and a decider's note as they wrote it", () => {
+    const said = say("designs.reason.repinOnly", {
+      act: "a1b2",
+      actWords: say("designs.act.repinBatch", { n: 2, changes: "changes", r: 2 }),
+      flow: "access",
+      pins: "access r1 → r2",
+      fp: "0123456789ab",
+      r: 1,
+    });
+    const composed = revision({ reason: sayEn(said), says: { reason: said } });
+    expect(revisionReason(composed, "en")).toBe(sayEn(said));
+    const vi = revisionReason(composed, "vi");
+    expect(vi).not.toBe(sayEn(said));
+    expect(vi).toContain("access r1 → r2");
+    expect(revisionReason(revision({}), "vi")).toBe(NOTE);
   });
 });

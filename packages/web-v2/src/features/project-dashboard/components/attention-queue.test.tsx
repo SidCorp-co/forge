@@ -1,3 +1,4 @@
+import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "@/test/said";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -15,7 +16,7 @@ const follows = (n: number) =>
     rule: RULE,
     effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: `Design ${n}`, r: 2 })] }),
   });
-const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ area: "requirements", entity: "requirement", key: "REQ-1", title: "T", waitingOn: you, touchedAt: null, ...over });
+const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ area: "requirements", entity: "requirement", key: "REQ-1", title: "T", titleLang: null, waitingOn: you, touchedAt: null, says: { title: verbatim(over.title ?? "T") }, ...over });
 
 describe("the dashboard's Needs you", () => {
   it("draws the workflow row and counts exactly the rows it draws", () => {

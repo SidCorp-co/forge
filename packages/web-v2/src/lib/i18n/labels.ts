@@ -1,3 +1,4 @@
+import { CONTRACT_ATTENTION_LABELS } from "@forge/contracts/contract-standing";
 import { ARTIFACT_CHANGE_LABELS, LANDING_SURFACE_LABELS } from "@forge/contracts/landing-artifacts";
 import { SENSITIVE_DATA_BADGES } from "@forge/contracts/data-policy";
 import { MOCKUP_KIND_LABELS, MOCKUP_STATUS_HINTS, MOCKUP_STATUS_LABELS } from "@forge/contracts/mockups";
@@ -87,6 +88,7 @@ export const LABEL_GROUPS = {
   feedbackDecision: FEEDBACK_DECISION_LABELS,
   feedbackTarget: FEEDBACK_TARGET_LABELS,
   feedbackAttention: labelsOf(FEEDBACK_ATTENTION_LABELS),
+  contractAttention: labelsOf(CONTRACT_ATTENTION_LABELS),
   feedbackAttentionHint: hintsOf(FEEDBACK_ATTENTION_LABELS),
   needsYouArea: NEEDS_YOU_AREA_LABELS,
   healthMarker: HEALTH_MARKER_LABELS,

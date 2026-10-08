@@ -145,6 +145,8 @@ export async function noteReviewOnIssue(args: {
         }),
         format: 'markdown',
         parentId: null,
+        // the review's words are its reviewer's on the forge host, in a language unknown here
+        writtenLang: null,
       },
       tx,
     );

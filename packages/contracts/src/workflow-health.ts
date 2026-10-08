@@ -288,6 +288,8 @@ export interface HealthMarker {
 	rule: HealthMarkerRule;
 	/** One sentence. */
 	reason: string;
+	/** The sentence `reason` was rendered from. */
+	says: { reason: Said };
 	source: MarkerSource;
 	/** Whose turn the source is, from the source's own read model; the marker adds no turn. */
 	waitingOn: WaitingOn;

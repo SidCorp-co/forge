@@ -1,6 +1,23 @@
 import { masterFactsSchema } from '@forge/contracts/master-verdict';
+import { saidDisagreements, sayEn } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { type MasterJudged, masterVerdict, outdatedWhy } from './verdict.js';
+import {
+  type MasterJudged,
+  masterVerdict as masterVerdict_,
+  outdatedWhy as outdatedWhy_,
+} from './verdict.js';
+
+/** Every verdict's English is the sentence it says (`saidDisagreements`). */
+const masterVerdict = ((...a: Parameters<typeof masterVerdict_>) => {
+  const v = masterVerdict_(...a);
+  expect(saidDisagreements(v)).toEqual([]);
+  return v;
+}) as typeof masterVerdict_;
+
+const outdatedWhy = (...a: Parameters<typeof outdatedWhy_>) => {
+  const w = outdatedWhy_(...a);
+  return w === null ? null : sayEn(w);
+};
 
 function alive(over: Partial<MasterJudged> = {}): MasterJudged {
   return {

@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { type Said, saidDisagreements } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -22,6 +23,14 @@ import {
   truncateAll,
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
+
+/** The keys of the gaps a pulse reason says, one or several joined (`pulse.gap.all`). */
+const gapKeys = (s: Said | undefined): string[] =>
+  s?.key === 'pulse.gap.all'
+    ? ((s.vars?.parts ?? []) as Said[]).map((p) => p.key)
+    : s
+      ? [s.key]
+      : [];
 
 const STAGING = 'f'.repeat(40);
 const MASTER = '52c66950'.padEnd(40, '0');
@@ -262,6 +271,9 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
     expect(read.work.liveUnmeasured.shown[0]?.reason).toMatch(
       /500 commits ahead of master and the reading listed only 8/,
     );
+    // core's own gap is said by key, so the pulse reads it in the reader's language
+    expect(gapKeys(read.work.liveUnmeasured.shown[0]?.says.reason)).toContain('pulse.gap.cut');
+    expect(saidDisagreements(read.work.liveUnmeasured.shown)).toEqual([]);
     expect((await reachOf(placed))?.state).toBe('not_on_live');
     expect(await reachOf(unseen)).toMatchObject({
       state: 'unmeasured',
@@ -283,9 +295,10 @@ describe('a reading that cannot place every closed issue (ISS-1217)', () => {
       state: 'unmeasured',
       reason: expect.stringMatching(/merged after the last reading of staging against master/),
     });
-    expect((await pulse()).work.liveUnmeasured.shown[0]?.reason).toMatch(
-      /^1 closed issue merged after the reading/,
-    );
+    const gaps = (await pulse()).work.liveUnmeasured.shown;
+    expect(gaps[0]?.reason).toMatch(/^1 closed issue merged after the reading/);
+    expect(gapKeys(gaps[0]?.says.reason)).toContain('pulse.gap.lateOne');
+    expect(saidDisagreements(gaps)).toEqual([]);
   });
 });
 

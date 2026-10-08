@@ -1,5 +1,6 @@
 "use client";
 
+import { WrittenMark } from "@/lib/i18n/written";
 import { type ReactNode, useState } from "react";
 import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -21,7 +22,7 @@ export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: 
   const t = useCopy();
   const time = useTimeFormat();
   return (
-    <li className="grid gap-1.5 border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid="decision-row">
+    <li className="grid gap-1.5 border-t border-line-subtle py-3.5 first:border-t-0 first:pt-0" data-testid="decision-row" lang={c.writtenLang ?? undefined}>
       {d ? (
         <>
           <p className="text-14 font-medium leading-snug text-fg">{d.decision}</p>
@@ -39,6 +40,7 @@ export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: 
         <ActorChip name={c.author.name ?? t("common.decisions.unknownAuthor")} kind={c.author.agency} size={16} />
         <span aria-hidden>·</span>
         <span title={time.dateTime(c.createdAt)}>{time.relative(c.createdAt)}</span>
+        <WrittenMark lang={c.writtenLang} />
         {onTarget ? (
           <>
             <span aria-hidden>·</span>

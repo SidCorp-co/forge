@@ -142,6 +142,7 @@ function inFlightOf(
     running: running.slice(0, PROJECT_STATUS_ROWS).map((i) => ({
       key: i.key,
       title: i.title,
+      titleLang: i.writtenLang,
       status: i.status,
       waitingOn: i.standing.waitingOn,
     })),
@@ -161,8 +162,10 @@ function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWait
         entity: row.entity,
         key: row.key,
         title: row.title,
+        titleLang: row.titleLang,
         waitingOn: row.standing.waitingOn,
         touchedAt: row.touchedAt,
+        says: { title: row.says.title },
       }),
     );
   return {

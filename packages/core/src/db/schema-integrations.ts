@@ -1,3 +1,4 @@
+import type { Said } from '@forge/contracts/said';
 import { relations, sql } from 'drizzle-orm';
 import {
   boolean,
@@ -85,6 +86,8 @@ export const integrationConnections = pgTable(
     breakerOpenedAt: timestamp('breaker_opened_at', { withTimezone: true }),
     lastHealthStatus: text('last_health_status'),
     lastHealthDetail: text('last_health_detail'),
+    /** The sentence `last_health_detail` was rendered from (`@forge/contracts/said`); null on a detail written before it was stored. */
+    lastHealthSays: jsonb('last_health_says').$type<Said>(),
     lastHealthAt: timestamp('last_health_at', { withTimezone: true }),
     inboundEndpointObserved: jsonb('inbound_endpoint_observed').$type<ints.ObservedEndpoint>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

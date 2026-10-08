@@ -1,3 +1,4 @@
+import { saidDisagreements } from '@forge/contracts/said';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   closeWorld,
@@ -213,6 +214,12 @@ describe('POST /api/devices/me/master-session/verdict', () => {
       draining: true,
     });
     expect(first.heldBy.join(' ')).toContain('r7 (FB-89)');
+    // what the standing serves for a reader in another language: the sentences its English was rendered from
+    expect(first.says.why.key).toBe('masters.verdict.inputsChanged');
+    expect(first.says.heldBy.map((h: { key: string }) => h.key)).toContain(
+      'masters.verdict.heldRuns',
+    );
+    expect(saidDisagreements(first)).toEqual([]);
 
     const later = facts({
       ...outdated,

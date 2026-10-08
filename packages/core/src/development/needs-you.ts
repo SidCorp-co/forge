@@ -17,7 +17,7 @@ import {
   type NeedsYouResponse,
 } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { Said } from '@forge/contracts/said';
+import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
@@ -29,6 +29,7 @@ import { listRequirementsAs } from '../requirements/read.js';
 import { designRowOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
 import { designHealthOf, designRepinsOf } from './ports.js';
+import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
 export interface NeedsYouViewer {
   userId: string;
@@ -40,11 +41,9 @@ export interface NeedsYouViewer {
   mayWrite: boolean;
 }
 
-export interface AttentionRow {
+export interface AttentionRow extends RowTitle {
   entity: NeedsYouEntity;
   key: string;
-  title: string;
-  says?: { title: Said };
   standing: Standing;
   touchedAt: string | null;
 }
@@ -138,35 +137,37 @@ export async function readAttention(
     requirements: requirements.map((r) => ({
       entity: 'requirement',
       key: r.key,
-      title: r.title,
+      ...writtenTitle(r.title, null),
       standing: r.standing,
       touchedAt: r.standing.touchedAt,
     })),
     releases: releases.releases.map((r) => ({
       entity: 'release',
       key: r.version,
-      title: r.headline || `Release ${r.version}`,
+      ...(r.headline
+        ? writtenTitle(r.headline, null)
+        : composedTitle(say('needsYou.title.release', { version: r.version }))),
       standing: r,
       touchedAt: r.at,
     })),
     feedback: items.map((f) => ({
       entity: 'feedback',
       key: f.key,
-      title: f.title,
+      ...writtenTitle(f.title, f.writtenLang),
       standing: f,
       touchedAt: f.updatedAt,
     })),
     issues: issues.issues.map((i) => ({
       entity: 'issue',
       key: i.key,
-      title: i.title,
+      ...writtenTitle(i.title, i.writtenLang),
       standing: i.standing,
       touchedAt: i.standing.touchedAt,
     })),
     contracts: contracts.contracts.map((c) => ({
       entity: 'contract',
       key: c.ref,
-      title: c.title,
+      ...writtenTitle(c.title, null),
       standing: c,
       touchedAt: c.touchedAt,
     })),
@@ -177,7 +178,7 @@ export async function readAttention(
         (s): AttentionRow => ({
           entity: 'schedule',
           key: s.id,
-          title: s.name,
+          ...writtenTitle(s.name, null),
           standing: s,
           touchedAt: s.lastFire?.startedAt ?? s.createdAt,
         }),
@@ -186,7 +187,7 @@ export async function readAttention(
         (r): AttentionRow => ({
           entity: 'report',
           key: r.id,
-          title: r.summary,
+          ...writtenTitle(r.summary, r.writtenLang),
           standing: r,
           touchedAt: r.createdAt,
         }),
@@ -220,9 +221,10 @@ export async function readNeedsYou(
           entity: r.entity,
           key: r.key,
           title: r.title,
-          ...(r.says ? { says: r.says } : {}),
+          titleLang: r.titleLang,
           waitingOn: r.standing.waitingOn,
           touchedAt: r.touchedAt,
+          says: { title: r.says.title },
         }),
       ),
     ),

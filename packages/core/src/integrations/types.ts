@@ -66,7 +66,10 @@ export type HealthStatus = 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs
 
 export interface HealthCheckResult {
   status: HealthStatus;
+  /** `says` in English, the field the plugin and the API read. */
   message?: string;
+  /** `message` as said, so a page reads it in its own language. */
+  says?: { message: Said };
   /** Free-form diagnostic data — surfaced to operators in the test-connection UI. */
   diagnostics?: Record<string, unknown>;
 }

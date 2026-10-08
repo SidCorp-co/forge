@@ -188,6 +188,8 @@ export interface DesignRevisionSummary {
 	decidedByName: string | null;
 	decidedAt: string | null;
 	reason: string | null;
+	/** `reason` as said (`said.ts`): Forge's own sentence by key, a decider's words verbatim; null where none was given. */
+	says: { reason: Said | null };
 	state: DesignRevisionState;
 	stepCount: number;
 	/** Against the revision before it; null on the first, or where either document no longer reads as a design. */

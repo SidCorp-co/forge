@@ -4,7 +4,7 @@
  * kind and target.
  */
 
-import { type Said, say } from '@forge/contracts/said';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { WAITING_KIND_MARKS, type WaitingOn, waitingOn } from '@forge/contracts/standing';
 import type { VERDICT_VALUES } from '@forge/contracts/verdict-identity';
 import {
@@ -90,7 +90,13 @@ export interface HealthFacts {
     failing: { n: number; reason: string | null; at: Date }[];
     /** The design revisions the latest verdicts of its live criteria were judged against. */
     judgedAgainst: { revision: number; at: Date }[];
-    run: { id: string; state: string; since: string | null; rule: string } | null;
+    run: {
+      id: string;
+      state: string;
+      since: string | null;
+      rule: string;
+      says: { rule: Said };
+    } | null;
   }[];
   observation: {
     id: string;
@@ -185,12 +191,17 @@ export function documentAt(f: HealthFacts, n: number): WorkflowWrite | null {
 export class Markers {
   readonly list: HealthMarker[] = [];
   private readonly seen = new Set<string>();
-  add(targets: readonly HealthTarget[], m: Omit<HealthMarker, 'target'>): void {
+  /** One marker per target, its reason said as a registry sentence and its English rendered from it. */
+  add(
+    targets: readonly HealthTarget[],
+    m: Omit<HealthMarker, 'target' | 'reason' | 'says'> & { reason: Said },
+  ): void {
+    const { reason, ...rest } = m;
     for (const target of targets.length ? targets : [{ kind: 'workflow' } as const]) {
       const key = `${m.kind}|${targetKey(target)}|${m.source.type}:${m.source.key}`;
       if (this.seen.has(key)) continue;
       this.seen.add(key);
-      this.list.push({ ...m, target });
+      this.list.push({ ...rest, reason: sayEn(reason), says: { reason }, target });
     }
   }
 }

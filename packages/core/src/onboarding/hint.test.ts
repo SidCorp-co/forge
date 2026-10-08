@@ -1,11 +1,18 @@
 import type { OnboardingView } from '@forge/contracts/onboarding';
 import { QUESTIONNAIRE_DUE_DAYS } from '@forge/contracts/onboarding';
-import { say, verbatim } from '@forge/contracts/said';
+import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
 import { liveOf } from '../runs/standing-live.js';
 import type { RunFacts, StandingContext } from '../runs/standing-types.js';
-import { batchDue, hintOf } from './hint.js';
+import { batchDue, hintOf as hintOf_ } from './hint.js';
+
+/** Every hint's words are the sentences it says (`saidDisagreements`). */
+const hintOf = ((...a: Parameters<typeof hintOf_>) => {
+  const h = hintOf_(...a);
+  expect(saidDisagreements(h)).toEqual([]);
+  return h;
+}) as typeof hintOf_;
 
 const T0 = new Date('2026-10-01T00:00:00Z');
 const day = (n: number) => new Date(T0.getTime() + n * 86_400_000);

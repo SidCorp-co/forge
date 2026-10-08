@@ -43,6 +43,8 @@ import { feedbackDraftOf } from "../report-feedback";
 import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { ReportStanding } from "../types";
 import { type RowCtx, shortId } from "../view";
+import { Written, WrittenMark } from "@/lib/i18n/written";
+import type { WrittenLang } from "@forge/contracts/written-lang";
 
 /** A step as the reader says it where the vocabulary names it, as the agent wrote it elsewhere. */
 const stageWord = (stage: string, language: string) => (baseOf(language) === "en" ? stage : copyOr(language, `label.workStep.${stage}`, stage));
@@ -81,7 +83,7 @@ export function ReportLines({ reports, slug }: { reports: readonly ReportStandin
         <li key={r.id} className="border-b border-line-subtle">
           <Link href={reportHref(slug, r.id)} className="flex flex-wrap items-center gap-2 py-2 text-13 hover:bg-hover">
             <StatusBadge family="reportTriage" value={r.triage} />
-            <span className="min-w-0 flex-1 truncate">{r.summary}</span>
+            <Written className="min-w-0 flex-1 truncate" text={r.summary} lang={r.writtenLang} />
             <span className="text-subtle">{enumLabel("agentReportKind", r.kind, language)}</span>
             <span className="font-mono text-11 text-subtle" title={time.dateTime(r.createdAt)}>
               {time.age(r.createdAt)}
@@ -354,7 +356,7 @@ export function ReportPeek({
         noun={t("schedules.noun.agentReport")}
         itemKey={shortId(r.id)}
         badge={<StatusBadge family="reportTriage" value={r.triage} />}
-        title={r.summary}
+        title={<Written text={r.summary} lang={r.writtenLang} />}
         action={<ReportPrimary r={r} projectId={projectId} canWrite={canWrite} />}
       />
       <ReportBanner r={r} className="px-[18px]" />
@@ -368,12 +370,15 @@ export function ReportPeek({
 
 const REPORT_TABS = ["report", "source", "history"] as const;
 
-function Prose({ title, children }: { title: string; children: string | null }) {
+function Prose({ title, children, lang }: { title: string; children: string | null; lang?: WrittenLang | null }) {
   if (!children) return null;
   return (
     <section>
       <ViewHeading>{title}</ViewHeading>
-      <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed">{children}</p>
+      <p className="max-w-[80ch] whitespace-pre-wrap text-14 leading-relaxed" lang={lang ?? undefined}>
+        {children}
+        <WrittenMark lang={lang} />
+      </p>
     </section>
   );
 }
@@ -481,15 +486,15 @@ export function ReportPage({ projectId, slug, reportId, canWrite }: { projectId:
               </FactsRail>
             }
           >
-            <DetailMobileTitle itemKey={shortId(r.id)} title={r.summary} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
+            <DetailMobileTitle itemKey={shortId(r.id)} title={<Written text={r.summary} lang={r.writtenLang} />} badge={<StatusBadge family="reportTriage" value={r.triage} />} />
             <ReportBanner r={r} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={setTab} testId="report-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.report.tabReport")}>
               {tab === "report" ? (
                 <div className="grid gap-8" data-testid="view-report">
-                  <Prose title={t("schedules.report.summary")}>{r.summary}</Prose>
-                  <Prose title={t("schedules.report.detail")}>{r.detail}</Prose>
-                  <Prose title={t("schedules.report.suggestion")}>{r.suggestion}</Prose>
+                  <Prose title={t("schedules.report.summary")} lang={r.writtenLang}>{r.summary}</Prose>
+                  <Prose title={t("schedules.report.detail")} lang={r.writtenLang}>{r.detail}</Prose>
+                  <Prose title={t("schedules.report.suggestion")} lang={r.writtenLang}>{r.suggestion}</Prose>
                   {canWrite ? <ReportTriage r={r} projectId={projectId} slug={slug} /> : null}
                 </div>
               ) : null}

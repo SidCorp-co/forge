@@ -1,5 +1,6 @@
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
+import { writtenLangSchema } from '@forge/contracts/written-lang';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
@@ -45,6 +46,7 @@ export const revisionFields = {
   tldr: z.string().max(4_000).nullable().optional(),
   changeSummary: z.string().max(4_000).nullable().optional(),
   criteria: z.array(criterionSchema).max(200),
+  writtenLang: writtenLangSchema.optional(),
 };
 
 export function actorOf(c: Context<RequirementEnv>): RequirementActor {

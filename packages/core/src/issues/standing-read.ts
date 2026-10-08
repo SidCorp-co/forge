@@ -20,6 +20,7 @@ import type {
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import { changedSincePlan } from '@forge/contracts/requirements';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
@@ -69,6 +70,7 @@ interface IssueRowRaw {
   id: string;
   iss_seq: number;
   title: string;
+  written_lang: WrittenLang | null;
   status: IssueStatus;
   waiting_kind: string | null;
   merged_at: string | null;
@@ -121,7 +123,7 @@ function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
 async function issueRows(projectId: string, where: SQL, limit: number): Promise<IssueRowRaw[]> {
   return rowsOf<IssueRowRaw>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, i.waiting_kind, i.merged_at,
+      SELECT i.id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind, i.merged_at,
              (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
              i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
@@ -380,6 +382,7 @@ async function standingRows(
     id: r.id,
     key: key(r.iss_seq),
     title: r.title,
+    writtenLang: r.written_lang,
     status: r.status,
     priority: r.priority,
     category: r.category,

@@ -14,6 +14,7 @@ import { commentEvents } from '../db/schema-comments.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { peopleOf } from '../lib/people.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { notFound } from '../middleware/route-errors.js';
 import {
   actorFor,
@@ -182,6 +183,7 @@ export async function postEntityComment(input: {
         parentId: request.parentId ?? null,
         intent: request.intent,
         decision,
+        writtenLang: await writtenLangFor(author, projectId, request.writtenLang, tx, raw),
       })
       .returning(entityCommentColumns);
     if (!row) throw new Error('comments: insert returned no row');
@@ -251,6 +253,16 @@ export async function editEntityComment(input: {
         body: body.prepared.body,
         format: body.prepared.format,
         decision,
+        writtenLang:
+          request.body !== undefined || request.decision !== undefined
+            ? await writtenLangFor(
+                { userId: row.authorId, agency: actor.agency },
+                projectId,
+                request.writtenLang,
+                tx,
+                raw,
+              )
+            : row.writtenLang,
         updatedAt: new Date(),
       })
       .where(eq(comments.id, row.id))

@@ -9,10 +9,11 @@ import { GroupedList, type ListGroup, type ListRowView, useGroupFold, WaitingOn 
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { saidOrNull } from "@/lib/i18n/said";
+import { said, saidOrNull } from "@/lib/i18n/said";
 import { formatAge } from "@/lib/utils/format";
 import { needsYouHref, needsYouKeyLabel, needsYouPeekHref } from "../routes";
 import { NEEDS_YOU_AREAS, type NeedsYouItem } from "../types";
+import { Written } from "@/lib/i18n/written";
 
 const rowView =
   (slug: string, label: ReturnType<typeof useLabel>, t: Copy, lang: string) =>
@@ -20,7 +21,7 @@ const rowView =
     key: `${n.entity}:${n.key}`,
     keyLabel: needsYouKeyLabel(n, (a) => label("needsYouArea", a)),
     href: needsYouHref(slug, n),
-    title: saidOrNull(n.says?.title, lang) ?? n.title,
+    title: <Written text={said(n.says.title, lang)} lang={n.titleLang} />,
     facts: [label("needsYouArea", n.area)],
     note: saidOrNull(n.waitingOn.says.effect, lang),
     state: null,

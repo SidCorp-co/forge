@@ -1,5 +1,6 @@
 import { COMMENT_EVENT_KINDS, type DecisionFields } from '@forge/contracts/comments';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
+import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -58,8 +59,14 @@ export const comments = pgTable(
     decision: jsonb('decision').$type<DecisionFields>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'comments_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
     intentChk: check('comments_intent_chk', sql`${t.intent} IN ('question', 'decision', 'note')`),
     scopeChk: check(

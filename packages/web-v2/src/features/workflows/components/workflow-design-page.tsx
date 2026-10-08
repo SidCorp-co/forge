@@ -21,6 +21,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { saidView } from "@/lib/i18n/said";
 import { readCanvas, titleOf } from "../canvas/model";
+import { revisionReason } from "../decision-words";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
 import { type DesignDiff, diffOf, stepsWithRemoved } from "../design-diff";
 import { stepsForLayer } from "../health";
@@ -138,6 +139,7 @@ function RevisionSummary({ changes, first }: { changes: RevisionChanges | null; 
 function RevisionsPane({ d }: { d: WorkflowDesign }) {
   const t = useCopy();
   const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   return (
     <div data-testid="view-revisions">
       <ViewHeading right={<span className="text-12 text-subtle">{t("workflows.newestFirst")}</span>}>{t("workflows.tab.revisions")}</ViewHeading>
@@ -168,7 +170,7 @@ function RevisionsPane({ d }: { d: WorkflowDesign }) {
                 {r.reason ? (
                   <details className="mt-1">
                     <summary className="cursor-pointer select-none text-12-5 font-medium text-muted hover:text-fg">{r.decision === "approve" ? t("workflows.approvalNote") : t("workflows.reason")}</summary>
-                    <p className="mt-1 whitespace-pre-wrap break-words text-12-5 text-fg">{r.reason}</p>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-12-5 text-fg">{revisionReason(r, language)}</p>
                   </details>
                 ) : null}
               </span>

@@ -80,6 +80,7 @@ export async function postLeaveComment(
       body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
       // A person's word on leaving a park is owed a reply, as every person's comment was (ISS-56).
       intent: actorAgency(args.actor) === 'human' ? 'question' : 'note',
+      authorsWords: true,
     },
     tx,
   );
@@ -112,6 +113,7 @@ export async function postTransitionReasonComment(
         args.reason,
         args.waitingKind ?? null,
       ),
+      authorsWords: true,
     },
     tx,
   );

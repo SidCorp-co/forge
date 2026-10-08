@@ -121,7 +121,12 @@ async function closeRecorded(
 
   for (const issue of roster) {
     try {
-      await postIssueNotice({ issueId: issue.id, authorId: userId, body: note });
+      await postIssueNotice({
+        issueId: issue.id,
+        authorId: userId,
+        body: note,
+        authorsWords: true,
+      });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId }, 'release-record: comment failed');
     }
