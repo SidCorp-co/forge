@@ -1,6 +1,8 @@
 // The reports domain's ports, filled once at boot by the process entry: the query registry is a read
-// model a domain may not import (ADR 0008), and the room a block is posted into is the conversations
-// context's, so both are handed in here from their owners' faces.
+// model a domain may not import (ADR 0008), the room a block is posted into is the conversations
+// context's, and a project's compute setting is its project document's, so each is handed in here
+// from its owner's face. The executors are the sandboxes this deployment enabled: none yet (REQ-32
+// C2 adds Anthropic code execution, C3 E2B), so every computation is refused by name until one is.
 
 import { eq } from 'drizzle-orm';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
@@ -13,8 +15,9 @@ import {
 import { db } from './db/client.js';
 import { conversationMessages } from './db/schema-conversations.js';
 import { logger } from './lib/logger.js';
+import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
-import { provideReportsPorts } from './reports/index.js';
+import { provideExecutorPorts, provideExecutors, provideReportsPorts } from './reports/index.js';
 
 export function provideReportPorts(): void {
   provideReportsPorts({
@@ -53,4 +56,8 @@ export function provideReportPorts(): void {
       return { messageId: message.id };
     },
   });
+  provideExecutorPorts({
+    computePolicyOf: async (projectId) => (await readProjectDocument(projectId))?.document.compute,
+  });
+  provideExecutors([]);
 }

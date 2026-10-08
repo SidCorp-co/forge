@@ -1,10 +1,12 @@
 // A visual block reaches a message only through here, written by this service and never by a model's
-// text. The block names its run; the run is read back as the asker, its frame is copied in, and the
-// registry checks the result. A block that brings its own frame must bring exactly its run's, or it
-// is refused naming each figure the run never read.
+// text. The block names its run, or a computed block its execution; either is read back as the asker,
+// its frame is copied in, and the registry checks the result. A block that brings its own frame must
+// bring exactly its source's, or it is refused naming each figure the source never held. A computed
+// block carries its execution beside it and says it was computed, wherever it is read.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { ReportRunFacts } from '@forge/contracts/report-queries';
+import type { ExecutionFacts } from '@forge/contracts/report-executions';
+import type { ReportFrame, ReportRunFacts } from '@forge/contracts/report-queries';
 import {
   blockToText,
   checkBlock,
@@ -13,6 +15,7 @@ import {
 } from '@forge/contracts/visual-blocks';
 import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
+import { readExecution } from './executions.js';
 import { figuresNotInRun } from './figures.js';
 import { reportsPorts } from './ports.js';
 import { factsOf, readReportRun, refuse } from './runs.js';
@@ -21,6 +24,8 @@ export interface AttachedBlock {
   messageId: string;
   kind: VisualBlock['kind'];
   run: ReportRunFacts | null;
+  /** The execution a computed block was drawn from; its frame is labelled computed. */
+  execution: ExecutionFacts | null;
   /** The block's plain-text fallback, as external doors and screen readers read it. */
   text: string;
 }
@@ -36,26 +41,101 @@ function refusedBlock(
   return new RefusalError(refusals, code);
 }
 
-/** The run a block names and the frame it will hold, or null for a flow block that names none. */
+interface Sourced {
+  block: Record<string, unknown>;
+  facts: ReportRunFacts | null;
+  execution: ExecutionFacts | null;
+}
+
+/** A frame the block brought must be its source's exactly; every figure that departs is named. */
+function sameFrame(given: unknown, held: ReportFrame, sourceId: string, omitHint: string): void {
+  if (given === undefined) return;
+  const differences = figuresNotInRun(given, held, sourceId);
+  if (differences.length > 0) {
+    throw refusedBlock(
+      'REPORT_BLOCK_FIGURE_NOT_IN_RUN',
+      differences.map((d) => `${d}. A block's figures are its source's alone; ${omitHint}`),
+    );
+  }
+}
+
+/**
+ * The execution a computed block names and the frame it draws, read back as the asker: the frame at
+ * `source.frame`, which may be left out only where the execution answered one.
+ */
+async function executionSourced(
+  raw: Record<string, unknown>,
+  source: Record<string, unknown>,
+  asker: { userId: string; agency: ActorAgency },
+  projectId: string,
+  now: Date,
+): Promise<Sourced> {
+  const { executionId, frame: index } = source;
+  if (typeof executionId !== 'string' || executionId === '') {
+    throw refuse(
+      'REPORT_BLOCK_REFUSED',
+      `the block's source is ${JSON.stringify(source)}; a computed block names its execution as { executionId, frame? }`,
+      '/block/source',
+    );
+  }
+  const execution = await readExecution({ executionId, ...asker, projectId, now });
+  if (execution.frames.length === 0) {
+    throw refuse(
+      'REPORT_BLOCK_REFUSED',
+      `execution ${executionId} answered no frame${execution.stopped ? ` (it was stopped by ${execution.stopped})` : ''}, so there is nothing to draw; say what it returned in the reply`,
+      '/block/source/executionId',
+    );
+  }
+  if (index === undefined && execution.frames.length > 1) {
+    throw refuse(
+      'REPORT_BLOCK_REFUSED',
+      `execution ${executionId} answered ${execution.frames.length} frames; name the one drawn as source.frame, 0 to ${execution.frames.length - 1}`,
+      '/block/source/frame',
+    );
+  }
+  const at = typeof index === 'number' ? index : 0;
+  const frame = execution.frames[at];
+  if (!frame) {
+    throw refuse(
+      'REPORT_BLOCK_REFUSED',
+      `execution ${executionId} answered ${execution.frames.length} frame(s); source.frame ${JSON.stringify(index)} is not one of 0 to ${execution.frames.length - 1}`,
+      '/block/source/frame',
+    );
+  }
+  sameFrame(
+    raw.frame,
+    frame,
+    executionId,
+    `omit frame and execution ${executionId}'s is copied in`,
+  );
+  return {
+    block: { ...raw, frame },
+    facts: null,
+    execution: {
+      executionId,
+      adapter: execution.adapter,
+      language: execution.language,
+      at: execution.createdAt,
+    },
+  };
+}
+
+/** The source a block names and the frame it will hold, or none for a flow block that names none. */
 async function sourced(
   raw: Record<string, unknown>,
   asker: { userId: string; agency: ActorAgency },
   projectId: string,
   now: Date,
-): Promise<{ block: Record<string, unknown>; facts: ReportRunFacts | null }> {
+): Promise<Sourced> {
   const source = raw.source;
-  if (source === undefined) return { block: raw, facts: null };
+  if (source === undefined) return { block: raw, facts: null, execution: null };
   if (isObject(source) && 'executionId' in source) {
-    throw refuse(
-      'REPORT_BLOCK_SOURCE_UNSUPPORTED',
-      'a block sourced from an execution needs the executor port, which no adapter fills yet; show a block of a report run: { source: { runId } }',
-      '/block/source',
-    );
+    return executionSourced(raw, source, asker, projectId, now);
   }
   if (!isObject(source) || typeof source.runId !== 'string' || source.runId === '') {
     throw refuse(
       'REPORT_BLOCK_REFUSED',
-      `the block's source is ${JSON.stringify(source)}; a block names the run its figures came from as { runId }`,
+      `the block's source is ${JSON.stringify(source)}; a block names the run its figures came from as { runId }, or a computed block its execution as { executionId, frame? }`,
       '/block/source',
     );
   }
@@ -67,19 +147,8 @@ async function sourced(
       '/block/source/runId',
     );
   }
-  if (raw.frame !== undefined) {
-    const differences = figuresNotInRun(raw.frame, run.frame, run.runId);
-    if (differences.length > 0) {
-      throw refusedBlock(
-        'REPORT_BLOCK_FIGURE_NOT_IN_RUN',
-        differences.map(
-          (d) =>
-            `${d}. A block's figures are its run's alone; omit frame and run ${run.runId}'s is copied in`,
-        ),
-      );
-    }
-  }
-  return { block: { ...raw, frame: run.frame }, facts: factsOf(run) };
+  sameFrame(raw.frame, run.frame, run.runId, `omit frame and run ${run.runId}'s is copied in`);
+  return { block: { ...raw, frame: run.frame }, facts: factsOf(run), execution: null };
 }
 
 /**
@@ -118,7 +187,7 @@ export async function attachVisualBlock(args: {
       '/block',
     );
   }
-  const { block, facts } = await sourced(
+  const { block, facts, execution } = await sourced(
     { v: VISUAL_BLOCK_VERSION, ...args.raw },
     args.asker,
     args.projectId,
@@ -130,13 +199,24 @@ export async function attachVisualBlock(args: {
       'REPORT_BLOCK_REFUSED',
       checked.refusals.map((r) => r.message),
     );
-  const text = blockToText(checked.block);
+  const drawn = blockToText(checked.block);
+  // a computed block says so wherever it is read as text, not only where it is drawn
+  const text = execution
+    ? `${drawn}\n\nComputed by execution ${execution.executionId} (${execution.language} on ${execution.adapter}), not read from a report.`
+    : drawn;
   const { messageId } = await ports.postAnswer({
     conversationId: args.conversationId,
     projectId: args.projectId,
     askerUserId: args.asker.userId,
     content: text,
-    blocks: [{ type: 'visual', visual: checked.block, ...(facts ? { run: facts } : {}) }],
+    blocks: [
+      {
+        type: 'visual',
+        visual: checked.block,
+        ...(facts ? { run: facts } : {}),
+        ...(execution ? { execution } : {}),
+      },
+    ],
   });
-  return { messageId, kind: checked.block.kind, run: facts, text };
+  return { messageId, kind: checked.block.kind, run: facts, execution, text };
 }

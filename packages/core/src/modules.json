@@ -934,7 +934,7 @@
     "reports": {
       "kind": "domain",
       "context": "operations",
-      "owns": ["reportRuns"],
+      "owns": ["reportExecutions", "reportRuns"],
       "serves": ["REQ-32"]
     },
     "requirements": {

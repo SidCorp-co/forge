@@ -228,6 +228,46 @@ cannot run model-written code over project data.
 providing one at boot), enabled per deployment; the sandbox ADR's requirement additions (inputs,
 retention, network, permission `assistant.exec`, budget, record, opt-out) bind every adapter.
 
+**C1, as built (2026-10-08).** The port, its record and its two doors exist; no adapter does, so on
+this build every computation answers `EXECUTOR_UNAVAILABLE` (503), naming that no executor is
+enabled on the deployment. What an adapter added in C2 or C3 inherits:
+
+- **Registry.** `packages/core/src/reports/executors.ts:provideExecutors` takes the deployment's
+  adapters at boot (`report-ports.ts` passes none); a duplicate id, or a descriptor off
+  `ExecutorDescriptorSchema` (a network other than `none` among them), is refused at registration.
+  A test registers its own fake through `registerExecutor`; production registers none.
+- **One service, two doors.** `packages/core/src/reports/compute.ts:computeExecution` is called by the
+  chat tool `forge_compute` (in `CHAT_REPORT_TOOLS`) and by `POST /api/projects/:id/executions`; `GET
+  /api/projects/:id/executions/:executionId` reads one back to the person who asked it. Its checks run
+  in this order, each refused by name and none reaching an adapter: an executor enabled at all; the
+  asker's `assistant.exec` (admin's by default, token-explicit, so a turn token or a personal token
+  holds it only where its grant names it); in chat, a web room about the project (an external door is
+  `EXECUTION_DOOR_FORBIDDEN`); the project document's `compute.enabled` (absent is off,
+  `EXECUTION_DISABLED`); the limits (`EXECUTION_MAX_LIMITS`, never lowered silently); the turn's caps
+  (`EXECUTION_TURN_CAPS`: 8 calls, 120 s of wall time, 2 MB of output); the inputs, each a run the
+  asker made (in chat, one this turn's `forge_report` or `forge_template` returned; over REST, one
+  read in the last ten minutes); the project's data policy on the new egress surface `report.exec`
+  (operational: refused at `no_egress`, scrubbed at `redact`), then `scrubSecretsDeep`; and an
+  adapter that `compute.zdrOnly` and `compute.thirdParty` admit, else `EXECUTION_NO_ADAPTER_ALLOWED`
+  naming why each was barred.
+- **Script I/O.** `EXECUTION_IO` in the contract fixes how every adapter hands a script its inputs
+  (`inputs.json`) and takes frames back (`frames.json`), so a script runs alike on each.
+- **Record.** `report_executions` (migration 0465) keeps the room or the turn's credential, who asked,
+  the adapter, the script and `script_fingerprint` (sha256 of `normalizeScript`: line endings,
+  trailing and inner runs of whitespace and blank lines do not change it; indentation does), the input
+  run ids, limits, exit, the limit that stopped it, duration, frames (dropped whole past
+  `limits.outputBytes`, with the stop named) and logs (16 KiB each, scrubbed), for 30 days; the
+  nightly retention pass sweeps it. An adapter's answer off `ExecutionResultSchema` is
+  `EXECUTOR_FAILED` and is not kept.
+- **Blocks and grounding.** `forge_show` draws a frame of an execution with `source: { executionId,
+  frame? }`; the stored block carries the execution's adapter, language and time beside it, its text
+  says it was computed, and web labels it so. `figures-grounded` counts an execution's frames as a
+  run's (`reports/executions.ts:keptExecutionFrames` beside `keptRunFrames`).
+- **Not in C1.** The monthly project cap of the threat table below; a room's inputs limited to what
+  every member may read (runs, too, are read as the asker alone today); sharing an answer that holds a
+  computed block, which the message share source refuses by name; and the session-page view of the
+  record (sandbox draft addition 7).
+
 ### Port 5 — Share: a Forge share link
 
 **Contract** (`packages/contracts/src/shares.ts`, new): `ShareTarget` adapters turn a frozen
@@ -320,8 +360,8 @@ ruling and is not registered.
   turn made no share (`POST /api/projects/:id/shares`) or status-report save, and no
   unverified mark exempts a claim to have written a record.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
-  is labelled as computed in the block, and never drives a write without the person's confirmation
-  (REQ-30 BC-4).
+  is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
+  never drives a write without the person's confirmation (REQ-30 BC-4).
 
 ## Module boundaries and dependency direction
 
@@ -389,7 +429,7 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 
 | Lane | Delivers | Migration |
 |---|---|---|
-| C1 executor port and record | registry in `reports`, `forge_compute`, `assistant.exec`, per-turn caps, the execution record | **yes: `report_executions`** |
+| C1 executor port and record (built; no adapter yet) | registry in `reports`, `forge_compute`, `assistant.exec`, per-turn caps, the execution record | **yes: `report_executions` (0465)** |
 | C2 `anthropic-code-exec` | the sandbox draft's Phase 1 (`bridgeStream` provider events, container per conversation, scrubbed uploads) behind the port | none |
 | C3 `e2b` | the fallback adapter under `integrations/executor/e2b/` | none |
 | C4 `exec-node` | the runner `exec` job (sandbox draft Phase 2), only after REQ-30 BC-2 is revised | none in core beyond C1; a job kind |

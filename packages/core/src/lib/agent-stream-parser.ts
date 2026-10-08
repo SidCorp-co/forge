@@ -1,3 +1,4 @@
+import type { ExecutionFacts } from '@forge/contracts/report-executions';
 import type { ReportRunFacts } from '@forge/contracts/report-queries';
 
 // Optional fields carry explicit `| undefined` because core compiles with
@@ -50,6 +51,8 @@ export interface ContentBlock {
   visual?: unknown;
   /** A `visual` block's run: the query and the read its figures came from, copied from `report_runs` when it was attached. */
   run?: ReportRunFacts | undefined;
+  /** A computed `visual` block's execution: the adapter, language and moment its frame came from, copied from `report_executions` when it was attached. */
+  execution?: ExecutionFacts | undefined;
   /** An `unsupported` block: the type of a stored entry this build does not know, kept so a reader can name it. */
   unsupported?: string | undefined;
 }
