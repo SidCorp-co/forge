@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.197] - 2026-10-08
+
+Interim progress messages no longer claim an issue was updated when only read
+
+### Fixed
+
+- **The 90-second interim reply no longer claims a write the turn did not make.** A filtered list, search, thread read or proposal is told as a read; only a field set, edge, comment body or attachment is told as done.
+
 ## [0.4.0-dev.196] - 2026-10-08
 
 Chat no longer states asker-typed figures as fact; sandbox needs Claude API
