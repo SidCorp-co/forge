@@ -22,16 +22,18 @@ async function answerAll() {
     for (const answer of answers.splice(0)) answer(STARTED);
   });
 }
+const roster = vi.fn();
 vi.mock("./api", async () => {
   const actual = await vi.importActual<typeof import("./api")>("./api");
-  return { ...actual, releaseBatchApi: { ...actual.releaseBatchApi, create } };
+  return { ...actual, releaseBatchApi: { ...actual.releaseBatchApi, create, roster } };
 });
 
-const { useBatchRelease } = await import("./hooks");
+const { useBatchRelease, useReleaseRoster } = await import("./hooks");
 
 afterEach(() => {
   cleanup();
   create.mockClear();
+  roster.mockReset();
   toast.mockClear();
   answers.length = 0;
 });
@@ -65,5 +67,48 @@ describe("useBatchRelease — Release now pressed twice", () => {
     act(() => result.current.mutate({ issueIds: ["iss-2"] }));
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+  });
+});
+
+// ISS-1381 r5 — a refused press left the banner on the roster from before it, so the issue a
+// release already held still offered Release now and the next press met the same refusal.
+describe("useBatchRelease — Release now refused", () => {
+  function rosterWith(claimedByRunId: string | null) {
+    return {
+      gateStatus: "awaiting_release",
+      channels: ["coolify"],
+      releaseRunnerLabel: null,
+      baseBranch: "main",
+      nextCutAt: null,
+      issues: [
+        {
+          id: "iss-1",
+          displayId: "ISS-1",
+          title: "Ledger rows carry their tenant",
+          mergedAt: null,
+          waitingDays: null,
+          claimedByRunId,
+          closeRefusals: [],
+          closeFailure: null,
+        },
+      ],
+    };
+  }
+
+  it("reads the roster again, so the banner shows the release that holds the issue", async () => {
+    roster.mockResolvedValueOnce(rosterWith(null)).mockResolvedValue(rosterWith("run-9"));
+    create.mockImplementationOnce(() => Promise.reject(new Error("already claimed by a release")));
+    const { result } = renderHook(
+      () => ({ roster: useReleaseRoster("proj-1"), batch: useBatchRelease("proj-1") }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.roster.data?.issues[0]?.claimedByRunId).toBeNull());
+
+    act(() => result.current.batch.mutate({ issueIds: ["iss-1"] }));
+
+    await waitFor(() => expect(result.current.batch.isError).toBe(true));
+    await waitFor(() =>
+      expect(result.current.roster.data?.issues[0]?.claimedByRunId).toBe("run-9"),
+    );
   });
 });

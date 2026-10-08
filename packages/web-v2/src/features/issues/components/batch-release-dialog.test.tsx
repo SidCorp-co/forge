@@ -159,6 +159,40 @@ describe("what the dialog promises before the press", () => {
     expect(drawer).toHaveTextContent(/will be released together and closed in one batch/);
     expect(drawer.textContent).not.toMatch(/deployed/);
   });
+
+  // ISS-1381 r5: the dialog promised a close the release would fail the same way.
+  it("names an issue the last release failed to close as one this release fails the same way", () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ToastProvider>
+          <BatchReleaseDialog
+            projectId="proj-1"
+            selectedIssues={[
+              ISSUES[0] as (typeof ISSUES)[number],
+              {
+                ...(ISSUES[1] as (typeof ISSUES)[number]),
+                closeFailure: { reason: "the database refused the write (23514)", version: "0.6.0" },
+              },
+            ]}
+            open
+            onClose={onClose}
+            onSuccess={onSuccess}
+          />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+
+    const drawer = screen.getByRole("dialog");
+    expect(drawer).not.toHaveTextContent(/closed in one batch/);
+    expect(drawer).toHaveTextContent(
+      "The following 2 issues will be released together. This release fails to close ISS-2 the same way the last one did, until whoever operates Forge fixes it; only ISS-1 is closed. This cannot be undone.",
+    );
+    const failing = within(drawer).getByTestId("fails-the-same-way-ISS-2");
+    expect(failing).toHaveTextContent(
+      "The last release (version 0.6.0) could not close this: the database refused the write (23514).",
+    );
+    expect(within(drawer).queryByTestId("fails-the-same-way-ISS-1")).toBeNull();
+  });
 });
 
 describe("a batch release the server accepts", () => {

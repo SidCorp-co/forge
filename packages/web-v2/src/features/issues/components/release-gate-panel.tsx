@@ -86,10 +86,13 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
 
   const unclaimed = issues.filter((i) => i.claimedByRunId === null);
   const selectable = unclaimed.filter((i) => i.closeRefusals.length === 0);
+  // A row the last release failed to close is picked by hand only: a release fails it the same way.
+  const ready = selectable.filter((i) => i.closeFailure === null);
   const chosen = selectable.filter((i) => selected.has(i.id));
-  const allSelected = selectable.length > 0 && chosen.length === selectable.length;
+  const allSelected = ready.length > 0 && ready.every((i) => selected.has(i.id));
   const claimed = issues.length - unclaimed.length;
   const unclosable = unclaimed.length - selectable.length;
+  const failing = selectable.length - ready.length;
   const visible = expanded ? issues : issues.slice(0, VISIBLE_LIMIT);
   const oldest = oldestMergedAt(issues);
 
@@ -102,7 +105,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
     });
 
   const toggleAll = () =>
-    setSelected(allSelected ? new Set() : new Set(selectable.map((i) => i.id)));
+    setSelected(allSelected ? new Set() : new Set(ready.map((i) => i.id)));
 
   return (
     <Card>
@@ -156,14 +159,15 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
           <Checkbox
             checked={allSelected}
             indeterminate={chosen.length > 0 && !allSelected}
-            disabled={selectable.length === 0}
+            disabled={ready.length === 0}
             onChange={toggleAll}
             ariaLabel="Select every issue that can be released"
           />
           <span className="fg-caption text-muted">
-            {chosen.length > 0 ? `${chosen.length} selected` : `${selectable.length} ready`}
+            {chosen.length > 0 ? `${chosen.length} selected` : `${ready.length} ready`}
             {claimed > 0 ? ` · ${claimed} in a release` : ""}
             {unclosable > 0 ? ` · ${unclosable} a release can't close` : ""}
+            {failing > 0 ? ` · ${failing} the last release failed to close` : ""}
           </span>
         </div>
 
@@ -189,7 +193,12 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       <BatchReleaseDialog
         projectId={projectId}
         selectedIssues={chosen.map(
-          (i): BatchReleaseIssue => ({ id: i.id, displayId: i.displayId, title: i.title }),
+          (i): BatchReleaseIssue => ({
+            id: i.id,
+            displayId: i.displayId,
+            title: i.title,
+            closeFailure: i.closeFailure,
+          }),
         )}
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}

@@ -288,6 +288,33 @@ describe("ReleaseGatePanel — a row whose last release failed its close", () =>
       ),
     ).toBeInTheDocument();
   });
+
+  // ISS-1381 r5: a row a release fails the same way is not ready, and the dialog is told why.
+  it("is left out of the ready count and select-all, and counted as the last release failed it", () => {
+    state({ issues: [...ISSUES, FAILED] });
+    renderPanel();
+    expect(
+      screen.getByText(/2 ready · 1 in a release · 1 the last release failed to close/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select every issue that can be released" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Release 2 now$/ }));
+    expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
+  });
+
+  it("hands its failure to the dialog when it is picked by hand", () => {
+    state({ issues: [...ISSUES, FAILED] });
+    renderPanel();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select ISS-7 for release" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Release 1 now$/ }));
+    expect(dialogProps?.selectedIssues).toEqual([
+      {
+        id: "iss-7",
+        displayId: "ISS-7",
+        title: "Ledger rows carry their tenant",
+        closeFailure: FAILED.closeFailure,
+      },
+    ]);
+  });
 });
 
 // An empty state costs what it is worth: a gate holding nothing is one line

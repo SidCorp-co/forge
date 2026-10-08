@@ -394,6 +394,9 @@ function useBatchReleaseMutation(projectId: string, showsRefusal: (() => boolean
       });
     },
     onError: (err) => {
+      // A refusal is read against the roster that refused it: a claim it met shows as in a release.
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      qc.invalidateQueries({ queryKey: ["release-roster"] });
       if (showsRefusal?.()) return;
       toast({
         title: "Batch release failed",
