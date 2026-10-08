@@ -16,7 +16,12 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueDependencies, type issueDependencyKinds, issues } from '../db/schema.js';
+import {
+  type IssueDependencyHold,
+  issueDependencies,
+  type issueDependencyKinds,
+  issues,
+} from '../db/schema.js';
 import { type Actor, safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { archivedAmong } from './archive.js';
@@ -34,6 +39,7 @@ export type IssueDependencyErrorCode =
   | 'CYCLE_DETECTED'
   | 'CYCLE_DEPTH_EXCEEDED'
   | 'ISSUE_ARCHIVED'
+  | 'HOLD_NEEDS_BLOCKS'
   | 'INTERNAL';
 
 export class IssueDependencyError extends Error {
@@ -53,6 +59,8 @@ export type SetIssueDependencyInput = {
   kind: IssueDependencyKind;
   reason?: string | undefined;
   validUntil?: string | undefined;
+  /** Omitted, a new edge is `settled` and an existing one keeps what it holds. */
+  holdsUntil?: IssueDependencyHold | undefined;
 };
 
 /**
@@ -68,9 +76,9 @@ export type IssueDependencyWriter = {
 async function findEdge(
   ex: IssueDependencyExecutor,
   input: SetIssueDependencyInput,
-): Promise<{ id: string } | undefined> {
+): Promise<{ id: string; holdsUntil: IssueDependencyHold } | undefined> {
   const [edge] = await ex
-    .select({ id: issueDependencies.id })
+    .select({ id: issueDependencies.id, holdsUntil: issueDependencies.holdsUntil })
     .from(issueDependencies)
     .where(
       and(
@@ -153,6 +161,14 @@ export async function writeIssueDependency(
     throw new IssueDependencyError('ISSUE_ARCHIVED', archived.message);
   }
 
+  // A hold on an edge that gates nothing is refused rather than stored; the table CHECKs it too.
+  if (input.holdsUntil === 'shipped' && input.kind !== 'blocks') {
+    throw new IssueDependencyError(
+      'HOLD_NEEDS_BLOCKS',
+      `holdsUntil "shipped" is only meaningful on a blocks edge, and this edge is ${input.kind}`,
+    );
+  }
+
   if (input.kind === 'blocks' && !expiresEdge(input.validUntil)) {
     const cycle = await detectCycle(input.toIssueId, input.fromIssueId, ex);
     if (cycle === 'cycle') throw new IssueDependencyError('CYCLE_DETECTED');
@@ -169,6 +185,7 @@ export async function writeIssueDependency(
       reason: input.reason ?? null,
       createdById: writer.createdById,
       validUntil: input.validUntil ? new Date(input.validUntil) : null,
+      ...(input.holdsUntil ? { holdsUntil: input.holdsUntil } : {}),
     })
     .onConflictDoNothing({
       target: [
@@ -189,9 +206,12 @@ export async function writeIssueDependency(
   const existing = await findEdge(ex, input);
   if (!existing) throw new IssueDependencyError('INTERNAL');
 
-  const patch: { validUntil?: Date; reason?: string } = {};
+  const patch: { validUntil?: Date; reason?: string; holdsUntil?: IssueDependencyHold } = {};
   if (input.validUntil) patch.validUntil = new Date(input.validUntil);
   if (input.reason) patch.reason = input.reason;
+  if (input.holdsUntil && input.holdsUntil !== existing.holdsUntil) {
+    patch.holdsUntil = input.holdsUntil;
+  }
   const updated = Object.keys(patch).length > 0;
 
   if (updated) {
@@ -215,6 +235,7 @@ export async function emitIssueDependencyEffects(
     await emitEdgeChanged(input, written.id);
     await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.added', {
       ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.holdsUntil ? { holdsUntil: input.holdsUntil } : {}),
     });
     await refreshDependentHealth(input, opts);
     return;
@@ -225,6 +246,7 @@ export async function emitIssueDependencyEffects(
     await recordOnBothSides(input, written.id, writer.actor, 'issue.dependency.updated', {
       ...(input.validUntil ? { validUntil: input.validUntil } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.holdsUntil ? { holdsUntil: input.holdsUntil } : {}),
     });
     await refreshDependentHealth(input, opts);
   }

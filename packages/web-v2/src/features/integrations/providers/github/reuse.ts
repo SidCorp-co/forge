@@ -32,12 +32,15 @@ export function unbindableReason(
   if (reachable.length === 0 || reachable.some((c) => canBindHere(c, project))) return null;
   const first = reachable[0] as ConnectionDirectoryItem;
   const name = first.displayName ?? "A GitHub App";
-  if (first.ownerType === "org" && project && first.ownerId !== project.orgId) {
-    return `${name} already serves this workspace, but it belongs to a different organization than this project, so it can only be used there. Create a separate App below.`;
+  const owner = first.access.ownerName;
+  if (first.ownerType === "org") {
+    if (project && first.ownerId !== project.orgId) {
+      const who = owner ? `the organization ${owner}` : "another organization";
+      return `${name} is owned by ${who}, and only a project in it can use it — this project is not. An owner or admin of ${owner ?? "that organization"} can use it from there. Create a separate App below to use one here.`;
+    }
+    const org = project && first.ownerId === project.orgId ? project.orgName : (owner ?? "its organization");
+    return `${name} is owned by ${org}, and only an owner or admin of ${org} can bind it to this project — ask them, or create a separate App below.`;
   }
-  const owner =
-    first.ownerType === "org"
-      ? `${project && first.ownerId === project.orgId ? project.orgName : "another organization"}, and only an owner or admin of it`
-      : "another user, and only its owner";
-  return `${name} already serves this workspace. It is owned by ${owner} can bind it to this project — ask them, or create a separate App below.`;
+  const person = owner ?? "another user";
+  return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can bind it to this project — ask ${owner ? person : "its owner"}, or create a separate App below.`;
 }

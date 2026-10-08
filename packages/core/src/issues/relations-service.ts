@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import { db } from '../db/client.js';
+import { type IssueDependencyHold, issueDependencyHolds } from '../db/schema.js';
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
   emitIssueDependencyEffects,
@@ -25,6 +26,7 @@ export type IssueRelationInput = {
   blocksId?: string | undefined;
   reason?: string | undefined;
   validUntil?: string | undefined;
+  holdsUntil?: IssueDependencyHold | undefined;
 };
 
 export const RELATION_KINDS = ['blocks', 'relates'] as const;
@@ -40,6 +42,7 @@ export const issueRelationInputSchema = z
     blocksId: z.uuid().optional(),
     reason: z.string().max(2000).optional(),
     validUntil: z.iso.datetime().optional(),
+    holdsUntil: z.enum(issueDependencyHolds).optional(),
   })
   .strict()
   .refine((r) => (r.dependsOnId == null) !== (r.blocksId == null), {
@@ -104,6 +107,7 @@ export async function writeIssueRelations(
       kind: rel.kind,
       reason: rel.reason,
       validUntil: rel.validUntil,
+      holdsUntil: rel.holdsUntil,
     };
     const written = await writeIssueDependency(input, writer, ex);
     pending.push({

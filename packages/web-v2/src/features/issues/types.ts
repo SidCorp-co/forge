@@ -156,6 +156,8 @@ export type IssueDependencyKind =
   | "parent"
   | "decomposes";
 
+export type IssueDependencyHold = "settled" | "shipped";
+
 export interface IssueDependencyEdge {
   id: string;
   fromIssueId: string;
@@ -163,6 +165,8 @@ export interface IssueDependencyEdge {
   kind: IssueDependencyKind;
   reason: string | null;
   createdAt: string;
+  /** How far a `blocks` edge holds its dependent; an edge from a core that predates the field is `settled`. */
+  holdsUntil?: IssueDependencyHold;
   fromDisplayId?: string | null;
   fromTitle?: string | null;
   fromStatus?: IssueStatus | null;

@@ -53,4 +53,10 @@ export const BLOCKER_SETTLED_STATUSES = [
   'closed',
 ] as const;
 
+/* status-tuple: differs — the browser's copy of core's `issues/dependency-effects.ts`
+   BLOCKER_SHIPPED_STATUSES, the statuses that release the dependent behind a `blocks` edge that
+   declared `holdsUntil: "shipped"`; a different question from BLOCKER_SETTLED_STATUSES, whatever
+   their members coincide with, and status-sets-parity.test.ts binds the two. */
+export const BLOCKER_SHIPPED_STATUSES = ['closed'] as const;
+
 export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];

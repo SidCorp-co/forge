@@ -14,7 +14,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
+import {
+  issueDependencies,
+  issueDependencyHolds,
+  issueDependencyKinds,
+  issues,
+} from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
@@ -40,6 +45,7 @@ const createBodySchema = z
     kind: z.enum(issueDependencyKinds).default('blocks'),
     reason: z.string().trim().min(1).max(2000).optional(),
     validUntil: z.iso.datetime().optional(),
+    holdsUntil: z.enum(issueDependencyHolds).optional(),
   })
   .strict();
 
@@ -97,7 +103,7 @@ issueDependencyRoutes.post(
   }),
   async (c) => {
     const { id: toIssueId } = c.req.valid('param');
-    const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
+    const { dependsOnId: fromIssueId, kind, reason, validUntil, holdsUntil } = c.req.valid('json');
     const userId = c.get('userId');
 
     if (fromIssueId === toIssueId) {
@@ -128,6 +134,7 @@ issueDependencyRoutes.post(
       kind,
       reason,
       validUntil,
+      holdsUntil,
     };
     try {
       const result = await setIssueDependency(input, {
@@ -156,6 +163,8 @@ export function toHttpDependencyError(
       return badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
     case 'NOT_FOUND':
       return notFound('one or both issues not found');
+    case 'HOLD_NEEDS_BLOCKS':
+      return badRequest({ message: err.detail ?? 'holdsUntil needs a blocks edge' }, err.code);
     case 'CROSS_PROJECT':
       return badRequest(
         { message: 'cross-project edges not supported via this route' },

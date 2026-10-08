@@ -2203,6 +2203,9 @@ export const issueDependencyKinds = [
 ] as const;
 export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
 
+export const issueDependencyHolds = ['settled', 'shipped'] as const;
+export type IssueDependencyHold = (typeof issueDependencyHolds)[number];
+
 export const issueDependencies = pgTable(
   'issue_dependencies',
   {
@@ -2221,6 +2224,7 @@ export const issueDependencies = pgTable(
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     validUntil: timestamp('valid_until', { withTimezone: true }),
+    holdsUntil: text('holds_until', { enum: issueDependencyHolds }).notNull().default('settled'),
   },
   (t) => ({
     uniqueEdgeIdx: uniqueIndex('issue_dependencies_unique_edge_idx').on(
@@ -2231,6 +2235,10 @@ export const issueDependencies = pgTable(
     ),
     projectFromIdx: index('issue_dependencies_project_from_idx').on(t.projectId, t.fromIssueId),
     projectToIdx: index('issue_dependencies_project_to_idx').on(t.projectId, t.toIssueId),
+    holdsUntilChk: check(
+      'issue_dependencies_holds_until_chk',
+      sql`${t.holdsUntil} IN ('settled', 'shipped') AND (${t.holdsUntil} = 'settled' OR ${t.kind} = 'blocks')`,
+    ),
   }),
 );
 

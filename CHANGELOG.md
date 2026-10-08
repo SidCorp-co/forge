@@ -122,6 +122,8 @@
 
 ### Added
 
+- **A dependency can now wait for a release to ship.** An edge can carry `holdsUntil: "shipped"`, holding its dependent until the blocker closes. Other edges behave as before; the `forge` CLI's `next` still reads the old rule.
+
 - **The public guide list says it is not the whole set.** Method guides are served by the `forge` CLI; the list, `llms.txt` and a refused slug now say so. A new guide, `what-forge-is`, maps what Forge can do.
 
 - **The guides page says its count is not the whole set.** `/guides` now states beside the agent page count that the method guides are served by the `forge` CLI, in the API index's own words.
@@ -3150,6 +3152,10 @@
 
 - **A project's admins can see its GitHub App, wherever it was created.** The connections list, its
   drawer and the repository picker now agree; editing stays with the owner, and a refusal names who can act.
+
+- **An admin can finish installing a GitHub App that serves several projects.** It is recorded on the project they administer; where they administer none, the refusal names the App and who can finish it, not a bare "forbidden".
+
+- **A refusal to change a connection names its owner.** An organization by name, a person as Forge shows them elsewhere. The GitHub screen names who owns an App it cannot offer, and a drawer refusal no longer offers Retry.
 
 - **A project with no GitHub App is no longer badged "Connected".** The card reads "Not connected" until one is bound.
 

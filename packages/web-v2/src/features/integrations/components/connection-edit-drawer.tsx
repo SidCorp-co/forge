@@ -25,7 +25,7 @@ import {
   Skeleton,
   SlideOver,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import type { ProjectListItem } from "@/features/projects/types";
@@ -271,7 +271,8 @@ function ProjectsSection({
   bindings: BindingSummary[];
   bindingsError: string | null;
   bindingsLoading: boolean;
-  onRetry: () => void;
+  /** Absent where retrying would meet the same refusal (a 4xx), so no control promises what it cannot do. */
+  onRetry?: () => void;
   onNavigate: () => void;
 }) {
   const byId = useMemo(() => {
@@ -469,7 +470,7 @@ export function ConnectionEditDrawer({
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
-          onRetry={() => bindingsQ.refetch()}
+          onRetry={isRetryableApiError(bindingsQ.error) ? () => bindingsQ.refetch() : undefined}
           onNavigate={onClose}
         />
         {canManage && (
