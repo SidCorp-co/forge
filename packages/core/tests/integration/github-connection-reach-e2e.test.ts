@@ -10,7 +10,8 @@
  * caller's personal principal after it had already proved project admin.
  *
  * 404 versus 400 is the whole discriminator here and it needs no network: a
- * connection the route cannot resolve is `connection not found`, and one it
+ * connection the route cannot resolve is `CONNECTION_NOT_REACHABLE` (it was
+ * `connection not found` before ISS-1216 named the refusal), and one it
  * resolves whose App was never converted is `the App was never converted`.
  * The second means the App was reached.
  */
@@ -153,7 +154,7 @@ describe("the repository picker's reach", () => {
     const res = await repositoriesAs(orgOwner.id, connection.id);
     const body = await bodyOf(res);
 
-    expect(body.code).not.toBe('NOT_FOUND');
+    expect(body.code).not.toBe('CONNECTION_NOT_REACHABLE');
     expect(res.status).toBe(400);
     expect(body.details).toEqual({ connectionId: 'the App was never converted' });
   });
@@ -173,14 +174,29 @@ describe("the repository picker's reach", () => {
     expect((await repositoriesAs(orgOwner.id, connection.id)).status).toBe(400);
   });
 
-  it('refuses an App bound to a different project of the same org', async () => {
+  it('reaches an App bound to a different project of the same org, because the caller administers that one', async () => {
+    // The grant is one rule (ISS-1216): an admin of any project the App is bound to reaches it,
+    // and the bind-existing screen lists before this project holds a binding of its own.
     const other = await createTestProject(harness.db, orgOwner.id, { orgId });
     const connection = await appOwnedBy(clicker.id, other.id);
 
     const res = await repositoriesAs(orgOwner.id, connection.id, projectId);
 
+    expect(res.status).toBe(400);
+    expect((await bodyOf(res)).details).toEqual({ connectionId: 'the App was never converted' });
+  });
+
+  it('refuses an App bound only to a project the caller does not administer', async () => {
+    const elsewhere = (await seedOrg(harness.db, clicker.id)).id;
+    const foreign = await createTestProject(harness.db, clicker.id, { orgId: elsewhere });
+    const connection = await appOwnedBy(clicker.id, foreign.id);
+
+    const res = await repositoriesAs(orgOwner.id, connection.id, projectId);
+    const body = await bodyOf(res);
+
     expect(res.status).toBe(404);
-    expect((await bodyOf(res)).message).toBe('connection not found');
+    expect(body.code).toBe('CONNECTION_NOT_REACHABLE');
+    expect(body.message).toContain(connection.id);
   });
 
   it('refuses an App id that does not exist', async () => {

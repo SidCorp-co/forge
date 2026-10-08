@@ -38,6 +38,7 @@ import {
 import type { AgentAccess } from "../../types";
 import { text } from "../config-read";
 import { github } from "./index";
+import { bindableApps, unbindableReason } from "./reuse";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 import { scopeLabel } from "../../components/status-pill";
 
@@ -378,7 +379,16 @@ function AppOwner({ projectId }: { projectId: string }) {
   );
 }
 
-function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => void) | null }) {
+function CreateApp({
+  projectId,
+  onBack,
+  unbindable,
+}: {
+  projectId: string;
+  onBack: (() => void) | null;
+  /** A reachable App this project cannot bind, and who can — said before offering a second one. */
+  unbindable: string | null;
+}) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
 
@@ -397,6 +407,8 @@ function CreateApp({ projectId, onBack }: { projectId: string; onBack: (() => vo
           Forge creates one GitHub App for your organization, not one per project. You approve it on
           GitHub and choose which repositories it may see — no token is typed here.
         </p>
+
+        {unbindable && <Banner tone="attention">{unbindable}</Banner>}
 
         <AppOwner projectId={projectId} />
 
@@ -452,9 +464,22 @@ export function GitHubSection({ projectId }: { projectId: string }) {
     [list.data],
   );
 
+  // The App this project is offered is one the server would let it bind: managed by the caller
+  // and, where an org owns it, owned by this project's own org. Offering any other would walk the
+  // caller into a refusal on the last click (ISS-1216).
+  const projectsQ = useProjects();
+  const project = projectsQ.data?.find((p) => p.id === projectId);
+  const target = useMemo(
+    () => (project ? { orgId: project.orgId, orgName: project.orgName } : null),
+    [project],
+  );
   const reusable = useMemo(
-    () => (connections.data?.items ?? []).filter((c) => c.provider === "github" && c.active),
-    [connections.data],
+    () => bindableApps(connections.data?.items ?? [], target),
+    [connections.data, target],
+  );
+  const unbindable = useMemo(
+    () => unbindableReason(connections.data?.items ?? [], target),
+    [connections.data, target],
   );
 
   // A row existing and a repository being recorded are two facts, and this used
@@ -503,6 +528,10 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   }
 
   return (
-    <CreateApp projectId={projectId} onBack={first ? () => setForceCreate(false) : null} />
+    <CreateApp
+      projectId={projectId}
+      onBack={first ? () => setForceCreate(false) : null}
+      unbindable={unbindable}
+    />
   );
 }

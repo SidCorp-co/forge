@@ -1,3 +1,4 @@
+import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -34,6 +35,44 @@ export const forbidden = () =>
   new HTTPException(403, { message: 'forbidden', cause: { code: 'FORBIDDEN' } });
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
+
+/**
+ * A connection the caller does not reach, which is also a connection that does not exist — one
+ * sentence for both, so the refusal does not say which. Its OWN code rather than `NOT_FOUND`: the
+ * web prints one generic phrase for that code and drops the server's, so a sentence naming the
+ * subject and the way round never reached a screen that way (ISS-1216).
+ */
+export const connectionNotReachable = (connectionId: string) =>
+  new HTTPException(404, {
+    message:
+      `connection ${connectionId} is not one you can reach. A connection is visible to the ` +
+      'individual who owns it, to the members of the organization that owns it, and to an admin ' +
+      "of a project it is bound to. Only its owner (for an organization's connection, an owner or " +
+      'admin of that organization) can bind it to a project you administer, so ask them.',
+    cause: { code: 'CONNECTION_NOT_REACHABLE' },
+  });
+
+/**
+ * A connection the caller reaches and may not change. Names who owns it and who may, because the
+ * caller can see it and will go looking for the control that works.
+ */
+export const connectionNotManageable = (connection: {
+  id: string;
+  ownerType: string;
+  ownerId: string;
+}) =>
+  new HTTPException(403, {
+    message:
+      connection.ownerType === 'org'
+        ? `you can see connection ${connection.id} but not change it: it is owned by the ` +
+          `organization ${connection.ownerId}, and only an owner or admin of that organization ` +
+          'can rename, re-key, disable, remove or share it. Ask one of them, or create a ' +
+          'connection of your own.'
+        : `you can see connection ${connection.id} but not change it: it is owned by another ` +
+          'individual, and only its owner can rename, re-key, disable, remove or share it. Ask ' +
+          'its owner, or create a connection of your own.',
+    cause: { code: 'CONNECTION_NOT_MANAGEABLE' },
+  });
 
 /** 409 for the one-active-service-binding invariant (create + bind-existing). */
 export const alreadyExists = (
@@ -139,9 +178,11 @@ export function summarizeConnection(connection: IntegrationConnectionRow) {
 export function summarizeConnectionWithUsage(
   connection: IntegrationConnectionRow,
   bindings: IntegrationBindingRow[],
+  access: ConnectionAccess,
 ) {
   return {
     ...summarizeConnection(connection),
+    access,
     usage: {
       bindings: bindings.map((b) => ({
         id: b.id,

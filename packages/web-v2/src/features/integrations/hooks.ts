@@ -1,6 +1,6 @@
 "use client";
 
-import { useOrgs } from "@/features/orgs/hooks";
+import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -307,21 +307,16 @@ export function useOrgConnectionLocked(
 }
 
 /**
- * Can the caller MANAGE (rename/key/config/remove) a connection at the
- * workspace directory? UX mirror of the server's `loadManageableConnection`:
- * a user-owned row in the owner-scoped list is always the caller's own; an
- * org-owned row needs org owner/admin (resolved from the orgs list, since the
- * directory has no project context — contrast `useOrgConnectionLocked`).
- * Fails closed while orgs load; the server 403s regardless.
+ * Can the caller MANAGE (rename/key/config/remove) a connection at the workspace directory?
+ * Read off the row: the server states it (`access.canManage`) because it is the one deciding, and
+ * the old mirror of that rule assumed every user-owned row in the list was the caller's own, which
+ * stopped being true once a connection is also listed to the admins of a project it is bound to
+ * (ISS-1216). A row without the field is read as not manageable.
  */
 export function useCanManageConnection(
-  connection: { ownerType: string; ownerId: string } | null,
+  connection: Pick<ConnectionDirectoryItem, "access"> | null,
 ): boolean {
-  const orgsQ = useOrgs();
-  if (!connection) return false;
-  if (connection.ownerType === "user") return true;
-  const role = orgsQ.data?.find((o) => o.id === connection.ownerId)?.role;
-  return role === "owner" || role === "admin";
+  return connection?.access?.canManage === true;
 }
 
 function useInvalidateConnections() {

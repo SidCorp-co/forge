@@ -56,6 +56,15 @@ function healthToStatus(lastHealthStatus: string | null, active: boolean): CardS
   return 'error';
 }
 
+/** `owner/repo` off a github binding's effective config, or null where none is recorded. */
+function repositoryOf(config: Record<string, unknown>): string | null {
+  const owner = config.owner;
+  const repo = config.repo;
+  return typeof owner === 'string' && typeof repo === 'string' && owner && repo
+    ? `${owner}/${repo}`
+    : null;
+}
+
 /** Declared capabilities for a provider, for capability-aware card rendering. */
 function providerCapabilities(provider: IntegrationProvider): IntegrationCapabilities | null {
   return getIntegration(provider)?.capabilities ?? null;
@@ -192,14 +201,31 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
       deviceName: r.deviceName,
       pushCredProvisioned: r.gitCredentialRef !== null,
     }));
+  // The card says whether a GitHub App is bound to this project; the checkout stays in meta for
+  // the push-credential rows that read it.
+  const githubRows = integrationRows.filter((r) => r.provider === 'github');
+  const githubBinding = githubRows.find((r) => r.active) ?? githubRows[0];
+  const githubRepository = githubBinding ? repositoryOf(githubBinding.config) : null;
   cards.push({
     key: 'github',
     label: 'GitHub',
-    status: project.repoPath ? 'connected' : 'not_configured',
-    detail: remoteUrl ?? project.repoPath ?? 'no repo configured',
-    lastSyncAt: null,
-    configured: Boolean(project.repoPath),
-    meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
+    status: githubBinding
+      ? healthToStatus(githubBinding.lastHealthStatus, githubBinding.active)
+      : 'not_configured',
+    detail: !githubBinding
+      ? 'no GitHub App is bound to this project'
+      : !githubBinding.active
+        ? 'integration disabled'
+        : (githubRepository ?? remoteUrl ?? 'bound, no repository chosen'),
+    lastSyncAt: toIso(githubBinding?.lastHealthAt ?? null),
+    configured: Boolean(githubBinding),
+    meta: {
+      transport,
+      remoteUrl,
+      baseBranch: project.baseBranch,
+      deviceCreds,
+      ...(githubBinding ? { bindingId: githubBinding.id } : {}),
+    },
   });
 
   // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every
