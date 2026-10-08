@@ -37,6 +37,7 @@ import type {
   TurnInputs,
   TurnReply,
 } from './turn-request.js';
+import type { TurnBlockStage } from './turn-stage.js';
 import { type TurnWrites, turnWrites } from './turn-writes.js';
 
 export interface TurnContext {
@@ -49,6 +50,8 @@ export interface TurnContext {
   writes: TurnWrites | null;
   /** What the first attempt has streamed in its current round: the draft a failure still shows. */
   draft: { text: string };
+  /** The blocks the turn draws, held until its reply is judged. */
+  stage: TurnBlockStage;
 }
 
 /** Record a silence for this turn and close it as declined under `reason`. */
@@ -153,6 +156,7 @@ function hookOf(ctx: TurnContext): TurnHookContext {
     speakerUserId: req.speakerUserId === undefined ? req.authority.userId : req.speakerUserId,
     conversationId: ctx.conversationId,
     handleUserId: req.handleUserId ?? null,
+    blockStage: ctx.stage.stage,
   };
 }
 
@@ -237,6 +241,8 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     const again = capture ? roomSendCapture() : null;
     const asksAgain = asksCapture(req);
     const done = writes.doneSoFar();
+    const drawn = ctx.stage.rewrite();
+    const told = [instruction, drawn, done].filter((t): t is string => !!t).join('\n\n');
     return {
       again,
       asks: asksAgain,
@@ -244,7 +250,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
         ...turn,
         tools: withCaptures([again, asksAgain], writes.tools),
         record: 'nothing',
-        message: done ? `${instruction}\n\n${done}` : instruction,
+        message: told,
         ...(capture ? {} : { priorRounds: first.rounds ?? [] }),
       }),
     };
@@ -322,6 +328,7 @@ async function screenReply(
       failedReportText(ctx, attempt.errorSource === 'loop' ? 'crash' : 'provider'),
     offeredTools,
     setPhase: ctx.setPhase,
+    stage: ctx.stage,
     ...(req.log ? { log: req.log } : {}),
     fallback: req.sendMode === 'tool' || req.fallbacks === 'silence' ? 'none' : 'code-authored',
     retry: async (instruction) => {
@@ -340,11 +347,13 @@ async function screenReply(
   });
   if (declinedInRetry) return silence(ctx, 'nothing-to-say');
   if (!screened) return silence(ctx, 'screen-refused');
+  const blocks = ctx.stage.kept();
   return {
     send: true,
     message: screened,
     screenReplaced: screened.text.trim() !== repairIssueLinks(result.reply).trim(),
     awaitsReply: asked && screened.proof !== null,
+    ...(blocks.length > 0 ? { blocks } : {}),
   };
 }
 

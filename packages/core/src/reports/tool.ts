@@ -67,7 +67,7 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/conversations',
   grant: 'assistant:write',
-  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId }, ...fields } where fields name the run's frame fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, and a frame that differs from it is refused naming each figure. Answers the block's text, which your reply need not repeat.`,
+  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId }, ...fields } where fields name the run's frame fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a frame that differs from it is refused naming each figure, and so is a title or label stating a number the run does not hold. The block is held with your reply and shown above it only once the reply passes the reply check; if the reply has to be rewritten, only the blocks the rewrite draws again are shown. Answers the block's text, which your reply need not repeat.`,
   inputSchema: zodToMcpSchema(showInput),
   handler: async (args) => {
     const { projectId, block } = showInput.parse(args);
@@ -79,11 +79,20 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
         '/conversationId',
       );
     }
+    const stage = ctx.turn?.blockStage;
+    if (!stage) {
+      throw refuse(
+        'REPORT_BLOCK_TURN_DOOR',
+        `this chat turn holds no stage for a block, so nothing could hold it until its reply is checked: only a turn in a Forge web room draws blocks (conversation ${conversationId}); state the figures of the run in the reply instead`,
+        '/conversationId',
+      );
+    }
     return attachVisualBlock({
       conversationId,
       projectId,
       raw: block,
       asker: { userId: ctx.principal.userId, agency: principalAgency(ctx.principal) },
+      stage,
     });
   },
 });

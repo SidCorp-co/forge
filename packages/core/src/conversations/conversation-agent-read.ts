@@ -2,9 +2,11 @@ import { and, eq, sql } from 'drizzle-orm';
 import { noTurnCredentialDeviceReason, pickTurnCredentialDevice } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
+  type HeldReply,
   heldBecause,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
@@ -60,9 +62,10 @@ export interface ConversationAgentTurnRow {
   reason: string | null;
   /**
    * The reply the screen held, where it held one: why, for every reader of the room, and the text
-   * as the session wrote it for the person it answered — the session acted as them — and nobody else.
+   * as the session wrote it, with the blocks it drew for it, for the person it answered — the session
+   * acted as them — and nobody else.
    */
-  held: { reason: string; reply: string | null } | null;
+  held: { reason: string; reply: string | null; blocks: ContentBlock[] | null } | null;
 }
 
 /**
@@ -103,12 +106,21 @@ export function agentTurnRow(
     sessionId: row.id,
     state: turnState(row, meta),
     reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
-    held: meta.held
-      ? {
-          reason: heldBecause(meta.held.refusals),
-          reply: viewerId !== null && meta.asker?.userId === viewerId ? meta.held.text : null,
-        }
-      : null,
+    held: meta.held ? heldFor(meta.held, meta, viewerId) : null,
+  };
+}
+
+/** A held reply as `viewerId` reads it: why, for anyone; the reply and its blocks, for its asker only. */
+function heldFor(
+  held: HeldReply,
+  meta: ConversationAgentMeta,
+  viewerId: string | null,
+): NonNullable<ConversationAgentTurnRow['held']> {
+  const asker = viewerId !== null && meta.asker?.userId === viewerId;
+  return {
+    reason: heldBecause(held.refusals),
+    reply: asker ? held.text : null,
+    blocks: asker ? held.blocks.map((b) => b.block) : null,
   };
 }
 

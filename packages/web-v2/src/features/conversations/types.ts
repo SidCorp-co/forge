@@ -18,8 +18,15 @@ export interface AgentTurn {
   sessionId: string;
   state: AgentTurnState;
   reason: string | null;
-  /** The reply the reply check held: why, and the text itself for the person it answered (null for anyone else). */
-  held?: { reason: string; reply: string | null } | null;
+  /**
+   * The reply the reply check held: why, and — for the person it answered, null for anyone else —
+   * the text itself and the visual blocks the session drew for it, held with it.
+   */
+  held?: {
+    reason: string;
+    reply: string | null;
+    blocks?: { type: "visual"; visual?: unknown; run?: unknown }[] | null;
+  } | null;
 }
 
 export interface AgentModeOffer {

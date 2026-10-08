@@ -1,11 +1,13 @@
 import type { ReportRun } from '@forge/contracts/report-queries';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isRefusal } from '../lib/refusal.js';
+import type { BlockStage, StagedBlock } from '../lib/staged-block.js';
 
 // A block reaches a room only through attachVisualBlock: its run is read back as the asker, the run's
-// frame is copied in, and the registry checks the whole. A figure the run never read, a run the asker
-// may not read, a run of another project and a room that draws no block are each refused by name, and
-// nothing is posted.
+// frame is copied in, and the registry checks the whole. A figure the run never read — in its frame or
+// typed into its title or a label — a run the asker may not read, a run of another project and a room
+// that draws no block are each refused by name, and nothing is posted. A block drawn on a turn's stage
+// waits there, and nothing is posted until its reply passes (REQ-32 criteria 5 and 6).
 
 const readReportRun = vi.fn();
 vi.mock('./runs.js', async (original) => ({
@@ -41,6 +43,7 @@ const posted: unknown[] = [];
 let adapter = 'web';
 beforeEach(() => {
   posted.length = 0;
+  held.length = 0;
   adapter = 'web';
   readReportRun.mockReset();
   readReportRun.mockResolvedValue(run);
@@ -56,16 +59,34 @@ beforeEach(() => {
       posted.push(answer);
       return { messageId: 'm1' };
     },
+    restTurnOf: async () => ({ kind: 'none' }),
   });
 });
 
-const attach = (raw: unknown, projectId = 'p1') =>
+const attach = (raw: unknown, projectId = 'p1', stage: BlockStage | null = null) =>
   attachVisualBlock({
     conversationId: 'c1',
     projectId,
     raw,
     asker: { userId: 'asker', agency: 'human' },
+    stage,
   });
+const held: StagedBlock[] = [];
+const stageOf = (question = ''): BlockStage => ({
+  question,
+  hold: async (b) => {
+    held.push(b);
+  },
+});
+const kpi = (label: string, title?: string) => ({
+  kind: 'kpi',
+  figures: [
+    { field: 'proven', label },
+    { field: 'proven', label: 'Proven' },
+  ],
+  ...(title ? { title } : {}),
+  source: { runId: 'run-1' },
+});
 const table = { kind: 'table', columns: ['key', 'proven'], source: { runId: 'run-1' } };
 
 async function refusalOf(p: Promise<unknown>) {
@@ -176,5 +197,67 @@ describe('attaching a visual block', () => {
       edges: [{ from: 'a', to: 'b' }],
     };
     expect(await attach(flow)).toMatchObject({ kind: 'flow', run: null });
+  });
+});
+
+describe("a block's title and labels hold no number of their own", () => {
+  it('refuses a label stating a number its run does not hold, naming it, and posts nothing', async () => {
+    const err = await refusalOf(attach(kpi('Proven of 12')));
+    expect(isRefusal(err, 'REPORT_BLOCK_FIGURE_NOT_IN_RUN')).toBe(true);
+    expect((err as Error).message).toContain(
+      'the kpi block\'s label "Proven of 12" states the figure 12, which run run-1 does not hold',
+    );
+    expect(posted).toEqual([]);
+  });
+
+  it('refuses a typed title the same way, on a staged turn too, and holds nothing', async () => {
+    const err = await refusalOf(attach(kpi('Proven', '42 shipped this week'), 'p1', stageOf()));
+    expect(isRefusal(err, 'REPORT_BLOCK_FIGURE_NOT_IN_RUN')).toBe(true);
+    expect((err as Error).message).toContain('"42 shipped this week" states the figure 42');
+    expect(held).toEqual([]);
+  });
+
+  it('passes a number the run holds, and one the person typed in the question', async () => {
+    await attach({ ...table, title: 'Proven, best of 5' });
+    await attach({ ...table, title: 'Top 7 by proven' }, 'p1', stageOf('show me the top 7'));
+    expect(posted).toHaveLength(1);
+    expect(held).toHaveLength(1);
+  });
+
+  it('refuses any number in a flow that names no run, and keeps dates and ids', async () => {
+    const flow = (label: string) => ({
+      kind: 'flow',
+      nodes: [
+        { id: 'a', label },
+        { id: 'b', label: 'REQ-3 agreed on 2026-10-08' },
+      ],
+      edges: [{ from: 'a', to: 'b' }],
+    });
+    const err = await refusalOf(attach(flow('9 shipped')));
+    expect(isRefusal(err, 'REPORT_BLOCK_FIGURE_NOT_IN_RUN')).toBe(true);
+    expect((err as Error).message).toContain('names no run to hold it');
+    expect(await attach(flow('Ask'))).toMatchObject({ kind: 'flow', held: false });
+  });
+});
+
+describe("a block drawn on a turn's stage", () => {
+  it('waits on the stage with its run, and nothing is posted into the room', async () => {
+    const attached = await attach(table, 'p1', stageOf());
+    expect(attached).toMatchObject({ messageId: null, held: true, kind: 'table' });
+    expect(posted).toEqual([]);
+    expect(held).toEqual([
+      {
+        text: attached.text,
+        block: {
+          type: 'visual',
+          visual: { v: 1, ...table, frame: run.frame },
+          run: { runId: 'run-1', queryId: 'progress-by-requirement', version: 1, asOf: run.asOf },
+        },
+        kind: 'table',
+        runId: 'run-1',
+        projectId: 'p1',
+        askerUserId: 'asker',
+      },
+    ]);
   });
 });

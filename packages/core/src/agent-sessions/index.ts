@@ -55,6 +55,7 @@ export {
   usageTotalsSelection,
 } from './usage-rollup.js';
 export {
+  appendUnclaimedMarkerItem,
   beatSession,
   claimSessionMarker,
   claimSessionMetadataDelivery,

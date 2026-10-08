@@ -45,7 +45,7 @@ describe('report routes under a personal or agent token', () => {
     ).token;
   }, 120_000);
 
-  it("runs progress-by-requirement on an Agent turn's token and posts a table block of the run", async () => {
+  it("runs progress-by-requirement on an Agent turn's token, and posts a block only onto a turn that exists", async () => {
     const ran = await api(turnToken, 'POST', runPath(), {});
     expect(ran.status, JSON.stringify(ran.body)).toBe(200);
     const run = ReportRunSchema.parse(ran.body);
@@ -59,7 +59,14 @@ describe('report routes under a personal or agent token', () => {
       projectId: w.projectId,
       block: { kind: 'table', columns: ['key'], source: { runId: run.runId } },
     });
-    expect(posted.status, JSON.stringify(posted.body)).toBe(201);
+    // this token names a session that was never made, so there is no reply for the block to wait
+    // on; a real turn's block waits on its reply (report-blocks-held-e2e.test.ts)
+    expect([posted.status, code(posted)]).toEqual([422, 'REPORT_BLOCK_TURN_UNKNOWN']);
+    const byPerson = await api(w.token, 'POST', `/api/conversations/${roomId}/blocks`, {
+      projectId: w.projectId,
+      block: { kind: 'table', columns: ['key'], source: { runId: run.runId } },
+    });
+    expect(byPerson.status, JSON.stringify(byPerson.body)).toBe(201);
   });
 
   it('lists the registered queries to a member under a token, as the project read it is', async () => {

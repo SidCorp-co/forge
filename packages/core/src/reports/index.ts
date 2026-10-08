@@ -4,7 +4,7 @@
 export type { Executor } from '@forge/contracts/report-executions';
 export type { ReportDocument, ReportTemplate } from '@forge/contracts/report-templates';
 export { type AttachedBlock, attachVisualBlock } from './blocks.js';
-export { provideReportsPorts, type ReportAsker } from './ports.js';
+export { provideReportsPorts, type ReportAsker, type RestTurn } from './ports.js';
 export { keptRunFrames, readReportRun, runReport } from './runs.js';
 export { messageShareSource } from './share-source.js';
 export { sweepExpiredReportRuns } from './sweep.js';

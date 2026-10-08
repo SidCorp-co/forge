@@ -211,7 +211,14 @@ async function divertToAgent(
 /** Assistant mode: the persona and toolset the room's subject calls for. */
 async function prepareWebTurn(
   args: WebTurnArgs,
-  { credential, speakerUserId, conversationId, handleUserId, authority }: TurnHookContext,
+  {
+    credential,
+    speakerUserId,
+    conversationId,
+    handleUserId,
+    authority,
+    blockStage,
+  }: TurnHookContext,
 ): Promise<TurnInputs> {
   // the token is minted while the room is read; a venue refusal still wins over what minting says
   const minting = credential();
@@ -230,6 +237,7 @@ async function prepareWebTurn(
       handleUserId,
       ecosystemId: room?.ecosystemId ?? null,
       readDocument: (file) => readRoomDocumentByName(conversationId, file),
+      blockStage,
     },
   });
   const resolveDocument = (file: ConversationImage) =>

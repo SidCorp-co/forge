@@ -442,8 +442,20 @@ async function takeTurn(
   });
 }
 
-/** The decision a turn's outcome closes the window under. */
+/**
+ * The decision a turn's outcome closes the window under, naming the blocks the turn drew that
+ * nobody will see.
+ */
 function routedOutcome(outcome: TurnOutcome): RoutedWindow {
+  const routed = routedDecision(outcome);
+  if (!outcome.droppedBlocks?.length) return routed;
+  return {
+    ...routed,
+    detail: { ...(routed.detail as Record<string, unknown>), droppedBlocks: outcome.droppedBlocks },
+  };
+}
+
+function routedDecision(outcome: TurnOutcome): RoutedWindow {
   switch (outcome.kind) {
     case 'delivered':
       return {

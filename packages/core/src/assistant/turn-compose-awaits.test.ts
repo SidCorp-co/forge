@@ -2,6 +2,7 @@
 // `await_reply` and that text is the model's own. The text itself is never read for a question.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TurnBlockStage } from './turn-stage.js';
 
 interface Attempt {
   reply: string;
@@ -83,6 +84,7 @@ function ctx(recordsAsks: boolean) {
     abort: new AbortController(),
     setPhase: () => undefined,
     draft: { text: '' },
+    stage: new TurnBlockStage(''),
     credential: async () => {
       throw new Error('no token in this test');
     },

@@ -16,6 +16,7 @@ provideReportsPorts({
   roomOf: () => Promise.reject(new Error('not read here')),
   messageOf: () => Promise.reject(new Error('not read here')),
   postAnswer: () => Promise.reject(new Error('not posted here')),
+  restTurnOf: () => Promise.reject(new Error('not read here')),
 });
 const ctx = { principal: { userId: 'u1' } } as unknown as McpContext;
 
