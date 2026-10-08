@@ -17,6 +17,7 @@ import {
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';
+import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
 import type { BlockStage, StagedBlock } from '../lib/staged-block.js';
@@ -125,6 +126,11 @@ async function executionSourced(
       adapter: execution.adapter,
       language: execution.language,
       at: execution.createdAt,
+      askedBy: {
+        id: execution.askedBy,
+        name: (await userNames([execution.askedBy])).get(execution.askedBy) ?? null,
+      },
+      reads: execution.reads,
     },
   };
 }

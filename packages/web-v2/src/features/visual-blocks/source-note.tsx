@@ -1,5 +1,6 @@
 "use client";
 
+import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useState } from "react";
 import { useTimeFormat } from "@/lib/i18n/interface-language";
@@ -25,15 +26,17 @@ const LINE = "mt-1 text-[11px] text-subtle";
  * computed. A block of a run whose query and read time are unknown never reaches here:
  * `VisualBlockView` refuses it by name.
  */
-export function SourceNote({ source, facts }: { source: BlockSource | undefined; facts: SourceFacts | undefined }) {
+export function SourceNote({
+  source,
+  facts,
+  execution,
+}: {
+  source: BlockSource | undefined;
+  facts: SourceFacts | undefined;
+  execution?: ExecutionFacts | undefined;
+}) {
   if (source === undefined) return null;
-  if ("executionId" in source) {
-    return (
-      <p className={LINE} data-testid="visual-block-source">
-        Computed by execution <span className="font-mono">{source.executionId}</span>
-      </p>
-    );
-  }
+  if ("executionId" in source) return <ExecutionSource executionId={source.executionId} execution={execution} />;
   if (!facts) return null;
   return <RunSource runId={source.runId} facts={facts} />;
 }
@@ -60,6 +63,55 @@ function RunSource({ runId, facts }: { runId: string; facts: SourceFacts }) {
         <p className="m-0 mt-0.5 font-mono" data-testid="visual-block-source-detail">
           Report run {runId} · read {read.full}
         </p>
+      )}
+    </div>
+  );
+}
+
+/** A computed block's source: the execution, and behind the line who asked it and each read it made of Forge, a refused one named. */
+function ExecutionSource({ executionId, execution }: { executionId: string; execution: ExecutionFacts | undefined }) {
+  const [open, setOpen] = useState(false);
+  const line = (
+    <>
+      Computed by execution <span className="font-mono">{executionId}</span>
+    </>
+  );
+  if (!execution?.askedBy || !execution.reads) {
+    return (
+      <p className={LINE} data-testid="visual-block-source">
+        {line}
+      </p>
+    );
+  }
+  const { askedBy, reads } = execution;
+  return (
+    <div className={LINE} data-testid="visual-block-source">
+      <button
+        type="button"
+        className="text-left hover:text-muted focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        data-testid="visual-block-source-toggle"
+      >
+        {line}
+      </button>
+      {open && (
+        <div className="mt-0.5" data-testid="visual-block-source-detail">
+          <p className="m-0">Ran as {askedBy.name ?? askedBy.id}</p>
+          {reads.length === 0 ? (
+            <p className="m-0">Read nothing from Forge</p>
+          ) : (
+            <ul className="m-0 list-none p-0 font-mono" data-testid="visual-block-reads">
+              {reads.map((r, i) => (
+                // the same path can be read twice in one run, so the position is part of what a read is
+                // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
+                <li key={i}>
+                  {r.method} {r.path} {r.refused ? `refused: ${r.refused}` : r.status}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </div>
   );

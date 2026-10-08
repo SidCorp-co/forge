@@ -114,7 +114,7 @@ function Frame({
  * whose query and read time this screen was not given is refused by name, never drawn untraced.
  */
 export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?: (() => void) | undefined }) {
-  const { sourceFacts } = useVisualBlockContext();
+  const { sourceFacts, executionFacts } = useVisualBlockContext();
   const kind = kindOf(raw);
   if (!isVisualBlockKind(kind)) return <UnsupportedBlock kind={kind} />;
   const checked = checkBlock(raw);
@@ -134,7 +134,7 @@ export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?:
   return (
     <Frame kind={kind} title={block.title} onCsv={onCsv}>
       <Renderer block={block as never} />
-      <SourceNote source={block.source} facts={facts} />
+      <SourceNote source={block.source} facts={facts} execution={block.source ? executionFacts?.(block.source) : undefined} />
     </Frame>
   );
 }

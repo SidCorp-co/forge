@@ -1,5 +1,6 @@
 "use client";
 
+import type { ExecutionFacts } from "@forge/contracts/report-executions";
 import type { ReportRunFacts } from "@forge/contracts/report-queries";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { createContext, type ReactNode, useContext } from "react";
@@ -15,6 +16,8 @@ export interface VisualBlockContextValue {
    * block of a run this does not answer is refused by name: its figures cannot be traced to a read.
    */
   sourceFacts?: (source: BlockSource) => SourceFacts | undefined;
+  /** Who asked a computed block's execution and what it read of Forge, as the message carrying the block stored them. */
+  executionFacts?: (source: BlockSource) => ExecutionFacts | undefined;
 }
 
 const VisualBlockContext = createContext<VisualBlockContextValue>({ projectSlug: undefined });

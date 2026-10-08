@@ -21,6 +21,7 @@ import type {
 } from '@forge/contracts/automation-standing';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { scheduleWritePermission } from '@forge/contracts/schedules';
+import type { ScriptRead } from '@forge/contracts/script-sandbox';
 import {
   holdersWho,
   nobodyHoldsAct,
@@ -61,6 +62,8 @@ export interface FireFacts extends LastFireFacts {
   error: string | null;
   disposition: string | null;
   pipelineRunId: string | null;
+  runAs: AutomationPerson | null;
+  reads: ScriptRead[] | null;
   reports: number;
   newReports: number;
   issues: number;
@@ -354,6 +357,8 @@ export function fireStandingOf(
     disposition: f.disposition,
     sessionId: f.sessionId,
     pipelineRunId: f.pipelineRunId,
+    runAs: f.runAs,
+    reads: f.reads,
     startedAt: f.startedAt.toISOString(),
     finishedAt: iso(f.finishedAt),
     durationSeconds: f.finishedAt

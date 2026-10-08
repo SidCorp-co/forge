@@ -8,6 +8,7 @@ import {
   type AgentReportView,
 } from '@forge/contracts/agent-reports';
 import type { AutomationPerson, FireProducedItems } from '@forge/contracts/automation-standing';
+import type { ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, asc, count, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -78,6 +79,8 @@ const fireColumns = {
   disposition: scheduleRuns.disposition,
   pipelineRunId: scheduleRuns.pipelineRunId,
   output: scheduleRuns.output,
+  runAsId: scheduleRuns.runAs,
+  reads: scheduleRuns.reads,
   reports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id} AND ar.project_id = ${scheduleRuns.projectId})`,
   newReports: sql<number>`(SELECT count(*)::int FROM agent_reports ar WHERE ar.schedule_run_id = ${scheduleRuns.id} AND ar.project_id = ${scheduleRuns.projectId} AND ar.triage = 'new')`,
   issues: sql<number>`(SELECT count(*)::int FROM issues i WHERE i.schedule_run_id = ${scheduleRuns.id} AND i.project_id = ${scheduleRuns.projectId})`,
@@ -110,10 +113,13 @@ export async function fireFacts(scope: FireScope): Promise<{ fires: FireRow[]; t
       .from(scheduleRuns)
       .where(and(...where)),
   ]);
+  const names = await ownersOf(rows.map((r) => r.runAsId));
   return {
-    fires: rows.map(({ scheduleId, ...f }) => ({
+    fires: rows.map(({ scheduleId, runAsId, reads, ...f }) => ({
       ...f,
       scheduleId,
+      runAs: runAsId ? (names.get(runAsId) ?? { id: runAsId, name: null }) : null,
+      reads: reads as ScriptRead[] | null,
       reports: Number(f.reports),
       newReports: Number(f.newReports),
       issues: Number(f.issues),
