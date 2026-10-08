@@ -13,7 +13,7 @@ const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 
 const PROBES = {
   form: {
-    gate: 'check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations',
+    gate: 'check-size-budget + check-lint-budget + biome + check-provider-literals + check-integration-declarations + check-skill-frontmatter',
     probe: ['node', 'scripts/check-size-budget.mjs', '--all'],
     needs: ['deps'],
     also: [
@@ -24,6 +24,7 @@ const PROBES = {
       },
       { from: 'none', probe: ['node', 'scripts/check-provider-literals.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-integration-declarations.mjs'] },
+      { from: 'none', probe: ['node', 'scripts/check-skill-frontmatter.mjs'] },
     ],
   },
   knowledge: {
