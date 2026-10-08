@@ -6,7 +6,8 @@
 // retired — each counted by core's one rule and read with who wrote it, when and whether it holds.
 
 import { MEMORY_ENTRY_STATES, type MemoryEntryState } from "@forge/contracts/memory";
-import { EmptyState, ErrorState, ListSearch, PageTitle, ProjectLoader, SegmentedControl, useUrlChoice, useUrlParams } from "@/design";
+import { useState } from "react";
+import { Button, EmptyState, ErrorState, ListSearch, PageTitle, ProjectLoader, SegmentedControl, useUrlChoice, useUrlParams } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -20,7 +21,19 @@ export function MemoryScreen({ projectId, slug }: { projectId: string; slug: str
   const text = params.get("q") ?? "";
   const q = useMemoryEntries(projectId, { q: text, state: state as MemoryEntryState });
   const acts = useMemoryActs(projectId);
-  const actError = acts.correct.error ?? acts.retire.error;
+  const actError = acts.correct.error ?? acts.retire.error ?? acts.verify.error;
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const items = q.data?.items ?? [];
+  // only rows still on the list can be marked: one a refresh dropped is no longer counted
+  const chosen = items.filter((e) => picked.has(e.id)).map((e) => e.id);
+  const pick = (id: string, on: boolean) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const busy = acts.correct.isPending || acts.retire.isPending || acts.verify.isPending;
 
   return (
     <div className="grid min-h-full content-start bg-app" data-testid="memory-screen">
@@ -36,6 +49,11 @@ export function MemoryScreen({ projectId, slug }: { projectId: string; slug: str
         />
         <ListSearch noun={t("memory.searchNoun")} value={text} onChange={(v) => setParams({ q: v || null })} />
         {q.data ? <span className="text-12 text-subtle">{t("memory.count", { shown: q.data.returned, total: q.data.total })}</span> : null}
+        {state === "stale" && chosen.length > 0 ? (
+          <Button size="sm" variant="primary" loading={acts.verify.isPending} onClick={() => acts.verify.mutate(chosen, { onSuccess: () => setPicked(new Set()) })}>
+            {t("memory.markChecked", { n: chosen.length })}
+          </Button>
+        ) : null}
       </div>
       {actError ? <p className="px-5 py-2 text-13 text-danger">{formatApiError(actError)}</p> : null}
       {q.isError ? (
@@ -57,7 +75,10 @@ export function MemoryScreen({ projectId, slug }: { projectId: string; slug: str
               key={e.id}
               entry={e}
               slug={slug}
-              busy={acts.correct.isPending || acts.retire.isPending}
+              busy={busy}
+              onVerify={(id) => acts.verify.mutate([id])}
+              selected={picked.has(e.id)}
+              onSelect={state === "stale" ? pick : undefined}
               onCorrect={(id, body) => acts.correct.mutate({ id, ...body })}
               onRetire={(id, body) => acts.retire.mutate({ id, ...body })}
             />

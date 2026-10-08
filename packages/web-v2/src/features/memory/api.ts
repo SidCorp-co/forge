@@ -13,6 +13,12 @@ const acted = (projectId: string, id: string, verb: "correct" | "retire", body: 
   });
 
 export const memoryApi = {
+  /** `POST /api/memory/verify` — "still true" for these memories: each is stamped checked now, by this person. */
+  verify: (projectId: string, ids: string[]) =>
+    apiClient<{ verified: { id: string; verifiedAt: string }[] }>(`/memory/verify?projectId=${encodeURIComponent(projectId)}`, {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
   /** `GET /api/memory/entries` — the project's memory as a person reads it (MJ-1). */
   entries: (projectId: string, q: MemoryQuery) => {
     const params = new URLSearchParams({ projectId, state: q.state, limit: "100" });

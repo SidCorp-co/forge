@@ -61,8 +61,9 @@ export async function runMemoryFeedback(input: MemoryFeedbackInput): Promise<Mem
   if (input.verdict === 'confirmed') {
     const md = (row.metadata as Record<string, unknown>) ?? {};
     const updateSet: Record<string, unknown> = { lastVerifiedAt: sql`now()` };
-    if ('staleSince' in md || 'supersededBy' in md) {
-      const { staleSince: _staleSince, supersededBy: _supersededBy, ...rest } = md;
+    // an agent's check names no person, so a person's earlier stamp is not carried onto it
+    if ('staleSince' in md || 'supersededBy' in md || 'verifiedBy' in md) {
+      const { staleSince: _staleSince, supersededBy: _supersededBy, verifiedBy: _by, ...rest } = md;
       updateSet.metadata = rest;
     }
     await db.update(memories).set(updateSet).where(eq(memories.id, row.id));

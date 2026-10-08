@@ -1,4 +1,5 @@
 import type { MemoryEntry } from "@forge/contracts/memory";
+import { flushSync } from "react-dom";
 import { MemoryEntryRow } from "@/features/memory/components/memory-entry";
 import type { ChromeScreen } from "./vi-chrome-screens";
 
@@ -16,6 +17,7 @@ const BASE: MemoryEntry = {
   updatedAt: AT,
   writtenBy: { id: "a1", name: "runner", agent: true },
   verifiedAt: null,
+  verifiedBy: null,
   cites: [
     { ref: "ISS-1", kind: "issue", project: "hop", state: "gone", why: "dropped" },
     { ref: "REQ-9", kind: "requirement", project: "hop", state: "gone", why: "missing" },
@@ -37,7 +39,7 @@ const BASE: MemoryEntry = {
   archivedBy: null,
 };
 const noop = () => {};
-const row = (e: MemoryEntry) => <MemoryEntryRow entry={e} slug="hop" timeZone="UTC" busy={false} onCorrect={noop} onRetire={noop} />;
+const row = (e: MemoryEntry) => <MemoryEntryRow entry={e} slug="hop" timeZone="UTC" busy={false} onVerify={noop} onCorrect={noop} onRetire={noop} />;
 
 export const SCREENS: ChromeScreen[] = [
   { name: "Memory row", render: () => <ul>{row(BASE)}</ul> },
@@ -55,6 +57,11 @@ export const SCREENS: ChromeScreen[] = [
   {
     name: "Memory row, correcting",
     render: () => <ul>{row(BASE)}</ul>,
-    act: () => (document.querySelector('[data-testid="memory-entry"] button') as HTMLButtonElement | null)?.click(),
+    act: () => {
+      const button = (n: number) => document.querySelectorAll<HTMLButtonElement>('[data-testid="memory-entry"] button')[n];
+      button(1)?.click(); // "Not true anymore" asks which act; the correct form is its first choice
+      flushSync(() => {});
+      button(0)?.click();
+    },
   },
 ];

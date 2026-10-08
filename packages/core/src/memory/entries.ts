@@ -200,6 +200,7 @@ export async function readMemoryEntries(
   const actorIds = page.flatMap(({ r }) => {
     const m = md(r.metadata);
     return [
+      typeof m.verifiedBy === 'string' ? m.verifiedBy : null,
       typeof m.writtenBy === 'string' ? m.writtenBy : null,
       ...storedActs(m.corrections).map((a) => a.by),
       storedAct(m.retired)?.by ?? null,
@@ -225,6 +226,9 @@ export async function readMemoryEntries(
       updatedAt: r.updatedAt.toISOString(),
       writtenBy: actor(typeof m.writtenBy === 'string' ? m.writtenBy : null),
       verifiedAt: r.lastVerifiedAt ? r.lastVerifiedAt.toISOString() : null,
+      verifiedBy: r.lastVerifiedAt
+        ? actor(typeof m.verifiedBy === 'string' ? m.verifiedBy : null)
+        : null,
       cites: c.cites,
       staleRefs: c.staleRefs,
       needsCheck,

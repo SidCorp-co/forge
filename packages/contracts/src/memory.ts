@@ -91,6 +91,8 @@ export interface MemoryEntry {
 	writtenBy: MemoryActor | null;
 	/** When an agent or person last checked it against what is live; null when never. */
 	verifiedAt: string | null;
+	/** The person who checked it then; null when an agent did, or the row was checked before checks were stamped. */
+	verifiedBy: MemoryActor | null;
 	/** The issue and requirement keys the text names, as written. */
 	cites: MemoryCite[];
 	/** Each cited record that no longer resolves; empty when every one does. */
