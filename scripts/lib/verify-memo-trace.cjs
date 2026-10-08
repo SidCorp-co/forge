@@ -1,8 +1,9 @@
 // Preloaded into every Node process a memoised check starts (`node --require`), so the files a
 // check reads are a fact the memo can compare with what it declared. At exit the process writes
-// `<VERIFY_MEMO_TRACE>.<pid>`, one line each: `R` a path read or probed and found, `M` one found
-// missing, `Q` one an async call asked for, `L` a listing, `S <json>` a program started. It reports;
-// the verdict on it is verify-memo.mjs's.
+// `<VERIFY_MEMO_TRACE>.<pid>`, one line each: `R` a path whose content was read, `P` one only
+// stat-ed (or otherwise probed for what the file system says of it) and found, `M` one found
+// missing, `Q` one an async call asked for, `L` a listing, `S <json>` a program started. It
+// reports; the verdict on it is verify-memo.mjs's.
 
 'use strict';
 
@@ -25,6 +26,13 @@ const READS = [
   'copyFileSync',
   'cp',
   'cpSync',
+  'readlink',
+  'readlinkSync',
+  'realpath',
+  'realpathSync',
+];
+/** Calls that learn whether a path is there, of what kind and how big, and nothing a link or a file says. */
+const PROBES = [
   'stat',
   'statSync',
   'lstat',
@@ -33,21 +41,17 @@ const READS = [
   'accessSync',
   'exists',
   'existsSync',
-  'readlink',
-  'readlinkSync',
-  'realpath',
-  'realpathSync',
 ];
 const LISTINGS = ['readdir', 'readdirSync', 'opendir', 'opendirSync'];
 const SPAWNERS = ['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork'];
 
-/** The trace letter for a call's outcome: a read that found nothing is `M`, not `R`. */
+/** The trace letter for a call's outcome: a read or probe that found nothing is `M`. */
 function letter(kind, name, err, value) {
   const absent =
     err?.code === 'ENOENT' ||
     value === false ||
     (!err && value === undefined && /^l?stat(Sync)?$/.test(name));
-  return kind === 'R' && absent ? 'M' : kind;
+  return (kind === 'R' || kind === 'P') && absent ? 'M' : kind;
 }
 
 function pathOf(arg) {
@@ -102,7 +106,7 @@ if (out) {
           },
         );
       }
-      noted.add(`${kind === 'R' ? 'Q' : kind} ${at}`);
+      noted.add(`${kind === 'R' || kind === 'P' ? 'Q' : kind} ${at}`);
       return result;
     };
     for (const key of Reflect.ownKeys(original)) {
@@ -114,6 +118,7 @@ if (out) {
 
   for (const host of [fs, fs.promises]) {
     for (const name of READS) watch(host, name, 'R');
+    for (const name of PROBES) watch(host, name, 'P');
     for (const name of LISTINGS) watch(host, name, 'L');
   }
 

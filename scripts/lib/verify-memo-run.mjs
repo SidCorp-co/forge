@@ -118,7 +118,7 @@ export class Memo {
       });
       return verdict;
     }
-    if (!lines.some((l) => 'RMQL'.includes(l[0]))) {
+    if (!lines.some((l) => 'RPMQL'.includes(l[0]))) {
       this.unfiled.push({ label: check.label, reason: 'no process of it was traced' });
       return verdict;
     }

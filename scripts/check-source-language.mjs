@@ -195,7 +195,9 @@ function report(violations, mode, fileCount) {
     'Fix: translate to English, or add the i18n-allow: directive on the same line if intentional.',
   );
   const fileSet = new Set(violations.map((v) => v.file));
-  console.error(`${violations.length} violation(s) in ${fileSet.size} file(s).`);
+  console.error(
+    `${violations.length} violation(s) in ${fileSet.size} file(s), across ${fileCount} files scanned.`,
+  );
   return 1;
 }
 
