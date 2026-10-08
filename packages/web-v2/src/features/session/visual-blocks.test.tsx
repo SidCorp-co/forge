@@ -59,9 +59,7 @@ describe("a turn's blocks, drawn", () => {
     );
     expect(screen.getByRole("table")).toBeTruthy();
     const named = screen.getAllByTestId("visual-block-unsupported").map((n) => n.textContent);
-    expect(named).toEqual([
-      "This answer has a hologram block this screen cannot show.",
-      "This answer has a timeline block this screen cannot show.",
-    ]);
+    expect(named).toEqual(["This answer has a hologram block this screen cannot show."]);
+    expect(screen.getByTestId("visual-block-refused").textContent).toContain("This answer has a timeline block that does not match its shape");
   });
 });

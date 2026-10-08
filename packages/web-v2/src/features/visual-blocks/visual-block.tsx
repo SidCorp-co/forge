@@ -4,21 +4,13 @@ import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/cont
 import { useVisualBlockContext } from "./context";
 import { BLOCK_RENDERERS, type BlockRenderer } from "./registry";
 import { SourceNote } from "./source-note";
+import { UnsupportedBlock } from "./unsupported";
 
 /** What a stored block says its kind is, as a word a reader can be told. */
 function kindOf(raw: unknown): string {
   const kind = raw !== null && typeof raw === "object" ? (raw as { kind?: unknown }).kind : undefined;
   if (typeof kind === "string" && kind.length > 0) return kind;
   return kind === undefined ? "nameless" : JSON.stringify(kind);
-}
-
-/** A block this screen cannot draw, named. It is never left out: a vanished block reads as an answer that was never given. */
-export function UnsupportedBlock({ kind }: { kind: string }) {
-  return (
-    <p className="text-[12.5px] text-muted" data-testid="visual-block-unsupported" data-kind={kind}>
-      This answer has a {kind} block this screen cannot show.
-    </p>
-  );
 }
 
 function RefusedBlock({ kind, why = "does not match its shape", reasons }: { kind: string; why?: string; reasons: string[] }) {
@@ -54,7 +46,7 @@ function Frame({ kind, title, children }: { kind: string; title?: string | undef
 export function VisualBlockView({ block: raw }: { block: unknown }) {
   const { sourceFacts } = useVisualBlockContext();
   const kind = kindOf(raw);
-  if (!isVisualBlockKind(kind) || !BLOCK_RENDERERS[kind]) return <UnsupportedBlock kind={kind} />;
+  if (!isVisualBlockKind(kind)) return <UnsupportedBlock kind={kind} />;
   const checked = checkBlock(raw);
   if (!checked.ok) return <RefusedBlock kind={kind} reasons={checked.refusals.map((r) => r.message)} />;
   const Renderer = BLOCK_RENDERERS[kind] as BlockRenderer<VisualBlockKind>;

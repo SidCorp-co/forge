@@ -1,1 +1,0 @@
-**An answer can be shared through a Forge link.** A share freezes one report answer with secrets and email addresses removed, expires within 30 days, is revoked by its creator or an admin, and opens at /s/ read-only.

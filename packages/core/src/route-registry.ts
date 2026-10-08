@@ -251,9 +251,9 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', needsYouRoutes);
   app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', statusReportRoutes);
+  app.route('/api/projects', projectShareRoutes);
   app.route('/api', reportQueryRoutes);
   app.route('/api', reportRoutes);
-  app.route('/api/projects', projectShareRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
   app.route('/api/projects', labelProjectRoutes);

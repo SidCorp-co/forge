@@ -9,6 +9,39 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.172] - 2026-10-08
+
+Chat answers draw charts, roadmap timelines and logic diagrams
+
+### Added
+
+- **A chat answer can now show a chart, a roadmap timeline or a flow diagram.** Charts are drawn to scale from the answer's own data, each with a text alternative.
+
+## [0.4.0-dev.171] - 2026-10-08
+
+Forge share links: frozen, scrubbed, expiring, revocable copies of an answer or report
+
+### Added
+
+- **An answer can be shared through a Forge link.** A share freezes one report answer with secrets and email addresses removed, expires within 30 days, is revoked by its creator or an admin, and opens at /s/ read-only.
+
+## [0.4.0-dev.170] - 2026-10-08
+
+Five standard report queries computed in one step each
+
+### Added
+
+- **Three more report queries answer from the reads the screens already use.** Release readiness, criteria coverage and workflow status each return one typed frame, with the existing read they summarise declared beside them.
+- **Report queries can be listed and run over REST.** `progress-by-requirement` and `roadmap-eta` answer as the caller, over what they may read, and each result names the query, params and read time that produced it.
+
+## [0.4.0-dev.169] - 2026-10-08
+
+Chat answers draw tables, key figures and status lists; unknown blocks are named
+
+### Added
+
+- **A chat answer can now show a table, key figures or a status list.** Each shows its query and read time, status items link to what they name, and an answer block this screen cannot draw is named, not dropped.
+
 ## [0.4.0-dev.168] - 2026-10-08
 
 Shared contracts for chat-visual reports, blocks, templates, executors and shares
