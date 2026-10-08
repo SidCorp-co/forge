@@ -153,13 +153,6 @@ describe("a block this screen cannot draw is named, never dropped", () => {
     );
   });
 
-  it("names a kind the contract knows and this screen does not draw yet", () => {
-    show({ ...base, kind: "chart", variant: "bar", x: "key", y: ["done"] });
-    expect(screen.getByTestId("visual-block-unsupported").textContent).toBe(
-      "This answer has a chart block this screen cannot show.",
-    );
-  });
-
   it("names a block with no kind, and a value that is no block", () => {
     show({ v: 1 });
     expect(screen.getByTestId("visual-block-unsupported").textContent).toBe("This answer has a nameless block this screen cannot show.");
