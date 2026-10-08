@@ -82,7 +82,8 @@ outside is not, however cheap.
 **A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test: each
 is an amnesty, and it names what was traded, what it costs, and the condition that ends it.
 
-**The requirement leads, the code follows** (`VISION: requirement-leads-delivery`). Work names the
+**The Product leads, Delivery follows** (`VISION: requirement-leads-delivery`). The Product is
+requirements, workflows, feedback and releases; Delivery is issue → pipeline → deploy → verdict. Work names the
 requirement and criteria it delivers. Where the expectation is wrong or missing, revise the
 requirement or workflow first, then build to it. Done means a named criterion holds on the running
 build. Old code the work touches is cleaned inside that work.
