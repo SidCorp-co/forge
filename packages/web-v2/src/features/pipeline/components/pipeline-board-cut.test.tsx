@@ -28,7 +28,9 @@ vi.mock("../hooks", () => ({
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjectHealth: () => ({
-    data: [{ id: "p1", work: { open: 46, in_flight: 92, awaiting_release: 46, blocked_on_person: 46, draft: 0, finished: 0 } }],
+    // Open-state totals unlike the search's, so a board reading them from here instead of from the
+    // search response fails the figures asserted below.
+    data: [{ id: "p1", work: { open: 7, in_flight: 7, awaiting_release: 7, blocked_on_person: 7, draft: 0, finished: 0 } }],
   }),
 }));
 vi.mock("./run-detail", () => ({ RunDetail: () => null }));
