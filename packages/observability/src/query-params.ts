@@ -3,7 +3,7 @@ export const REDACTED = '[Redacted]';
 const SQLSTATE = /^[0-9A-Z]{5}$/;
 const MAX_DEPTH = 32;
 const MAX_CHAIN = 8;
-/** Searched for bare from this length; a shorter value would rewrite ordinary words. */
+/** Searched for bare from this length; a shorter value only where it stands quoted. */
 const BARE_VALUE_MIN = 6;
 const PRIVATE_USE = String.fromCharCode(0xe000);
 const KEPT_USE = String.fromCharCode(0xe001);
@@ -23,10 +23,21 @@ const sealedErrors = new WeakSet<object>();
 /** A sealed link's bound values, kept for the sinks where the driver's own array was emptied. */
 const sealedValues = new WeakMap<object, string[]>();
 
-/** Drizzle's `Failed query: <sql>\nparams: <values>`, the values running to the end of the text. */
-function failedQueryParams(held: string): RegExp {
-  return new RegExp(`(Failed query: [\\s\\S]*?\\nparams: )(?!${held})[\\s\\S]*$`);
+/** `text` raw and as each of `levels` `JSON.stringify` passes escapes it, as a sink re-encodes. */
+function encodings(text: string, levels = 2): string[] {
+  const out = [text];
+  for (let i = 0; i < levels; i++) out.push(JSON.stringify(out[i]).slice(1, -1));
+  return [...new Set(out)];
 }
+
+const LINE_BREAK = '(?:\\n|\\\\+n)';
+
+/** Drizzle's `Failed query: <sql>\nparams: <values>`, raw or escaped, values running to the end. */
+function failedQueryParams(held: string): RegExp {
+  return new RegExp(`(Failed query: [\\s\\S]*?${LINE_BREAK}params: )(?!${held})[\\s\\S]*$`);
+}
+
+const QUOTE = '\\\\*"';
 
 /**
  * The database's own texts that quote an input value: a unique, foreign-key or exclusion `detail`,
@@ -36,19 +47,19 @@ function failedQueryParams(held: string): RegExp {
 const QUOTED_VALUE_ANCHORS = [
   'Key \\([^)\\n]*\\)=\\(',
   'Failing row contains \\(',
-  'invalid input (?:syntax|value) for (?:type|enum) [^:\\n]*: (?=")',
-  'malformed [a-z]+ literal: (?=")',
-  'date/time field value out of range: (?=")',
-  'value (?="[\\s\\S]*" is out of range for type )',
-  'Token (?="[\\s\\S]*" is invalid)',
-  'in tsquery: (?=")',
-  'invalid value (?=")',
+  `invalid input (?:syntax|value) for (?:type|enum) [^:\\n]*: (?=${QUOTE})`,
+  `malformed [a-z]+ literal: (?=${QUOTE})`,
+  `date/time field value out of range: (?=${QUOTE})`,
+  `value (?=${QUOTE}[\\s\\S]*${QUOTE} is out of range for type )`,
+  `Token (?=${QUOTE}[\\s\\S]*${QUOTE} is invalid)`,
+  `in tsquery: (?=${QUOTE})`,
+  `invalid value (?=${QUOTE})`,
   'JSON data, line \\d+: ',
   'parameter \\$\\d+ = ',
 ];
 const QUOTED_VALUE = new RegExp(`(${QUOTED_VALUE_ANCHORS.join('|')})[\\s\\S]*$`);
-/** Every anchor holds one of these, so text holding none skips the pattern. */
-const QUOTED_VALUE_HINTS = [
+/** What every anchor holds, raw or escaped as it reads them, so text holding none skips them. */
+const ANCHOR_HINTS = [
   'Key (',
   'Failing row contains (',
   ': "',
@@ -57,11 +68,12 @@ const QUOTED_VALUE_HINTS = [
   'parameter $',
   'invalid value "',
 ];
-/** The hints as a JSON line spells them, where a quote is escaped. */
+const QUOTED_VALUE_HINTS = ANCHOR_HINTS.flatMap((hint) => encodings(hint));
+/** The hints as a finished JSON line spells them: one escape deeper than any text in it. */
 const LINE_HINTS = [
   'params',
   'Failed query: ',
-  ...QUOTED_VALUE_HINTS.flatMap((hint) => [hint, JSON.stringify(hint).slice(1, -1)]),
+  ...ANCHOR_HINTS.flatMap((hint) => encodings(hint, 3)),
 ];
 
 function quotesAValue(text: string): boolean {
@@ -130,16 +142,34 @@ function occurrences(text: string, needle: string, from: number, to: number): Sp
   return spans;
 }
 
+const PARAMS_END = /^(?:$|[\n\\"':])/;
+
+/** Where `rendering` is the whole list after `params: `: one it only begins is another's. */
+function renderedParams(text: string, rendering: string): Span[] {
+  return occurrences(text, `params: ${rendering}`, 8, 0).filter(([, to]) =>
+    PARAMS_END.test(text.slice(to, to + 1)),
+  );
+}
+
 /**
  * Every span of the ORIGINAL text that carries a bound value, overlapping spans merged, so one
  * redaction cannot rewrite the text another one still has to find.
  */
 function boundSpans(text: string, chain: ChainReading): Span[] {
   const spans: Span[] = [];
-  for (const r of chain.renderings) spans.push(...occurrences(text, `params: ${r}`, 8, 0));
-  for (const m of chain.driverMessages) spans.push(...occurrences(text, m, 0, 0));
+  for (const r of chain.renderings) {
+    // A statement with no values renders none, and an empty span would mark where values end.
+    if (r === '') continue;
+    for (const e of encodings(r)) spans.push(...renderedParams(text, e));
+  }
+  for (const m of chain.driverMessages) {
+    for (const e of encodings(m)) spans.push(...occurrences(text, e, 0, 0));
+  }
   for (const v of chain.values) {
-    if (v.length >= BARE_VALUE_MIN) spans.push(...occurrences(text, v, 0, 0));
+    const needles = v.length >= BARE_VALUE_MIN ? [v] : [`"${v}"`, `'${v}'`];
+    for (const e of needles.flatMap((n) => encodings(n))) {
+      spans.push(...occurrences(text, e, 0, 0));
+    }
   }
   // A value that is part of the marker shows nothing where the marker stands.
   const markers = occurrences(text, REDACTED, 0, 0);

@@ -279,3 +279,28 @@ describe('scrubSentryEvent, given a request body that renders itself', () => {
     expect(scrubSentryEvent({ request: { data } })).toBeNull();
   });
 });
+
+describe('a breadcrumb the scope re-sends with every event', () => {
+  it('goes out with no bound value on the event of a refusal at COMMIT, which bound none', async () => {
+    const { initSentry, Sentry } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const commit = Object.assign(
+      new Error('duplicate key value violates unique constraint "d_u"'),
+      {
+        code: '23505',
+        severity: 'ERROR',
+      },
+    );
+    Object.defineProperty(commit, 'parameters', { value: [], enumerable: false });
+    const before = envelopes.length;
+    Sentry.withScope((scope) => {
+      scope.addBreadcrumb({ message: `retry gave up after: ${failedInsert().message}` });
+      Sentry.captureException(new Error('commit failed', { cause: commit }));
+    });
+    expect(await Sentry.flush(5000)).toBe(true);
+    const sent = envelopes.slice(before).join('\n');
+    expect(sent).toContain('retry gave up after');
+    expect(sent).not.toContain(HASH);
+    expect(sent).not.toContain(EMAIL);
+  });
+});
