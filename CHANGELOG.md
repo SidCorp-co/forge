@@ -3152,6 +3152,8 @@
 
 - **A skipped schedule no longer takes Automation down.** Pressing Run with no runner online crashed the screen; it now reads "Skipped 3 hours ago", an unknown status reads its own word, and the dashboard card says "skipped", not "never run".
 
+- **A deploy target's rollback list says why it is missing.** Refused, unreachable, timed out or not JSON, the read used to answer a bare 502 or 500; it now names which, and what Coolify answered.
+
 - **A status change kept at another status says so.** When an agent's park becomes needs-info,
   or its close is held for release, the answer names the status asked for, the one kept, and why.
 

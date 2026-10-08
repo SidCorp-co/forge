@@ -27,6 +27,7 @@ import {
 } from './commands.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
+import { readRollbackImagesNamingFailure } from './rollback-images-read.js';
 import type {
   CoolifyApplicationResponse,
   CoolifyConfig,
@@ -200,7 +201,7 @@ export async function listCoolifyRollbackImages(input: {
   const row = await requireIntegration(input);
   const target = requireTarget(row, input.resourceUuid);
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(row.pair);
-  const res = await buildClient(ctx).listRollbackImages(target.resourceUuid);
+  const res = await readRollbackImagesNamingFailure(buildClient(ctx), target.resourceUuid);
   return {
     integrationId: row.id,
     resourceUuid: target.resourceUuid,

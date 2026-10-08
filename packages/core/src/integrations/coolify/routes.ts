@@ -29,7 +29,11 @@ import {
   notFound,
 } from '../route-helpers.js';
 import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
-import { CoolifyApiError, describeCoolifyForbidden } from './client.js';
+import {
+  CoolifyApiError,
+  describeCoolifyForbidden,
+  describeCoolifyRollbackImagesRefusal,
+} from './client.js';
 import {
   CoolifyCommandError,
   coolifyDeliveryStatus,
@@ -44,6 +48,7 @@ import {
   runCoolifyCancel,
   runCoolifyRollback,
 } from './controls.js';
+import { CoolifyReadFailedError } from './rollback-images-read.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const deployBodySchema = z
@@ -181,6 +186,20 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
         }),
       );
     } catch (err) {
+      // 424, not the 502 the writes answer: Cloudflare replaces an origin 502's body with its own
+      // `error code: 502`, so the refusal named here never reached a caller (ISS-1194).
+      if (err instanceof CoolifyApiError) {
+        throw new HTTPException(424, {
+          message: describeCoolifyRollbackImagesRefusal(err),
+          cause: { code: 'COOLIFY_API_ERROR' },
+        });
+      }
+      if (err instanceof CoolifyReadFailedError) {
+        throw new HTTPException(424, {
+          message: err.message,
+          cause: { code: 'COOLIFY_UNREACHABLE' },
+        });
+      }
       return asHttp(err);
     }
   });

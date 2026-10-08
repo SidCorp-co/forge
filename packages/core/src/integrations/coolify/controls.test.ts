@@ -256,6 +256,15 @@ describe('listCoolifyRollbackImages', () => {
     expect(res.current).toBe('sha-b');
     expect(res.images).toEqual([{ tag: 'sha-a', createdAt: 'then', isCurrent: false }]);
   });
+
+  it('names a transport failure rather than passing on what the transport threw', async () => {
+    client.listRollbackImages.mockRejectedValue(new TypeError('fetch failed'));
+
+    const err = await listCoolifyRollbackImages({ projectId: PROJECT_ID }).catch((e) => e);
+
+    expect(err.name).toBe('CoolifyReadFailedError');
+    expect(err.message).toContain('Could not reach Coolify');
+  });
 });
 
 describe('resolveCoolifyTargets', () => {
