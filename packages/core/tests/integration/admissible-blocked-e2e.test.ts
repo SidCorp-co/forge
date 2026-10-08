@@ -92,7 +92,7 @@ async function issue(seq: number, status = 'open'): Promise<string> {
 async function edge(
   from: string,
   to: string,
-  opts: { kind?: string; validUntil?: 'past' | 'future' } = {},
+  opts: { kind?: string; validUntil?: 'past' | 'future'; holdsUntil?: 'settled' | 'shipped' } = {},
 ): Promise<void> {
   const validUntil =
     opts.validUntil === 'past'
@@ -101,8 +101,10 @@ async function edge(
         ? sql`now() + interval '30 days'`
         : sql`NULL`;
   await harness.db.execute(sql`
-    INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind, valid_until)
-    VALUES (${randomUUID()}, ${projectId}, ${from}, ${to}, ${opts.kind ?? 'blocks'}, ${validUntil})
+    INSERT INTO issue_dependencies
+      (id, project_id, from_issue_id, to_issue_id, kind, valid_until, holds_until)
+    VALUES (${randomUUID()}, ${projectId}, ${from}, ${to}, ${opts.kind ?? 'blocks'}, ${validUntil},
+            ${opts.holdsUntil ?? 'settled'})
   `);
 }
 
@@ -284,5 +286,110 @@ describe('ISS-1100 the measurement, and the shape the box reads', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ items: [], count: 0 });
+  });
+});
+
+describe('ISS-1225 an edge that holds until shipped (real Postgres, through the route)', () => {
+  it.each(['developed', 'testing', 'awaiting_release'])(
+    'keeps the dependent out while the blocker is %s',
+    async (status) => {
+      await control();
+      const blocker = await issue(1, status);
+      const held = await issue(2);
+      await edge(blocker, held, { holdsUntil: 'shipped' });
+
+      const keys = (await admissible()).keys;
+      expect(keys).toContain('ISS-99');
+      expect(keys).not.toContain('ISS-2');
+    },
+  );
+
+  it('releases the dependent once the blocker is closed', async () => {
+    const blocker = await issue(1, 'awaiting_release');
+    const held = await issue(2);
+    await edge(blocker, held, { holdsUntil: 'shipped' });
+    expect((await admissible()).keys).not.toContain('ISS-2');
+
+    // closing is refused without the merge mark: `closed` means the work shipped
+    await harness.db.execute(
+      sql`UPDATE issues SET status = 'closed', merged_at = now() WHERE id = ${blocker}`,
+    );
+
+    expect((await admissible()).keys).toContain('ISS-2');
+  });
+
+  it('holds only the dependent of the edge that asked, beside a settled edge on the same blocker', async () => {
+    await control();
+    const blocker = await issue(1, 'awaiting_release');
+    const waits = await issue(2);
+    const goes = await issue(3);
+    await edge(blocker, waits, { holdsUntil: 'shipped' });
+    await edge(blocker, goes);
+
+    const keys = (await admissible()).keys;
+    expect(keys).toContain('ISS-3');
+    expect(keys).not.toContain('ISS-2');
+  });
+
+  it('still holds a shipped edge while the blocker is below developed', async () => {
+    await control();
+    const blocker = await issue(1, 'in_progress');
+    const held = await issue(2);
+    await edge(blocker, held, { holdsUntil: 'shipped' });
+
+    expect((await admissible()).keys).not.toContain('ISS-2');
+  });
+
+  it('releases the dependent when a shipped edge is retracted', async () => {
+    const blocker = await issue(1, 'awaiting_release');
+    const held = await issue(2);
+    await edge(blocker, held, { holdsUntil: 'shipped', validUntil: 'past' });
+
+    expect((await admissible()).keys).toContain('ISS-2');
+  });
+
+  it("releases the dependent when the blocker is dropped, through the drop transition's own expiry", async () => {
+    const blocker = await issue(1, 'awaiting_release');
+    const held = await issue(2);
+    await edge(blocker, held, { holdsUntil: 'shipped' });
+    expect((await admissible()).keys).not.toContain('ISS-2');
+
+    const { expireBlocksEdgesOnDrop } = await import('../../src/issues/drop-cascade.js');
+    await harness.db.transaction((tx) => expireBlocksEdgesOnDrop(tx, projectId, blocker));
+    await setStatus(blocker, 'dropped');
+
+    expect((await admissible()).keys).toContain('ISS-2');
+  });
+
+  it("reports each edge's hold on the relations of the admissible row", async () => {
+    const blocker = await issue(1, 'closed');
+    const held = await issue(2);
+    await edge(blocker, held, { holdsUntil: 'shipped' });
+
+    const res = await app.request('/api/devices/me/issues/admissible', {
+      headers: { authorization: `Bearer ${deviceToken}` },
+    });
+    const body = (await res.json()) as {
+      items: Array<{ issueKey: string; relations: Array<{ holdsUntil: string }> }>;
+    };
+    const row = body.items.find((i) => i.issueKey === 'ISS-2');
+    expect(row?.relations.map((r) => r.holdsUntil)).toEqual(['shipped']);
+  });
+
+  it('a database refuses a shipped hold on an edge that is not a blocks edge', async () => {
+    const a = await issue(1);
+    const b = await issue(2);
+    await expect(edge(a, b, { kind: 'relates', holdsUntil: 'shipped' })).rejects.toThrow();
+  });
+
+  it('a database refuses a hold outside settled and shipped', async () => {
+    const a = await issue(1);
+    const b = await issue(2);
+    await expect(
+      harness.db.execute(sql`
+        INSERT INTO issue_dependencies (id, project_id, from_issue_id, to_issue_id, kind, holds_until)
+        VALUES (${randomUUID()}, ${projectId}, ${a}, ${b}, 'blocks', 'whenever')
+      `),
+    ).rejects.toThrow();
   });
 });

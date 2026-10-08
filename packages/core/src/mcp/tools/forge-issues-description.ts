@@ -54,9 +54,13 @@ export function forgeIssuesDescription(refClause: string): string {
     'exactly one of dependsOnId (THIS issue is blocked BY it) or blocksId (THIS issue blocks ' +
     'it). Edges commit before the dispatch trigger, so nothing dispatches ahead of its ' +
     "blocker, and the reply's relations[] confirms each edge. Re-send an edge with validUntil " +
-    'in the past to RETRACT it (updated:true). get returns relations.blocks (this blocks them) ' +
-    'and relations.blockedBy (they block this), each flagged expired when its validUntil has ' +
-    'passed and it no longer gates dispatch.\n' +
+    'in the past to RETRACT it (updated:true). A blocks relation may carry holdsUntil: ' +
+    '"settled" (the default: released once the blocker is developed or past) or "shipped" ' +
+    '(released only once the blocker is closed, for a dependency that must wait on a publish); ' +
+    "omitting it keeps today's reading, and shipped on a relates relation is refused. get returns " +
+    'relations.blocks (this blocks them) and relations.blockedBy (they block this), each ' +
+    'reporting its holdsUntil and flagged expired when its validUntil has passed and it no ' +
+    'longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On an ' +

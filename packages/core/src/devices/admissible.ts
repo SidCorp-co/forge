@@ -15,11 +15,12 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { IssueDependencyHold } from '../db/schema.js';
 import {
   type IssuePullRequest,
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
-import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
+import { DISPATCH_GATING_KIND, releasingStatusesFor } from '../issues/dependency-effects.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
@@ -112,7 +113,8 @@ const RELATIONS = sql`
       'dependsOnKey', coalesce(bp.issue_prefix, 'ISS') || '-' || b.iss_seq,
       'blockerStatus', b.status,
       'blockerMergedAt', b.merged_at,
-      'edgeValidUntil', d.valid_until
+      'edgeValidUntil', d.valid_until,
+      'holdsUntil', d.holds_until
     ))
     FROM issue_dependencies d
     JOIN issues b ON b.id = d.from_issue_id
@@ -142,10 +144,11 @@ export async function readAdmissibleIssues(args: {
       a.statuses.map((s) => sql`${s}`),
       sql`, `,
     );
-    const settledList = sql.join(
-      BLOCKER_SETTLED_STATUSES.map((s) => sql`${s}`),
-      sql`, `,
-    );
+    const releasingList = (hold: IssueDependencyHold) =>
+      sql.join(
+        releasingStatusesFor(hold).map((s) => sql`${s}`),
+        sql`, `,
+      );
     const rows = (await db.execute(sql`
       SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
              i.category, i.status, i.merged_at,
@@ -160,8 +163,10 @@ export async function readAdmissibleIssues(args: {
           i.status IN (${statusList})
           ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
         )
-        -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
-        -- this row out of the set. It is correlated on the ADMITTING project and not on
+        -- a live blocks edge whose blocker has not reached a status that edge releases at holds
+        -- this row out of the set: BLOCKER_SETTLED_STATUSES for a \`settled\` edge (the default),
+        -- BLOCKER_SHIPPED_STATUSES for one that declared \`shipped\`. The column is CHECKed to those
+        -- two, so no edge falls through both branches and is released by being unreadable. It is correlated on the ADMITTING project and not on
         -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
         -- (project_id, from_issue_id) and (project_id, to_issue_id): an endpoint-only filter
         -- constrains the non-leading column of both and Postgres degrades to a sequential scan of
@@ -174,7 +179,10 @@ export async function readAdmissibleIssues(args: {
             AND d.to_issue_id = i.id
             AND d.kind = ${DISPATCH_GATING_KIND}
             AND (d.valid_until IS NULL OR d.valid_until > now())
-            AND b.status NOT IN (${settledList})
+            AND (
+              (d.holds_until = 'settled' AND b.status NOT IN (${releasingList('settled')}))
+              OR (d.holds_until = 'shipped' AND b.status NOT IN (${releasingList('shipped')}))
+            )
         )
         -- one predicate for "is this issue being worked", shared with the orphan sweep that
         -- used to carry a verbatim copy of it (ISS-1109). The key is canonicalised and never

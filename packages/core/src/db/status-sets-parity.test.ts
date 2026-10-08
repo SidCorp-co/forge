@@ -1,7 +1,10 @@
 import * as CONTRACT from '@forge/contracts/status-sets';
 import * as WORK from '@forge/contracts/work-state';
 import { describe, expect, it } from 'vitest';
-import { BLOCKER_SETTLED_STATUSES } from '../issues/dependency-effects.js';
+import {
+  BLOCKER_SETTLED_STATUSES,
+  BLOCKER_SHIPPED_STATUSES,
+} from '../issues/dependency-effects.js';
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
 import * as CORE_WORK from '../issues/work-state.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -20,6 +23,10 @@ const MIRRORS: Record<string, { core: readonly string[]; contract: readonly stri
   BLOCKER_SETTLED_STATUSES: {
     core: BLOCKER_SETTLED_STATUSES,
     contract: CONTRACT.BLOCKER_SETTLED_STATUSES,
+  },
+  BLOCKER_SHIPPED_STATUSES: {
+    core: BLOCKER_SHIPPED_STATUSES,
+    contract: CONTRACT.BLOCKER_SHIPPED_STATUSES,
   },
   REASON_REQUIRED_ISSUE_STATUSES: {
     core: [...REASON_REQUIRED_STATUSES],

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { issueDependencyKinds } from '../../db/schema.js';
+import { issueDependencyHolds, issueDependencyKinds } from '../../db/schema.js';
 import { GATES_DISPATCH_NOTE, WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 import { IssueDependencyError, setIssueDependency } from '../../issues/dependency-service.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
@@ -20,6 +20,7 @@ export const pmSetDependencyInputSchema = z
     kind: z.enum(issueDependencyKinds),
     reason: z.string().max(2000).optional(),
     validUntil: z.iso.datetime().optional(),
+    holdsUntil: z.enum(issueDependencyHolds).optional(),
   })
   .strict();
 
@@ -48,6 +49,8 @@ function toMcpDependencyError(err: unknown): unknown {
       return new Error('BAD_REQUEST: self-edge not allowed');
     case 'NOT_FOUND':
       return new Error('NOT_FOUND: one or both issues not found');
+    case 'HOLD_NEEDS_BLOCKS':
+      return new Error(`BAD_REQUEST: ${err.message}`);
     case 'CROSS_PROJECT':
       return new Error('BAD_REQUEST: both issues must belong to projectId');
     case 'CYCLE_DETECTED':
@@ -70,7 +73,7 @@ export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     '[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Only `blocks` gates dispatch. ' +
     WORK_EVIDENCE_WAIVER_NOTE +
-    " The result's `effects` names what the edge you just wrote actually does. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch. " +
+    " The result's `effects` names what the edge you just wrote actually does. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason`/`holdsUntil` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only way an agent can retract one (DELETE is JWT-only REST). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch. " +
     GATES_DISPATCH_NOTE +
     ' For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.',
   inputSchema: zodToMcpSchema(pmSetDependencyInputSchema),
