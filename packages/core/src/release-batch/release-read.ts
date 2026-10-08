@@ -12,7 +12,12 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
-import { type RecordedVerification, releaseVerifiedBy } from './channel.js';
+import {
+  productionProviderOf,
+  type RecordedVerification,
+  releaseVerifiedBy,
+  resolveReleaseChannels,
+} from './channel.js';
 import { readFinishRecord } from './finish-record.js';
 import { readLandingReadings } from './landing-surfaces.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
@@ -170,7 +175,7 @@ async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language] = await Promise.all([
+  const [facts, approvers, admins, language, channels] = await Promise.all([
     loadReleaseFacts(
       projectId,
       parts.flatMap((p) => p.issueIds),
@@ -179,6 +184,7 @@ async function sharedFor(
     namedHolders('releases.approve', projectId),
     holderNames('project.admin', projectId),
     readContentLanguage(projectId),
+    resolveReleaseChannels(projectId),
   ]);
   return {
     current,
@@ -188,6 +194,7 @@ async function sharedFor(
     admins,
     facts,
     contentLanguage: language.contentLanguage,
+    provider: productionProviderOf(channels),
   };
 }
 

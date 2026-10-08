@@ -25,7 +25,7 @@ const release = {
       ],
     },
   ],
-  verified: { level: "some_criteria" as const, proven: 1, total: 2, check: "probed" as const },
+  verified: { level: "some_criteria" as const, proven: 1, total: 2, check: "probed" as const, provider: null },
 };
 
 export const STATUS: ProjectStatus = {

@@ -12,6 +12,11 @@ const CODES = new Set<string>([...QUESTION_REFUSAL_CODES, ...MERGE_REFUSAL_CODES
 const named = (body: string) => [
   ...new Set([...body.matchAll(/\b(?:QUESTION|ARTIFACT_CARRIER)_[A-Z_]+\b/g)].map((m) => m[0])),
 ];
+// a key quoted on its own is the bare string the ask route refuses, unless the sentence says so
+const bareRequirementKeys = (text: string) =>
+  text.split("'REQ-n'").length -
+  text.split("{ requirement: 'REQ-n' }").length -
+  (text.split("bare `'REQ-n'`").length - 1);
 const body = (slug: string) => getGuide(slug)?.body ?? '';
 
 describe('the issue-flow method teaches the acts that name what they wait on', () => {
@@ -25,8 +30,10 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
         '`about`',
         '{ requirement: null }',
         "{ contract: '<project>/<contract>' }",
+        "{ requirement: 'REQ-n' }",
         'QUESTION_ABOUT_UNKNOWN',
         'QUESTION_ABOUT_NO_REQUIREMENT',
+        'QUESTION_ABOUT_SHAPE',
       ],
     ],
     [
@@ -61,6 +68,11 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       expect(named(body(slug)).filter((code) => !CODES.has(code))).toEqual([]);
     },
   );
+
+  it('offers a requirement key as `about` only under `requirement`', () => {
+    expect(bareRequirementKeys(flow)).toBe(0);
+    expect(bareRequirementKeys("`{ requirement: null }`, or `'REQ-n'`")).toBe(1);
+  });
 
   it('catches a refusal no code list holds', () => {
     expect(named('refused `QUESTION_MERGE_ALREADY_MARKD`').filter((c) => !CODES.has(c))).toEqual([

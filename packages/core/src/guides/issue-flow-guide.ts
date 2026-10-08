@@ -96,11 +96,13 @@ A question only a person can answer parks the issue:
 A question about what the business wants — a rule, who may do what, a contract's shape — belongs to
 the requirement, not to this issue. Ask it first, naming what it is about:
 \`POST /api/questions\` \`{ issueId, prompt, options, recommendedOptionId, about }\`, \`about\` being
-\`{ requirement: null }\` for the requirement this issue delivers, \`{ requirement: 'REQ-n' }\`, or
-\`{ contract: '<project>/<contract>' }\`. Then park with \`needs\` left out, and the park waits on that
-question. It stays on this issue, is listed on the requirement, and its answer is recorded there as a
-decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`; \`{ requirement: null }\` on an
-issue that delivers no requirement is \`QUESTION_ABOUT_NO_REQUIREMENT\`.
+always one of three objects: \`{ requirement: null }\` for the requirement this issue delivers,
+\`{ requirement: 'REQ-n' }\` for another by its key or id, or \`{ contract: '<project>/<contract>' }\`.
+A bare \`'REQ-n'\` or any other shape is refused \`QUESTION_ABOUT_SHAPE\`. Then park with \`needs\`
+left out, and the park waits on that question. It stays on this issue, is listed on the requirement,
+and its answer is recorded there as a decision. An \`about\` naming nothing is
+\`QUESTION_ABOUT_UNKNOWN\`; \`{ requirement: null }\` on an issue that delivers no requirement is
+\`QUESTION_ABOUT_NO_REQUIREMENT\`.
 
 Waiting on another issue's landing is \`awaitsMerge: { issueId }\` on the park, never the condition
 written into \`needs\`: the stamp that writes that issue's merge mark answers the question and moves

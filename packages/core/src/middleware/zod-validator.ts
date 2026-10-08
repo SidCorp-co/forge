@@ -2,7 +2,7 @@ import { zValidator as honoZodValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler, Next } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
-import { jsonPointer, type Refusal } from '../lib/refusal.js';
+import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 
 type Args = Parameters<typeof honoZodValidator>;
 
@@ -77,6 +77,36 @@ export function invalid(hint?: string, code = 'BAD_REQUEST'): Hook {
   }) as Hook;
   shapes.set(hook, shape);
   return hook;
+}
+
+function sentAs(value: unknown): string {
+  if (value === undefined) return 'left out';
+  const json = JSON.stringify(value) ?? String(value);
+  const shown = json.length > 120 ? `${json.slice(0, 117)}...` : json;
+  if (typeof value === 'string') return `the bare string ${shown}`;
+  if (Array.isArray(value)) return `the array ${shown}`;
+  return `${value === null ? '' : `the ${typeof value} `}${shown}`;
+}
+
+/**
+ * A body whose one field answers its wrong shape under a code of its own: the row names the field,
+ * what was sent there and `shape`, the one shape it takes. Every other failing field keeps its
+ * BAD_REQUEST row, so one 400 still names every fault.
+ */
+export function fieldShape(field: string, code: string, shape: string): Hook {
+  return ((r: Failed & { data?: unknown }) => {
+    if (r.success || !r.error) return;
+    const issues = r.error.issues;
+    if (!issues.some((i) => i.path[0] === field)) return;
+    const sent = typeof r.data === 'object' && r.data !== null ? Reflect.get(r.data, field) : null;
+    const rows: Refusal[] = [
+      { code, path: jsonPointer([field]), detail: `\`${field}\` is ${sentAs(sent)}. ${shape}` },
+      ...issues
+        .filter((i) => i.path[0] !== field)
+        .map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
+    ];
+    throw new RefusalError(rows, 'BAD_REQUEST');
+  }) as Hook;
 }
 
 // the API contract reads a route's inputs off its middleware, not off a second description

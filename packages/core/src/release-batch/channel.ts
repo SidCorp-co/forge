@@ -131,6 +131,14 @@ export function closeVerification(channels: readonly ReleaseChannel[]): CloseVer
   return provider ? { kind: 'provider', channel: provider } : { kind: 'deployment' };
 }
 
+/** The production binding's provider as a person reads it (`Autoflow`), or `null` where none is bound. */
+export function productionProviderOf(channels: readonly ReleaseChannel[]): string | null {
+  const channel = channels[0];
+  return channel
+    ? (getIntegration(channel.provider)?.presentation?.label ?? channel.provider)
+    : null;
+}
+
 /**
  * How a release is proved, and through which provider: as its run recorded it, else as the project
  * declares it now. `null` where neither names one: no production binding, or a probe declaration a
@@ -141,12 +149,9 @@ export async function releaseVerifiedBy(
   recorded: RecordedVerification | null,
 ): Promise<ReleaseVerifiedBy | null> {
   const channels = await resolveReleaseChannels(projectId);
-  const channel = channels[0];
-  const provider = channel
-    ? (getIntegration(channel.provider)?.presentation?.label ?? channel.provider)
-    : null;
+  const provider = productionProviderOf(channels);
   if (recorded) return { kind: recorded, provider };
-  if (!channel || refusedVerifyBindings(channels).length > 0) return null;
+  if (!channels[0] || refusedVerifyBindings(channels).length > 0) return null;
   return { kind: closeVerification(channels).kind, provider };
 }
 

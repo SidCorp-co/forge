@@ -71,6 +71,8 @@ export interface Shared {
   facts: ReleaseFacts;
   /** The project's content language tag, which its release notes are written in. */
   contentLanguage: string;
+  /** The production binding's provider as a person reads it, or `null` where none is bound. */
+  provider: string | null;
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -210,6 +212,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
       proven: criteria.proven,
       total: criteria.total,
       check: p.verification,
+      provider: p.verification === 'provider' ? s.provider : null,
     },
     contents: contentsOf(p, s),
     owner,
