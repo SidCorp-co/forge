@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.181] - 2026-10-08
+
+Hold a held chat reply's visual blocks and refuse invented chart labels
+
+### Fixed
+
+- **A chat answer's charts and tables now wait for its reply.** They appear only once the reply passes its check, stay with a held reply for the asker alone, and a typed number in a title or label is refused.
+
 ## [0.4.0-dev.180] - 2026-10-08
 
 Chat-panel report tables stay readable; flow diagrams draw arrows
