@@ -400,6 +400,7 @@ export function IssuesListView({
         />
         <div className="overflow-x-auto">
           <SegmentedControl
+            stableCountWidth
             options={tabs}
             value={filter}
             onChange={(v) =>

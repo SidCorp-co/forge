@@ -3155,6 +3155,12 @@
   ISS-1280; inside a project the ⌘K box searches issues; a refused key reads cleanly and keeps the
   tab counts in place.
 
+- **A key pasted any way still finds its issue, and the filters stay put.** An issue's page address,
+  two keys pasted together (`ISS-1280 ISS-1281`), and a key written with an en dash, a fullwidth
+  `＃` or a hidden zero-width character find the issue or issues they name, or say by name why not,
+  where they used to show an empty list. On the issues screen the tab counts take one width, so a
+  key or a refusal no longer moves the filters onto another row.
+
 - **The sign-up page drops "Email already registered" once you change the email**, so the
   message never describes an address that is no longer in the field.
 - **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while

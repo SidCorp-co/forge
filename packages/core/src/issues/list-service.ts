@@ -73,7 +73,7 @@ export async function listIssueRows(
   if (filters?.createdAfter) conds.push(gte(issues.createdAt, filters.createdAfter));
   if (filters?.createdBefore) conds.push(lt(issues.createdAt, filters.createdBefore));
   if (filters?.updatedAfter) conds.push(gte(issues.updatedAt, filters.updatedAfter));
-  if (term?.kind === 'key') conds.push(eq(issues.issSeq, term.issSeq));
+  if (term?.kind === 'key') conds.push(inArray(issues.issSeq, term.issSeqs));
   if (term?.kind === 'text') conds.push(buildIssueSearchCondition(term.text));
 
   for (const [values, resolve] of [

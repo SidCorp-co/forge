@@ -30,9 +30,13 @@ export function forgeIssuesDescription(refClause: string): string {
     'pipeline-and-issue-lifecycle and writing-an-issue; mermaid fences render; ATTACH .html ' +
     'rather than pasting it.\n' +
     'FILTERS. search: an issue key (ISS-42, 42, or a prefix this project holds; `ISS 42`, ' +
-    '`#42` and a pasted `(ISS-42),` read the same) answers that one row or is refused as ' +
-    '`<ISSUE_KEY_* code>: <sentence>`, and so is a key under a prefix another project holds; a ' +
-    'number in double quotes is searched as text; ' +
+    '`#42`, a pasted `(ISS-42),` and a key with an en dash or a zero-width character read the ' +
+    'same) answers that one row or is refused as `<ISSUE_KEY_* code>: <sentence>`, and so is a ' +
+    'key under a prefix another project holds; several keys each carrying a prefix or a `#` ' +
+    '(`ISS-42 ISS-43`) answer every one of them, or refuse the whole for the one this project ' +
+    'does not hold; the address of an issue page answers that issue, or is refused by the same ' +
+    "codes where it is another project's or nobody's; a number in double quotes, and several " +
+    'bare numbers, are searched as text; ' +
     'anything else is a literal substring or identifier-split token over ' +
     'title/description/plan/acceptanceCriteria, with matchedFields naming which matched per ' +
     'row, so a clause cited only on a criterion is findable. label/module: a name or uuid or ' +
