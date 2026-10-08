@@ -55,38 +55,31 @@ export interface RequirementActor {
 export type Row = typeof requirements.$inferSelect;
 export type { CriterionRow, RevisionRow } from './revision-view.js';
 
-/** A requirement of `projectId` by uuid, `REQ-n` or `n`; 404 otherwise. */
-export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row> {
+/** Where a requirement ref (uuid, `REQ-n` or `n`) names a row of `projectId`; null for neither shape. */
+function refWhere(projectId: string, ref: string) {
   const seq = /^(?:REQ-)?(\d{1,9})$/i.exec(ref.trim())?.[1];
   const uuid = /^[0-9a-f-]{36}$/i.test(ref) ? ref : null;
-  if (!seq && !uuid) throw notFound(`"${ref}" is neither a requirement uuid nor a key like REQ-12`);
-  const [row] = await tx
-    .select()
-    .from(requirements)
-    .where(
-      and(
-        eq(requirements.projectId, projectId),
-        seq ? eq(requirements.reqSeq, Number(seq)) : eq(requirements.id, uuid as string),
-      ),
-    );
+  if (!seq && !uuid) return null;
+  return and(
+    eq(requirements.projectId, projectId),
+    seq ? eq(requirements.reqSeq, Number(seq)) : eq(requirements.id, uuid as string),
+  );
+}
+
+/** A requirement of `projectId` by uuid, `REQ-n` or `n`; 404 otherwise. */
+export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Row> {
+  const where = refWhere(projectId, ref);
+  if (!where) throw notFound(`"${ref}" is neither a requirement uuid nor a key like REQ-12`);
+  const [row] = await tx.select().from(requirements).where(where);
   if (!row) throw notFound(`project ${projectId} holds no requirement ${ref}`);
   return row;
 }
 
 /** The requirement `ref` (REQ-n or uuid) names in the project, or null when it names none. */
 export async function requirementIdIn(tx: Tx, projectId: string, ref: string) {
-  const seq = /^(?:REQ-)?(\d{1,9})$/i.exec(ref.trim())?.[1];
-  const uuid = /^[0-9a-f-]{36}$/i.test(ref) ? ref : null;
-  if (!seq && !uuid) return null;
-  const [row] = await tx
-    .select({ id: requirements.id })
-    .from(requirements)
-    .where(
-      and(
-        eq(requirements.projectId, projectId),
-        seq ? eq(requirements.reqSeq, Number(seq)) : eq(requirements.id, uuid as string),
-      ),
-    );
+  const where = refWhere(projectId, ref);
+  if (!where) return null;
+  const [row] = await tx.select({ id: requirements.id }).from(requirements).where(where);
   return row?.id ?? null;
 }
 

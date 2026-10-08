@@ -117,11 +117,6 @@ export function askerLanguageOf(text: string | null | undefined): ReplyLanguage 
     : null;
 }
 
-/** A project's content language as one of the languages these lines are written in. */
-export function replyLanguageOfTag(tag: string): ReplyLanguage {
-  return tag === 'vi' || tag.startsWith('vi-') ? 'vi' : 'en';
-}
-
 type Line = Record<ReplyLanguage, (name: string) => string>;
 
 const ERROR: Line = {

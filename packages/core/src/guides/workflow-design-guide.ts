@@ -107,7 +107,9 @@ never held, or one flow twice is refused at the write (\`WORKFLOW_BASE_SELF\`, \
 base it declares is not approved at the revision it names — returned, still proposed, never approved, or
 approved at another revision — and the refusal names each base and its state. The same reading stands
 before anyone tries: a proposed design whose base moved reads as waiting on its writer to re-pin \`basedOn\`,
-not on its approver. Approve the base first, or write the design again naming the base revision that is approved. Prose that cites another design is
+not on its approver. Approve the base first, or write the design again naming the base revision that is approved — but only a design with a change
+of its own: one whose only change would be the pin is never proposed again, and whoever approves designs re-pins every such
+dependent in one act (below). Prose that cites another design is
 never read as a base.
 
 ### A base approved at a new revision: one act for the pin-only dependents

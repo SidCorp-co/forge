@@ -66,6 +66,8 @@ a step you could not complete, a procedure that does not fit what you actually f
   box. With nothing carried, the next attempt at this roster wears the same version again; with
   anything carried, it takes a new version and its page names what you listed. Left out, the next
   attempt is refused \`RELEASE_VERSION_UNDECIDED\` until somebody says, so look before you leave it out.
+  Sent beside \`pushed\`, the two tell one story: \`pushed: false\` with a carrier, or \`pushed: true\`
+  with \`[]\`, is refused \`RELEASE_CARRIED_CONTRADICTS\` and nothing is aborted.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy

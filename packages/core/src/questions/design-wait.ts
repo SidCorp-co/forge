@@ -11,13 +11,12 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import { projectWorkflowDesigns, projectWorkflows } from '../db/schema-workflows.js';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
-import { emitEvent } from '../outbox/index.js';
-import { recordAnswerOnIssue } from './answer-record.js';
+import { answerWaitingQuestions } from './answer-record.js';
 
 type Executor = IssueDependencyExecutor;
 
@@ -185,48 +184,13 @@ export async function answerDesignQuestions(
   },
 ): Promise<string[]> {
   const rows = await openQuestionsAwaiting(tx, args);
-  const body = decisionAnswer(args);
-  const now = new Date();
-  for (const row of rows) {
-    const current = row.steps[row.steps.length - 1];
-    if (!current || isChoiceStep(current)) {
-      throw new Error(
-        `questions: question ${row.id} waits on a design revision and its round is not free text — only a park writes that link, and a park asks in free text`,
-      );
-    }
-    const answered: QuestionStep = {
-      ...current,
-      answeredAt: now.toISOString(),
-      answerText: body,
-      answeredBy: args.by,
-    };
-    const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
-    await transition(tx, QUESTION_MACHINE, {
-      to: 'answered',
-      from: 'open',
-      set: { steps, updatedAt: now },
-      where: eq(agentQuestions.id, row.id),
-      actor: { type: 'user', id: args.by, agency: args.agency },
-      source: 'workflows',
-      returning: ['id'],
-    });
-    await recordAnswerOnIssue(tx, {
-      issueId: row.issueId ?? null,
-      questionId: row.id,
-      round: answered.round,
-      answer: body,
-      by: args.by,
-      agency: args.agency,
-    });
-    await emitEvent(tx, 'question.answered', {
-      questionId: row.id,
-      projectId: row.projectId,
-      issueId: row.issueId ?? null,
-      answeredBy: args.by,
-      body,
-    });
-  }
-  return rows.map((r) => r.id);
+  return answerWaitingQuestions(tx, rows, {
+    body: decisionAnswer(args),
+    by: args.by,
+    agency: args.agency,
+    source: 'workflows',
+    waitsOn: 'a design revision',
+  });
 }
 
 /**

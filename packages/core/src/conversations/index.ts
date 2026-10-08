@@ -1,3 +1,4 @@
+export { languageOfTag } from '../lib/language-tag.js';
 export {
   mayChangeMembership,
   readableConversation,
@@ -40,7 +41,6 @@ export {
   partialReplyWords,
   type ReplyLanguage,
   replyLanguageOf,
-  replyLanguageOfTag,
   type TurnFailureCause,
   type TurnFailureCode,
   turnFailureReason,

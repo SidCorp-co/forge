@@ -1,6 +1,6 @@
 # 0001 — A release's version is a counter, and MAJOR is a product era
 
-**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md) for a project that declares a prerelease line · **Superseded in part by:** [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md), which replaces the burn rule: a number is spent when it leaves Forge
+**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none · **Amended by:** [0005](0005-a-project-may-number-releases-as-prereleases.md) for a project that declares a prerelease line · **Superseded in part by:** [0011](0011-a-release-keeps-its-version-across-attempts.md) (which superseded [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md)), replacing the burn rule: a re-cut of the same roster keeps its version unless something outside Forge carries it
 
 ## Context
 

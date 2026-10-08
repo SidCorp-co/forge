@@ -17,7 +17,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 2,
+  version: 3,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -93,6 +93,21 @@ A question only a person can answer parks the issue:
 \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', reason, waitingKind, needs }\`, with
 \`needs\` written as the ask.
 
+A question about what the business wants — a rule, who may do what, a contract's shape — belongs to
+the requirement, not to this issue. Ask it first, naming what it is about:
+\`POST /api/questions\` \`{ issueId, prompt, options, recommendedOptionId, about }\`, \`about\` being
+\`{ requirement: null }\` for the requirement this issue delivers, \`{ requirement: 'REQ-n' }\`, or
+\`{ contract: '<project>/<contract>' }\`. Then park with \`needs\` left out, and the park waits on that
+question. It stays on this issue, is listed on the requirement, and its answer is recorded there as a
+decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`; \`{ requirement: null }\` on an
+issue that delivers no requirement is \`QUESTION_ABOUT_NO_REQUIREMENT\`.
+
+Waiting on another issue's landing is \`awaitsMerge: { issueId }\` on the park, never the condition
+written into \`needs\`: the stamp that writes that issue's merge mark answers the question and moves
+this one back. A mark that already stands is refused \`QUESTION_MERGE_ALREADY_MARKED\` — the
+condition holds, so carry on. A wait on a mark is never also \`about\` a requirement
+(\`QUESTION_ABOUT_ON_MERGE_WAIT\`): the mark answers it, so the business question is asked on its own.
+
 ### 4. Build
 - One branch, cut from \`baseBranch\`, in a worktree of its own — the brief names it.
 - A file another run's tree holds is not yours to edit: the brief lists what the other trees hold.
@@ -123,6 +138,13 @@ naming its own rule before the green counts.
    It is refused \`COMMIT_NOT_LANDED\` until it is there, and \`COMMIT_UNVERIFIED\` where core
    cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
+   Where the project's work lands outside git, the mark carries \`landing\` and \`artifacts\`
+   \`[{ surface, ref, change }]\` instead of a commit. An artifact this landing touched that another
+   open issue's own release will ship carries \`carriedBy: '<that issue's key>'\`: this issue's
+   release reports it carried and that issue's release verifies it. A carrier must be another issue
+   of this project, not closed or dropped, and a design revision is never carried
+   (\`ARTIFACT_CARRIER_UNKNOWN\`, \`ARTIFACT_CARRIER_SELF\`, \`ARTIFACT_CARRIER_SHIPPED\`,
+   \`ARTIFACT_CARRIER_DESIGN\`).
 3. \`PATCH /api/issues/:id\` \`{ releaseNotes: { section, userFacing } }\`: what a user will now
    see, in their words and in the project's content language (its \`## Content language\` block
    names it; the answer carries a \`warnings\` entry when a Vietnamese project's note has no
@@ -142,7 +164,9 @@ naming its own rule before the green counts.
   where it went.
 - Out of reach: a \`blocks\` edge onto the issue that would ship without it, a line in the
   project's proposals, or \`needs_info\` on this one. Never a new issue filed to carry it.
-- A lesson a different issue would reuse: \`POST /api/memory\`.
+- A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
+  written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
+  reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.
 
 ### 8. Clean up and report
 Remove what this run made and no longer needs: scratch files, servers it started. A workspace
