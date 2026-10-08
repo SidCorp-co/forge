@@ -73,8 +73,6 @@ async function onlyCiting(projectId: string, ref: string, rows: Checked[]): Prom
 
 export const memoryEntriesInputSchema = z.object({
   projectId: z.uuid(),
-  /** Words to find in the text or the ref, any order; empty lists everything. */
-  q: z.string().trim().max(200).optional(),
   sources: z
     .array(z.enum(memorySources))
     .min(1)
@@ -105,18 +103,6 @@ function storedAct(v: unknown): StoredAct | null {
 
 function storedActs(v: unknown): StoredAct[] {
   return Array.isArray(v) ? v.map(storedAct).filter((a): a is StoredAct => a !== null) : [];
-}
-
-function likeWords(q: string | undefined): SQL[] {
-  if (!q) return [];
-  return q
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 8)
-    .map((w) => {
-      const pat = `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      return sql`(${memories.textContent} ILIKE ${pat} OR ${memories.sourceRef} ILIKE ${pat})`;
-    });
 }
 
 // A key the text may cite: rows naming one are read in full, since whether a cite is gone or
@@ -203,7 +189,6 @@ export async function readMemoryEntries(
   const scope: SQL[] = [
     eq(memories.projectId, input.projectId),
     inArray(memories.source, input.sources),
-    ...likeWords(input.q),
     ...(input.cites ? [namingWhere(input.cites)] : []),
   ];
   const live = and(...scope, isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));

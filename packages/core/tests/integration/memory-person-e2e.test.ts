@@ -93,11 +93,6 @@ describe('memory as a person reads it, and a person acts on it', () => {
     expect(stale.map((r) => r.sourceRef)).toEqual(['gotcha/cites']);
   });
 
-  it('finds rows by the words in them', async () => {
-    const found = await entries(w, '&q=owner%20flat');
-    expect(found.map((r) => r.sourceRef)).toEqual(['gotcha/cites']);
-  });
-
   it('refuses a correction with no reason, of a mirror, unchanged, or of no such row — by name', async () => {
     const row = byRef(await entries(w), 'gotcha/clean') as Entry;
     const noReason = await act(w, row.id, 'correct', { text: 'The board is flat.' });

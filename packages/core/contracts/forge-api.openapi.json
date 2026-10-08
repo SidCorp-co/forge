@@ -14247,15 +14247,6 @@
           },
           {
             "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "sources",
             "required": false,
             "schema": {

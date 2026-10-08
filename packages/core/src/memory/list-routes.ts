@@ -65,7 +65,6 @@ memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), as
 
 const entriesQuerySchema = paginationSchema.extend({
   projectId: z.uuid(),
-  q: z.string().trim().max(200).optional(),
   /** Comma-separated sources; absent lists what agents and people wrote down. */
   sources: z
     .string()
@@ -83,14 +82,13 @@ const entriesQuerySchema = paginationSchema.extend({
 // or retirement; `counts` sizes each list by the same rule. `cites` keeps the rows naming one
 // requirement, issue or workflow: the read its own page shows (REQ-33 BC-4).
 memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
-  const { projectId, q, sources, state, cites, limit, offset } = c.req.valid('query');
+  const { projectId, sources, state, cites, limit, offset } = c.req.valid('query');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const { rows, total, counts } = await readMemoryEntries(
     memoryEntriesInputSchema.parse({
       projectId,
-      ...(q ? { q } : {}),
       ...(sources ? { sources } : {}),
       ...(state ? { state } : {}),
       ...(cites ? { cites } : {}),
