@@ -13,6 +13,16 @@ export interface IssueRow {
   readonly status: string;
 }
 
+/** What `figures-rule.ts` holds a figure to: the turn's report runs, and what the person asked. */
+export interface FigureFacts {
+  /** Every value the person's question holds; a figure equal to one is theirs, said back. */
+  readonly asked: ReadonlySet<number>;
+  /** How many of the turn's report runs were found and read. */
+  readonly runs: number;
+  /** The values the runs' frames hold, rounded: index `d` holds them at `d` decimals. */
+  readonly held: readonly ReadonlySet<number>[];
+}
+
 export interface MessageFacts {
   /** The project's active issue prefix, for naming a citation back to its author. */
   readonly prefix: string | null;
@@ -42,6 +52,8 @@ export interface MessageFacts {
    */
   readonly memoryDates: ReadonlySet<string>;
   readonly issueLookupFailed: boolean;
+  /** Null where the turn could run no report, so a figure has nothing to be held to. */
+  readonly figures: FigureFacts | null;
 }
 
 export const NO_FACTS: MessageFacts = {
@@ -56,6 +68,7 @@ export const NO_FACTS: MessageFacts = {
   readCounts: new Set(),
   memoryDates: new Set(),
   issueLookupFailed: false,
+  figures: null,
 };
 
 export function facts(over: Partial<MessageFacts>): MessageFacts {

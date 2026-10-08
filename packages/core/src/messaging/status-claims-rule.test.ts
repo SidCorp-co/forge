@@ -105,6 +105,28 @@ describe('a status claim with no read behind it', () => {
     expect(on('forge_decisions')).toHaveLength(1);
   });
 
+  it('grounds every claim but a decision on a report run (REQ-32)', () => {
+    for (const { reply, family } of RECORDED) {
+      for (const tool of ['forge_report', 'forge_template']) {
+        const broke = STATUS_CLAIMS_GROUNDED.check(
+          reply,
+          facts({ toolCalls: [...memoryOnly, call(tool)], offeredTools: OFFERED }),
+        );
+        if (family === 'what was decided') expect(broke, `${tool}: ${reply}`).toHaveLength(1);
+        else expect(broke, `${tool}: ${reply}`).toEqual([]);
+      }
+    }
+  });
+
+  it('judges a turn offered only the report tools, and names them in its refusal', () => {
+    const broke = STATUS_CLAIMS_GROUNDED.check(
+      'There are no requirements currently in progress.',
+      facts({ toolCalls: memoryOnly, offeredTools: ['forge_report', 'forge_show'] }),
+    );
+    expect(broke).toHaveLength(1);
+    expect(broke[0]?.why).toContain('forge_report or forge_template');
+  });
+
   it('does not judge a turn offered none of the reads (agent mode, a door without them)', () => {
     expect(
       STATUS_CLAIMS_GROUNDED.check(

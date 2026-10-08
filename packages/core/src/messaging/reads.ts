@@ -5,6 +5,7 @@
  * and the process entry fills them; a screen that ran before they were provided fails by name.
  */
 
+import type { ReportFrame } from '@forge/contracts/report-queries';
 import type { Tx } from '../db/client.js';
 
 /** An issue a message cites, as the work kernel holds it. */
@@ -55,6 +56,12 @@ export interface MessageReads {
   ): Promise<ContractHolding>;
   /** Whether a human reading this project's records reads code. */
   readsTechnical(projectId: string, tx: Tx): Promise<boolean>;
+  /** The frames of this project's kept report runs among these ids; an id naming none is passed over. */
+  reportRunFrames(
+    projectId: string,
+    runIds: readonly string[],
+    tx: Tx,
+  ): Promise<readonly ReportFrame[]>;
 }
 
 let provided: MessageReads | null = null;

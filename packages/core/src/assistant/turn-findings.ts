@@ -32,6 +32,8 @@ export interface FailureReportArgs {
   language: ReplyLanguage;
   /** The language the person wrote in, where it can be told; the draft is held to it. */
   askedIn: ReplyLanguage | null;
+  /** What the person asked: the draft's figures are held to the turn's report runs. */
+  question: string;
   code: TurnFailureCode;
   cause: TurnFailureCause;
   calls: readonly DoneCall[];
@@ -57,6 +59,7 @@ async function screenedDraft(
       offeredTools: args.offeredTools,
       progress: args.progress,
       toolResults: args.toolResults,
+      question: args.question,
     });
     const judged = withReplyLanguage(verdict, draft, args.askedIn, args.log);
     return judged.ok ? screened(draft, args.door, judged) : null;

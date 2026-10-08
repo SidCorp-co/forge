@@ -1,9 +1,10 @@
 /**
  * What code may do to a model's reply without changing what it claims: point an issue link the web
  * cannot open at the one it can, and mark a claim it could not check as unverified. A marked claim
- * is no longer asserted, so the rules that judge assertions read past it (`progress-rule.ts`; the
- * hedge words in the mark are what `grounding-rule.ts` and `status-assertions.ts` already abstain
- * on).
+ * is no longer asserted, so the rules that judge assertions read past it (`progress-rule.ts`,
+ * `figures-rule.ts`; the hedge words in the mark are what `grounding-rule.ts` and
+ * `status-assertions.ts` already abstain on). A claim to have written a record is not one of them:
+ * it is about the turn, true or false however it is marked (`creation-claims-rule.ts`).
  */
 
 /** The mark set after a claim the reply screen could not check, in the asker's language. */

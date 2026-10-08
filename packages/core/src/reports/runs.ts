@@ -12,8 +12,8 @@ import {
   type ReportRunFacts,
   type ReportSurface,
 } from '@forge/contracts/report-queries';
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { and, eq, gt, inArray } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
 import { reportRuns } from '../db/schema-report-runs.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
@@ -138,8 +138,10 @@ export function runReadRefusal(
   return null;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function storedRun(runId: string): Promise<StoredRun | null> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(runId)) return null;
+  if (!UUID_RE.test(runId)) return null;
   const [row] = await db.select().from(reportRuns).where(eq(reportRuns.id, runId)).limit(1);
   if (!row) return null;
   return {
@@ -183,4 +185,30 @@ export async function readReportRun(args: {
   const access = await loadProjectAccess(stored.run.projectId, args.userId);
   requireHeld(access, stored.permission as ProjectPermission, `read report run ${args.runId}`);
   return stored.run;
+}
+
+/**
+ * The frames of the kept runs of `projectId` among `runIds`, for the reply check that holds a chat
+ * figure to a run. An id naming no kept run of this project is passed over, not refused: the ids are
+ * read out of a turn's tool results, which name issues and sessions as well.
+ */
+export async function keptRunFrames(
+  projectId: string,
+  runIds: readonly string[],
+  tx: Tx = db,
+  now: Date = new Date(),
+): Promise<ReportFrame[]> {
+  const ids = [...new Set(runIds.filter((id) => UUID_RE.test(id)))];
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({ frame: reportRuns.frame })
+    .from(reportRuns)
+    .where(
+      and(
+        inArray(reportRuns.id, ids),
+        eq(reportRuns.projectId, projectId),
+        gt(reportRuns.expiresAt, now),
+      ),
+    );
+  return rows.map((r) => r.frame as ReportFrame);
 }

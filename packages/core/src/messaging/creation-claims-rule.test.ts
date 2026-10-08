@@ -131,3 +131,89 @@ describe('a reply claiming it created an issue', () => {
     expect(await held('ISS-395 is still a draft.', [])).toEqual([]);
   });
 });
+
+describe('a reply claiming it shared an answer or saved a report', () => {
+  const shared = post('shares');
+  const saved = post('status/reports');
+
+  it('holds a fabricated share claim at every chat door, and passes a true one', async () => {
+    for (const door of DOORS) {
+      const r = await held('I shared this with your team.', [], door);
+      expect(r, door).toHaveLength(1);
+      expect(r[0]?.quote).toBe('I shared this with your team');
+    }
+    expect(await held('I shared this with your team.', [shared], 'web-agent-completion')).toEqual(
+      [],
+    );
+  });
+
+  it('holds a share link the turn never created, without echoing it', async () => {
+    const link = `Open https://forge.example/s/forge_share_${'a'.repeat(43)} to read it.`;
+    const r = await held(link, []);
+    expect(r).toHaveLength(1);
+    expect(r[0]?.quote).toBeNull();
+    expect(await held(link, [shared])).toEqual([]);
+  });
+
+  it('does not take a revoke for a share create, or a share for a save', async () => {
+    expect(await held('I shared this with your team.', [post('shares/s-1/revoke')])).toHaveLength(
+      1,
+    );
+    expect(await held('I saved the report for you.', [shared])).toHaveLength(1);
+  });
+
+  it('holds a fabricated save claim and passes a true one', async () => {
+    expect(await held('I saved the report for you.', [])).toHaveLength(1);
+    expect(await held('I saved the report for you.', [saved])).toEqual([]);
+    expect(
+      await held('I saved the report for you.', [post('status/reports/r-1/read')]),
+    ).toHaveLength(1);
+  });
+
+  it('lets an offer, a question and a denial pass', async () => {
+    expect(await held('I can share this as a link once you confirm.', [])).toEqual([]);
+    expect(await held('Shall I save the report?', [])).toEqual([]);
+    expect(await held('I have not shared anything yet.', [])).toEqual([]);
+  });
+
+  it('reads the Vietnamese claims the same way', async () => {
+    const share = 'Mình đã chia sẻ câu trả lời này.'; // i18n-allow: the Vietnamese share claim the detector must read
+    const save = 'Mình đã lưu báo cáo rồi.'; // i18n-allow: the Vietnamese report-save claim the detector must read
+    expect(await held(share, [])).toHaveLength(1);
+    expect(await held(share, [shared])).toEqual([]);
+    expect(await held(save, [])).toHaveLength(1);
+    expect(await held(save, [saved])).toEqual([]);
+  });
+});
+
+describe('a hedged claim to have written a record', () => {
+  it('is held, quoted, whatever the hedge: a record was written or it was not', async () => {
+    const hedged = 'I recorded this as FB-9999 (unverified, this may be wrong).';
+    const r = await held(hedged, []);
+    expect(r).toHaveLength(1);
+    expect(r[0]?.quote).toBe('I recorded this as FB-9999 (unverified, this may be wrong)');
+    expect(await held(hedged, [FEEDBACK])).toEqual([]);
+  });
+
+  it('holds a hedged share, save and issue claim the same way', async () => {
+    expect(
+      await held('I shared this with your team (unverified, this may be wrong).', []),
+    ).toHaveLength(1);
+    expect(
+      await held('I saved the report for you (unverified, this may be wrong).', []),
+    ).toHaveLength(1);
+    expect(
+      await held('I created an issue for this (unverified, this may be wrong).', []),
+    ).toHaveLength(1);
+  });
+
+  it('reads the Vietnamese hedges the same way', async () => {
+    for (const vi of [
+      'Đã ghi nhận vào FB-9999 (chưa kiểm chứng, có thể sai).', // i18n-allow: the Vietnamese mark beside a record claim
+      'Đã ghi nhận vào FB-9999 (chưa xác minh).', // i18n-allow: a Vietnamese hedge written freehand
+      'Mình đã chia sẻ câu trả lời này, có thể sai.', // i18n-allow: a hedged Vietnamese share claim
+    ]) {
+      expect(await held(vi, []), vi).toHaveLength(1);
+    }
+  });
+});

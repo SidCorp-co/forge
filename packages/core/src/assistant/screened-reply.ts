@@ -217,6 +217,8 @@ export interface ScreenedTurnArgs {
   toolResults?: () => readonly string[];
   /** The language the person wrote in, where it can be told; the reply is held to it. */
   askedIn?: ReplyLanguage | null;
+  /** What the person asked: a figure the reply states is held to the turn's report runs, and a number they typed may be said back. */
+  question?: string;
   /**
    * The code-authored report of an attempt the provider broke off: what the turn did and found, in
    * the asker's language. Absent, the generic error line stands.
@@ -264,6 +266,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       ...(args.offeredTools ? { offeredTools: args.offeredTools } : {}),
       progress: of.progress,
       ...(args.toolResults ? { toolResults: args.toolResults() } : {}),
+      ...(args.question !== undefined ? { question: args.question } : {}),
     });
     return language ? withReplyLanguage(verdict, text, args.askedIn ?? null, args.log) : verdict;
   };

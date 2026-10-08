@@ -1,0 +1,1 @@
+**Chat figures are held to report runs.** A count, percentage or total in a reply, or any number typed into a block, must come from a report run this turn; an unbacked share, save or hedged record claim is held.

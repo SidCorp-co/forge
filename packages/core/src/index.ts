@@ -129,7 +129,7 @@ import {
 } from './release-batch/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
-import { messageShareSource } from './reports/index.js';
+import { keptRunFrames, messageShareSource } from './reports/index.js';
 import {
   embedRequirementHead,
   provideInterfaceContracts,
@@ -240,6 +240,7 @@ provideMessageReads({
   workflowDesign,
   contractHolding,
   readsTechnical,
+  reportRunFrames: keptRunFrames,
 });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

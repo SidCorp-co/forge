@@ -77,6 +77,30 @@ function extractToolCalls(messages: unknown): Array<{ name: string; arguments: s
   return calls;
 }
 
+/**
+ * What each of the session's tool calls returned, as text: an Agent session's report runs are named
+ * there. A result is settled onto its call (`toolCalls[].output`), or stands as its own `tool_result`
+ * entry where no assistant entry held the call.
+ */
+function toolResultTexts(messages: unknown): string[] {
+  if (!Array.isArray(messages)) return [];
+  const asText = (v: unknown): string | null =>
+    v === undefined || v === null ? null : typeof v === 'string' ? v : JSON.stringify(v);
+  const out: string[] = [];
+  for (const entry of messages) {
+    const e = entry as { type?: unknown; toolOutput?: unknown; toolCalls?: unknown } | null;
+    if (!e) continue;
+    const own = e.type === 'tool_result' ? asText(e.toolOutput) : null;
+    if (own !== null) out.push(own);
+    if (!Array.isArray(e.toolCalls)) continue;
+    for (const tc of e.toolCalls) {
+      const output = asText((tc as { output?: unknown } | null)?.output);
+      if (output !== null) out.push(output);
+    }
+  }
+  return out;
+}
+
 function finalAssistantText(messages: unknown): string | null {
   if (!Array.isArray(messages)) return null;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -142,6 +166,8 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
         segments: [text],
         toolCalls: extractToolCalls(messages),
         progress: readProgressFacts(session.metadata),
+        question: meta.question,
+        restResults: toolResultTexts(messages),
       }),
     rewrite: () => {
       throw new Error(`${meta.door} declares no repair; nothing can ask that session again`);

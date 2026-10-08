@@ -375,7 +375,7 @@ describe('a web turn records whether its reply awaits an answer', () => {
 
   it('a turn whose model called await_reply writes a reply that waits on the person', async () => {
     const id = await turn('turn asked', {
-      reply: 'I drafted REQ-8. Shall I file it as written?',
+      reply: 'Here is the text I would draft as REQ-8. Shall I file it as written?',
       ask: true,
     });
     expect(await newestAwaits(id)).toBe(true);
