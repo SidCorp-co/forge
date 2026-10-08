@@ -8,7 +8,7 @@ import { RefusalError } from '../../lib/refusal.js';
 
 let scope: { tokenId: string; projectIds?: string[] } | null = null;
 let door: Record<string, string> | null = null;
-let session: unknown = { found: true, turn: null, marked: false };
+let session: unknown = { found: true, answersRoom: false, turn: null };
 let proposalStatus = 'agreed';
 const held: { kind: string; form: string; call: unknown; body: Buffer | null; summary: unknown }[] =
   [];
@@ -71,7 +71,7 @@ beforeEach(() => {
   role = 'member';
   scope = { tokenId: 't' };
   door = null;
-  session = { found: true, turn: null, marked: false };
+  session = { found: true, answersRoom: false, turn: null };
   proposalStatus = 'agreed';
   held.length = 0;
 });
@@ -81,6 +81,7 @@ describe("an Agent-mode session's record write waits for the person", () => {
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
+      answersRoom: true,
       turn: {
         conversationId: 'room',
         question: 'the dock loses my draft',
@@ -119,13 +120,13 @@ describe("an Agent-mode session's record write waits for the person", () => {
 
   it('passes a session that answers no room: the Agents screen and an escalation show no card', async () => {
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
-    session = { found: true, turn: null, marked: false };
+    session = { found: true, answersRoom: false, turn: null };
     expect(await (await post()).text()).toBe('written');
   });
 
-  it('refuses a session marked as answering a room it cannot name, rather than passing it', async () => {
+  it('refuses a session started to answer a room it cannot name, rather than passing it', async () => {
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
-    session = { found: true, turn: null, marked: true };
+    session = { found: true, answersRoom: true, turn: null };
     const refusal = await codeOf(await post());
     expect(refusal?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(refusal?.detail).toContain('cannot be read from it');
@@ -139,6 +140,7 @@ describe("a write the person's role could not make is refused for that, not held
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
+      answersRoom: true,
       turn: {
         conversationId: 'room',
         question: 'q',
@@ -205,6 +207,7 @@ describe('a write no route hold names meets the default: refused by name, unless
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
+      answersRoom: true,
       turn: { projectId: 'p', conversationId: 'c', asker: { userId: 'u' } },
     };
     const r = await send('labels');
@@ -222,10 +225,22 @@ describe('a write no route hold names meets the default: refused by name, unless
 
   it('passes a session answering no room, as ruled, and any credential that is no chat', async () => {
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
-    session = { found: true, turn: null, marked: false };
+    session = { found: true, answersRoom: false, turn: null };
     expect(await (await send('labels')).text()).toBe('written');
     door = null;
     expect(await (await send('labels')).text()).toBe('written');
+  });
+
+  it('refuses a room-started session whose marker is gone, never reading it as answering no room', async () => {
+    // the round 3 judge cleared the marker with the session's own token and then wrote unheld
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
+    session = { found: true, answersRoom: true, turn: null };
+    const r = await send('labels');
+    expect(r.status).toBe(403);
+    expect((await codeOf(r))?.code).toBe('CHAT_WRITE_REFUSED');
+    expect(
+      await refuseChatToolWrite('forge_channel', { action: 'draft' }, 'projects:write'),
+    ).toContain('CHAT_WRITE_REFUSED');
   });
 
   it('lets an agreement token write only while its proposal is being written', async () => {
@@ -239,6 +254,7 @@ describe('a write no route hold names meets the default: refused by name, unless
     door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
+      answersRoom: true,
       turn: { projectId: 'p', conversationId: 'c', asker: { userId: 'u' } },
     };
     expect(

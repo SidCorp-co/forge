@@ -25,6 +25,7 @@ import { scheduleAck } from './conversation-agent-ack.js';
 import { carryImagesToSession } from './conversation-agent-images.js';
 import {
   CONVERSATION_AGENT_MARKER,
+  CONVERSATION_AGENT_RUN_SOURCE,
   type ConversationAgentMeta,
   type ConversationAgentTurnArgs,
   type ConversationAgentTurnResult,
@@ -92,7 +93,10 @@ export function createAgentSession(input: {
     title: input.title,
     ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
     runKind: 'system',
-    runMetadata: { source: 'conversation.agentTurn', conversationId: input.marker.conversationId },
+    runMetadata: {
+      source: CONVERSATION_AGENT_RUN_SOURCE,
+      conversationId: input.marker.conversationId,
+    },
     metadata: {
       [CONVERSATION_AGENT_MARKER]: input.marker,
       ...(input.lensOverride ? { lensOverride: input.lensOverride } : {}),

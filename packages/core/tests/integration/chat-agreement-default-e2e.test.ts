@@ -4,10 +4,10 @@
  * moved an issue draft to open, wrote a knowledge entry, deleted an issue and a project, wrote a
  * secret and drafted on the ecosystem channel over REST and /mcp, and that the Assistant's
  * forge_channel published a change notice. Each is held or refused by name here, a write route
- * nobody named is refused, the one list of calls that are not a business write still passes, and a
- * session answering no room still writes as before (ruled 2026-10-09). The cards name what they
- * change by key and title and show every field, and a claim of a record is grounded only by a
- * proposal that was recorded.
+ * nobody named is refused, and the one list of calls that are not a business write still passes.
+ * The cards name what they change by key and title and show every field, and a claim of a record is
+ * grounded only by a proposal that was recorded. The doors a chat credential presents itself at, and
+ * the sessions that answer no room, are in `chat-agreement-doors-e2e.test.ts`.
  */
 
 import { sql } from 'drizzle-orm';
@@ -232,23 +232,6 @@ describe('the Assistant meets the same rule through its own tools and its turn t
       );
     const card = (await proposals()).find((p) => p.kind === 'feedback' && p.status === 'pending');
     expect(card?.summary.lines).toContain('Attaches the 1 image sent with this message: dock.png');
-  });
-});
-
-describe('a session answering no room writes as before (ruled 2026-10-09)', () => {
-  it('writes a knowledge entry with no card and no refusal', async () => {
-    const token = await w.noRoomSession();
-    const r = await requester(w.app as never, { box: token })(
-      'box',
-      'PUT',
-      at('/knowledge/box-entry'),
-      {
-        title: 'From the Agents screen',
-        body: 'Written by a session that answers no room.',
-        injection: 'on_demand',
-      },
-    );
-    expect(r.status, JSON.stringify(r.json).slice(0, 300)).toBeLessThan(300);
   });
 });
 

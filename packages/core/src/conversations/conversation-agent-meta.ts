@@ -14,6 +14,13 @@ import type { ConversationImage } from './store.js';
 
 export { CONVERSATION_AGENT_MARKER };
 
+/**
+ * The source core writes on the run a room turn's session is opened under
+ * (`conversation-agent.ts:createAgentSession`), once, where no session can write it: whether a
+ * session answers a room is read from here, never from the session's own metadata (REQ-30 BC-4).
+ */
+export const CONVERSATION_AGENT_RUN_SOURCE = 'conversation.agentTurn';
+
 /** What the venue is shown when this lane has no model answer to give it. */
 interface ConversationAgentReplies {
   /** A turn is already running in this room. */

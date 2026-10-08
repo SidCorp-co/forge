@@ -27,6 +27,13 @@ export async function restBlockStage(args: {
       '/conversationId',
     );
   }
+  if (turn.kind === 'turn-unreadable') {
+    throw refuse(
+      'REPORT_BLOCK_TURN_UNKNOWN',
+      `this token answers agent session ${turn.sessionId}, which was started for a room turn whose room cannot be read from it, so no reply is known for the block to wait on`,
+      '/conversationId',
+    );
+  }
   if (turn.conversationId !== args.conversationId) {
     throw refuse(
       'REPORT_BLOCK_OTHER_ROOM',

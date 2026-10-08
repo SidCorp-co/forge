@@ -26,6 +26,7 @@ export const AGENT_SESSION_REFUSAL_CODES = [
 	"SEND_SEQ_UNKNOWN",
 	"SEND_ALREADY_SETTLED",
 	"ATTACHMENT_NOT_IN_SESSION",
+	"SESSION_METADATA_CORE_OWNED",
 ] as const;
 
 export type AgentSessionRefusalCode = (typeof AGENT_SESSION_REFUSAL_CODES)[number];

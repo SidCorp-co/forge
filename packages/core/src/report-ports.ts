@@ -31,9 +31,10 @@ async function restTurnOf(tokenId: string | null): Promise<RestTurn> {
   if (door.door === 'assistant-turn') return { kind: 'assistant-turn' };
   const read = await agentTurnOfSession(door.sessionId);
   if (!read.found) return { kind: 'session-gone', sessionId: door.sessionId };
-  // a session on the Agents screen answers no room: it has no reply there for a block to wait on
-  if (!read.turn) return { kind: 'none' };
+  // a session started from the Agents screen answers no room: it has no reply there to wait on
+  if (!read.answersRoom) return { kind: 'none' };
   const sessionId = door.sessionId;
+  if (!read.turn) return { kind: 'turn-unreadable', sessionId };
   return {
     kind: 'agent-turn',
     sessionId,

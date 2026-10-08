@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
@@ -21,6 +21,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
 import { broadcastSession, broadcastTurnSync } from './broadcast.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
+import { assertCoreKeysKept } from './core-owned-metadata.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionInteractiveRoutes } from './interactive-routes.js';
@@ -236,6 +237,25 @@ agentSessionRoutes.post('/:id/ack', zValidator('param', idParamSchema), async (c
   return c.json({ sessionId: id, acked: existing.status === 'running', already });
 });
 
+/**
+ * A CLI runner streams its chat reply back here with a device token. Scope it tightly: a device may
+ * write ONLY the session that was dispatched to it. Users (web/desktop) keep the project-membership
+ * check.
+ */
+async function assertMayPatchSession(
+  c: Context<{ Variables: AuthVars }>,
+  existing: Awaited<ReturnType<typeof loadSessionOr404>>,
+): Promise<void> {
+  if (c.get('principal') === 'device') {
+    assertDeviceOwnsSession(c, existing);
+    return;
+  }
+  const userId = c.get('userId');
+  const access = await loadProjectAccess(existing.projectId, userId);
+  requireHeld(access, 'project.write');
+  assertSessionOwnerOrAdmin(existing, access, userId);
+}
+
 agentSessionRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
@@ -243,26 +263,16 @@ agentSessionRoutes.patch(
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
-    const userId = c.get('userId');
 
     let existing = await loadSessionOr404(id);
-
-    // A CLI runner streams its chat reply back here with a device token. Scope
-    // it tightly: a device may write ONLY the session that was dispatched to it.
-    // Users (web/desktop) keep the project-membership check.
-    if (c.get('principal') === 'device') {
-      assertDeviceOwnsSession(c, existing);
-    } else {
-      const access = await loadProjectAccess(existing.projectId, userId);
-      requireHeld(access, 'project.write');
-      assertSessionOwnerOrAdmin(existing, access, userId);
-    }
+    await assertMayPatchSession(c, existing);
     // A user_cancelled session is final: a late worker write is refused whole, status never moves.
     const isUserCancelled =
       existing.status === 'failed' && existing.failureReason === 'user_cancelled';
     if (isUserCancelled && (c.get('principal') === 'device' || patch.status !== undefined)) {
       throw refuseSession('SESSION_CANCELLED', `session ${id} was cancelled; the write is dropped`);
     }
+    if (patch.metadata !== undefined) assertCoreKeysKept(existing.metadata, patch.metadata);
 
     const transcript = await applyTranscriptPatch({
       sessionId: id,

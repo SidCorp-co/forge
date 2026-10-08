@@ -211,6 +211,8 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
       return;
     }
 
+    // a token core handed a chat is never a box's (`device-credential.ts:readBoxToken`), so it is
+    // admitted here as a token and meets the chat write rule like at every other door (REQ-30 BC-4)
     const device = await verifyDeviceCredential(token);
     if (!device) return admitPat(c, token, next);
     c.set('deviceId', device.id);

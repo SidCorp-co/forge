@@ -124,6 +124,7 @@ beforeAll(async () => {
       userId,
       title: 'Chat: fence',
       runKind: 'system',
+      runMetadata: { source: 'conversation.agentTurn' },
       metadata: { conversationAgent: { conversationId: randomUUID() } },
     });
     const authority = await resolveSessionAuthority({

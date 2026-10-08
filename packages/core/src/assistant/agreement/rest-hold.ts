@@ -12,7 +12,10 @@
 //   CHAT_WRITE_REFUSED by name (`admitChatRestWrite`), as is a write tool called over /mcp
 //   (`refuseChatToolWrite`): no card carries it, so a route added later is refused, never let through;
 // - a box session answering no room (the Agents screen, a Rocket.Chat escalation) is not held or
-//   refused: no room shows it a card, and it writes as before (ruled 2026-10-09, ISS-439).
+//   refused: no room shows it a card, and it writes as before (ruled 2026-10-09, ISS-439). Which
+//   sessions those are is read from where each was started, never from metadata it can edit
+//   (`conversations/conversation-agent-stage.ts:agentTurnOfSession`), so a session cannot make
+//   itself one.
 // A write the person's own role could not make is refused for that first, by the permission it
 // lacks, as the route itself would: a card offering it would only fail when pressed.
 
@@ -88,11 +91,11 @@ async function holdSessionWrite(c: Context, kind: ChatProposalKind, sessionId: s
       `this credential belongs to chat session ${sessionId}, which is gone, so nobody can agree to this write; nothing was written`,
     );
   }
+  if (!read.answersRoom) return;
   if (!read.turn) {
-    if (!read.marked) return;
     throw refuse(
       'CHAT_WRITE_AWAITS_AGREEMENT',
-      `chat session ${sessionId} is marked as answering a room, but which room and whom cannot be read from it, so nobody can agree to this write; nothing was written`,
+      `chat session ${sessionId} was started to answer a room, but which room and whom cannot be read from it, so nobody can agree to this write; nothing was written`,
     );
   }
   const { turn } = read;
@@ -171,12 +174,16 @@ export async function holdChatRestWrite(c: Context, kind: ChatProposalKind): Pro
   }
 }
 
-/** A box session answering no room, which writes as before (ruled 2026-10-09, ISS-439). */
+/**
+ * A box session started where no room answers (the Agents screen, a Rocket.Chat escalation), which
+ * writes as before (ruled 2026-10-09, ISS-439): read from the run it was opened under, so a session
+ * that clears its own room marker is still the room's.
+ */
 async function answersNoRoom(sessionId: string): Promise<boolean> {
   // a turn token naming no session row (its id is not one) answers for no session at all
   if (!UUID_RE.test(sessionId)) return false;
   const read = await agentTurnOfSession(sessionId);
-  return read.found && !read.turn && !read.marked;
+  return read.found && !read.answersRoom;
 }
 
 const refuseWrite = refuser<ChatProposalRefusalCode>('CHAT_WRITE_REFUSED');

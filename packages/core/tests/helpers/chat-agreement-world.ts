@@ -39,6 +39,10 @@ export interface AgreementWorld {
   noRoomSession: () => Promise<string>;
   /** A new room turn answered in Agent mode: its session token becomes the `agent` speaker. */
   agentTurn: (question: string) => Promise<void>;
+  /** The session the latest Agent turn runs in, whose token `agent` speaks with. */
+  agentSessionId: () => string;
+  /** The owner's paired box, which every session here was handed to. */
+  deviceId: string;
 }
 
 export async function openAgreementWorld(firstQuestion: string): Promise<AgreementWorld> {
@@ -53,6 +57,9 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
   const { createChatSessionRow, mintSessionCredential } = await import(
     '../../src/agent-sessions/index.js'
   );
+  const { createAgentSession } = await import('../../src/conversations/conversation-agent.js');
+  const { agentSessions } = await import('../../src/db/schema.js');
+  const { eq } = await import('drizzle-orm');
   const { buildProjectToolset } = await import('../../src/assistant/tools/registry.js');
   const { buildChatToolContext } = await import('../../src/assistant/tools/principal.js');
   const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
@@ -74,6 +81,7 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
   if (!resolved.ok) throw new Error(resolved.refusal.message);
   const authority = resolved.authority;
 
+  let agentSessionId = '';
   const tokens: Record<string, string> = {
     owner: await signUserToken(owner),
     member: await signUserToken(member),
@@ -107,24 +115,26 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
       { projectId, conversationId: roomId, personId: owner, handleUserId: null, recordImages },
     );
 
-  // each room turn an Agent-mode box answers is its own session, started when the turn was
+  // each room turn an Agent-mode box answers is its own session, opened the way a room turn opens
+  // one (`conversation-agent.ts:createAgentSession`) and stamped with the box it was handed to, as
+  // the dispatch does (`agent-sessions/chat-turn.ts`)
   const agentTurn = async (question: string) => {
-    const session = await createChatSessionRow({
+    const session = await createAgentSession({
       projectId,
       userId: owner,
       title: 'Agent: the dock',
-      runKind: 'system',
-      metadata: {
-        conversationAgent: {
-          venue: { adapter: 'web', externalId: roomId, projectId },
-          conversationId: roomId,
-          windowId: randomUUID(),
-          deliveryKey: `window:${randomUUID()}`,
-          question,
-          asker: { userId: owner, viaTokenId: null },
-        },
-      },
+      progressFacts: null,
+      marker: {
+        venue: { adapter: 'web', externalId: roomId, projectId },
+        conversationId: roomId,
+        windowId: randomUUID(),
+        deliveryKey: `window:${randomUUID()}`,
+        question,
+        asker: { userId: owner, viaTokenId: null },
+      } as never,
     });
+    await db.update(agentSessions).set({ deviceId }).where(eq(agentSessions.id, session.id));
+    agentSessionId = session.id;
     tokens.agent = await mintSessionCredential({
       sessionId: session.id,
       deviceId,
@@ -162,5 +172,7 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
     gate,
     agentTurn,
     noRoomSession,
+    agentSessionId: () => agentSessionId,
+    deviceId,
   };
 }

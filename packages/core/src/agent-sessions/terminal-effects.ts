@@ -11,7 +11,7 @@ type TerminalSessionDelivery = (row: SessionRow) => Promise<void>;
  * on these before it hydrates a row; the delivery behind each is handed in by the module that owns
  * it, so the kernel imports no chat application.
  */
-const TERMINAL_SESSION_BRIDGE_MARKERS = ['escalation', 'conversationAgent'] as const;
+export const TERMINAL_SESSION_BRIDGE_MARKERS = ['escalation', 'conversationAgent'] as const;
 type TerminalSessionBridgeMarker = (typeof TERMINAL_SESSION_BRIDGE_MARKERS)[number];
 
 const deliveries = new Map<TerminalSessionBridgeMarker, TerminalSessionDelivery>();

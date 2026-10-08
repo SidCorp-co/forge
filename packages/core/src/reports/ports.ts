@@ -12,13 +12,14 @@ import type { StagedBlock } from '../lib/staged-block.js';
 
 /**
  * What turn a REST caller's token answers: none (a person's token, or a session that answers no
- * room), an assistant chat turn's, a session that is gone, or an Agent-mode turn in a room, whose
- * reply a block can wait on.
+ * room), an assistant chat turn's, a session that is gone, a session started for a room turn whose
+ * room cannot be read from it, or an Agent-mode turn in a room, whose reply a block can wait on.
  */
 export type RestTurn =
   | { kind: 'none' }
   | { kind: 'assistant-turn' }
   | { kind: 'session-gone'; sessionId: string }
+  | { kind: 'turn-unreadable'; sessionId: string }
   | {
       kind: 'agent-turn';
       sessionId: string;

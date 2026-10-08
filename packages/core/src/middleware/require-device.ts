@@ -1,7 +1,10 @@
+import type { DeviceRefusalCode } from '@forge/contracts/devices';
 import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { verifyDeviceCredential } from '../credentials/device-credential.js';
+import { readBoxToken } from '../credentials/device-credential.js';
+import type { TurnTokenOrigin } from '../credentials/pat-format.js';
 import type { Device } from '../db/schema.js';
+import { refuser } from '../lib/refusal.js';
 import { parseBearerHeader } from './bearer.js';
 import { declareGate } from './declared-gate.js';
 
@@ -18,16 +21,35 @@ const NOT_A_DEVICE_CREDENTIAL =
   'Run `forge login` on the box to be issued one. Device tokens minted before Forge ' +
   'unified its credentials no longer verify anywhere and must be replaced the same way.';
 
+const refuse = refuser<DeviceRefusalCode>('DEVICE_REFUSED');
+
+const HANDED_TO: Record<TurnTokenOrigin['door'], string> = {
+  'box-session': "a chat session's turn",
+  'assistant-turn': "the Assistant's turn",
+  agreement: 'the write of one agreed proposal',
+};
+
+/**
+ * A token core handed a chat is tied to the box it runs on and acts for the person it answers; it
+ * is never the box (REQ-30 BC-4), so a route only a box calls refuses it by name.
+ */
+const notABox = (door: TurnTokenOrigin['door']) =>
+  refuse(
+    'TURN_CREDENTIAL_NOT_A_BOX',
+    `this token was minted for ${HANDED_TO[door]}, to act as the person it answers, and is never a paired box's credential, so this route, which only a box calls, refuses it; nothing was done`,
+  );
+
 export const requireDevice = (): MiddlewareHandler<{ Variables: DeviceVars }> => {
   return declareGate('requireDevice', async (c, next) => {
     const parsed = parseBearerHeader(c);
     if (parsed.kind === 'absent') throw unauth('authentication required');
     if (parsed.kind === 'malformed') throw unauth('invalid authorization header');
 
-    const device = await verifyDeviceCredential(parsed.token);
-    if (!device) throw unauth(NOT_A_DEVICE_CREDENTIAL);
+    const read = await readBoxToken(parsed.token);
+    if (read?.kind === 'handed') throw notABox(read.origin.door);
+    if (!read) throw unauth(NOT_A_DEVICE_CREDENTIAL);
 
-    c.set('device', device);
+    c.set('device', read.device);
     await next();
   });
 };

@@ -72,6 +72,9 @@ beforeAll(async () => {
   const { createChatSessionRow, mintSessionCredential } = await import(
     '../../src/agent-sessions/index.js'
   );
+  const { CONVERSATION_AGENT_RUN_SOURCE } = await import(
+    '../../src/conversations/conversation-agent-meta.js'
+  );
   const { db } = await import('../../src/db/client.js');
 
   const owner = (await createTestUser({ verified: true })).id;
@@ -90,12 +93,18 @@ beforeAll(async () => {
     ttlMs: 10 * 60_000,
   });
   chatCredential = assistantTurn;
-  const boxToken = async (metadata: Record<string, unknown> | null, runKind?: 'system') => {
+  // a room turn's session is opened under a run whose source says so, as conversation-agent.ts does
+  const boxToken = async (
+    metadata: Record<string, unknown> | null,
+    runKind?: 'system',
+    runMetadata?: Record<string, unknown>,
+  ) => {
     const session = await createChatSessionRow({
       projectId,
       userId: owner,
       title: 'Chat: panel width',
       ...(runKind ? { runKind } : {}),
+      ...(runMetadata ? { runMetadata } : {}),
       ...(metadata ? { metadata } : {}),
     });
     return mintSessionCredential({
@@ -127,7 +136,13 @@ beforeAll(async () => {
   say = requester(app, {
     person: await signUserToken(owner),
     assistantTurn: assistantTurn.token,
-    agentSession: await boxToken({ conversationAgent: { conversationId: randomUUID() } }, 'system'),
+    agentSession: await boxToken(
+      { conversationAgent: { conversationId: randomUUID() } },
+      'system',
+      {
+        source: CONVERSATION_AGENT_RUN_SOURCE,
+      },
+    ),
     scheduledRun: await boxToken(
       { source: 'schedule.run', scheduleId: randomUUID(), scheduleRunId: randomUUID() },
       'system',

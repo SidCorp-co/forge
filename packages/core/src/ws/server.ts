@@ -79,7 +79,11 @@ interface AuthResult {
   acceptedProtocol?: string;
 }
 
-async function resolveBearer(token: string): Promise<Principal | null> {
+/**
+ * Who a bearer on the upgrade is: a person, or a paired box. A token core handed a chat is neither
+ * (`device-credential.ts:readBoxToken`), so the socket a runner holds never opens for it (REQ-30 BC-4).
+ */
+export async function resolveBearer(token: string): Promise<Principal | null> {
   const user = await tryUserToken(token);
   if (user) return user;
   const box = await verifyDeviceToken(token);

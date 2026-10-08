@@ -108,7 +108,8 @@ describe('the list is one list, each entry with its reason, and a REST route and
     for (const entry of NOT_A_BUSINESS_WRITE) {
       expect(entry.why.length).toBeGreaterThan(10);
       expect(entry.rest.length + entry.tools.length).toBeGreaterThan(0);
-      for (const call of entry.rest) expect(call).toMatch(/^(POST|PUT|PATCH|DELETE) \/(api|mcp)/);
+      // a PUT, PATCH or DELETE changes a record by its method, so no entry can be one of them
+      for (const call of entry.rest) expect(call).toMatch(/^POST \/(api|mcp)\//);
     }
   });
 
@@ -129,5 +130,93 @@ describe('the list is one list, each entry with its reason, and a REST route and
     expect(show?.rest).toContain('POST /api/conversations/:id/blocks');
     expect(decideToolCall('forge_show', '{}', 'assistant:write').verdict).toBe('pass');
     expect(rest('POST', '/api/conversations/:id/blocks').verdict).toBe('pass');
+  });
+});
+
+/**
+ * The list closed (ISS-439 round 4): every call a chat credential's write passes on, written out here
+ * with the reason it is not a business write. The round 3 judge added `PUT /api/projects/:id/policy`
+ * to the list and 83 unit and 15 e2e tests stayed green; an entry added, widened or reworded now has
+ * to be added here too, by someone saying why it writes no record the project works from.
+ */
+const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly string[] }[] = [
+  {
+    why: 'a search: a read sent as a POST, which writes nothing',
+    rest: ['POST /api/memory/search', 'POST /api/projects/:id/knowledge/search'],
+    tools: [],
+  },
+  {
+    why: 'a preview: it renders what a write would say and writes nothing',
+    rest: ['POST /api/body/preview', 'POST /api/projects/:id/feedback/:fb/messages/preview'],
+    tools: [],
+  },
+  {
+    why: 'a report query or template run, kept so the room can cite it; it changes no record the project works from',
+    rest: [
+      'POST /api/projects/:id/report-queries/:queryId/runs',
+      'POST /api/projects/:id/report-templates/:templateId/runs',
+      'POST /api/projects/:id/report-templates/:templateId/narrative',
+    ],
+    tools: [],
+  },
+  {
+    why: 'a computation over the report runs this turn made, on a sandbox; its result is kept for the room and changes no record',
+    rest: ['POST /api/projects/:id/executions'],
+    tools: ['forge_compute'],
+  },
+  {
+    why: "a block the chat draws into its own room: the chat's own message, never a record",
+    rest: ['POST /api/conversations/:id/blocks'],
+    tools: ['forge_show'],
+  },
+  {
+    why: "which contracts the session's repository paths call: a read, noted on the asking session",
+    rest: ['POST /api/projects/:id/contract-context'],
+    tools: [],
+  },
+  {
+    why: 'a suggestion or mockup the BA offers: it changes nothing until a person accepts it on the requirement page',
+    rest: [],
+    tools: ['ba_suggest', 'ba_suggest_requirement', 'ba_draw_mockup'],
+  },
+  {
+    why: 'an ask to the person in this room, through the questionnaire card',
+    rest: [],
+    tools: ['ba_send_questionnaire', 'ba_ask_clarification'],
+  },
+  {
+    why: "it moves the person's own screen, or offers them a button they press as themselves; it writes nothing",
+    rest: [],
+    tools: [
+      'ui_navigate',
+      'ui_issues_filter',
+      'ui_select',
+      'ui_open',
+      'ui_board_draw',
+      'ui_board_revise',
+      'offer_act',
+    ],
+  },
+  {
+    why: "a read of this room's own past",
+    rest: [],
+    tools: ['rocketchat_history', 'rocketchat_quote_context', 'conversation_transcript_search'],
+  },
+  {
+    why: 'it hands this turn to a box session, whose own writes meet this rule',
+    rest: [],
+    tools: ['escalate'],
+  },
+];
+
+describe('the not-a-business-write list is closed', () => {
+  it('holds exactly the calls written out here, each with its reason', () => {
+    expect(
+      NOT_A_BUSINESS_WRITE.map((e) => ({ why: e.why, rest: [...e.rest], tools: [...e.tools] })),
+    ).toEqual(ALLOWED);
+  });
+
+  it('refuses the business write the judge planted, the project policy, as no list names it', () => {
+    expect(familyOf(rest('PUT', '/api/projects/:id/policy'))).toBe('write no list names');
   });
 });

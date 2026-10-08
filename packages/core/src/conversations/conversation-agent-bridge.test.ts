@@ -52,6 +52,7 @@ vi.mock('../messaging/gather.js', () => ({
 vi.mock('./conversation-agent-stage.js', () => ({
   agentTurnOfSession: async () => ({
     found: true,
+    answersRoom: true,
     turn: { conversationId: 'c', question: 'q', settled: true, staged },
   }),
 }));

@@ -6,6 +6,7 @@ import { badRequest, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { broadcastSession } from './broadcast.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { assertCallerNamesNoCoreKey } from './core-owned-metadata.js';
 import {
   assertMayRunSession,
   authorizeInteractiveTurn,
@@ -41,6 +42,7 @@ agentSessionInteractiveRoutes.post('/', zValidator('json', createSchema), async 
 
   const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
   assertCallerDeclaresNoKind(clientMetadata, badRequest);
+  assertCallerNamesNoCoreKey(clientMetadata);
 
   // Chat bootstrap: an EMPTY session row. The first turn is dispatched later
   // through `POST /send` → the shared chat-turn dispatcher (which picks the

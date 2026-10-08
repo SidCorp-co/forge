@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { ReportRunSchema } from '@forge/contracts/report-queries';
 import { eq, sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createChatSessionRow, setSessionMarkerField } from '../../src/agent-sessions/index.js';
+import { setSessionMarkerField } from '../../src/agent-sessions/index.js';
 import { webConversationPorts } from '../../src/assistant/conversation-adapter.js';
+import { createAgentSession } from '../../src/conversations/conversation-agent.js';
 import { codeAuthored, readConversationAgentMeta } from '../../src/conversations/index.js';
 import { turnTokenNameFor } from '../../src/credentials/pat-format.js';
 import { AGENT_TURN_MENU, mintTurnCredential } from '../../src/credentials/turn-credential.js';
@@ -37,26 +38,24 @@ const turnToken = (name?: string) =>
     ttlMs: 10 * 60_000,
   }).then((c) => c.token);
 
-/** An Agent-mode turn answering `conversationId`, and the token its session runs under. */
+/** An Agent-mode turn answering `conversationId`, opened as a room turn opens one, and its token. */
 async function agentTurn(conversationId = roomId) {
-  const session = await createChatSessionRow({
+  const session = await createAgentSession({
     projectId: w.projectId,
     userId: w.userId,
     title: 'Chat: where it stands',
-    runKind: 'system',
-    metadata: {
-      conversationAgent: {
-        venue: { adapter: 'web', externalId, shape: 'group', projectId: w.projectId },
-        conversationId,
-        windowId: randomUUID(),
-        deliveryKey: `window:${randomUUID()}`,
-        handleName: 'forge',
-        question: 'where does it stand?',
-        asker: { userId: w.userId, viaTokenId: null },
-        door: 'web-agent-completion',
-        replies: { dedup: 'd', noDevice: 'n', failed: 'f', ack: null },
-      },
-    },
+    progressFacts: null,
+    marker: {
+      venue: { adapter: 'web', externalId, shape: 'group', projectId: w.projectId },
+      conversationId,
+      windowId: randomUUID(),
+      deliveryKey: `window:${randomUUID()}`,
+      handleName: 'forge',
+      question: 'where does it stand?',
+      asker: { userId: w.userId, viaTokenId: null },
+      door: 'web-agent-completion',
+      replies: { dedup: 'd', noDevice: 'n', failed: 'f', ack: null },
+    } as never,
   });
   return { sessionId: session.id, token: await turnToken(turnTokenNameFor(session.id)) };
 }
