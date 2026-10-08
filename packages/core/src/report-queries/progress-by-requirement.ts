@@ -42,7 +42,7 @@ const params = z.object({
 export const progressByRequirement: ReportQueryAdapter<typeof params> = defineAdapter({
   descriptor: defineReportQuery({
     id: 'progress-by-requirement',
-    version: 2,
+    version: 1,
     title: 'Progress by requirement',
     params,
     output: OUTPUT,

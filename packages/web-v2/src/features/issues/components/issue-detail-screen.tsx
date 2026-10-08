@@ -24,8 +24,7 @@ import {
   useUrlTab,
 } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { useEntityDecisions } from "@/features/comments/hooks";
-import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
+import { ItemMemory } from "@/features/memory/components/item-memory";
 import { useResumeRun } from "@/features/run-control/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -131,8 +130,6 @@ export function IssueDetailScreen({
   const checklist = useMemo(() => keyedChecklist(issue?.acceptanceCriteria), [issue?.acceptanceCriteria]);
   const hasCriteriaRows = (criteriaQ.data?.criteria.length ?? 0) > 0;
   useRememberIssue(id, slug, issue?.displayId, issue?.title);
-  const decisionsQ = useEntityDecisions(projectId, "issue", issue?.displayId);
-  const memories = useItemMemoryCount(projectId, issue?.displayId ?? "");
 
   if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
   if (switching) return <IssueUnread query={issueQ} switching />;
@@ -182,8 +179,9 @@ export function IssueDetailScreen({
     { value: "criteria" as const, label: t("issues.tab.criteria"), count: criteriaQ.data?.criteria.length ?? checklist.length },
     { value: "runs" as const, label: t("issues.tab.runs"), count: runsTabCount(issue.agentSessions ?? [], stepOutcomes) },
     { value: "mockups" as const, label: t("common.mockups.title"), count: mockupsQ.data?.returned },
-    { value: "decisions" as const, label: t("issues.tab.decisions"), count: decisionsQ.data?.returned },
-    { value: "memory" as const, label: t("memory.title"), count: memories },
+    // read when opened: counting them would hold the page's first reads on the issue's key (page-waterfall.test)
+    { value: "decisions" as const, label: t("issues.tab.decisions") },
+    { value: "memory" as const, label: t("memory.title") },
     { value: "activity" as const, label: t("issues.tab.activity"), count: commentsQ.data?.totalCount },
   ];
 

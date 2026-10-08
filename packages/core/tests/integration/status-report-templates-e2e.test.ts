@@ -126,12 +126,12 @@ describe('saving a template run', () => {
       api(w.token, 'GET', `${base()}/status/reports/${reportId}/export?${query}`);
     const none = await at('format=csv');
     expect(code(none)).toBe('STATUS_REPORT_REFUSED');
-    expect(detail(none)).toContain("this report's table blocks are 2, 3");
+    expect(detail(none)).toContain("this report's table blocks are 2, 3, 4");
     const chart = await at('format=csv&block=0');
     expect(code(chart)).toBe('STATUS_REPORT_REFUSED');
     expect(detail(chart)).toContain('block 0 is a chart, not a table');
     const missing = await at('format=csv&block=9');
-    expect(detail(missing)).toContain('block 9 is not in this report, which holds 4 block(s)');
+    expect(detail(missing)).toContain('block 9 is not in this report, which holds 5 block(s)');
     const markdownBlock = await at('block=2');
     expect(detail(markdownBlock)).toContain('only ?format=csv exports');
     const unknown = await at('format=xlsx');

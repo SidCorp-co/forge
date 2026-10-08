@@ -13,7 +13,7 @@ const slots = (summary: string, risks: string, recommendations: string): ReportT
 
 const PROGRESS = {
   id: "progress",
-  version: 2,
+  version: 1,
   title: "Progress",
   params: { state: { type: "string", label: "Only requirements in this state" } },
   queries: [
