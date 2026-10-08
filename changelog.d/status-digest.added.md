@@ -1,1 +1,0 @@
-**A status report is kept as dated history and sent weekly.** Save a report, or schedule it to members' inboxes in their language; History lists each report and what shipped, became late, stopped waiting or moved date since the last.
