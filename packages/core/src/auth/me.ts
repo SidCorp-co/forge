@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { type AuthVars, requireAuth, sessionEnded } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { profileOf } from './read.js';
 import { setOwnDisplayName } from './service.js';
@@ -14,6 +14,7 @@ meRoutes.get('/me', async (c) => {
   const userId = c.get('userId');
   const profile = await profileOf(userId);
   if (!profile) {
+    if (c.get('sessionCookie')) throw sessionEnded(c);
     throw new HTTPException(401, {
       message: 'user not found',
       cause: { code: 'UNAUTHENTICATED' },

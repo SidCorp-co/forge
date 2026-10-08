@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
+import { formatApiError } from '@/lib/api/error';
+import { SESSION_ENDED_LINE } from '@/lib/api/session-ended';
 import { useAuth } from '@/providers/auth-provider';
 import { extractFieldErrors } from './extract-field-errors';
 import { validateLogin, type LoginFieldErrors, type LoginFieldKey } from './validation';
@@ -10,7 +12,7 @@ import { validateLogin, type LoginFieldErrors, type LoginFieldKey } from './vali
 const FIELD_KEYS: readonly LoginFieldKey[] = ['email', 'password'];
 
 export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
-  const { login } = useAuth();
+  const { login, sessionEnded } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState(presetEmail);
@@ -38,7 +40,7 @@ export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
       if (Object.keys(fieldMap).length > 0) {
         setFieldErrors(fieldMap);
       } else {
-        setTopError(err instanceof Error ? err.message : 'Sign in failed');
+        setTopError(err instanceof Error ? formatApiError(err) : 'Sign in failed');
       }
     } finally {
       setLoading(false);
@@ -47,7 +49,15 @@ export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-      {topError && <Banner tone="danger">{topError}</Banner>}
+      {topError ? (
+        <Banner tone="danger">{topError}</Banner>
+      ) : (
+        sessionEnded && (
+          <p role="status" className="fg-body-sm text-muted">
+            {SESSION_ENDED_LINE}
+          </p>
+        )
+      )}
 
       <Field label="Email" error={fieldErrors.email}>
         <Input

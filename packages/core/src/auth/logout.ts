@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { clearAuthCookie, clearRefreshCookie } from '../credentials/cookie.js';
+import { clearSessionCookies } from '../credentials/cookie.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { endSessions } from './service.js';
 
@@ -11,7 +11,6 @@ logoutRoutes.post('/logout', async (c) => {
   const userId = c.get('userId');
   await endSessions(userId);
 
-  clearAuthCookie(c);
-  clearRefreshCookie(c);
+  clearSessionCookies(c);
   return c.body(null, 204);
 });

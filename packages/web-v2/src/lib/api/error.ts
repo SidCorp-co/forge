@@ -1,9 +1,11 @@
 import { ApiError } from './client';
 import { refusalFact } from './refusals';
+import { SESSION_ENDED_LINE } from './session-ended';
 
 const FRIENDLY_CODES: Record<string, string> = {
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
   INVALID_TOKEN: 'Your session is invalid. Please sign in again.',
+  SESSION_EXPIRED: SESSION_ENDED_LINE,
   FORBIDDEN: 'You do not have access to this resource.',
   ADMIN_ONLY: 'Admin access required.',
   EMAIL_NOT_VERIFIED: 'Please verify your email before continuing.',

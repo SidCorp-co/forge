@@ -1,8 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
-import { parse as parseCookies } from 'hono/utils/cookie';
 import { type WebSocket, WebSocketServer } from 'ws';
-import { AUTH_COOKIE_NAME } from '../credentials/cookie.js';
+import { AUTH_COOKIE_NAME, cookieValues } from '../credentials/cookie.js';
 import { verifyDeviceToken } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { type PatScope, runWithPatScope } from '../credentials/pat-scope.js';
@@ -114,13 +113,11 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
     return principal ? { principal, acceptedProtocol: proto.protocol } : null;
   }
 
-  // Same-origin browser path — auth via the forge_auth cookie.
-  const cookie = req.headers.cookie
-    ? parseCookies(req.headers.cookie, AUTH_COOKIE_NAME)[AUTH_COOKIE_NAME]
-    : undefined;
-  if (cookie) {
+  // Same-origin browser path — the first forge_auth cookie that verifies, so a sibling
+  // instance's parent-domain cookie sent first does not refuse the socket.
+  for (const cookie of cookieValues(req.headers.cookie, AUTH_COOKIE_NAME)) {
     const user = await tryUserToken(cookie);
-    return user ? { principal: user } : null;
+    if (user) return { principal: user };
   }
 
   return null;

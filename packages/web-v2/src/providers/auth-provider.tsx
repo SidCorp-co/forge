@@ -16,10 +16,13 @@ import {
 } from 'react';
 import { authApi } from '@/lib/api/auth-api';
 import { ApiError } from '@/lib/api/client';
+import { onSessionEnded } from '@/lib/api/session-ended';
 
 interface AuthState {
   user: User | null;
   isLoading: boolean;
+  /** Core answered that the browser's session ended: the person is signed out and told so quietly. */
+  sessionEnded: boolean;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -30,7 +33,17 @@ const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionEnded, setSessionEnded] = useState(false);
   const router = useRouter();
+
+  useEffect(
+    () =>
+      onSessionEnded(() => {
+        setUser(null);
+        setSessionEnded(true);
+      }),
+    [],
+  );
 
   // On mount, hydrate from /auth/me (cookie may be set from a prior session).
   useEffect(() => {
@@ -62,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // The backend sets the HttpOnly refresh cookie itself; we no longer touch
     // localStorage. /auth/me returns the canonical user shape — source of truth.
     const me = await authApi.me();
+    setSessionEnded(false);
     setUser({ ...me });
   }, []);
 
@@ -81,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, sessionEnded, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
@@ -90,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const defaultAuth: AuthState = {
   user: null,
   isLoading: true,
+  sessionEnded: false,
   login: async () => {},
   register: async () => {},
   logout: async () => {},
