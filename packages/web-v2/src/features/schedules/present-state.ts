@@ -5,16 +5,13 @@ import { CronExpressionParser } from "cron-parser";
 import cronstrue from "cronstrue";
 import type { ScheduleRow } from "./types";
 
-/** A last result older than this many of the schedule's longest gaps is stale. */
-export const STALE_AFTER_CADENCES = 2;
+/** A last result is stale once this many scheduled runs have come due since it. */
+export const STALE_AFTER_RUNS = 2;
 
 /** The rule the screen prints beside the list, so the threshold is stated rather than implied. */
 export const STALE_RULE =
-  "A last result is marked stale once it is older than two cadences — twice the longest gap " +
-  "between the schedule's runs — or while the schedule is paused.";
-
-/** How many upcoming fires are read to find the longest gap; a weekday cron's widest gap is the weekend. */
-const GAP_SAMPLE = 14;
+  "A last result is marked stale once two scheduled runs have come due since it, or while " +
+  "the schedule is paused.";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -36,23 +33,6 @@ export function describeCadence(cron: string): Cadence {
     return { words, expression: cron };
   } catch {
     return { words: null, expression: cron };
-  }
-}
-
-/** The longest gap between consecutive fires of `cron` after `from`, or null when it cannot be read. */
-export function longestGapMs(cron: string, from: Date): number | null {
-  try {
-    const it = CronExpressionParser.parse(cron, { currentDate: from });
-    let prev = it.next().toDate().getTime();
-    let longest = 0;
-    for (let i = 1; i < GAP_SAMPLE; i++) {
-      const next = it.next().toDate().getTime();
-      longest = Math.max(longest, next - prev);
-      prev = next;
-    }
-    return longest > 0 ? longest : null;
-  } catch {
-    return null;
   }
 }
 
@@ -101,12 +81,23 @@ export function lastRunView(row: ScheduleRow, now: Date): LastRunView {
 function isStale(row: ScheduleRow, now: Date): boolean {
   if (!row.enabled) return true;
   if (!row.lastRunAt) return false;
-  const at = new Date(row.lastRunAt).getTime();
-  if (Number.isNaN(at)) return false;
-  const gap = longestGapMs(row.cron, now);
-  // A cadence the parser cannot read gives no threshold to measure against: no claim either way.
-  if (gap === null) return false;
-  return now.getTime() - at > STALE_AFTER_CADENCES * gap;
+  const at = new Date(row.lastRunAt);
+  if (Number.isNaN(at.getTime())) return false;
+  // The cron's own calendar decides when runs come due, so a weekday-only or monthly schedule is
+  // measured against the runs it actually owed. The parser reads it in this browser's zone, which
+  // can move a boundary by the offset and no further.
+  try {
+    const it = CronExpressionParser.parse(row.cron, { currentDate: at });
+    let due = 0;
+    for (let i = 0; i < STALE_AFTER_RUNS; i++) {
+      if (it.next().toDate().getTime() <= now.getTime()) due++;
+      else break;
+    }
+    return due >= STALE_AFTER_RUNS;
+  } catch {
+    // A cadence the parser cannot read gives no runs to count: no claim either way.
+    return false;
+  }
 }
 
 /** The line that opens the list: what the whole adds up to. */

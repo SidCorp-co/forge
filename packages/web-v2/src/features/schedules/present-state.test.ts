@@ -6,10 +6,12 @@ import {
   formatAge,
   lastRunView,
   listSum,
-  longestGapMs,
   STALE_RULE,
 } from "./present-state";
 import type { ScheduleRow } from "./types";
+
+// Cron fires are read in the runner's zone; pin it so the boundaries below mean the same everywhere.
+process.env.TZ = "UTC";
 
 const NOW = new Date("2026-09-21T12:00:00.000Z");
 const HOUR = 3_600_000;
@@ -58,21 +60,6 @@ describe("describeCadence", () => {
   });
 });
 
-describe("longestGapMs", () => {
-  it("is the interval of a regular cron", () => {
-    expect(longestGapMs("0 */2 * * *", NOW)).toBe(2 * HOUR);
-    expect(longestGapMs("0 16 * * *", NOW)).toBe(DAY);
-  });
-
-  it("is the weekend for a weekday-only cron", () => {
-    expect(longestGapMs("30 9 * * 1-5", NOW)).toBe(3 * DAY);
-  });
-
-  it("is null for an expression that cannot be read", () => {
-    expect(longestGapMs("nope", NOW)).toBeNull();
-  });
-});
-
 describe("formatAge", () => {
   it.each([
     [0, "just now"],
@@ -112,19 +99,37 @@ describe("lastRunView", () => {
     expect(v).toEqual({ kind: "ran", text: "Succeeded 5 hours ago", stale: false });
   });
 
-  it("stale begins past two cadences, not at one", () => {
+  it("stale begins when the second run comes due after it, not the first", () => {
+    // Daily 16:00 (browser zone), NOW 12:00. A result 26h old has one 16:00 behind it; 50h, two.
     const daily = (age: number) =>
       lastRunView(row({ lastStatus: "success", lastRunAt: ago(age) }), NOW);
-    expect(daily(2 * DAY)).toMatchObject({ stale: false });
-    expect(daily(2 * DAY + 60_000)).toMatchObject({ stale: true });
+    expect(daily(HOUR)).toMatchObject({ stale: false });
+    expect(daily(26 * HOUR)).toMatchObject({ stale: false });
+    expect(daily(50 * HOUR)).toMatchObject({ stale: true });
   });
 
-  it("a weekly schedule is not stale between its runs", () => {
+  it("an hourly weekday schedule is measured against the runs it owed, not a window of fires", () => {
+    // Monday 12:00; the last run was three hours ago, with only one-hour gaps between.
+    const monday = new Date("2026-09-21T12:00:00.000Z");
     const v = lastRunView(
-      row({ cron: "0 9 * * 1", lastStatus: "success", lastRunAt: ago(6 * DAY) }),
-      NOW,
+      row({ cron: "0 * * * 1-5", lastStatus: "success", lastRunAt: new Date(monday.getTime() - 3 * HOUR).toISOString() }),
+      monday,
     );
-    expect(v).toMatchObject({ stale: false });
+    expect(v).toMatchObject({ stale: true });
+    // Friday evening's last run, read on Monday morning: the weekend owed no runs, Monday owes some.
+    const early = new Date("2026-09-21T00:30:00.000Z");
+    const fri = lastRunView(
+      row({ cron: "0 * * * 1-5", lastStatus: "success", lastRunAt: "2026-09-18T23:00:00.000Z" }),
+      early,
+    );
+    expect(fri).toMatchObject({ stale: false });
+  });
+
+  it("a weekly schedule is not stale between its runs, and is after two weeks", () => {
+    const weekly = (age: number) =>
+      lastRunView(row({ cron: "0 9 * * 1", lastStatus: "success", lastRunAt: ago(age) }), NOW);
+    expect(weekly(6 * DAY)).toMatchObject({ stale: false });
+    expect(weekly(15 * DAY)).toMatchObject({ stale: true });
   });
 
   it("a failure is stated as a failure, with its age", () => {
@@ -173,7 +178,7 @@ describe("listSum", () => {
 
 describe("STALE_RULE", () => {
   it("states the threshold the code applies", () => {
-    expect(STALE_RULE).toContain("two cadences");
+    expect(STALE_RULE).toContain("two scheduled runs");
     expect(STALE_RULE).toContain("paused");
   });
 });

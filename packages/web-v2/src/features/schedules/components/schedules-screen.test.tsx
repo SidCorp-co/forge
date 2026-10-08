@@ -12,6 +12,8 @@ import { SchedulesScreen } from "./schedules-screen";
 
 expect.extend(matchers);
 
+process.env.TZ = "UTC";
+
 const NOW = new Date("2026-09-21T12:00:00.000Z");
 const DAY = 24 * 3_600_000;
 const HOUR = 3_600_000;
@@ -87,6 +89,7 @@ describe("SchedulesScreen — present state", () => {
     const last = within(r).getByText(/Succeeded 17 days ago/);
     expect(last.textContent).toBe("Succeeded 17 days ago · stale");
     expect(last.getAttribute("style")).toBeNull();
+    expect(last.className).toContain("text-subtle");
     // State and Last run are the two cells that speak about status; neither carries a coloured element.
     const cells = within(r).getAllByRole("cell");
     expect(cells[4].querySelector("[style]")).toBeNull();
@@ -131,7 +134,7 @@ describe("SchedulesScreen — present state", () => {
     rows = [1, 2, 3, 4, 5].map((n) => row({ id: `s${n}`, name: `Sched ${n}` }));
     renderScreen();
     expect(screen.getByText("5 schedules · none enabled")).toBeInTheDocument();
-    expect(screen.getByText(/two cadences/)).toBeInTheDocument();
+    expect(screen.getByText(/two scheduled runs/)).toBeInTheDocument();
   });
 
   it("counts the enabled ones", () => {
