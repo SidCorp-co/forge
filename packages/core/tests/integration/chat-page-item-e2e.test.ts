@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { retiredSnapshotKeySentence } from '@forge/contracts/ui-actions';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -105,18 +106,23 @@ async function routeOwed(room: Room): Promise<void> {
   }
 }
 
+/** A fresh room in `project`, opened by the owner. */
+async function openRoom(project: string = projectId): Promise<Room> {
+  const opened = await api(ownerToken, 'POST', '/api/conversations', {
+    projectId: project,
+    title: `page item ${randomUUID().slice(0, 6)}`,
+    people: [],
+  });
+  expect(opened.status, JSON.stringify(opened.body)).toBe(201);
+  return opened.body as unknown as Room;
+}
+
 /** Ask in a fresh room, in `mode`, from the page `path` (or from no page), and route the turn. */
 async function ask(
   mode: 'assistant' | 'agent',
   page: { path: string; route: string; item: { kind: string; key: string } } | null,
 ): Promise<void> {
-  const opened = await api(ownerToken, 'POST', '/api/conversations', {
-    projectId,
-    title: `page item ${randomUUID().slice(0, 6)}`,
-    people: [],
-  });
-  expect(opened.status, JSON.stringify(opened.body)).toBe(201);
-  const room = opened.body as unknown as Room;
+  const room = await openRoom();
   const sent = await api(ownerToken, 'POST', `/api/conversations/${room.id}/messages`, {
     content: ASK,
     mode,
@@ -235,5 +241,139 @@ describe('the issue-only page context an agent session once took is gone', () =>
     });
     expect(send.status, JSON.stringify(send.body)).toBe(400);
     expect(JSON.stringify(send.body)).toContain('pageContext');
+  });
+});
+
+describe('the page record core loads holds to the turn, the policy and its own kind', () => {
+  it('finds nothing of another project the asker can read, for every kind of page', async () => {
+    const other = (await createTestProject(owner)).id;
+    await createTestRequirement(other, 8, 'Only in the other project');
+    await createTestFeedback(other, owner, 9);
+    await createTestIssue(other, owner, 77, { status: 'open', createdAt: new Date() });
+    await seedWorkflow(other, 'other-only-flow', 'Other only flow');
+    for (const item of [
+      { kind: 'requirement', key: 'REQ-8' },
+      { kind: 'feedback', key: 'FB-9' },
+      { kind: 'issue', key: 'ISS-77' },
+      { kind: 'workflow', key: 'other-only-flow' },
+    ] as const) {
+      // the asker may read both projects, so only the turn's project keeps the other one out
+      const loaded = await loadPageItem(projectId, owner, item);
+      expect(loaded, `${item.kind} ${item.key}`).toMatchObject({ found: false, kind: item.kind });
+      expect(JSON.stringify(loaded)).not.toMatch(
+        /Only in the other project|feedback 9|issue 77|Other only flow/,
+      );
+    }
+  });
+
+  it('scrubs a feedback title where the project redacts what leaves it', async () => {
+    const redacting = (await createTestProject(owner)).id;
+    await seedProjectDocument(redacting, owner, {
+      environments: {},
+      extra: { sensitiveData: 'redact' },
+    });
+    await createTestFeedback(redacting, owner, 1);
+    await db.execute(
+      sql`UPDATE feedback SET title = 'Login fails for jane.doe@example.com' WHERE project_id = ${redacting}`,
+    );
+    const fb = await loadPageItem(redacting, owner, { kind: 'feedback', key: 'FB-1' });
+    expect(fb).toMatchObject({ found: true, title: expect.stringContaining('Login fails for') });
+    expect(JSON.stringify(fb)).not.toContain('jane.doe@example.com');
+  });
+
+  it('keeps the page item kind, carrying a record kind of its own under its own name', async () => {
+    const fb = await loadPageItem(projectId, owner, { kind: 'feedback', key: 'FB-4' });
+    expect(fb).toMatchObject({ kind: 'feedback', feedbackKind: 'bug', found: true });
+    const flow = await loadPageItem(projectId, owner, { kind: 'workflow', key: 'chat-turn' });
+    expect(flow).toMatchObject({
+      kind: 'workflow',
+      workflowKind: 'flow',
+      found: true,
+      title: 'Chat turn',
+    });
+  });
+
+  it('keeps a withheld feedback item kind and its own kind where nothing leaves the project', async () => {
+    const closed = (await createTestProject(owner)).id;
+    await seedProjectDocument(closed, owner, {
+      environments: {},
+      extra: { sensitiveData: 'no_egress' },
+    });
+    await createTestFeedback(closed, owner, 2);
+    const fb = await loadPageItem(closed, owner, { kind: 'feedback', key: 'FB-2' });
+    expect(fb).toMatchObject({ kind: 'feedback', feedbackKind: 'bug', status: 'new', found: true });
+    expect(JSON.stringify(fb)).not.toContain('feedback 2');
+  });
+
+  it('tells both modes a page key that names nothing, through the send route', async () => {
+    const page = {
+      route: 'requirement',
+      path: `/projects/${slug}/requirements/REQ-404`,
+      item: { kind: 'requirement', key: 'REQ-404' },
+    };
+    await ask('assistant', page);
+    const said = assistantSaw();
+    expect(said).toContain(`\\"key\\": \\"REQ-404\\"`);
+    expect(said).toContain(`\\"found\\": false`);
+    expect(said).toContain('this project holds no requirement REQ-404');
+    await ask('agent', page);
+    const prompt = dispatched.at(-1) ?? '';
+    expect(prompt).toContain('"found": false');
+    expect(prompt).toContain('this project holds no requirement REQ-404');
+  });
+});
+
+describe('a tab loaded before the page item names its page the old way', () => {
+  const stale = { v: 1, route: 'issue', path: '/projects/x/issues/ISS-12', issueKey: 'ISS-12' };
+
+  it('is refused by a code of its own, whose sentence tells the person to reload', async () => {
+    const room = await openRoom();
+    const sent = await api(ownerToken, 'POST', `/api/conversations/${room.id}/messages`, {
+      content: ASK,
+      mode: 'assistant',
+      uiSnapshot: stale,
+    });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(400);
+    const error = (sent.body as { error: { code: string; refusals: unknown[] } }).error;
+    // the dev.193 web prints error.refusals[].detail as written for any code but its fixed ones,
+    // and BAD_REQUEST is one of those ("Invalid input — please check the fields and try again.")
+    expect(error.code).toBe('CONVERSATION_PAGE_OUT_OF_DATE');
+    expect(error.refusals).toEqual([
+      {
+        code: 'CONVERSATION_PAGE_OUT_OF_DATE',
+        path: '/uiSnapshot/issueKey',
+        detail: retiredSnapshotKeySentence('issueKey'),
+      },
+    ]);
+    expect(retiredSnapshotKeySentence('issueKey')).toContain('Reload the page');
+    const read = await api(ownerToken, 'GET', `/api/conversations/${room.id}`);
+    expect((read.body as { messages: unknown[] }).messages).toEqual([]);
+  });
+
+  it('still names every other fault in the same body', async () => {
+    const room = await openRoom();
+    const sent = await api(ownerToken, 'POST', `/api/conversations/${room.id}/messages`, {
+      content: ASK,
+      uiSnapshot: { ...stale, path: 'x'.repeat(501) },
+    });
+    expect(sent.status).toBe(400);
+    const error = (
+      sent.body as { error: { code: string; refusals: { code: string; path: string }[] } }
+    ).error;
+    expect(error.code).toBe('CONVERSATION_PAGE_OUT_OF_DATE');
+    expect(error.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['CONVERSATION_PAGE_OUT_OF_DATE', '/uiSnapshot/issueKey'],
+      ['BAD_REQUEST', '/uiSnapshot/path'],
+    ]);
+  });
+
+  it('keeps BAD_REQUEST for a key no web build ever sent', async () => {
+    const room = await openRoom();
+    const sent = await api(ownerToken, 'POST', `/api/conversations/${room.id}/messages`, {
+      content: ASK,
+      uiSnapshot: { v: 1, route: 'other', path: '/p', title: 'forged' },
+    });
+    expect(sent.status).toBe(400);
+    expect((sent.body as { error: { code: string } }).error.code).toBe('BAD_REQUEST');
   });
 });

@@ -1,0 +1,1 @@
+**A run tests its own scope.** It names its pattern first, proves each criterion by running it, and runs typecheck plus its direct tests; verify runs at merge, the whole suites nightly and before a release cut (REQ-36).

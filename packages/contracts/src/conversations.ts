@@ -16,6 +16,7 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"CONVERSATION_AGENT_NO_DEVICE",
 	"ASSISTANT_MODEL_NOT_CONFIGURED",
 	"CONVERSATION_ATTACHMENT_FOREIGN",
+	"CONVERSATION_PAGE_OUT_OF_DATE",
 	"CONVERSATION_TURN_HANDED_OFF",
 	"CONVERSATION_TURN_ON_ANOTHER_CORE",
 	"CONVERSATION_NOTHING_RUNNING",
@@ -26,6 +27,7 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"HANDLE_HAS_NO_NAME",
 	"HANDLE_NOT_ON_PROJECT",
 	"PARTICIPANT_UNIDENTIFIED",
+	"PARTICIPANT_KIND_TAKEN",
 	"ECOSYSTEM_NOT_MEMBER",
 	"INVALID_NAME",
 	"EMPTY_FILE",
@@ -37,9 +39,14 @@ export const CONVERSATION_REFUSAL_CODES = [
 export type ConversationRefusalCode =
 	(typeof CONVERSATION_REFUSAL_CODES)[number];
 
-/** No chat model is configured on this instance: nothing the caller sends can fix it (REQ-19). */
+/**
+ * No chat model is configured on this instance: nothing the caller sends can fix it (REQ-19). A
+ * message from a page older than the contract is a request-shape refusal, under a code of its own so
+ * the tab that sent it prints its sentence (ISS-441).
+ */
 export const CONVERSATION_REFUSAL_STATUSES = {
 	ASSISTANT_MODEL_NOT_CONFIGURED: 503,
+	CONVERSATION_PAGE_OUT_OF_DATE: 400,
 } as const satisfies RefusalStatuses<ConversationRefusalCode>;
 
 /**
