@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.179] - 2026-10-08
+
+Share links: create, list and revoke them from the web UI
+
+### Added
+
+- **An answer holding a report can be shared from its own row.** Share sets who opens it and for how long, shows the link once, and Project settings → People lists each link with its state and Revoke.
+
 ## [0.4.0-dev.178] - 2026-10-08
 
 Template reports can be saved, scheduled, exported and shared
