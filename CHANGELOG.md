@@ -6327,7 +6327,9 @@
 ### Changed
 
 - **Every screen counts the state of work the same way, and the counts add up.** Six states head the Issues tabs, board and Overview; filters narrow every tab count, and the board says what it leaves out.
-
+- **The board says how many issues each state holds beyond its page.** Above its columns it names, per state, how many it draws of how many there are, with a link to the rest.
+- **Needs you counts what it names.** A question left on a draft, closed or dropped issue no longer counts, an issue is listed once, and parked issues are worded as states, not raw statuses.
+- **The Issues list names a filter in a link instead of dropping it.** A repeated `status` applies every value; a status or source the page lacks is named above the list.
 - **A release closes on a reading Forge took when asked, not a five-minute wait.** The agent
   calls `look`; a finish closes only on what was read at every live binding. A site serving the old
   build stays refused.

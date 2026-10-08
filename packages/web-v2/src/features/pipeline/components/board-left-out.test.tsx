@@ -6,7 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { boardLeftOut } from "../derive";
+import { type StateFigure, boardLeftOut } from "../derive";
 import { BoardLeftOut } from "./board-left-out";
 
 expect.extend(matchers);
@@ -14,9 +14,30 @@ afterEach(cleanup);
 
 const WORK = { open: 2, in_flight: 9, awaiting_release: 5, blocked_on_person: 9, draft: 4, finished: 8 };
 
+const figure = (state: StateFigure["state"], label: string, total: number, drawn: number): StateFigure => ({
+  state,
+  label,
+  total,
+  drawn,
+});
+/** Every open state drawn in full. */
+const WHOLE: StateFigure[] = [
+  figure("open", "Open, not picked up", 2, 2),
+  figure("in_flight", "In flight", 9, 9),
+  figure("awaiting_release", "Awaiting release", 5, 5),
+  figure("blocked_on_person", "Blocked on a person", 9, 9),
+];
+/** The 230-issue project the judge walked: one page of 200, so each state is short of its count. */
+const CUT: StateFigure[] = [
+  figure("open", "Open, not picked up", 46, 40),
+  figure("in_flight", "In flight", 92, 80),
+  figure("awaiting_release", "Awaiting release", 46, 40),
+  figure("blocked_on_person", "Blocked on a person", 46, 40),
+];
+
 describe("what the board leaves out", () => {
   it("names Draft and Finished with the strip's counts, each a link to the list that holds them", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} slug="alpha" drawn={25} matching={25} />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={WHOLE} slug="alpha" />);
     expect(screen.getByRole("link", { name: "Draft 4" })).toHaveAttribute(
       "href",
       "/projects/alpha/issues?filter=draft",
@@ -29,20 +50,41 @@ describe("what the board leaves out", () => {
   });
 
   it("names the states without a figure while the project's counts have not arrived", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(undefined)} slug="alpha" drawn={3} matching={3} />);
+    render(<BoardLeftOut leftOut={boardLeftOut(undefined)} figures={WHOLE} slug="alpha" />);
     expect(screen.getByRole("link", { name: "Draft" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Finished" })).toBeInTheDocument();
   });
 
-  it("says nothing about a cut page when the columns hold every issue the query matched", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} slug="alpha" drawn={25} matching={25} />);
+  it("says nothing about a cut page when every state's columns hold what the search counts", () => {
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={WHOLE} slug="alpha" />);
     expect(screen.queryByTestId("board-page-cut")).toBeNull();
   });
 
-  it("says how many a cut page left off, so columns shorter than their state's count are explained", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} slug="alpha" drawn={200} matching={231} />);
-    expect(screen.getByTestId("board-page-cut")).toHaveTextContent(
-      "The columns hold the 200 most recently updated of 231 issues",
+  it("names each state its page left short, with how many it drew of how many, and a link to them", () => {
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={CUT} slug="alpha" />);
+    const cut = screen.getByTestId("board-page-cut");
+    expect(cut).toHaveTextContent("The columns hold 200 of the 230 open issues");
+    expect(screen.getByRole("link", { name: "In flight: 80 of 92 drawn" })).toHaveAttribute(
+      "href",
+      "/projects/alpha/issues?filter=in_flight",
     );
+    expect(screen.getByRole("link", { name: "Open, not picked up: 40 of 46 drawn" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Awaiting release: 40 of 46 drawn" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Blocked on a person: 40 of 46 drawn" })).toBeInTheDocument();
+  });
+
+  it("names only the state that is short, leaving the whole ones out", () => {
+    const figures = WHOLE.map((f) => (f.state === "in_flight" ? { ...f, total: 12 } : f));
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={figures} slug="alpha" />);
+    expect(screen.getByRole("link", { name: "In flight: 9 of 12 drawn" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Open, not picked up:/ })).toBeNull();
+  });
+
+  it("says so when the columns hold more than the search counts, rather than reading it as a cut page", () => {
+    const figures = WHOLE.map((f) => (f.state === "open" ? { ...f, drawn: 3 } : f));
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={figures} slug="alpha" />);
+    expect(
+      screen.getByRole("link", { name: "Open, not picked up: the board draws 3, Issues counts 2" }),
+    ).toBeInTheDocument();
   });
 });

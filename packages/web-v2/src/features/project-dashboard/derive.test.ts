@@ -5,8 +5,10 @@ import {
   attentionCaption,
   conicGradient,
   type DashboardAttentionItem,
+  projectAttention,
   statusDonut,
 } from "./derive";
+import type { AttentionItem, AttentionView } from "@/features/attention/types";
 
 const WORK = {
   open: 56,
@@ -78,9 +80,9 @@ describe("attentionCaption (ISS-1156)", () => {
   });
 
   it("says what the Needs you figure counts, by kind, so it is not read as Blocked on a person", () => {
-    const items = [item("retry", 0), item("retry", 1), item("diff", 2), ...[3, 4, 5].map((i) => item("input", i)), item("chain", 6)];
+    const items = [item("retry", 0), item("retry", 1), item("diff", 2), ...[3, 4, 5].map((i) => item("input", i)), item("parked", 6)];
     expect(attentionCaption(items)).toBe(
-      "to act on: 2 failed jobs · 1 to review · 3 questions · 1 held by a dependency",
+      "to act on: 2 failed jobs · 1 to review · 3 issues with an open question · 1 issue parked with no question",
     );
   });
 
@@ -93,5 +95,73 @@ describe("attentionCaption (ISS-1156)", () => {
   it("leaves out a kind with nothing in it, and says so when nothing needs a person", () => {
     expect(attentionCaption([item("diff", 0)])).toBe("to act on: 1 to review");
     expect(attentionCaption([])).toBe("nothing to act on");
+  });
+});
+
+describe("projectAttention (ISS-1156)", () => {
+  const awaiting = (n: number, questionId: string | null, status = "in_progress"): AttentionItem => ({
+    kind: "awaiting_input",
+    title: `Issue ${n}`,
+    link: `/projects/sable/issues/doc-${n}`,
+    since: "2026-10-08T00:00:00Z",
+    issueRef: `ISS-${n}`,
+    status,
+    projectSlug: "sable",
+    questionId,
+  });
+  const view = (awaitingInput: AttentionItem[]): AttentionView => ({
+    needsReview: [],
+    awaitingInput,
+    mentions: [],
+    failedJobs: [],
+    pendingSkillUpdates: [],
+    unseenDrafts: [],
+    unseenDraftsTotal: 0,
+    total: awaitingInput.length,
+    offlineRunners: [],
+  });
+
+  it("counts as a question only an issue that holds an open one, so the caption names what it counts", () => {
+    const items = projectAttention(
+      view([awaiting(1, "q1"), awaiting(2, "q2"), awaiting(3, null, "needs_info")]),
+      "sable",
+      [],
+    );
+    expect(items.filter((i) => i.actionKind === "input")).toHaveLength(2);
+    expect(items.filter((i) => i.actionKind === "parked")).toHaveLength(1);
+    expect(attentionCaption(items)).toBe(
+      "to act on: 2 issues with an open question · 1 issue parked with no question",
+    );
+  });
+
+  it("lists an issue once even where it is both holding a question and in the project's blockers", () => {
+    const items = projectAttention(view([awaiting(1, "q1", "needs_info")]), "sable", [
+      { issueId: "ISS-1", documentId: "doc-1", status: "needs_info" },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.actionKind).toBe("input");
+  });
+
+  it("words a parked issue in the work-state vocabulary, never with the raw status key", () => {
+    const [item] = projectAttention(undefined, "sable", [
+      { issueId: "ISS-9", documentId: "doc-9", status: "needs_info" },
+    ]);
+    expect(item?.title).toBe("Blocked on a person — Needs info");
+    expect(item?.title).not.toContain("needs_info");
+    const [hold] = projectAttention(undefined, "sable", [
+      { issueId: "ISS-8", documentId: "doc-8", status: "on_hold" },
+    ]);
+    expect(hold?.title).toBe("Blocked on a person — On hold");
+  });
+
+  it("refuses a parked issue at a status the kernel does not have, by name, rather than word it by a guess", () => {
+    expect(() =>
+      projectAttention(undefined, "sable", [{ issueId: "ISS-3", documentId: "doc-3", status: "banana" }]),
+    ).toThrow(/parked at `banana`.*not one of the issue statuses/u);
+  });
+
+  it("keeps another project's rows out", () => {
+    const other = { ...awaiting(5, "q5"), projectSlug: "tern" };
+    expect(projectAttention(view([other]), "sable", [])).toEqual([]);
   });
 });

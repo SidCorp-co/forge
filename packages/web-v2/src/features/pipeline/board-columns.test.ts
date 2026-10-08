@@ -25,7 +25,7 @@ import {
   workStateOf,
 } from "@forge/contracts/work-state";
 import type { IssueStatus } from "@/features/issues/types";
-import { boardColumns, boardLeftOut, groupIssuesByLabel, labelTone } from "./derive";
+import { boardColumns, boardLeftOut, boardStateFigures, groupIssuesByLabel, labelTone } from "./derive";
 import {
   BOARD_EXCLUDED_STATUSES,
   BOARD_LEFT_OUT_STATES,
@@ -336,5 +336,49 @@ describe("a column is coloured by the statuses it holds", () => {
   it("colours `reopened` and `done` as their own status is coloured, not as a bucket word suggests", () => {
     expect(labelTone("reopened")).toBe(statusToTone("reopen"));
     expect(labelTone("done")).toBe(statusToTone("closed"));
+  });
+});
+
+describe("boardStateFigures — a page cut short is named, not drawn as the whole (ISS-1156)", () => {
+  /** A project over one page: 230 open-work issues, 46 open, 92 in flight, 46 awaiting release, 46 blocked. */
+  const STATUS_OF: Array<[IssueStatus, number]> = [
+    ["open", 46],
+    ["in_progress", 92],
+    ["awaiting_release", 46],
+    ["needs_info", 46],
+  ];
+  const all = STATUS_OF.flatMap(([status, n]) =>
+    Array.from({ length: n }, (_, i) => issue(`${status}-${i}`, status)),
+  );
+  const TOTALS = { open: 46, in_flight: 92, awaiting_release: 46, blocked_on_person: 46, draft: 0, finished: 0 };
+
+  it("reports the search's count beside the cards drawn, and they differ when the page is cut", () => {
+    const page = all.slice(0, 200);
+    expect(page).toHaveLength(200);
+    const figures = boardStateFigures(groupIssuesByLabel(page), TOTALS);
+    const undrawn = figures.reduce((n, f) => n + (f.total - f.drawn), 0);
+    expect(undrawn).toBe(30);
+    expect(figures.map((f) => f.total)).toEqual([46, 92, 46, 46]);
+    expect(figures.some((f) => f.drawn < f.total)).toBe(true);
+  });
+
+  it("agrees with the search for every state when the page holds every issue", () => {
+    const figures = boardStateFigures(groupIssuesByLabel(all), TOTALS);
+    for (const f of figures) expect(f.drawn).toBe(f.total);
+  });
+
+  it("counts the cards of every column a state spans, so In flight sums its check-in columns", () => {
+    const rows = [issue("a", "in_progress", true), issue("b", "in_progress", false), issue("c", "testing", true)];
+    const figures = boardStateFigures(groupIssuesByLabel(rows), { ...TOTALS, in_flight: 3 });
+    expect(figures.find((f) => f.state === "in_flight")?.drawn).toBe(3);
+  });
+
+  it("names the four open states in the Overview's order and none of the two it leaves out", () => {
+    expect(boardStateFigures(groupIssuesByLabel([]), TOTALS).map((f) => f.state)).toEqual([
+      "open",
+      "in_flight",
+      "awaiting_release",
+      "blocked_on_person",
+    ]);
   });
 });

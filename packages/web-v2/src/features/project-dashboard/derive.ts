@@ -2,6 +2,8 @@
 import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
 import type { AttentionView } from "@/features/attention/types";
+import { statusLabel } from "@/features/issues/derive";
+import type { IssueStatus } from "@/features/issues/types";
 import { jobTypeToStage } from "@/features/pipeline/derive";
 import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
@@ -11,12 +13,14 @@ import {
   type RunnerLimitDisplay,
   runnerLimitDisplay,
 } from "@/features/runners/types";
+import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import {
   OPEN_WORK_STATES,
   type OpenWorkState,
   openWorkTotal,
   WORK_STATE_LABELS,
   type WorkState,
+  workStateOf,
 } from "@forge/contracts/work-state";
 import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
@@ -171,7 +175,8 @@ export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
  * Needs-your-attention queue (AC#2)
  * ------------------------------------------------------------------ */
 
-export type AttentionActionKind = "retry" | "diff" | "input" | "chain";
+/** `input` holds an open question; `parked` is stopped at a status a person moves it from, with no question. */
+export type AttentionActionKind = "retry" | "diff" | "input" | "parked";
 
 export interface DashboardAttentionItem {
   key: string;
@@ -207,11 +212,20 @@ function mapAttention(
     }));
 }
 
+/** The work state's word, then the status the issue sits at. */
+function parkedTitle(status: string): string {
+  if (!(REGISTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
+    throw new Error(
+      `Needs you: an issue is parked at \`${status}\`, which is not one of the issue statuses (${REGISTRY_ISSUE_STATUSES.join(", ")}), so no work state can word it. The server is not the release this page was built for.`,
+    );
+  }
+  const state = WORK_STATE_LABELS[workStateOf(status as IssueStatus)];
+  return `${state} — ${statusLabel(status as IssueStatus)}`;
+}
+
 /**
- * The project's actionable items: failed jobs (Approve & retry), review-requested
- * changes (Open diff), awaiting-input (Provide info), and blocked-on-dependency
- * issues (View chain) derived from `health.blockers`. Attention items are
- * filtered to this project by `projectSlug`; blockers are already per-project.
+ * This project's items a person acts on, one per issue: a parked issue already listed for its
+ * question is not listed again. Attention rows are filtered by `projectSlug`; blockers already are.
  */
 export function projectAttention(
   view: AttentionView | undefined,
@@ -219,32 +233,46 @@ export function projectAttention(
   blockers: ProjectHealthRow["blockers"] | undefined,
 ): DashboardAttentionItem[] {
   const out: DashboardAttentionItem[] = [];
+  const parked: DashboardAttentionItem[] = [];
   if (view) {
+    const awaiting = view.awaitingInput.filter((it) => it.projectSlug === slug);
+    const asked = awaiting.filter((it) => it.questionId != null);
+    const silent = awaiting.filter((it) => it.questionId == null);
     out.push(
       ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
       ...mapAttention(view.needsReview, slug, "diff", "Open diff"),
-      ...mapAttention(view.awaitingInput, slug, "input", "Provide info"),
+      ...mapAttention(asked, slug, "input", "Provide info"),
+    );
+    parked.push(
+      ...mapAttention(silent, slug, "parked", "Open issue").map((it) => ({
+        ...it,
+        title: it.status ? parkedTitle(it.status) : it.title,
+      })),
     );
   }
+  const listed = new Set([...out, ...parked].map((it) => it.link));
   for (const b of blockers ?? []) {
-    out.push({
-      key: `chain-${b.documentId}`,
-      actionKind: "chain",
-      actionLabel: "View chain",
-      title: `Blocked — waiting at ${b.status}`,
+    const link = `/projects/${slug}/issues/${b.documentId}`;
+    if (listed.has(link)) continue;
+    listed.add(link);
+    parked.push({
+      key: `parked-${b.documentId}`,
+      actionKind: "parked",
+      actionLabel: "Open issue",
+      title: parkedTitle(b.status),
       issueRef: b.issueId,
-      link: `/projects/${slug}/issues/${b.documentId}`,
+      link,
       status: b.status,
     });
   }
-  return out;
+  return [...out, ...parked];
 }
 
 const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; many: string }> = [
   { kind: "retry", one: "failed job", many: "failed jobs" },
   { kind: "diff", one: "to review", many: "to review" },
-  { kind: "input", one: "question", many: "questions" },
-  { kind: "chain", one: "held by a dependency", many: "held by a dependency" },
+  { kind: "input", one: "issue with an open question", many: "issues with an open question" },
+  { kind: "parked", one: "issue parked with no question", many: "issues parked with no question" },
 ];
 
 /**

@@ -29,6 +29,7 @@ import {
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
 import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
+import { statusesInWorkState } from '../issues/work-state.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
@@ -163,7 +164,17 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
     .where(
       and(
         ownedForAnswer(userId),
-        or(inArray(issues.status, [...AWAITING_INPUT_STATUSES]), holdsOpenHumanQuestion(issues.id)),
+        or(
+          inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
+          // A question left on a draft, closed or dropped issue is not something to act on.
+          and(
+            notInArray(issues.status, [
+              ...statusesInWorkState('draft'),
+              ...statusesInWorkState('finished'),
+            ]),
+            holdsOpenHumanQuestion(issues.id),
+          ),
+        ),
         ...visibleProjectsWhere(),
       ),
     )
