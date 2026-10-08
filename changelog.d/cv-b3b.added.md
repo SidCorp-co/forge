@@ -1,0 +1,1 @@
+**A scheduled template report now arrives with its summary, risks and recommendations.** One model call writes them from the report's own runs, a refused answer gets one retry, and a narrative not written says why.

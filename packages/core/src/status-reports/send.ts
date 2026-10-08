@@ -1,16 +1,20 @@
 // One period of a `status_report` schedule: store the report it answers (once per schedule and
 // period) and tell each recipient once, in their language, linking to the stored report. A schedule
-// that names a template runs it for the schedule's owner and stores the output. A fire has no model,
-// so its narrative slots are stored empty and the notice names them as unwritten: the project status
-// digest is not used to fill them, because it states figures read from the project status, not from
-// the template's runs, and a template's narrative may cite only those runs (`checkTemplateNarrative`). A period
-// whose every recipient is already told is refused by name and tells nobody; one stored but not yet
-// told to everyone (a recipient added since, a send cut short) tells only those it still owes.
+// that names a template runs it for the schedule's owner, has one model call write its narrative from
+// those runs alone (`narrative.ts`) and stores the output with how the narrative came to be; a
+// narrative not written is named in the notice with the reason. A period whose every recipient is
+// already told is refused by name and tells nobody; one stored but not yet told to everyone (a
+// recipient added since, a send cut short) tells only those it still owes.
 
 import { statusReportNoticeKey } from '@forge/contracts/notifications';
 import { PROJECT_STATUS_DAYS_DEFAULT, type ProjectStatus } from '@forge/contracts/project-status';
 import type { ReportDocument } from '@forge/contracts/report-templates';
-import { statusReportDiff, templateTitleOf, unwrittenSlots } from '@forge/contracts/status-reports';
+import {
+  type StatusReportNarrative,
+  statusReportDiff,
+  templateTitleOf,
+  unwrittenSlots,
+} from '@forge/contracts/status-reports';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, users } from '../db/schema.js';
@@ -22,6 +26,7 @@ import { refuser } from '../lib/refusal.js';
 import { emitNotification } from '../notifications/index.js';
 import type { StatusReportSendOutcome } from '../schedules/index.js';
 import { digestText } from './digest.js';
+import { writeFireNarrative } from './narrative.js';
 import { statusReportsPorts } from './ports.js';
 import { previousReport, reportOfPeriod, storeStatusReport, storeTemplateReport } from './store.js';
 
@@ -81,13 +86,27 @@ export async function sendStatusReport(args: {
     } as const;
     try {
       if (args.template) {
-        const { document } = await statusReportsPorts().runTemplate({
+        const run = await statusReportsPorts().runTemplate({
           projectId: args.projectId,
           templateId: args.template.id,
           params: args.template.params,
           asker: { userId: args.viewerUserId, agency, access },
         });
-        report = await storeTemplateReport({ projectId: args.projectId, document, producer });
+        const { document, narrative } = await writeFireNarrative({
+          projectId: args.projectId,
+          scheduleId: args.scheduleId,
+          title: templateTitleOf(args.template.id),
+          document: run.document,
+          slots: run.slots,
+          userId: args.viewerUserId,
+          agency,
+        });
+        report = await storeTemplateReport({
+          projectId: args.projectId,
+          document,
+          producer,
+          narrative,
+        });
       } else {
         report = await storeStatusReport({
           projectId: args.projectId,
@@ -112,7 +131,8 @@ export async function sendStatusReport(args: {
           diff: statusReportDiff(prev.report as ProjectStatus, status),
         }
       : null;
-  const templateNotice = document ? templateNoticeText(document, args.timeZone) : null;
+  const narrative = report.narrativeOutcome as StatusReportNarrative | null;
+  const templateNotice = document ? templateNoticeText(document, narrative, args.timeZone) : null;
   const languages = await reporterLanguagesOf(owed, args.projectId);
   let told = 0;
   for (const userId of owed) {
@@ -134,16 +154,21 @@ export async function sendStatusReport(args: {
     status: 'success',
     reportId: report.id,
     told,
-    output: `stored report ${report.id} for ${periodKey} and told ${counted(told, 'recipient')}`,
+    output: `stored report ${report.id} for ${periodKey} and told ${counted(told, 'recipient')}${narrative ? `; narrative ${narrativeLine(narrative)}` : ''}`,
   };
 }
 
+const narrativeLine = (n: StatusReportNarrative): string =>
+  n.path === 'not_written' ? `not written: ${n.reason}` : n.path;
+
 /**
- * The notice of a template report: what it is and when its figures were read, and which narrative
- * slots nobody has written (a fire writes none). English only; the report itself holds the figures.
+ * The notice of a template report: what it is and when its figures were read, the summary the model
+ * wrote, and which narrative slots are empty and why (a fire whose narrative was not written names
+ * the reason). English only; the report itself holds the figures.
  */
 function templateNoticeText(
   document: ReportDocument,
+  narrative: StatusReportNarrative | null,
   timeZone: string | null,
 ): { title: string; body: string } {
   const read = Math.max(...document.runs.map((r) => Date.parse(r.asOf)));
@@ -153,11 +178,19 @@ function templateNoticeText(
   }).format(new Date(read));
   const title = templateTitleOf(document.templateId);
   const unwritten = unwrittenSlots(document);
+  const summary = document.narrative.summary?.trim();
+  const empty =
+    unwritten.length === 0
+      ? null
+      : narrative?.path === 'not_written'
+        ? `Narrative (${unwritten.join(', ')}) not written: ${narrative.reason}.`
+        : `Narrative not written: ${unwritten.join(', ')}.`;
   return {
     title: `${title} report, ${day}`,
     body: [
       `${counted(document.blocks.length, 'block')} drawn from ${counted(document.runs.length, 'query run')}, read ${day}.`,
-      unwritten.length > 0 ? `Narrative not written: ${unwritten.join(', ')}.` : null,
+      summary || null,
+      empty,
     ]
       .filter(Boolean)
       .join('\n'),

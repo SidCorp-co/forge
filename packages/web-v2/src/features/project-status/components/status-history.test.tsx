@@ -129,7 +129,7 @@ describe("a kept template report", () => {
       calls.push(call);
       if (call.method === "GET" && call.path === "/projects/p1/status/reports") return { body: { reports: [TEMPLATE, MINE] } };
       if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template")
-        return { body: { report: TEMPLATE, status: null, document, previous: null, diff: null } };
+        return { body: { report: TEMPLATE, narrative: null, status: null, document, previous: null, diff: null } };
       if (call.method === "POST" && call.path === "/projects/p1/status/reports/r-template/read") return { body: { read: 0 } };
       if (call.method === "GET" && call.path === "/projects/p1/shares/audiences")
         return { body: { audiences: [{ audience: "members", refusal: null }, { audience: "link", refusal: { code: "PERMISSION_FORBIDDEN", message: "needs shares.public" } }] } };

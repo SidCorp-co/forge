@@ -1,5 +1,11 @@
 export { bootstrapChatProviders } from './bootstrap.js';
-export { chatModelName, openChat } from './chat.js';
+export {
+  type CompletionAnswer,
+  type CompletionMiss,
+  chatModelName,
+  completeOnce,
+  openChat,
+} from './chat.js';
 export {
   EMBEDDING_UNAVAILABLE,
   EmbeddingUnavailableError,

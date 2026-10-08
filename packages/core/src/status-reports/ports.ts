@@ -20,7 +20,8 @@ interface StatusReportsPorts {
   }): Promise<ProjectStatus>;
   /**
    * One report template run for `asker` (`reports/templates.ts:runTemplate`): every query kept as a
-   * run read as them, the blocks drawn over the runs and every narrative slot left empty.
+   * run read as them, the blocks drawn over the runs, every narrative slot left empty, and the
+   * template's guidance for each slot.
    */
   runTemplate(args: {
     projectId: string;
@@ -28,7 +29,11 @@ interface StatusReportsPorts {
     params?: Record<string, unknown> | undefined;
     asker: { userId: string; agency: ActorAgency; access: ProjectAccess };
     now?: Date;
-  }): Promise<{ document: ReportDocument; notDrawn: { kind: string; as: string; why: string }[] }>;
+  }): Promise<{
+    document: ReportDocument;
+    slots: { slot: TemplateNarrativeSlot; guidance: string; maxWords: number }[];
+    notDrawn: { kind: string; as: string; why: string }[];
+  }>;
   /** A narrative judged against the template's own runs, read back as `userId`; the document with it set, or a refusal by name. */
   checkTemplateNarrative(args: {
     projectId: string;

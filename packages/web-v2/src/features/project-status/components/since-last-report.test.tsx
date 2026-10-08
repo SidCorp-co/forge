@@ -24,6 +24,7 @@ const meta = (id: string, asOf: string) => ({
 
 const detail: StatusReportDetail = {
   report: meta("r2", AT),
+  narrative: null,
   previous: meta("r1", "2026-09-30T10:00:00.000Z"),
   status: STATUS,
   document: null,
