@@ -1,11 +1,13 @@
 // What one turn has already done across its attempts: the calls a screen retry is told of, and the
-// filing it may not make twice. A retry is the same turn asked again, so a write the first attempt
+// record (a Feedback item, a draft Requirement) it may not make twice. A retry is the same turn asked again, so a write the first attempt
 // made stands and is named back to the model rather than made a second time.
 
 import type { CallToolResult } from '../lib/tool-result.js';
 import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
 
-const FILING_TOOL = 'forge';
+const CLI_TOOL = 'forge';
+/** The tools that record a new item under a title: a retry naming the same title gets the first. */
+const RECORD_TOOLS: ReadonlySet<string> = new Set(['forge_feedback', 'forge_requirement_draft']);
 const RESULT_CHARS = 300;
 const ARGUMENT_CHARS = 200;
 const LISTED_CALLS = 16;
@@ -13,10 +15,16 @@ const LISTED_CALLS = 16;
 const GROUNDING_CHARS = 24_000;
 
 /** The `forge` verbs that change the tracker, and the flags that make `forge issue` one of them. */
-const WRITE_VERBS: ReadonlySet<string> = new Set(['new', 'comment', 'attach']);
+const WRITE_VERBS: ReadonlySet<string> = new Set(['comment', 'attach']);
 const ISSUE_WRITE_FLAG =
   /^--(status|relates|blocks|priority|assign|assignee|title|category|label|labels|module|with)(=|$)/;
-const WRITE_TOOLS: ReadonlySet<string> = new Set(['forge_memory_note', 'forge_preferences']);
+const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  'forge_memory_note',
+  'forge_preferences',
+  'forge_feedback',
+  'forge_requirement_draft',
+  'forge_requirement_revise',
+]);
 
 /** One call that landed this turn, as the partial reply and the retry name it. */
 export interface DoneCall {
@@ -25,7 +33,7 @@ export interface DoneCall {
   readonly arguments: string;
   readonly said: string;
   readonly result: string;
-  /** It changed something: a filing, a comment, an attachment, a status, a note. */
+  /** It changed something: a record, a comment, an attachment, a status, a note. */
   readonly write: boolean;
   /** The issue keys its result names, in the order it names them. */
   readonly keys: readonly string[];
@@ -56,15 +64,15 @@ function argvOf(argsJson: string): string[] | null {
   }
 }
 
-/** The title a `forge new` call files under, or null for any other call. */
+/** The title a record tool files a new item under, or null for any other call. */
 export function filingTitle(name: string, argsJson: string): string | null {
-  if (name !== FILING_TOOL) return null;
-  const argv = argvOf(argsJson);
-  if (argv?.[0] !== 'new') return null;
-  const at = argv.indexOf('--title');
-  if (at >= 0) return argv[at + 1] ?? null;
-  const inline = argv.find((a) => a.startsWith('--title='));
-  return inline ? inline.slice('--title='.length) : null;
+  if (!RECORD_TOOLS.has(name)) return null;
+  try {
+    const title = (JSON.parse(argsJson) as { title?: unknown }).title;
+    return typeof title === 'string' && title.trim() ? title : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Two titles are the same filing when they differ only in case, spacing or closing punctuation. */
@@ -79,10 +87,10 @@ export function titleKey(title: string): string {
 
 const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g;
 
-/** Did this call change something? The `forge` verbs and flags that write, and the note tools. */
+/** Did this call change something? The `forge` verbs and flags that write, and the record and note tools. */
 export function isWriteCall(name: string, argsJson: string): boolean {
   if (WRITE_TOOLS.has(name)) return true;
-  if (name !== FILING_TOOL) return false;
+  if (name !== CLI_TOOL) return false;
   const argv = argvOf(argsJson);
   if (!argv?.[0]) return false;
   if (WRITE_VERBS.has(argv[0])) return true;
@@ -90,19 +98,19 @@ export function isWriteCall(name: string, argsJson: string): boolean {
 }
 
 const callSaid = (name: string, argsJson: string): string => {
-  const argv = name === FILING_TOOL ? argvOf(argsJson) : null;
+  const argv = name === CLI_TOOL ? argvOf(argsJson) : null;
   return argv ? `${name} ${JSON.stringify(argv)}` : `${name} ${oneLine(argsJson, ARGUMENT_CHARS)}`;
 };
 
 function refiled(title: string, earlier: CallToolResult): CallToolResult {
-  const note = `Not filed again: this turn already filed an issue titled "${title}", and the result below is that filing. Name the issue it gave; do not file it a second time.`;
+  const note = `Not recorded again: this turn already recorded "${title}", and the result below is that record. Name the key it gave; do not record it a second time.`;
   return { ...earlier, content: [{ type: 'text', text: note }, ...earlier.content] };
 }
 
 /**
  * The turn's toolset with a ledger in front: every call that lands is remembered for the retry, and
- * a second `forge new` under a title this turn already filed is answered with that filing instead
- * of a new issue.
+ * a second record under a title this turn already recorded is answered with that record instead of
+ * a new one.
  */
 export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   const done: DoneCall[] = [];
@@ -154,7 +162,7 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
       if (done.length === 0) return null;
       const listed = done.slice(-LISTED_CALLS).map((c) => `- ${c.said} → ${c.result}`);
       return [
-        'What this turn already did before this rewrite: these calls ran, and what they changed stands. Do not repeat a write among them (a filing, a comment, an attachment); name what it returned instead.',
+        'What this turn already did before this rewrite: these calls ran, and what they changed stands. Do not repeat a write among them (a record, a comment, an attachment); name what it returned instead.',
         ...listed,
       ].join('\n');
     },

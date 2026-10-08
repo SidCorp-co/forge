@@ -83,7 +83,7 @@ export async function prepareFastTurn(opts: {
   const ctx = buildChatToolContext({
     credential: opts.credential,
     projectSlug: opts.route.projectSlug,
-    turn: opts.turn,
+    turn: { ...opts.turn, images },
   });
   return {
     images,

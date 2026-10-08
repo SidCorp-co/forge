@@ -9,6 +9,7 @@ import {
 } from './agent-reports/index.js';
 import {
   agentSessionEventsRetention,
+  chatDoorOfToken,
   deriveSessionFinal,
   EMPTY_USAGE_TOTALS,
   resolveSessionSend,
@@ -229,6 +230,7 @@ export function provideWorkPorts(): void {
     usageTotalsSelection,
     emptyUsageTotals: EMPTY_USAGE_TOTALS,
     fireOfCaller,
+    chatDoorOfToken,
     issueDeleteRefusal,
     designUnapprovedSql,
     assertDesignsApprovedForSeqs,

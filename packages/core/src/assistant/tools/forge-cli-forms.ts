@@ -15,7 +15,6 @@ const READ_FORMS: readonly CliForm[] = [
   { argv: ['issue', 'ISS-<n>'], says: 'one issue with its edges and its documentId' },
   { argv: ['issue', '--search', '<q>'], says: 'issues matching text' },
   { argv: ['guide', '<slug>'], says: 'the method for a topic' },
-  { argv: ['new', '-', '--title', '<t>', '--category', '<c>'], says: 'file an issue' },
   { argv: ['comment', 'ISS-<n>', '-'], says: 'comment on one' },
 ];
 

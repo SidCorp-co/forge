@@ -31,7 +31,12 @@ export const BOUNDARY_RULES = [
  */
 export const REGISTRIES = {
   'routes.ts': ['route-registry.ts'],
-  'tool.ts': ['mcp/registry.ts', 'mcp/chat-read-tools.ts', 'assistant/tools/registry.ts'],
+  'tool.ts': [
+    'mcp/registry.ts',
+    'mcp/chat-read-tools.ts',
+    'mcp/chat-record-tools.ts',
+    'assistant/tools/registry.ts',
+  ],
 };
 
 const TESTS =
