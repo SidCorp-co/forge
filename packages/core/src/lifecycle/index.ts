@@ -1,3 +1,4 @@
+export { type GatedMove, gatedMovesOf } from './gated-moves.js';
 export type { MachineRow } from './machine-tables.js';
 export { kernelTransitionsRetention } from './retention.js';
 export {
@@ -5,6 +6,7 @@ export {
   type GuardInput,
   type KernelActor,
   type KernelExecutor,
+  type MoveChecklist,
   movedRow,
   type TransitionArgs,
   type TransitionResult,

@@ -5,8 +5,22 @@
  * through), records the move in `kernel_transitions` with the version of the machine that judged
  * it, and writes its outbox event, all in one transaction. Every reaction to a move (the activity
  * feed, a broadcast, a dispatch) is a consumer of that event.
+ *
+ * An edge naming a checklist (`@forge/contracts/checklist-registry:CHECKLISTS`) is judged by the
+ * kernel itself, whatever door the move came through: the mover's answers are parsed, the item's own
+ * record is read under the lock, and a blocking gap refuses the move naming its question. A passed
+ * move records the checklist, its version and every answer, given or assumed; a refused one is
+ * recorded in `kernel_refused_moves`.
  */
 
+import { CHECKLISTS, type ChecklistId, isChecklistId } from '@forge/contracts/checklist-registry';
+import {
+  type ChecklistEvaluation,
+  checklistRefusals,
+  evaluateChecklist,
+  parseAnswers,
+  type RecordAnswers,
+} from '@forge/contracts/checklists';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
 import {
   emitsTransition,
@@ -26,8 +40,13 @@ import {
 import { and, inArray, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { delegationOf } from '../credentials/pat-scope.js';
+import { db } from '../db/client.js';
 import { asKernelStatusWrite, type KernelExecutor } from '../db/kernel-marker.js';
-import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
+import {
+  type KernelTransitionActorType,
+  kernelRefusedMoves,
+  kernelTransitions,
+} from '../db/schema.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvents } from '../outbox/index.js';
 import { type MachineRow, machineTable } from './machine-tables.js';
@@ -84,6 +103,19 @@ export interface GuardInput<E extends MachineEntity> {
  */
 export type Guard<E extends MachineEntity> = (input: GuardInput<E>) => Promise<Refusal | null>;
 
+/** The guard an edge names when it names a checklist: the kernel's own, never a caller's. */
+const CHECKLIST_GUARD = 'checklist';
+
+/**
+ * What a move along an edge naming a checklist carries: the mover's answers as the door received
+ * them, which the kernel parses, and the reader of what the item's own record answers, which runs
+ * under the lock through the move's transaction and reads nothing else.
+ */
+export interface MoveChecklist<E extends MachineEntity> {
+  answers?: unknown;
+  record: (input: { tx: Tx; row: PriorRow<E>; checklist: ChecklistId }) => Promise<RecordAnswers>;
+}
+
 export interface TransitionArgs<E extends MachineEntity, K extends keyof MachineRow<E>> {
   to: StateOf<E>;
   /** Which rows; the engine adds the machine's edge condition to it. */
@@ -105,8 +137,10 @@ export interface TransitionArgs<E extends MachineEntity, K extends keyof Machine
   actor: KernelActor;
   /** The subsystem making the move, as `kernel_transitions.source` records it. */
   source: string;
-  /** The implementation of each guard the reached edges name. */
+  /** The implementation of each guard the reached edges name, but the checklist's. */
   guards?: Readonly<Record<string, Guard<E>>>;
+  /** Required where a reached edge names a checklist; answers sent to one that names none refuse. */
+  checklist?: MoveChecklist<E>;
   /** Runs after the guards pass and before the status is written, in the same transaction. */
   beforeWrite?: (tx: Tx, rows: readonly PriorRow<E>[]) => Promise<void>;
   /** Runs after the status and its record are written, in the same transaction. */
@@ -144,9 +178,122 @@ export async function transition<
   machine: M,
   args: TransitionArgs<M['entity'], K>,
 ): Promise<TransitionResult<Pick<MachineRow<M['entity']>, K | 'id'>>> {
-  return exec.transaction((tx) =>
+  const written = await exec.transaction((tx) =>
     writeTransition(tx, machine as unknown as MachineOf<M['entity']>, args),
   );
+  await recordRefusedMoves(machine as unknown as MachineOf<M['entity']>, args, written.refusedMoves);
+  return written.result;
+}
+
+/** A move refused along an edge naming a checklist, with every refusal it answered. */
+interface RefusedMove {
+  entityId: string;
+  from: string;
+  checklist: ChecklistId;
+  refusals: Refusal[];
+}
+
+/**
+ * Written on a connection of its own, after the move's transaction: a caller that throws the
+ * refusal rolls its own transaction back, and the record of the refused move must outlive that.
+ * The table has no foreign key, so the row lock the caller may still hold does not wait on it.
+ */
+async function recordRefusedMoves<E extends MachineEntity>(
+  machine: MachineOf<E>,
+  args: Pick<TransitionArgs<E, never>, 'to' | 'actor' | 'source'>,
+  moves: readonly RefusedMove[],
+): Promise<void> {
+  if (moves.length === 0) return;
+  const credential = credentialOf(args.actor);
+  await db.insert(kernelRefusedMoves).values(
+    moves.map((m) => ({
+      entity: machine.entity,
+      entityId: m.entityId,
+      fromStatus: m.from,
+      toStatus: args.to,
+      machineVersion: machine.version,
+      checklist: m.checklist,
+      checklistVersion: CHECKLISTS[m.checklist].version,
+      refusals: m.refusals,
+      actorType: args.actor.type,
+      actorAgency: agencyOf(args.actor),
+      actorId: args.actor.id ?? null,
+      actorTokenId: credential.tokenId,
+      actorOnBehalfOf: credential.onBehalfOf,
+      source: args.source,
+    })),
+  );
+}
+
+type ChecklistJudgement = { evaluation: ChecklistEvaluation } | { refusals: Refusal[] };
+
+async function judgeChecklist<E extends MachineEntity>(
+  tx: Tx,
+  machine: MachineOf<E>,
+  edge: MachineEdge<StateOf<E>>,
+  row: PriorRow<E>,
+  args: TransitionArgs<E, never>,
+): Promise<ChecklistJudgement> {
+  const id = edge.checklist;
+  if (id === undefined || !isChecklistId(id)) {
+    throw new Error(
+      `transition: ${machine.entity} \`${edge.from}\` → \`${edge.to}\` names the checklist guard, and no registered checklist`,
+    );
+  }
+  if (!args.checklist) {
+    throw new Error(
+      `transition: ${machine.entity} \`${edge.from}\` → \`${edge.to}\` asks checklist \`${id}\`, and ${args.source} supplied no reader of the item's record`,
+    );
+  }
+  const checklist = CHECKLISTS[id];
+  const parsed = parseAnswers(checklist, args.checklist.answers);
+  if (!parsed.ok) return { refusals: parsed.refusals };
+  const record = await args.checklist.record({ tx, row, checklist: id });
+  const evaluation = evaluateChecklist(checklist, { given: parsed.answers, record });
+  if (!evaluation.complete) return { refusals: checklistRefusals(evaluation) };
+  return { evaluation };
+}
+
+const carriesAnswers = (answers: unknown): boolean =>
+  answers !== undefined &&
+  answers !== null &&
+  (typeof answers !== 'object' || Object.keys(answers).length > 0);
+
+/** Every guard the edge names, in order, stopping at the first that refuses. */
+async function judgeRow<E extends MachineEntity>(
+  tx: Tx,
+  machine: MachineOf<E>,
+  edge: MachineEdge<StateOf<E>>,
+  row: PriorRow<E>,
+  args: TransitionArgs<E, never>,
+  judged: Map<string, ChecklistEvaluation>,
+): Promise<Refusal[]> {
+  if (edge.checklist === undefined && carriesAnswers(args.checklist?.answers)) {
+    return [
+      {
+        code: 'CHECKLIST_ANSWER_INVALID',
+        path: '/answers',
+        detail: `The move ${machine.entity} \`${row.status}\` → \`${args.to}\` asks no checklist, so it takes no answers. Send the move without them.`,
+      },
+    ];
+  }
+  for (const name of edge.guards) {
+    if (name === CHECKLIST_GUARD) {
+      const judgement = await judgeChecklist(tx, machine, edge, row, args);
+      if ('refusals' in judgement) return judgement.refusals;
+      judged.set(row.id, judgement.evaluation);
+      continue;
+    }
+    const guard = args.guards?.[name];
+    if (!guard) {
+      throw new Error(
+        `transition: ${machine.entity} \`${row.status}\` → \`${args.to}\` names guard \`${name}\`, and ${args.source} supplied no implementation of it`,
+      );
+    }
+    const refused = await guard({ tx, row, to: args.to, edge });
+    if (refused) return [refused];
+  }
+  return [];
 }
 
 function startingStates<E extends MachineEntity>(
@@ -194,11 +341,20 @@ function projectionOf(
   return projection;
 }
 
+interface Written<R> {
+  result: TransitionResult<R>;
+  refusedMoves: RefusedMove[];
+}
+
 async function writeTransition<E extends MachineEntity, K extends keyof MachineRow<E>>(
   tx: Tx,
   machine: MachineOf<E>,
   args: TransitionArgs<E, K>,
-): Promise<TransitionResult<Pick<MachineRow<E>, K | 'id'>>> {
+): Promise<Written<Pick<MachineRow<E>, K | 'id'>>> {
+  const done = (result: TransitionResult<Pick<MachineRow<E>, K | 'id'>>, refusedMoves: RefusedMove[] = []) => ({
+    result,
+    refusedMoves,
+  });
   const recovery = args.recovery === true;
   const from = startingStates(machine, args as TransitionArgs<E, never>);
   const { table, idKey, statusKey } = machineTable(machine.entity as E);
@@ -209,7 +365,7 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   const expected = args.expect;
   const shape = machine as unknown as StatusMachine<string, StateOf<E>>;
   if (expected !== undefined && from.length === 0) {
-    return { rows: [], refusals: [notAnEdgeRefusal(shape, expected, args.to)] };
+    return done({ rows: [], refusals: [notAnEdgeRefusal(shape, expected, args.to)] });
   }
   const prior = (await tx
     .select({ id: idColumn, status: statusColumn })
@@ -220,41 +376,36 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
         : args.where,
     )
     .for('update')) as PriorRow<E>[];
-  if (prior.length === 0) return { rows: [], refusals: [] };
+  if (prior.length === 0) return done({ rows: [], refusals: [] });
   if (expected !== undefined) {
     const stale = prior.filter((r) => r.status !== expected);
     if (stale.length > 0) {
-      return {
+      return done({
         rows: [],
         refusals: stale.map((r) =>
           staleTransitionRefusal(shape, r.id, expected, r.status, args.to),
         ),
-      };
+      });
     }
   }
 
   const refusals: Refusal[] = [];
+  const refusedMoves: RefusedMove[] = [];
+  const judged = new Map<string, ChecklistEvaluation>();
   for (const row of prior) {
     const edge = edgeBetween<StateOf<E>>(machine, row.status, args.to, recovery);
     if (!edge)
       throw new Error(
         `transition: ${machine.entity} \`${row.status}\` has no edge to \`${args.to}\``,
       );
-    for (const name of edge.guards) {
-      const guard = args.guards?.[name];
-      if (!guard) {
-        throw new Error(
-          `transition: ${machine.entity} \`${row.status}\` → \`${args.to}\` names guard \`${name}\`, and ${args.source} supplied no implementation of it`,
-        );
-      }
-      const refused = await guard({ tx, row, to: args.to, edge });
-      if (refused) {
-        refusals.push(refused);
-        break;
-      }
+    const refused = await judgeRow(tx, machine, edge, row, args as TransitionArgs<E, never>, judged);
+    if (refused.length === 0) continue;
+    refusals.push(...refused);
+    if (edge.checklist !== undefined && isChecklistId(edge.checklist)) {
+      refusedMoves.push({ entityId: row.id, from: row.status, checklist: edge.checklist, refusals: refused });
     }
   }
-  if (refusals.length > 0) return { rows: [], refusals };
+  if (refusals.length > 0) return done({ rows: [], refusals }, refusedMoves);
 
   await args.beforeWrite?.(tx, prior);
 
@@ -277,7 +428,9 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
 
   const left = new Map(prior.map((r) => [r.id, r.status]));
   const credential = credentialOf(args.actor);
-  const records = rows.map((row) => ({
+  const records = rows.map((row) => {
+    const evaluation = judged.get(row.id);
+    return {
     entity: machine.entity,
     entityId: row.id,
     fromStatus: left.get(row.id) ?? null,
@@ -290,12 +443,16 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
     actorTokenId: credential.tokenId,
     actorOnBehalfOf: credential.onBehalfOf,
     source: args.source,
-  }));
+    checklist: evaluation?.checklist ?? null,
+    checklistVersion: evaluation?.version ?? null,
+    checklistAnswers: evaluation ? [...evaluation.answers] : null,
+  };
+  });
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 
   await args.afterWrite?.(tx, rows);
   await emitTransitionEvents(tx, machine, records, args.actor);
-  return { rows, refusals: [] };
+  return done({ rows, refusals: [] });
 }
 
 function outboxActorOf(actor: KernelActor): OutboxActor {

@@ -481,6 +481,15 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
         return refusalOf(edgeFault({ from: input.row.status, to: input.to, leftStatus: left }));
       }
       for (const name of entryGuardsOf(input.to)) {
+        if (name === 'checklist') {
+          // the entry asks a checklist, which only its own edge runs: a park with no recorded left
+          // status cannot enter it on the park's edge
+          return refusalOf({
+            code: 'ILLEGAL_TRANSITION',
+            detail: `this park recorded no status it left, and ${quote(input.to)} is entered only through its checklist, from \`draft\`. Move it to a status the park can return to, or drop it.`,
+            details: { from: input.row.status, to: input.to, leftStatus: null },
+          });
+        }
         const refused = await guards[name as IssueGuard](input);
         if (refused) return refused;
       }

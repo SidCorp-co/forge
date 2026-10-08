@@ -96,7 +96,13 @@ export const issuesApi = {
   transition: (
     id: string,
     toStatus: IssueStatus,
-    opts?: { reason?: string; waitingKind?: WaitingCause; voidQuestions?: string },
+    opts?: {
+      reason?: string;
+      waitingKind?: WaitingCause;
+      voidQuestions?: string;
+      /** Answers to the checklist the move's edge names (REQ-34 BC-3). */
+      answers?: Record<string, string>;
+    },
   ) =>
     apiClient<IssueDetail>(`/issues/${id}/transition`, {
       method: "POST",
@@ -105,6 +111,7 @@ export const issuesApi = {
         ...(opts?.reason ? { reason: opts.reason } : {}),
         ...(opts?.waitingKind ? { waitingKind: opts.waitingKind } : {}),
         ...(opts?.voidQuestions !== undefined ? { voidQuestions: opts.voidQuestions } : {}),
+        ...(opts?.answers && Object.keys(opts.answers).length > 0 ? { answers: opts.answers } : {}),
       }),
     }),
 

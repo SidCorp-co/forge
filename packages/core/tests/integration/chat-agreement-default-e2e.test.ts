@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type AgreementWorld, openAgreementWorld } from '../helpers/chat-agreement-world.js';
 import { closeWorld, type Doc, type Reply, requester } from '../helpers/ecosystem-world.js';
-import { createTestUser, rows } from '../helpers/factories.js';
+import { completeIssueReadyRecord, createTestUser, rows } from '../helpers/factories.js';
 
 let w: AgreementWorld;
 const codeOf = (r: Reply) => r.json?.error?.refusals?.[0]?.code ?? r.json?.code;
@@ -45,6 +45,8 @@ beforeAll(async () => {
   });
   expect(issue.status, JSON.stringify(issue.json)).toBe(201);
   issueId = String(issue.json.id);
+  // its issue-ready checklist complete, so the pressed move opens it
+  await completeIssueReadyRecord(w.projectId, w.owner, issueId, 900);
 }, 120_000);
 
 afterAll(async () => {

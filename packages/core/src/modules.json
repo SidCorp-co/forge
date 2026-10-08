@@ -634,7 +634,7 @@
     "lifecycle": {
       "kind": "kernel",
       "context": "work",
-      "owns": ["kernelTransitions", "unauditedTransitions"],
+      "owns": ["kernelTransitions", "kernelRefusedMoves", "unauditedTransitions"],
       "serves": [
         "issue-lifecycle",
         "requirement-lifecycle#agreed",

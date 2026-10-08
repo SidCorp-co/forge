@@ -6,10 +6,12 @@
 
 import { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
 import { type ReactNode, useState } from "react";
+import type { Refusal } from "@/lib/api/refusals";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
+import { ChecklistDialog, type ChecklistPrompt, checklistPromptOf } from "./checklist-dialog";
 import {
   type DialogMode,
   type ReasonStatus,
@@ -61,6 +63,33 @@ export function useGuardedTransition(): GuardedTransition {
     carried?: { reason: string; waitingKind?: WaitingCause };
   } | null>(null);
 
+  /** A move its checklist refused, held open so the person answers and moves it again. */
+  const [checklist, setChecklist] = useState<
+    (ChecklistPrompt & { id: string; toStatus: IssueStatus; successMessage: string; onSuccess?: () => void }) | null
+  >(null);
+
+  const askChecklist =
+    (id: string, toStatus: IssueStatus, successMessage: string, onSuccess?: () => void) => (refusals: Refusal[]) => {
+      const prompt = checklistPromptOf(refusals);
+      if (prompt) setChecklist({ ...prompt, id, toStatus, successMessage, onSuccess });
+      else toast({ title: t("issues.toast.updateFailed"), description: refusals.map((r) => r.detail).join(" "), tone: "error" });
+    };
+
+  const answerChecklist = (answers: Record<string, string>) => {
+    if (!checklist) return;
+    const { id, toStatus, successMessage, onSuccess } = checklist;
+    transition.mutate(
+      { id, toStatus, answers },
+      {
+        onSuccess: succeed(successMessage, () => {
+          setChecklist(null);
+          onSuccess?.();
+        }),
+        onChecklist: askChecklist(id, toStatus, successMessage, onSuccess),
+      },
+    );
+  };
+
   const succeed = (title: string, extra?: () => void) => () => {
     toast({ title, tone: "success" });
     extra?.();
@@ -91,6 +120,7 @@ export function useGuardedTransition(): GuardedTransition {
             onSuccess: opts?.onSuccess,
             openQuestions: ids.length,
           }),
+        onChecklist: askChecklist(id, toStatus, successMessage, opts?.onSuccess),
       },
     );
   };
@@ -146,6 +176,13 @@ export function useGuardedTransition(): GuardedTransition {
     requestParkLeave,
     isPending: transition.isPending,
     dialog: (
+      <>
+      <ChecklistDialog
+        prompt={checklist}
+        loading={transition.isPending}
+        onConfirm={answerChecklist}
+        onClose={() => setChecklist(null)}
+      />
       <TransitionReasonDialog
         status={prompt?.status ?? null}
         openQuestions={prompt?.openQuestions}
@@ -154,6 +191,7 @@ export function useGuardedTransition(): GuardedTransition {
         onConfirm={onConfirm}
         onClose={() => setPrompt(null)}
       />
+      </>
     ),
   };
 }

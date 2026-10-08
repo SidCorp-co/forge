@@ -1,7 +1,9 @@
-// The issue machine: workflow `issue-lifecycle`, approved revision 11. A status answers only "who is
+// The issue machine: workflow `issue-lifecycle`, approved revision 12. A status answers only "who is
 // it waiting on"; a run's step is progress inside `in_progress`, kept in `issue_work_state`. A
-// landing moves no status: it records the merge, and an issue closes only through a release.
+// landing moves no status: it records the merge, and an issue closes only through a release. A draft
+// opens through the issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`).
 
+import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 import { defineMachine, type MachineEdge } from "./state-machine.js";
 
@@ -60,12 +62,15 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"NEEDS_NOT_APPLICABLE",
 	"ISSUE_ARCHIVED",
 	"OPEN_QUESTIONS",
+	"CHECKLIST_INCOMPLETE",
+	"CHECKLIST_ANSWER_INVALID",
 ] as const;
 export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
 export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	NO_HOLDER: 409,
 	NOT_THE_HOLDER: 403,
 	STALE_TRANSITION: 409,
+	CHECKLIST_ANSWER_INVALID: 400,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
 type IssueStatusLegacyRefusal = Refusal & {
@@ -178,7 +183,12 @@ export const ISSUE_ADMIT_PERMISSION = "issues.admit";
 
 const MOVE = "project.write";
 
-type IssueEdge = MachineEdge<IssueStatus> & { readonly guards: readonly IssueGuard[] };
+/** The guard the kernel runs itself, on an edge that names a checklist; no caller implements it. */
+const CHECKLIST_GUARD = "checklist";
+
+type IssueEdge = MachineEdge<IssueStatus> & {
+	readonly guards: readonly (IssueGuard | typeof CHECKLIST_GUARD)[];
+};
 
 const sideExits = (from: IssueStatus): IssueEdge[] => [
 	{ from, to: "needs_info", act: "question.asked", permission: MOVE, guards: [] },
@@ -201,14 +211,14 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04"],
-	design: { flow: "issue-lifecycle", revision: 11 },
+	shapes: ["853ac6ba", "23991d04", "5a3cd8b3"],
+	design: { flow: "issue-lifecycle", revision: 12 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
 	terminal: ISSUE_TERMINAL_STATUSES,
 	reasonRequired: REASON_REQUIRED_STATUSES,
 	edges: [
-		{ from: "draft", to: "open", act: "admitted", permission: ISSUE_ADMIT_PERMISSION, guards: ["admit"] },
+		{ from: "draft", to: "open", act: "admitted", permission: ISSUE_ADMIT_PERMISSION, guards: ["admit", CHECKLIST_GUARD], checklist: ISSUE_READY_CHECKLIST.id },
 		{ from: "draft", to: "dropped", act: "not.work", permission: MOVE, guards: [] },
 
 		{ from: "open", to: "in_progress", act: "run.claimed", permission: MOVE, guards: ["holder"] },

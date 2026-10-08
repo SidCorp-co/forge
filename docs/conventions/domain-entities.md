@@ -343,6 +343,18 @@ written:
   storefront draft) is read before the move and handed in
   (`packages/core/src/issues/transition-guards.ts:readIssueMoveFacts`). A guard never opens a
   second connection or calls the network while the lock is held.
+- **A gated edge names its checklist, and the kernel judges it.** An edge whose `guards` hold
+  `checklist` names a checklist from `packages/contracts/src/checklist-registry.ts:CHECKLISTS`
+  (`defineMachine` refuses the one without the other, and a checklist that gates another edge). One
+  definition gives the move's `answers` schema, the agent's input and the web form
+  (`packages/contracts/src/checklists.ts:answersSchemaOf`, `checklistInputOf`, `checklistFormOf`);
+  the kernel parses the mover's answers, reads the item's own record through the caller's reader
+  under the lock, and refuses each blocking gap `CHECKLIST_INCOMPLETE` on `/answers/<question>`. A
+  non-blocking gap takes its recommended answer, recorded as assumed. A checklist is versioned by its
+  own `shapes`, like a machine. The move's `kernel_transitions` row records `checklist`,
+  `checklist_version` and `checklist_answers` (null on a move recorded before, which reads
+  `no_checklist` and never counts as passed); a refused one is a `kernel_refused_moves` row,
+  written on a connection of its own so the caller's rollback keeps it.
 - **A lost compare-and-set is a 409.** A caller that read a status moves with `expect: <status>`;
   a row that left it first is refused `STALE_TRANSITION` with `expected` and `actual`
   (`packages/contracts/src/state-machine.ts:staleTransitionRefusal`), and a read status with no edge

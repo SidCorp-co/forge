@@ -13,6 +13,7 @@ import { withKernelMarker } from '../../src/db/kernel-marker.js';
 import { type ApiResponse, api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
+  createReadyDraftIssue,
   createTestProject,
   createTestUser,
   rows,
@@ -68,8 +69,9 @@ function refusalCodes(res: ApiResponse): string[] {
 }
 
 describe('a move along an edge', () => {
-  it('admits a draft, and audits the move with its actor in the same write', async () => {
-    const id = await issueAt('draft');
+  it('admits a draft its issue-ready checklist passes, and audits the move with its actor in the same write', async () => {
+    seq += 1;
+    const { id } = await createReadyDraftIssue(projectId, ownerId, seq);
 
     const res = await move(id, { toStatus: 'open' });
 

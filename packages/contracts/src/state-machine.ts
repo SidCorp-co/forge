@@ -2,11 +2,15 @@
 // between them. Core's one kernel transition (`packages/core/src/lifecycle/transition.ts:transition`)
 // writes a status only along an edge declared here; the column's CHECK holds the same `states`.
 
+import { CHECKLISTS, isChecklistId } from "./checklist-registry.js";
+import { fingerprint } from "./fingerprint.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
 /** One move. `act` is the edge's name in its design; `permission` is what `can()` asks of the
  *  actor, null where only the kernel itself moves it; `guards` name the checks core runs on the row
- *  before the write, in order. A `recovery` edge is taken only by the explicit recovery move. */
+ *  before the write, in order. A `recovery` edge is taken only by the explicit recovery move. An
+ *  edge naming the `checklist` guard names the checklist the kernel runs there
+ *  (`checklist-registry.ts:CHECKLISTS`). */
 export interface MachineEdge<S extends string = string> {
 	readonly from: S;
 	readonly to: S;
@@ -14,6 +18,7 @@ export interface MachineEdge<S extends string = string> {
 	readonly permission: string | null;
 	readonly guards: readonly string[];
 	readonly recovery?: true;
+	readonly checklist?: string;
 }
 
 export interface StatusMachine<
@@ -45,21 +50,49 @@ type MachineDeclaration<E extends string, S extends string> = Omit<
 	"version"
 >;
 
-/** FNV-1a over the machine's states and edges, as 8 hex digits: what its `shapes` record. */
+/** The fingerprint of the machine's states and edges: what its `shapes` record. */
 function machineShape(machine: MachineDeclaration<string, string>): string {
-	const canonical = JSON.stringify([
-		machine.states,
-		machine.initial,
-		machine.terminal,
-		machine.reasonRequired,
-		machine.edges.map((e) => [e.from, e.to, e.act, e.permission, e.guards, e.recovery === true]),
-	]);
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < canonical.length; i++) {
-		hash ^= canonical.charCodeAt(i);
-		hash = Math.imul(hash, 0x01000193) >>> 0;
+	return fingerprint(
+		JSON.stringify([
+			machine.states,
+			machine.initial,
+			machine.terminal,
+			machine.reasonRequired,
+			machine.edges.map((e) => {
+				const edge = [e.from, e.to, e.act, e.permission, e.guards, e.recovery === true];
+				return e.checklist === undefined ? edge : [...edge, e.checklist];
+			}),
+		]),
+	);
+}
+
+/** The `checklist` guard and the checklist an edge names go together, and the checklist gates it. */
+function checklistFaults(machine: MachineDeclaration<string, string>): string[] {
+	const faults: string[] = [];
+	for (const e of machine.edges) {
+		const move = `\`${e.from}\` → \`${e.to}\``;
+		const guarded = e.guards.includes("checklist");
+		if (guarded !== (e.checklist !== undefined)) {
+			faults.push(
+				guarded
+					? `${move} names the checklist guard and no checklist`
+					: `${move} names checklist \`${e.checklist}\` without the checklist guard`,
+			);
+			continue;
+		}
+		if (e.checklist === undefined) continue;
+		if (!isChecklistId(e.checklist)) {
+			faults.push(`${move} names checklist \`${e.checklist}\`, which is not registered`);
+			continue;
+		}
+		const gates = CHECKLISTS[e.checklist].gates;
+		if (gates.machine !== machine.entity || !gates.from.includes(e.from) || gates.to !== e.to) {
+			faults.push(
+				`${move} names checklist \`${e.checklist}\`, which gates ${gates.machine} ${gates.from.map((f) => `\`${f}\``).join(", ")} → \`${gates.to}\``,
+			);
+		}
 	}
-	return hash.toString(16).padStart(8, "0");
+	return faults;
 }
 
 /**
@@ -81,6 +114,10 @@ export function defineMachine<const E extends string, const S extends string>(
 		throw new Error(
 			`machine \`${machine.entity}\` names ${[...new Set(unknown)].join(", ")}, which are not among its states (${machine.states.join(", ")})`,
 		);
+	}
+	const faults = checklistFaults(machine);
+	if (faults.length > 0) {
+		throw new Error(`machine \`${machine.entity}\`: ${faults.join("; ")}`);
 	}
 	const shape = machineShape(machine);
 	if (machine.shapes.at(-1) !== shape) {

@@ -4,6 +4,7 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
+import { CHECKLIST_REFUSAL_CODES } from '@forge/contracts/checklists';
 import type { staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
@@ -14,6 +15,7 @@ import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
+import { issueChecklistRecord } from './checklist-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
@@ -30,6 +32,7 @@ import {
 import { readWorkState, setLeftStatus, setWorkStep } from './work-state.js';
 
 const TERMINAL_FOR_DISPATCH = new Set<IssueStatus>(ISSUE_DISPATCH_TERMINAL_STATUSES);
+const CHECKLIST_CODES = new Set<string>(CHECKLIST_REFUSAL_CODES);
 
 const isStale = (r: Refusal): r is ReturnType<typeof staleTransitionRefusal> =>
   r.code === 'STALE_TRANSITION';
@@ -96,6 +99,9 @@ interface ApplyStatusTransitionOptions {
   requireNoOpenQuestions?: boolean;
   /** What a `needs_info` park is stopped on. REQUIRED entering `needs_info`. */
   waitingKind?: WaitingKind | undefined;
+  /** The mover's answers to the checklist the move's edge names, as the door received them; the
+   *  kernel parses them and refuses a move that names none for answers it was sent. */
+  answers?: unknown;
 }
 
 export interface StatusTransitionResult {
@@ -289,6 +295,10 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       reason: options.transitionReason?.trim() || options.reason || null,
       actor: kernelActorFor(actor),
       source: 'issues',
+      checklist: {
+        answers: options.answers,
+        record: ({ tx, row, checklist }) => issueChecklistRecord(tx, checklist, row.id),
+      },
       guards: issueGuards({
         issue: { id: issue.id, projectId: issue.projectId },
         leftStatus: input.leftStatus,
@@ -360,6 +370,8 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       actual: lead.actual,
     });
   }
+  // a checklist answers one refusal per gap, each on its question's path: all of them reach the door
+  if (lead && CHECKLIST_CODES.has(lead.code)) throw new RefusalError(moved.refusals, lead.code);
   const refused = lead as
     | (Refusal & { code: GuardCode; details?: Record<string, unknown> })
     | undefined;

@@ -52,7 +52,14 @@ async function agreedWithDrafts(drafts: number): Promise<{ req: string; issues: 
       201,
     );
     expect(issue.status).toBe('draft');
+    // planned against the agreed head, its criterion traced to BC-1: the issue-ready checklist's record
     await ok(api(owner, 'POST', at(`/requirements/${req}/issues`), { issue: issue.id }));
+    await ok(
+      api(owner, 'PATCH', `/api/issues/${issue.id as string}`, {
+        plan: 'Take the card at checkout.',
+        acceptanceCriteria: `1. (${req} BC-1) A buyer pays by card at checkout.`,
+      }),
+    );
     issues.push(issue);
   }
   return { req, issues };

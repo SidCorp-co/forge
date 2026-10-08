@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
-import { refusalFact } from "@/lib/api/refusals";
+import { type Refusal, refusalFact, refusalsOf } from "@/lib/api/refusals";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, releaseBatchApi } from "./api";
@@ -226,7 +226,15 @@ type TransitionArgs = {
   reason?: string;
   waitingKind?: WaitingCause;
   voidQuestions?: string;
+  answers?: Record<string, string>;
 };
+
+/** The refusals a move answered because its checklist is not complete, or null for any other failure. */
+function checklistRefusalsOf(err: unknown): Refusal[] | null {
+  if (!(err instanceof ApiError)) return null;
+  if (err.code !== "CHECKLIST_INCOMPLETE" && err.code !== "CHECKLIST_ANSWER_INVALID") return null;
+  return refusalsOf(err);
+}
 
 /**
  * ISS-1257 — the ids a terminal move was refused over, when it was refused because
@@ -248,6 +256,7 @@ export function useTransitionIssue() {
         reason: args.reason,
         waitingKind: args.waitingKind,
         voidQuestions: args.voidQuestions,
+        answers: args.answers,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["issues"] });
@@ -257,7 +266,11 @@ export function useTransitionIssue() {
     ...mut,
     mutate: (
       args: TransitionArgs,
-      options?: { onSuccess?: () => void; onOpenQuestions?: (ids: string[]) => void },
+      options?: {
+        onSuccess?: () => void;
+        onOpenQuestions?: (ids: string[]) => void;
+        onChecklist?: (refusals: Refusal[]) => void;
+      },
     ) =>
       mut.mutate(args, {
         onSuccess: () => {
@@ -270,6 +283,11 @@ export function useTransitionIssue() {
           const ids = openQuestionIdsOf(err);
           if (ids && options?.onOpenQuestions) {
             options.onOpenQuestions(ids);
+            return;
+          }
+          const gaps = checklistRefusalsOf(err);
+          if (gaps && options?.onChecklist) {
+            options.onChecklist(gaps);
             return;
           }
           toast({ title: t("issues.toast.updateFailed"), description: formatApiError(err), tone: "error" });

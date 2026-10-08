@@ -251,3 +251,59 @@ export async function createTestFeedback(
   });
   return `FB-${seq}`;
 }
+
+/**
+ * Completes what issue `issueId`'s own record answers to the issue-ready checklist (Issue lifecycle
+ * r12 ready-check): a new requirement `REQ-<reqSeq>` agreed at revision 1 with BC-1, the issue
+ * planned against it, and one criterion of the issue traced to BC-1.
+ */
+export async function completeIssueReadyRecord(
+  projectId: string,
+  createdBy: string,
+  issueId: string,
+  reqSeq: number,
+): Promise<{ requirementId: string }> {
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  const requirementId = randomUUID();
+  await withKernelMarker(db, async (tx) => {
+    await tx.execute(sql`
+      INSERT INTO requirements (id, project_id, req_seq, title, status)
+      VALUES (${requirementId}, ${projectId}, ${reqSeq}, ${`req ${reqSeq}`}, 'draft')
+    `);
+    await tx.execute(sql`
+      INSERT INTO requirement_revisions
+        (requirement_id, revision, state, spec, reason, author_id, author_agency, decided_by, decided_at)
+      VALUES (${requirementId}, 1, 'current', '{}'::jsonb, 'first cut', ${createdBy}, 'human', ${createdBy}, now())
+    `);
+    await tx.execute(
+      sql`UPDATE requirements SET current_revision = 1, status = 'agreed' WHERE id = ${requirementId}`,
+    );
+  });
+  const [bc] = await rows<{ id: string }>(sql`
+    INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
+    VALUES (${requirementId}, 'BC-1', 'it holds', 1) RETURNING id
+  `);
+  await db.execute(sql`
+    UPDATE issues SET requirement_id = ${requirementId}, planned_revision = 1 WHERE id = ${issueId}
+  `);
+  await db.execute(sql`
+    INSERT INTO issue_criteria (issue_id, n, statement, position, requirement_criterion_id)
+    VALUES (${issueId}, 1, 'it holds here', 0, ${bc?.id ?? null})
+  `);
+  return { requirementId };
+}
+
+/** Issue `ISS-<seq>` at draft, its issue-ready record completed against `REQ-<reqSeq>`. */
+export async function createReadyDraftIssue(
+  projectId: string,
+  createdBy: string,
+  seq: number,
+  reqSeq = seq,
+): Promise<{ id: string; requirementId: string }> {
+  const id = randomUUID();
+  await db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+    VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'draft', ${createdBy})
+  `);
+  return { id, ...(await completeIssueReadyRecord(projectId, createdBy, id, reqSeq)) };
+}

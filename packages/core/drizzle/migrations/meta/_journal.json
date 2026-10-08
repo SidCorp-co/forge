@@ -3018,6 +3018,13 @@
       "when": 1823644800000,
       "tag": "0471_a_script_reads_forge_by_get_and_its_run_records_the_reads",
       "breakpoints": true
+    },
+    {
+      "idx": 472,
+      "version": "7",
+      "when": 1823731200000,
+      "tag": "0472_a_gated_move_records_its_checklist_and_its_refusals",
+      "breakpoints": true
     }
   ]
 }
