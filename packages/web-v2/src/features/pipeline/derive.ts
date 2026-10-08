@@ -13,6 +13,7 @@ import { gateReasonLine } from "@/features/runners/types";
 import { formatElapsed } from "@/lib/utils/format";
 import {
   LABEL_WORK_STATE,
+  OPEN_WORK_STATES,
   WORK_STATE_LABELS,
   WORK_STATES,
   type WorkState,
@@ -152,6 +153,32 @@ export function boardLeftOut(work: Partial<Record<WorkState, number>> | undefine
     state,
     label: WORK_STATE_LABELS[state],
     count: work?.[state],
+  }));
+}
+
+/** One state the board draws: the search's count of it, and the cards its columns hold. */
+export interface StateFigure {
+  state: WorkState;
+  label: string;
+  total: number;
+  drawn: number;
+}
+
+/** A column head counts cards and a state can span columns, so the count the search gives meets the cards drawn here. */
+export function boardStateFigures(
+  groups: readonly LabelGroup[],
+  byWorkState: Readonly<Record<WorkState, number>>,
+): StateFigure[] {
+  const drawn = new Map<WorkState, number>();
+  for (const g of groups) {
+    const state = LABEL_WORK_STATE[g.label];
+    drawn.set(state, (drawn.get(state) ?? 0) + g.issues.length);
+  }
+  return OPEN_WORK_STATES.map((state) => ({
+    state,
+    label: WORK_STATE_LABELS[state],
+    total: byWorkState[state],
+    drawn: drawn.get(state) ?? 0,
   }));
 }
 

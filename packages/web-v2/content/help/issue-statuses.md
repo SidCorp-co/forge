@@ -32,16 +32,23 @@ The **Source** filter beside the tabs narrows the list, and every count on the
 tabs, to issues a person filed or issues a detector filed. A link that names a
 status narrows them the same way, and the Issues list says so above the list with
 a way to clear it; choosing another tab keeps it, so a tab's count is the list it opens.
+A link may name several statuses, and every one of them narrows the list. A status,
+a tab or a source the page does not have is named above the list, never dropped
+without a word.
 
 The **Board** tab draws the four open states, one group of columns for each, in
 the order of the table above. It leaves out Draft and Finished, and says so above
-its columns with the count of each, so the columns it draws add up to the open
-work and nothing it holds is missing without being named.
+its columns with the count of each. The board draws one page of the most recently
+updated issues, so a project holding more than a page says above the columns, for each
+state, how many of that state's issues the columns hold and how many are left, with a
+link to them on the Issues list. Nothing the board holds is missing without being named.
 
 On the project dashboard, **Needs you** counts the things waiting on a person —
-failed jobs, reviews, questions and issues held by a dependency — not issues in a
-state, and the line under its figure says how many of each. So it can be larger or
-smaller than **Blocked on a person**, which counts issues.
+failed jobs, reviews, issues holding an open question and issues parked at Needs
+info or On hold with no question — not issues in a state, and the line under its
+figure says how many of each. An issue is counted once, and a question left on a
+draft or finished issue is not counted. So it can be larger or smaller than
+**Blocked on a person**, which counts issues.
 
 ## The short version
 

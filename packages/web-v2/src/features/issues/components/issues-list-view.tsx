@@ -50,7 +50,7 @@ import {
   groupRows,
   priorityLabel,
   STATUS_LABELS,
-  statusesFromParam,
+  statusFilterFromParams,
 } from "../derive";
 import {
   useIssues,
@@ -157,6 +157,8 @@ export function IssuesListView({
   const origin = (VALID_ORIGINS as string[]).includes(rawOrigin)
     ? (rawOrigin as IssueOrigin)
     : undefined;
+  // A source this select does not offer is dropped from the search, and the page says so.
+  const unknownOrigin = rawOrigin !== "" && origin === undefined ? rawOrigin : null;
   const rawPriority = sp.get("priority") ?? "";
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
     ? (rawPriority as IssuePriority)
@@ -164,7 +166,10 @@ export function IssuesListView({
   const createdBy = sp.get("createdBy") ?? "";
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
-  const statusParam = useMemo(() => statusesFromParam(sp.get("status")), [sp]);
+  const { statuses: statusParam, unknown: unknownStatuses } = useMemo(
+    () => statusFilterFromParams(sp.getAll("status")),
+    [sp],
+  );
   const rawGroupBy = decodeFilter<GroupBy>(sp, "groupBy", "none");
   const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
@@ -325,9 +330,8 @@ export function IssuesListView({
       { value: "dropped", label: "Dropped", count: dropped },
     ];
   }, [buckets]);
-  const finishedCut = FINISHED_CUTS.includes(sp.get("status") ?? "")
-    ? (sp.get("status") as string)
-    : "";
+  const finishedCut =
+    statusParam?.length === 1 && FINISHED_CUTS.includes(statusParam[0]) ? statusParam[0] : "";
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
   const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
@@ -591,6 +595,25 @@ export function IssuesListView({
         <p role="status" className="fg-body-sm mb-4 text-muted">
           This link names the filter <code className="font-mono">{unknownFilter}</code>, which the
           Issues strip no longer has, so every issue is shown.
+        </p>
+      )}
+
+      {unknownOrigin !== null && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-origin-line">
+          This link names the source <code className="font-mono">{unknownOrigin}</code>, which the
+          Source filter does not offer, so issues from every source are shown.
+        </p>
+      )}
+
+      {unknownStatuses.length > 0 && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-status-line">
+          This link names {unknownStatuses.length === 1 ? "the status" : "the statuses"}{" "}
+          <code className="font-mono">{unknownStatuses.join(", ")}</code>, which{" "}
+          {unknownStatuses.length === 1 ? "is not an issue status" : "are not issue statuses"}, so{" "}
+          {statusParam === undefined
+            ? "no status filter is applied"
+            : "only the statuses named below are applied"}
+          .
         </p>
       )}
 

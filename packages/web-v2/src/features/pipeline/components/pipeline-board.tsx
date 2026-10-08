@@ -26,6 +26,7 @@ import { formatApiError } from "@/lib/api/error";
 import {
   boardColumns,
   boardLeftOut,
+  boardStateFigures,
   cardStatus,
   formatUsd,
   groupIssuesByLabel,
@@ -69,6 +70,11 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
   const groups = useMemo(() => groupIssuesByLabel(issuesQ.data?.items), [issuesQ.data]);
+  const figures = useMemo(
+    () =>
+      issuesQ.data ? boardStateFigures(groups, issuesQ.data.extra.buckets.byWorkState) : [],
+    [groups, issuesQ.data],
+  );
 
   // Keep the open drawer's issue snapshot in sync with the live list: editing
   // status/priority/assignee from the quick-action bar invalidates `['issues']`,
@@ -121,12 +127,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         </KanbanBoard>
       ) : (
         <>
-          <BoardLeftOut
-            leftOut={boardLeftOut(work)}
-            slug={slug}
-            drawn={issuesQ.data?.items.length ?? 0}
-            matching={issuesQ.data?.totalCount ?? 0}
-          />
+          <BoardLeftOut leftOut={boardLeftOut(work)} figures={figures} slug={slug} />
         <KanbanBoard>
           {groups.map((group) => (
             <KanbanColumn

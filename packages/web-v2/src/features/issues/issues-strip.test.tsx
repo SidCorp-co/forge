@@ -156,6 +156,17 @@ describe("Findings is a Source filter, not a segment", () => {
     expect(capturedOpts?.origin).toBeUndefined();
   });
 
+  it("names a source the filter does not offer, as it names a segment the strip does not have", () => {
+    mountAt("?origin=bogus");
+    expect(screen.getByTestId("unknown-origin-line")).toHaveTextContent("bogus");
+    expect(screen.getByTestId("unknown-origin-line")).toHaveTextContent("every source");
+  });
+
+  it("says nothing for a source it offers", () => {
+    mountAt("?origin=detector");
+    expect(screen.queryByTestId("unknown-origin-line")).toBeNull();
+  });
+
   it("offers the source as a filter of its own", () => {
     mountAt("");
     expect(screen.getAllByLabelText("Source filter").length).toBeGreaterThan(0);
@@ -188,6 +199,27 @@ describe("a status filter in the link", () => {
   it("names every status it was given", () => {
     mountAt("?filter=finished&status=closed,dropped");
     expect(screen.getByTestId("status-filter-line")).toHaveTextContent("Closed, Dropped");
+  });
+
+  it("applies every value of a repeated status parameter and names each", () => {
+    mountAt("?status=open&status=closed");
+    expect(capturedOpts?.status).toEqual(["open", "closed"]);
+    expect(screen.getByTestId("status-filter-line")).toHaveTextContent("Open, Closed");
+  });
+
+  it("names a status the lifecycle does not have instead of dropping it", () => {
+    mountAt("?status=open&status=banana");
+    expect(capturedOpts?.status).toEqual(["open"]);
+    const line = screen.getByTestId("unknown-status-line");
+    expect(line).toHaveTextContent("banana");
+    expect(line).toHaveTextContent("only the statuses named below are applied");
+  });
+
+  it("says no status filter is applied when every word named is unknown", () => {
+    mountAt("?status=banana");
+    expect(capturedOpts?.status).toBeUndefined();
+    expect(screen.getByTestId("unknown-status-line")).toHaveTextContent("no status filter is applied");
+    expect(screen.queryByTestId("status-filter-line")).toBeNull();
   });
 
   it("clears the status and keeps the segment, so the counts widen back to the whole project", () => {

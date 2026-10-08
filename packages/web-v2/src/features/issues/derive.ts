@@ -304,24 +304,34 @@ export function filterCount(
 	return buckets.byWorkState[filter] ?? 0;
 }
 
+/** What a link's `?status=` parameters name: the statuses the lifecycle has, and the words it does not. */
+export interface StatusFilterParams {
+	statuses: IssueStatus[] | undefined;
+	unknown: string[];
+}
+
 /**
- * The statuses named by a `?status=` parameter, or undefined where it names
- * none the lifecycle has.
+ * Every `?status=` parameter of a link, repeated or comma-joined, read whole: each status the
+ * lifecycle has narrows the list, and each word it does not have is returned by name so the page
+ * can say it was not applied rather than drop it.
  */
-export function statusesFromParam(
-	raw: string | null | undefined,
-): IssueStatus[] | undefined {
-	if (!raw) return undefined;
+export function statusFilterFromParams(
+	values: readonly string[],
+): StatusFilterParams {
 	const known = new Set<string>(REGISTRY_ISSUE_STATUSES);
 	const seen = new Set<string>();
-	const out: IssueStatus[] = [];
-	for (const part of raw.split(",")) {
-		const s = part.trim();
-		if (!s || seen.has(s) || !known.has(s)) continue;
-		seen.add(s);
-		out.push(s as IssueStatus);
+	const statuses: IssueStatus[] = [];
+	const unknown: string[] = [];
+	for (const value of values) {
+		for (const part of value.split(",")) {
+			const s = part.trim();
+			if (!s || seen.has(s)) continue;
+			seen.add(s);
+			if (known.has(s)) statuses.push(s as IssueStatus);
+			else unknown.push(s);
+		}
 	}
-	return out.length > 0 ? out : undefined;
+	return { statuses: statuses.length > 0 ? statuses : undefined, unknown };
 }
 
 export interface IssueGroup {

@@ -1,3 +1,4 @@
+import { missingWorkStateKey, OPEN_WORK_STATES, type WorkState } from "@forge/contracts/work-state";
 import { apiClient, apiClientList } from "@/lib/api/client";
 import { BOARD_EXCLUDED_STATUSES } from "./types";
 import type {
@@ -28,11 +29,28 @@ export function requireHeld<P extends { items: PipelineIssueRow[] }>(page: P): P
   return page;
 }
 
+export interface BoardBuckets {
+  byWorkState: Record<WorkState, number>;
+}
+
+/** Refuses a page with no count for an open work state, by name: the board could not say what its page leaves undrawn. */
+export function requireBoardBuckets<P extends { extra?: { buckets?: { byWorkState?: unknown } } }>(
+  page: P,
+): P & { extra: { buckets: BoardBuckets } } {
+  const missing = missingWorkStateKey(page.extra?.buckets?.byWorkState, OPEN_WORK_STATES);
+  if (missing !== null) {
+    throw new Error(
+      `GET /projects/:id/issues/search: \`buckets.byWorkState\` has no count for the work state \`${missing}\`, so the board cannot say how many issues its page leaves undrawn. The server is older than this page and needs the release that counts work states.`,
+    );
+  }
+  return page as P & { extra: { buckets: BoardBuckets } };
+}
+
 function isCheckIn(value: unknown): boolean {
   return value === null || (typeof value === "string" && !Number.isNaN(Date.parse(value)));
 }
 
-/** Issues fetched for the kanban (one page is enough for a board view). */
+/** Issues fetched for the kanban: one page. */
 export const PIPELINE_ISSUES_PAGE_SIZE = 200;
 
 function analyticsParams(opts: AnalyticsOpts): string {
@@ -84,11 +102,14 @@ export const pipelineApi = {
       offset: "0",
       withAgentSessions: "true",
       withPipelineHealth: "1",
+      withBuckets: "true",
       sort: "updatedAt:desc",
     });
     for (const s of BOARD_EXCLUDED_STATUSES) params.append("statusNot", s);
-    return apiClientList<PipelineIssueRow>(`/projects/${projectId}/issues/search?${params}`).then(
-      requireHeld,
-    );
+    return apiClientList<PipelineIssueRow, { buckets?: BoardBuckets }>(
+      `/projects/${projectId}/issues/search?${params}`,
+    )
+      .then(requireHeld)
+      .then(requireBoardBuckets);
   },
 };

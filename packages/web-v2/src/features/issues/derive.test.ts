@@ -46,7 +46,7 @@ import {
 	runStatusChip,
 	statusToChip,
 	statusToTone,
-	statusesFromParam,
+	statusFilterFromParams,
 	transitionLabels,
 } from "./derive";
 import type { ParkReading } from "./derive";
@@ -1389,27 +1389,39 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 	});
 });
 
-describe("statusesFromParam", () => {
-	it("names exactly the statuses the parameter carries", () => {
-		expect(statusesFromParam("waiting,needs_info,on_hold")).toEqual([
-			"waiting",
-			"needs_info",
-			"on_hold",
-		]);
+describe("statusFilterFromParams", () => {
+	it("names exactly the statuses a comma-joined parameter carries", () => {
+		expect(statusFilterFromParams(["waiting,needs_info,on_hold"])).toEqual({
+			statuses: ["waiting", "needs_info", "on_hold"],
+			unknown: [],
+		});
 	});
 
-	it("drops a status the lifecycle does not have, keeping the rest", () => {
-		expect(statusesFromParam("open,banana,closed")).toEqual(["open", "closed"]);
+	it("reads a repeated parameter whole, so ?status=open&status=closed applies both", () => {
+		expect(statusFilterFromParams(["open", "closed"])).toEqual({
+			statuses: ["open", "closed"],
+			unknown: [],
+		});
 	});
 
-	it("returns undefined where the parameter names nothing valid, leaving the tab filter in charge", () => {
-		expect(statusesFromParam("banana")).toBeUndefined();
-		expect(statusesFromParam("")).toBeUndefined();
-		expect(statusesFromParam(null)).toBeUndefined();
+	it("returns a word the lifecycle does not have by name, keeping the rest", () => {
+		expect(statusFilterFromParams(["open,banana,closed"])).toEqual({
+			statuses: ["open", "closed"],
+			unknown: ["banana"],
+		});
+	});
+
+	it("returns undefined statuses where nothing valid is named, leaving the tab filter in charge", () => {
+		expect(statusFilterFromParams(["banana"])).toEqual({ statuses: undefined, unknown: ["banana"] });
+		expect(statusFilterFromParams([""])).toEqual({ statuses: undefined, unknown: [] });
+		expect(statusFilterFromParams([])).toEqual({ statuses: undefined, unknown: [] });
 	});
 
 	it("tolerates spacing and repeats without sending a status twice", () => {
-		expect(statusesFromParam(" open , open ,closed")).toEqual(["open", "closed"]);
+		expect(statusFilterFromParams([" open , open ", "closed"])).toEqual({
+			statuses: ["open", "closed"],
+			unknown: [],
+		});
 	});
 });
 

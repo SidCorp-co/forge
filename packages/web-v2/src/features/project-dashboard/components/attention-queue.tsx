@@ -2,7 +2,7 @@
 
 // Needs-your-attention queue (ISS-379, AC#2) — the dashboard centerpiece. Lists
 // the project's actionable items (failed → Approve & retry, review → Open diff,
-// awaiting → Provide info, blocked-on-dep → View chain). Each primary action
+// holding a question → Provide info, parked → Open issue). Each primary action
 // NAVIGATES to the existing destination (issue-detail / review / relations) —
 // no new mutations, no duplication of ISS-377/366.
 import { useRouter } from "next/navigation";
@@ -26,14 +26,14 @@ const ACTION_TONE: Record<AttentionActionKind, SemanticTone> = {
   retry: "failure",
   diff: "active",
   input: "attention",
-  chain: "blocked",
+  parked: "blocked",
 };
 
 const ACTION_META: Record<AttentionActionKind, { tag: string; icon: IconName; fg: string; bg: string }> = {
   retry: { tag: "Failed", icon: "alert", ...actionTone("retry") },
   diff: { tag: "Review", icon: "check", ...actionTone("diff") },
   input: { tag: "Awaiting", icon: "clock", ...actionTone("input") },
-  chain: { tag: "Blocked", icon: "branch", ...actionTone("chain") },
+  parked: { tag: "Blocked", icon: "clock", ...actionTone("parked") },
 };
 
 function actionTone(kind: AttentionActionKind): { fg: string; bg: string } {
