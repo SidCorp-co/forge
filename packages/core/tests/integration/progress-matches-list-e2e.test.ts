@@ -1,6 +1,6 @@
-import { UTC_READING } from '@forge/contracts/visual-blocks';
 import { ROADMAP_HORIZON_OF } from '@forge/contracts/project-status';
 import type { RequirementState } from '@forge/contracts/requirements';
+import { UTC_READING } from '@forge/contracts/visual-blocks';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -231,9 +231,12 @@ describe('the progress report and the Requirements list at one moment', () => {
     expect(text).toContain(reading);
 
     const csv = await app.fetch(
-      new Request(`http://forge.test${base}/status/reports/${id}/export?format=csv&block=${index}`, {
-        headers: { authorization: `Bearer ${auto.token}` },
-      }),
+      new Request(
+        `http://forge.test${base}/status/reports/${id}/export?format=csv&block=${index}`,
+        {
+          headers: { authorization: `Bearer ${auto.token}` },
+        },
+      ),
     );
     expect(csv.status).toBe(200);
     const csvText = await csv.text();

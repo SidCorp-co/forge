@@ -12,8 +12,8 @@ import type { ExecutionFacts } from '@forge/contracts/report-executions';
 import type { ReportFrame, ReportRunFacts } from '@forge/contracts/report-queries';
 import {
   blockToText,
-  UTC_READING,
   checkBlock,
+  UTC_READING,
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';

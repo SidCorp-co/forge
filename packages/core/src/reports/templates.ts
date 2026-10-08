@@ -20,9 +20,9 @@ import {
 } from '@forge/contracts/report-templates';
 import {
   blockToText,
-  UTC_READING,
   checkBlock,
   shownFrame,
+  UTC_READING,
   VISUAL_BLOCK_VERSION,
   type VisualBlock,
 } from '@forge/contracts/visual-blocks';
