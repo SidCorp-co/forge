@@ -2,10 +2,11 @@
 
 // What a requirement's standing (core `requirements/standing.ts`) says, put into the shared design
 // pieces: its whose-turn as the shared banner, its lifecycle as the shared step bar, its coverage as
-// one mark or dot per criterion in the verdict's own tone. Nothing here draws a colour of its own.
+// a dot per verdict carrying the verdict's own glyph beside its own word, so a verdict is never told by
+// colour alone. Nothing here draws a colour, a step or a verdict word of its own.
 
 import {
-  BC_VERDICT_TONES,
+  BC_VERDICTS,
   type BcVerdict,
   criteriaCoverageOf,
   REQUIREMENT_LIFECYCLE,
@@ -13,34 +14,36 @@ import {
   type RequirementState,
   type RequirementWaitingKind,
 } from "@forge/contracts/requirements";
-import { type BannerTone, LEGEND, MarkStrip, StepBar, WaitBanner } from "@/design";
+import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { saidView } from "@/lib/i18n/said";
 import { cn } from "@/lib/utils/cn";
 
-/** Stale is hatched rather than a tone, so it never reads as a verdict of its own colour. */
-const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
-  stale: "repeating-linear-gradient(135deg, var(--ink-400) 0 3px, var(--paper-400) 3px 6px)",
-  not_judged: "var(--paper-400)",
-};
-
-/** A verdict's colour: its tone's dot, or the fill it draws in place of one. */
-export const verdictFill = (v: BcVerdict) => VERDICT_FILL[v] ?? LEGEND[BC_VERDICT_TONES[v]].dot;
-
-/** One criterion's verdict as a dot, named by the verdict's own word for a screen reader and on hover. */
+/** One verdict as a dot carrying the verdict's glyph (✓ × ↻ ○ !), so its shape tells it apart where its colour does not. */
 export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
-  const label = useLabel();
+  const r = statusReading("bcVerdict", verdict, useInterfaceLanguage());
+  const c = LEGEND[r.tone];
   return (
     <span
-      role="img"
-      aria-label={label("bcVerdict", verdict)}
-      title={`${label("bcVerdict", verdict)}: ${label("hintBcVerdict", verdict)}`}
-      className="mt-1.5 block size-2.5 flex-none rounded-full"
-      style={{ background: verdictFill(verdict) }}
+      aria-hidden
+      className="grid size-4 flex-none place-items-center rounded-full border text-[10px] font-bold leading-none"
+      style={{ background: c.bg, borderColor: c.dot, color: c.fg }}
       data-testid="verdict-dot"
       data-verdict={verdict}
-    />
+    >
+      {r.glyph}
+    </span>
+  );
+}
+
+/** A verdict's own word, as text a sighted reader sees on every width; its hint on hover. */
+export function VerdictWord({ verdict }: { verdict: BcVerdict }) {
+  const r = statusReading("bcVerdict", verdict, useInterfaceLanguage());
+  return (
+    <span className="text-12 font-semibold" style={{ color: LEGEND[r.tone].fg }} title={r.hint ?? undefined} data-testid="verdict-word">
+      {r.label}
+    </span>
   );
 }
 
@@ -95,14 +98,18 @@ function RequirementBanner({ standing, className }: { standing: RequirementStand
   );
 }
 
+/** How many criteria stand at each verdict, in the vocabulary's order; a verdict no criterion has is left out. */
+const verdictCounts = (coverage: RequirementStanding["coverage"]) =>
+  BC_VERDICTS.map((v) => ({ verdict: v, n: coverage.filter((c) => c.verdict === v).length })).filter((x) => x.n > 0);
+
 /**
  * The top of a requirement on every width, its full page's and its peek's alike: whom it waits on and
- * for what, the lifecycle step it stands at and the one after, and "k/n verified" with a mark per
- * criterion. Every word is the lifecycle's and the verdicts' own; this draws no step or verdict of its own.
+ * for what, the lifecycle step it stands at and the one after, and "k/n verified" over a count per
+ * verdict, each a glyph dot, a number and the verdict's word. Every word is the lifecycle's and the
+ * verdicts' own; this draws no step or verdict of its own.
  */
 export function RequirementProgress({ standing, inset }: { standing: RequirementStanding; inset: string }) {
   const t = useCopy();
-  const label = useLabel();
   const { passing: k, criteria: n } = criteriaCoverageOf(standing.coverage);
   const line = onLifecycle(standing.state) >= 0;
   return (
@@ -118,7 +125,15 @@ export function RequirementProgress({ standing, inset }: { standing: Requirement
           {n > 0 ? (
             <div className="grid gap-1.5" data-testid="progress-verified">
               <span className="text-13 font-semibold text-fg">{t("requirements.verified", { a: k, b: n })}</span>
-              <MarkStrip size="sm" marks={standing.coverage.map((c) => ({ key: c.code, label: `${c.code} · ${label("bcVerdict", c.verdict)}`, fill: verdictFill(c.verdict) }))} />
+              <ul className="flex flex-wrap gap-x-3 gap-y-1" data-testid="progress-verdicts">
+                {verdictCounts(standing.coverage).map(({ verdict, n: count }) => (
+                  <li key={verdict} className="inline-flex items-center gap-1.5 text-12" data-verdict={verdict}>
+                    <VerdictDot verdict={verdict} />
+                    <b className="font-semibold text-fg">{count}</b>
+                    <VerdictWord verdict={verdict} />
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
         </div>

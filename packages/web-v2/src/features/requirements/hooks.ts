@@ -1,7 +1,7 @@
 "use client";
 
 import type { DecisionMaker } from "@forge/contracts/comments";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions/api";
 import { requirementsApi } from "./api";
 import type { CreateRequirementBody, RequirementAction, RequirementDetail } from "./types";
@@ -67,8 +67,10 @@ export function useRequirementDecisions(projectId: string | undefined, req: stri
     queryFn: () => requirementsApi.decisions(projectId as string, req as string, by),
     enabled: Boolean(projectId && req),
     staleTime: 15_000,
-    // switching whose records show keeps the open fold standing on the rows it had, not a loader
-    placeholderData: keepPreviousData,
+    // switching whose records show keeps the open fold standing on the rows it had, not a loader;
+    // only the same requirement's rows, so another requirement never wears this one's decisions
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === (projectId ?? "") && previousQuery.queryKey[2] === (req ?? "") ? previous : undefined,
   });
 }
 

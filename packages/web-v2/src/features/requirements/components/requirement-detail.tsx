@@ -276,7 +276,7 @@ export function RequirementPage({
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
               {tab === "decisions" ? (
                 <section data-testid="view-decisions" aria-label={t("requirements.tab.decisions")}>
-                  <RequirementDecisions projectId={projectId} slug={slug} reqKey={d.key} />
+                  <RequirementDecisions key={d.key} projectId={projectId} slug={slug} reqKey={d.key} />
                 </section>
               ) : null}
               {tab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}

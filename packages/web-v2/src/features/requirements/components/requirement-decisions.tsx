@@ -46,12 +46,14 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
     return <ErrorState message={formatApiError(q.error)} onRetry={isRetryableApiError(q.error) ? () => q.refetch() : undefined} />;
   }
   const { decisions, answers } = q.data;
+  // the rows shown while a switch of whose decisions show loads are this requirement's previous ones
+  const busy = q.isPlaceholderData;
   return (
     <div data-testid="requirement-decisions">
       <Collapsible title={t("requirements.tab.decisions")} count={decisions.length}>
         <p className="mb-3 text-12-5 text-muted">{t("requirements.decisions.rollupHint")}</p>
         {decisions.length ? (
-          <ul className="grid">
+          <ul className={busy ? "grid opacity-60" : "grid"} aria-busy={busy || undefined} data-testid="decision-rows">
             {decisions.map((c) => (
               <DecisionRow key={c.id} c={c} onTarget={c.target.key === reqKey ? undefined : <DecisionTarget slug={slug} target={c.target} />} />
             ))}
@@ -60,7 +62,7 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
           <p className="text-13 text-subtle">{t("common.decisions.none")}</p>
         )}
         <div className="mt-2">
-          <FoldedDecisions by={q.data.by} folded={q.data.folded} onBy={setBy} />
+          <FoldedDecisions by={q.data.by} folded={q.data.folded} onBy={setBy} busy={busy} />
         </div>
       </Collapsible>
       <div className="-mt-px">

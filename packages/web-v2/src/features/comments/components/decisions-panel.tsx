@@ -63,13 +63,14 @@ export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: 
  * Under a decision list: how many records agents kept are folded away (a master's pass logs among
  * them), with the act that shows them, or, while they show, the act that folds them again.
  */
-export function FoldedDecisions({ by, folded, onBy }: { by: DecisionMaker; folded: number; onBy: (by: DecisionMaker) => void }) {
+/** What agents kept folded and the switch to show it; `busy` while the switch's rows load, the button spinning and shut. */
+export function FoldedDecisions({ by, folded, onBy, busy = false }: { by: DecisionMaker; folded: number; onBy: (by: DecisionMaker) => void; busy?: boolean }) {
   const t = useCopy();
   if (by === "people" && folded === 0) return null;
   return (
     <p className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="decisions-folded">
       <span>{by === "people" ? t("decisions.folded", { n: folded }) : t("decisions.showingAll")}</span>
-      <Button size="sm" variant="ghost" onClick={() => onBy(by === "people" ? "all" : "people")}>
+      <Button size="sm" variant="ghost" loading={busy} onClick={() => onBy(by === "people" ? "all" : "people")}>
         {by === "people" ? t("decisions.showAgents") : t("decisions.onlyPeople")}
       </Button>
     </p>

@@ -14,7 +14,7 @@ import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
-import { agreedTitle, diffColours, VerdictDot } from "./standing-bits";
+import { agreedTitle, diffColours, VerdictDot, VerdictWord } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -120,8 +120,8 @@ function byIssue(links: CoverageIssue[]) {
   return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
 }
 
-/** Each business criterion once, as a checklist: its verdict's dot, its wording, the issues tracing to
- *  it inline, and the per-criterion evidence behind an expander. */
+/** Each business criterion once, as a checklist: its verdict's glyph dot, its code and the verdict's word,
+ *  its wording, the issues tracing to it inline, and the per-criterion evidence behind an expander. */
 export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -135,12 +135,17 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
         return (
-          <li key={c.code} className="grid grid-cols-[10px_52px_minmax(0,1fr)] gap-x-3 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
-            <VerdictDot verdict={c.verdict} />
-            <span className="pt-0.5 font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined}>
-              {c.code}
+          <li key={c.code} className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-2.5 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
+            <span className="pt-0.5">
+              <VerdictDot verdict={c.verdict} />
             </span>
             <div className="min-w-0">
+              <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
+                <span className="font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined}>
+                  {c.code}
+                </span>
+                <VerdictWord verdict={c.verdict} />
+              </div>
               {crit?.form === "scenario" ? (
                 <pre className="whitespace-pre-wrap font-mono text-12-5 leading-relaxed">{c.body}</pre>
               ) : (

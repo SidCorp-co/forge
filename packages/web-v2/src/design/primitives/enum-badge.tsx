@@ -28,10 +28,12 @@ export interface ToneBadgeProps {
   value?: string;
   size?: "sm" | "md";
   pulse?: boolean;
+  /** The state family it reads, so a reader (or a test) can tell a requirement's state from an issue's of the same word. */
+  family?: string;
 }
 
 /** A legend-toned pill: glyph (or dot) and label. StatusBadge is this over a family's reading. */
-export function ToneBadge({ tone, label, glyph, title, value, size = "sm", pulse }: ToneBadgeProps) {
+export function ToneBadge({ tone, label, glyph, title, value, size = "sm", pulse, family }: ToneBadgeProps) {
   const c = LEGEND[tone];
   return (
     <span
@@ -44,6 +46,7 @@ export function ToneBadge({ tone, label, glyph, title, value, size = "sm", pulse
       style={{ color: c.fg, background: tone === "neutral" ? "transparent" : c.bg }}
       title={title}
       data-value={value}
+      data-family={family}
       data-tone={tone}
       data-testid="status-badge"
     >
@@ -81,6 +84,7 @@ export function StatusBadge({ family, value, step, tone, size }: StatusBadgeProp
       label={label}
       glyph={r.glyph}
       value={value}
+      family={family}
       size={size}
       pulse={shown === "run"}
       title={r.hint ? `${value} · ${r.hint.charAt(0).toUpperCase()}${r.hint.slice(1)}` : value}

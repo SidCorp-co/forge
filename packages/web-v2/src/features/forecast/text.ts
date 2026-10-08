@@ -191,13 +191,3 @@ export function feedbackForecastText(f: FeedbackForecast, c: EtaClock): Said | n
   if (f.triage) return { line: productCopy(c.lang)("fc.waitingTriage", { who: said(f.triage.says.who, c.lang), act: said(f.triage.says.act, c.lang) }), detail: said(f.triage.says.reason, c.lang) };
   return f.delivery ? deliveryText(f.delivery, c) : null;
 }
-
-/** A requirement's detail line: how many criteria are proven, then when the rest is in people's hands. */
-export function criteriaRestText(proven: number, criteria: number, s: ScopeForecast | undefined, c: EtaClock): Said | null {
-  const t = productCopy(c.lang);
-  if (criteria === 0) return s?.delivery ? deliveryText(s.delivery, c) : null;
-  const head = proven >= criteria ? t("fc.allCriteria", { n: criteria }) : t("fc.criteriaOf", { proven, n: criteria });
-  if (proven >= criteria || !s?.delivery) return { line: head, detail: t("fc.criteriaDetail") };
-  const rest = deliveryText(s.delivery, c);
-  return { line: t("fc.restLine", { head, rest: lowerFirst(rest.line) }), detail: rest.detail, release: rest.release ?? null };
-}

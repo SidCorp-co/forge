@@ -1,7 +1,7 @@
 import type { DeliveryForecast, Forecast, ForecastBasis, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
 import { forecastWait, RULE, say } from "@/test/said";
-import { criteriaRestText, deliveryText, feedbackForecastText, forecastText, scopeText, spanText } from "./text";
+import { deliveryText, feedbackForecastText, forecastText, scopeText, spanText } from "./text";
 
 // the lines read clock times in the viewer's timezone; this file reads them in UTC
 process.env.TZ = "UTC";
@@ -117,12 +117,6 @@ describe("feedback and requirement lines", () => {
 
   it("draws nothing for an item that carries no work that ships", () => {
     expect(feedbackForecastText({ key: "FB-2", triage: null, delivery: null }, CLOCK)).toBeNull();
-  });
-
-  it("reads the proof so far, then when the rest is in people's hands", () => {
-    const scope: ScopeForecast = { ...stamp, scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "REQ-3", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery({}) };
-    expect(criteriaRestText(2, 5, scope, CLOCK)?.line).toBe("2 of 5 criteria proven · rest forecast live 14:30 – 18:30 today");
-    expect(criteriaRestText(5, 5, scope, CLOCK)?.line).toBe("All 5 criteria proven");
   });
 
   it("adds the release lag to a draft that has landed where nobody cuts it", () => {
