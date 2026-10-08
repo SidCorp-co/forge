@@ -1,16 +1,20 @@
 "use client";
 
-import type { ReportCell, ReportField, ReportFieldVocabulary } from "@forge/contracts/report-queries";
+import { type ReportCell, type ReportField, type ReportFieldVocabulary, stateLabel } from "@forge/contracts/report-queries";
 import { cellText } from "@forge/contracts/visual-blocks";
 import Link from "next/link";
 import { StatusBadge, ToneBadge } from "@/design/primitives/enum-badge";
-import { sentenceCase, type StatusFamily, statusReading } from "@/design/vocabulary";
+import { type StatusFamily, statusReading } from "@/design/vocabulary";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useVisualBlockContext } from "./context";
 import { refHref } from "./ref-link";
 
-/** The badge family each vocabulary a report column may name is read through; a new vocabulary without one does not compile. */
-const FAMILY: Record<ReportFieldVocabulary, StatusFamily> = {
+/**
+ * The badge family each vocabulary a report column may name is read through; a new vocabulary
+ * without one does not compile. Each family's label map is the contracts' `REPORT_VOCABULARY_LABELS`
+ * entry itself, so the badge and the text fallback read one map.
+ */
+export const VOCABULARY_FAMILY: Record<ReportFieldVocabulary, StatusFamily> = {
   requirement: "requirement",
   releaseState: "releaseState",
   bcVerdict: "bcVerdict",
@@ -22,8 +26,8 @@ const FAMILY: Record<ReportFieldVocabulary, StatusFamily> = {
  * family's tone; one that names none reads sentence-cased and neutral.
  */
 function StateCell({ field, value }: { field: ReportField; value: string }) {
-  if (field.vocabulary) return <StatusBadge family={FAMILY[field.vocabulary]} value={value} />;
-  return <ToneBadge tone="neutral" label={sentenceCase(value)} title={value} value={value} />;
+  if (field.vocabulary) return <StatusBadge family={VOCABULARY_FAMILY[field.vocabulary]} value={value} />;
+  return <ToneBadge tone="neutral" label={stateLabel(field, value)} title={value} value={value} />;
 }
 
 /** A state value as words, for a place that names it without its badge (a timeline's lane heading). */
@@ -31,7 +35,7 @@ export function useStateLabel(): (field: ReportField, value: string) => string {
   const language = useInterfaceLanguage();
   return (field, value) => {
     if (field.type !== "status") return value;
-    return field.vocabulary ? statusReading(FAMILY[field.vocabulary], value, language).label : sentenceCase(value);
+    return field.vocabulary ? statusReading(VOCABULARY_FAMILY[field.vocabulary], value, language).label : stateLabel(field, value);
   };
 }
 

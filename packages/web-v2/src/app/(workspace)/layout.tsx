@@ -204,8 +204,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>
     <TopBarSlotProvider>
-    <div className="flex h-dvh overflow-hidden bg-app">
-      <div className="hidden h-full md:block" data-testid="desktop-sidebar">
+    <div className="flex h-dvh overflow-hidden bg-app" data-print="frame">
+      <div className="hidden h-full md:block" data-testid="desktop-sidebar" data-print="chrome">
         <WorkspaceSidebar
           collapsed={sidebar.collapsed}
           onToggleCollapsed={sidebar.toggleCollapsed}
@@ -255,28 +255,32 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       />
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
-        <PinnedTabBar
-          tabs={pinnedViews.views}
-          activeHref={`${pathname}${locationSearch}`}
-          onSelect={(href) => router.push(href)}
-          onRemove={pinnedViews.remove}
-        />
+      <div className="flex min-w-0 flex-1 flex-col" data-print="frame">
+        <div className="contents" data-print="chrome">
+          <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
+          <PinnedTabBar
+            tabs={pinnedViews.views}
+            activeHref={`${pathname}${locationSearch}`}
+            onSelect={(href) => router.push(href)}
+            onRemove={pinnedViews.remove}
+          />
+        </div>
 
-        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
+        <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0" data-print="frame">
           {children}
           <TourLauncher />
         </main>
       </div>
 
-      <ChatDock dock={dock} />
+      <div className="contents" data-print="chrome">
+        <ChatDock dock={dock} />
 
-      <BottomTabBar
-        items={bottomTabItems(attentionCount)}
-        activeKey={buildBottomActiveKey(pathname, moreOpen, dock.open)}
-        onSelect={onBottomSelect}
-      />
+        <BottomTabBar
+          items={bottomTabItems(attentionCount)}
+          activeKey={buildBottomActiveKey(pathname, moreOpen, dock.open)}
+          onSelect={onBottomSelect}
+        />
+      </div>
 
       <WorkspacePalette
         open={paletteOpen}

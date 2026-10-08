@@ -3,6 +3,7 @@ import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 /** One roadmap item: where it sits on the shared time axis, as fractions of the axis's span. */
 export interface TimelineItem {
   label: string;
+  /** The lane's stored value (a state's own token, which the block names in words and keeps in its tooltip). */
   lane: string | null;
   /** A planned span, or a point when it has a start and no end. */
   span: { from: number; to: number; fromText: string; toText: string | null } | null;
@@ -38,6 +39,11 @@ export function timelineModel(b: VisualBlockOf<"timeline">): TimelineModel {
     const f = field(name);
     return f ? cellText(f, row[f.name] as never) : "—";
   };
+  const laneOf = (row: Record<string, unknown>) => {
+    const f = field(b.lane);
+    const cell = f ? row[f.name] : undefined;
+    return f?.type === "status" && typeof cell === "string" && cell !== "" ? cell : text(b.lane, row);
+  };
   const items: (TimelineItem & { key: number })[] = [];
   const undated: string[] = [];
   const values: number[] = [];
@@ -68,7 +74,7 @@ export function timelineModel(b: VisualBlockOf<"timeline">): TimelineModel {
     if (forecast) values.push(forecast.p50, forecast.p85);
     items.push({
       label,
-      lane: b.lane === undefined ? null : text(b.lane, row),
+      lane: b.lane === undefined ? null : laneOf(row),
       span: span as never,
       forecast,
       key: span?.from ?? forecast?.p50 ?? 0,

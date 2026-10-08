@@ -38,8 +38,12 @@ function factsOf(document: ReportDocument): (source: BlockSource) => SourceFacts
   };
 }
 
-/** A report document as it reads: the narrative slots someone wrote, then each block over the runs it names. */
-export function ReportDocumentBody({ document }: { document: ReportDocument }) {
+/**
+ * A report document as it reads: the narrative slots someone wrote, then each block over the runs it
+ * names. Where the document is a kept report that core exports, `onTableCsv` gives each table block a
+ * "Download CSV" by its index in the document; a share page has none.
+ */
+export function ReportDocumentBody({ document, onTableCsv }: { document: ReportDocument; onTableCsv?: (blockIndex: number) => void }) {
   const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
   return (
     <>
@@ -54,7 +58,7 @@ export function ReportDocumentBody({ document }: { document: ReportDocument }) {
         {document.blocks.map((block, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: the document's block order is fixed
           <section key={i} className="border-b border-line py-5">
-            <VisualBlockView block={block} />
+            <VisualBlockView block={block} onCsv={onTableCsv ? () => onTableCsv(i) : undefined} />
           </section>
         ))}
       </VisualBlockProvider>

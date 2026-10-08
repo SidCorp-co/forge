@@ -5,8 +5,11 @@ import {
   blockToText,
   checkBlock,
   checkBlocks,
+  CSV_BOM,
+  cellText,
   isSensible,
   kpiFigures,
+  tableCsv,
   tableRows,
   VISUAL_BLOCK_KINDS,
   type VisualBlock,
@@ -214,7 +217,7 @@ describe("timeline", () => {
   it("accepts a p50 and p85 range alone and prints it after the item's lane", () => {
     const r = checkBlock({ ...base, kind: "timeline", label: "key", p50: "p50", p85: "p85", lane: "state" });
     if (!r.ok) throw new Error(JSON.stringify(r));
-    expect(blockToText(r.block)).toBe("- REQ-1 [agreed]: p50 2026-10-10, p85 2026-10-14\n- REQ-2 [in_progress]: p50 2026-10-18, p85 2026-10-25");
+    expect(blockToText(r.block)).toBe("- REQ-1 [Agreed]: p50 2026-10-10, p85 2026-10-14\n- REQ-2 [In progress]: p50 2026-10-18, p85 2026-10-25");
   });
 
   it("prints a start and an end, earliest first", () => {
@@ -253,7 +256,7 @@ describe("status-list", () => {
   it("prints who each item waits on, and nothing for none", () => {
     const r = checkBlock(good["status-list"]);
     if (!r.ok) throw new Error(JSON.stringify(r));
-    expect(blockToText(r.block)).toBe("- REQ-2: in_progress (waiting on Ana \\| QA)\n- REQ-1: agreed");
+    expect(blockToText(r.block)).toBe("- REQ-2: In progress (waiting on Ana \\| QA)\n- REQ-1: Agreed");
   });
 });
 
@@ -297,5 +300,81 @@ describe("what a block shows, shared by the text fallback and the screen", () =>
       { label: "All", value: "9" },
     ]);
     expect(kpiFigures({ ...kpi, row: 1 })[0]).toEqual({ label: "Proven", value: "8", delta: "-1" });
+  });
+});
+
+describe("a state cell as words", () => {
+  const vocab = (vocabulary: "requirement" | "releaseState" | "bcVerdict") =>
+    ({ name: "state", type: "status", label: "State", vocabulary }) as const;
+
+  it("reads a vocabulary value as the label its badge shows, never the stored token", () => {
+    expect(cellText(vocab("requirement"), "in_delivery")).toBe("In delivery");
+    expect(cellText(vocab("releaseState"), "awaiting_approval")).toBe("Awaiting approval");
+    expect(cellText(vocab("bcVerdict"), "not_judged")).toBe("Not judged");
+  });
+
+  it("sentence-cases a value its vocabulary does not name, and a column that names none", () => {
+    expect(cellText(vocab("requirement"), "on_ice")).toBe("On ice");
+    expect(cellText({ name: "s", type: "status", label: "S" }, "change_request")).toBe("Change request");
+  });
+
+  it("prints the label in a table's text fallback", () => {
+    const r = checkBlock({
+      v: 1,
+      kind: "table",
+      source,
+      columns: ["key", "state"],
+      frame: { fields: [frame.fields[0], vocab("requirement")], rows: [{ key: "REQ-7", state: "in_delivery" }] },
+    });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    const text = blockToText(r.block);
+    expect(text).toContain("| REQ-7 | In delivery |");
+    expect(text).not.toContain("in_delivery");
+  });
+});
+
+describe("a table block as CSV", () => {
+  const csvFrame: ReportFrame = {
+    fields: [
+      { name: "key", type: "ref", label: "Requirement" },
+      { name: "title", type: "string", label: "Title, short" },
+      { name: "state", type: "status", label: "State", vocabulary: "requirement" },
+      { name: "done", type: "number", label: "Proven", unit: "criteria" },
+      { name: "took", type: "duration", label: "Took" },
+    ],
+    rows: [
+      { key: "REQ-1", title: 'Đăng nhập "nhanh"', state: "in_delivery", done: -1, took: 90_000 },
+      { key: "REQ-2", title: "two\nlines", state: "agreed", done: 3, took: null },
+      { key: "REQ-3", title: "=HYPERLINK(1)", state: "delivered", done: null, took: 1_000 },
+    ],
+  };
+  const table = () => {
+    const r = checkBlock({ v: 1, kind: "table", source, columns: ["key", "title", "state", "done", "took"], frame: csvFrame });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r.block as VisualBlock & { kind: "table" };
+  };
+
+  it("opens with the UTF-8 byte order mark and a heading row of the column labels", () => {
+    const csv = tableCsv(table());
+    expect(csv.charCodeAt(0)).toBe(0xfeff);
+    expect(csv.startsWith(CSV_BOM)).toBe(true);
+    expect(csv.slice(1).split("\r\n")[0]).toBe('Requirement,"Title, short",State,Proven (criteria),Took');
+  });
+
+  it("quotes per RFC 4180: a quote doubled, a comma or a line break inside quotes, CRLF between records", () => {
+    const csv = tableCsv(table()).slice(1);
+    expect(csv.endsWith("\r\n")).toBe(true);
+    expect(csv).toContain('REQ-1,"Đăng nhập ""nhanh""",In delivery,-1,1m 30s\r\n');
+    expect(csv).toContain('REQ-2,"two\nlines",Agreed,3,\r\n');
+  });
+
+  it("writes a text cell a spreadsheet would run as a formula as text, and an empty cell empty", () => {
+    expect(tableCsv(table())).toContain("REQ-3,'=HYPERLINK(1),Delivered,,1s\r\n");
+  });
+
+  it("holds the rows the table shows, sorted and cut as the block says", () => {
+    const csv = tableCsv({ ...table(), sort: { field: "key", dir: "desc" }, limit: 1 }).slice(1).trimEnd().split("\r\n");
+    expect(csv).toHaveLength(2);
+    expect(csv[1]?.startsWith("REQ-3,")).toBe(true);
   });
 });

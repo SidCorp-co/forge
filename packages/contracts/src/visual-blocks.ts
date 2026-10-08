@@ -14,6 +14,7 @@ import {
   type ReportFieldType,
   type ReportFrame,
   ReportFrameSchema,
+  stateLabel,
 } from "./report-queries.js";
 
 export const VISUAL_BLOCK_KINDS = [
@@ -403,9 +404,13 @@ function duration(ms: number): string {
   return parts.join(" ");
 }
 
-/** One cell as text: null is an em dash, a duration is spoken, a midnight date loses its time. */
+/**
+ * One cell as text: null is an em dash, a duration is spoken, a midnight date loses its time, and a
+ * state reads as its sentence-case label (`stateLabel`), the words its badge shows.
+ */
 export function cellText(field: ReportField, cell: ReportCell | undefined): string {
   if (cell === null || cell === undefined) return "—";
+  if (field.type === "status" && typeof cell === "string" && cell !== "") return stateLabel(field, cell);
   if (field.type === "duration" && typeof cell === "number") return duration(cell);
   if (field.type === "date" && typeof cell === "string") return cell.replace(/T00:00:00(\.0+)?Z$/, "");
   if (typeof cell === "number") return field.unit ? `${cell} ${field.unit}` : String(cell);
@@ -451,6 +456,43 @@ export function tableRows(b: VisualBlockOf<"table">): ReportFrame["rows"] {
 
 function tableText(b: VisualBlockOf<"table">): string {
   return titled(b, markdownTable(b.frame, b.columns, tableRows(b)));
+}
+
+/** A cell a spreadsheet would run as a formula; it is written with a leading apostrophe so it reads as text. */
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+
+/** One CSV field per RFC 4180: quoted when it holds a quote, a comma or a line break, its quotes doubled. */
+function csvField(text: string): string {
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function csvCell(field: ReportField, cell: ReportCell | undefined): string {
+  if (cell === null || cell === undefined) return "";
+  if (typeof cell === "number") return field.type === "duration" ? cellText(field, cell) : String(cell);
+  const text = cellText(field, cell);
+  return FORMULA_LEAD.test(text) ? `'${text}` : text;
+}
+
+/** A column's CSV heading: its label, with its unit where it has one, since a number cell carries none. */
+const csvHeading = (f: ReportField): string => (f.unit && f.type === "number" ? `${f.label} (${f.unit})` : f.label);
+
+/** The UTF-8 byte order mark a CSV opens with, so a spreadsheet reads Vietnamese and other non-ASCII text as UTF-8. */
+export const CSV_BOM = "\uFEFF";
+
+/**
+ * A table block as CSV (RFC 4180, CRLF line ends), opening with the UTF-8 byte order mark: a heading
+ * row of the column labels, then the rows the table shows, sorted and cut as the block says. A cell
+ * reads as the table reads it (a state as its label, a duration spoken), except that an empty cell is
+ * empty and a number is bare, its unit in the heading. A text cell a spreadsheet would run as a
+ * formula opens with an apostrophe.
+ */
+export function tableCsv(b: VisualBlockOf<"table">): string {
+  const fields = b.columns.flatMap((c) => b.frame.fields.filter((f) => f.name === c));
+  const lines = [
+    fields.map((f) => csvField(csvHeading(f))).join(","),
+    ...tableRows(b).map((row) => fields.map((f) => csvField(csvCell(f, row[f.name]))).join(",")),
+  ];
+  return `${CSV_BOM}${lines.join("\r\n")}\r\n`;
 }
 
 function chartText(b: VisualBlockOf<"chart">): string {
