@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.156] - 2026-10-08
+
+macOS and Windows runners read usage-limit resets without GNU date
+
+### Fixed
+
+- **macOS and Windows runners now read when a usage limit resets.** The printed reset is parsed in its own time zone in Rust, the same way it is on Linux, instead of by GNU `date -d`.
+
 ## [0.4.0-dev.155] - 2026-10-08
 
 Workflow canvas gets a focus mode, a one-line banner and a foldable side panel
