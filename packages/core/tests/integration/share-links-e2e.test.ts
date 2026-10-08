@@ -59,9 +59,10 @@ function plantedDocument(projectId: string): ReportDocument {
   };
 }
 
-// No module freezes a template's output yet (REQ-32 A7); this one stands in for it at the port.
+// No module freezes a stored status report yet (REQ-32 B3); this one stands in for it at the port, so
+// the link's own behaviour is exercised over a document that holds a secret and an email address.
 registerShareSubjectSource({
-  kind: 'template-output',
+  kind: 'status-report',
   freeze: async ({ projectId }) => plantedDocument(projectId),
 });
 
@@ -84,7 +85,7 @@ const person = async (role?: 'member' | 'viewer', project = () => projectId) => 
 };
 const create = (who: Person, body: Body, project = projectId) =>
   api(who.token, 'POST', `/api/projects/${project}/shares`, {
-    subjectKind: 'template-output',
+    subjectKind: 'status-report',
     subjectId: 'progress-1',
     ...body,
   });
@@ -216,13 +217,6 @@ describe('creating a share', () => {
     expect(String(link.body.detail)).toContain('no_egress');
     const members = await create(who, { audience: 'members' }, closed);
     expect(members.status, JSON.stringify(members.body)).toBe(201);
-  });
-
-  it('refuses a subject kind no module can freeze yet, naming the kinds that can', async () => {
-    const res = await create(member, { audience: 'members', subjectKind: 'status-report' });
-    expect(res.status, JSON.stringify(res.body)).toBe(422);
-    expect(res.body.code).toBe('SHARE_SUBJECT_UNSUPPORTED');
-    expect(String(res.body.detail)).toContain('registered: message, template-output');
   });
 });
 

@@ -7,7 +7,7 @@ import { blockToText, type VisualBlock } from "@forge/contracts/visual-blocks";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { VisualBlockView } from ".";
+import { VisualBlockProvider, VisualBlockView } from ".";
 import { chartModel } from "./chart-model";
 import { timelineModel } from "./timeline-model";
 
@@ -58,7 +58,18 @@ const frame = {
   ],
 };
 const base = { v: 1, source: { runId: "run-9" }, frame };
-const show = (block: unknown) => render(<VisualBlockView block={block} />);
+// A block of a run is drawn only beside the query and read time its message stored with it.
+const show = (block: unknown) =>
+  render(
+    <VisualBlockProvider
+      value={{
+        projectSlug: undefined,
+        sourceFacts: () => ({ queryId: "progress-by-requirement", asOf: "2026-10-08T09:30:00.000Z" }),
+      }}
+    >
+      <VisualBlockView block={block} />
+    </VisualBlockProvider>,
+  );
 const alt = () => screen.getByTestId("visual-block-alt").textContent;
 
 describe("chart block", () => {

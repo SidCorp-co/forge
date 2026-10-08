@@ -1,0 +1,1 @@
+**The assistant runs a progress, release or roadmap report template.** It shows the template's blocks and writes a summary, risks and recommendations; a figure no run of the template returned is refused. A template's output can be shared.

@@ -75,3 +75,21 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
     expect(admitVerb(['comment', 'ISS-1', '-'])).toBeNull();
   });
 });
+
+// REQ-32 criteria 1 and 6: a question about progress is answered from the report tools and shown, never
+// typed. Without this entry the model has the tools and no reason to reach for them over prose.
+describe('every chat door answers a progress question from the report tools', () => {
+  for (const [door, prompt] of Object.entries(DOORS)) {
+    it(`${door}: names forge_report, forge_template and forge_show, bars a typed figure, and offers a link`, () => {
+      for (const says of [
+        'progress, the roadmap, release readiness, criteria coverage or workflow status',
+        '`forge_report` and `forge_template`',
+        '`forge_show`',
+        'only figures the runs returned',
+        'offer a share link',
+      ]) {
+        expect(prompt, `${door} does not say ${says}`).toContain(says);
+      }
+    });
+  }
+});
