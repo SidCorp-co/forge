@@ -18,6 +18,7 @@ import {
 } from './verify-memo.mjs';
 import { externalDeps, externalHolds } from './verify-memo-external.mjs';
 import { gitState } from './verify-memo-git.mjs';
+import { BIOME } from './verify-memo-native.mjs';
 
 const SHOWN = 20;
 
@@ -37,8 +38,11 @@ export class Memo {
     base,
     declarations = INPUTS,
     places = {},
+    readings = { biome: BIOME },
   }) {
     this.places = places;
+    this.readings = readings;
+    this.readSeen = new Map();
     this.declarations = declarations;
     this.root = root;
     this.env = env;
@@ -53,6 +57,22 @@ export class Memo {
     this.uncached = [];
   }
 
+  /**
+   * What each native program `decl` names makes of this place, which no file in the checkout holds:
+   * asked of the program itself, and only again once a file its answer leans on has moved.
+   */
+  native(decl) {
+    const files = this.tree.files();
+    const reading = {};
+    for (const [name, about] of Object.entries(this.readings)) {
+      if (!decl.blind?.includes(name)) continue;
+      const seen = JSON.stringify([name, about.configs(files).map((f) => this.tree.hash(f))]);
+      if (!this.readSeen.has(seen)) this.readSeen.set(seen, about.view(this.root, files));
+      reading[name] = this.readSeen.get(seen);
+    }
+    return reading;
+  }
+
   /** What to do with `check` before it runs: serve a stored verdict, run it traced, or just run it. */
   plan(check) {
     const decl = this.declarations[check.label];
@@ -63,10 +83,12 @@ export class Memo {
     }
     let keyed;
     let git = null;
+    let native = null;
     this.tree.refresh();
     try {
       git = decl.git ? gitState(this.root, this.baseRef) : null;
-      keyed = keyFor({ check, decl, tree: this.tree, git, env: this.env });
+      native = this.native(decl);
+      keyed = keyFor({ check, decl, tree: this.tree, git, native, env: this.env });
     } catch (err) {
       this.unfiled.push({
         label: check.label,
@@ -84,6 +106,7 @@ export class Memo {
       check,
       decl,
       git,
+      native,
       ...keyed,
       startedAt: Date.now() - 10,
       ...traceEnv(this.env),
@@ -123,7 +146,14 @@ export class Memo {
       return verdict;
     }
     this.tree.refresh();
-    const after = keyFor({ check, decl, tree: this.tree, git: plan.git, env: this.env });
+    const after = keyFor({
+      check,
+      decl,
+      tree: this.tree,
+      git: plan.git,
+      native: this.native(decl),
+      env: this.env,
+    });
     const history =
       decl.git && JSON.stringify(gitState(this.root, this.baseRef)) !== JSON.stringify(plan.git);
     if (after.key !== plan.key || history) {
