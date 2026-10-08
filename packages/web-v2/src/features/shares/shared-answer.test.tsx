@@ -48,25 +48,38 @@ function snapshot(audience: "members" | "link" = "link"): ShareSnapshot {
 }
 
 describe("a shared answer", () => {
-  it("draws each block as text with its source, and links nowhere", () => {
-    const { container } = renderWithQuery(<SharedAnswerView snapshot={snapshot()} />);
+  it("draws a table and a chart through the registry, each with its text alternative and source", () => {
+    const s = snapshot();
+    const frame = s.document.runs.flatMap((r) => r.frame)[0];
+    s.document.blocks.push({
+      kind: "chart", v: 1, title: "Proven", variant: "bar", x: "requirement", y: ["proven"], source: { runId: "run-1" }, frame,
+    } as never);
+    const { container } = renderWithQuery(<SharedAnswerView snapshot={s} />);
     expect(screen.getByText("Report: progress")).toBeInTheDocument();
     expect(screen.getByText("One requirement moved.")).toBeInTheDocument();
     expect(screen.queryByText("Risks")).toBeNull();
-    const table = container.querySelector("pre")?.textContent ?? "";
-    expect(table).toContain("REQ-7");
-    expect(table).toContain("5");
-    expect(table).toContain("<b>bold</b>");
-    expect(screen.getByText(/From the progress-by-requirement report, read/)).toBeInTheDocument();
-    expect(container.querySelectorAll("a")).toHaveLength(0);
+    expect(container.querySelector('[data-testid="visual-block"][data-kind="table"] table')).not.toBeNull();
+    expect(container.querySelector('[data-testid="visual-block"][data-kind="chart"]')).not.toBeNull();
+    expect(container.querySelector('[data-kind="chart"] [data-testid="visual-block-alt"]')).not.toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
+    const sources = screen.getAllByTestId("visual-block-source");
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toHaveTextContent("progress-by-requirement");
+    expect(sources[0]?.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-08T09:00:00.000Z");
     expect(container.querySelectorAll("b")).toHaveLength(0);
+  });
+
+  it("draws a reference as its key and never as a link", () => {
+    const { container } = renderWithQuery(<SharedAnswerView snapshot={snapshot()} />);
+    expect(screen.getByText("REQ-7")).toBeInTheDocument();
+    expect(container.querySelectorAll("a")).toHaveLength(0);
   });
 
   it("names a block whose kind this build cannot show, rather than dropping it", () => {
     const s = snapshot();
     s.document.blocks = [{ kind: "pie" } as never];
     renderWithQuery(<SharedAnswerView snapshot={s} />);
-    expect(screen.getByText("This answer has a pie block this page cannot show.")).toBeInTheDocument();
+    expect(screen.getByTestId("visual-block-unsupported")).toHaveTextContent("This answer has a pie block this screen cannot show.");
   });
 
   it("opens through the open door with the token in the body, and waits for the session first", async () => {

@@ -58,15 +58,11 @@ const frame = {
   ],
 };
 const base = { v: 1, source: { runId: "run-9" }, frame };
-// A block of a run is drawn only beside the query and read time its message stored with it.
+// each block names its run's query and read time, as the message that carries it stored them
+const facts = { queryId: "progress-by-requirement", asOf: "2026-10-08T09:30:00.000Z" };
 const show = (block: unknown) =>
   render(
-    <VisualBlockProvider
-      value={{
-        projectSlug: undefined,
-        sourceFacts: () => ({ queryId: "progress-by-requirement", asOf: "2026-10-08T09:30:00.000Z" }),
-      }}
-    >
+    <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: () => facts }}>
       <VisualBlockView block={block} />
     </VisualBlockProvider>,
   );
