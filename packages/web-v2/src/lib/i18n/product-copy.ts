@@ -3,7 +3,8 @@ import { COPY_FILES } from "./copy-files";
 
 // The product chrome, composed from the copy files (`./copy-files`), English underneath. It reads in
 // English unless a caller names a language; a key a language lacks reads in English, and a language
-// no file holds reads wholly in English.
+// no file holds reads wholly in English. Forge is not multilingual (the owner's ruling of 2026-10-08):
+// the vi words already written stay, and a new key is written in English only.
 
 type Words<P, L extends string> = P extends Record<L, infer W> ? keyof W & string : never;
 export type ProductCopyKey = Words<(typeof COPY_FILES)[keyof typeof COPY_FILES], "en"> | SaidKey;

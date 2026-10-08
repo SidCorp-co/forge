@@ -1,9 +1,10 @@
 import { act, render } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
-import { englishChromeWord } from "./english-chrome";
 import { CHROME_SCREENS, type ChromeScreen } from "./vi-chrome-screens";
 import { renderWithQuery } from "./render";
+import { unreadIn } from "./unread";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/", useParams: () => ({ slug: "hop" }) }));
 // The bell's live delivery and a room's socket reach for a connection the walking test has none of.
@@ -16,55 +17,33 @@ vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 // cmdk scrolls its selected item into view, which jsdom does not lay out
 Element.prototype.scrollIntoView = () => {};
 
-const wordsIn = (root: HTMLElement): string[] => {
-  const out: string[] = [];
-  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  // text the page marks `translate="no"` (a scope, an event name, another product's menu path) is an identifier, not chrome
-  for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement?.closest('[translate="no"]')) out.push(n.textContent ?? "");
-  for (const el of root.querySelectorAll("[aria-label],[title],[placeholder]")) {
-    if (el.closest('[translate="no"]')) continue;
-    for (const a of ["aria-label", "title", "placeholder"]) {
-      const v = el.getAttribute(a);
-      // a state badge's tooltip leads with its raw value (`shipped · ...`) and an enum badge's ends with
-      // it (`kind: bug`), kept in English on purpose: the field word and the meaning are what is read
-      const raw = el.getAttribute("data-value");
-      const read = a !== "title" || !raw ? v : v === raw ? null : v?.startsWith(`${raw} · `) ? v.slice(raw.length + 3) : v?.endsWith(`: ${raw}`) ? v.slice(0, -raw.length - 2) : v;
-      if (read) out.push(read);
-    }
-  }
-  return out;
-};
-
-/** The English chrome word found in a rendered screen, with the text carrying it; null when none. */
-function englishChromeIn(root: HTMLElement): { word: string; text: string } | null {
-  for (const text of wordsIn(root)) {
-    const word = englishChromeWord(text);
-    if (word) return { word, text };
-  }
-  return null;
-}
-
 const inVi = (s: ChromeScreen) => (
   <InterfaceLanguageScope language="vi">{s.render()}</InterfaceLanguageScope>
 );
 
+// Forge is not multilingual (the owner's ruling of 2026-10-08): a vi page may show English, so what
+// this walks for is what no reader can read, in any language. Which words are English is not asked.
 describe("BA screens under vi", () => {
   for (const screen of CHROME_SCREENS) {
-    it(`${screen.name} shows no English chrome word`, () => {
+    it(`${screen.name} renders, with no raw copy key and no blank label`, () => {
       // the whole document: a menu, a popover or a dialog the screen opens is drawn in a portal
       const { baseElement } = renderWithQuery(inVi(screen));
       if (screen.act) act(screen.act);
-      const found = englishChromeIn(baseElement);
-      expect(found, found ? `English chrome word "${found.word}" on screen "${screen.name}": "${found.text}"` : "").toBeNull();
+      expect(baseElement.textContent?.trim(), `screen "${screen.name}" drew no words`).toBeTruthy();
+      const found = unreadIn(baseElement);
+      expect(found, found ? `${found} on screen "${screen.name}"` : "").toBeNull();
     });
   }
 
-  it("goes red, naming the word and the screen, on an English string planted in the Dashboard", () => {
-    const planted: ChromeScreen = { name: "Dashboard", render: () => <p>Nothing to show here</p> };
-    const { container } = render(inVi(planted));
-    const found = englishChromeIn(container);
-    expect(found?.word).toBe("nothing");
-    expect(`English chrome word "${found?.word}" on screen "${planted.name}"`).toContain('on screen "Dashboard"');
+  it("goes red, naming what it found, on a raw key, an unknown key's marker and a blank label planted in a screen", () => {
+    const planted = (ui: ReactElement) => unreadIn(render(<InterfaceLanguageScope language="vi">{ui}</InterfaceLanguageScope>).container);
+    expect(planted(<p> dash.fbUntriaged </p>)).toBe('the raw copy key "dash.fbUntriaged"');
+    expect(planted(<code translate="no">releases.approve</code>)).toBeNull();
+    expect(planted(<p>⟦standing.act.noSuchAct⟧</p>)).toBe('a key this build lacks, "⟦standing.act.noSuchAct⟧"');
+    expect(planted(<button type="button" aria-label=" " />)).toBe("a blank aria-label on <button>");
+    expect(planted(<input title="dash.fbOpen" />)).toBe('the raw copy key "dash.fbOpen" (title)');
+    expect(planted(<span data-fact-label />)).toBe("a blank fact label");
+    expect(planted(<p>Nothing to show here</p>)).toBeNull();
   });
 });
 

@@ -172,7 +172,7 @@ const data = (): [QueryKey, unknown][] => [
   [["runs-standing", P, "passes"], { generatedAt: AT, projectId: P, items: [MASTER.pass, MASTER.lastPass, { ...(MASTER.lastPass as object), id: "pass-7", refused: { reason: "usage_limit", detail: "r" }, dispatched: [], skipped: [], parked: [], closeReason: "abandoned_quiet" }, { ...(MASTER.lastPass as object), id: "pass-6", recovers: { refusedSince: AT, refusedPasses: 2, reason: "usage_limit" }, closeReason: "session_gone" }], limit: 50, hasMore: true, next: "c" }],
   [["runs-standing", P, "charter"], { declared: true, version: 3, goal: "Muc tieu cua master", rules: ["Quy tac mot", "Quy tac hai"], declaredBy: "Lan", declaredAt: AT }],
   [["questions", "project", P], { pages: [{ questions: [question("q1"), freeText("q2"), answered("q3"), voided("q4")], total: 4, hasMore: false, nextCursor: null }], pageParams: [null] }],
-  [["questions", "i1"], { questions: [{ ...freeText("q5"), issueId: "i1" }, { ...answered("q6"), issueId: "i1" }, { ...voided("q7"), issueId: "i1" }] }],
+  [["questions", { issue: "i1", project: null }], { questions: [{ ...freeText("q5"), issueId: "i1" }, { ...answered("q6"), issueId: "i1" }, { ...voided("q7"), issueId: "i1" }] }],
   [["project", P], { id: P, slug: "hop", name: "Hop", devicePool: [] }],
   [["agent-sessions", "list", { projectId: P, page: 1 }], { items: [], totalCount: 0 }],
 ];

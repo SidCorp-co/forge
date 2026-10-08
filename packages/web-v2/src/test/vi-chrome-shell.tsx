@@ -1,7 +1,6 @@
 import { say } from "./said";
 import { fireEvent } from "@testing-library/react";
 import type { QueryKey } from "@tanstack/react-query";
-import type { ReactElement } from "react";
 import { BottomTabBar, CommandPalette, TopBarSlotProvider } from "@/design";
 import { MobileNavDrawer, bottomTabItems, buildWorkspaceCommands } from "@/features/shell";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
@@ -16,6 +15,7 @@ import { ConversationList } from "@/features/conversations/components/conversati
 import type { ChatDockApi } from "@/features/chat-dock/dock";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Seeded } from "./vi-chrome-requirements";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The shell every BA screen sits in, for the vi walking test: the rail in both widths, the project
 // switcher, the account menu, the phone drawer and tab bar, the command palette, the top bar, the Ask
@@ -199,14 +199,7 @@ const conversations = () => (
   </Seeded>
 );
 
-export interface ShellScreen {
-  name: string;
-  render: () => ReactElement;
-  /** What the screen opens after it renders (a menu, a popover), so its chrome is read too. */
-  act?: () => void;
-}
-
-export const SCREENS: ShellScreen[] = [
+export const SCREENS: ChromeScreen[] = [
   { name: "Navigation rail · labelled", render: railScreen(false) },
   { name: "Navigation rail · compact", render: railScreen(true) },
   { name: "Account menu", render: railScreen(false), act: click('[aria-haspopup="menu"]') },

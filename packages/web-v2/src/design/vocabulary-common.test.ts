@@ -4,24 +4,22 @@ import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { ENUM_COMMON, STATUS_COMMON, enumLabel, statusReading } from "./vocabulary";
 
 // A family with no label group reads its words from `common.*`: every value the contract names has
-// an English key spelled as the contract spells it and a Vietnamese one, so a value added to the
-// contract with no translation is red here rather than English on a vi screen.
+// an English key spelled as the contract spells it. A Vietnamese one is not owed (Forge is not
+// multilingual, the owner's ruling of 2026-10-08); a value with none reads in English on a vi page.
 
 const en = product.en as Record<string, string>;
 const vi = product.vi as Record<string, string>;
 
 describe("enum and state families read from common words", () => {
-  it("names every value of each family it reads, in en as the contract and in vi", () => {
+  it("names every value of each family it reads, in en as the contract", () => {
     for (const [family, prefix] of Object.entries(ENUM_COMMON)) {
       for (const [value, label] of Object.entries(ENUM_LABELS[family as keyof typeof ENUM_LABELS])) {
         expect(en[`${prefix}.${value}`], `${prefix}.${value}`).toBe(label);
-        expect(vi[`${prefix}.${value}`], `${prefix}.${value} (vi)`).toBeTruthy();
       }
     }
     for (const family of STATUS_COMMON) {
       for (const [value, [label]] of Object.entries(STATE_READINGS[family as keyof typeof STATE_READINGS])) {
         expect(en[`common.state.${family}.${value}`], `common.state.${family}.${value}`).toBe(label);
-        expect(vi[`common.state.${family}.${value}`], `common.state.${family}.${value} (vi)`).toBeTruthy();
       }
     }
   });

@@ -1,6 +1,7 @@
 // The built-in workflow templates read in the interface language: every template, node type, band
-// and line kind the contracts ship has its English and its Vietnamese word, and a project's own
-// template keeps its author's words.
+// and line kind the contracts ship has its English word, a Vietnamese word where one was written (a
+// new element owes none: Forge is not multilingual, the owner's ruling of 2026-10-08), and a
+// project's own template keeps its author's words.
 
 import { BUILTIN_WORKFLOW_TEMPLATES } from "@forge/contracts/workflow-templates";
 import { describe, expect, it } from "vitest";
@@ -12,13 +13,12 @@ const en = product.en as Record<string, string>;
 const vi = product.vi as Record<string, string>;
 const both = (key: string, english: string) => {
   expect(en[key], `${key} has no en label`).toBe(english);
-  expect(vi[key], `${key} has no vi label`).toBeTruthy();
-  expect(vi[key], `${key} reads in vi as its English`).not.toBe(english);
+  if (vi[key] !== undefined) expect(vi[key], `${key} reads in vi as its English`).not.toBe(english);
 };
 
 describe("the built-in workflow templates' words", () => {
   for (const t of BUILTIN_WORKFLOW_TEMPLATES) {
-    it(`${t.id}: its title, node types, bands and line kinds have an en and a vi label`, () => {
+    it(`${t.id}: its title, node types, bands and line kinds have an en label, and a vi one differs from it`, () => {
       both(`label.templateTitle.${t.id}`, t.title);
       for (const n of t.nodeTypes) {
         both(`label.templateNode.${t.id}.${n.id}`, n.label);

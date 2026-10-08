@@ -4,7 +4,7 @@ import { NotificationsBell } from "@/features/notifications/components/notificat
 import { NotificationsTab } from "@/features/settings/components/notifications-tab";
 import { SettingsScreen } from "@/features/settings/components/settings-screen";
 import { Seeded } from "./vi-chrome-requirements";
-import type { ShellScreen } from "./vi-chrome-shell";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The notifications bell panel and the Account preferences page, for the vi walking test. Content is
 // placeholder words.
@@ -94,7 +94,7 @@ const notificationSettings = () => (
   </Seeded>
 );
 
-export const SCREENS: ShellScreen[] = [
+export const SCREENS: ChromeScreen[] = [
   { name: "Notifications", render: notifications },
   { name: "Account preferences", render: account },
   { name: "Notification settings", render: notificationSettings },

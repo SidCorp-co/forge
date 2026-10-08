@@ -9,7 +9,9 @@ import { composeCopy } from "./product-copy";
 
 // The product copy is split into files each feature owns, so two lanes adding words to two features
 // touch two files. These hold the split together: every copy file on disk is composed, a key lives in
-// one file, every English key has its vi beside it, and the one shared file it replaced stays gone.
+// one file, a vi word stands beside its English and is never blank where the English is not, and the
+// one shared file it replaced stays gone. A key may be English only: Forge is not multilingual (the
+// owner's ruling of 2026-10-08), so a new key carries no vi and reads in English on a vi page.
 
 const SRC = resolve(__dirname, "../..");
 const SPLIT = resolve(__dirname, "../../../../../scripts/split-product-copy.mjs");
@@ -23,6 +25,20 @@ const onDisk = () => [
   ...readdirSync(join(SRC, "lib/i18n/copy")).filter((n) => n.endsWith(".json")).map((n) => `lib/i18n/copy/${n}`),
 ];
 
+/** A vi word with no English beside it, or blank where its English is not, by file and key; English-only keys pass. */
+function strayWords(files: Record<string, Record<string, Record<string, string>>>): string[] {
+  const wrong: string[] = [];
+  for (const [file, part] of Object.entries(files)) {
+    const en = part.en ?? {};
+    for (const [key, text] of Object.entries(part.vi ?? {})) {
+      const english = key in en ? en[key] : SAID_ENTRIES[key as keyof typeof SAID_ENTRIES]?.en;
+      if (english === undefined) wrong.push(`${file}: ${key} has vi and no en`);
+      else if (!text.trim() && english.trim()) wrong.push(`${file}: ${key} is blank in vi and not in en`);
+    }
+  }
+  return wrong;
+}
+
 const splitCheck = (old: string) => spawnSync(process.execPath, [SPLIT, "--check", "--old", old], { encoding: "utf8" });
 
 describe("the product copy files", () => {
@@ -32,13 +48,18 @@ describe("the product copy files", () => {
     expect([...composed].filter((f) => !existsSync(join(SRC, f))), "a copy file copy-files.ts composes and the disk lacks").toEqual([]);
   });
 
-  it("gives every English key its vi in the same file, and a vi key with no English is one core says", () => {
-    const wrong: string[] = [];
-    for (const [file, part] of Object.entries(FILES)) {
-      for (const key of Object.keys(part.en ?? {})) if (typeof part.vi?.[key] !== "string") wrong.push(`${file}: ${key} has en and no vi`);
-      for (const key of Object.keys(part.vi ?? {})) if (!(key in (part.en ?? {})) && !(key in SAID_ENTRIES)) wrong.push(`${file}: ${key} has vi and no en`);
-    }
-    expect(wrong, "every English key carries its vi in the same copy file").toEqual([]);
+  it("keeps a vi word beside its English in the same file, a vi key with no English being one core says", () => {
+    expect(strayWords(FILES), "a vi word stands beside its English").toEqual([]);
+  });
+
+  it("refuses a vi word with no English, and a blank one whose English is not blank, naming the file and key", () => {
+    const planted = { "features/a/copy.json": { en: { "a.x": "Close", "a.y": "Open" }, vi: { "a.x": " ", "a.z": "Z" } } };
+    expect(strayWords(planted)).toEqual(["features/a/copy.json: a.x is blank in vi and not in en", "features/a/copy.json: a.z has vi and no en"]);
+  });
+
+  it("takes a key written in English only", () => {
+    expect(strayWords({ "features/a/copy.json": { en: { "a.x": "Close" } } })).toEqual([]);
+    expect(strayWords({ "features/a/copy.json": { en: { "a.x": "Close", "a.y": "Open" }, vi: { "a.x": "Dong" } } })).toEqual([]);
   });
 
   it("refuses a key two copy files hold, naming both", () => {

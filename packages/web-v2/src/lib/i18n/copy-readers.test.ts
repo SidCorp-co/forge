@@ -3,14 +3,15 @@ import { describe, expect, it } from "vitest";
 import { ETA_COPY, etaLangOf } from "@/features/forecast/eta-copy";
 import { copyLocale, PRODUCT_STRINGS as product, productCopy } from "./product-copy";
 
-// One product copy, read by both readers: every key exists in vi and en (what core says holds its
-// English in `@forge/contracts/said`, so the copy files hold only its vi), a tag resolves by its base
-// language, and the ETA words come from the same copy the rest of the product reads.
+// One product copy, read by both readers: every key exists in en, and a vi key is one of them (what
+// core says holds its English in `@forge/contracts/said`, so the copy files hold only its vi), a tag
+// resolves by its base language, and the ETA words come from the same copy the rest of the product reads.
 const keysOf = (lang: "vi" | "en") => Object.keys(product[lang]).sort();
 
 describe("the locale readers", () => {
-  it("holds the same keys in vi and en, the registry's English counted as en", () => {
-    expect(keysOf("vi")).toEqual([...keysOf("en"), ...Object.keys(SAID_ENTRIES)].sort());
+  it("holds no vi key without its English, the registry's English counted as en", () => {
+    const english = new Set([...keysOf("en"), ...Object.keys(SAID_ENTRIES)]);
+    expect(keysOf("vi").filter((k) => !english.has(k))).toEqual([]);
   });
 
   it("holds no key twice: what core says has its English in the registry, never in the file", () => {
