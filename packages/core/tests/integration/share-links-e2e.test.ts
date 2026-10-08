@@ -3,7 +3,6 @@ import type { ReportDocument } from '@forge/contracts/report-templates';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { registerShareSubjectSource } from '../../src/shares/index.js';
 import { hashShareToken, mintShareToken } from '../../src/shares/token.js';
 import { api, type Body, patToken, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
@@ -59,12 +58,19 @@ function plantedDocument(projectId: string): ReportDocument {
   };
 }
 
-// No module freezes a stored status report yet (REQ-32 B3); this one stands in for it at the port, so
-// the link's own behaviour is exercised over a document that holds a secret and an email address.
-registerShareSubjectSource({
-  kind: 'status-report',
-  freeze: async ({ projectId }) => plantedDocument(projectId),
-});
+// The link's own behaviour is exercised over a kept template report whose document holds a secret
+// and an email address, stored as the status-reports module keeps one (REQ-32 B3).
+const kept = new Map<string, string>();
+const keep = async (project: string, userId: string): Promise<string> => {
+  const document = plantedDocument(project);
+  const [row] = await db.execute<{ id: string }>(sql`
+    INSERT INTO status_reports (project_id, producer_kind, produced_by, as_of, template_id, template_version, document)
+    VALUES (${project}, 'person', ${userId}, now(), ${document.templateId}, ${document.version}, ${JSON.stringify(document)}::jsonb)
+    RETURNING id
+  `);
+  kept.set(project, String(row?.id));
+  return String(row?.id);
+};
 
 interface Person {
   id: string;
@@ -86,7 +92,7 @@ const person = async (role?: 'member' | 'viewer', project = () => projectId) => 
 const create = (who: Person, body: Body, project = projectId) =>
   api(who.token, 'POST', `/api/projects/${project}/shares`, {
     subjectKind: 'status-report',
-    subjectId: 'progress-1',
+    subjectId: kept.get(project),
     ...body,
   });
 const created = async (who: Person, body: Body, project = projectId) => {
@@ -114,6 +120,7 @@ beforeAll(async () => {
   other = await person('member');
   viewer = await person('viewer');
   outsider = await person();
+  await keep(projectId, owner.id);
 }, 120_000);
 
 describe('opening a share', () => {
@@ -211,6 +218,7 @@ describe('creating a share', () => {
       extra: { sensitiveData: 'no_egress' },
     });
     const who = { id: owner.id, token: await userToken(owner.id) };
+    await keep(closed, owner.id);
     const link = await create(who, { audience: 'link' }, closed);
     expect(link.status, JSON.stringify(link.body)).toBe(403);
     expect(link.body.code).toBe('SHARE_EGRESS_FORBIDDEN');

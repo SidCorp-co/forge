@@ -1,11 +1,16 @@
 // One period of a `status_report` schedule: store the report it answers (once per schedule and
-// period) and tell each recipient once, in their language, linking to the stored report. A period
+// period) and tell each recipient once, in their language, linking to the stored report. A schedule
+// that names a template runs it for the schedule's owner and stores the output. A fire has no model,
+// so its narrative slots are stored empty and the notice names them as unwritten: the project status
+// digest is not used to fill them, because it states figures read from the project status, not from
+// the template's runs, and a template's narrative may cite only those runs (`checkTemplateNarrative`). A period
 // whose every recipient is already told is refused by name and tells nobody; one stored but not yet
 // told to everyone (a recipient added since, a send cut short) tells only those it still owes.
 
 import { statusReportNoticeKey } from '@forge/contracts/notifications';
 import { PROJECT_STATUS_DAYS_DEFAULT, type ProjectStatus } from '@forge/contracts/project-status';
-import { statusReportDiff } from '@forge/contracts/status-reports';
+import type { ReportDocument } from '@forge/contracts/report-templates';
+import { statusReportDiff, templateTitleOf, unwrittenSlots } from '@forge/contracts/status-reports';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, users } from '../db/schema.js';
@@ -17,7 +22,8 @@ import { refuser } from '../lib/refusal.js';
 import { emitNotification } from '../notifications/index.js';
 import type { StatusReportSendOutcome } from '../schedules/index.js';
 import { digestText } from './digest.js';
-import { previousReport, reportOfPeriod, storeStatusReport } from './store.js';
+import { statusReportsPorts } from './ports.js';
+import { previousReport, reportOfPeriod, storeStatusReport, storeTemplateReport } from './store.js';
 
 const refuse = refuser<'SCHEDULE_REFUSED'>('SCHEDULE_REFUSED');
 
@@ -27,6 +33,7 @@ export async function sendStatusReport(args: {
   viewerUserId: string;
   recipients: string[];
   days: number | undefined;
+  template?: { id: string; params: Record<string, string | number | boolean> | undefined };
   period: Date;
   timeZone: string | null;
   fireId: string;
@@ -65,36 +72,53 @@ export async function sendStatusReport(args: {
       .from(users)
       .where(eq(users.id, args.viewerUserId))
       .limit(1);
+    const agency = owner?.kind ?? 'human';
+    const producer = {
+      kind: 'schedule',
+      userId: args.viewerUserId,
+      scheduleId: args.scheduleId,
+      period: args.period,
+    } as const;
     try {
-      report = await storeStatusReport({
-        projectId: args.projectId,
-        access,
-        agency: owner?.kind ?? 'human',
-        days: args.days ?? PROJECT_STATUS_DAYS_DEFAULT,
-        producer: {
-          kind: 'schedule',
-          userId: args.viewerUserId,
-          scheduleId: args.scheduleId,
-          period: args.period,
-        },
-      });
+      if (args.template) {
+        const { document } = await statusReportsPorts().runTemplate({
+          projectId: args.projectId,
+          templateId: args.template.id,
+          params: args.template.params,
+          asker: { userId: args.viewerUserId, agency, access },
+        });
+        report = await storeTemplateReport({ projectId: args.projectId, document, producer });
+      } else {
+        report = await storeStatusReport({
+          projectId: args.projectId,
+          access,
+          agency,
+          days: args.days ?? PROJECT_STATUS_DAYS_DEFAULT,
+          producer,
+        });
+      }
     } catch (err) {
       if (!isUniqueViolation(err)) throw err;
       return sendStatusReport(args);
     }
   }
-  const status = report.report as ProjectStatus;
-  const prev = await previousReport(report);
-  const diff = prev
-    ? {
-        previousAsOf: prev.asOf.toISOString(),
-        diff: statusReportDiff(prev.report as ProjectStatus, status),
-      }
-    : null;
+  const document = report.document as ReportDocument | null;
+  const status = report.report as ProjectStatus | null;
+  const prev = status ? await previousReport(report) : null;
+  const diff =
+    status && prev
+      ? {
+          previousAsOf: prev.asOf.toISOString(),
+          diff: statusReportDiff(prev.report as ProjectStatus, status),
+        }
+      : null;
+  const templateNotice = document ? templateNoticeText(document, args.timeZone) : null;
   const languages = await reporterLanguagesOf(owed, args.projectId);
   let told = 0;
   for (const userId of owed) {
-    const text = digestText(status, diff, languages.get(userId) ?? 'en', args.timeZone);
+    const text =
+      templateNotice ??
+      digestText(status as ProjectStatus, diff, languages.get(userId) ?? 'en', args.timeZone);
     const { delivered } = await emitNotification({
       recipients: [userId],
       projectId: args.projectId,
@@ -111,5 +135,31 @@ export async function sendStatusReport(args: {
     reportId: report.id,
     told,
     output: `stored report ${report.id} for ${periodKey} and told ${counted(told, 'recipient')}`,
+  };
+}
+
+/**
+ * The notice of a template report: what it is and when its figures were read, and which narrative
+ * slots nobody has written (a fire writes none). English only; the report itself holds the figures.
+ */
+function templateNoticeText(
+  document: ReportDocument,
+  timeZone: string | null,
+): { title: string; body: string } {
+  const read = Math.max(...document.runs.map((r) => Date.parse(r.asOf)));
+  const day = new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeZone: timeZone ?? 'UTC',
+  }).format(new Date(read));
+  const title = templateTitleOf(document.templateId);
+  const unwritten = unwrittenSlots(document);
+  return {
+    title: `${title} report, ${day}`,
+    body: [
+      `${counted(document.blocks.length, 'block')} drawn from ${counted(document.runs.length, 'query run')}, read ${day}.`,
+      unwritten.length > 0 ? `Narrative not written: ${unwritten.join(', ')}.` : null,
+    ]
+      .filter(Boolean)
+      .join('\n'),
   };
 }

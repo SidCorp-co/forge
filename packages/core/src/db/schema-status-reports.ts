@@ -19,7 +19,7 @@ const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 
 /**
  * One stored status report: the project status read (`project-status/read.ts:readProjectStatus`)
- * as it answered at `as_of`, kept as history. Immutable: trigger `status_report_guard` refuses any
+ * as it answered at `as_of`, or one report template's output (`document`), kept as history. Immutable: trigger `status_report_guard` refuses any
  * change but the producer references going null when their rows are deleted. A sent report names the
  * schedule slot it answers in `period`, one report per (schedule, period).
  */
@@ -36,8 +36,14 @@ export const statusReports = pgTable(
     scheduleId: uuid('schedule_id').references(() => schedules.id, { onDelete: 'set null' }),
     period: timestamp('period', { withTimezone: true }),
     asOf: timestamp('as_of', { withTimezone: true }).notNull(),
-    days: integer('days').notNull(),
-    report: jsonb('report').notNull(),
+    /** The window a project status read covered; null on a template report, whose window is its params. */
+    days: integer('days'),
+    /** The project status read as it answered; null on a template report. */
+    report: jsonb('report'),
+    /** A template report: which template, and the `ReportDocument` (runs, blocks, narrative) it kept. */
+    templateId: text('template_id'),
+    templateVersion: integer('template_version'),
+    document: jsonb('document'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -49,8 +55,15 @@ export const statusReports = pgTable(
       'status_reports_producer_chk',
       sql`${t.producerKind} IN (${inList(STATUS_REPORT_PRODUCERS)}) AND (${t.producerKind} = 'schedule') = (${t.period} IS NOT NULL)`,
     ),
-    daysChk: check('status_reports_days_chk', sql`${t.days} BETWEEN 1 AND 90`),
-    reportChk: check('status_reports_report_chk', sql`jsonb_typeof(${t.report}) = 'object'`),
+    daysChk: check('status_reports_days_chk', sql`${t.days} IS NULL OR ${t.days} BETWEEN 1 AND 90`),
+    reportChk: check(
+      'status_reports_report_chk',
+      sql`${t.report} IS NULL OR jsonb_typeof(${t.report}) = 'object'`,
+    ),
+    shapeChk: check(
+      'status_reports_shape_chk',
+      sql`(${t.document} IS NULL) = (${t.templateId} IS NULL) AND (${t.document} IS NULL) = (${t.templateVersion} IS NULL) AND (${t.document} IS NULL) = (${t.report} IS NOT NULL) AND (${t.report} IS NULL) = (${t.days} IS NULL) AND (${t.document} IS NULL OR jsonb_typeof(${t.document}) = 'object')`,
+    ),
   }),
 );
 

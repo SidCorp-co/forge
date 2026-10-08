@@ -3,8 +3,8 @@ import { isRefusal } from '../lib/refusal.js';
 import { provideShareSubjectSources, shareSubjectSource } from './ports.js';
 
 // A subject kind with no source registered is refused by name, listing the kinds this build can
-// freeze: a kind is never guessed at. (Every kind now has, or awaits, its owner: message and
-// template-output are registered at boot, status-report by REQ-32 B3.)
+// freeze: a kind is never guessed at. (Every kind has its owner, registered at boot; this
+// test provides only two so the third reads as unregistered.)
 
 describe('a share subject kind no module can freeze yet', () => {
   it('is refused naming the kinds that can', () => {

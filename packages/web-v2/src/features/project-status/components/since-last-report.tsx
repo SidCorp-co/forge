@@ -92,7 +92,7 @@ export function SinceLastReport({ detail, slug, clock }: { detail: StatusReportD
               </li>
             ))}
           </Part>
-          {d.waitsCut ? <p className="text-12-5 text-muted">{t("status.since.waitsCut", { n: detail.status.waits.people.length })}</p> : null}
+          {d.waitsCut ? <p className="text-12-5 text-muted">{t("status.since.waitsCut", { n: detail.status?.waits.people.length ?? 0 })}</p> : null}
           <Part title={t("status.since.moved")} count={d.moved.length}>
             {d.moved.map((m) => (
               <li key={`${m.kind}:${m.key}`} className={ROW} data-testid="since-moved">

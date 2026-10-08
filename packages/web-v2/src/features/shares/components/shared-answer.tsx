@@ -38,9 +38,32 @@ function factsOf(document: ReportDocument): (source: BlockSource) => SourceFacts
   };
 }
 
+/** A report document as it reads: the narrative slots someone wrote, then each block over the runs it names. */
+export function ReportDocumentBody({ document }: { document: ReportDocument }) {
+  const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
+  return (
+    <>
+      {narrative.map(({ slot, label }) => (
+        <section key={slot} className="border-b border-line py-5">
+          <h2 className="fg-body-sm font-semibold text-fg">{label}</h2>
+          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{document.narrative[slot]}</p>
+        </section>
+      ))}
+      {/* No projectSlug: a viewer may not be a member, so a ref reads as its key and links nowhere. */}
+      <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: factsOf(document) }}>
+        {document.blocks.map((block, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the document's block order is fixed
+          <section key={i} className="border-b border-line py-5">
+            <VisualBlockView block={block} />
+          </section>
+        ))}
+      </VisualBlockProvider>
+    </>
+  );
+}
+
 export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
   const { document } = snapshot;
-  const narrative = NARRATIVE.filter(({ slot }) => document.narrative[slot]?.trim());
   return (
     <article className="flex flex-col">
       <header className="border-b border-line pb-5">
@@ -51,21 +74,7 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
           available until {when(snapshot.expiresAt)}
         </p>
       </header>
-      {narrative.map(({ slot, label }) => (
-        <section key={slot} className="border-b border-line py-5">
-          <h2 className="fg-body-sm font-semibold text-fg">{label}</h2>
-          <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{document.narrative[slot]}</p>
-        </section>
-      ))}
-      {/* No projectSlug: a viewer may not be a member, so a ref reads as its key and links nowhere. */}
-      <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: factsOf(document) }}>
-        {document.blocks.map((block, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: the snapshot's block order is fixed
-          <section key={i} className="border-b border-line py-5">
-            <VisualBlockView block={block} />
-          </section>
-        ))}
-      </VisualBlockProvider>
+      <ReportDocumentBody document={document} />
     </article>
   );
 }

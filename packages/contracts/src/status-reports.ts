@@ -1,6 +1,7 @@
-// A status report kept as history: the project status read (`project-status.ts`) stored once, dated
-// and never changed, by a person ("Save report") or by a `status_report` schedule that sends it to
-// its recipients. What changed since the previous report is derived here from the two stored reads
+// A status report kept as history: the project status read (`project-status.ts`), or one report
+// template's output (`report-templates.ts:ReportDocument`, runs, blocks and narrative), stored once,
+// dated and never changed, by a person ("Save report") or by a `status_report` schedule that sends it
+// to its recipients. What changed since the previous report is derived here from the two stored reads
 // and nothing else, so core's delivery, the page and a test all read the same lines.
 
 import type { DeliveryForecast } from "./forecast.js";
@@ -10,6 +11,12 @@ import type {
 	StatusWait,
 } from "./project-status.js";
 import type { RefusalStatuses } from "./refusal.js";
+import { builtinReportTemplate } from "./report-template-builtins.js";
+import {
+	type ReportDocument,
+	TEMPLATE_NARRATIVE_SLOTS,
+} from "./report-templates.js";
+import { blockToText } from "./visual-blocks.js";
 
 export const STATUS_REPORT_PRODUCERS = ["person", "schedule"] as const;
 export type StatusReportProducerKind = (typeof STATUS_REPORT_PRODUCERS)[number];
@@ -38,14 +45,27 @@ export const STATUS_REPORT_REFUSAL_STATUSES = {
 	STATUS_REPORT_DELETE_FORBIDDEN: 403,
 } as const satisfies RefusalStatuses<StatusReportRefusalCode>;
 
-/** What a `status_report` schedule's `params` hold: who receives it and the window it reads. */
+/**
+ * What a `status_report` schedule's `params` hold: who receives it and what it reads. Without a
+ * `templateId` it reads the project status over `days`; with one it runs that report template for the
+ * schedule's owner (its window is a template param, so `days` is refused beside it).
+ */
 export interface StatusReportScheduleParams {
 	recipients: string[];
 	days?: number;
+	templateId?: string;
+	templateParams?: Record<string, string | number | boolean>;
 }
 
 export const STATUS_REPORT_PARAMS_SHAPE =
-	"{ recipients: [<user id of a project member>, …] (at least one), days?: 1..90 }";
+	"{ recipients: [<user id of a project member>, …] (at least one), days?: 1..90 } or { recipients: [...], templateId: <report template>, templateParams?: { <name>: <value> } }";
+
+/** The report template a stored report holds, as the history lists it. */
+export interface StatusReportTemplateRef {
+	id: string;
+	version: number;
+	title: string;
+}
 
 /** Who stored a report: the person who saved it, or the schedule that sent it and whose read it is. */
 export interface StatusReportProducer {
@@ -61,7 +81,10 @@ export interface StatusReportMeta {
 	projectId: string;
 	/** When the stored read began. */
 	asOf: string;
-	days: number;
+	/** The window a project status report read; null for a template report, whose window is its params. */
+	days: number | null;
+	/** The report template a template report holds; null for a project status report. */
+	template: StatusReportTemplateRef | null;
 	producer: StatusReportProducer;
 	/** The schedule slot a sent report answers (ISO instant); null for a saved one. */
 	period: string | null;
@@ -104,7 +127,10 @@ export interface StatusReportDiff {
 
 export interface StatusReportDetail {
 	report: StatusReportMeta;
-	status: ProjectStatus;
+	/** The stored project status read; null for a template report. */
+	status: ProjectStatus | null;
+	/** The stored template output, its narrative as it was kept; null for a project status report. */
+	document: ReportDocument | null;
 	previous: StatusReportMeta | null;
 	/** Null for the first report a project kept. */
 	diff: StatusReportDiff | null;
@@ -176,7 +202,9 @@ export function statusReportDiff(
 			? movedOf(
 					"release",
 					nr.version,
-					pr.version === nr.version ? nr.version : `${pr.version} → ${nr.version}`,
+					pr.version === nr.version
+						? nr.version
+						: `${pr.version} → ${nr.version}`,
 					deliveryDateOf(pr.forecast?.delivery ?? null),
 					deliveryDateOf(nr.forecast?.delivery ?? null),
 				)
@@ -208,4 +236,42 @@ export function statusReportDiff(
 			}),
 		],
 	};
+}
+
+/** The title a stored template report is listed under: the template's own, or its id when this build no longer has it. */
+export function templateTitleOf(templateId: string): string {
+	return builtinReportTemplate(templateId)?.title ?? templateId;
+}
+
+/** Which narrative slots a stored document left empty, in the template's order. */
+export function unwrittenSlots(document: ReportDocument): string[] {
+	return TEMPLATE_NARRATIVE_SLOTS.filter(
+		(slot) => !document.narrative[slot]?.trim(),
+	);
+}
+
+const SLOT_HEADINGS = {
+	summary: "Summary",
+	risks: "Risks",
+	recommendations: "Recommendations",
+} as const;
+
+/**
+ * A stored template report as Markdown: the narrative a person or a model wrote, then every block as
+ * its plain text (`blockToText`), and the slots nobody wrote named at the end rather than left out.
+ */
+export function reportDocumentMarkdown(
+	document: ReportDocument,
+	meta: { title: string; asOf: string },
+): string {
+	const parts = [`# ${meta.title}`, `_As of ${meta.asOf}_`];
+	for (const slot of TEMPLATE_NARRATIVE_SLOTS) {
+		const text = document.narrative[slot]?.trim();
+		if (text) parts.push(`## ${SLOT_HEADINGS[slot]}\n\n${text}`);
+	}
+	for (const block of document.blocks) parts.push(blockToText(block));
+	const unwritten = unwrittenSlots(document);
+	if (unwritten.length > 0)
+		parts.push(`_Narrative not written: ${unwritten.join(", ")}._`);
+	return `${parts.join("\n\n")}\n`;
 }

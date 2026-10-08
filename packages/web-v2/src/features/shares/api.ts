@@ -1,4 +1,4 @@
-import type { ShareSnapshot } from "@forge/contracts/shares";
+import type { ShareCreate, ShareCreated, ShareSnapshot } from "@forge/contracts/shares";
 import { apiClient } from "@/lib/api/client";
 
 /**
@@ -10,4 +10,9 @@ export function openShare(token: string, signedIn: boolean): Promise<ShareSnapsh
     method: "POST",
     body: JSON.stringify({ token }),
   });
+}
+
+/** Creates a share of one subject of a project; the link comes back once, in `url`. */
+export function createShare(projectId: string, body: Pick<ShareCreate, "subjectKind" | "subjectId" | "audience">): Promise<ShareCreated> {
+  return apiClient<ShareCreated>(`/projects/${encodeURIComponent(projectId)}/shares`, { method: "POST", body: JSON.stringify(body) });
 }

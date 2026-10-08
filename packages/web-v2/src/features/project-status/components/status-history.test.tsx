@@ -3,12 +3,14 @@
 // removes it after a confirmation; nobody else is offered the act, and core's refusal reads in the
 // dialog when it comes anyway.
 
+import type { ReportDocument } from "@forge/contracts/report-templates";
 import type { StatusReportMeta } from "@forge/contracts/status-reports";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import { StatusHistory } from "./status-history";
+import { templateReportFile } from "./template-report";
 
 const ME = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -22,6 +24,7 @@ const report = (id: string, by: string | null, kind: "person" | "schedule" = "pe
   projectId: "p1",
   asOf: "2026-10-08T09:00:00.000Z",
   days: 7,
+  template: null,
   period: kind === "schedule" ? "2026-10-06T02:00:00.000Z" : null,
   producer: {
     kind,
@@ -89,5 +92,82 @@ describe("removing a kept status report", () => {
     await user.click(within(dialog).getByRole("button", { name: "Remove report" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("The report was not removed");
     expect(screen.getAllByTestId("status-history-row")).toHaveLength(1);
+  });
+});
+
+describe("a kept template report", () => {
+  const frame = {
+    fields: [
+      { name: "requirement", type: "ref" as const, label: "Requirement" },
+      { name: "proven", type: "number" as const, label: "Proven" },
+    ],
+    rows: [{ requirement: "REQ-7", proven: 5 }],
+  };
+  const document: ReportDocument = {
+    templateId: "progress",
+    version: 1,
+    params: {},
+    runs: [
+      {
+        runId: "run-1",
+        queryId: "progress-by-requirement",
+        version: 1,
+        params: {},
+        projectId: "p1",
+        actor: { kind: "human", id: ME },
+        asOf: "2026-10-08T09:00:00.000Z",
+        frame,
+      },
+    ],
+    blocks: [{ kind: "table", v: 1, title: "Progress", columns: ["requirement", "proven"], source: { runId: "run-1" }, frame }],
+    narrative: { summary: "One requirement moved.", risks: "", recommendations: "" },
+  };
+  const TEMPLATE: StatusReportMeta = { ...report("r-template", ME), days: null, template: { id: "progress", version: 1, title: "Progress" } };
+
+  function open(calls: Call[] = []) {
+    const log = fakeCore((call) => {
+      calls.push(call);
+      if (call.method === "GET" && call.path === "/projects/p1/status/reports") return { body: { reports: [TEMPLATE, MINE] } };
+      if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template")
+        return { body: { report: TEMPLATE, status: null, document, previous: null, diff: null } };
+      if (call.method === "POST" && call.path === "/projects/p1/status/reports/r-template/read") return { body: { read: 0 } };
+      if (call.method === "POST" && call.path === "/projects/p1/shares") return { status: 201, body: { share: {}, url: "/s/forge_share_abc" } };
+      if (call.path.startsWith("/schedules?")) return { body: [] };
+      return undefined;
+    });
+    return log;
+  }
+
+  it("lists it beside the project status reads, named by its template instead of a window", async () => {
+    open();
+    window.history.replaceState({}, "", "/?report=r-template");
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    const listed = await rows();
+    expect(listed.map((r) => r.textContent)).toEqual([expect.stringContaining("Progress"), expect.stringContaining("the last 7 days")]);
+  });
+
+  it("opens it with its kept narrative, names the slots nobody wrote, and shares it with the members", async () => {
+    const calls: Call[] = [];
+    open(calls);
+    window.history.replaceState({}, "", "/?report=r-template");
+    const user = userEvent.setup();
+    renderWithQuery(<StatusHistory projectId="p1" slug="hop" clock={clock} isAdmin={false} />);
+    expect(await screen.findByTestId("template-report")).toHaveTextContent("One requirement moved.");
+    expect(screen.getByTestId("template-report")).toHaveTextContent("Narrative not written: risks, recommendations.");
+    expect(screen.getByTestId("template-report-export")).toBeInTheDocument();
+    await user.click(screen.getByTestId("template-report-share"));
+    expect(await screen.findByTestId("template-report-link")).toHaveTextContent("/s/forge_share_abc");
+    expect(calls).toContainEqual({
+      method: "POST",
+      path: "/projects/p1/shares",
+      body: { subjectKind: "status-report", subjectId: "r-template", audience: "members" },
+    });
+  });
+
+  it("exports the report as the Markdown core's export route answers, narrative first", () => {
+    const file = templateReportFile(TEMPLATE, document);
+    expect(file.name).toBe("progress-2026-10-08.md");
+    expect(file.text).toContain("## Summary\n\nOne requirement moved.");
+    expect(file.text).toContain("Narrative not written: risks, recommendations.");
   });
 });
