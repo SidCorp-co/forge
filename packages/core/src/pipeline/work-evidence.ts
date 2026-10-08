@@ -35,8 +35,7 @@ export interface WorkEvidence {
   /** `issues.merged_landing` where a mark stands on an `outside_git` lane: where the work now is,
    *  that lane's own record of having landed. Null on a `git` lane, which records a commit. */
   mergedLanding: string | null;
-  /** `issues.merged_claimed_commit` where a mark stands: the commit an agent named that Forge had no
-   *  way to check (ISS-1409). A claim, counted as evidence the way a recorded branch is. */
+  /** The commit a standing mark claims and Forge could not check (ISS-1409), counted like a branch. */
   claimedCommit: string | null;
   /** Where this issue's work lands, which decides the routes a refusal may offer; null where the
    *  issue declares nothing and the project's kind is none Forge knows. */
@@ -139,9 +138,8 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
 }
 
 /**
- * The commit a standing mark claims and Forge could not check (ISS-1409), or null where no mark
- * stands or it claims none. Read apart from `collectWorkEvidence`, which fails open for a gate:
- * what a mark does with a claim is decided on this answer, so a read that raised is raised.
+ * The unverified claim a standing mark holds, or null. Unlike `collectWorkEvidence`, which fails
+ * open for a gate, a read that raised is raised: what a mark does with a claim turns on this answer.
  */
 export async function readStandingClaim(
   issueId: string,

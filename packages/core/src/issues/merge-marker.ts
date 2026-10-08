@@ -179,7 +179,6 @@ async function refuseMovedLane(issue: {
 /** What an agent's mark rests on where nothing but its commit stands behind it. */
 type AgentEvidence =
   | { kind: 'read'; landing: Extract<CommitLanding, { ok: true }> }
-  /** The project declares no way to read its repository: the commit is kept as an unverified claim. */
   | { kind: 'unverified'; commit: string; why: string };
 
 /**
@@ -187,13 +186,9 @@ type AgentEvidence =
  * itself, where the commit is the only trace and counts once the repository says it is this
  * issue's landing (`read`); outside git where the landing it names is, that lane's evidence.
  *
- * Where the project declares no way to read its repository at all, the commit is recorded as a
- * claim Forge did not check (`unverified`, ISS-1409). That is the one cause softened: a repository
- * that can be read and says no, and a reader that is configured and fails, are refused by name.
- *
- * A mark standing on such a claim is verified here, ahead of the work-evidence shortcut that the
- * claim itself would otherwise satisfy: a repeat mark reads the repository for the commit it
- * names, or for the claim, and upgrades through the observed write where it holds.
+ * Where the project declares no way to read its repository the commit is kept as a claim
+ * (`unverified`, ISS-1409); a readable repository saying no, and a reader that fails, still refuse.
+ * A standing claim is verified here, ahead of the work-evidence shortcut it would itself satisfy.
  */
 async function agentEvidence(
   issueId: string,
@@ -213,6 +208,26 @@ async function agentCommit(issueId: string, commit: string): Promise<AgentEviden
   if (read.ok) return { kind: 'read', landing: read };
   if (read.unreadable) return { kind: 'unverified', commit, why: read.unreadable.why };
   throw new MergeMarkerError(read.code, read.detail, read.details);
+}
+
+/**
+ * Clear the mark. The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between
+ * the decision and the write. A zero-row answer is read back rather than guessed at: the row is gone,
+ * or it is closed, and anything else is a state those two conditions cannot produce.
+ */
+async function unmarkOrRefuse(issueId: string): Promise<void> {
+  if (await clearIssueMerge(db, issueId)) return;
+  const still = await findIssueById(issueId);
+  if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
+  const refusal = refuseUnmarkOnClosed(still.status);
+  if (!refusal) {
+    throw new Error(
+      `unmark cleared no row on issue ${issueId}, which is neither missing nor \`closed\` but ` +
+        `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
+        `clearIssueMerge cannot produce and must not be reported as either of them.`,
+    );
+  }
+  throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
 }
 
 export type MergeMarkerActor = {
@@ -268,7 +283,6 @@ export async function applyMergeMarker(args: {
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
-  /** Where no reader is declared, the commit the agent named and the cause with its remedy. */
   let unverified: { commit: string; why: string } | null = null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
@@ -365,22 +379,7 @@ export async function applyMergeMarker(args: {
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
   } else {
-    // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
-    // decision and the write. A zero-row answer is read back rather than guessed at: the row is
-    // gone, or it is closed, and anything else is a state those two conditions cannot produce.
-    if (!(await clearIssueMerge(db, before.id))) {
-      const still = await findIssueById(before.id);
-      if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
-      const refusal = refuseUnmarkOnClosed(still.status);
-      if (!refusal) {
-        throw new Error(
-          `unmark cleared no row on issue ${before.id}, which is neither missing nor \`closed\` but ` +
-            `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
-            `clearIssueMerge cannot produce and must not be reported as either of them.`,
-        );
-      }
-      throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
-    }
+    await unmarkOrRefuse(before.id);
   }
 
   const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;

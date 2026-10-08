@@ -1046,8 +1046,6 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
-    // ISS-1409 — the commit an agent's mark named where Forge had no way to read the repository:
-    // a claim, never a merge. Beside `merged_at` and never beside `merged_commit_sha`.
     mergedClaimedCommit: text('merged_claimed_commit'),
     // ISS-1384 — where THIS issue's work lands, declared on it; NULL answers the project's kind.
     declaredLandingShape: text('declared_landing_shape', { enum: landingShapes }),

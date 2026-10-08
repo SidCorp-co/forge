@@ -216,7 +216,9 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(refused.message).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
   }, 60_000);
+});
 
+describe('ISS-1409 — a project whose deploy key cannot be used to read it, or is absent (real Postgres)', () => {
   it('records the commit as an unverified claim, naming the SSH URL and deploy key to attach and never GitHub, where the project has neither (criteria 13, 16; ISS-1409)', async () => {
     const { db, projectId } = current();
     await db.execute(sql`DELETE FROM project_git_credentials WHERE project_id = ${projectId}`);
