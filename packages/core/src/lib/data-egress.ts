@@ -67,6 +67,12 @@ const EGRESS_SURFACES = {
     class: 'product',
     holds: "a person's messages to a coding agent in an agent session",
   },
+  // a share link open to anyone with its token takes the report out of the project for good, so
+  // it is operational whatever the report holds: never created at no_egress, scrubbed at redact
+  'report.share': {
+    class: 'operational',
+    holds: 'a frozen report answer opened through a share link by anyone holding its token',
+  },
 } as const satisfies Record<string, { class: EgressClass; holds: string }>;
 
 export type EgressSurface = keyof typeof EGRESS_SURFACES;

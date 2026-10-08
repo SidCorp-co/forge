@@ -136,6 +136,7 @@ import {
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
+import { provideShareSubjectSources } from './shares/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { provideStatusReportsPorts } from './status-reports/index.js';
 import {
@@ -170,6 +171,9 @@ provideStatusReportsPorts({
   readProjectStatus: ({ projectId, access, userId, agency, days, now }) =>
     readProjectStatus(projectId, statusViewerOf(access, userId, agency), days, now),
 });
+// no module freezes a subject for a share yet: a message's blocks, a template's output and a stored
+// report each bring their source with the change that makes them a report document (REQ-32 A4, A7, B3)
+provideShareSubjectSources([]);
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,

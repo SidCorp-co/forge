@@ -36,6 +36,10 @@ const DEFAULTS = {
    * few times over, and anything above that is a caller looping where it should be streaming.
    */
   backlogStream: { windowMs: 60_000, max: 20, by: 'user' },
+  /** Opening share links from one address: a person reading a few shares, never a token sweep. */
+  shareOpenAddress: { windowMs: 60_000, max: 60, by: 'ip' },
+  /** Opening one share link, from anywhere: keyed by its token's hash (`shares/open.ts`), not a PAT. */
+  shareOpenToken: { windowMs: 60_000, max: 120, by: 'token' },
 } as const satisfies Record<string, RateLimitRule>;
 
 type RuleName = keyof typeof DEFAULTS;
@@ -60,6 +64,14 @@ const OVERRIDES: Record<RuleName, () => [max: number | undefined, windowMs: numb
     env.RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS,
   ],
   backlogStream: () => [env.RATE_LIMIT_BACKLOG_STREAM_MAX, env.RATE_LIMIT_BACKLOG_STREAM_WINDOW_MS],
+  shareOpenAddress: () => [
+    env.RATE_LIMIT_SHARE_OPEN_ADDRESS_MAX,
+    env.RATE_LIMIT_SHARE_OPEN_ADDRESS_WINDOW_MS,
+  ],
+  shareOpenToken: () => [
+    env.RATE_LIMIT_SHARE_OPEN_TOKEN_MAX,
+    env.RATE_LIMIT_SHARE_OPEN_TOKEN_WINDOW_MS,
+  ],
 };
 
 function resolve(name: RuleName): RateLimitRule {

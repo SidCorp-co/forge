@@ -38,6 +38,7 @@ const WRITE = [
 	"ecosystem-links.write",
 	"contracts.write",
 	"suggestions.write",
+	"shares.write",
 ] as const;
 
 /**
@@ -69,12 +70,19 @@ const ADMIN = [
  */
 const DEPLOY = ["deploys.run"] as const;
 
+/**
+ * Open a frozen answer to anyone holding its link, outside the project. Admin's by default; a member
+ * or a token holds it only where its grant names it.
+ */
+const PUBLIC_SHARE = ["shares.public"] as const;
+
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
 	...PERSONAL,
 	...APPROVE,
 	...DEPLOY,
+	...PUBLIC_SHARE,
 	...ADMIN,
 ] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
@@ -99,7 +107,7 @@ type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
 	viewer: [...READ],
 	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...ADMIN],
+	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...PUBLIC_SHARE, ...ADMIN],
 };
 
 const ORG_ROLES = ["member", "admin", "owner"] as const;
@@ -124,6 +132,7 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"commitments.write",
 	"feedback.redact",
 	"comments.moderate",
+	"shares.public",
 	...APPROVE,
 ];
 
