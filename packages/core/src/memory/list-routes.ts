@@ -6,7 +6,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
+import { memoryCitesSchema, memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
 import { runMemoryGet } from './get-service.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
@@ -63,34 +63,46 @@ memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), as
   return c.json(listResponse(c, rows, total, { limit, offset }));
 });
 
-const entriesQuerySchema = paginationSchema.extend({
-  projectId: z.uuid(),
-  q: z.string().trim().max(200).optional(),
-  /** Comma-separated sources; absent lists what agents and people wrote down. */
-  sources: z
-    .string()
-    .trim()
-    .min(1)
-    .transform((v) => v.split(',').map((s) => s.trim()))
-    .pipe(z.array(z.enum(memorySources)).min(1))
-    .optional(),
-  state: z.enum(MEMORY_ENTRY_STATES).optional(),
-});
+const entriesQuerySchema = paginationSchema
+  .extend({
+    projectId: z.uuid(),
+    /** Comma-separated sources; absent lists what agents and people wrote down. */
+    sources: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((v) => v.split(',').map((s) => s.trim()))
+      .pipe(z.array(z.enum(memorySources)).min(1))
+      .optional(),
+    state: z.enum(MEMORY_ENTRY_STATES).optional(),
+    cites: memoryCitesSchema.optional(),
+    /** `true` lists the memories naming no item of the project: the Dashboard's (REQ-33 BC-7). */
+    uncited: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
+  })
+  .refine((q) => !(q.cites && q.uncited), {
+    message: 'cites and uncited ask for one item and for none: send one of them',
+    path: ['uncited'],
+  });
 
-// MJ-1: the Memory page's read — who wrote each row and when, whether it was checked, what it
+// MJ-1: memory as a person reads it — who wrote each row and when, whether it was checked, what it
 // cites and which of those no longer resolve, why it needs a check, and every person's correction
-// or retirement; `counts` sizes each list by the same rule.
+// or retirement; `counts` sizes each list by the same rule. `cites` keeps the rows naming one
+// requirement, issue or workflow: the read its own page shows (REQ-33 BC-4).
 memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
-  const { projectId, q, sources, state, limit, offset } = c.req.valid('query');
+  const { projectId, sources, state, cites, uncited, limit, offset } = c.req.valid('query');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
   const { rows, total, counts } = await readMemoryEntries(
     memoryEntriesInputSchema.parse({
       projectId,
-      ...(q ? { q } : {}),
       ...(sources ? { sources } : {}),
       ...(state ? { state } : {}),
+      ...(cites ? { cites } : {}),
+      uncited,
       limit,
       offset,
     }),

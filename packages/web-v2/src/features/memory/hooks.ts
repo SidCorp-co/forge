@@ -1,14 +1,17 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type MemoryQuery, memoryApi } from "./api";
+import { isUuid } from "@/lib/api/ref-bridge";
+import { type ItemMemoryQuery, memoryApi } from "./api";
 
 const MEMORY_ROOT = ["memory-entries"] as const;
 
-export function useMemoryEntries(projectId: string, q: MemoryQuery) {
+/** The memories naming one item, or none; the memory read addresses a project by its uuid only, so it waits for it. */
+export function useItemMemory(projectId: string, q: ItemMemoryQuery) {
   return useQuery({
-    queryKey: [...MEMORY_ROOT, projectId, q.state, q.q],
+    queryKey: [...MEMORY_ROOT, projectId, q.cites ?? "uncited", q.state],
     queryFn: () => memoryApi.entries(projectId, q),
+    enabled: isUuid(projectId) && q.cites !== "",
     staleTime: 15_000,
   });
 }

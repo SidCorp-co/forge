@@ -50,8 +50,8 @@ export async function runMemoryDecay(): Promise<DecayResult> {
     )
   )`;
 
-  // MJ-3: the rule that archived a row is written on it, so the Memory page's Retired list says
-  // why rather than the row vanishing from every read in silence.
+  // MJ-3: the rule that archived a row is written on it, so the retired list on the record it
+  // names says why rather than the row vanishing from every read in silence.
   const archivedRows = await db
     .update(memories)
     .set({

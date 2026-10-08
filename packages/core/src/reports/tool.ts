@@ -61,7 +61,7 @@ export const forgeReportTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
-  description: `Runs one registered report query as the asker and keeps the run 30 days: answers { runId, queryId, version, params, asOf, frame }, the frame being fields and rows. Call it when the answer is figures, a progress, a roadmap, a release or a coverage, then draw the run with forge_show and state only figures the frame holds. Queries: ${chatQueries()
+  description: `Runs a registered report query as the asker, kept 30 days: answers { runId, queryId, version, params, asOf, frame }, the frame being fields and rows. Call it when the answer is figures: progress, roadmap, release or coverage, then draw the run with forge_show and state only figures the frame holds. Queries: ${chatQueries()
     .map((q) => `${q.id} (${q.title}; fields ${q.output.map((f) => f.name).join(', ')})`)
     .join('; ')}.`,
   inputSchema: zodToMcpSchema(reportInput),

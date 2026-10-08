@@ -73,6 +73,8 @@ interface MemoryIssueReads {
     projectId: string,
     seqs: readonly number[],
   ): Promise<Map<number, { status: string; updatedAt: Date }>>;
+  /** Every workflow the project draws, by its flow, with its last change: what a memory may name. */
+  workflowFlows(projectId: string): Promise<{ flow: string; updatedAt: Date }[]>;
   /** The projects of this project's organization, itself included: where a memory's keys may point. */
   siblingProjects(
     projectId: string,

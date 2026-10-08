@@ -1,10 +1,11 @@
-// MJ-1: the two acts a person takes on a memory from the Memory page, each with a reason.
+// MJ-1: the acts a person takes on a memory from the record it names, or from the project Dashboard
+// when it names none (REQ-33 BC-5, BC-7), each correction and retirement with a reason.
 //  - Correct: the body is replaced by the person's text. The old body stays readable (the
 //    `memories_record_replacement` trigger writes it to memory_revisions), the correction is kept on
 //    the row with who and why, and the row counts as verified now: a person just read it against
 //    what they know. A release's "possibly stale" flag is cleared with it.
 //  - Retire: the row leaves every read surface (archived), and who retired it and why stays on it,
-//    so the Memory page's Retired list says so. Nothing is deleted here.
+//    so the retired list on the record it names says so. Nothing is deleted here.
 //  - Verify ("still true"): the row counts as checked now, by this person. The check is stamped on
 //    the row (`last_verified_at`, who on `metadata.verifiedBy`), kept in `metadata.checks`, and the
 //    reasons it needed a check fall away: a release's flag is cleared, and a cited record that

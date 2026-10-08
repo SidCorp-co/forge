@@ -173,6 +173,21 @@ export interface StatusLate extends Stamped {
 export const ROADMAP_HORIZONS = ["now", "next", "later"] as const;
 export type RoadmapHorizon = (typeof ROADMAP_HORIZONS)[number];
 
+/**
+ * Where a requirement in this state stands on the roadmap (JU-10): in delivery is Now, agreed is
+ * Next, deferred and draft are Later; delivered, accepted and dropped are on it no more. The one
+ * rule the status report's roadmap and the Requirements list's roadmap grouping both read.
+ */
+export const ROADMAP_HORIZON_OF: Record<RequirementState, RoadmapHorizon | null> = {
+	in_delivery: "now",
+	agreed: "next",
+	deferred: "later",
+	draft: "later",
+	delivered: null,
+	accepted: null,
+	dropped: null,
+};
+
 export interface RoadmapItem {
 	key: string;
 	title: string;

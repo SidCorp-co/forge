@@ -8,9 +8,10 @@ import { ago, issue, requirement, type World, world } from '../helpers/forecast-
 
 // The HOP journey walk (2026-10-08): 371 of HOP's 470 decision records were a master's pass logs
 // ("Decision (master, …): not dispatched this pass, because the wave is full"), so a BA reading
-// the decisions feed or a requirement's Decisions tab could not find what a person decided. Both
-// reads default to decisions a person made and say how many records agents kept are folded away;
-// a record whose text dates itself after it was written is flagged with the time it states.
+// a requirement's Decisions tab could not find what a person decided. The tab defaults to decisions
+// a person made, its issues' included, and says how many records agents kept are folded away; a
+// record whose text dates itself after it was written is flagged with the time it states. The
+// project-wide feed is gone (REQ-33): a decision is read on the item it decides.
 
 const HOUR = 3_600_000;
 
@@ -88,17 +89,17 @@ describe('decisions a person made, apart from what agents kept', () => {
     );
   }, 120_000);
 
-  it('lists only what a person decided in the feed, and counts what agents kept as folded', async () => {
-    const feed = await read('/decisions');
-    expect(ids(feed)).toEqual([personOnReq, personOnIssue].sort());
-    expect(feed).toMatchObject({ by: 'people', folded: 2 });
-  });
-
-  it('lists what agents kept, or everything, when asked', async () => {
-    expect(ids(await read('/decisions?by=agents'))).toEqual([ahead.id, behind].sort());
-    const all = await read('/decisions?by=all');
+  it('lists what agents kept on the requirement and its issues, or everything, when asked', async () => {
+    const tab = (by: string) => read(`/requirements/${req.key}/decisions?by=${by}`);
+    expect(ids(await tab('agents'))).toEqual([ahead.id, behind].sort());
+    const all = await tab('all');
     expect(ids(all)).toEqual([personOnReq, personOnIssue, ahead.id, behind].sort());
     expect(all).toMatchObject({ by: 'all', folded: 0 });
+  });
+
+  it('keeps no project-wide feed of them', async () => {
+    const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/decisions`);
+    expect(res.status).toBe(404);
   });
 
   it("defaults a requirement's Decisions tab to what a person decided, its issues' included", async () => {
@@ -109,7 +110,7 @@ describe('decisions a person made, apart from what agents kept', () => {
   });
 
   it('flags a record whose text dates itself after it was written, with the time it states', async () => {
-    const all = (await read('/decisions?by=all')).decisions;
+    const all = (await read(`/requirements/${req.key}/decisions?by=all`)).decisions;
     const flag = (id: string) => all.find((d) => d.id === id)?.datedAhead;
     expect(flag(ahead.id)).toBe(ahead.stated);
     expect(flag(behind)).toBeNull();
@@ -117,7 +118,11 @@ describe('decisions a person made, apart from what agents kept', () => {
   });
 
   it('refuses a maker it does not know, naming the valid ones', async () => {
-    const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/decisions?by=bots`);
+    const res = await api(
+      w.token,
+      'GET',
+      `/api/projects/${w.projectId}/requirements/${req.key}/decisions?by=bots`,
+    );
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(JSON.stringify(res.body)).toContain('people | agents | all');
   });

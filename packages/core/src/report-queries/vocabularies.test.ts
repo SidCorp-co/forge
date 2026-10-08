@@ -21,6 +21,7 @@ describe("the queries' state columns", () => {
     );
     expect(declared).toEqual({
       'progress-by-requirement.state': 'requirement',
+      'progress-by-requirement.lane': null,
       'roadmap-eta.lane': null,
       'roadmap-eta.state': 'requirement',
       // in flight, none in flight or shipped: which part of the frame a row is, read by no badge family

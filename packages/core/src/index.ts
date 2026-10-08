@@ -156,7 +156,7 @@ import {
 } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
-import { workflowDesign } from './workflows/index.js';
+import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
@@ -214,6 +214,7 @@ provideMemoryIssueReads({
   }),
   issueStandings: issueStandingsBySeq,
   requirementStatuses: requirementStatusesBySeq,
+  workflowFlows: workflowFlowsOf,
   siblingProjects: orgSiblingProjects,
   repositoryWebUrl: async (projectId) => {
     const repository = (await readDeclaredSource(projectId)).repository;

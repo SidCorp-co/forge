@@ -75,7 +75,7 @@ describe('bookkeeping is its own kind', () => {
     expect(res.status).toBe(400);
   });
 
-  it('is not a decision on the Memory page, and is listed only by name', async () => {
+  it('is not a decision in a memory list, and is listed only by name', async () => {
     expect((await entries(w)).map((e) => e.sourceRef)).toEqual(['owner/board']);
     expect((await entries(w, '&sources=decision')).map((e) => e.sourceRef)).toEqual([
       'owner/board',
@@ -90,12 +90,6 @@ describe('bookkeeping is its own kind', () => {
     expect(await search(w, { query: 'board', sourceFilter: ['bookkeeping'] })).toEqual([
       'reconcile:ISS-9',
     ]);
-  });
-
-  it('is not on the Decisions page', async () => {
-    const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/decisions`);
-    expect(res.status, JSON.stringify(res.body)).toBe(200);
-    expect(JSON.stringify(res.body)).not.toContain('reconcile');
   });
 });
 

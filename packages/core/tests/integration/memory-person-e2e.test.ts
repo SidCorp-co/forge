@@ -35,7 +35,7 @@ const act = (w: World, id: string, verb: 'correct' | 'retire', body: unknown, to
 
 const code = (b: Body) => b.code;
 
-describe('the Memory page read and a person acts on it', () => {
+describe('memory as a person reads it, and a person acts on it', () => {
   let w: World;
   let agentToken: string;
   let agentId: string;
@@ -91,11 +91,6 @@ describe('the Memory page read and a person acts on it', () => {
   it('lists under stale only the rows that name a gone record or carry a release flag, of rows written today', async () => {
     const stale = await entries(w, '&state=stale');
     expect(stale.map((r) => r.sourceRef)).toEqual(['gotcha/cites']);
-  });
-
-  it('finds rows by the words in them', async () => {
-    const found = await entries(w, '&q=owner%20flat');
-    expect(found.map((r) => r.sourceRef)).toEqual(['gotcha/cites']);
   });
 
   it('refuses a correction with no reason, of a mirror, unchanged, or of no such row — by name', async () => {

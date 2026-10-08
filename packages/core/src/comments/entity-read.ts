@@ -13,7 +13,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { WrittenLang } from '@forge/contracts/written-lang';
-import { and, asc, count, desc, eq, gte, isNotNull, lt, not, or, type SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNotNull, not, or, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -89,6 +89,28 @@ export async function targetIn(
   }
   const row = await workflowIn(tx, projectId, ref);
   return { scope, id: row.id, key: row.flow, title: titleOf(row.document, row.flow), projectId };
+}
+
+/**
+ * What a read of one item's comments sits on: a requirement, workflow or feedback item as
+ * `targetIn` names it, or an issue by its key or uuid (REQ-33 BC-2: an issue's decisions are read
+ * through the same entity read; its thread and its writes stay on the issue's own routes).
+ */
+async function readTargetIn(
+  tx: Tx,
+  projectId: string,
+  scope: CommentScope,
+  ref: string,
+): Promise<CommentTarget> {
+  if (scope !== 'issue') return targetIn(tx, projectId, scope, ref);
+  const id = await resolveIssueKeyInProject(ref, projectId);
+  const [row] = await tx
+    .select({ seq: issues.issSeq, title: issues.title })
+    .from(issues)
+    .where(and(eq(issues.id, id), eq(issues.projectId, projectId)));
+  if (!row) throw notFound(`project ${projectId} holds no issue ${ref}`);
+  const key = formatIssueRef(await activeIssuePrefix(projectId), row.seq);
+  return { scope, id, key, title: row.title, projectId };
 }
 
 export const entityCommentColumns = {
@@ -201,13 +223,13 @@ export async function commentEgress(
 export async function listEntityCommentsAs(
   actor: EntityCommentActor,
   projectId: string,
-  scope: EntityCommentScope,
+  scope: CommentScope,
   ref: string,
   query: { intent?: CommentIntent | undefined } = {},
   door: ReadDoor = {},
 ): Promise<EntityCommentListResponse> {
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
-  const target = await targetIn(db, projectId, scope, ref);
+  const target = await readTargetIn(db, projectId, scope, ref);
   const rows = await db
     .select(entityCommentColumns)
     .from(comments)
@@ -239,14 +261,6 @@ async function egressOfScopes(projectId: string, actor: EntityCommentActor, door
 
 const DECISIONS_DEFAULT_LIMIT = 100;
 
-const DAY_MS = 86_400_000;
-
-/** A bound as an instant: a bare date's `until` takes in the whole of that day. */
-function boundAt(value: string, end: boolean): Date {
-  const at = new Date(value);
-  return end && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(at.getTime() + DAY_MS) : at;
-}
-
 /** The narrowing a decisions query names, each ref resolved in the project or refused as not found. */
 async function decisionFilters(projectId: string, query: ListDecisionsQuery) {
   const requirementId = query.requirement
@@ -262,8 +276,7 @@ async function decisionFilters(projectId: string, query: ListDecisionsQuery) {
     workflowId ? eq(comments.workflowId, workflowId) : undefined,
     issueId ? eq(comments.issueId, issueId) : undefined,
     query.who ? eq(comments.authorId, query.who) : undefined,
-    query.since ? gte(comments.createdAt, boundAt(query.since, false)) : undefined,
-    query.until ? lt(comments.createdAt, boundAt(query.until, true)) : undefined,
+    query.since ? gte(comments.createdAt, new Date(query.since)) : undefined,
   );
 }
 

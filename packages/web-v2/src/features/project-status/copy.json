@@ -1,11 +1,8 @@
 {
   "en": {
-    "roadmap.loadFailed": "The roadmap could not be read",
-    "roadmap.loading": "Reading the roadmap…",
     "roadmap.rule.later": "Deferred, with the reason and the phase it was deferred to, then drafts not agreed yet.",
     "roadmap.rule.next": "Agreed and not yet in delivery. Soonest forecast first, then the oldest key.",
     "roadmap.rule.now": "In delivery: its issues are being worked. Soonest forecast landing first.",
-    "roadmap.title": "Roadmap",
     "status.asOf": "As of {at}",
     "status.behind": "draft {version} waits behind it with {n} issues",
     "status.copied": "Copied",
@@ -111,12 +108,9 @@
     "status.windowLabel": "Window"
   },
   "vi": {
-    "roadmap.loadFailed": "Không đọc được lộ trình",
-    "roadmap.loading": "Đang đọc lộ trình…",
     "roadmap.rule.later": "Đã hoãn, kèm lý do và giai đoạn được hoãn tới, rồi đến bản nháp chưa chốt.",
     "roadmap.rule.next": "Đã chốt, chưa bắt đầu thực hiện. Dự báo sớm nhất trước, rồi đến mã cũ nhất.",
     "roadmap.rule.now": "Đang thực hiện: các issue của nó đang được làm. Dự báo xong sớm nhất xếp trước.",
-    "roadmap.title": "Lộ trình",
     "status.asOf": "Tính đến {at}",
     "status.behind": "bản nháp {version} chờ phía sau với {n} issue",
     "status.copied": "Đã sao chép",

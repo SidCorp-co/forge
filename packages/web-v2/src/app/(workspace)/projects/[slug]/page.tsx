@@ -17,6 +17,7 @@ import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
 import { LandsThisWeek, LateItems } from "@/features/project-dashboard/components/plan-sections";
+import { ProjectMemory } from "@/features/memory/components/project-memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
 import { useModuleRollup } from "@/features/modules/hooks";
 import { useComingNext, useEtaClock, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast/hooks";
@@ -178,6 +179,8 @@ export default function ProjectOverviewPage() {
         </div>
 
         <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
+
+        <ProjectMemory projectId={project.id} slug={project.slug} />
       </div>
     </PageContainer>
     </>

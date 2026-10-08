@@ -3,6 +3,7 @@
 // with no date: a figure the forecast does not hold is never invented here (VISION: state-never-lies).
 
 import type { DeliveryForecast } from '@forge/contracts/forecast';
+import { ROADMAP_HORIZONS } from '@forge/contracts/project-status';
 import {
   defineReportQuery,
   type ReportCell,
@@ -14,7 +15,7 @@ import { readProjectStatus } from '../project-status/index.js';
 import { defineAdapter, type ReportQueryAdapter } from './adapter.js';
 
 const STATUS_DAYS = 7;
-const LANES = ['now', 'next', 'later'] as const;
+const LANES = ROADMAP_HORIZONS;
 
 const OUTPUT = [
   { name: 'lane', type: 'status', label: 'Lane' },
