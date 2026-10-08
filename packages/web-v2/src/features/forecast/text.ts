@@ -8,7 +8,7 @@ import { ETA_COPY } from "./eta-copy";
 import { progressText } from "./progress";
 
 // The forecast sentences a screen reads: a line, and the tooltip behind it. Their words are the
-// `fc.*` keys of the locale file, drawn in the clock's language; the names, keys and versions in
+// `fc.*` keys of the product copy, drawn in the clock's language; the names, keys and versions in
 // them are core's, and who, act and reason are read from what core said (`@forge/contracts/said`).
 
 type Lang = EtaClock["lang"];

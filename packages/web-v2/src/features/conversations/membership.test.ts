@@ -1,8 +1,7 @@
 import { FAILURE_CAUSES } from "@forge/contracts/failure-causes";
 import { SAID_ENTRIES } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
-import strings from "@/lib/i18n/product-copy.json";
-import { productCopy } from "@/lib/i18n/product-copy";
+import { PRODUCT_STRINGS as strings, productCopy } from "@/lib/i18n/product-copy";
 import { composerRefusal, personAdditionClaims, removalClaim, roomOpeningClaims } from "./membership";
 
 const hop = { id: "a", name: "Hop", slug: "hop" };
@@ -39,7 +38,7 @@ describe("membership claims", () => {
   });
 });
 
-describe("the locale file", () => {
+describe("the product copy", () => {
   it("holds every key in both languages", () => {
     const en = Object.keys(strings.en);
     const vi = Object.keys(strings.vi);

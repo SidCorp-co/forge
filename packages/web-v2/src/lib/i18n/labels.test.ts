@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LABEL_GROUPS, labelCopy, labelKey } from "./labels";
-import product from "./product-copy.json";
+import { PRODUCT_STRINGS as product } from "./product-copy";
 
 // Every value of every contract enum has its label in both languages, and the English one is the
 // contract's own word, so the locale file and the contracts cannot drift apart unseen.

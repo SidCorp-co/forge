@@ -5,7 +5,7 @@ import type { ProjectListItem } from "@/features/projects/types";
 import { LateItems } from "@/features/project-dashboard/components/plan-sections";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { resolveInterfaceLanguage, WorkspaceInterfaceLanguage } from "./interface-language";
-import product from "./product-copy.json";
+import { PRODUCT_STRINGS as product } from "./product-copy";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 

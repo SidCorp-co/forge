@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react
 import { type ReactNode, useState } from "react";
 import type { RequirementDetail, RequirementSummary } from "@/features/requirements/types";
 import type { SuggestionView } from "@/features/suggestions/types";
+import { CreateRequirementForm, RequirementsScreen } from "@/features/requirements/components/requirements-screen";
+import { RequirementPeek } from "@/features/requirements/components/requirement-peek";
+import { RequirementScreen } from "@/features/requirements/components/requirement-screen";
+import { RequirementPage } from "@/features/requirements/components/requirement-detail";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The Requirements screens' fixtures for the vi walking test: one requirement in delivery with every
 // part of its page filled (a proposal open, criteria with evidence, issues, feedback, a design, a broken
@@ -217,4 +222,26 @@ export const reqQueries = (): [QueryKey, unknown][] => [
   [["requirement", REQ_PROJECT, "REQ-1"], reqDetail],
   [["suggestions", REQ_PROJECT, "*"], { suggestions: reqSuggestions }],
   [["suggestions", REQ_PROJECT, { requirement: "REQ-1" }], { suggestions: reqSuggestions }],
+];
+
+export const SCREENS: ChromeScreen[] = [
+  { name: "Requirements list", render: () => <Seeded data={reqQueries()}><RequirementsScreen projectId={REQ_PROJECT} slug="hop" /></Seeded> },
+  { name: "New requirement form", render: () => <Seeded data={[]}><CreateRequirementForm projectId={REQ_PROJECT} onDone={() => {}} /></Seeded> },
+  {
+    name: "Requirement peek",
+    render: () => (
+      <Seeded data={reqQueries()}>
+        <RequirementPeek projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" peek={{ open: "REQ-1", position: { at: 1, of: 2 }, set: () => {}, move: () => {} }} onOpenFull={() => {}} />
+      </Seeded>
+    ),
+  },
+  { name: "Requirement detail · Overview", render: () => <Seeded data={reqQueries()}><RequirementScreen projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" /></Seeded> },
+  ...(["criteria", "revisions", "activity"] as const).map((tab) => ({
+    name: `Requirement detail · ${tab}`,
+    render: () => (
+      <Seeded data={reqQueries()}>
+        <RequirementPage projectId={REQ_PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />
+      </Seeded>
+    ),
+  })),
 ];

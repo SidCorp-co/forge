@@ -87,7 +87,7 @@ const clickKey = (key: ProductCopyKey, nth = 0) => () => {
   fireEvent.click(el);
 };
 
-export const SETTINGS_SCREENS = [
+export const SCREENS = [
   { name: "Settings · organizations", render: () => inOrg(<OrgsTab />), act: clickKey("settings.orgs.members") },
   { name: "Settings · organization home", render: () => inOrg(<OrgHome />), act: clickKey("integrations.edit.rename") },
   { name: "Settings · personal home", render: () => inOrg(<OrgHome />, "o1") },

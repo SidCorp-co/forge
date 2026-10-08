@@ -42,7 +42,7 @@ const read: WorkspaceRead = {
 
 const views = ["needs-me", "waiting", "overdue", "held", "working", "answered", "closed"];
 
-export const THREADS_SCREENS = [
+export const SCREENS = [
   ...views.map((view) => ({
     name: `Threads · ${view}`,
     render: () => (

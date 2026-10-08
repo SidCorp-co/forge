@@ -103,7 +103,7 @@ function Bars({ n }: { n: number }) {
 }
 
 /** A family with no field named reads as words in the tooltip: `failureCause` → "failure cause"; the
- *  locale file's `common.field.<family>` words it in the interface language. */
+ *  product copy's `common.field.<family>` words it in the interface language. */
 const fieldWords = (family: string) => family.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
 
 const FIELD: Partial<Record<EnumFamily, string>> = {

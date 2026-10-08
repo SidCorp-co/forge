@@ -283,7 +283,7 @@ const BLOCKERS = [
   blockerView({ tone: "attention", reason: say("issues.pause.byOperator", { base: say("issues.pause.operator.detail") }), whoMustAct: say("issues.pause.operator.who"), label: say("issues.blocker.actResumeRun"), kind: "resume_run", runId: "r1", resumeAt: null, blockingRefs: [], detail: null }),
 ] as NonNullable<IssueStandingDetail["blocker"]>[];
 
-export const ISSUE_SCREENS = [
+export const SCREENS = [
   { name: "Issues table", render: () => wrap(listQueries(), <IssuesListView scope={{ projectId: P, slug: "hop" }} onNewIssue={noop} />) },
   { name: "Issues table · row menu", render: () => wrap(listQueries(), <IssuesListView scope={{ projectId: P, slug: "hop" }} />), act: click(labelled("issues.row.actions")) },
   { name: "Issues table · filter", render: () => wrap(listQueries(), <IssuesListView scope={{ projectId: P, slug: "hop" }} />), act: click('button[aria-expanded="false"]') },

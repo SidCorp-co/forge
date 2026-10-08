@@ -25,6 +25,7 @@ import { WorkflowDesignScreen } from "@/features/workflows/components/workflow-d
 import { WorkflowsScreen } from "@/features/workflows/components/workflows-screen";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The Releases and Workflows screens the vi walking test renders, each filled from a query cache
 // seeded with data that carries no English word of its own: core's act texts are registry keys the
@@ -318,3 +319,12 @@ export const workflowCanvasScreen = (): ReactElement => (
     <DetailPanel canvas={canvas} selection={{ edge: "a>b" }} walk={null} decision={null} onClose={() => {}} onWalk={() => {}} onStep={() => {}} onEdge={() => {}} />
   </Seeded>
 );
+
+export const SCREENS: ChromeScreen[] = [
+  { name: "Releases", render: releasesScreen },
+  { name: "Release detail", render: releaseDetailScreen },
+  { name: "Workflows", render: workflowsScreen },
+  { name: "System overview", render: systemOverviewScreen },
+  { name: "Workflow design", render: workflowDesignScreen },
+  { name: "Workflow canvas", render: workflowCanvasScreen },
+];

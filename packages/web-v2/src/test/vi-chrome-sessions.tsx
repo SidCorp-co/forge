@@ -142,7 +142,7 @@ const clickAll = (selector: string) => () => {
   for (const el of document.querySelectorAll(selector)) fireEvent.click(el);
 };
 
-export const SESSIONS_SCREENS = [
+export const SCREENS = [
   { name: "Sessions · list", render: () => wrap(<SessionsScreen projectId={P} issueFilter={null} stuck={stuck} />) },
   { name: "Sessions · one issue", render: () => wrap(<SessionsScreen projectId={P} issueFilter={{ issueId: "i1", clearHref: "/x" }} stuck={stuck} />) },
   { name: "Sessions · row menu", render: () => wrap(<SessionsScreen projectId={P} issueFilter={null} stuck={stuck} />), act: clickAll("button[aria-haspopup]") },

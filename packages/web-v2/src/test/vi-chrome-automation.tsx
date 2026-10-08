@@ -169,7 +169,7 @@ const clickAll = (selector: string) => () => {
   for (const el of document.querySelectorAll(selector)) fireEvent.click(el);
 };
 
-export const AUTOMATION_SCREENS = [
+export const SCREENS = [
   { name: "Automation · schedules", render: () => wrap(<AutomationScreen access={access} />) },
   { name: "Automation · new schedule", render: () => wrap(<AutomationScreen access={access} />), act: clickAll('[data-testid="schedule-new"]') },
   {

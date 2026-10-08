@@ -7,7 +7,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ComingNext } from "@/features/releases/components/coming-next";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
-import product from "@/lib/i18n/product-copy.json";
+import { PRODUCT_STRINGS as product } from "@/lib/i18n/product-copy";
 import { REQ_PROJECT, reqQueries, Seeded } from "@/test/vi-chrome-requirements";
 import { RequirementsScreen } from "./requirements-screen";
 

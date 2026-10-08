@@ -169,7 +169,7 @@ const gates = () => (
   </>
 );
 
-export const SHARED_SCREENS: ShellScreen[] = [
+export const SCREENS: ShellScreen[] = [
   { name: "Decisions tab", render: decisions },
   { name: "Mockups tab", render: mockups },
   { name: "Shared badges", render: badges },

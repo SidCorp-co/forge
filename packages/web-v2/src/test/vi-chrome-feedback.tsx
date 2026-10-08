@@ -15,6 +15,7 @@ import { AcceptForm, DeclineForm, DuplicateForm, SnoozeForm } from "@/features/f
 import type { FeedbackSummary, FeedbackView } from "@/features/feedback/types";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { Seeded as SeededQueries } from "./vi-chrome-requirements";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The Feedback screens for the vi walking test, filled from a seeded query cache so they draw at once.
 // Fixture content (titles, names, bodies) carries no English chrome word; core's sentences (whom an item
@@ -196,3 +197,12 @@ export const feedbackForms = () => (
     />
   </Seeded>
 );
+
+export const SCREENS: ChromeScreen[] = [
+  { name: "Feedback list", render: feedbackList },
+  { name: "Feedback detail", render: feedbackDetail },
+  { name: "Feedback peek", render: feedbackPeek },
+  { name: "Feedback facts and history", render: feedbackFacts },
+  { name: "Feedback triage and message forms", render: feedbackForms },
+  { name: "Feedback filing form", render: feedbackFilingForm },
+];

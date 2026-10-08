@@ -1,7 +1,7 @@
 // The registry of what core says (`said.ts`): every sentence key, its English template and the kind
 // of each value it carries. Core builds its English text from these templates, so the text and the
 // structured form cannot disagree; a reader in another language holds its own template per key
-// (web-v2 `product-copy.json`), and a contract test refuses a key one language lacks.
+// (web-v2's copy files, composed by `product-copy.ts`), and a contract test refuses a key one language lacks.
 
 import type { SaidEntry } from "./said.js";
 

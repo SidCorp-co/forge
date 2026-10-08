@@ -2,7 +2,7 @@ import { type Said, SAID_ENTRIES, type SaidKey, type SaidKind, type SaidValue, s
 import { waitingOn } from "@forge/contracts/standing";
 import { describe, expect, it } from "vitest";
 import { englishChromeWord } from "@/test/english-chrome";
-import strings from "./product-copy.json";
+import { PRODUCT_STRINGS as strings } from "./product-copy";
 import { said, saidView, saysKey, unknownSaid } from "./said";
 
 // What core says reaches a reader as a registry key and typed values (`@forge/contracts/said`), read

@@ -1,0 +1,12 @@
+{
+  "en": {
+    "written.in": "Written in {language}, shown as written",
+    "written.lang.en": "English",
+    "written.lang.vi": "Vietnamese"
+  },
+  "vi": {
+    "written.in": "Viết bằng {language}, hiển thị nguyên văn",
+    "written.lang.en": "tiếng Anh",
+    "written.lang.vi": "tiếng Việt"
+  }
+}

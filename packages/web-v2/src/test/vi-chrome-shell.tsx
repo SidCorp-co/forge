@@ -206,7 +206,7 @@ export interface ShellScreen {
   act?: () => void;
 }
 
-export const SHELL_SCREENS: ShellScreen[] = [
+export const SCREENS: ShellScreen[] = [
   { name: "Navigation rail · labelled", render: railScreen(false) },
   { name: "Navigation rail · compact", render: railScreen(true) },
   { name: "Account menu", render: railScreen(false), act: click('[aria-haspopup="menu"]') },
