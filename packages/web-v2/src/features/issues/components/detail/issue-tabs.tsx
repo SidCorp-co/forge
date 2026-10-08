@@ -19,6 +19,8 @@ import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueAgentSession, IssueDetail } from "../../types";
 import { ActivityFeed } from "../activity-feed";
 import { CommentThread } from "../comment-thread";
+import { defaultVerdictCommit } from "../../criteria";
+import { TieCriteria } from "../criteria-acts";
 import { CriteriaList } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
 import { ReleaseNoteCard } from "../release-note-card";
@@ -63,24 +65,39 @@ export function OverviewTab({
   );
 }
 
-/** The criteria rows when the issue has them, else the checklist parsed from its acceptance-criteria text. */
+/**
+ * The criteria rows when the issue has them, else the checklist parsed from its acceptance-criteria
+ * text. A reader who may write records verdicts on the rows and, where the issue delivers a
+ * requirement, ties it to that requirement's criteria, a closed issue included.
+ */
 export function CriteriaTab({
-  issueId,
+  issue,
+  projectId,
   hasCriteriaRows,
   checklist,
+  canWrite,
+  requirementKey,
 }: {
-  issueId: string;
+  issue: IssueDetail;
+  projectId: string;
   hasCriteriaRows: boolean;
   checklist: { key: string; text: string; checked: boolean }[];
+  canWrite: boolean;
+  /** The requirement the issue delivers, by key; null where it delivers none. */
+  requirementKey: string | null;
 }) {
   const t = useCopy();
+  const tie =
+    canWrite && requirementKey && issue.status !== "dropped" ? (
+      <TieCriteria issueId={issue.id} projectId={projectId} requirementKey={requirementKey} />
+    ) : null;
   return (
     <div data-testid="view-criteria">
       {hasCriteriaRows ? (
-        <CriteriaList issueId={issueId} />
+        <CriteriaList issueId={issue.id} judge={canWrite ? { commit: defaultVerdictCommit(issue) } : undefined} headingAct={tie} />
       ) : checklist.length > 0 ? (
         <section aria-label={t("issues.criteria.acceptance")}>
-          <ViewHeading>{t("issues.criteria.acceptance")}</ViewHeading>
+          <ViewHeading right={tie}>{t("issues.criteria.acceptance")}</ViewHeading>
           <ul className="space-y-2">
             {checklist.map((item) => (
               <li key={item.key}>
@@ -90,7 +107,10 @@ export function CriteriaTab({
           </ul>
         </section>
       ) : (
-        <p className="text-13 text-subtle">{t("issues.criteria.empty")}</p>
+        <section aria-label={t("issues.criteria.acceptance")}>
+          <ViewHeading right={tie}>{t("issues.criteria.acceptance")}</ViewHeading>
+          <p className="text-13 text-subtle">{t(tie ? "issues.criteria.emptyTie" : "issues.criteria.empty")}</p>
+        </section>
       )}
     </div>
   );

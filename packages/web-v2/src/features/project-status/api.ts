@@ -1,4 +1,5 @@
 import type { ProjectStatus } from "@forge/contracts/project-status";
+import type { ReportDocument } from "@forge/contracts/report-templates";
 import type { StatusReportDetail, StatusReportMeta } from "@forge/contracts/status-reports";
 import { apiClient, apiFile } from "@/lib/api/client";
 
@@ -17,4 +18,22 @@ export const projectStatusApi = {
     apiFile(`${base(projectId)}/reports/${encodeURIComponent(reportId)}/export${table === undefined ? "" : `?format=csv&block=${table}`}`),
   save: (projectId: string, days: number) =>
     apiClient<StatusReportMeta>(`${base(projectId)}/reports`, { method: "POST", body: JSON.stringify({ days }) }),
+  /** Keeps a template's runs as a report; core reads each run back as the saver and judges the narrative against them. */
+  /** The templates this build offers, each with the names of the params it takes. */
+  templates: (projectId: string) => apiClient<{ templates: TemplateListing[] }>(`/projects/${encodeURIComponent(projectId)}/report-templates`),
+  /** Runs one template's queries as the reader and answers its document; the narrative is left empty. */
+  runTemplate: (projectId: string, templateId: string, params: Record<string, string | number | boolean>) =>
+    apiClient<{ document: ReportDocument }>(`/projects/${encodeURIComponent(projectId)}/report-templates/${encodeURIComponent(templateId)}/runs`, {
+      method: "POST",
+      body: JSON.stringify({ params }),
+    }),
 };
+
+/** One template as core lists it (`GET /projects/:id/report-templates`). */
+export interface TemplateListing {
+  id: string;
+  version: number;
+  title: string;
+  params: string[];
+}
+

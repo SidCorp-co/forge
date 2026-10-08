@@ -1,6 +1,7 @@
 "use client";
 
-// Sending the status report on a schedule: a person picks the day, the time and the recipients among
+// Sending the status report on a schedule: a person picks what is sent (the project status, or one
+// of the build's report templates with its params), the day, the time and the recipients among
 // the project members; the browser's zone is the one the time is read in. It is an ordinary
 // `status_report` schedule (`/api/schedules`), fired by core's one scheduler, so it also shows on
 // Automation; core refuses no recipients or a recipient who is not a member, by name.
@@ -12,6 +13,8 @@ import { useCreateSchedule, useDeleteSchedule, useRunSchedule, useSchedules, use
 import type { ScheduleRow } from "@/features/automation/schedule-types";
 import { useProjectMembers } from "@/features/issues/hooks";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useReportTemplates } from "../hooks";
+import { TemplateParamFields, type TemplateParamValues, TemplatePicker, templateParamsOf } from "./template-params";
 
 const DAYS = [1, 2, 3, 4, 5, 6, 0] as const;
 const WEEKLY = /^(\d{1,2}) (\d{1,2}) \* \* ([0-6])$/;
@@ -40,8 +43,17 @@ function recipientsOf(row: ScheduleRow): string[] {
   return Array.isArray(r) ? r.filter((x): x is string => typeof x === "string") : [];
 }
 
-function ScheduleLine({ row, projectId }: { row: ScheduleRow; projectId: string }) {
+/** The template a status_report schedule runs, by its title where the build still lists it; null sends the project status. */
+function templateOf(row: ScheduleRow, titles: ReadonlyMap<string, string>): string | null {
+  const id = row.params?.templateId;
+  return typeof id === "string" ? (titles.get(id) ?? id) : null;
+}
+
+const STATUS = "";
+
+function ScheduleLine({ row, projectId, titles }: { row: ScheduleRow; projectId: string; titles: ReadonlyMap<string, string> }) {
   const t = useCopy();
+  const template = templateOf(row, titles);
   const lang = useInterfaceLanguage();
   const update = useUpdateSchedule(projectId);
   const remove = useDeleteSchedule(projectId);
@@ -54,6 +66,7 @@ function ScheduleLine({ row, projectId }: { row: ScheduleRow; projectId: string 
         {w
           ? t("status.schedule.line", { day: dayName(w.day, lang), time: w.time, zone: row.timeZone ?? "UTC", n: recipientsOf(row).length })
           : `${row.cron} (${row.timeZone ?? "UTC"})`}
+        <span className="text-muted"> · {template ?? t("status.schedule.projectStatus")}</span>
         {row.enabled ? null : <span className="text-muted"> · {t("status.schedule.paused")}</span>}
       </span>
       <Button size="sm" onClick={() => run.mutate(row.id)} disabled={run.isPending}>
@@ -83,7 +96,11 @@ function NewSchedule({ projectId }: { projectId: string }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const members = useProjectMembers(projectId);
+  const templates = useReportTemplates(projectId);
   const create = useCreateSchedule(projectId);
+  const [templateId, setTemplateId] = useState(STATUS);
+  const [values, setValues] = useState<TemplateParamValues>({});
+  const template = (templates.data?.templates ?? []).find((x) => x.id === templateId);
   const initial = weeklyOf(STATUS_REPORT_DEFAULT_CRON) ?? { day: 1, time: "09:00" };
   const [day, setDay] = useState(initial.day);
   const [time, setTime] = useState(initial.time);
@@ -92,16 +109,31 @@ function NewSchedule({ projectId }: { projectId: string }) {
   const toggle = (id: string, on: boolean) => setRecipients((r) => (on ? [...r, id] : r.filter((x) => x !== id)));
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    const templateParams = template ? templateParamsOf(template.id, values) : {};
     create.mutate({
-      name: t("status.schedule.name"),
+      name: template ? t("status.schedule.templateName", { title: template.title }) : t("status.schedule.name"),
       cron: weeklyCron(day, time),
       kind: "status_report",
       timeZone: zone,
-      params: { recipients },
+      params: template
+        ? { recipients, templateId: template.id, ...(Object.keys(templateParams).length ? { templateParams } : {}) }
+        : { recipients },
     });
   };
   return (
     <form onSubmit={submit} className="grid max-w-2xl gap-4" data-testid="status-schedule-form">
+      <TemplatePicker
+        id="status-schedule-report"
+        label={t("status.schedule.report")}
+        templates={templates.data?.templates ?? []}
+        value={templateId}
+        onChange={(next) => {
+          setTemplateId(next);
+          setValues({});
+        }}
+        extra={[{ value: STATUS, label: t("status.schedule.projectStatus") }]}
+      />
+      {template ? <TemplateParamFields template={template} values={values} onChange={setValues} idPrefix="status-schedule-param" /> : null}
       <div className="flex flex-wrap gap-4">
         <Field label={t("status.schedule.day")} htmlFor="status-schedule-day">
           <NativeSelect
@@ -136,6 +168,8 @@ function NewSchedule({ projectId }: { projectId: string }) {
 export function ReportSchedule({ projectId }: { projectId: string }) {
   const t = useCopy();
   const schedules = useSchedules(projectId);
+  const templates = useReportTemplates(projectId);
+  const titles = new Map((templates.data?.templates ?? []).map((x) => [x.id, x.title]));
   const rows = (schedules.data ?? []).filter((s) => s.kind === "status_report");
   return (
     <section aria-label={t("status.schedule.title")} data-testid="status-schedule" className="grid gap-3">
@@ -145,7 +179,7 @@ export function ReportSchedule({ projectId }: { projectId: string }) {
       ) : (
         <ul className="border-t border-line-subtle">
           {rows.map((r) => (
-            <ScheduleLine key={r.id} row={r} projectId={projectId} />
+            <ScheduleLine key={r.id} row={r} projectId={projectId} titles={titles} />
           ))}
         </ul>
       )}

@@ -2,9 +2,11 @@
 // verdict, folded to the criterion standing whose badge reads the same on every screen.
 
 import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
+import { issueDetailApi } from "./detail-api";
 import { issueKeySegment } from "./derive";
+import type { IssueRow } from "./types";
 
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
@@ -41,5 +43,82 @@ export function useCriteria(issueId: string | undefined, projectId?: string) {
         `/issues/${issueId}/criteria${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
       ),
     enabled: !!issueId,
+  });
+}
+
+/** The identity a person's verdict names: the whole sha of the commit the judged work runs at. */
+export interface VerdictCommit {
+  sha: string;
+  /** `live`: the live deployment carries the issue's work. `merged`: where it landed, not yet live. */
+  source: "live" | "merged";
+}
+
+const WHOLE_SHA = /^[0-9a-f]{40}$/i;
+
+export const isWholeSha = (sha: string) => WHOLE_SHA.test(sha.trim());
+
+/**
+ * What a verdict on this issue is judged against by default: the commit the live deployment runs
+ * when core reads the issue's work on it, else the commit it merged as; null where it has neither.
+ */
+export function defaultVerdictCommit(issue: Pick<IssueRow, "liveReach" | "mergedCommitSha">): VerdictCommit | null {
+  const reach = issue.liveReach;
+  if (reach && reach.state === "none_waiting" && isWholeSha(reach.liveSha)) return { sha: reach.liveSha, source: "live" };
+  if (issue.mergedCommitSha && isWholeSha(issue.mergedCommitSha)) return { sha: issue.mergedCommitSha, source: "merged" };
+  return null;
+}
+
+export type PersonVerdict = "pass" | "fail" | "short";
+
+export interface VerdictDraft {
+  criterion: number;
+  verdict: PersonVerdict;
+  sha: string;
+  note: string;
+  screenshot: File | null;
+}
+
+/**
+ * Records a person's verdict on one criterion: the screenshot, when one is given, is attached to the
+ * issue first and cited by its name, so the verdict's evidence resolves to a file the tracker holds;
+ * the note is the verdict's reason. Core refuses a wrong verdict by name and writes nothing.
+ */
+export function useRecordVerdict(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (d: VerdictDraft) => {
+      const evidence = d.screenshot ? [(await issueDetailApi.uploadAttachment(issueId, d.screenshot)).name] : [];
+      return apiClient<{ verdictId: string }>(`/issues/${issueId}/verdicts`, {
+        method: "POST",
+        body: JSON.stringify({
+          criterion: d.criterion,
+          verdict: d.verdict,
+          reason: d.note.trim() || null,
+          identity: { kind: "commit", sha: d.sha.trim() },
+          evidence,
+        }),
+      });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+    },
+  });
+}
+
+/**
+ * Ties the issue to business criteria of its requirement (`POST /issues/:id/criteria/traces`): core
+ * appends one criterion per code, worded as the BC, and takes it on a closed issue too.
+ */
+export function useTraceCriteria(issueId: string, projectId: string, requirementKey: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (codes: string[]) =>
+      apiClient<{ criteria: CriterionRow[] }>(`/issues/${issueId}/criteria/traces`, { method: "POST", body: JSON.stringify({ codes }) }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["issues", "standing"] });
+      if (requirementKey) qc.invalidateQueries({ queryKey: ["requirement", projectId, requirementKey] });
+    },
   });
 }

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.191] - 2026-10-08
+
+People verify shipped work from the web: verdicts, criterion ties, decisions, reports, compute
+
+### Added
+
+- **People can verify shipped work from the web.** Judge a criterion with a note and screenshot, tie a closed issue to its requirement's criteria, comment and decide on requirements, save and schedule template reports, and set computation.
+
 ## [0.4.0-dev.190] - 2026-10-08
 
 Assistant figures must be shown or read; save claims need a real save

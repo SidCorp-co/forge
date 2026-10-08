@@ -318,8 +318,8 @@ export const SCREENS = [
         detailQueries(),
         <>
           <OverviewTab issue={ISSUE} attachmentsQ={{ data: [], isLoading: false, isError: false } as never} canWrite />
-          <CriteriaTab issueId="i1" hasCriteriaRows checklist={[]} />
-          <CriteriaTab issueId="i2" hasCriteriaRows={false} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} />
+          <CriteriaTab issue={ISSUE} projectId={P} hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-1" />
+          <CriteriaTab issue={{ ...ISSUE, id: "i2" }} projectId={P} hasCriteriaRows={false} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
           <RunsTab slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
           <RunsTab slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />

@@ -9,6 +9,13 @@ import { fakeCore, HANG, renderWithQuery } from "@/test/render";
 import type { CommentNode } from "../types";
 import { CommentThread } from "./comment-thread";
 
+// CodeMirror takes no typing under jsdom; the box a comment is written in stands in as a textarea.
+vi.mock("./body-editor", () => ({
+  BodyEditor: ({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) => (
+    <textarea placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
 const decided = {
   id: "c1",
   body: "**Decision:** ship behind the flag\n\n**Reason:** the migration is not reversible",
@@ -108,5 +115,34 @@ describe("a decision in the thread", () => {
     fakeCore(() => undefined);
     renderWithQuery(<CommentThread issueId="i1" comments={[decided]} members={[]} readOnly />);
     expect(screen.getByText("Decision")).toBeInTheDocument();
+  });
+
+  // The live QA (2026-10-08): owner rulings posted from the web read as questions to the master, and
+  // nothing set them apart in the thread. A decision now sits behind an accent bar; talk does not.
+  it("is drawn apart from the talk, and a question is not", () => {
+    fakeCore(() => undefined);
+    const asked = { ...decided, id: "c2", intent: "question", decision: null, body: "Which flag?" } as unknown as CommentNode;
+    renderWithQuery(<CommentThread issueId="i1" comments={[decided, asked]} members={[]} readOnly />);
+    const bars = screen.getAllByTestId("thread-decision");
+    expect(bars).toHaveLength(1);
+    expect(bars[0]).toHaveTextContent("ship behind the flag");
+    expect(bars[0]).not.toHaveTextContent("Which flag?");
+  });
+});
+
+// The same QA: the composer sent no intent, so core stored every person's comment as a `question`
+// the master then owed a reply to. The composer says what the comment is and sends it by name.
+describe("what a comment on an issue is", () => {
+  it("is sent as a question by default and as a note when Note is picked", async () => {
+    const calls = fakeCore(() => ({ status: 201, body: { id: "c9" } }));
+    const user = userEvent.setup();
+    renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
+    await user.type(screen.getByPlaceholderText("Ask a question…"), "Which flag guards it?");
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/comments", body: { body: "Which flag guards it?", intent: "question" } }));
+    await user.click(screen.getByRole("button", { name: "Note" }));
+    await user.type(await screen.findByPlaceholderText("Add a note…"), "Verified on dev.185.");
+    await user.click(screen.getByRole("button", { name: "Post note" }));
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/comments", body: { body: "Verified on dev.185.", intent: "note" } }));
   });
 });

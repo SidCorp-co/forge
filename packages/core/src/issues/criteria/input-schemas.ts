@@ -30,6 +30,11 @@ export const criteriaPutSchema = z
   .strict()
   .transform(({ criteria }) => ({ criteria: numberCriteria(criteria) }));
 
+/** The business criteria to tie an issue to, by code; a code of the wrong shape is refused by name. */
+export const criteriaTracePostSchema = z
+  .object({ codes: z.array(z.string().trim().min(1).max(32)).min(1).max(50) })
+  .strict();
+
 const verdictIdentitySchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('commit'), sha: z.string().trim().min(1).max(64) }).strict(),
   z.object({ kind: z.literal('runtime'), ref: z.string().trim().min(1).max(64) }).strict(),

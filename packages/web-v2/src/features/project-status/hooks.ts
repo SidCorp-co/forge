@@ -3,13 +3,11 @@
 import { PROJECT_STATUS_DAYS_DEFAULT } from "@forge/contracts/project-status";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { saveFile } from "@/lib/utils/save-file";
+import { STATUS_REPORTS_ROOT } from "@/features/shares";
 import { projectStatusApi } from "./api";
 
 /** Every key of this read starts here, so an issue or question event refreshes it in one call. */
 export const PROJECT_STATUS_ROOT = ["project-status"] as const;
-
-/** The stored reports, under their own root: a stored report never changes, so no event refreshes it. */
-const STATUS_REPORTS_ROOT = ["status-reports"] as const;
 
 export function useProjectStatus(projectId: string | undefined, days: number = PROJECT_STATUS_DAYS_DEFAULT) {
   return useQuery({
@@ -43,6 +41,26 @@ export function useSaveStatusReport(projectId: string) {
   return useMutation({
     mutationFn: (days: number) => projectStatusApi.save(projectId, days),
     onSuccess: () => qc.invalidateQueries({ queryKey: [...STATUS_REPORTS_ROOT, projectId] }),
+  });
+}
+
+/** Keep a template's runs as a report, then list it: from a chat answer, or from a template run on this page. */
+
+/** The templates this build offers; they change only with a deploy. */
+export function useReportTemplates(projectId: string | undefined) {
+  return useQuery({
+    queryKey: ["report-templates", projectId ?? ""],
+    queryFn: () => projectStatusApi.templates(projectId as string),
+    enabled: Boolean(projectId),
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** Run one template as the reader: each run is the reader's, so only they can keep it. */
+export function useRunTemplate(projectId: string) {
+  return useMutation({
+    mutationFn: (a: { templateId: string; params: Record<string, string | number | boolean> }) =>
+      projectStatusApi.runTemplate(projectId, a.templateId, a.params),
   });
 }
 

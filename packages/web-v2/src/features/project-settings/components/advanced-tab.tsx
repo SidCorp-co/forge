@@ -1,6 +1,6 @@
 "use client";
 
-// Project settings → Advanced: the technical view. The documents every other section's fields are
+// Project settings → Advanced: whether the assistant may compute over the project's data, then the technical view. The documents every other section's fields are
 // stored in, edited raw (who each document is stays fixed), what a run reads of them, the plugins a
 // device installs, and the two acts on the project itself: moving it to another organization and
 // archiving it (ISS-353), both org-admin only and both confirmed first.
@@ -11,6 +11,7 @@ import type { ProjectDetail } from "@/features/projects/types";
 import { isOrgAdmin } from "@/features/projects/write-access";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useArchiveProject, useUnarchiveProject, useUpdateProject } from "../hooks";
+import { ComputeSection } from "./compute-section";
 import { BindingsSection, PolicyDocumentSection, ProjectDocumentSection, TestingProfilesSection } from "./config-documents";
 import { EffectiveSection, EnvironmentStateSection } from "./config-readings";
 import { PluginsSection } from "./plugins-section";
@@ -20,6 +21,7 @@ export function AdvancedSection({ project, canEdit }: { project: ProjectDetail; 
   const t = useCopy();
   return (
     <div className="space-y-6">
+      <ComputeSection projectId={project.id} slug={project.slug} canEdit={canEdit} />
       <section id="documents" aria-label={t("settings.project.advanced.technical")} className="scroll-mt-24">
         <h3 className="fg-h3 text-accent-text!">{t("settings.project.advanced.technical")}</h3>
         <p className="fg-body-sm mt-1 max-w-[68ch] text-muted">{t("settings.project.advanced.technicalLead")}</p>
