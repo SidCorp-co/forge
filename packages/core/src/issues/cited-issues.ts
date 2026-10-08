@@ -24,17 +24,25 @@ export async function citedIssues(
     .where(and(eq(issues.projectId, projectId), or(...conds)));
 }
 
-/** The status and archive stamp of the project's issues among these sequences, for a memory naming them. */
+/** The status, archive stamp and last change of the project's issues among these sequences, for a memory naming them. */
 export async function issueStandingsBySeq(
   projectId: string,
   seqs: readonly number[],
-): Promise<Map<number, { status: string; archived: boolean }>> {
+): Promise<Map<number, { status: string; archived: boolean; updatedAt: Date }>> {
   if (seqs.length === 0) return new Map();
   const rows = await db
-    .select({ issSeq: issues.issSeq, status: issues.status, archivedAt: issues.archivedAt })
+    .select({
+      issSeq: issues.issSeq,
+      status: issues.status,
+      archivedAt: issues.archivedAt,
+      updatedAt: issues.updatedAt,
+    })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), inArray(issues.issSeq, [...new Set(seqs)])));
   return new Map(
-    rows.map((r) => [r.issSeq, { status: r.status, archived: r.archivedAt !== null }]),
+    rows.map((r) => [
+      r.issSeq,
+      { status: r.status, archived: r.archivedAt !== null, updatedAt: r.updatedAt },
+    ]),
   );
 }

@@ -114,8 +114,8 @@ export function parseCites(text: string, ctx: CiteContext): ParsedCite[] {
 
 /** What one project holds for the keys and versions a page of memories cites in it. */
 export interface ProjectHoldings {
-  issues: ReadonlyMap<number, { status: string; archived: boolean }>;
-  requirements: ReadonlyMap<number, string>;
+  issues: ReadonlyMap<number, { status: string; archived: boolean; updatedAt: Date }>;
+  requirements: ReadonlyMap<number, { status: string; updatedAt: Date }>;
   releases: ReadonlySet<string>;
   repositoryWebUrl: string | null;
 }
@@ -147,12 +147,12 @@ export function resolveCites(
       if (!row) out.push({ ...base, state: 'gone', why: 'missing' });
       else if (row.archived) out.push({ ...base, state: 'gone', why: 'archived' });
       else if (row.status === 'dropped') out.push({ ...base, state: 'gone', why: 'dropped' });
-      else out.push({ ...base, state: 'resolved' });
+      else out.push({ ...base, state: 'resolved', changedAt: row.updatedAt.toISOString() });
     } else if (c.kind === 'requirement') {
-      const status = h.requirements.get(c.seq as number);
-      if (status === undefined) out.push({ ...base, state: 'gone', why: 'missing' });
-      else if (status === 'dropped') out.push({ ...base, state: 'gone', why: 'dropped' });
-      else out.push({ ...base, state: 'resolved' });
+      const row = h.requirements.get(c.seq as number);
+      if (row === undefined) out.push({ ...base, state: 'gone', why: 'missing' });
+      else if (row.status === 'dropped') out.push({ ...base, state: 'gone', why: 'dropped' });
+      else out.push({ ...base, state: 'resolved', changedAt: row.updatedAt.toISOString() });
     } else if (c.kind === 'release') {
       if (h.releases.has(c.ref)) out.push({ ...base, state: 'resolved' });
     } else {

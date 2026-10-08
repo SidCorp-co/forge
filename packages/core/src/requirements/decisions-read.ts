@@ -1,3 +1,4 @@
+import type { DecisionMaker } from '@forge/contracts/comments';
 import type { RequirementDecisionsResponse } from '@forge/contracts/requirements';
 import { listDecisionsAs } from '../comments/index.js';
 import { db } from '../db/client.js';
@@ -7,12 +8,16 @@ import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { answerViewsOf } from './clarity.js';
 import { type RequirementActor, rowIn } from './read.js';
 
-/** GET …/requirements/:req/decisions: its decisions and those on its issues, and the answers beside them. */
+/**
+ * GET …/requirements/:req/decisions: its decisions and those on its issues, a person's by default
+ * with what agents recorded counted as folded, and the answers beside them.
+ */
 export async function readRequirementDecisionsAs(
   viewer: RequirementActor,
   projectId: string,
   ref: string,
   door: ReadDoor = {},
+  by: DecisionMaker = 'people',
 ): Promise<RequirementDecisionsResponse> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
   const row = await rowIn(db, projectId, ref);
@@ -22,8 +27,8 @@ export async function readRequirementDecisionsAs(
     'requirement.clarification',
   ).withhold;
   const [listed, answers] = await Promise.all([
-    listDecisionsAs(viewer, projectId, { requirement: row.id, limit: 200 }, door),
+    listDecisionsAs(viewer, projectId, { requirement: row.id, limit: 200, by }, door),
     answerViewsOf(db, row.id, withheld),
   ]);
-  return { decisions: listed.decisions, answers };
+  return { decisions: listed.decisions, answers, by: listed.by, folded: listed.folded };
 }

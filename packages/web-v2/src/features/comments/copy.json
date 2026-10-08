@@ -1,5 +1,6 @@
 {
   "en": {
+    "decisions.datedAhead": "Its text is dated {at}, later than it was recorded.",
     "decisions.filter.any": "Any",
     "decisions.filter.issue": "Issue",
     "decisions.filter.requirement": "Requirement",
@@ -7,8 +8,12 @@
     "decisions.filter.until": "To",
     "decisions.filter.who": "Decided by",
     "decisions.filter.workflow": "Workflow",
-    "decisions.lead": "Every decision recorded in this project, newest first. A requirement takes in the decisions on the issues that deliver it.",
+    "decisions.folded": "{n} records agents kept here, such as a master's pass logs, are folded away.",
+    "decisions.lead": "Every decision a person recorded in this project, newest first; what agents kept is folded away below. A requirement takes in the decisions on the issues that deliver it.",
     "decisions.none": "No decision matches these filters.",
+    "decisions.onlyPeople": "Only what people decided",
+    "decisions.showAgents": "Show them",
+    "decisions.showingAll": "Showing what people decided and what agents recorded.",
     "decisions.title": "Decisions"
   },
   "vi": {

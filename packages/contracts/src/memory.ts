@@ -59,6 +59,8 @@ export interface MemoryCite {
 	state: "resolved" | "gone" | "unchecked";
 	/** Set when `state` is `gone`. */
 	why?: MemoryStaleWhy;
+	/** When a resolved issue or requirement last changed: a memory written or checked before it reads `changed`. */
+	changedAt?: string;
 	/** A commit's page on the project's repository host. */
 	url?: string;
 }
@@ -93,6 +95,10 @@ export interface MemoryEntry {
 	cites: MemoryCite[];
 	/** Each cited record that no longer resolves; empty when every one does. */
 	staleRefs: MemoryStaleRef[];
+	/** Why it needs a check, in `MEMORY_CHECK_REASONS` order; empty when it holds, and on a retired row. */
+	needsCheck: MemoryCheckReason[];
+	/** The cites that changed after it was last written or checked: what `changed` names. */
+	changed: MemoryCite[];
 	/**
 	 * A release later flagged the row as possibly outdated (a model's guess): when, by which issue,
 	 * and the reason it gave — null only on a flag written by hand, which the reader says has none.
@@ -120,8 +126,22 @@ export type MemoryArchiveCause =
 export const MEMORY_ENTRY_STATES = ["live", "stale", "retired"] as const;
 export type MemoryEntryState = (typeof MEMORY_ENTRY_STATES)[number];
 
+/** A memory nobody has checked for this many days, since it was written or last checked, is due one. */
+export const MEMORY_CHECK_AFTER_DAYS = 3;
+
+/**
+ * Why a current memory needs a check, each a fact the reader can act on: nobody checked it for
+ * `MEMORY_CHECK_AFTER_DAYS` days (`unchecked`), a record it cites changed after it was last written
+ * or checked (`changed`), a record it cites no longer resolves (`gone`), or a release flagged it
+ * (`flagged`). A memory with none of them holds; the `stale` list is every memory with one.
+ */
+export const MEMORY_CHECK_REASONS = ["unchecked", "changed", "gone", "flagged"] as const;
+export type MemoryCheckReason = (typeof MEMORY_CHECK_REASONS)[number];
+
 export interface MemoryEntriesResponse {
 	items: MemoryEntry[];
+	/** How many rows each list holds for the same words and sources, whichever list was read. */
+	counts: Record<MemoryEntryState, number>;
 	returned: number;
 	total: number;
 	limit: number;

@@ -1,0 +1,1 @@
+**A release's notes can be handed to a customer.** The Notes tab opens with a view naming no issue key, internal title or path, each change once, to copy or export; notes calling a production release a demo are named.

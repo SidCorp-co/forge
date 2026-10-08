@@ -1,5 +1,6 @@
 "use client";
 
+import type { DecisionMaker } from "@forge/contracts/comments";
 import { WrittenMark } from "@/lib/i18n/written";
 import { type ReactNode, useState } from "react";
 import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
@@ -49,7 +50,29 @@ export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: 
         ) : null}
         {c.edited ? <span title={t("common.decisions.editedAt", { at: time.dateTime(c.updatedAt) })}>· {t("common.decisions.edited")}</span> : null}
       </span>
+      {c.datedAhead ? (
+        <p className="text-12 text-amber-700 dark:text-amber-300" data-testid="decision-dated-ahead">
+          {t("decisions.datedAhead", { at: time.dateTime(c.datedAhead) })}
+        </p>
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * Under a decision list: how many records agents kept are folded away (a master's pass logs among
+ * them), with the act that shows them, or, while they show, the act that folds them again.
+ */
+export function FoldedDecisions({ by, folded, onBy }: { by: DecisionMaker; folded: number; onBy: (by: DecisionMaker) => void }) {
+  const t = useCopy();
+  if (by === "people" && folded === 0) return null;
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 text-12-5 text-muted" data-testid="decisions-folded">
+      <span>{by === "people" ? t("decisions.folded", { n: folded }) : t("decisions.showingAll")}</span>
+      <Button size="sm" variant="ghost" onClick={() => onBy(by === "people" ? "all" : "people")}>
+        {by === "people" ? t("decisions.showAgents") : t("decisions.onlyPeople")}
+      </Button>
+    </p>
   );
 }
 

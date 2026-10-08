@@ -63,13 +63,16 @@ interface MemoryIssueReads {
   archivedIssueIds(projectId: string): SQL;
   /** Every issue prefix the project has held, and the active one (null where it renders `ISS`). */
   issuePrefixes(projectId: string): Promise<{ active: string | null; held: readonly string[] }>;
-  /** The status and archive stamp of the project's issues among these sequences; absent = no such issue. */
+  /** The status, archive stamp and last change of the project's issues among these sequences; absent = no such issue. */
   issueStandings(
     projectId: string,
     seqs: readonly number[],
-  ): Promise<Map<number, { status: string; archived: boolean }>>;
-  /** The status of the project's requirements among these sequences; absent = no such requirement. */
-  requirementStatuses(projectId: string, seqs: readonly number[]): Promise<Map<number, string>>;
+  ): Promise<Map<number, { status: string; archived: boolean; updatedAt: Date }>>;
+  /** The status and last change of the project's requirements among these sequences; absent = no such requirement. */
+  requirementStatuses(
+    projectId: string,
+    seqs: readonly number[],
+  ): Promise<Map<number, { status: string; updatedAt: Date }>>;
   /** The projects of this project's organization, itself included: where a memory's keys may point. */
   siblingProjects(
     projectId: string,
