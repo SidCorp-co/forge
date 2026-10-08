@@ -190,7 +190,7 @@ describe('the live refusal: an admin of the bound project who does not own the A
     const item = ((await bodyOf(res)).items ?? []).find((i) => i.id === connection.id);
 
     expect(res.status).toBe(200);
-    expect(item?.access).toEqual({ reach: 'binding', canManage: false });
+    expect(item?.access).toMatchObject({ reach: 'binding', canManage: false });
   });
 
   it('finds it as the org owner who is not the individual that pressed Connect, which is the screen that was measured', async () => {
@@ -389,7 +389,7 @@ describe('reading is not managing', () => {
       const [item] = ((await bodyOf(await directoryAs(clicker.id))).items ?? []).filter(
         (i) => i.id === connectionId,
       );
-      expect(item?.access).toEqual({ reach: 'org', canManage: false });
+      expect(item?.access).toMatchObject({ reach: 'org', canManage: false });
 
       const res = await patch(clicker.id, connectionId);
       expect(res.status).toBe(403);
@@ -402,7 +402,7 @@ describe('reading is not managing', () => {
       const [item] = ((await bodyOf(await directoryAs(orgOwner.id))).items ?? []).filter(
         (i) => i.id === connectionId,
       );
-      expect(item?.access).toEqual({ reach: 'org', canManage: true });
+      expect(item?.access).toMatchObject({ reach: 'org', canManage: true });
       expect((await patch(orgOwner.id, connectionId)).status).toBe(200);
     });
   });

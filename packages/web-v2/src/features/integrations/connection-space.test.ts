@@ -25,7 +25,7 @@ function item(over: Partial<ConnectionDirectoryItem> = {}): ConnectionDirectoryI
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
     usage: { bindings: [] },
-    access: { reach: "binding", canManage: false },
+    access: { reach: "binding", canManage: false, ownerName: null },
     ...over,
   };
 }
@@ -38,7 +38,7 @@ const boundTo = (projectId: string) => ({
 
 describe("which space a connection belongs in", () => {
   it("lists the caller's own credential in their personal space", () => {
-    const own = item({ access: { reach: "owner", canManage: true } });
+    const own = item({ access: { reach: "owner", canManage: true, ownerName: null } });
     expect(connectionInSpace(own, PERSONAL, projectOrg)).toBe(true);
   });
 
@@ -66,13 +66,13 @@ describe("which space a connection belongs in", () => {
     const owned = item({
       ownerType: "org",
       ownerId: TEAM.id,
-      access: { reach: "org", canManage: false },
+      access: { reach: "org", canManage: false, ownerName: null },
     });
     expect(connectionInSpace(owned, TEAM, projectOrg)).toBe(true);
   });
 
   it("does not move the caller's own credential into a team space because a team project uses it", () => {
-    const own = item({ access: { reach: "owner", canManage: true }, usage: boundTo(PROJECT_IN_TEAM) });
+    const own = item({ access: { reach: "owner", canManage: true, ownerName: null }, usage: boundTo(PROJECT_IN_TEAM) });
     expect(connectionInSpace(own, TEAM, projectOrg)).toBe(false);
   });
 
@@ -85,12 +85,12 @@ describe("how a row names its owner and why it is read-only", () => {
   it("calls another person's credential another user's, not Personal", () => {
     expect(connectionOwnerLabel(item(), () => undefined)).toBe("Another user");
     expect(
-      connectionOwnerLabel(item({ access: { reach: "owner", canManage: true } }), () => undefined),
+      connectionOwnerLabel(item({ access: { reach: "owner", canManage: true, ownerName: null } }), () => undefined),
     ).toBe("Personal");
   });
 
   it("names the org, falling back to a generic word for one the caller cannot name", () => {
-    const owned = item({ ownerType: "org", ownerId: "o1", access: { reach: "org", canManage: false } });
+    const owned = item({ ownerType: "org", ownerId: "o1", access: { reach: "org", canManage: false, ownerName: null } });
     expect(connectionOwnerLabel(owned, () => "Sidcorp")).toBe("Sidcorp");
     expect(connectionOwnerLabel(owned, () => undefined)).toBe("Organization");
   });

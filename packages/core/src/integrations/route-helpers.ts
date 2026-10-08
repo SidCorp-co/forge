@@ -54,23 +54,25 @@ export const connectionNotReachable = (connectionId: string) =>
 
 /**
  * A connection the caller reaches and may not change. Names who owns it and who may, because the
- * caller can see it and will go looking for the control that works.
+ * caller can see it and will go looking for the control that works. `ownerName` is the owner as
+ * `owner-names.ts` words it; null only where the owner no longer resolves, and then the sentence
+ * says so instead of printing an id nobody can ask.
  */
-export const connectionNotManageable = (connection: {
-  id: string;
-  ownerType: string;
-  ownerId: string;
-}) =>
+export const connectionNotManageable = (
+  connection: { id: string; ownerType: string },
+  ownerName: string | null,
+) =>
   new HTTPException(403, {
     message:
       connection.ownerType === 'org'
         ? `you can see connection ${connection.id} but not change it: it is owned by the ` +
-          `organization ${connection.ownerId}, and only an owner or admin of that organization ` +
-          'can rename, re-key, disable, remove or share it. Ask one of them, or create a ' +
-          'connection of your own.'
-        : `you can see connection ${connection.id} but not change it: it is owned by another ` +
-          'individual, and only its owner can rename, re-key, disable, remove or share it. Ask ' +
-          'its owner, or create a connection of your own.',
+          `organization ${ownerName ?? '(no longer found)'}, and only an owner or admin of ` +
+          `${ownerName ? 'that organization' : 'the organization that owns it'} can rename, ` +
+          're-key, disable, remove or share it. Ask one of them, or create a connection of your own.'
+        : `you can see connection ${connection.id} but not change it: it is owned by ` +
+          `${ownerName ?? 'a user who can no longer be found'}, and only its owner can rename, ` +
+          `re-key, disable, remove or share it. Ask ${ownerName ?? 'an admin of the project it is bound to'}, ` +
+          'or create a connection of your own.',
     cause: { code: 'CONNECTION_NOT_MANAGEABLE' },
   });
 

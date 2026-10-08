@@ -22,6 +22,7 @@ import {
   roleSchema,
   stagesSchema,
 } from './binding-shape.js';
+import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -85,7 +86,10 @@ async function loadManageableConnection(
   userId: string,
 ): Promise<IntegrationConnectionRow> {
   const reached = await loadVisibleConnection(id, userId);
-  if (!reached.canManage) throw connectionNotManageable(reached.connection);
+  if (!reached.canManage) {
+    const names = await ownerNamesOf([reached.connection]);
+    throw connectionNotManageable(reached.connection, names.get(reached.connection.id) ?? null);
+  }
   return reached.connection;
 }
 
@@ -96,12 +100,17 @@ integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
   const reached = await listReachableConnections(userId);
   const bindings = await listBindingsByConnectionIds(reached.map((r) => r.connection.id));
+  const ownerNames = await ownerNamesOf(reached.map((r) => r.connection));
   return c.json({
     items: reached.map((r) =>
       summarizeConnectionWithUsage(
         r.connection,
         bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
-        { reach: r.reach, canManage: r.canManage },
+        {
+          reach: r.reach,
+          canManage: r.canManage,
+          ownerName: ownerNames.get(r.connection.id) ?? null,
+        },
       ),
     ),
   });
