@@ -1,1 +1,0 @@
-**The assistant can compute over a turn's report runs through a sandbox port.** It needs assistant.exec and a project with compute on; with no sandbox enabled, each request is refused by name. Results are kept 30 days, labelled computed.

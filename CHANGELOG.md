@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.183] - 2026-10-08
+
+Executor port groundwork: a safe, recorded sandbox for assistant computations over report data
+
+### Added
+
+- **The assistant can compute over a turn's report runs through a sandbox port.** It needs assistant.exec and a project with compute on; with no sandbox enabled, each request is refused by name. Results are kept 30 days, labelled computed.
+
 ## [0.4.0-dev.182] - 2026-10-08
 
 Scheduled template reports now arrive with their written summary, risks and recommendations
