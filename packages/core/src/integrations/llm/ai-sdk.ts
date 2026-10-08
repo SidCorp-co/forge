@@ -2,7 +2,8 @@
  * The bridge both chat adapters share over the AI SDK: Forge's OpenAI-shaped messages and tools go
  * in as the SDK's model messages and execute-less tools, so the model only ever emits a tool call
  * and the loop in `run-turn-core.ts` stays Forge's; the SDK's stream parts come back as
- * `ChatStreamEvent`s. The SDK owns the wire, the SSE reading and the pre-stream retry.
+ * `ChatStreamEvent`s. The SDK owns the wire, the SSE reading and the pre-stream retry. A tool the
+ * provider ran itself is refused by name: a turn never offers one, and the loop must not execute it.
  */
 
 import {
@@ -206,6 +207,17 @@ export async function* bridgeStream(b: StreamBridge): AsyncGenerator<ChatStreamE
           if (anthropic?.redactedData === undefined) continue;
           emitted = true;
           yield { type: 'reasoning', text: '', redacted: true };
+        } else if (
+          (part.type === 'tool-call' || part.type === 'tool-result') &&
+          part.providerExecuted === true
+        ) {
+          // a turn offers the provider none of its own tools: a sandbox runs only through the
+          // reports Executor port (`code-execution.ts`), never as a call the loop would execute
+          yield {
+            type: 'error',
+            message: `${b.label} ran its own tool "${part.toolName}", which a chat turn never offers; a computation runs through forge_compute`,
+          };
+          return;
         } else if (part.type === 'tool-call') {
           emitted = true;
           const input: unknown = part.input;

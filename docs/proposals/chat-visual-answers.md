@@ -219,7 +219,7 @@ declares `id`, `mode: 'invoked' | 'in-band'`, `isolation`, `network: 'none'`, `d
 
 | Adapter | Option there | Mode | Where it lives |
 |---|---|---|---|
-| `anthropic-code-exec` | (a) | **in-band**: offered as a provider tool on the Anthropic wire; the LLM adapter translates the provider-executed call and its result into one `ExecutionResult` | `packages/core/src/integrations/llm/` — the only place that may name the vendor's tool or types |
+| `anthropic-code-exec` | (a) | **in-band**: offered as a provider tool on the Anthropic wire, in an execute-only call of its own; the LLM adapter translates the provider-executed call and its result into one `ExecutionResult` (built in C2, below) | `packages/core/src/integrations/llm/` — the only place that may name the vendor's tool or types |
 | `e2b` | (b), the named fallback | invoked | `packages/core/src/integrations/executor/e2b/` (new port directory; deployment-bound, its key from the environment) |
 | `exec-node` | (d), the runner `exec` job | invoked; core admits the job and sets its limits, the box runs it under bubblewrap or Seatbelt and reports | an adapter provided by the `jobs` module at boot; the runner side is a job kind (ADR 0009) |
 
@@ -231,12 +231,13 @@ cannot run model-written code over project data.
 providing one at boot), enabled per deployment; the sandbox ADR's requirement additions (inputs,
 retention, network, permission `assistant.exec`, budget, record, opt-out) bind every adapter.
 
-**C1, as built (2026-10-08).** The port, its record and its two doors exist; no adapter does, so on
-this build every computation answers `EXECUTOR_UNAVAILABLE` (503), naming that no executor is
-enabled on the deployment. What an adapter added in C2 or C3 inherits:
+**C1, as built (2026-10-08).** The port, its record and its two doors. A deployment with no adapter
+answers every computation `EXECUTOR_UNAVAILABLE` (503), naming that no executor is enabled on it.
+What an adapter added in C2 or C3 inherits:
 
 - **Registry.** `packages/core/src/reports/executors.ts:provideExecutors` takes the deployment's
-  adapters at boot (`report-ports.ts` passes none); a duplicate id, or a descriptor off
+  adapters at boot (`report-ports.ts` passes `integrations/llm`'s `providerExecutors()`, empty
+  without the provider key); a duplicate id, or a descriptor off
   `ExecutorDescriptorSchema` (a network other than `none` among them), is refused at registration.
   A test registers its own fake through `registerExecutor`; production registers none.
 - **One service, two doors.** `packages/core/src/reports/compute.ts:computeExecution` is called by the
@@ -251,7 +252,8 @@ enabled on the deployment. What an adapter added in C2 or C3 inherits:
   asker made (in chat, one this turn's `forge_report` or `forge_template` returned; over REST, one
   read in the last ten minutes); the project's data policy on the new egress surface `report.exec`
   (operational: refused at `no_egress`, scrubbed at `redact`), then `scrubSecretsDeep`; and an
-  adapter that `compute.zdrOnly` and `compute.thirdParty` admit, else `EXECUTION_NO_ADAPTER_ALLOWED`
+  adapter that `compute.zdrOnly` and `compute.thirdParty` admit (since C2 a third-party adapter needs
+  `thirdParty: true`; unset is refused like `false`), else `EXECUTION_NO_ADAPTER_ALLOWED`
   naming why each was barred.
 - **Script I/O.** `EXECUTION_IO` in the contract fixes how every adapter hands a script its inputs
   (`inputs.json`) and takes frames back (`frames.json`), so a script runs alike on each.
@@ -270,6 +272,59 @@ enabled on the deployment. What an adapter added in C2 or C3 inherits:
   every member may read (runs, too, are read as the asker alone today); sharing an answer that holds a
   computed block, which the message share source refuses by name; and the session-page view of the
   record (sandbox draft addition 7).
+
+**C2, as built (2026-10-08): `anthropic-code-exec`.** Read against platform.claude.com/docs on
+2026-10-08 (`agents-and-tools/tool-use/code-execution-tool`, `build-with-claude/files`):
+
+- **Registration.** `integrations/llm/bootstrap.ts:providerExecutors` answers the adapter only where
+  `ANTHROPIC_API_KEY` is set, on the same `ANTHROPIC_API_URL` and `ANTHROPIC_MODEL` the chat turns
+  use; `report-ports.ts` hands it to `provideExecutors`. A proxy URL that does not serve the Files API
+  fails each call loudly (`EXECUTOR_FAILED` naming the HTTP status), never silently.
+- **Descriptor.** `mode: 'in-band'`, `network: 'none'`, `dataLeavesTo: 'anthropic'`, `isolation` the
+  provider's container (1 CPU, 5 GiB RAM, 5 GiB disk, no network, scoped to the key's workspace), and
+  `zdrEligible: false`: the docs mark both the tool and the Files API `zdr: not-eligible`.
+  `availableFor` is true only where `compute.enabled` and `compute.thirdParty` are both true and
+  `compute.zdrOnly` is not.
+- **Wire.** `integrations/llm/code-execution-wire.ts` speaks JSON over `fetch`: tool
+  `code_execution_20260521` (the newest of the three current versions; none needs a beta header, and
+  `@ai-sdk/anthropic` 4.0.72 stops at `20260120`, which is why the adapter does not go through the
+  SDK), the Files API without its retired `files-api-2025-04-14` header, and `container_upload` blocks.
+- **In-band flow.** `forge_compute` (or the REST door) runs every C1 check first, so the script is
+  known and recorded before anything leaves. The adapter uploads the script, `inputs.json` (the
+  turn's run frames after `report.exec` egress and `scrubSecretsDeep`, scrubbed once more here) and a
+  wrapper `run.sh`, each set to expire in an hour; sends one Messages call whose model only relays one
+  fixed command that runs the wrapper; and takes back the result of the `bash_code_execution` call
+  whose command is exactly that one. The wrapper copies the uploads into a fresh directory, deletes
+  them, runs the script under `timeout` at `limits.wallMs`, copies `frames.json` (or `frames.csv`,
+  read by the shared `framesFromOutput`) to `$OUTPUT_DIR`, and removes its directory. Every uploaded
+  and generated file is deleted through the Files API once the result is read.
+- **Named stops.** An HTTP refusal (`the code execution call answered http 529 overloaded_error: …`),
+  a tool error that means nothing ran (`unavailable`, `too_many_requests`, `invalid_tool_input`), a
+  relay that ran another command or none, uploads missing from the container, `limits.cpu` above the
+  container's one CPU, or a call past `wallMs` + 120 s are thrown and reach the caller as
+  `EXECUTOR_FAILED`, with nothing kept. `execution_time_exceeded` and the wrapper's own timeout are
+  kept with `stopped: 'wallMs'`, `output_file_too_large` and a frames file past `limits.outputBytes`
+  with `stopped: 'outputBytes'`; a script that wrote no frames file, or one that is not frames, is
+  kept with `error.name` `NoFrames` or `FramesUnreadable`. The C1 service stores the record, enforces
+  the caps and labels the block computed, as for any adapter.
+- **Containers.** One per project, conversation and asker (the sandbox draft's "never across
+  people"), the id kept in the adapter's in-process `ContainerBook`. It is dropped when the provider
+  refuses it (an expired container; the call is sent once more without one), 29 days after it was
+  first seen (containers expire 30 days after creation; the response's `expires_at` is a shorter
+  rolling value, not that limit), past 1,000 kept ids (least recently used first), and on a restart.
+  A REST call has no conversation, so it runs in a fresh container that is not kept.
+- **Agent mode** (`POST /api/projects/:id/executions`) runs through the same execute-only call rather
+  than being refused: the call needs no turn of its own, the port's checks, caps and record are the
+  ones the chat door gets, and a refusal would leave Agent mode with no executor on a deployment that
+  has one.
+- **The turn's own stream.** A chat turn offers the provider no tool of its own, so
+  `ai-sdk.ts:bridgeStream` refuses a provider-executed call or result by name instead of handing it
+  to the turn loop as a client call.
+- **Not verified against the live API** (tests fake it at the wire): where a `container_upload` file
+  lands (the command finds it by its upload name or its file id), whether the relay model ever
+  rewrites the command, and the call's latency. `limits.memoryMb` is bounded only by the container's
+  5 GiB. Each call is billed at least five container-minutes against the organization's 1,550 free
+  hours a month, then $0.05 per container-hour.
 
 ### Port 5 — Share: a Forge share link
 
@@ -448,7 +503,8 @@ direction: the consumer declares the slot, the adapter registers, the root wires
 or a review, and none is waived:
 
 - assistant code importing a vendor SDK, a vendor's types or a vendor tool name for rendering or
-  execution (`@ai-sdk/anthropic`'s code execution tool belongs in `integrations/llm` alone);
+  execution (the provider's code execution tool and its wire blocks belong in `integrations/llm`
+  alone, which `integrations/llm/code-execution-boundary.test.ts` checks);
 - assistant code importing `report-queries`, `reports`, `shares` or an executor (a context it may
   not import, and the owner's "not wired into the logic");
 - a template holding code: an expression, a formula, a script, an HTML string or a function;
@@ -494,7 +550,7 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 | Lane | Delivers | Migration |
 |---|---|---|
 | C1 executor port and record (built; no adapter yet) | registry in `reports`, `forge_compute`, `assistant.exec`, per-turn caps, the execution record | **yes: `report_executions` (0465)** |
-| C2 `anthropic-code-exec` | the sandbox draft's Phase 1 (`bridgeStream` provider events, container per conversation, scrubbed uploads) behind the port | none |
+| C2 `anthropic-code-exec` (built) | the sandbox draft's Phase 1 (`bridgeStream` provider events, container per conversation, scrubbed uploads) behind the port | none |
 | C3 `e2b` | the fallback adapter under `integrations/executor/e2b/` | none |
 | C4 `exec-node` | the runner `exec` job (sandbox draft Phase 2), only after REQ-30 BC-2 is revised | none in core beyond C1; a job kind |
 | C5 promotion | a script whose fingerprint ran three times in 30 days is offered to an admin for promotion: as a Feedback or Requirement draft carrying the script and a sample frame, never as an automatic query | none (reads `report_executions`) |
@@ -541,9 +597,11 @@ adapter inherits. The port adds:
   year in prose) until its grammar learns them; every false refusal costs a rewrite turn.
 - **A `link` share is egress by design**: once opened, a snapshot cannot be called back from a reader
   who saved it; revocation only stops further views.
-- **The in-band executor bends the port**: `anthropic-code-exec` runs inside the model's call, so core
-  sees the script after the provider ran it, not before; its caps are enforced per turn rather than
-  per call.
+- **The in-band executor pays a model call per execution**: `anthropic-code-exec` runs the script in an
+  execute-only Messages call whose model relays one fixed command, so each execution costs that
+  call's tokens and latency on top of the container time, and depends on the relay running the
+  command unchanged (a run of anything else is refused by name). In exchange core holds the script,
+  its checks and its caps before anything runs, rather than after the provider ran it.
 - **Agent mode reaches blocks only over REST**, so a resident session has to be taught the block verb
   through its guide, and until then its replies stay prose.
 - **No third-party hosting** means Forge carries the page, the expiry sweep and the abuse controls
