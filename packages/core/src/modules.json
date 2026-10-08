@@ -925,6 +925,17 @@
         "requirement-to-delivery#release-gate"
       ]
     },
+    "report-queries": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": [],
+      "serves": ["REQ-19"]
+    },
+    "reports": {
+      "kind": "domain",
+      "context": "operations",
+      "serves": ["REQ-19"]
+    },
     "requirements": {
       "kind": "domain",
       "context": "design",
@@ -1022,6 +1033,11 @@
         "automation#settle",
         "automation#streak"
       ]
+    },
+    "shares": {
+      "kind": "domain",
+      "context": "operations",
+      "serves": ["REQ-19"]
     },
     "skills": {
       "kind": "domain",
@@ -1295,6 +1311,9 @@
     },
     "version": {
       "serves": ["REQ-12"]
+    },
+    "visual-blocks": {
+      "serves": ["REQ-19"]
     },
     "whats-new": {
       "serves": ["REQ-14", "issue-delivery#act-release"]
