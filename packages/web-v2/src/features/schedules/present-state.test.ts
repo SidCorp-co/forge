@@ -1,5 +1,6 @@
 // ISS-1163 — what a schedule row may say about the present. The failing inputs below are the
 // ones the old row got wrong: a paused schedule's 17-day-old success, and a cron nobody could read.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   describeCadence,
@@ -8,7 +9,7 @@ import {
   listSum,
   STALE_RULE,
 } from "./present-state";
-import type { ScheduleRow } from "./types";
+import { SCHEDULE_LAST_STATUSES, type ScheduleRow } from "./types";
 
 // Cron fires are read in the runner's zone; pin it so the boundaries below mean the same everywhere.
 process.env.TZ = "UTC";
@@ -140,6 +141,38 @@ describe("lastRunView", () => {
   it("a running verdict reads since", () => {
     const v = lastRunView(row({ lastStatus: "running", lastRunAt: ago(3 * HOUR) }), NOW);
     expect(v).toMatchObject({ text: "Running since 3 hours ago" });
+  });
+
+  it("a skipped run (a manual Run with no runner online) reads Skipped with its age", () => {
+    const v = lastRunView(row({ lastStatus: "skipped", lastRunAt: ago(3 * HOUR) }), NOW);
+    expect(v).toEqual({ kind: "ran", text: "Skipped 3 hours ago", stale: false });
+  });
+
+  it("a status this screen does not know reads its raw word instead of throwing", () => {
+    const unknown = "quarantined" as unknown as ScheduleRow["lastStatus"];
+    const v = lastRunView(row({ lastStatus: unknown, lastRunAt: ago(3 * HOUR) }), NOW);
+    expect(v).toEqual({ kind: "ran", text: "quarantined 3 hours ago", stale: false });
+  });
+
+  it("every status the database enum holds reads as words with its age", () => {
+    const enumMembers = [
+      ...readFileSync(
+        new URL("../../../../core/src/db/schema.ts", import.meta.url),
+        "utf8",
+      ).matchAll(/export const scheduleStatuses = \[([^\]]*)\]/g),
+    ].flatMap((m) => [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]));
+    // The screen's list is the enum, member for member: a status core adds is a red test here.
+    expect([...SCHEDULE_LAST_STATUSES].sort()).toEqual([...enumMembers].sort());
+    expect(enumMembers.length).toBeGreaterThan(0);
+    for (const status of enumMembers) {
+      const v = lastRunView(
+        row({ lastStatus: status as ScheduleRow["lastStatus"], lastRunAt: ago(HOUR) }),
+        NOW,
+      );
+      expect(v).toMatchObject({ kind: "ran" });
+      expect((v as { text: string }).text).toMatch(/ 1 hour ago$/);
+      expect((v as { text: string }).text).not.toMatch(/undefined/);
+    }
   });
 
   it("a schedule that never ran carries no age and no stale marker", () => {

@@ -66,7 +66,9 @@ export function SchedulesCard({ rows, now, slug }: { rows: ScheduleRow[]; now: n
                   {chip ? (
                     <StatusChip status={chip} size="sm" domain="session" />
                   ) : (
-                    <span className="fg-caption flex-none text-subtle">never run</span>
+                    // No chip for this status (skipped, or one core adds later) is still a run
+                    // that happened: say its word, never "never run".
+                    <span className="fg-caption flex-none text-subtle">{s.lastStatus ?? "never run"}</span>
                   )}
                 </li>
               );

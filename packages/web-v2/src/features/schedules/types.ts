@@ -1,6 +1,9 @@
 import type { StatusKey } from "@/design/status";
 
-export type ScheduleLastStatus = "success" | "failed" | "running" | null;
+/** Every value core's `scheduleStatuses` enum holds; a drift test reads that file. */
+export const SCHEDULE_LAST_STATUSES = ["success", "failed", "running", "skipped"] as const;
+
+export type ScheduleLastStatus = (typeof SCHEDULE_LAST_STATUSES)[number] | null;
 
 /** A schedule is either 'prompt' (existing agent-session behavior) or
  *  'script' (a standalone sandboxed Node.js script, no LLM/agent at all). */
