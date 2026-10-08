@@ -7,8 +7,8 @@
 // per language. The registry is `said-keys.ts`; its English is the one core's text is built from.
 
 import { z } from "zod";
-import { ISSUE_STATUS_LABELS } from "./issue-vocabulary.js";
 import type { IssueStatus } from "./issue-machine.js";
+import { ISSUE_STATUS_LABELS } from "./issue-vocabulary.js";
 import { SAID } from "./said-keys.js";
 
 /**
@@ -92,9 +92,6 @@ export type SaidPlainKey = {
 
 const ENTRIES: Readonly<Record<string, SaidEntry>> = SAID;
 
-export const isSaidKey = (key: string): key is SaidKey =>
-	Object.hasOwn(ENTRIES, key);
-
 /** A key the registry lacks, or vars that do not fill its template: refused by name, never rendered as a guess. */
 export class SaidRefused extends Error {
 	constructor(
@@ -106,12 +103,23 @@ export class SaidRefused extends Error {
 	}
 }
 
-function checked(key: string, vars: Record<string, SaidValue> | undefined): void {
+function checked(
+	key: string,
+	vars: Record<string, SaidValue> | undefined,
+): void {
 	const entry = ENTRIES[key];
-	if (!entry) throw new SaidRefused("SAID_KEY_UNKNOWN", `"${key}" is not in @forge/contracts/said-keys`);
+	if (!entry)
+		throw new SaidRefused(
+			"SAID_KEY_UNKNOWN",
+			`"${key}" is not in @forge/contracts/said-keys`,
+		);
 	for (const [name, kind] of Object.entries(entry.vars ?? {})) {
 		const v = vars?.[name];
-		if (v === undefined) throw new SaidRefused("SAID_VAR_MISSING", `"${key}" needs {${name}} (${kind})`);
+		if (v === undefined)
+			throw new SaidRefused(
+				"SAID_VAR_MISSING",
+				`"${key}" needs {${name}} (${kind})`,
+			);
 		const ok =
 			kind === "count"
 				? typeof v === "number"
@@ -119,17 +127,27 @@ function checked(key: string, vars: Record<string, SaidValue> | undefined): void
 					? isSaid(v)
 					: kind === "said?"
 						? v === null || isSaid(v)
-						: kind === "saidList" || kind === "saidSeries" || kind === "saidDots"
+						: kind === "saidList" ||
+								kind === "saidSeries" ||
+								kind === "saidDots"
 							? Array.isArray(v)
 							: typeof v === "string";
-		if (!ok) throw new SaidRefused("SAID_VAR_KIND", `"${key}" {${name}} must be ${kind}, got ${JSON.stringify(v)}`);
+		if (!ok)
+			throw new SaidRefused(
+				"SAID_VAR_KIND",
+				`"${key}" {${name}} must be ${kind}, got ${JSON.stringify(v)}`,
+			);
 		if (isSaid(v)) checked(v.key, v.vars);
-		if (Array.isArray(v)) for (const x of v as readonly Said[]) checked(x.key, x.vars);
+		if (Array.isArray(v))
+			for (const x of v as readonly Said[]) checked(x.key, x.vars);
 	}
 }
 
 const isSaid = (v: unknown): v is Said =>
-	typeof v === "object" && v !== null && !Array.isArray(v) && typeof (v as Said).key === "string";
+	typeof v === "object" &&
+	v !== null &&
+	!Array.isArray(v) &&
+	typeof (v as Said).key === "string";
 
 /** One sentence by its key; a key the registry lacks or a var its template does not get is refused here, where it is built. */
 export function say<K extends SaidKey>(
@@ -160,14 +178,20 @@ export function renderSaid(s: Said, reader: SaidReader): string {
 		if (kind === undefined || v === undefined) return slot;
 		if (v === null) return "";
 		if (Array.isArray(v)) {
-			return v.map((x: Said) => renderSaid(x, reader)).join(JOINERS[kind] ?? "; ");
+			return v
+				.map((x: Said) => renderSaid(x, reader))
+				.join(JOINERS[kind] ?? "; ");
 		}
 		if (typeof v === "object") return renderSaid(v as Said, reader);
 		return reader.value(kind, v as string | number);
 	});
 }
 
-const JOINERS: Partial<Record<SaidKind, string>> = { saidList: "; ", saidSeries: ", ", saidDots: " · " };
+const JOINERS: Partial<Record<SaidKind, string>> = {
+	saidList: "; ",
+	saidSeries: ", ",
+	saidDots: " · ",
+};
 
 const STEP_WORD: Record<string, string> = {
 	triage: "Triage",
@@ -182,12 +206,16 @@ const ENGLISH: SaidReader = {
 	template: (key) => ENTRIES[key]?.en,
 	value: (kind, v) =>
 		kind === "step"
-			? (STEP_WORD[String(v)] ?? `${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}`)
+			? (STEP_WORD[String(v)] ??
+				`${String(v).charAt(0).toUpperCase()}${String(v).slice(1)}`)
 			: kind === "statusLabel"
 				? (ISSUE_STATUS_LABELS[v as IssueStatus] ?? String(v))
 				: String(v),
 	unknown: (key) => {
-		throw new SaidRefused("SAID_KEY_UNKNOWN", `"${key}" is not in @forge/contracts/said-keys`);
+		throw new SaidRefused(
+			"SAID_KEY_UNKNOWN",
+			`"${key}" is not in @forge/contracts/said-keys`,
+		);
 	},
 };
 
@@ -211,7 +239,13 @@ export const saidSchema: z.ZodType<Said> = z.lazy(() =>
 			vars: z
 				.record(
 					z.string(),
-					z.union([z.string(), z.number(), z.null(), saidSchema, z.array(saidSchema)]),
+					z.union([
+						z.string(),
+						z.number(),
+						z.null(),
+						saidSchema,
+						z.array(saidSchema),
+					]),
 				)
 				.optional(),
 		})
@@ -243,21 +277,44 @@ export function saidDisagreements(value: unknown, path = "$"): string[] {
 		if (typeof says === "object" && says !== null && !Array.isArray(says)) {
 			for (const [k, s] of Object.entries(says)) {
 				const beside = o[k];
-				const en = k === "act" && typeof beside === "object" && beside !== null ? (beside as { label?: unknown }).label : beside;
+				const en =
+					k === "act" && typeof beside === "object" && beside !== null
+						? (beside as { label?: unknown }).label
+						: beside;
 				if (s === null || s === undefined) {
-					if (typeof en === "string" && en !== "") out.push(`${p}.${k}: said nothing beside ${JSON.stringify(en)}`);
+					if (typeof en === "string" && en !== "")
+						out.push(`${p}.${k}: said nothing beside ${JSON.stringify(en)}`);
+					continue;
+				}
+				if (Array.isArray(s)) {
+					// a list of sentences beside the list of their English, one for one
+					if (!Array.isArray(en) || en.length !== s.length) {
+						out.push(`${p}.${k}: says ${s.length} sentence(s) beside ${JSON.stringify(en)}`);
+						continue;
+					}
+					s.forEach((x, i) => {
+						const parsed = saidSchema.safeParse(x);
+						if (!parsed.success) out.push(`${p}.says.${k}[${i}]: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`);
+						else if (sayEn(parsed.data) !== en[i]) out.push(`${p}.${k}[${i}]: says ${JSON.stringify(sayEn(parsed.data))} beside ${JSON.stringify(en[i])}`);
+					});
 					continue;
 				}
 				const parsed = saidSchema.safeParse(s);
 				if (!parsed.success) {
-					out.push(`${p}.says.${k}: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`);
+					out.push(
+						`${p}.says.${k}: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`,
+					);
 					continue;
 				}
 				const said = sayEn(parsed.data);
-				if (en !== undefined && en !== null && said !== en) out.push(`${p}.${k}: says ${JSON.stringify(said)} beside ${JSON.stringify(en)}`);
+				if (en !== undefined && en !== null && said !== en)
+					out.push(
+						`${p}.${k}: says ${JSON.stringify(said)} beside ${JSON.stringify(en)}`,
+					);
 			}
 		}
-		for (const [k, x] of Object.entries(o)) if (k !== "says") walk(x, `${p}.${k}`);
+		for (const [k, x] of Object.entries(o))
+			if (k !== "says") walk(x, `${p}.${k}`);
 	};
 	walk(value, path);
 	return out;

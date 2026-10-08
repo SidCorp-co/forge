@@ -9,7 +9,7 @@ import { workflowsApi } from "./api";
 import type { CanvasHealth } from "./canvas/workflow-canvas";
 import { edgeHealthOf, HEALTH_PARAM, type HealthSurface, LAYER_PARAM, layerOf, nodeHealthOf, overlayOn, sourceHref } from "./health";
 import { builtinTemplateWords } from "./template-words";
-import type { DesignDecisionBody, SystemGraphRef, WorkflowTemplateList } from "./types";
+import type { DesignDecisionBody, RepinActBody, SystemGraphRef, WorkflowTemplateList } from "./types";
 
 export function useWorkflows(projectId: string | undefined) {
   return useQuery({
@@ -98,6 +98,32 @@ export function useDesignDecision(projectId: string, workflowId: string) {
       qc.invalidateQueries({ queryKey: ["workflows", projectId] });
       qc.invalidateQueries({ queryKey: ["workflow-design", projectId, workflowId] });
       qc.invalidateQueries({ queryKey: ["workflow-health", projectId, workflowId] });
+      // approving a base, or one of its dependents, changes what the re-pin act would take
+      qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
+    },
+  });
+}
+
+/** What one act approving this base's pin-only dependents would do now; core plans it, nothing here decides membership. */
+export function useRepinPlan(projectId: string | undefined, workflowId: string | undefined) {
+  return useQuery({
+    queryKey: ["workflow-repins", projectId ?? "", workflowId ?? ""],
+    queryFn: () => workflowsApi.repins(projectId as string, workflowId as string),
+    enabled: Boolean(projectId && workflowId),
+    staleTime: 15_000,
+  });
+}
+
+/** The re-pin act: every design it approved moves, so every design read of the project is read again (Needs you re-reads on any settled write). */
+export function useRepinAct(projectId: string, workflowId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RepinActBody) => workflowsApi.repin(projectId, workflowId, body),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["workflows", projectId] });
+      qc.invalidateQueries({ queryKey: ["workflow-design", projectId] });
+      qc.invalidateQueries({ queryKey: ["workflow-health", projectId] });
+      qc.invalidateQueries({ queryKey: ["workflow-repins", projectId] });
     },
   });
 }

@@ -11,6 +11,7 @@
  * chain is never presented twice.
  */
 
+import { type Said, say } from '@forge/contracts/said';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { integrationConnections } from '../../db/schema.js';
@@ -119,8 +120,8 @@ function stillUnexpired(secrets: AutoflowSecrets, now: number): boolean {
 }
 
 /** The sentence a needs-re-auth connection carries on its card. */
-export function reauthDetail(reason: string, baseUrl: string): string {
-  return `Autoflow refresh refused (${reason}); the token chain is dead and nothing will retry it — sign in again at ${baseUrl} through an MCP client and store the new access token, refresh token and client id`;
+export function reauthDetail(reason: string, baseUrl: string): Said {
+  return say('integrations.health.autoflow.refreshRefused', { reason, base: baseUrl });
 }
 
 /**

@@ -3,6 +3,8 @@ export type {
   ReleaseAttemptView,
   ReleaseAttentionGroup,
   ReleaseContentGroup,
+  ReleaseContinuation,
+  ReleaseCutView,
   ReleaseDetail,
   ReleaseFeedbackView,
   ReleaseGateView,
@@ -11,6 +13,7 @@ export type {
   ReleaseNoteEntry,
   ReleaseResponse,
   ReleaseSummary,
+  ReleaseVersionCarrier,
 } from "@forge/contracts/releases";
 
 export type ReleaseDecisionBody = { decision: "approve" } | { decision: "return"; reason: string };

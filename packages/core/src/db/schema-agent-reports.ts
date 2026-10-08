@@ -8,6 +8,7 @@ import {
   type AgentReportTarget,
   type AgentReportTriage,
 } from '@forge/contracts/agent-reports';
+import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { relations, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -92,8 +93,14 @@ export const agentReports = pgTable(
       onDelete: 'no action',
     }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'agent_reports_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     routeChk: check(
       'agent_reports_route_chk',
       sql`num_nonnulls(${t.linkedIssueId}, ${t.feedbackId}) <= 1`,

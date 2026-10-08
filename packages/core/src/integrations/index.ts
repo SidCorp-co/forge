@@ -28,6 +28,7 @@ export {
   updateDelivery,
 } from './deliveries.js';
 export { forgeReads, provideForgeReads } from './forge-reads.js';
+export { healthOf, thrownSaid } from './health-said.js';
 export { runIntegrationsHealthSweep } from './health-sweep.js';
 export type { InboundDoorState } from './inbound-door.js';
 export {

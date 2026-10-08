@@ -1,18 +1,20 @@
 "use client";
 import { EnumBadge, Fact, FactsEmpty, FactsGroup, NotAvailable } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
+import { useCopy } from "@/lib/i18n/interface-language";
 import { formatStamp } from "@/lib/utils/format";
 import type { ContractStandingDetail } from "../types";
 import { WindowText } from "./contract-bits";
 
 export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: string }) {
+  const t = useCopy();
   const c = d.contract;
   return (
     <div data-testid="contract-facts">
       {c.direction === "consumed" ? (
-        <FactsGroup title="Feedback" count={d.feedback.length ? `Items ${d.feedback.length}` : undefined} testId="facts-feedback">
+        <FactsGroup title={t("contracts.facts.feedback")} count={d.feedback.length ? t("contracts.facts.items", { n: d.feedback.length }) : undefined} testId="facts-feedback">
           {d.feedback.length === 0 ? (
-            <FactsEmpty>No breaking version has been announced to this project.</FactsEmpty>
+            <FactsEmpty>{t("contracts.facts.noBreaking")}</FactsEmpty>
           ) : (
             <ul className="grid gap-1">
               {d.feedback.map((f) => (
@@ -22,7 +24,7 @@ export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: st
                   itemKey={f.key}
                   title={f.title}
                   phase={f.status}
-                  hint={f.dueAt ? `${f.title} · adapt by ${formatStamp(f.dueAt)}` : undefined}
+                  hint={f.dueAt ? `${f.title} · ${t("contracts.facts.adaptBy", { when: formatStamp(f.dueAt) })}` : undefined}
                 />
               ))}
             </ul>
@@ -30,23 +32,23 @@ export function ContractFacts({ d, slug }: { d: ContractStandingDetail; slug: st
         </FactsGroup>
       ) : null}
 
-      <FactsGroup title="Properties" testId="facts-properties">
-        <Fact label="Kind">
+      <FactsGroup title={t("contracts.facts.properties")} testId="facts-properties">
+        <Fact label={t("contracts.facts.kind")}>
           <EnumBadge family="interfaceType" value={c.kind} />
         </Fact>
-        <Fact label="Direction">{c.direction === "consumed" ? <span>From {c.provider.slug}</span> : <span>Provided by {c.provider.slug}</span>}</Fact>
-        <Fact label="Version">
-          <span className="font-mono text-12-5" title={c.current ? `Current ${c.current.version} · recorded ${formatStamp(c.current.recordedAt)}` : "No approved version"}>
-            {c.direction === "consumed" ? `We use ${c.ours ?? "none"}` : (c.current?.version ?? "None approved")}
+        <Fact label={t("contracts.facts.direction")}>{c.direction === "consumed" ? <span>{t("contracts.from", { project: c.provider.slug })}</span> : <span>{t("contracts.providedBy", { project: c.provider.slug })}</span>}</Fact>
+        <Fact label={t("contracts.facts.version")}>
+          <span className="font-mono text-12-5" title={c.current ? t("contracts.facts.currentRecorded", { v: c.current.version, when: formatStamp(c.current.recordedAt) }) : t("contracts.facts.noApproved")}>
+            {c.direction === "consumed" ? t("contracts.facts.weUse", { v: c.ours ?? t("contracts.facts.noneWord") }) : (c.current?.version ?? t("contracts.facts.noneApproved"))}
           </span>
         </Fact>
-        <Fact label="Window">
+        <Fact label={t("contracts.facts.window")}>
           <WindowText row={c} />
         </Fact>
-        <Fact label="Lifecycle">
+        <Fact label={t("contracts.facts.lifecycle")}>
           <EnumBadge family="lifecycle" value={c.lifecycle} />
         </Fact>
-        <Fact label="Module">
+        <Fact label={t("contracts.facts.module")}>
           <NotAvailable reason={d.module.reason} />
         </Fact>
       </FactsGroup>

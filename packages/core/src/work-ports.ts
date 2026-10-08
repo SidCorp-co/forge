@@ -144,6 +144,7 @@ import {
   proposesWorkflowOf,
   provideWorkflowHealthPorts,
   provideWorkflowPorts,
+  repinGroupsAs,
 } from './workflows/index.js';
 import { wakeMastersForProject } from './ws/index.js';
 
@@ -300,7 +301,7 @@ export function provideWorkPorts(): void {
     },
   });
 
-  provideDevelopmentPorts({ designHealthOf: projectHealthAs });
+  provideDevelopmentPorts({ designHealthOf: projectHealthAs, designRepinsOf: repinGroupsAs });
 
   provideWorkflowHealthPorts({
     openFeedbackOf: async (viewer, projectId) => {

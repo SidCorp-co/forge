@@ -1,3 +1,4 @@
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { and, count, eq, gt, inArray, isNotNull, notInArray, or } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
@@ -99,11 +100,16 @@ async function measuredGap(
   reading: MeasuredReading,
   placed: readonly string[],
   ownerless: number,
-): Promise<string | null> {
-  const reasons: string[] = [];
+): Promise<Said | null> {
+  const reasons: Said[] = [];
   if (!reading.complete) {
     reasons.push(
-      `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.deploysFrom} and the reading listed only ${reading.commits.length}, so a closed issue it does not name is unplaced`,
+      say('pulse.gap.cut', {
+        base: reading.baseBranch,
+        ahead: reading.aheadBy,
+        live: reading.deploysFrom,
+        listed: reading.commits.length,
+      }),
     );
   }
   const [late] = await db
@@ -119,16 +125,20 @@ async function measuredGap(
     );
   const n = Number(late?.n ?? 0);
   if (n > 0) {
-    reasons.push(
-      `${n} closed issue${n === 1 ? '' : 's'} merged after the reading of ${reading.startedAt.toISOString()}, which the next reading places`,
-    );
+    const at = reading.startedAt.toISOString();
+    reasons.push(n === 1 ? say('pulse.gap.lateOne', { at }) : say('pulse.gap.lateMany', { n, at }));
   }
   if (ownerless > 0) {
+    const base = reading.baseBranch;
     reasons.push(
-      `${ownerless} commit${ownerless === 1 ? '' : 's'} waiting on ${reading.baseBranch} belong${ownerless === 1 ? 's' : ''} to no issue, so a closed issue whose work ${ownerless === 1 ? 'it is' : 'they are'} reads as nothing waiting`,
+      ownerless === 1
+        ? say('pulse.gap.ownerlessOne', { base })
+        : say('pulse.gap.ownerlessMany', { n: ownerless, base }),
     );
   }
-  return reasons.length > 0 ? reasons.join('; ') : null;
+  const [first, ...more] = reasons;
+  if (!first) return null;
+  return more.length === 0 ? first : say('pulse.gap.all', { parts: reasons });
 }
 
 /**
@@ -168,7 +178,8 @@ export async function readPulseLive(
   for (const { row, reading } of readings) {
     const project = byId.get(row.id);
     if (!reading || !project) continue;
-    let reason: string | null = reading.kind === 'measured' ? null : reading.reason;
+    // a reading that could not compare says why as the reading wrote it (`projects/live-reading.ts`)
+    let reason: Said | null = reading.kind === 'measured' ? null : verbatim(reading.reason);
     if (reading.kind === 'measured') {
       const ownership = await ownershipOf(project.id, reading);
       const placed = await closedNotOnLive(project, reading, ownership, now);
@@ -187,7 +198,8 @@ export async function readPulseLive(
       name: project.name,
       baseBranch: reading.baseBranch,
       deploysFrom: reading.deploysFrom,
-      reason,
+      reason: sayEn(reason),
+      says: { reason },
     });
   }
   notOnLive.sort((a, b) => b.ageSeconds - a.ageSeconds);

@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { runSubagentSchema } from "./run-verdict.js";
+import type { Said } from "./said.js";
 
 /** How long a master must have had no work, no turn and no child close before it is retired. */
 export const MASTER_IDLE_BEFORE_RETIRE_SECONDS = 60 * 60;
@@ -197,7 +198,12 @@ export type MasterReplaceReason = (typeof MASTER_REPLACE_REASONS)[number];
  * no new run declaration from it until that runs out (a graceful stop: finish what is held, take
  * nothing new). It is still nudged on a current master's timing for the work it is owed.
  */
-export type MasterVerdict =
+/** A verdict's reason as the registry sentence its English `because` was rendered from. */
+export interface MasterVerdictSays {
+	because: Said;
+}
+
+export type MasterVerdict = (
 	| { act: "withhold"; reason: MasterWithholdReason; because: string }
 	| { act: "place"; resume: string | null; nudge: boolean; because: string }
 	| {
@@ -209,7 +215,8 @@ export type MasterVerdict =
 	  }
 	| { act: "retire"; because: string }
 	| { act: "leave"; reason: MasterLeaveReason; because: string }
-	| { act: "keep"; nudge: boolean; drain: boolean; because: string };
+	| { act: "keep"; nudge: boolean; drain: boolean; because: string }
+) & { says: MasterVerdictSays };
 export type MasterVerdictAct = MasterVerdict["act"];
 
 /** The work core read for the project this sweep: what decides a pass, and what the box types or briefs. */

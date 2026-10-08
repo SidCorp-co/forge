@@ -48,7 +48,7 @@ function roadmapLine(i: RoadmapItem, w: ReportWords): string {
 }
 
 function waitLine(x: StatusWait, s: ProjectStatus, w: ReportWords): string {
-  return `- **${needsYouKeyLabel(x, (a) => w.label("needsYouArea", a))}** ${x.title} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
+  return `- **${needsYouKeyLabel(x, (a) => w.label("needsYouArea", a))}** ${said(x.says.title, w.clock.lang)} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
 }
 
 export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {

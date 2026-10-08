@@ -1,1 +1,0 @@
-**A project's memory has its own page.** Each memory shows who wrote it, when, whether anyone checked it and which cited issues or requirements are gone; Correct and Retire take a reason, and the assistant cites memory with its date.

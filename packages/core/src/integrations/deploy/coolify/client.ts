@@ -1,3 +1,4 @@
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import type {
   CoolifyApplicationDeploymentsResponse,
   CoolifyApplicationLogsResponse,
@@ -50,13 +51,22 @@ export function coolifyAbilityForRoute(route: string | null): string | null {
  * route, so the fix is to widen the token's abilities — never to mint a new one,
  * which reproduces the state exactly (ISS-924).
  */
-export function describeCoolifyForbidden(err: CoolifyApiError): string {
-  const route = err.route ?? 'the requested route';
+export function coolifyForbiddenSaid(err: CoolifyApiError): Said {
   const ability = coolifyAbilityForRoute(err.route);
-  const missing = ability
-    ? `the \`${ability}\` ability (\`api.ability:${ability}\`)`
-    : 'the ability that route requires';
-  return `Coolify recognised the API token but refused ${route} (HTTP 403): the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token) — the credential itself is valid, so replacing it will not change this.`;
+  return say('integrations.health.coolify.forbidden', {
+    route: err.route ? verbatim(err.route) : say('integrations.health.coolify.theRoute'),
+    missing: ability
+      ? say('integrations.health.coolify.ability', {
+          ability: `\`${ability}\``,
+          token: `\`api.ability:${ability}\``,
+        })
+      : say('integrations.health.coolify.theAbility'),
+  });
+}
+
+/** `coolifyForbiddenSaid` in English, for the plugin and the logs. */
+export function describeCoolifyForbidden(err: CoolifyApiError): string {
+  return sayEn(coolifyForbiddenSaid(err));
 }
 
 interface CoolifyClientOptions {

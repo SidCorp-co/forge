@@ -9,6 +9,46 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.147] - 2026-10-08
+
+Agents are taught the ask, wait and release acts that landed today
+
+### Changed
+
+- **Agents learn today's acts where they take them.** Runs, masters and the BA door name a question's requirement, park on a merge mark, mark carried artifacts, say what an abort carried, defer pin-only re-pins, and write honest memory.
+
+## [0.4.0-dev.146] - 2026-10-08
+
+One path per helper after parallel lanes, and provider-verified releases name their checker
+
+### Fixed
+
+- **A release verified by its provider says so in words.** The status report and the release's verified line read "checked by what production's provider serves" where they read "what serves", with no name, in English and Vietnamese.
+
+## [0.4.0-dev.145] - 2026-10-08
+
+One approval clears every design whose only change is a moved base pin
+
+### Added
+
+- **One act approves a moved base's pin-only dependents.** A proposal changing only its basedOn pins reads "Pin-only change" with proof; the base's page re-pins and approves them together, one decision each, refusing other changes. Needs you shows one row.
+
+## [0.4.0-dev.144] - 2026-10-07
+
+A release keeps its version across failed attempts; the list counts releases
+
+### Changed
+
+- **A release keeps its version across attempts.** Re-cutting the same issues reuses the version unless a tag, commit, artifact or notice already carries it, which the page names; each release lists its attempts, and the list counts releases.
+
+## [0.4.0-dev.143] - 2026-10-07
+
+Project memory gets a page: see, correct, retire and date what Forge remembers
+
+### Added
+
+- **A project's memory has its own page.** Each memory shows who wrote it, when, whether anyone checked it and which cited issues or requirements are gone; Correct and Retire take a reason, and the assistant cites memory with its date.
+
 ## [0.4.0-dev.142] - 2026-10-07
 
 Feedback reporters hear in their language what shipped, or someone relays it

@@ -138,6 +138,11 @@ export function ReleaseFacts({ r, forecast }: { r: ReleaseDetail; forecast?: Sco
             <span title={time.dateTime(r.openedAt)}>{time.relative(r.openedAt)}</span>
           </Fact>
         ) : null}
+        {r.cutCount > 1 ? (
+          <Fact label={t("releases.factAttempts")} testId="facts-attempts">
+            {t("releases.attemptsCount", { n: r.cutCount })}
+          </Fact>
+        ) : null}
         {r.releasedAt ? (
           <Fact label={label("releaseState", "shipped")}>
             <span title={time.dateTime(r.releasedAt)}>{time.relative(r.releasedAt)}</span>

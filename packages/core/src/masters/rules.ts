@@ -5,31 +5,57 @@ import type {
   MasterSlots,
 } from '@forge/contracts/master-standing';
 import { MASTER_JOB_PANES_MAX } from '@forge/contracts/master-standing';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
+
+// the wire calls a refusal names, kept out of the sentence so a reader's language never rewrites them
+const SETTLE_CALL = '{ op: "settle", sessionId, passId, facts }';
+const OPEN_CALL = '{ op: "open", sessionId, verb }';
+
+/** A master refusal whose English detail is the sentence it says. */
+const refusal = (code: MasterRefusal['code'], path: string, detail: Said): MasterRefusal => ({
+  code,
+  path,
+  detail: sayEn(detail),
+  says: { detail },
+});
 
 export function slotsUndeclaredRefusal(args: {
   maxJobPanes: number | undefined;
   agentVersion: string | null;
 }): MasterRefusal | null {
   if (args.maxJobPanes !== undefined) return null;
-  return {
-    code: 'MASTER_SLOTS_UNDECLARED',
-    path: '/maxJobPanes',
-    detail: `a master session declares how many job panes its box runs at once: send maxJobPanes, a whole number from 1 to ${MASTER_JOB_PANES_MAX} (the runner's [runner] max_job_panes). Core holds no default, so a box that declares none cannot register a master (runner ${args.agentVersion ?? 'version unknown'})`,
-  };
+  return refusal(
+    'MASTER_SLOTS_UNDECLARED',
+    '/maxJobPanes',
+    say('masters.refusal.slotsUndeclared', {
+      max: MASTER_JOB_PANES_MAX,
+      version: args.agentVersion
+        ? verbatim(args.agentVersion)
+        : say('masters.refusal.versionUnknown'),
+    }),
+  );
 }
 
 const passName = (p: Pick<MasterOpenPass, 'verb' | 'startedAt' | 'issueKey'>) =>
-  `the ${p.verb} pass started ${p.startedAt}${p.issueKey ? ` on ${p.issueKey}` : ''}`;
+  say('masters.refusal.passName', {
+    verb: p.verb,
+    at: p.startedAt,
+    on: p.issueKey ? say('masters.refusal.passOn', { key: p.issueKey }) : null,
+  });
 
 // contract -> packages/runner/crates/runner-daemon/src/master_pass.rs:named_pass_id — the runner reads the
 // open pass's id from `id <uuid>` in this detail to settle a pass whose open answer it never received
 export function passAlreadyOpenRefusal(open: MasterOpenPass | null): MasterRefusal | null {
   if (!open) return null;
-  return {
-    code: 'MASTER_PASS_ALREADY_OPEN',
-    path: '/op',
-    detail: `this master already has ${passName(open)} open, id ${open.id}; it closes when core judges it ended ({ op: "settle", sessionId, passId, facts }), and the next opens after`,
-  };
+  return refusal(
+    'MASTER_PASS_ALREADY_OPEN',
+    '/op',
+    say('masters.refusal.passAlreadyOpen', {
+      pass: passName(open),
+      id: open.id,
+      settle: SETTLE_CALL,
+    }),
+  );
 }
 
 export function passNotOpenRefusal(args: {
@@ -38,32 +64,36 @@ export function passNotOpenRefusal(args: {
   open: MasterOpenPass | null;
 }): MasterRefusal {
   const now = args.open
-    ? ` The pass open now is ${passName(args.open)}, id ${args.open.id}.`
-    : ' No pass is open; open one with { op: "open", sessionId, verb } first.';
-  return {
-    code: 'MASTER_PASS_NOT_OPEN',
-    path: '/passId',
-    detail: args.named
-      ? `${passName(args.named)} ended ${args.named.endedAt}, and a closed pass is final, so this settle changed nothing.${now}`
-      : `this master has no pass ${args.passId}.${now}`,
-  };
+    ? say('masters.refusal.passOpenNow', { pass: passName(args.open), id: args.open.id })
+    : say('masters.refusal.noPassOpen', { call: OPEN_CALL });
+  return refusal(
+    'MASTER_PASS_NOT_OPEN',
+    '/passId',
+    args.named
+      ? say('masters.refusal.passEnded', {
+          pass: passName(args.named),
+          at: args.named.endedAt,
+          now,
+        })
+      : say('masters.refusal.noSuchPass', { id: args.passId, now }),
+  );
 }
 
 export function sessionEndedRefusal(status: string, terminal: boolean): MasterRefusal | null {
   if (!terminal) return null;
-  return {
-    code: 'MASTER_SESSION_ENDED',
-    path: '/sessionId',
-    detail: `this master session is ${status}, so it opens no pass; register the master again (POST /api/devices/me/master-session) and open the pass on the session that answers`,
-  };
+  return refusal(
+    'MASTER_SESSION_ENDED',
+    '/sessionId',
+    say('masters.refusal.sessionEnded', { status }),
+  );
 }
 
 function undeclaredSlots(deviceName: string): MasterRefusal {
-  return {
-    code: 'MASTER_SLOTS_UNDECLARED',
-    path: '/slots/max',
-    detail: `${deviceName} has not declared max_job_panes; the runner declares it when it registers its master, and core holds no default, so the cap is not known`,
-  };
+  return refusal(
+    'MASTER_SLOTS_UNDECLARED',
+    '/slots/max',
+    say('masters.refusal.slotsNotDeclared', { device: deviceName }),
+  );
 }
 
 // max_job_panes caps the job panes the daemon opens for pool jobs (runner master/pool_take.rs); a run a

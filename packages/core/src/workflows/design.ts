@@ -18,6 +18,8 @@ export interface DesignRefusal {
   status?: DesignStatus | null;
   revision?: number;
   proposedRevision?: number;
+  /** The design a re-pin act refuses, where the refusal names one of several. */
+  flow?: string;
 }
 
 /**

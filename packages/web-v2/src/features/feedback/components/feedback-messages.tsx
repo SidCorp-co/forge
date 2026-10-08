@@ -5,6 +5,7 @@
 // then sends; an internal note is marked as one, and says it is never sent to anyone. A relay records
 // what a person told reporters outside Forge, for one no bell reaches: kept on the thread, sent nowhere.
 
+import { Written } from "@/lib/i18n/written";
 import { useState } from "react";
 import { Button, LEGEND, Radio, RadioGroup, Textarea } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -43,7 +44,7 @@ function Thread({ messages }: { messages: FeedbackMessageView[] }) {
                 <span title={time.dateTime(m.sentAt)}>{time.relative(m.sentAt)}</span>
               </span>
             </span>
-            <span className="max-w-[80ch] whitespace-pre-wrap">{m.text}</span>
+            <Written className="max-w-[80ch] whitespace-pre-wrap" text={m.text} lang={m.writtenLang} />
           </li>
         );
       })}

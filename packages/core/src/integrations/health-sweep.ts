@@ -1,7 +1,9 @@
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { thrownSaid } from './health-said.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
 import { type BindingWithConnection, buildContextFromBinding, updateConnection } from './store.js';
@@ -61,15 +63,17 @@ export async function runIntegrationsHealthSweep(): Promise<{
     const adapter = getAdapter(pair.binding.provider);
     if (!adapter) continue;
     // A probe that hangs or crashes records why, so the card never keeps a stale `ok`.
-    let fault: string | null = null;
+    let fault: Said | null = null;
     try {
       const result = await raceWithTimeout(
         adapter.healthcheck(buildContextFromBinding(pair)),
         PROBE_TIMEOUT_MS,
       );
-      if (result === null) fault = `healthcheck timed out after ${PROBE_TIMEOUT_MS / 1000}s`;
+      if (result === null) {
+        fault = say('integrations.health.timedOut', { seconds: PROBE_TIMEOUT_MS / 1000 });
+      }
     } catch (err) {
-      fault = `healthcheck crashed: ${err instanceof Error ? err.message : String(err)}`;
+      fault = say('integrations.health.crashed', { why: thrownSaid(err) });
     }
     if (fault === null) {
       probed++;
@@ -77,7 +81,7 @@ export async function runIntegrationsHealthSweep(): Promise<{
     }
     failed++;
     logger.warn(
-      { connectionId: pair.connection.id, provider: pair.binding.provider, fault },
+      { connectionId: pair.connection.id, provider: pair.binding.provider, fault: sayEn(fault) },
       'integrations-health-sweep: probe failed',
     );
     await updateConnection(pair.connection.id, {

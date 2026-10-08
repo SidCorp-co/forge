@@ -15,7 +15,7 @@ import { writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
-interface AbortStamp {
+export interface AbortStamp {
   id: string;
   at: string;
   reason: string;
@@ -26,8 +26,9 @@ interface AbortStamp {
   /** Who the run said must act before the roster can release, when it said. */
   blocker?: AbortBlocker;
   /**
-   * What the run said it pushed (release commit or tag). Only `false` hands the version back
-   * (`highestSpentVersion`); absent reads as unknown, which keeps it spent.
+   * What the run said it pushed (release commit or tag). `false` says nothing left the box, so a
+   * re-cut of this roster wears the version again; absent leaves it undecided
+   * (`version-rule.ts:carriersOf`), and `carried` names what did leave.
    */
   pushed?: boolean;
 }
@@ -37,7 +38,8 @@ export interface AbortBlocker {
   waitingFor: string;
 }
 
-function readAbortStamp(metadata: unknown): AbortStamp | null {
+/** The abort stamp a run's metadata carries, or null where no abort has begun: the one reader of it. */
+export function readAbortStamp(metadata: unknown): AbortStamp | null {
   const raw = (metadata as { abort?: unknown } | null)?.abort;
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
@@ -51,6 +53,7 @@ function readAbortStamp(metadata: unknown): AbortStamp | null {
     closed: Array.isArray(r.closed)
       ? r.closed.filter((id): id is string => typeof id === 'string')
       : null,
+    ...(typeof r.pushed === 'boolean' ? { pushed: r.pushed } : {}),
   };
 }
 
@@ -76,6 +79,7 @@ export async function stampAbort(
     blocker?: AbortBlocker | undefined;
     pushed?: boolean | undefined;
   },
+  executor: Tx = db,
 ): Promise<string> {
   const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
   const record: AbortStamp = {
@@ -88,16 +92,20 @@ export async function stampAbort(
     ...(stamp.blocker ? { blocker: stamp.blocker } : {}),
     ...(stamp.pushed !== undefined ? { pushed: stamp.pushed } : {}),
   };
-  await writeRunMetadata(runId, {
-    value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
+  await writeRunMetadata(
+    runId,
+    {
+      value: sql`coalesce(metadata, '{}'::jsonb) || jsonb_build_object('abort',
       CASE WHEN metadata -> 'abort' IS NOT NULL
                 AND metadata -> 'abort' ->> 'pushed' IS DISTINCT FROM 'false'
            THEN (${JSON.stringify(record)}::jsonb - 'pushed')
                 || jsonb_strip_nulls(jsonb_build_object('pushed', metadata -> 'abort' -> 'pushed'))
            ELSE ${JSON.stringify(record)}::jsonb END
       || jsonb_build_object('closed', coalesce(metadata -> 'abort' -> 'closed', 'null'::jsonb)))`,
-    touch: true,
-  });
+      touch: true,
+    },
+    executor,
+  );
   return record.id;
 }
 

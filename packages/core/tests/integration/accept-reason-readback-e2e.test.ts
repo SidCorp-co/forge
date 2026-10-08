@@ -6,6 +6,7 @@
  * was missing from the Activity the same way.
  */
 
+import { saidDisagreements } from '@forge/contracts/said';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -37,8 +38,12 @@ async function requirement(title: string): Promise<string> {
   return key;
 }
 
-const history = async (key: string): Promise<string[]> =>
-  (ok(await as('GET', `/requirements/${key}`)).history as Doc[]).map((e) => `${e.kind}: ${e.text}`);
+const history = async (key: string): Promise<string[]> => {
+  const entries = ok(await as('GET', `/requirements/${key}`)).history as Doc[];
+  // each entry's kind, who and text are the registry sentences it says, so a reader in another language reads the same record
+  expect(saidDisagreements(entries)).toEqual([]);
+  return entries.map((e) => `${e.kind}: ${e.text}`);
+};
 
 beforeAll(async () => {
   testEnv();

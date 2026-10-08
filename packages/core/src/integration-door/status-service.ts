@@ -1,4 +1,4 @@
-import { type Said, say, sayEn } from '@forge/contracts/said';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -78,6 +78,8 @@ interface ProviderRow {
   lastHealthStatus: string | null;
   /** The sentence behind a non-ok status, where the adapter recorded one. */
   lastHealthDetail?: string | null;
+  /** That sentence as said; null on a row recorded before it was kept, read verbatim then. */
+  lastHealthSays?: Said | null;
   lastHealthAt: Date | null;
   breakerOpenedAt: Date | null;
 }
@@ -123,7 +125,7 @@ function buildProviderCards(opts: {
           ? row.lastHealthDetail
             ? say('integrations.detail.lastHealthWhy', {
                 status: row.lastHealthStatus,
-                detail: row.lastHealthDetail,
+                detail: row.lastHealthSays ?? verbatim(row.lastHealthDetail),
               })
             : say('integrations.detail.lastHealth', { status: row.lastHealthStatus })
           : opts.neverCheckedDetail,
@@ -280,6 +282,7 @@ async function providerCards(
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,
     lastHealthDetail: pair.connection.lastHealthDetail,
+    lastHealthSays: pair.connection.lastHealthSays,
     lastHealthAt: pair.connection.lastHealthAt,
     breakerOpenedAt: pair.connection.breakerOpenedAt,
   }));

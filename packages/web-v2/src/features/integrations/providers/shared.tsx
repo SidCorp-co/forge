@@ -2,7 +2,9 @@
 
 import { Badge, type BadgeProps, Banner, Button, PageSection, PageSectionBody, PageSectionHeader, PageSectionTitle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy } from "@/lib/i18n/interface-language";
+import type { Said } from "@forge/contracts/said";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { type ReactNode, useState } from "react";
 import { IntegrationEnabledControl } from "../components/integration-enabled-control";
@@ -84,6 +86,11 @@ export function OrgLockedNote({ children }: { children?: ReactNode }) {
   return <p className="fg-body-sm text-muted">{children ?? t("integrations.provider.orgLocked")}</p>;
 }
 
+/** A health answer's sentence in the reader's language: as said where core said it, else the English it was stored with. */
+export function healthSentence(h: { message?: string; says?: { message: Said } }, language: string): string | undefined {
+  return h.says ? said(h.says.message, language) : h.message;
+}
+
 /** An error, then the last test's answer: `okText` replaces the server's message when given. */
 export function TestOutcome({
   error,
@@ -97,14 +104,15 @@ export function TestOutcome({
   okText?: string;
 }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   return (
     <>
       {error && <Banner tone="danger">{error}</Banner>}
       {result &&
         (result.status === "ok" ? (
-          <Banner tone="success">{okText ?? result.message ?? okFallback ?? t("integrations.provider.connectionOk")}</Banner>
+          <Banner tone="success">{okText ?? healthSentence(result, language) ?? okFallback ?? t("integrations.provider.connectionOk")}</Banner>
         ) : (
-          <Banner tone="danger">{result.message ?? t("integrations.provider.connectionFailed")}</Banner>
+          <Banner tone="danger">{healthSentence(result, language) ?? t("integrations.provider.connectionFailed")}</Banner>
         ))}
     </>
   );

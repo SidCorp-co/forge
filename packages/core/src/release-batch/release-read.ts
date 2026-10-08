@@ -4,7 +4,6 @@ import type {
   ReleaseProduction,
 } from '@forge/contracts/releases';
 import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
-import { db } from '../db/client.js';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -19,49 +18,99 @@ import { readLandingReadings } from './landing-surfaces.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
 import { waitingIssueIds } from './queries.js';
 import { refuseRelease } from './refuse.js';
+import { continuationOf, fillCuts, type ReleaseLines, releaseLinesOf } from './release-cuts.js';
 import { loadReleaseFacts } from './release-facts.js';
 import { gateViews } from './release-gates.js';
 import { detailOf, type Part, type Shared, summaryOf } from './release-read-views.js';
 import type { ViewerFacts } from './release-view.js';
-import {
-  formatReleaseVersion,
-  nextReleaseVersion,
-  parseReleaseVersion,
-  RELEASE_VERSION_SHAPE,
-} from './version.js';
-import { currentReleaseVersion, highestSpentVersion, releaseLineOf } from './version-store.js';
+import { formatReleaseVersion, parseReleaseVersion, RELEASE_VERSION_SHAPE } from './version.js';
+import type { LineageRun, VersionDecision } from './version-rule.js';
+import { currentReleaseVersion, decideRosterVersion, readLineage } from './version-store.js';
 import { attemptsOf, issueIdsOf, versionRuns, versionStatus } from './versions.js';
 
-/** The number the next cut takes: one past the highest any batch spent, on the project's line. */
-export async function nextDraftVersion(projectId: string): Promise<string> {
-  const [highest, line] = await Promise.all([
-    highestSpentVersion(db, projectId),
-    releaseLineOf(projectId),
-  ]);
-  return formatReleaseVersion(nextReleaseVersion(highest?.version ?? null, line));
+/**
+ * The version a decision hands the draft. An undecided re-cut shows the version in question, and its
+ * gate (`RELEASE_VERSION_UNDECIDED`) says why it cannot be cut yet; a line the rule refuses shows the
+ * number it would have been, refused by its own gate at the cut.
+ */
+function draftVersionOf(d: VersionDecision): string {
+  return d.kind === 'exhausted' || d.kind === 'behind' ? formatReleaseVersion(d.next) : d.version;
 }
 
-async function draftPart(projectId: string): Promise<Part | null> {
+/** The number the next cut takes: the version rule asked about the roster waiting at the gate. */
+export async function nextDraftVersion(projectId: string): Promise<string> {
+  return draftVersionOf(await decideRosterVersion(projectId, await waitingIssueIds(projectId)));
+}
+
+interface DraftPart {
+  part: Part;
+  /** The attempt the next cut re-cuts, where it re-cuts one. */
+  recutOf: string | null;
+}
+
+async function draftPart(projectId: string): Promise<DraftPart | null> {
   const ids = await waitingIssueIds(projectId);
   if (ids.length === 0) return null;
-  const [version, report, admins] = await Promise.all([
-    nextDraftVersion(projectId),
+  const [decision, report, admins] = await Promise.all([
+    decideRosterVersion(projectId, ids),
     collectReleaseBlockers(projectId, { issueIds: ids, door: 'batch' }),
     holderNames('project.admin', projectId),
   ]);
   return {
-    version,
-    runId: null,
-    state: 'draft',
-    issueIds: ids,
-    openedAt: null,
-    releasedAt: null,
-    attempts: [],
-    approvals: [],
-    gates: gateViews(report.blockers, report.warnings, admins),
-    verification: null,
-    commit: null,
+    recutOf: 'recutOf' in decision ? decision.recutOf.id : null,
+    part: {
+      version: draftVersionOf(decision),
+      runId: null,
+      state: 'draft',
+      issueIds: ids,
+      openedAt: null,
+      releasedAt: null,
+      attempts: [],
+      approvals: [],
+      gates: gateViews(report.blockers, report.warnings, admins),
+      verification: null,
+      commit: null,
+      cuts: [],
+      continuedAs: null,
+    },
   };
+}
+
+/**
+ * Which release each part belongs to, and the attempts each shows (`release-cuts.ts`). A version
+ * whose roster went on under another version reads `continuedAs` and lists no attempts of its own;
+ * the draft takes the attempts of the release it re-cuts, and that release's versions fold into it.
+ */
+function placeParts(
+  lines: ReleaseLines,
+  runs: Part[],
+  draft: DraftPart | null,
+): { parts: Part[]; groupOf: (p: Part) => LineageRun[] } {
+  const draftKey = draft?.recutOf ? lines.keyOf.get(draft.recutOf) : undefined;
+  for (const p of runs) {
+    p.continuedAs =
+      draft && draftKey !== undefined && p.runId && lines.keyOf.get(p.runId) === draftKey
+        ? { version: draft.part.version, shipped: false }
+        : continuationOf(lines, p.version, p.runId);
+  }
+  const groupOf = (p: Part): LineageRun[] => {
+    if (p.state === 'draft')
+      return draftKey === undefined ? [] : (lines.groups.get(draftKey) ?? []);
+    if (
+      p.continuedAs &&
+      draft &&
+      p.continuedAs.version === draft.part.version &&
+      !p.continuedAs.shipped
+    ) {
+      return draftKey === undefined ? [] : (lines.groups.get(draftKey) ?? []);
+    }
+    const key = p.runId ? lines.keyOf.get(p.runId) : undefined;
+    return key === undefined ? [] : (lines.groups.get(key) ?? []);
+  };
+  const parts = draft
+    ? [draft.part, ...runs.filter((r) => r.version !== draft.part.version)]
+    : runs;
+  return { parts, groupOf };
 }
 
 /** The commit a finished release's probes verified; an attempt still in flight claims one only. */
@@ -88,6 +137,8 @@ function runPart(
     gates: [],
     verification: recordedVerificationOf(run.metadata),
     commit: finishedCommit(run.metadata),
+    cuts: [],
+    continuedAs: null,
   };
 }
 
@@ -117,12 +168,13 @@ async function sharedFor(
   viewer: ViewerFacts | null,
   current: string | null,
   required: boolean,
+  attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
   const [facts, approvers, admins, language] = await Promise.all([
     loadReleaseFacts(
       projectId,
       parts.flatMap((p) => p.issueIds),
-      parts.flatMap((p) => (p.runId ? [p.runId] : [])),
+      [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
     ),
     namedHolders('releases.approve', projectId),
     holderNames('project.admin', projectId),
@@ -162,14 +214,26 @@ export async function listReleases(
     approvalRequired(projectId),
     currentReleaseVersion(projectId),
   ]);
-  const [runs, draft, production] = await Promise.all([
+  const [runs, draft, production, lineage] = await Promise.all([
     runParts(projectId, undefined, required),
     draftPart(projectId),
     productionOf(projectId, current),
+    readLineage(projectId),
   ]);
-  // The draft only ever wears a number no batch spent, so a run at its version handed that number back.
-  const parts = draft ? [draft, ...runs.filter((r) => r.version !== draft.version)] : runs;
-  const shared = await sharedFor(projectId, parts, viewer, current, required);
+  const lines = releaseLinesOf(lineage);
+  const placed = placeParts(lines, runs, draft);
+  // A release is listed once, under the version its last attempt wears: a version its roster went on
+  // from is one of that release's attempts, not a release of its own (ADR 0011).
+  const parts = placed.parts.filter((p) => p.continuedAs === null);
+  const shared = await sharedFor(
+    projectId,
+    parts,
+    viewer,
+    current,
+    required,
+    parts.flatMap((p) => placed.groupOf(p).map((r) => r.id)),
+  );
+  await fillCuts(parts, placed.groupOf, shared.facts.cutters);
   const releases = parts.map((p) => summaryOf(p, shared));
   const counts = Object.fromEntries(
     RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
@@ -192,18 +256,32 @@ export async function readRelease(
     approvalRequired(projectId),
     currentReleaseVersion(projectId),
   ]);
-  const [run] = await runParts(projectId, version, required);
-  // An ended run that shipped nothing may have handed its number back to the draft.
+  const [runs, lineage] = await Promise.all([
+    runParts(projectId, version, required),
+    readLineage(projectId),
+  ]);
+  const run = runs[0];
+  // An ended run that shipped nothing may be re-cut at its own version by the draft.
   const ended = !run || run.state === 'aborted' || run.state === 'failed';
   const draft = ended ? await draftPart(projectId) : null;
-  const part = draft?.version === version ? draft : run;
-  if (!part || part.version !== version) {
+  const lines = releaseLinesOf(lineage);
+  const placed = placeParts(lines, run ? [run] : [], draft);
+  const part = placed.parts.find((p) => p.version === version);
+  if (!part) {
     throw notFound(`project ${projectId} has cut no version ${version}`);
   }
   const [shared, read] = await Promise.all([
-    sharedFor(projectId, [part], viewer, current, required),
+    sharedFor(
+      projectId,
+      [part],
+      viewer,
+      current,
+      required,
+      placed.groupOf(part).map((r) => r.id),
+    ),
     readReleasePath(projectId),
   ]);
+  await fillCuts([part], placed.groupOf, shared.facts.cutters);
   const landings = await readLandingReadings(
     projectId,
     part.issueIds.flatMap((id) => {

@@ -10,8 +10,21 @@ interface DevelopmentPorts {
     viewer: { userId: string; agency: ActorAgency },
     projectId: string,
   ) => Promise<Map<string, WorkflowHealth>>;
+  /** Each moved base whose pin-only dependents one act would clear (`design-repin-service.ts`). */
+  designRepinsOf: (
+    viewer: { userId: string; agency: ActorAgency },
+    projectId: string,
+  ) => Promise<{ canDecide: boolean; groups: DesignRepinGroup[] }>;
+}
+
+export interface DesignRepinGroup {
+  flow: string;
+  revision: number;
+  ready: { flow: string; source: 'approved' | 'proposal' }[];
+  approvedAt: string | null;
 }
 
 const slot = portSlot<DevelopmentPorts>('development', 'provideDevelopmentPorts');
 export const provideDevelopmentPorts = slot.provide;
 export const designHealthOf = slot.port('designHealthOf');
+export const designRepinsOf = slot.port('designRepinsOf');

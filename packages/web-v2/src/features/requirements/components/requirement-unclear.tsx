@@ -4,12 +4,11 @@
 // who answers it and whether the agree waits for it, and the assumptions its revision takes as true.
 // Flat rows under hairline dividers; the counts and the blocking flag are core's.
 
-import Link from "next/link";
 import { useState } from "react";
 import { Button, Textarea, ToneBadge, ViewHeading } from "@/design";
+import { DecisionTarget } from "@/features/comments/components/decision-target";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { issueHref } from "@/lib/routes/issues";
 import type { RequirementAssumption, RequirementQuestionPlace, RequirementQuestionView } from "@forge/contracts/requirements";
 import { useAnswerRequirementQuestion } from "../hooks";
 
@@ -19,9 +18,7 @@ function Place({ place, slug }: { place: RequirementQuestionPlace; slug: string 
     return (
       <span>
         {t("requirements.unclear.askedOn")}{" "}
-        <Link href={issueHref(slug, place.key)} className="font-mono text-12 font-semibold text-link hover:underline" title={place.title}>
-          {place.key}
-        </Link>
+        <DecisionTarget slug={slug} target={{ scope: "issue", key: place.key, title: place.title }} />
       </span>
     );
   }

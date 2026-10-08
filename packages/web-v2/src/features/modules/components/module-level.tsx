@@ -19,6 +19,8 @@ import {
   ViewHeading,
   WaitingOn,
 } from "@/design";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { copyOr, type Copy } from "@/lib/i18n/product-copy";
 import { formatAge, formatStamp } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { MODULES_LIST, moduleHref } from "@/lib/routes/modules";
@@ -28,7 +30,7 @@ import { moduleWaitingView, OpenBar } from "./module-bits";
 import { ModuleMap } from "./module-map";
 import { ModulePeek } from "./module-peek";
 
-const COLUMNS = { key: "Module", title: "Name", state: "Open issues", meta: "Last landing" } as const;
+const columnsIn = (t: Copy) => ({ key: t("modules.col.key"), title: t("modules.col.title"), state: t("modules.col.state"), meta: t("modules.col.meta") });
 
 const keyOf = (r: ModuleRollupRow) => r.slug ?? r.id;
 
@@ -39,29 +41,29 @@ function traceByModule(data: CodeTraceResponse | undefined): Trace | null {
   return data ? new Map(data.units.filter((u) => u.scope === "core").map((u) => [u.unit, u.serves])) : null;
 }
 
-const refLabel = (ref: string) => (ref.startsWith("via:") ? `through ${ref.slice(4)}` : ref);
+const refLabel = (ref: string, t: Copy) => (ref.startsWith("via:") ? t("modules.trace.through", { ref: ref.slice(4) }) : ref);
 
-function traceFact(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[]): string | null {
+function traceFact(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[], t: Copy): string | null {
   if (!trace) return null;
   const own = trace.get(r.name);
-  if (own) return own.length ? `Serves ${own.map(refLabel).join(", ")}` : "Untraced: serves no requirement or workflow step";
+  if (own) return own.length ? t("modules.trace.serves", { refs: own.map((x) => refLabel(x, t)).join(", ") }) : t("modules.trace.untraced");
   const traced = all.filter((c) => c.parentId === r.id && trace.has(c.name));
   if (traced.length === 0) return null;
   const untraced = traced.filter((c) => trace.get(c.name)?.length === 0).length;
-  return untraced ? `${untraced} of ${traced.length} code modules untraced` : `All ${traced.length} code modules traced`;
+  return untraced ? t("modules.trace.someUntraced", { n: untraced, of: traced.length }) : t("modules.trace.allTraced", { n: traced.length });
 }
 
-function factsOf(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[]): string[] {
+function factsOf(r: ModuleRollupRow, trace: Trace | null, all: ModuleRollupRow[], t: Copy): string[] {
   const s = r.standing;
-  const parts = [`Open ${s.open}`, s.childCount ? `${s.childCount} child modules` : "No child modules", `Requirements ${s.requirements.length}`];
-  const traced = traceFact(r, trace, all);
+  const parts = [t("modules.openCount", { n: s.open }), s.childCount ? t("modules.children", { n: s.childCount }) : t("modules.noChildren"), t("modules.requirementsCount", { n: s.requirements.length })];
+  const traced = traceFact(r, trace, all, t);
   if (traced) parts.push(traced);
   if (r.description) parts.push(r.description);
   return parts;
 }
 
 const rowOf =
-  (slug: string, max: number, trace: Trace | null, all: ModuleRollupRow[]) =>
+  (slug: string, max: number, trace: Trace | null, all: ModuleRollupRow[], t: Copy, language: string) =>
   (r: ModuleRollupRow): ListRowView => {
     const land = r.standing.lastLanding;
     return {
@@ -69,22 +71,22 @@ const rowOf =
       keyLabel: <span className="whitespace-normal break-all">{r.slug ?? r.id}</span>,
       href: moduleHref(slug, keyOf(r)),
       title: r.name,
-      facts: factsOf(r, trace, all),
+      facts: factsOf(r, trace, all, t),
       state: <OpenBar standing={r.standing} max={max} />,
-      waitingOn: <WaitingOn w={moduleWaitingView(r.standing)} />,
-      owner: land ? <span className="font-mono text-11-5">{land.issueKey}</span> : <span className="text-subtle">None yet</span>,
-      age: land ? { text: formatAge(land.landedAt), title: `Landed ${formatStamp(land.landedAt)}` } : null,
+      waitingOn: <WaitingOn w={moduleWaitingView(r.standing, language)} />,
+      owner: land ? <span className="font-mono text-11-5">{land.issueKey}</span> : <span className="text-subtle">{t("modules.noneYet")}</span>,
+      age: land ? { text: formatAge(land.landedAt), title: t("modules.landedAt", { when: formatStamp(land.landedAt) }) } : null,
       dim: r.standing.attentionGroup === "quiet",
     };
   };
 
-function groupOf(id: string, label: string, rows: ModuleRollupRow[]): ListGroup<ModuleRollupRow> {
+function groupOf(id: string, label: string, rows: ModuleRollupRow[], language: string): ListGroup<ModuleRollupRow> {
   return {
     id,
     label,
     tone: null,
     summary: MODULE_ATTENTION_GROUPS.filter((g) => g !== "quiet")
-      .map((g) => ({ label: MODULE_ATTENTION_LABELS[g].label, count: rows.filter((r) => r.standing.attentionGroup === g).length, tone: MODULE_ATTENTION_LABELS[g].tone }))
+      .map((g) => ({ label: copyOr(language, `modules.attention.${g}`, MODULE_ATTENTION_LABELS[g].label), count: rows.filter((r) => r.standing.attentionGroup === g).length, tone: MODULE_ATTENTION_LABELS[g].tone }))
       .filter((s) => s.count > 0),
     rows,
   };
@@ -106,17 +108,19 @@ export function ModuleLevel({
   toolbar?: ReactNode;
 }) {
   const router = useRouter();
+  const t = useCopy();
+  const language = useInterfaceLanguage();
   const scopeId = scope?.id ?? null;
   const rows = useMemo(() => data.modules.filter((r) => (scopeId ? r.parentId === scopeId : r.depth === 0)), [data.modules, scopeId]);
   const couplings = useMemo(() => data.couplings.filter((c) => c.parentId === scopeId), [data.couplings, scopeId]);
   const max = useMemo(() => Math.max(1, ...rows.map((r) => r.standing.open)), [rows]);
-  const groups = useMemo(() => [groupOf(scopeId ?? "roots", scope ? `Modules in ${scope.name}` : "Root modules", rows)], [scopeId, scope, rows]);
+  const groups = useMemo(() => [groupOf(scopeId ?? "roots", scope ? t("modules.in", { name: scope.name }) : t("modules.roots"), rows, language)], [scopeId, scope, rows, t, language]);
   const fold = useGroupFold("web-v2:modules-fold");
   const keys = useMemo(() => rows.map(keyOf), [rows]);
   const peek = usePeek(keys);
   const traceQ = useCodeTrace(projectId);
   const trace = useMemo(() => traceByModule(traceQ.data), [traceQ.data]);
-  const row = useMemo(() => rowOf(slug, max, trace, data.modules), [slug, max, trace, data.modules]);
+  const row = useMemo(() => rowOf(slug, max, trace, data.modules, t, language), [slug, max, trace, data.modules, t, language]);
 
   const open = useCallback(
     (key: string) => {
@@ -137,27 +141,27 @@ export function ModuleLevel({
         {toolbar}
         {unread > 0 ? (
           <p className="border-b border-line-subtle px-5 py-2 text-12-5 text-muted" data-testid="modules-truncated">
-            The counts read the {read.returned} most recently written of {read.open} open issues; {unread} older ones are not in them.
+            {t("modules.truncated", { n: read.returned, open: read.open, older: unread })}
           </p>
         ) : null}
         <section className="px-5 pb-4 pt-5 max-md:px-3" data-testid="module-level-map">
           <ViewHeading
             right={
               couplings.length ? (
-                <span className="text-12 text-subtle">Line width is the coupling&apos;s weight</span>
+                <span className="text-12 text-subtle">{t("modules.map.lineWidth")}</span>
               ) : undefined
             }
           >
-            {scope ? `Inside ${scope.name}` : "Business modules"}
+            {scope ? t("modules.inside", { name: scope.name }) : t("modules.business")}
           </ViewHeading>
           <ModuleMap rows={rows} couplings={couplings} selected={peek.open} onSelect={toggle} onOpen={open} />
           {couplings.length === 0 ? (
             <p className="mt-2 text-12-5 text-subtle" data-testid="module-map-no-couplings">
-              No coupling between these modules: no issue carries modules from two of them.
+              {t("modules.map.noCoupling")}
             </p>
           ) : null}
         </section>
-        <GroupedList ariaLabel={scope ? `Modules in ${scope.name}` : "Business modules"} groups={groups} fold={fold} row={row} selected={peek.open} onPeek={toggle} columns={COLUMNS} />
+        <GroupedList ariaLabel={scope ? t("modules.in", { name: scope.name }) : t("modules.business")} groups={groups} fold={fold} row={row} selected={peek.open} onPeek={toggle} columns={columnsIn(t)} />
       </div>
       {peek.open ? <ModulePeek key={peek.open} projectId={projectId} slug={slug} moduleSlug={peek.open} peek={peek} onOpenFull={() => open(peek.open as string)} /> : null}
     </div>

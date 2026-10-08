@@ -2,6 +2,7 @@
 // each row and count is taken from the read model the list it opens draws, under the one predicate
 // `standing.ts:needsViewer`, so a menu count, the dashboard, the overview and the inbox never disagree.
 
+import type { WrittenLang } from "./written-lang.js";
 import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
@@ -48,9 +49,14 @@ export interface NeedsYouItem {
 	entity: NeedsYouEntity;
 	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow, a question's id. */
 	key: string;
+	/** The row's title in English: its writer's words, or Forge's own where nobody wrote one. */
 	title: string;
+	/** The language `title` was written in; null when Forge composed it or the language was not kept. */
+	titleLang: WrittenLang | null;
 	waitingOn: WaitingOn;
 	touchedAt: string | null;
+	/** `title` as said (`said.ts`): a writer's words verbatim, Forge's own by key. */
+	says: { title: Said };
 }
 
 /** A needs-you row read across every project the viewer can see (`GET /api/me/attention`). */

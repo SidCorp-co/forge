@@ -1,7 +1,7 @@
 "use client";
 
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { ProductCopyKey } from "@/lib/i18n/product-copy";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import type { PipelineReading, WaitingReason } from "./types";
 
 /**
@@ -25,6 +25,11 @@ const keyOf = (reason: WaitingReason, needsAction: boolean): string =>
 /** The gate's short label, detail and next step in the interface language, or null for no gate. */
 export function useGateReading<G extends PipelineReading & { reason: WaitingReason }>(gate: G | null | undefined): G | null {
   const t = useCopy();
+  return gateReadingIn(gate, t);
+}
+
+/** `useGateReading` outside a component: the gate read through `t`. */
+export function gateReadingIn<G extends PipelineReading & { reason: WaitingReason }>(gate: G | null | undefined, t: Copy): G | null {
   if (!gate) return null;
   if (!KNOWN.has(gate.reason)) return gate;
   const k = keyOf(gate.reason, gate.needsAction);

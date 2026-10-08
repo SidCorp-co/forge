@@ -2,7 +2,8 @@
 
 import { Banner, Field, Input } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import { useState } from "react";
 import { AgentAccessControl, agentAccessDeniedReason } from "../../components/agent-access-control";
 import { useIntegrationsList, useOrgConnectionLocked, useUpdateProviderIntegration } from "../../hooks";
@@ -50,6 +51,7 @@ function AutoflowBindingRow({
   const config = binding.config ?? {};
   const storeName = text(config, "storeName");
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const badge = healthBadge(binding, t, {
     ok: storeName ? t("integrations.provider.connectedTo", { target: storeName }) : t("integrations.status.connected"),
     needsReauth: t("integrations.autoflow.needsSignIn"),
@@ -71,7 +73,7 @@ function AutoflowBindingRow({
       <BindingRowHeader binding={binding} isDefault={isDefault} badge={badge} monoDefault />
       {test.error && <Banner tone="danger">{test.error}</Banner>}
       {binding.lastHealthStatus === "needs_reauth" && binding.lastHealthDetail && !test.result && (
-        <Banner tone="danger">{binding.lastHealthDetail}</Banner>
+        <Banner tone="danger">{binding.lastHealthSays ? said(binding.lastHealthSays, language) : binding.lastHealthDetail}</Banner>
       )}
       <TestOutcome result={test.result} />
       <SiteFacts config={config} />

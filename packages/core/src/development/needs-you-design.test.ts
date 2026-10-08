@@ -2,7 +2,7 @@ import { saidDisagreements, say, verbatim } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { describe, expect, it } from 'vitest';
-import { designRowOf as designRowOf_ } from './needs-you-design.js';
+import { designRowOf as designRowOf_, repinRowOf } from './needs-you-design.js';
 
 /** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
 const checked = <T>(v: T): T => {
@@ -47,6 +47,13 @@ describe('the design row on Needs you', () => {
       entity: 'workflow',
       key: 'hop-staff-shell-ux',
       title: 'Staff shell · revision 3 proposed',
+      titleLang: null,
+      says: {
+        title: {
+          key: 'needsYou.title.designProposed',
+          vars: { title: verbatim('Staff shell'), revision: 3 },
+        },
+      },
       touchedAt: '2026-10-06T08:00:00.000Z',
       standing: {
         attentionGroup: 'needs_you',
@@ -75,5 +82,38 @@ describe('the design row on Needs you', () => {
       'settle 2 health markers',
     );
     expect(designRowOf(health({}))).toBeNull();
+  });
+});
+
+describe('the re-pin row on Needs you', () => {
+  const group = {
+    flow: 'access',
+    revision: 13,
+    ready: ['operational-case', 'complaint-intake', 'complaint-ux'].map((flow) => ({
+      flow,
+      source: 'approved' as const,
+    })),
+    approvedAt: '2026-10-08T08:00:00.000Z',
+  };
+
+  it('is one row for the base, counting its pin-only dependents, waiting on whoever may approve', () => {
+    const row = checked(repinRowOf(group, true));
+    expect(row).toMatchObject({
+      entity: 'workflow',
+      key: 'access',
+      title: '3 designs only need their pin moved → r13',
+      says: { title: { key: 'designs.title.repinBatch', vars: { n: 3, r: 13 } } },
+      standing: {
+        attentionGroup: 'needs_you',
+        waitingOn: { kind: 'you', act: 'approve 3 pin-only changes → r13' },
+      },
+    });
+    expect(checked(repinRowOf(group, false)).standing.waitingOn.kind).toBe('person');
+  });
+
+  it('agrees in number for a single design', () => {
+    expect(checked(repinRowOf({ ...group, ready: group.ready.slice(0, 1) }, true)).title).toBe(
+      '1 design only needs its pin moved → r13',
+    );
   });
 });

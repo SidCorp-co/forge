@@ -8,6 +8,7 @@ import { templateFor } from "../canvas/model";
 import { useDesignDecision, useWorkflowDesign, useWorkflowTemplates, useWorkflows } from "../hooks";
 import { WORKFLOWS_LIST, workflowsHref } from "@/lib/routes/workflows";
 import { ApprovalReading, ApproveAction, DecisionError, DecisionNoteControl, decidableRevision } from "./design-decision";
+import { PinOnlyReading, RepinPanel } from "./design-repins";
 import { shownDesign, useDesignTab, WorkflowDesignPage } from "./workflow-design-page";
 import { DesignPill } from "./workflow-parts";
 
@@ -40,6 +41,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
     const blocked = d.approvalBlocked !== null;
     const noteControl = revision !== null ? (
       <>
+        <PinOnlyReading change={d.pinOnly} approvedRevision={d.approvedRevision} />
         <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
         <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />
         <DecisionError decide={decide} />
@@ -64,6 +66,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         onTab={setTab}
         noteControl={noteControl}
         walkDecision={walkDecision}
+        repins={<RepinPanel projectId={projectId} workflowId={record.document.id} slug={slug} />}
       />
     );
   }

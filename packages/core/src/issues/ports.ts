@@ -154,7 +154,13 @@ interface IssuePorts {
   /** `answeredSince` as SQL over a page of issues: a jsonb of the same shape, or null. */
   answeredSinceSql: (issueId: SQLWrapper, after: SQLWrapper) => SQL;
   postIssueNotice: (
-    notice: { issueId: string; authorId: string; body: string; intent?: 'note' | 'question' },
+    notice: {
+      issueId: string;
+      authorId: string;
+      body: string;
+      intent?: 'note' | 'question';
+      authorsWords?: boolean;
+    },
     tx?: Tx,
   ) => Promise<{ id: string; body: string; parentId: string | null }>;
   messageRefusalHttp: (err: unknown) => RefusalError | null;

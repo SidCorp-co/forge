@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { DetailHeader, useListOrigin, useViewMode, ViewModeSwitcher } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import { useModuleDetail, useModuleRollup } from "../hooks";
 import { MODULES_LIST, moduleHref, modulesHref } from "@/lib/routes/modules";
 import { ancestorsOf } from "../tree";
@@ -16,11 +18,17 @@ const VIEWS = [
   { value: "detail" as const, label: "Detail", title: "Its own issues, code and landings" },
 ];
 
+const viewsIn = (t: Copy) => [
+  { value: "children" as const, label: t("modules.title"), title: t("modules.view.childrenTitle") },
+  { value: "detail" as const, label: t("modules.view.detail"), title: t("modules.view.detailTitle") },
+];
+
 function ModuleDetailBody({ projectId, slug, moduleSlug }: { projectId: string; slug: string; moduleSlug: string }) {
+  const t = useCopy();
   const q = useModuleDetail(projectId, moduleSlug);
   const [tab, setTab] = useModuleTab();
   return (
-    <QueryBoundary query={q} loadingLabel="loading module…">
+    <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
       {(d) => <ModulePage d={d} slug={slug} tab={tab} onTab={setTab} />}
     </QueryBoundary>
   );
@@ -30,6 +38,8 @@ function ModuleDetailBody({ projectId, slug, moduleSlug }: { projectId: string; 
 // module's ancestors, its path, name and attention badge; a module with children opens on them, the same
 // map and list the Modules screen draws for the roots, and a leaf opens on its detail
 export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: string; slug: string; moduleSlug: string }) {
+  const t = useCopy();
+  const views = useMemo(() => viewsIn(t), [t]);
   const q = useModuleRollup(projectId);
   const [view, setView] = useViewMode(VIEWS);
   const back = useListOrigin(MODULES_LIST, modulesHref(slug));
@@ -44,16 +54,16 @@ export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: strin
   return (
     <div className="min-h-full bg-app" data-testid="module-screen">
       <DetailHeader
-        back={{ href: back, label: "Modules" }}
+        back={{ href: back, label: t("modules.title") }}
         trail={trail}
         itemKey={row?.path ?? moduleSlug}
         keyTitle={row?.id}
         title={row?.name ?? moduleSlug}
         badge={row ? <AttentionBadge group={row.standing.attentionGroup} /> : null}
-        views={parent ? <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="header" /> : null}
+        views={parent ? <ViewModeSwitcher modes={views} value={view} onChange={setView} placement="header" /> : null}
         action={row ? <ModuleAction standing={row.standing} slug={slug} /> : null}
       />
-      <QueryBoundary query={q} loadingLabel="loading module…">
+      <QueryBoundary query={q} loadingLabel={t("modules.loadingOne")}>
         {(data) =>
           parent && view === "children" ? (
             <ModuleLevel
@@ -63,7 +73,7 @@ export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: strin
               scope={parent}
               toolbar={
                 <div className="border-b border-line-subtle px-3 py-2.5 md:hidden">
-                  <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
+                  <ViewModeSwitcher modes={views} value={view} onChange={setView} placement="toolbar" />
                 </div>
               }
             />
@@ -71,7 +81,7 @@ export function ModuleScreen({ projectId, slug, moduleSlug }: { projectId: strin
             <>
               {parent ? (
                 <div className="border-b border-line-subtle px-5 py-2.5 md:hidden">
-                  <ViewModeSwitcher modes={VIEWS} value={view} onChange={setView} placement="toolbar" />
+                  <ViewModeSwitcher modes={views} value={view} onChange={setView} placement="toolbar" />
                 </div>
               ) : null}
               <ModuleDetailBody projectId={projectId} slug={slug} moduleSlug={moduleSlug} />

@@ -120,6 +120,19 @@ write that plainly disagrees comes back with a `warnings` entry: rewrite the not
 carries `landing` and `artifacts` `[{surface, ref, change}]` — Autoflow workflows are `logic`, routes `api`,
 tables `data`, storefront pages and themes `ui`, a `forge-workflow:` revision `design` — so its release says what
 it changes; on git, name the `commit`, and `forge-runner api` sends the paths it changed from this checkout.
+An artifact this landing touched that another open issue's own release will ship carries `carriedBy`
+(that issue's key): this release reports it carried, and the carrier's release verifies it. A
+carrier closed or dropped, the issue itself, one of another project, or a `design` artifact is
+refused (`ARTIFACT_CARRIER_SHIPPED`, `ARTIFACT_CARRIER_SELF`, `ARTIFACT_CARRIER_UNKNOWN`,
+`ARTIFACT_CARRIER_DESIGN`).
+
+**A release that stopped says what left.** An abort carries `carried`: each tag, release commit,
+artifact or notice now outside Forge with this release's version on it, or `[]` when nothing left
+the box. An abort that said nothing blocks the next cut of the same roster with
+`RELEASE_VERSION_UNDECIDED` until somebody says; when that names a run of yours, say it after the
+fact with `forge-runner api projects/<projectId>/release-batches/<runId>/carried` (POST,
+`{carried: [...]}`). A run still open says it on its own abort (`RELEASE_CARRIED_RUN_OPEN`), and a
+version that shipped is never re-decided (`RELEASE_CARRIED_SHIPPED`).
 
 **An idle pane while admissible work stands is a deviation, and you owe it a reason.**
 This does not mean dispatch everything: a row you choose not to spend a run on is a pass-over,
@@ -131,6 +144,18 @@ A pass-over is for a row you will take yourself once a slot or an order frees it
 person's act — a ruling, an approval, an answer — is not a pass-over: park it at `needs_info` with
 that act as the question, so it leaves the backlog and comes back when the person acts. Left at
 `open` behind a decision, it stays admissible, and core keeps waking you for it.
+
+**A park names the fact it waits on.** A row waiting on another issue's landing parks with
+`awaitsMerge: {issueId}` on its `needs_info` transition, not with the condition in prose: the stamp
+that writes that issue's mark answers it, and the row comes back by itself. A mark that already
+stands is refused `QUESTION_MERGE_ALREADY_MARKED`: the condition holds, so take the row. A business
+question raised on a build issue (a rule, who may do what, a contract's shape) names what it is
+about, so its answer lands on the requirement as a decision: ask it with `about` on
+`forge-runner api questions` (POST; `{requirement: null}` for the requirement the issue delivers,
+`{requirement: "REQ-n"}`, or `{contract: "<project>/<contract>"}`), then park the row without
+`needs` and the park waits on that question. An `about` naming nothing is refused
+`QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait on a merge mark is never also
+`about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`).
 
 **A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
 an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`
@@ -174,6 +199,13 @@ proposes it (a design proposed with `issue` naming that run's issue, so a later 
 issue), or write it yourself where it is small. Or, where it should not be revised yet, record why on
 the pass and, if a person owes the answer, put that question to them; a requirement revision that
 should not stand is dropped. A return is never a pass-over you leave unsaid.
+
+**A base approved at a new revision is not a re-proposal.** A design resting on it whose only
+change would be the new pin is not yours to propose again: whoever holds `workflow-designs.approve`
+re-pins every such dependent in one act (`forge-runner api projects/<projectId>/workflows/<base>/design/repins`,
+GET plans it, POST takes it), and Needs you shows them as one row. Re-propose only a dependent with
+a real change of its own; the act refuses that one (`WORKFLOW_REPIN_PENDING_CHANGE`) and it goes
+through its own review.
 
 **An open row was admitted; it is not waiting for someone to triage it.** A row at `open` is backlog
 a person holding `issues.admit` put there, or filed there themselves, and the project owes it a run.

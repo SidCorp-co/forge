@@ -6,6 +6,7 @@ import { PeekHead, PeekPanel, type PeekState } from "@/design";
 import type { EtaClock } from "@/features/forecast/eta";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { IssueBanner, IssuePeekFacts, IssueStrip, issueBadge } from "./issue-standing-bits";
+import { Written } from "@/lib/i18n/written";
 
 export function IssuePeek({
   slug,
@@ -25,7 +26,7 @@ export function IssuePeek({
   const t = useCopy();
   return (
     <PeekPanel peek={peek} listLabel={t("issues.screen.title")} noun={t("issues.noun")} onOpenFull={onOpenFull} testId="issue-peek">
-      <PeekHead noun={t("issues.noun")} itemKey={row.key} badge={issueBadge(row)} title={row.title} />
+      <PeekHead noun={t("issues.noun")} itemKey={row.key} badge={issueBadge(row)} title={<Written text={row.title} lang={row.writtenLang} />} />
       <div className="px-[18px] pb-3">
         <IssueStrip standing={row.standing} />
       </div>

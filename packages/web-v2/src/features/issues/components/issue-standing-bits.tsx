@@ -35,6 +35,7 @@ import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i1
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
+import { Written } from "@/lib/i18n/written";
 
 const sentenceStart = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -75,7 +76,7 @@ export const issueRowView =
   (r: IssueStandingRow): ListRowView => ({
     key: r.key,
     href: issueHref(slug, r.key),
-    title: r.title,
+    title: <Written text={r.title} lang={r.writtenLang} />,
     facts: factsLine(r, t),
     ...(eta ? { eta: <EtaCell eta={eta.of(r.key)} clock={eta.clock} /> } : {}),
     state: issueBadge(r),

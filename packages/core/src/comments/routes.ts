@@ -183,7 +183,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     zValidator('json', commentCreateSchema),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
-      const { body: sent, format, parentId, intent, decision } = c.req.valid('json');
+      const { body: sent, format, parentId, intent, decision, writtenLang } = c.req.valid('json');
       const userId = c.get('userId');
       const body = issueCommentBody(sent, intent, decision);
 
@@ -202,6 +202,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
         intent,
         decision: decision ?? null,
+        writtenLang,
         announce: { actor: restActor(c), authored: restAuthored(c) },
       }).catch((err: unknown) => {
         throw commentWriteRefusal(err, parentId);
@@ -279,7 +280,7 @@ commentRoutes.patch(
   zValidator('json', commentBodySchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { body, format } = c.req.valid('json');
+    const { body, format, writtenLang } = c.req.valid('json');
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
@@ -293,6 +294,7 @@ commentRoutes.patch(
       written = await updateCommentBody(id, {
         body,
         format,
+        writtenLang,
         declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
         announce: { actor: restActor(c), projectId: comment.projectId, before: comment.body ?? '' },
       });

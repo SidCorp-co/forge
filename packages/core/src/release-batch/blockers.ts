@@ -42,6 +42,8 @@ import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { blockerRefusal, releaseBlockedRefusal } from './refuse.js';
+import { decideVersion, lineageOf } from './version-rule.js';
+import { readLineageRuns, releaseLineOf, undecidedDetails } from './version-store.js';
 
 export * from './blocker-sentences.js';
 
@@ -379,6 +381,7 @@ async function gatedBlockers(
     if (active) {
       out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId, version: active.version }));
     }
+    await versionBlocker(projectId, issueIds && issueIds.length > 0 ? issueIds : found?.ids, out);
     if (!issueIds && found) {
       await criteriaHold(
         projectId,
@@ -391,6 +394,32 @@ async function gatedBlockers(
     }
   }
   return channels;
+}
+
+/**
+ * A re-cut whose version the rule cannot decide (ADR 0011): an earlier attempt on this same roster
+ * ended without saying what outside Forge carries its version.
+ */
+async function versionBlocker(
+  projectId: string,
+  roster: string[] | undefined,
+  out: ReleaseBlocker[],
+): Promise<void> {
+  if (!roster || roster.length === 0) return;
+  const ids = roster.map((id) => id.toLowerCase());
+  const read = await evaluate(
+    'version',
+    async () => {
+      const runs = await readLineageRuns(db, projectId);
+      return { runs, decision: decideVersion(runs, ids, await releaseLineOf(projectId)) };
+    },
+    out,
+  );
+  if (read?.decision.kind !== 'undecided') return;
+  const d = read.decision;
+  const { headOf, attemptsOf } = lineageOf(read.runs);
+  const chain = attemptsOf.get(headOf.get(d.recutOf.id)?.id ?? d.recutOf.id) ?? [d.recutOf];
+  out.push(blocker('RELEASE_VERSION_UNDECIDED', undecidedDetails(projectId, d, chain)));
 }
 
 export * from './blocker-kit.js';

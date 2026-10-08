@@ -1,6 +1,6 @@
 # 0005 — A project may number its releases as prereleases of the next version
 
-**Status:** accepted · **Date:** 2026-10-04 · **Supersedes:** [0001](0001-a-release-version-is-a-counter.md) in part, for a project that declares a line; the last consequence of [0002](0002-the-agent-cuts-the-release-tag.md) · **Superseded in part by:** [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md): `N` continues from the highest number spent, not every one cut
+**Status:** accepted · **Date:** 2026-10-04 · **Supersedes:** [0001](0001-a-release-version-is-a-counter.md) in part, for a project that declares a line; the last consequence of [0002](0002-the-agent-cuts-the-release-tag.md) · **Superseded in part by:** [0011](0011-a-release-keeps-its-version-across-attempts.md) (which superseded [0010](0010-a-release-number-is-spent-when-it-leaves-forge.md)): `N` continues from the highest number any attempt claimed, and a re-cut of the same roster keeps its own
 
 ## Context
 

@@ -87,6 +87,8 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     approvals: [],
     gates,
     verification: null,
+    cuts: [],
+    continuedAs: null,
   };
 }
 

@@ -94,5 +94,9 @@ describe("a value whose English and what it said disagree", () => {
 	it("names a sentence the registry cannot read, and English beside a sentence that said nothing", () => {
 		expect(saidDisagreements({ says: { rule: { key: "standing.act.noSuchAct" } }, rule: "x" })[0]).toMatch(/^\$\.says\.rule: SAID_KEY_UNKNOWN/);
 		expect(saidDisagreements({ says: { detail: null }, detail: "x" })).toEqual(['$.detail: said nothing beside "x"']);
+		const held = [verbatim("run A"), verbatim("run B")];
+		expect(saidDisagreements({ says: { heldBy: held }, heldBy: ["run A", "run B"] })).toEqual([]);
+		expect(saidDisagreements({ says: { heldBy: held }, heldBy: ["run A", "run C"] })).toEqual(['$.heldBy[1]: says "run B" beside "run C"']);
+		expect(saidDisagreements({ says: { heldBy: held }, heldBy: ["run A"] })).toEqual(['$.heldBy: says 2 sentence(s) beside ["run A"]']);
 	});
 });

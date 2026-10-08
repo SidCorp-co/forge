@@ -4,6 +4,7 @@
  */
 
 import { AGENT_REPORT_TRIAGES } from '@forge/contracts/agent-reports';
+import { writtenLangSchema } from '@forge/contracts/written-lang';
 import { eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -16,6 +17,7 @@ import { type PipelineCaller, resolvePipelineContext } from '../jobs/index.js';
 import { env } from '../lib/env.js';
 import { overfetch } from '../lib/list-envelope.js';
 import { sanitizeUntrusted, stripFrameTokens } from '../lib/untrusted-text.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   countReportsForJob,
@@ -36,6 +38,8 @@ export const submitReportSchema = z
     summary: z.string().min(1).max(2000),
     detail: z.string().max(5000).optional(),
     suggestion: z.string().max(2000).optional(),
+    /** The language summary, detail and suggestion are written in; absent, the project's content language. */
+    writtenLang: writtenLangSchema.optional(),
   })
   .strict();
 
@@ -83,6 +87,14 @@ export async function fileReport(caller: ReportCaller, input: z.infer<typeof sub
     signalKey,
     sessionId: sessionId ?? undefined,
     scheduleRunId: (await fireOfSession(sessionId)) ?? undefined,
+    // a report is a device's (an agent's) unless filed on a person's own credential
+    writtenLang: await writtenLangFor(
+      { userId: caller.userId, agency: caller.deviceId ? 'agent' : 'human' },
+      input.projectId,
+      input.writtenLang,
+      undefined,
+      [input.summary, input.detail, input.suggestion].join('\n'),
+    ),
   });
   if (!id) throw new Error('agent report: insert returned no row');
   return { ok: true as const, id, signalKey };

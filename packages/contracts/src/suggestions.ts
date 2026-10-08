@@ -3,7 +3,6 @@
 // response shapes from here, so no surface can name a kind, status or code another does not know.
 
 import { z } from "zod";
-import { REASON_TEXT_MAX } from "./reason-text.js";
 import {
 	CONTRACT_WAIT_TARGET_REFUSAL_CODES,
 	contractWaitTargetSchema,
@@ -20,6 +19,7 @@ import {
 	REGISTRY_ISSUE_PRIORITIES,
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
+import { REASON_TEXT_MAX } from "./reason-text.js";
 import type { ProblemBody, RefusalStatuses } from "./refusal.js";
 import {
 	designChangePayloadSchema,
@@ -176,9 +176,6 @@ export const requirementSpecSchema = z.strictObject({
 	openQuestions: z.array(requirementOpenQuestionSchema).max(50).optional(),
 	assumptions: z.array(requirementAssumptionSchema).max(50).optional(),
 });
-
-export const REQUIREMENT_SPEC_CLARITY_SHAPE =
-	"spec.openQuestions?: [{ question, whoAnswers, blocking: boolean, questionId? }] — a blocking one open refuses the agree (REQUIREMENT_OPEN_QUESTIONS); spec.assumptions?: [{ text, owner, confirmBy }]";
 
 export const REQUIREMENT_CRITERION_FORMS = ["statement", "scenario"] as const;
 
