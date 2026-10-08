@@ -206,9 +206,7 @@ describe('the Memory page read and a person acts on it', () => {
     `);
     await runMemoryDecay();
     const row = byRef(await entries(w, '&state=retired'), 'gotcha/flagged-long-ago') as Entry;
-    expect(row.archivedBy).toMatch(
-      /^decay: flagged stale 14\+ days and never confirmed after ISS-2$/,
-    );
+    expect(row.archivedBy).toEqual({ rule: 'flagged', by: 'ISS-2' });
     expect(row.retired).toBeNull();
   });
 

@@ -9,6 +9,7 @@ import {
   MEMORY_ENTRY_STATES,
   type MemoryAct,
   type MemoryActor,
+  type MemoryArchiveCause,
   type MemoryEntry,
 } from '@forge/contracts/memory';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
@@ -16,16 +17,11 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
 import { peopleOf } from '../lib/people.js';
+import { DECAY_FLAGGED, DECAY_UNUSED } from './decay.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import { type Citations, resolveCitations } from './stale-refs.js';
 
 const NO_CITATIONS: Citations = { cites: [], staleRefs: [] };
-
-/**
- * A flag standing without a reason. The reconcile no longer makes one and 0458 dropped those it
- * had made, so this reads only a row written by hand; it says so rather than passing as a reason.
- */
-const NO_FLAG_REASON = 'no reason was recorded for this flag';
 
 export const memoryEntriesInputSchema = z.object({
   projectId: z.uuid(),
@@ -180,7 +176,8 @@ export async function readMemoryEntries(
           ? {
               since: m.staleSince,
               by: typeof m.supersededBy === 'string' ? m.supersededBy : null,
-              reason: typeof m.staleReason === 'string' ? m.staleReason : NO_FLAG_REASON,
+              // null only on a flag written by hand: 0458 dropped the reasonless ones and the reconcile makes none
+              reason: typeof m.staleReason === 'string' ? m.staleReason : null,
             }
           : null,
       corrections: storedActs(m.corrections).map(act),
@@ -192,13 +189,21 @@ export async function readMemoryEntries(
   return { rows, total };
 }
 
-/** Why a row no person retired is archived: decay's rule, or an agent's outdated verdict. */
-function archivedByOf(m: Record<string, unknown>): string | null {
-  if (typeof m.archivedBy === 'string') return m.archivedBy;
+/**
+ * Why a row no person retired is archived, as facts: decay writes one of its two rule constants
+ * (`decay.ts`), read back by equality and never parsed; an agent's outdated verdict keeps its
+ * evidence on `metadata.feedback`.
+ */
+function archivedByOf(m: Record<string, unknown>): MemoryArchiveCause | null {
+  if (m.archivedBy === DECAY_UNUSED) return { rule: 'unused' };
+  if (typeof m.archivedBy === 'string' && m.archivedBy.startsWith(DECAY_FLAGGED)) {
+    return { rule: 'flagged', by: typeof m.supersededBy === 'string' ? m.supersededBy : null };
+  }
+  if (typeof m.archivedBy === 'string') return { rule: 'recorded', text: m.archivedBy };
   const feedback = Array.isArray(m.feedback) ? m.feedback : [];
   const last = feedback[feedback.length - 1] as Record<string, unknown> | undefined;
   if (last && last.verdict === 'outdated' && typeof last.evidence === 'string') {
-    return `outdated: ${last.evidence}`;
+    return { rule: 'outdated', evidence: last.evidence };
   }
   return null;
 }

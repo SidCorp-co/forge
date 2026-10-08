@@ -7,6 +7,7 @@ import { MEMORY_REFUSAL_CODES } from '@forge/contracts/memory';
 import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
+import { memorySources, memoryWritableSources } from '../../db/schema-vocabulary.js';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
 import {
   DRIVE_RULES_TEXT,
@@ -91,5 +92,13 @@ describe('a run writes memory another reader can trust', () => {
       expect(DRIVE_RULES_TEXT).toContain(word);
     }
     expect(MEMORY_REFUSAL_CODES).toContain('MEMORY_EVIDENCE_REQUIRED');
+  });
+
+  it('says a flagged hit carries its reason and bookkeeping is read only when asked for', () => {
+    expect(DRIVE_RULES_TEXT).toContain(
+      'A hit carrying `staleReason` was flagged possibly stale by a release for the reason it gives, so check that claim before relying on it; a `bookkeeping` row is the upkeep record core keeps of memory itself, never written by a run, and returned only when `sourceFilter` names it.',
+    );
+    expect(memorySources).toContain('bookkeeping');
+    expect(memoryWritableSources).not.toContain('bookkeeping');
   });
 });

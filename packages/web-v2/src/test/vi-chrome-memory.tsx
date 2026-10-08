@@ -44,7 +44,8 @@ export const MEMORY_SCREENS: ChromeScreen[] = [
     render: () => (
       <ul>
         {row({ ...BASE, archivedAt: AT, retired: { by: LAN, at: AT, reason: "khong con dung" } })}
-        {row({ ...BASE, id: "m2", archivedAt: AT, archivedBy: null, verifiedAt: AT, staleRefs: [], flagged: null })}
+        {row({ ...BASE, id: "m2", archivedAt: AT, archivedBy: { rule: "flagged", by: "ISS-126" }, verifiedAt: AT, staleRefs: [], flagged: null })}
+        {row({ ...BASE, id: "m4", archivedAt: AT, archivedBy: { rule: "unused" }, flagged: { since: AT, by: "ISS-126", reason: null } })}
         {row({ ...BASE, id: "m3", source: "issue" })}
       </ul>
     ),

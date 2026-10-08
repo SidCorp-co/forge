@@ -93,14 +93,29 @@ export interface MemoryEntry {
 	cites: MemoryCite[];
 	/** Each cited record that no longer resolves; empty when every one does. */
 	staleRefs: MemoryStaleRef[];
-	/** A release later flagged the row as possibly outdated (a model's guess): when, by which issue, and why. */
-	flagged: { since: string; by: string | null; reason: string } | null;
+	/**
+	 * A release later flagged the row as possibly outdated (a model's guess): when, by which issue,
+	 * and the reason it gave — null only on a flag written by hand, which the reader says has none.
+	 */
+	flagged: { since: string; by: string | null; reason: string | null } | null;
 	corrections: MemoryAct[];
 	retired: MemoryAct | null;
-	/** Why the row is archived when no person retired it: the decay rule, or a recall verdict. */
 	archivedAt: string | null;
-	archivedBy: string | null;
+	/** Why the row is archived when no person retired it; null when nothing recorded why. */
+	archivedBy: MemoryArchiveCause | null;
 }
+
+/**
+ * Why a row no person retired was archived, as facts a reader words in its own language: decay's
+ * unused rule, decay's rule for a flag nobody confirmed (and the issue that flagged it), an
+ * agent's outdated verdict with its evidence (written text), or a cause recorded in words core
+ * does not hold a rule for (written text, shown as written).
+ */
+export type MemoryArchiveCause =
+	| { rule: "unused" }
+	| { rule: "flagged"; by: string | null }
+	| { rule: "outdated"; evidence: string }
+	| { rule: "recorded"; text: string };
 
 export const MEMORY_ENTRY_STATES = ["live", "stale", "retired"] as const;
 export type MemoryEntryState = (typeof MEMORY_ENTRY_STATES)[number];

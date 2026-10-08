@@ -107,9 +107,24 @@ describe("a memory on the Memory page", () => {
     expect(screen.queryByRole("button", { name: "Correct" })).toBeNull();
   });
 
-  it("says why decay archived a row no person retired", () => {
-    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: "decay: unused" });
-    expect(screen.getByTestId("memory-retired").textContent).toContain("decay: unused");
+  it("says why decay archived a row no person retired, in the reader's words", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "flagged", by: "ISS-126" } });
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: flagged possibly stale by ISS-126 and not confirmed within 14 days");
+  });
+
+  it("reads a decay archive in Vietnamese, with no English sentence of core's", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "unused" } }, undefined, "vi");
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Lưu trữ ngày 07/10/2026: hiếm khi được đọc và chưa ai xác nhận"); // i18n-allow: the vi copy under test
+  });
+
+  it("shows an outdated verdict's evidence as written", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "outdated", evidence: "ISS-9 removed the board" } }, undefined, "vi");
+    expect(screen.getByTestId("memory-retired").textContent).toContain("ISS-9 removed the board");
+  });
+
+  it("says a flag gave no reason rather than passing silence as one", () => {
+    row({ ...BASE, flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: null } });
+    expect(screen.getByTestId("memory-flagged").textContent).toContain("gave no reason");
   });
 
   it("offers no act on the mirror of an issue", () => {
