@@ -3,7 +3,8 @@
  *
  * Its proposer names it (`propose { issue }`, or `issue` on a write that proposes again); absent, a revision
  * inherits it from the latest revision that named one while that issue is still work, and is refused
- * where it is not. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
+ * where it is not. While the revision waits on its approver, `propose { issue }` re-names it
+ * (`redrawWaitingDesign`), so one inherited from an issue it was not drawn under is pointed at the right one. It is not a build link: a build waits on the approval, the design issue owes the drawing. So
  * an approval records the revision as that issue's landing (its merged mark), a return hands the
  * drawing back to it — reopened where its status allows, the reason posted on it — and every
  * decision wakes the project's master, which is what makes the issue admissible work again. An issue
@@ -27,7 +28,7 @@ import {
 import { logger } from '../lib/logger.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWriter } from './service.js';
-import { buildOfIssue, readWorkflow } from './store.js';
+import { buildOfIssue, readWorkflow, redrawDesign } from './store.js';
 
 /** What happened to the design issue, so the decision's answer says it rather than leaving it to a guess. */
 export interface DesignIssueOutcome {
@@ -83,6 +84,38 @@ export async function recordApprovedDesign(
     mark: landed.mark,
     why: landed.why,
   };
+}
+
+/**
+ * Re-names the issue a revision waiting on its approver is drawn under, in the propose's transaction;
+ * the issue it was drawn under before is told, since its approval or return no longer reaches it.
+ */
+export async function redrawWaitingDesign(
+  tx: Tx,
+  input: {
+    workflowId: string;
+    flow: string;
+    revision: number;
+    issue: { id: string; key: string };
+    writer: WorkflowWriter;
+  },
+): Promise<void> {
+  const { before } = await redrawDesign(tx, {
+    workflowId: input.workflowId,
+    revision: input.revision,
+    designIssueId: input.issue.id,
+  });
+  if (before === null || before === input.issue.id) return;
+  const actor = { type: 'user' as const, id: input.writer.userId, agency: input.writer.agency };
+  await postIssueNotice(
+    {
+      issueId: before,
+      authorId: input.writer.userId,
+      body: `Design \`${input.flow}\` revision ${input.revision}, waiting on its approver, is now drawn under ${input.issue.key}: its proposer re-named the issue drawing it. This issue no longer owes that revision, and its approval or return goes to ${input.issue.key}.`,
+      announce: { actor, authored: input.writer.agency === 'agent' ? 'agent' : 'human' },
+    },
+    tx,
+  );
 }
 
 function returnedBody(args: { flow: string; revision: number; reason: string }): string {

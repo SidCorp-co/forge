@@ -29,6 +29,7 @@ import {
   handBack,
   parkedAtDecision,
   recordApprovedDesign,
+  redrawWaitingDesign,
 } from './design-issue.js';
 import { pinOnlyChange } from './design-repin.js';
 import { designRequirementsOf } from './design-requirements.js';
@@ -196,14 +197,16 @@ export async function proposeDesign(input: {
   writer: WorkflowWriter;
   revision: number;
   /** The issue the design is drawn under, by key or uuid; absent, the revision before names it while
-   *  that issue is still work (`service.ts:drawingIssueOf`). */
+   *  that issue is still work (`service.ts:drawingIssueOf`). On a design already proposed it re-names
+   *  the issue the waiting revision is drawn under. */
   issue?: string | undefined;
 }): Promise<DesignOutcome> {
   const { projectId, id, writer, revision } = input;
   await assertWriter(writer, projectId);
-  const designIssueId = input.issue
+  const named = input.issue
     ? await designIssueIn(projectId, input.issue, writer.userId)
     : undefined;
+  const designIssueId = named?.id;
   const outcome = await db.transaction(async (tx): Promise<DesignRefusal[] | null> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -219,7 +222,8 @@ export async function proposeDesign(input: {
         },
       ];
     }
-    const refusal = proposeRefusal(row.designStatus, id);
+    const redraws = named !== undefined && row.designStatus === 'proposed';
+    const refusal = redraws ? null : proposeRefusal(row.designStatus, row.flow);
     if (refusal) return [refusal];
     if (designIssueId && (await buildOfIssue(tx, designIssueId))?.workflowId === id) {
       return [
@@ -229,6 +233,19 @@ export async function proposeDesign(input: {
           detail: `${input.issue} builds workflow ${row.flow}, so it waits on this approval and cannot be the issue the design is drawn under; name the issue that draws it.`,
         },
       ];
+    }
+    if (redraws) {
+      // the newest revision of a proposed design is the one waiting on its approver
+      const [waiting] = await designsOf(tx, id);
+      if (!waiting) throw new Error(`workflows: ${row.flow} stands proposed with no revision`);
+      await redrawWaitingDesign(tx, {
+        workflowId: id,
+        flow: row.flow,
+        revision: waiting.revision,
+        issue: named,
+        writer,
+      });
+      return null;
     }
     const drawing = await drawingIssueOf(tx, {
       projectId,
@@ -381,12 +398,16 @@ export async function decideDesignAs(input: {
   };
 }
 
-async function designIssueIn(projectId: string, ref: string, userId: string): Promise<string> {
+async function designIssueIn(
+  projectId: string,
+  ref: string,
+  userId: string,
+): Promise<{ id: string; key: string }> {
   const issue = await resolveIssueRouteRef(ref, projectId, userId);
   if (issue.projectId !== projectId) {
     throw notFound(`issue ${ref} is not an issue of project ${projectId}`);
   }
-  return issue.id;
+  return { id: issue.id, key: formatIssueRef(await activeIssuePrefix(projectId), issue.issSeq) };
 }
 
 /** A build may name only nodes of the latest observation as the observed steps it removes or rebuilds. */
@@ -460,7 +481,7 @@ export async function linkBuildAs(input: {
       return {
         code: 'WORKFLOW_DESIGN_ISSUE_IS_BUILD',
         path: '/issue',
-        detail: `${input.issue} is the issue workflow ${id}'s design is drawn under; linking it as a build would make it wait on its own approval.`,
+        detail: `${input.issue} is the issue workflow ${row.flow}'s design is drawn under; linking it as a build would make it wait on its own approval.`,
       };
     }
     if (held) {
