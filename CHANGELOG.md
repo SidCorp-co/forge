@@ -3154,6 +3154,8 @@
 
 - **A pane the runner starts is told which `forge` to run.** The runner exports the path it resolved as `FORGE_CLI_PATH`, a master's brief names it, and where none resolved the brief says so.
 
+- **An issue made with a token now says which key made it.** A session reads `web`, a token `pat`, a paired box's token `device`, each with the token's id. Reads and search carry both; earlier issues keep what they read.
+
 - **A viewer can no longer record a dependency through `forge_project_pm`.** It was the one door that let them; the web route and `forge_issues` already refused. Every door now needs the member role, and the refusal names the role held.
 
 - **A project's admins can see its GitHub App, wherever it was created.** The connections list, its

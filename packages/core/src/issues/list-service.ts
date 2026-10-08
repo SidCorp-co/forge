@@ -43,6 +43,9 @@ export type IssueListRow = {
   complexity: string | null;
   assigneeId: string | null;
   reopenCount: number;
+  /** ISS-1374 — the credential the issue was created through, and the token behind it when one was. */
+  createdVia: (typeof issues.$inferSelect)['createdVia'];
+  createdViaTokenId: string | null;
   mergedAt: Date | null;
   /** ISS-1126 — carried so the browse row can say whether the mark was observed or asserted. */
   mergedCommitSha: string | null;
@@ -108,6 +111,8 @@ export async function listIssueRows(
     complexity: issues.complexity,
     assigneeId: issues.assigneeId,
     reopenCount: issues.reopenCount,
+    createdVia: issues.createdVia,
+    createdViaTokenId: issues.createdViaTokenId,
     mergedAt: issues.mergedAt,
     mergedCommitSha: issues.mergedCommitSha,
     mergedLanding: issues.mergedLanding,

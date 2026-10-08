@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
+import { issueComplexities, issueCreationChannels, issuePriorities } from './issue-vocabulary.js';
 import { jobEventKinds } from './job-event-vocabulary.js';
 import {
   agentSessionFailureReasons,
@@ -471,6 +472,7 @@ export const projectInvitationsRelations = relations(projectInvitations, ({ one 
 }));
 
 export * from './device-vocabulary.js';
+export * from './issue-vocabulary.js';
 
 export const devices = pgTable(
   'devices',
@@ -984,20 +986,8 @@ export const issueStatuses = [
 ] as const;
 export type IssueStatus = (typeof issueStatuses)[number];
 
-export const issuePriorities = ['critical', 'high', 'medium', 'low', 'none'] as const;
-export type IssuePriority = (typeof issuePriorities)[number];
-
-// ISS-42 C2 — t-shirt sizing for issue scope. Mirrored by the
-// `issues_complexity_chk` CHECK constraint (migration 0046). NULL means
-// "not yet sized".
-export const issueComplexities = ['xs', 's', 'm', 'l', 'xl'] as const;
-export type IssueComplexity = (typeof issueComplexities)[number];
-
 export const issueSources = ['manual', 'github', 'sentry'] as const;
 export type IssueSource = (typeof issueSources)[number];
-
-export const issueCreationChannels = ['web', 'mcp', 'pipeline', 'schedule', 'system'] as const;
-export type IssueCreationChannel = (typeof issueCreationChannels)[number];
 
 export const projectIssCounters = pgTable('project_iss_counters', {
   projectId: uuid('project_id')
@@ -1025,6 +1015,9 @@ export const issues = pgTable(
     // Set by webhook/MCP imports; NULL when `createdById` covers the actor.
     reportedBy: text('reported_by'),
     createdVia: text('created_via', { enum: issueCreationChannels }),
+    createdViaTokenId: uuid('created_via_token_id').references(() => personalAccessTokens.id, {
+      onDelete: 'set null',
+    }),
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     createdById: uuid('created_by_id')
@@ -1112,6 +1105,9 @@ export const issues = pgTable(
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
     archivedAtIdx: index('issues_archived_at_idx').on(t.archivedAt),
+    createdViaTokenIdx: index('issues_created_via_token_idx')
+      .on(t.createdViaTokenId)
+      .where(sql`created_via_token_id IS NOT NULL`),
   }),
 );
 

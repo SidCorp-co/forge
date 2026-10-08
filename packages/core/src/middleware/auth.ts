@@ -6,7 +6,7 @@ import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { type IssueCreationChannel, users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { beginPatRequest } from './pat-rest-surface.js';
@@ -24,6 +24,7 @@ export type AuthVars = {
   agency?: ActorAgency;
   agentUserId?: string;
   patTokenId?: string;
+  patDeviceId?: string;
 };
 
 export function restActor(c: Context<{ Variables: RestActorVars }>): {
@@ -38,7 +39,40 @@ type RestActorVars = {
   userId: string;
   agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
+  patTokenId?: string;
+  patDeviceId?: string;
 };
+
+export type RestCredential = {
+  via: Extract<IssueCreationChannel, 'web' | 'pat' | 'device'>;
+  tokenId: string | null;
+};
+
+/**
+ * The credential this request came through: `web` for a session JWT, `pat` for a token, `device`
+ * for a token bound to a paired device. An absent principal, or a token with no id, is refused by
+ * name like {@link restAgency}, never defaulted to `web`.
+ */
+export function restCredential(c: Context<{ Variables: RestActorVars }>): RestCredential {
+  const principal = c.get('principal');
+  if (principal === 'user') return { via: 'web', tokenId: null };
+  if (principal === 'pat' || principal === 'device') {
+    const tokenId = c.get('patTokenId') ?? null;
+    if (principal === 'pat' && tokenId === null) {
+      throw new Error(
+        'restCredential: a token request carries no token id — the gate admitted a personal access ' +
+          'token without recording which one, so the credential cannot be named.',
+      );
+    }
+    const device = principal === 'device' || c.get('patDeviceId') !== undefined;
+    return { via: device ? 'device' : 'pat', tokenId };
+  }
+  throw new Error(
+    'restCredential: no principal on this request — the route was reached without requireAuth(), ' +
+      'requireUserOrDevice() or requireAnyAuth(), and which credential it came through cannot be ' +
+      'answered from the request alone. Mount one of those gates on it.',
+  );
+}
 
 /**
  * The agency the door established for this request.
@@ -84,6 +118,7 @@ async function admitPat(
   c.set('agency', principal.agency);
   if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
   c.set('patTokenId', principal.tokenId);
+  if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
   return runWithPatScope(scope, () => next());
 }
 

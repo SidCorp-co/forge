@@ -123,6 +123,7 @@ const { createIssue, CREATE_ENTRY_STATUSES, IssueCreateError } = await import(
 const writer = {
   createdById: '33333333-3333-4333-8333-333333333333',
   createdVia: 'mcp' as const,
+  createdViaTokenId: '55555555-5555-4555-8555-555555555555' as string | null,
   actor: {
     type: 'device' as const,
     id: '44444444-4444-4444-8444-444444444444',
@@ -263,9 +264,26 @@ describe('createIssue — one live issue per detectorKey', () => {
 
 describe("createIssue — the writer identity is the caller's, never a default", () => {
   it('records createdVia and createdById exactly as handed in', async () => {
-    await createIssue({ projectId: PROJECT_ID, title: 'New' }, { ...writer, createdVia: 'web' });
+    await createIssue(
+      { projectId: PROJECT_ID, title: 'New' },
+      { ...writer, createdVia: 'web', createdViaTokenId: null },
+    );
     expect(txInsertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ createdVia: 'web', createdById: writer.createdById }),
+      expect.objectContaining({
+        createdVia: 'web',
+        createdViaTokenId: null,
+        createdById: writer.createdById,
+      }),
+    );
+  });
+
+  it('records the token behind a pat create, and never invents one', async () => {
+    await createIssue(
+      { projectId: PROJECT_ID, title: 'New' },
+      { ...writer, createdVia: 'pat', createdViaTokenId: writer.createdViaTokenId },
+    );
+    expect(txInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ createdVia: 'pat', createdViaTokenId: writer.createdViaTokenId }),
     );
   });
 
