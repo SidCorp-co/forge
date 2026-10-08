@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.196] - 2026-10-08
+
+Chat no longer states asker-typed figures as fact; sandbox needs Claude API
+
+### Fixed
+
+- **The chat no longer puts unsourced numbers in front of you.** A reply stating a figure you typed as the project's is held, the board refuses numbers no report returned, and sandbox computation runs only on the Claude API.
+
 ## [0.4.0-dev.195] - 2026-10-08
 
 Judge records could-not-judge, names the live build; chat writes await consent
