@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.194] - 2026-10-08
+
+Agent mode names how a turn ended; chat turns fenced and carry page context
+
+### Added
+
+- **Ask Agent knows the record its page is about.** Opened on a requirement, feedback item, workflow or issue page, both Assistant and Agent mode read that record without you naming it.
+
+### Fixed
+
+- **An Assistant chat no longer reads another project's pipeline run by its id.** The run tool now holds to the chat's own project, as the issue, requirement and channel reads already did.
+- **Agent mode now says what ended a turn that left no answer.** A crash, a timeout naming its limit and a box that cannot confine a chat each read as that, with the next step, instead of one generic sentence.
+
 ## [0.4.0-dev.193] - 2026-10-08
 
 Full tokens can approve; BA suggestions refuse invented criterion codes and unreadable replies
