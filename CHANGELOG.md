@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.157] - 2026-10-08
+
+Sign-in works when another Forge instance's session cookie is present
+
+### Fixed
+
+- **A stale session cookie no longer blocks sign-in.** Core tries every session cookie the browser sends, answers a dead one SESSION_EXPIRED and clears it; the web signs out quietly instead of showing "invalid token".
+
 ## [0.4.0-dev.156] - 2026-10-08
 
 macOS and Windows runners read usage-limit resets without GNU date
