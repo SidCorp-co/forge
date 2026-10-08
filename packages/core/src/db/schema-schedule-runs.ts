@@ -4,8 +4,18 @@ import {
   SCHEDULE_RUN_TRIGGERS,
 } from '@forge/contracts/schedules';
 import { relations, sql } from 'drizzle-orm';
-import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
+import { users } from './schema-auth.js';
 import { pipelineRuns } from './schema-pipeline.js';
 import { projects } from './schema-projects.js';
 import { schedules } from './schema-schedules.js';
@@ -36,6 +46,10 @@ export const scheduleRuns = pgTable(
     }),
     output: text('output'),
     error: text('error'),
+    /** Who a script fire read Forge as (REQ-37 BC-9); null where it had nobody to read as, or ran no script. */
+    runAs: uuid('run_as').references(() => users.id, { onDelete: 'set null' }),
+    /** Every read a script fire made through ctx.forge.get, with its status; null for any other fire. */
+    reads: jsonb('reads'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -60,6 +74,10 @@ export const scheduleRuns = pgTable(
     refusalChk: check(
       'schedule_runs_refusal_chk',
       sql`${t.refusal} IS NULL OR (${t.status} IN ('failed', 'skipped') AND ${t.refusal} ~ '^[A-Z][A-Z0-9_]*$')`,
+    ),
+    readsChk: check(
+      'schedule_runs_reads_chk',
+      sql`${t.reads} IS NULL OR jsonb_typeof(${t.reads}) = 'array'`,
     ),
     finishedChk: check(
       'schedule_runs_finished_chk',

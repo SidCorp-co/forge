@@ -1,0 +1,1 @@
+**A script can no longer reach the server process.** Schedule scripts and chat computations run in one QuickJS isolate with time, memory and output caps, and read their own project by GET only, as their owner, each read recorded.

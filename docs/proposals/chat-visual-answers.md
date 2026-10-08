@@ -214,15 +214,15 @@ template can do nothing a built-in cannot.
 declares `id`, `mode: 'invoked' | 'in-band'`, `isolation`, `network: 'none'`, `dataLeavesTo`,
 `zdrEligible`, and `availableFor(project)`.
 
-**Adapters:** none is registered, so every computation is refused `EXECUTOR_UNAVAILABLE` by name
-and nothing is sent anywhere. The provider's code execution tool and a hosted sandbox are ruled out
-by the owner (2026-10-09): no Claude code-execution API and no direct provider key, models only
-through the configured gateway. A question no report covers is asked in Agent mode, where the agent
-runs on the team's runner.
-
-`schedules/script` (`packages/core/src/schedules/script/executor.ts`, a `node:vm` context in a
-worker thread) is **not** an adapter of this port: `node:vm` is not a security boundary, so it
-cannot run model-written code over project data.
+**Adapters:** one, core's own script sandbox (REQ-37, `packages/core/src/sandbox/executor.ts:sandboxExecutor`),
+which schedule scripts run in too: JavaScript in a QuickJS isolate compiled to WebAssembly, in a
+worker thread, under a WebAssembly memory maximum, an interrupt at the wall cap and a stack limit,
+with no host object inside it. A script reads Forge only through `ctx.forge.get`, by GET on its own
+project, under a read-only token minted for the asker and revoked when the run ends; any other
+method or path is refused `SCRIPT_READ_REFUSED`, and each read is kept on the execution. Python and
+bash are refused by name. The provider's code execution tool and a hosted sandbox are ruled out by
+the owner (2026-10-09): no Claude code-execution API and no direct provider key, models only through
+the configured gateway.
 
 **Who may add one:** an adapter is a module providing one at boot through `report-ports.ts`; the
 port's checks below (inputs, retention, network, permission `assistant.exec`, budget, record,
@@ -233,7 +233,7 @@ answers every computation `EXECUTOR_UNAVAILABLE` (503), naming that no executor 
 What an adapter added since inherits:
 
 - **Registry.** `packages/core/src/reports/executors.ts:provideExecutors` takes the deployment's
-  adapters at boot (`report-ports.ts` passes none); a duplicate
+  adapters at boot (`report-ports.ts` passes `sandboxExecutor`); a duplicate
   id, or a descriptor off
   `ExecutorDescriptorSchema` (a network other than `none` among them), is refused at registration.
   A test registers its own fake through `registerExecutor`.
@@ -255,12 +255,14 @@ What an adapter added since inherits:
   admitted is `EXECUTION_NO_ADAPTER_ALLOWED`; admitted but none able is `EXECUTOR_UNAVAILABLE`,
   each naming why every adapter is out.
 - **Script I/O.** `EXECUTION_IO` in the contract fixes how every adapter hands a script its inputs
-  (`inputs.json`) and takes frames back (`frames.json`), so a script runs alike on each.
+  (`ctx.inputs`) and takes frames back (the script returns `{ frames }`, read by `framesFromReturn`),
+  so a script runs alike on each.
 - **Record.** `report_executions` (migration 0465) keeps the room or the turn's credential, who asked,
   the adapter, the script and `script_fingerprint` (sha256 of `normalizeScript`: line endings,
   trailing and inner runs of whitespace and blank lines do not change it; indentation does), the input
   run ids, limits, exit, the limit that stopped it, duration, frames (dropped whole past
-  `limits.outputBytes`, with the stop named) and logs (16 KiB each, scrubbed), for 30 days; the
+  `limits.outputBytes`, with the stop named), logs (16 KiB each, scrubbed) and every Forge read
+  with its status (`reads`, migration 0471), for 30 days; the
   nightly retention pass sweeps it. An adapter's answer off `ExecutionResultSchema` is
   `EXECUTOR_FAILED` and is not kept.
 - **Blocks and grounding.** `forge_show` draws a frame of an execution with `source: { executionId,

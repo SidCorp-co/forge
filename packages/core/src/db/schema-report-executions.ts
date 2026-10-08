@@ -57,6 +57,8 @@ export const reportExecutions = pgTable(
     frames: jsonb('frames').notNull(),
     logs: jsonb('logs').notNull(),
     error: jsonb('error'),
+    /** Every read the script made of Forge through ctx.forge.get, with its status (REQ-37 BC-9). */
+    reads: jsonb('reads').notNull().default(sql`'[]'::jsonb`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
@@ -84,5 +86,6 @@ export const reportExecutions = pgTable(
     limitsChk: check('report_executions_limits_chk', sql`jsonb_typeof(${t.limits}) = 'object'`),
     framesChk: check('report_executions_frames_chk', sql`jsonb_typeof(${t.frames}) = 'array'`),
     logsChk: check('report_executions_logs_chk', sql`jsonb_typeof(${t.logs}) = 'object'`),
+    readsChk: check('report_executions_reads_chk', sql`jsonb_typeof(${t.reads}) = 'array'`),
   }),
 );

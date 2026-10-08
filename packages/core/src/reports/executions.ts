@@ -1,5 +1,5 @@
 // The executions `reports` keeps: each run of a script by a sandbox executor, stored with who asked,
-// the turn it counted against, the script and its fingerprint, the runs it read, and what came back,
+// the turn it counted against, the script and its fingerprint, the runs and Forge paths it read, and what came back,
 // for EXECUTION_KEEP_DAYS. A block drawn from one names it, and both doors read it back through
 // `readExecution` alike.
 
@@ -13,6 +13,7 @@ import {
   normalizeScript,
 } from '@forge/contracts/report-executions';
 import type { ReportFrame } from '@forge/contracts/report-queries';
+import type { ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { reportExecutions } from '../db/schema-report-executions.js';
@@ -49,6 +50,8 @@ export interface ExecutionRow {
   frames: ReportFrame[];
   logs: { stdout: string; stderr: string };
   error: { name: string; message: string } | null;
+  /** Every read the script made of Forge, with its status (REQ-37 BC-9). */
+  reads: ScriptRead[];
   createdAt: Date;
 }
 
@@ -86,6 +89,7 @@ function recordOf(
     frames: row.frames as ReportFrame[],
     logs: row.logs as ExecutionRecord['logs'],
     error: (row.error as ExecutionRecord['error']) ?? null,
+    reads: row.reads as ScriptRead[],
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),
   };

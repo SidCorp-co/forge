@@ -143,7 +143,11 @@ export async function mintTurnCredential(args: {
     .where(eq(users.id, authority.userId))
     .limit(1);
   if (!owner) throw new Error(`turn credential: user ${authority.userId} does not exist`);
-  const scopes = ['read', 'write'].filter((s) => authority.scopes.includes(s));
+  // a token granted no write permission holds no write scope either
+  const writes = granted.some((p) => p.endsWith(':write'));
+  const scopes = ['read', 'write'].filter(
+    (s) => authority.scopes.includes(s) && (s === 'read' || writes),
+  );
   const minted = await mintPat({
     userId: authority.userId,
     name: args.name ?? turnTokenDefaultName(new Date(), randomBytes(4).toString('hex')),

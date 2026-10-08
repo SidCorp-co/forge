@@ -186,6 +186,7 @@ reportRoutes.post(
         agency: gated(c.get('agency')),
         access: await loadProjectAccess(projectId, userId),
       },
+      viaTokenId: tokenId ?? null,
       door: { kind: 'rest', turnKey: tokenId ? `token:${tokenId}` : `session:${userId}` },
     });
     return c.json(answer, 201);

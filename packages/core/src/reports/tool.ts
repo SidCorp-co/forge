@@ -196,7 +196,7 @@ export const forgeComputeTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Runs a short python or bash script in an isolated sandbox with no network, over the frames of report runs THIS turn made (inputs: their runIds), only where no report query answers. ${EXECUTION_IO}. A turn may run ${EXECUTION_TURN_CAPS.calls} executions and ${EXECUTION_TURN_CAPS.wallMs} ms in all. Answers { executionId, exit, stopped?, frames, logs, error? }; draw a frame with forge_show source { executionId, frame? }, labelled computed; show the script and its result, and act on it only once the person confirms.`,
+  description: `Runs a short JavaScript script (language "javascript") in Forge's isolated script sandbox, only where no report query answers. It reaches no network and cannot write: ${EXECUTION_IO}. Inputs are runIds this turn made, or []. A turn may run ${EXECUTION_TURN_CAPS.calls} executions and ${EXECUTION_TURN_CAPS.wallMs} ms in all. Answers { executionId, exit, stopped?, frames, logs, error?, reads }; draw a frame with forge_show source { executionId, frame? }, labelled computed. In your reply show the script and its result, and act on it only once the person confirms.`,
   inputSchema: zodToMcpSchema(computeInput),
   handler: async (args) => {
     const { projectId, ...request } = computeInput.parse(args);
@@ -217,6 +217,7 @@ export const forgeComputeTool: ContextScopedMcpToolFactory = (ctx) => ({
         agency: principalAgency(ctx.principal),
         access: await loadProjectAccess(projectId, userId),
       },
+      viaTokenId: ctx.principal.tokenId,
       door: {
         kind: 'chat',
         conversationId,

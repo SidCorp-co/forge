@@ -41,10 +41,20 @@ describe('the report tools as the model reads them', () => {
     expect(description.length).toBeLessThanOrEqual(1024);
   });
 
-  it('tells forge_compute how a script reads its inputs and hands frames back, within the cap', () => {
+  it('tells forge_compute the script is JavaScript reading Forge by GET, shown with its result, within the cap', () => {
     const { description } = forgeComputeTool(ctx);
-    for (const word of ['inputs.json', 'frames.json', 'forge_show', 'computed', 'confirms'])
+    for (const word of [
+      '"javascript"',
+      'ctx.inputs',
+      'ctx.forge.get',
+      'cannot write',
+      'forge_show',
+      'computed',
+      'show the script and its result',
+      'confirms',
+    ])
       expect(description).toContain(word);
+    expect(description).not.toMatch(/python|bash/);
     expect(description.length).toBeLessThanOrEqual(1024);
   });
 });

@@ -151,6 +151,7 @@ import {
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
+import { provideSandboxPorts } from './sandbox/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
@@ -297,6 +298,8 @@ provideChatWriteHold({
   tool: refuseChatToolWrite,
 });
 provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
+// a script's ctx.forge.get is answered by this app in-process, under its owner's read token (REQ-37)
+provideSandboxPorts({ restFetch: (request) => Promise.resolve(app.fetch(request)) });
 
 let corsOrigins: string[] | undefined;
 function allowedOrigins(): string[] {

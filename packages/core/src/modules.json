@@ -1026,6 +1026,11 @@
         "agent-run-standing#done"
       ]
     },
+    "sandbox": {
+      "kind": "domain",
+      "context": "execution",
+      "serves": ["REQ-37", "REQ-32"]
+    },
     "schedules": {
       "kind": "domain",
       "context": "execution",

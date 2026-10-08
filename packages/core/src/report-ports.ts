@@ -1,9 +1,8 @@
 // The reports domain's ports, filled once at boot by the process entry: the query registry is a read
 // model a domain may not import (ADR 0008), the room a block is posted into is the conversations
 // context's, and a project's compute setting is its project document's, so each is handed in here
-// from its owner's face. No executor is registered: the sandbox on the team's runner was removed
-// (REQ-32 r6, owner 2026-10-09), so every computation is refused EXECUTOR_UNAVAILABLE by name and
-// nothing is sent anywhere.
+// from its owner's face. The one executor is core's own script sandbox (REQ-37), which schedule
+// scripts run in too; the sandbox on the team's runner was removed (REQ-32 r6).
 
 import { chatDoorOfToken } from './agent-sessions/index.js';
 import { postServiceAnswer } from './assistant/index.js';
@@ -22,6 +21,7 @@ import {
   provideReportsPorts,
   type RestTurn,
 } from './reports/index.js';
+import { sandboxExecutor } from './sandbox/index.js';
 
 /** The room turn a REST caller's token answers, as `reports/rest-stage.ts` judges it. */
 async function restTurnOf(tokenId: string | null): Promise<RestTurn> {
@@ -59,5 +59,5 @@ export function provideReportPorts(): void {
   provideExecutorPorts({
     computePolicyOf: async (projectId) => (await readProjectDocument(projectId))?.document.compute,
   });
-  provideExecutors([], ['the runner sandbox was removed (REQ-32 r6); ask in Agent mode instead']);
+  provideExecutors([sandboxExecutor]);
 }

@@ -12,20 +12,31 @@ import type {
   ScheduleRunStatus,
   ScheduleRunTrigger,
 } from '@forge/contracts/schedules';
+import type { ScriptRead } from '@forge/contracts/script-sandbox';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scheduleRuns } from '../db/schema.js';
 import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
 
+/** A script fire's record (REQ-37 BC-9): who it read Forge as, and every read with its status. */
+interface ScriptFireRecord {
+  runAs?: string | null;
+  reads?: ScriptRead[];
+}
+
 export type FireSettlement =
-  | { status: 'success'; output?: string | null; pipelineRunId?: string | null }
+  | ({
+      status: 'success';
+      output?: string | null;
+      pipelineRunId?: string | null;
+    } & ScriptFireRecord)
   | {
       status: 'skipped';
       reason: ScheduleRunSkipReason;
       refusal?: string | null;
       output?: string | null;
     }
-  | { status: 'failed'; error: string; output?: string | null };
+  | ({ status: 'failed'; error: string; output?: string | null } & ScriptFireRecord);
 
 interface FireSession {
   id: string;
@@ -70,6 +81,10 @@ export async function settleFire(fireId: string, settlement: FireSettlement): Pr
     error: settlement.status === 'failed' ? settlement.error : null,
   };
   if (settlement.output !== undefined) set.output = settlement.output;
+  if (settlement.status !== 'skipped' && settlement.reads !== undefined) {
+    set.runAs = settlement.runAs ?? null;
+    set.reads = settlement.reads;
+  }
   if (settlement.status === 'success' && settlement.pipelineRunId) {
     set.pipelineRunId = settlement.pipelineRunId;
   }

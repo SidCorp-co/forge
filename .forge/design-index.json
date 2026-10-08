@@ -132,6 +132,26 @@
   "REQ-32": {
    "title": "Chat answers visually: reports, diagrams, templates, share links",
    "status": "agreed"
+  },
+  "REQ-33": {
+   "title": "Decisions, roadmap and memory are read inside the item they are about, not on pages of their own",
+   "status": "agreed"
+  },
+  "REQ-34": {
+   "title": "Every lifecycle step is a checklist contract that people and agents must complete, and the kernel enforces it",
+   "status": "agreed"
+  },
+  "REQ-35": {
+   "title": "Every Product item reads as a picture first",
+   "status": "agreed"
+  },
+  "REQ-36": {
+   "title": "Delivery: each role designs and tests only its own scope",
+   "status": "agreed"
+  },
+  "REQ-37": {
+   "title": "Scripts read Forge with GET only, under a short-lived token of their owner",
+   "status": "agreed"
   }
  },
  "workflows": {
@@ -184,6 +204,7 @@
     "attach",
     "badfile",
     "busy",
+    "chatrefused",
     "check",
     "classify",
     "confine",
@@ -194,6 +215,7 @@
     "door",
     "draft",
     "held",
+    "hold",
     "investigate",
     "mode",
     "net",
@@ -302,12 +324,14 @@
    "title": "Feedback lifecycle",
    "steps": [
     "declined",
+    "loop-check",
     "new",
     "planned",
     "redaction",
     "reopened",
     "resolved",
     "start",
+    "triage-check",
     "triaged",
     "verified"
    ]
@@ -315,10 +339,12 @@
   "feedback-triage": {
    "title": "Feedback triage",
    "steps": [
+    "agree",
     "answer",
     "ask",
     "auto-verify",
     "breaking",
+    "check",
     "decide",
     "decline",
     "dedup",
@@ -327,6 +353,7 @@
     "file",
     "intake",
     "issue",
+    "master-draft",
     "message",
     "resolve",
     "revision",
@@ -371,8 +398,10 @@
     "core",
     "criteria",
     "ev-created",
+    "ev-merge-asked",
     "ev-merged",
     "ev-run-ended",
+    "ev-suite",
     "ev-transition",
     "exp-release",
     "exp-run",
@@ -381,13 +410,19 @@
     "out-release",
     "out-run",
     "policy",
+    "probes",
     "rule-close",
     "rule-dispatch",
+    "rule-merge",
+    "rule-replay",
     "rule-return",
+    "rule-scope",
+    "rule-suite",
     "rule-wedge",
     "st-awaiting",
     "st-closed",
     "st-open",
+    "st-reopen",
     "stranded",
     "task-lease",
     "task-release"
@@ -399,12 +434,14 @@
     "approved",
     "awaiting_release",
     "closed",
+    "design-check",
     "draft",
     "dropped",
     "in_progress",
     "needs_info",
     "on_hold",
     "open",
+    "ready-check",
     "reopen",
     "start"
    ]
@@ -489,13 +526,21 @@
   "requirement-lifecycle": {
    "title": "Requirement lifecycle",
    "steps": [
+    "acceptance",
+    "acceptance_check",
     "accepted",
     "agreed",
+    "agreement",
+    "breakdown_check",
     "deferred",
     "delivered",
+    "design_check",
     "draft",
     "dropped",
     "in_delivery",
+    "ready_check",
+    "release_check",
+    "rev_check",
     "rev_current",
     "rev_draft",
     "rev_proposed",

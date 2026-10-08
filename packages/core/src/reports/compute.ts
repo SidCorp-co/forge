@@ -1,5 +1,6 @@
 // The long tail: a question no report query answers is computed by a script a sandbox executor runs
-// over a snapshot of report runs the asker made this turn. Every check is made here, before any
+// over a snapshot of report runs the asker made this turn, and over what it reads of the project by
+// GET as the asker (REQ-32 BC-16, REQ-37). Every check is made here, before any
 // adapter sees data, in the order a refusal is most useful: an executor enabled at all, the asker's
 // `assistant.exec`, the door, the project's `compute` setting, the limits, the turn's caps, the
 // inputs, the project's data policy on `report.exec`, and only then an adapter the setting admits
@@ -266,6 +267,8 @@ export async function computeExecution(args: {
   projectId: string;
   request: ComputeRequest;
   asker: ReportAsker;
+  /** The token the asker came with, which bounds what the script may read as them; null for a session. */
+  viaTokenId: string | null;
   door: ComputeDoor;
   now?: Date;
 }): Promise<ComputeAnswer> {
@@ -325,7 +328,7 @@ export async function computeExecution(args: {
         inputs: scrubSecretsDeep(egress.value),
         limits,
       }),
-      { projectId, conversationId, askedBy: asker.userId },
+      { projectId, conversationId, askedBy: asker.userId, viaTokenId: args.viaTokenId },
     );
     const logs = { stdout: keptLog(result.logs.stdout), stderr: keptLog(result.logs.stderr) };
     let frames = scrubSecretsDeep(result.frames);
@@ -360,6 +363,7 @@ export async function computeExecution(args: {
       frames,
       logs,
       error,
+      reads: result.reads,
       createdAt: now,
     });
     return {
@@ -371,6 +375,7 @@ export async function computeExecution(args: {
       frames: record.frames,
       logs: record.logs,
       ...(record.error ? { error: record.error } : {}),
+      reads: record.reads,
       source: { executionId: record.executionId },
       scriptFingerprint: record.scriptFingerprint,
       inputs: inputs.ids,
