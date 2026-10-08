@@ -14,6 +14,18 @@ import type { MessageFacts } from './facts.js';
 import { extractIssueClaims } from './issue-tokens.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
+/**
+ * The break a rule answers with where the read of the issues the message names threw: it could not
+ * run, so it holds the message and says so (REQ-30 BC-9), never passing what it could not check.
+ * The cited-issue read runs only where the message names an issue, so a failed read always means one
+ * was named.
+ */
+export const ISSUES_UNREAD: RuleBreak = {
+  quote: null,
+  why: 'the issues this message names could not be read from the tracker this turn, so none of them can be checked — leave the issue keys, links and their status out, or say they could not be looked up just now',
+  unchecked: 'the issues it names could not be read from the tracker this turn',
+};
+
 /** Every issue key a message names, read against the project's own rows. */
 function missingKeys(text: string, f: MessageFacts): RuleBreak[] {
   return extractIssueClaims(text, f.prefixes)
@@ -30,7 +42,7 @@ export const ISSUE_KEYS_EXIST: MessageRule = {
   shape: 'name only issue keys this project holds',
   example: 'The change you asked about is done.',
   needs: ['prefixes', 'issue-rows'],
-  check: (text, f) => (f.issueLookupFailed ? [] : missingKeys(text, f)),
+  check: (text, f) => (f.issueLookupFailed ? [ISSUES_UNREAD] : missingKeys(text, f)),
 };
 
 /** Every issue this message names — key or link — has to be an issue this project holds. */
@@ -40,7 +52,7 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
   example: 'The change landed under the issue this comment is on.',
   needs: ['prefixes', 'issue-rows'],
   check: (text, f) => {
-    if (f.issueLookupFailed) return [];
+    if (f.issueLookupFailed) return [ISSUES_UNREAD];
     const claims = extractIssueClaims(text, f.prefixes);
     const breaks: RuleBreak[] = [];
     for (const id of claims.malformedUrlIds) {
@@ -71,9 +83,10 @@ export const STATUS_MATCHES_THE_ROW: MessageRule = {
   example: 'The branch is pushed and the PR is open; nothing is merged yet.',
   needs: ['prefixes', 'issue-rows'],
   check: (text, f) => {
-    if (f.issueLookupFailed) return [];
+    const asserted = extractStatusAssertions(text, f.prefixes);
+    if (f.issueLookupFailed) return asserted.length > 0 ? [ISSUES_UNREAD] : [];
     const breaks: RuleBreak[] = [];
-    for (const a of extractStatusAssertions(text, f.prefixes)) {
+    for (const a of asserted) {
       const row = f.issueRows.get(a.seq);
       if (!row) continue;
       const holds = a.claim === 'merged' ? row.merged : row.status === 'closed';

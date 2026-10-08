@@ -8,6 +8,7 @@
 
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { ISSUES_UNREAD } from './claim-rules.js';
 import type { MessageRefusal, MessageVerdict, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
 import { issueTokenRe } from './issue-tokens.js';
@@ -115,21 +116,22 @@ function dateBreaks(text: string, results: readonly string[]): RuleBreak[] {
 }
 
 function statusBreaks(text: string, results: readonly string[], f: MessageFacts): RuleBreak[] {
-  if (f.issueLookupFailed) return [];
   const read = results.join('\n').toUpperCase();
   const breaks: RuleBreak[] = [];
   const said = new Set<string>();
   for (const clause of clausesOf(text)) {
     if (clause.asked || ABSTAIN_RE.test(clause.text)) continue;
     for (const m of clause.text.matchAll(issueTokenRe(f.prefixes))) {
-      const seq = Number(m[2]);
-      const row = f.issueRows.get(seq);
-      if (!row) continue;
       const after = clause.text.slice((m.index ?? 0) + m[0].length);
       const linked = LINKER_RE.exec(after);
       const rest = after.slice(linked ? linked[0].length : 0);
       const hit = STATUS_PHRASES.find(([re]) => re.test(rest));
       if (!hit) continue;
+      // the rows were not read: a status stated of a named issue cannot be checked, so it is held
+      if (f.issueLookupFailed) return [ISSUES_UNREAD];
+      const seq = Number(m[2]);
+      const row = f.issueRows.get(seq);
+      if (!row) continue;
       const ref = formatIssueRef(f.prefix, seq);
       if (said.has(ref)) continue;
       said.add(ref);
@@ -173,6 +175,7 @@ export function withGrounding(
       quote: b.quote,
       shape: GROUNDING_RULE.shape,
       example: GROUNDING_RULE.example,
+      ...(b.unchecked ? { unchecked: b.unchecked } : {}),
     })),
   );
   if (refusals.length === 0) return verdict;

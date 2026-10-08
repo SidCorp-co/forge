@@ -36,6 +36,7 @@ import {
   suggestionKernelActor,
   targetOfRow,
 } from './read.js';
+import { revisionDiffRefusalsIn } from './revision-diff.js';
 import {
   baseStaleRefusal,
   breakdownOpenRefusal,
@@ -99,6 +100,10 @@ async function proposeIn(
           '/payload',
         )
       : [];
+    if (wrong.length) return { refusals: wrong };
+  }
+  if (p.kind === 'revision_diff' && p.target.type === 'requirement') {
+    const wrong = await revisionDiffRefusalsIn(tx, p.target.id, p.baseRevision, p.payload);
     if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'requirement_draft') {

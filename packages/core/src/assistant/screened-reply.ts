@@ -9,6 +9,7 @@ import {
   type ReplyLanguage,
   type ScreenedMessage,
   screened,
+  type UncheckedRule,
 } from '../conversations/index.js';
 import { logger } from '../lib/logger.js';
 import {
@@ -192,6 +193,11 @@ export function heldClaimsOf(refused: readonly MessageRefusal[]): HeldClaim[] {
   return claims;
 }
 
+/** The checks a refusal says could not run, each with why (`RuleBreak.unchecked`). */
+export function uncheckedRulesOf(refused: readonly MessageRefusal[]): UncheckedRule[] {
+  return refused.flatMap((r) => (r.unchecked ? [{ rule: r.rule, why: r.unchecked }] : []));
+}
+
 /** The refusals marking cannot carry: there is no claim in them to mark, only a message that may not go out. */
 const UNMARKABLE: ReadonlySet<string> = new Set([
   'non-empty',
@@ -357,11 +363,9 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     args.stage?.settle(null);
     if (args.fallback === 'none') return null;
     if (broken && args.brokenReport) return codeAuthored(args.brokenReport(broken));
+    const refused = [...firstRefused, ...refusalsOf(outcome.verdict)];
     return codeAuthored(
-      heldFallbackReply(
-        args.handleName,
-        heldClaimsOf([...firstRefused, ...refusalsOf(outcome.verdict)]),
-      ),
+      heldFallbackReply(args.handleName, heldClaimsOf(refused), uncheckedRulesOf(refused)),
     );
   }
 

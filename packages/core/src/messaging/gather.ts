@@ -8,6 +8,7 @@
 
 import { db, type Tx } from '../db/client.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
+import { logger } from '../lib/logger.js';
 import { cellFor } from './cells.js';
 import type { Audience, FactKind, Intent } from './contract.js';
 import {
@@ -94,7 +95,12 @@ async function issueRowsFor(
       rows.set(r.issSeq, { seq: r.issSeq, merged: r.mergedAt !== null, status: r.status });
     }
     return { rows, ids: new Set(found.map((r) => r.id)), failed: false };
-  } catch {
+  } catch (err) {
+    // the rules that need these rows hold the message naming themselves (claim-rules.ts:ISSUES_UNREAD)
+    logger.error(
+      { err, projectId },
+      'message screen: the issues the message names could not be read',
+    );
     return { ...empty, failed: true };
   }
 }
