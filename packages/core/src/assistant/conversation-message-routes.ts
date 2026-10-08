@@ -155,6 +155,6 @@ conversationMessageRoutes.post(
       await renameConversation(id, roomNameFrom(content, attached));
     }
 
-    return c.json({ ...sent, ...(await roomTail(id)) }, sent.mode === 'agent' ? 202 : 201);
+    return c.json({ ...sent, ...(await roomTail(id, userId)) }, sent.mode === 'agent' ? 202 : 201);
   },
 );

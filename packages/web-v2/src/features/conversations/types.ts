@@ -11,13 +11,15 @@ export type ConversationMessageRole = "user" | "assistant" | "system";
 
 export type ConversationMode = "assistant" | "agent";
 
-export type AgentTurnState = "dispatched" | "running" | "delivered" | "failed";
+export type AgentTurnState = "dispatched" | "running" | "delivered" | "held" | "failed";
 
 export interface AgentTurn {
   windowId: string;
   sessionId: string;
   state: AgentTurnState;
   reason: string | null;
+  /** The reply the reply check held: why, and the text itself for the person it answered (null for anyone else). */
+  held?: { reason: string; reply: string | null } | null;
 }
 
 export interface AgentModeOffer {
@@ -262,6 +264,7 @@ export function undeliveredReplyOf(detail: unknown, t: Copy = productCopy()): { 
 export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, ProductCopyKey> = {
   dispatched: "conversations.agentTurn.dispatched",
   running: "conversations.agentTurn.running",
+  held: "conversations.agentTurn.held",
   failed: "conversations.agentTurn.failed",
 };
 

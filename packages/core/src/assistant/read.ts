@@ -76,11 +76,11 @@ export async function speakerLabelOf(userId: string): Promise<string | null> {
 const READ_WINDOW = 200;
 
 /** What a room's read and a send into it both answer with. */
-export async function roomTail(id: string) {
+export async function roomTail(id: string, viewerId: string) {
   const [messages, windows, agentTurns] = await Promise.all([
     readMessages(id, READ_WINDOW),
     listWindowsForConversation(id, READ_WINDOW),
-    readConversationAgentTurns(id),
+    readConversationAgentTurns(id, viewerId),
   ]);
   return { messages, windows, agentTurns };
 }
