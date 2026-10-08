@@ -15,6 +15,8 @@ export type ProjectRole = "admin" | "member" | "viewer";
 export interface ProjectMemberRow {
 	userId: string;
 	email: string;
+	/** The name the person goes by, where they set one. */
+	displayName?: string | null;
 	role: ProjectRole;
 	createdAt: string;
 }

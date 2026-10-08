@@ -2,7 +2,6 @@
 
 import { PROJECT_STATUS_DAYS_DEFAULT } from "@forge/contracts/project-status";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createShare } from "@/features/shares";
 import { projectStatusApi } from "./api";
 
 /** Every key of this read starts here, so an issue or question event refreshes it in one call. */
@@ -55,9 +54,3 @@ export function useDeleteStatusReport(projectId: string) {
   });
 }
 
-/** Share one kept template report with the project's members; the link is shown once, by the caller. */
-export function useShareTemplateReport(projectId: string) {
-  return useMutation({
-    mutationFn: (reportId: string) => createShare(projectId, { subjectKind: "status-report", subjectId: reportId, audience: "members" }),
-  });
-}

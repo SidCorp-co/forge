@@ -1,4 +1,10 @@
-import type { ShareCreate, ShareCreated, ShareSnapshot } from "@forge/contracts/shares";
+import type {
+  ShareAudienceOption,
+  ShareCreate,
+  ShareCreated,
+  ShareLinkView,
+  ShareSnapshot,
+} from "@forge/contracts/shares";
 import { apiClient } from "@/lib/api/client";
 
 /**
@@ -12,7 +18,23 @@ export function openShare(token: string, signedIn: boolean): Promise<ShareSnapsh
   });
 }
 
-/** Creates a share of one subject of a project; the link comes back once, in `url`. */
-export function createShare(projectId: string, body: Pick<ShareCreate, "subjectKind" | "subjectId" | "audience">): Promise<ShareCreated> {
-  return apiClient<ShareCreated>(`/projects/${encodeURIComponent(projectId)}/shares`, { method: "POST", body: JSON.stringify(body) });
-}
+const base = (projectId: string) => `/projects/${encodeURIComponent(projectId)}/shares`;
+
+export const sharesApi = {
+  /** A project's shares, newest first. A list row never holds a token or its hash. */
+  list: (projectId: string) =>
+    apiClient<{ shares: ShareLinkView[] }>(base(projectId)).then((r) => r.shares),
+  /** Each audience, open or refused as creating a share for it would be, read by core. */
+  audiences: (projectId: string) =>
+    apiClient<{ audiences: ShareAudienceOption[] }>(`${base(projectId)}/audiences`).then(
+      (r) => r.audiences,
+    ),
+  /** Creates a share; the answer carries its link, the one time it is shown. */
+  create: (projectId: string, body: ShareCreate) =>
+    apiClient<ShareCreated>(base(projectId), { method: "POST", body: JSON.stringify(body) }),
+  revoke: (projectId: string, shareId: string) =>
+    apiClient<{ share: ShareLinkView }>(
+      `${base(projectId)}/${encodeURIComponent(shareId)}/revoke`,
+      { method: "POST" },
+    ).then((r) => r.share),
+};

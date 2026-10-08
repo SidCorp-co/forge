@@ -45,6 +45,7 @@ function plantedDocument(projectId: string): ReportDocument {
       {
         kind: 'table',
         v: 1,
+        title: `Progress for ${EMAIL}`,
         columns: ['requirement', 'note', 'proven'],
         source: { runId: 'run-1' },
         frame,
@@ -188,6 +189,8 @@ describe('opening a share', () => {
     const row = (listed.body.shares as Body[]).find((s) => s.id === share.id);
     expect(row?.viewCount).toBe(2);
     expect(row?.lastViewedAt).not.toBeNull();
+    expect(row?.title).toBe('Progress for [email]');
+    expect(JSON.stringify(listed.body)).not.toContain(EMAIL);
     const refused = await db
       .execute(sql`UPDATE share_links SET snapshot = '{}'::jsonb WHERE id = ${share.id as string}`)
       .then(
@@ -225,6 +228,50 @@ describe('creating a share', () => {
     expect(String(link.body.detail)).toContain('no_egress');
     const members = await create(who, { audience: 'members' }, closed);
     expect(members.status, JSON.stringify(members.body)).toBe(201);
+  });
+});
+
+describe('reading which audiences a person may share with', () => {
+  const audiences = async (who: Person, project = projectId) => {
+    const res = await api(who.token, 'GET', `/api/projects/${project}/shares/audiences`);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    return Object.fromEntries(
+      (res.body.audiences as Body[]).map((a) => [a.audience as string, a.refusal as Body | null]),
+    );
+  };
+
+  it("answers each audience with the refusal creating one would answer, in core's words", async () => {
+    expect(await audiences(admin)).toEqual({ members: null, link: null });
+    const byMember = await audiences(member);
+    expect(byMember.members).toBeNull();
+    expect(byMember.link?.code).toBe('PERMISSION_FORBIDDEN');
+    expect(String(byMember.link?.message)).toContain('shares.public');
+    const refused = await create(member, { audience: 'link' });
+    expect(byMember.link?.message).toBe(refused.body.detail);
+    const byViewer = await audiences(viewer);
+    expect(byViewer.members?.code).toBe('PERMISSION_FORBIDDEN');
+    expect(String(byViewer.members?.message)).toContain('shares.write');
+  });
+
+  it('names the data policy for a project whose data may not leave it, and refuses an outsider', async () => {
+    const owner = await createTestUser({ verified: true });
+    const closed = (await createTestProject(owner.id)).id;
+    await seedProjectDocument(closed, owner.id, {
+      environments: {},
+      extra: { sensitiveData: 'no_egress' },
+    });
+    const who = { id: owner.id, token: await userToken(owner.id) };
+    const options = await audiences(who, closed);
+    expect(options.members).toBeNull();
+    expect(options.link?.code).toBe('SHARE_EGRESS_FORBIDDEN');
+    expect(String(options.link?.message)).toContain('no_egress');
+    const stranger = await api(
+      outsider.token,
+      'GET',
+      `/api/projects/${projectId}/shares/audiences`,
+    );
+    expect(stranger.status, JSON.stringify(stranger.body)).toBeGreaterThanOrEqual(403);
+    expect(stranger.status).toBeLessThanOrEqual(404);
   });
 });
 

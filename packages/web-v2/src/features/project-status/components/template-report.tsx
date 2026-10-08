@@ -2,19 +2,16 @@
 
 // A kept template report, opened from the history: its narrative as it was kept (a slot nobody wrote
 // is named, never drawn empty), then its blocks over the runs it holds. Export downloads it as
-// Markdown from the same contract function core's export route uses; Share makes a members-only link
-// of the kept document, shown once. Flat: hairline rows, no cards.
+// Markdown from the same contract function core's export route uses; Share opens the shared share dialog
+// (audience, expiry, the link shown once) over the kept document. Flat: hairline rows, no cards.
 
 import type { ReportDocument } from "@forge/contracts/report-templates";
 import { reportDocumentMarkdown, type StatusReportMeta, unwrittenSlots } from "@forge/contracts/status-reports";
-import { useState } from "react";
 import { Button } from "@/design";
-import { ReportDocumentBody } from "@/features/shares";
-import { formatApiError } from "@/lib/api/error";
+import { ReportDocumentBody, ShareAction } from "@/features/shares";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { EtaClock } from "@/features/forecast/eta";
-import { useShareTemplateReport } from "../hooks";
 
 /** The Markdown file of a kept template report: its narrative, then each block's text. */
 export function templateReportFile(meta: StatusReportMeta, document: ReportDocument): { name: string; text: string } {
@@ -36,8 +33,6 @@ function download({ name, text }: { name: string; text: string }): void {
 
 export function TemplateReport({ projectId, meta, document, clock }: { projectId: string; meta: StatusReportMeta; document: ReportDocument; clock: EtaClock }) {
   const t = useCopy();
-  const share = useShareTemplateReport(projectId);
-  const [link, setLink] = useState<string | null>(null);
   const unwritten = unwrittenSlots(document);
   return (
     <div className="grid gap-3" data-testid="template-report">
@@ -48,30 +43,8 @@ export function TemplateReport({ projectId, meta, document, clock }: { projectId
         <Button size="sm" variant="ghost" onClick={() => download(templateReportFile(meta, document))} data-testid="template-report-export">
           {t("status.template.export")}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          loading={share.isPending}
-          onClick={() =>
-            share.mutate(meta.id, {
-              onSuccess: (made) => setLink(new URL(made.url, window.location.origin).toString()),
-            })
-          }
-          data-testid="template-report-share"
-        >
-          {t("status.template.share")}
-        </Button>
+        <ShareAction projectId={projectId} subject={{ kind: "status-report", id: meta.id }} />
       </div>
-      {link ? (
-        <p className="break-all text-13 text-fg" data-testid="template-report-link">
-          {t("status.template.link")} <a className="text-link hover:underline" href={link}>{link}</a>
-        </p>
-      ) : null}
-      {share.isError ? (
-        <p className="text-13 text-danger" role="alert">
-          {t("status.template.shareFailed")}: {formatApiError(share.error)}
-        </p>
-      ) : null}
       {unwritten.length > 0 ? <p className="text-13 text-muted">{t("status.template.unwritten", { slots: unwritten.join(", ") })}</p> : null}
       <ReportDocumentBody document={document} />
     </div>
