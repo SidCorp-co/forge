@@ -20,7 +20,7 @@ const TEMPLATE_CHOICES: readonly [string, string][] = [
     'operational-flow',
   ],
   [
-    'what a patient or customer goes through and the staff and systems behind it, either side of the line of visibility (journey and patient maps)',
+    'what a customer goes through and the staff and systems behind it, either side of the line of visibility (journey maps)',
     'service-blueprint',
   ],
   [
@@ -46,7 +46,7 @@ const TEMPLATE_CHOICES: readonly [string, string][] = [
     'decision-model',
   ],
   [
-    'where patient data goes: source systems, datasets and their owners, processes, outside parties, inside trust boundaries',
+    'where personal data goes: source systems, datasets and their owners, processes, outside parties, inside trust boundaries',
     'data-flow',
   ],
   [
@@ -69,7 +69,7 @@ Act                                   [ACTION]   [ATTENTION]
 Result                                [OUTCOME]
 Feedback    ▲┄┄┄┄┄┄┄┄┄ feeds-back ┄┄┄┄┄┄┄┄┄┘ (to CONTEXT, STATE or RULE)`,
   'service-blueprint': `Evidence    [reminder msg]
-Patient     [books a slot] ────────────────┐      line of interaction
+Customer    [books a slot] ────────────────┐      line of interaction
 Frontstage  [Zalo reminder]   [booking confirmed]   line of visibility
 Backstage                       [schedule the call]   line of internal interaction
 Support                           [HIS appointment]`,
@@ -290,7 +290,7 @@ and the meta-schema ${code('GET /api/schemas/workflow-template-v1.json')}.
 ${TEMPLATE_CHOICES.map(([what, id]) => `| ${what} | ${code(id)} |`).join('\n')}
 
 Unsure between two? Draw what the approver will ask about: "what does the business do when X happens" →
-operational-flow, "what does the patient go through" → service-blueprint, "what does the person see" →
+operational-flow, "what does the customer go through" → service-blueprint, "what does the person see" →
 ux-flow, "what state is it in" → state-machine. One flow, one template; a screen flow and the business flow it
 drives are two designs, linked by refs. A preset is a template of its own whose ${code('presetOf')} names the
 one it varies; a link to that one reaches a design drawn in the preset too.
