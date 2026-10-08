@@ -1,0 +1,147 @@
+## What a comment is for, and where a record goes
+
+A comment is prose a person reads. Everything else a run has to record has a store of its own, and
+putting it in the comment body instead is how a thread ends up 99% machine content with a hundred
+characters of human writing in it. Measured on forge-dev, 2026-09-20: on two of five recent issues
+the person's share of the thread was 98 and 123 characters against 26,000 and 46,000 of fences.
+
+### What goes where
+
+| What you have | Where it goes | Format |
+|---|---|---|
+| A sentence a person needs to read | `comments` | prose, no fence, no field list. Say what happened and what it means |
+| A verdict on a step, per attempt | {{ROUTE_VERDICT}} → `issue_step_contexts` | the handoff payload, keyed `(issue, step, attempt)`, `verdict` typed |
+| A review of a head, per attempt | {{ROUTE_REVIEW}} → `issue_step_contexts` | the same key; the findings are the payload |
+| An assertion about the issue itself — blocking, delivered, obligation, supersedes, human_required | `{{ISSUE_ASSERTION_ROUTE}}` → `issue_attributes` | typed value under a registered key, `sourceCommentId` pointing at the line that asserted it |
+| A transcript, a tool result, what the agent said | `agent_session_turns` | written by the session; never copied into a comment |
+| A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
+| Who moved this issue and when | `kernel_transitions` | written by the transition, not narrated |
+| A lesson a *different* issue would reuse | `forge_memory` | one entry, natural key, refined not duplicated |
+| Project prose — a rule, a build command, a guide | `knowledge_entries` | one slug, `injection` decides reach |
+
+### What core has no store for, said plainly
+
+A run's own records — a baseline, a decision, a correction, a park, a merged mark — have no store
+here that holds them whole. `issue_attributes` takes ten registered keys of issue assertions and
+refuses anything else by name, so a baseline's gate/result/commit does not fit it and a route that
+would reject the write is not somewhere to be sent. Until one exists: put the assertions such a
+record makes ABOUT the issue at `{{ISSUE_ASSERTION_ROUTE}}` under a registered key, and keep the
+sentence in the comment. The rule says so rather than naming a route you would be refused at —
+pointing somewhere that cannot hold it is the substitution this whole rule exists to refuse.
+
+### Two rules
+
+**A record and its human line are joined, not duplicated.** The structured row holds the fields;
+the comment holds the sentence and the pointer. Neither repeats the other, and
+`issue_attributes.source_comment_id` is what joins them — write the comment first, then send its
+id as `sourceCommentId` on the attribute, and a reader of either can reach the other.
+
+**A fence in a comment is the smell.** A ` \`\`\`forge-record ` block in a comment body means a
+record was serialised instead of stored. That is what the `record-in-comment` rule refuses — by
+name, telling you the route for your record's own kind, never by a character count. A cap could not
+tell a 4,000-character record from a 4,000-character explanation somebody wants, and an agent
+meeting a cap splits across comments rather than writing less. `COMMENT_BODY_MAX_CHARS` is not the
+lever and is not moved.
+
+### The shapes a fence is read in
+
+Two, and the parser takes either. The tag may sit on a line after the close, which is what the
+`forge` CLI writes:
+
+````
+```forge-record
+criterion: 13
+verdict: skipped
+```
+
+`forge-record: verdict · contract 1`
+````
+
+or on the opening fence itself, which is where a markdown writer puts it:
+
+````
+```forge-record: verdict · contract 1
+criterion: 13
+verdict: skipped
+```
+````
+
+A body that opens a `forge-record` fence and matches neither is refused at the write door under
+`record-fence-shape`, naming what it read and showing a shape that is valid. An info string that
+is not that tag, a fence that is never closed, and a fence whose own tag is contradicted by a tag
+line after it are the three that are refused. None of them is stored silently: a comment meant to
+carry a record either carries one or is told it does not.
+
+A fence written inside an enclosing fence is that fence's content and opens nothing, so a comment
+quoting either shape as an example stays ordinary prose.
+
+### What a verdict block names it was judged against
+
+A verdict is a claim about a runtime at a moment. Each `criterion` line opens a block, and the
+block names what that criterion was judged against before the next `criterion` line closes it:
+
+- `runtime: <a whole object id>` — an identity something was observed serving. A verdict carrying
+  one is weighed against a READING of what the project is serving, taken at the moment it is
+  weighed: what its declared probes answer, never a commit stored on the issue. It stands where the
+  reading names that identity, and where a fleet mid-rollout answers two it stands on either of
+  them. It is superseded where the reading names something else, and it stops reading as earned.
+  Where the project declares no way to ask, or where what it declares answered nothing, the verdict
+  reads as uncorroborated: a runtime witnessed it and nothing here could check that, which is
+  weaker evidence than a checked reading and is earned all the same. Absence of a reading is not a
+  failure. What a landing wrote down about a deployment is read by people and gates nothing.
+- `commit: <at least seven hexadecimal characters>` — a source that was read. It says which code
+  was judged and never that the code was running, so a verdict carrying one and no runtime reads as
+  unwitnessed, which is not earned either.
+
+A block carrying a verdict and naming neither is refused at the write door under
+`verdict-identity`, as is an identity not written as one and a `runtime` written as an
+abbreviation. A verdict already stored naming neither reads as unanchored: nothing says where it
+held, so nothing can say it still holds.
+
+### What a verdict block cites, and whether it is still there
+
+A verdict outlives the run that wrote it; the file it was taken from may not. Each `evidence:`
+line of a block cites what that criterion's verdict was taken from, and a reader of the issue is
+told what became of each one:
+
+- `held` — the tracker holds an attachment under that name, on the issue or on one of its
+  comments. It says the tracker HOLDS the file, not that the object store still has its bytes; a
+  reader who follows it and finds otherwise is answered `410 ATTACHMENT_FILE_MISSING` rather than
+  a blank.
+- `dangling` — it is written as a file name and the tracker holds nothing under it. The verdict
+  cites something nobody can open, so the criterion stops reading as earned and says which citation
+  broke.
+- `unreachable` — it is written as a path on the machine that wrote it. The tracker never held
+  that file, so the citation could never have resolved for anyone else.
+- `elsewhere` — a URL, an object id, or a path inside the repository. Named, outside what this
+  check follows, and reported as not followed rather than read as resolved.
+
+A block whose verdict was taken by looking — `pass`, `fail` or `short` — and which cites
+nothing is refused at the write door under `verdict-evidence`, as is any citation written as a
+machine-local path. `skipped` cites nothing because nobody looked, and is not refused for it.
+Attach the file first and cite it by its name: an attachment written only to a run's scratch has
+not been attached.
+
+A fence is read only where it opens at the left margin, and the body is stored exactly as it was
+written, so where you put the block is where it is read. Indent it at all — the four spaces of an
+indented code block, or the one to three markdown would still call a fence — and it is prose, as a
+blockquoted one is. An example belongs indented; a record does not.
+
+### When the rule refuses and when it only warns
+
+This section is about `record-in-comment`, the rule for a fence that DID parse. It does not
+govern `record-fence-shape`: a fence carrying no record is refused whatever the caller declared,
+because the dormancy below protects callers obeying a rule on another release clock and nobody
+writes an unreadable fence on purpose.
+
+The `record-in-comment` refusal is reachable only through a capability the caller declares in the
+`x-forge-capabilities` request header: a client that sends `record-route` is saying it has
+somewhere else to write, so a fence from it is a bug and is refused 400. A client that declares
+nothing is written and answered with a warning carrying the same sentence. That is deliberate — the
+writer lives in a second repo on a different release clock, and a refusal that landed before its
+callers could obey would break every one of them on a deploy they did not ask for.
+
+The MCP comment door declares nothing and cannot: a tool handler is given its arguments and no
+request context, so a fence written through `forge_comments` that parses is warned and never
+refused. It is still the wrong place to put a record. A fence that parses as nothing is refused
+there too — that refusal reads no header.

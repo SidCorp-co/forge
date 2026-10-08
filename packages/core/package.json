@@ -24,8 +24,9 @@
     "public"
   ],
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "gen:guides": "node scripts/gen-guide-content.mjs",
+    "dev": "node scripts/gen-guide-content.mjs && tsx watch --env-file-if-exists=.env src/index.ts",
+    "build": "node scripts/gen-guide-content.mjs && tsc -p tsconfig.build.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "measure:catalog-cost": "tsx --env-file-if-exists=.env src/assistant/measure-catalog-cost.ts",
     "bench:assistant": "tsx --env-file-if-exists=.env src/assistant/bench-assistant.ts",
