@@ -1,6 +1,7 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
-import { say } from '@forge/contracts/said';
+import { type Said, say, verbatim } from '@forge/contracts/said';
 import type { BindingRole } from '../../db/schema.js';
+import { healthOf, thrownSaid } from '../health-said.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -44,7 +45,7 @@ const PROBE_TIMEOUT_MS = 8000;
 async function observeInboundEndpoint(
   connectionId: string,
   args: { appId: string; privateKey: string; repository: string; apiBaseUrl?: string },
-): Promise<{ fault: string | null; url: string | null }> {
+): Promise<{ fault: Said | null; url: string | null }> {
   const hook = await readAppHookConfig({
     appId: args.appId,
     privateKey: args.privateKey,
@@ -55,20 +56,24 @@ async function observeInboundEndpoint(
     await updateConnection(connectionId, {
       inboundEndpointObserved: { url: null, active: null, observedAt, readError: hook.reason },
     });
-    return { fault: hook.reason, url: null };
+    // the hook reader's own sentence, carried as it wrote it
+    return { fault: verbatim(hook.reason), url: null };
   }
   await updateConnection(connectionId, {
     inboundEndpointObserved: { url: hook.url, active: hook.active, observedAt },
   });
   if (hook.url === null || hook.url === '') {
     return {
-      fault: `${args.repository} answers, and this App holds no webhook address at all, so GitHub will never call in. Nothing that depends on a delivery — the pull request projection, the observed merge — can run for any project on this App.`,
+      fault: say('integrations.health.github.noWebhook', { repository: args.repository }),
       url: null,
     };
   }
   if (hook.active === false) {
     return {
-      fault: `${args.repository} answers, and this App's webhook at ${hook.url} is switched off on GitHub's side, so GitHub will never call in. Switch it back on under the App's Settings, Webhook.`,
+      fault: say('integrations.health.github.webhookOff', {
+        repository: args.repository,
+        url: hook.url,
+      }),
       url: hook.url,
     };
   }
@@ -82,7 +87,7 @@ async function readRepository(
   cred: InstallationCred,
   owner: string,
   repo: string,
-): Promise<{ body: { full_name?: string; default_branch?: string } } | { refused: string }> {
+): Promise<{ body: { full_name?: string; default_branch?: string } } | { refused: Said }> {
   try {
     const res = await installationOctokit(cred).request({
       method: 'GET',
@@ -95,15 +100,15 @@ async function readRepository(
     if (status === undefined) throw err;
     if (status === 403) {
       return {
-        refused: `the App is installed but not permitted on ${owner}/${repo} (HTTP 403) — grant the permission on the installation rather than reconnecting`,
+        refused: say('integrations.health.github.notPermitted', { repository: `${owner}/${repo}` }),
       };
     }
     if (status === 404) {
       return {
-        refused: `${owner}/${repo} is not among the repositories this App was installed on`,
+        refused: say('integrations.health.github.notAmong', { repository: `${owner}/${repo}` }),
       };
     }
-    return { refused: `GitHub returned HTTP ${status}` };
+    return { refused: say('integrations.health.github.http', { status: String(status) }) };
   }
 }
 
@@ -114,9 +119,12 @@ async function readRepository(
  */
 async function grantShortfall(
   args: Parameters<typeof checkInstallationGrant>[0],
-): Promise<string | null> {
+): Promise<Said | null> {
   const grant = await checkInstallationGrant(args);
-  return grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
+  // the grant reader's own sentences, carried as it wrote them
+  const said =
+    grant.kind === 'unread' ? grant.reason : grant.kind === 'short' ? grant.message : null;
+  return said === null ? null : verbatim(said);
 }
 
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
@@ -142,18 +150,18 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     const { appId, privateKey } = ctx.secrets ?? {};
     // The sentence goes to the connection beside the status (ISS-1140): a verdict with no why
     // leaves the operator reading `error` an hour later with nothing to act on.
-    const finish = async (status: HealthCheckResult['status'], message?: string) => {
+    const finish = async (status: HealthCheckResult['status'], says?: Said) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
-        lastHealthDetail: message ?? null,
+        lastHealthDetail: says ?? null,
         lastHealthAt: new Date(),
       });
-      return message === undefined ? { status } : { status, message };
+      return healthOf(status, says);
     };
     if (!appId || !privateKey)
-      return finish('error', 'this connection holds no GitHub App credential');
-    if (!installationId) return finish('error', 'the App is not installed for this binding');
-    if (!owner || !repo) return finish('error', 'no owner/repo configured for this binding');
+      return finish('error', say('integrations.health.github.noCredential'));
+    if (!installationId) return finish('error', say('integrations.health.github.notInstalled'));
+    if (!owner || !repo) return finish('error', say('integrations.health.github.noRepo'));
 
     const apiBase = ctx.config?.apiBaseUrl ? { apiBaseUrl: ctx.config.apiBaseUrl } : {};
     const repository = `${owner}/${repo}`;
@@ -169,9 +177,15 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
         ...apiBase,
       });
       const faults = [inbound.fault, await grantShortfall({ ...cred, repository })].filter(
-        (f): f is string => f !== null,
+        (f): f is Said => f !== null,
       );
-      if (faults.length > 0) return finish('degraded', faults.join(' '));
+      const [first, second] = faults;
+      if (first) {
+        return finish(
+          'degraded',
+          second ? say('integrations.health.both', { first, second }) : first,
+        );
+      }
       await finish('ok');
       return {
         status: 'ok',
@@ -184,9 +198,9 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       };
     } catch (err) {
       if (err instanceof GitHubAuthError) {
-        return finish(err.status === 401 ? 'needs_reauth' : 'error', err.message);
+        return finish(err.status === 401 ? 'needs_reauth' : 'error', verbatim(err.message));
       }
-      return finish('error', err instanceof Error ? err.message : String(err));
+      return finish('error', thrownSaid(err));
     }
   },
 

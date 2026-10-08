@@ -1,5 +1,6 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
-import { say } from '@forge/contracts/said';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
+import { healthOf, thrownSaid } from '../health-said.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
@@ -68,13 +69,15 @@ async function observeHooks(
   base: string,
   path: string,
   token: string,
-): Promise<string | null> {
+): Promise<Said | null> {
   const observedAt = new Date().toISOString();
   const hooks = await probe(base, `${path}/hooks`, token);
   if (!hooks.ok) {
-    const readError = `GitLab answered HTTP ${hooks.status} listing the project's webhooks — reading them takes the Maintainer role`;
+    const readError = say('integrations.health.gitlab.hooksUnread', {
+      status: String(hooks.status),
+    });
     await updateConnection(ctx.connectionId, {
-      inboundEndpointObserved: { url: null, active: null, observedAt, readError },
+      inboundEndpointObserved: { url: null, active: null, observedAt, readError: sayEn(readError) },
     });
     return readError;
   }
@@ -85,11 +88,16 @@ async function observeHooks(
     inboundEndpointObserved: { url: hook?.url ?? null, active: hook ? true : null, observedAt },
   });
   if (!hook) {
-    return `the GitLab project holds no webhook, so GitLab will never call in — add one at ${expected ?? "this core's /api/webhooks/in/<project slug>"} with the binding's secret token`;
+    return say('integrations.health.gitlab.noHook', {
+      url: expected === null ? say('integrations.health.gitlab.hookPath') : verbatim(expected),
+    });
   }
   const missing = NEEDED_HOOK_EVENTS.filter((e) => hook[e] !== true);
   return missing.length > 0
-    ? `the GitLab webhook at ${hook.url} does not send ${missing.join(', ')}, so Forge cannot see every push, merge request and pipeline — tick them on the hook`
+    ? say('integrations.health.gitlab.hookMissing', {
+        url: String(hook.url),
+        events: missing.join(', '),
+      })
     : null;
 }
 
@@ -105,23 +113,19 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const finish = async (
       status: HealthCheckResult['status'],
-      message?: string,
+      says?: Said,
       diagnostics?: Record<string, unknown>,
     ) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
-        lastHealthDetail: message ?? null,
+        lastHealthDetail: says ?? null,
         lastHealthAt: new Date(),
       });
-      return {
-        status,
-        ...(message === undefined ? {} : { message }),
-        ...(diagnostics ? { diagnostics } : {}),
-      };
+      return healthOf(status, says, diagnostics);
     };
     const base = (ctx.config?.baseUrl ?? GITLAB_DEFAULT_BASE_URL).replace(/\/+$/, '');
     const primary = ctx.secrets?.token;
-    if (!primary) return finish('error', 'this connection holds no GitLab access token');
+    if (!primary) return finish('error', say('integrations.health.gitlab.noToken'));
     const { projectPath, projectId } = ctx.config ?? {};
     const path = projectPath
       ? `/projects/${encodeURIComponent(projectPath)}`
@@ -139,29 +143,36 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       }
       if (!read.ok) {
         if (read.status === 401)
-          return finish(
-            'needs_reauth',
-            `GitLab does not recognise this token (HTTP 401 on ${path})`,
-          );
+          return finish('needs_reauth', say('integrations.health.gitlab.unrecognised', { path }));
         if (read.status === 403) {
           return finish(
             'needs_scope',
-            `GitLab recognises this token and refuses ${path} (HTTP 403) — it needs the \`api\` scope and at least Developer on the project`,
+            say('integrations.health.gitlab.needsScope', { path, scope: 'api' }),
           );
         }
         if (read.status === 404) {
           return finish(
             'error',
-            `${projectPath ?? projectId} is not a project this token can see on ${base} (HTTP 404)`,
+            say('integrations.health.gitlab.notVisible', {
+              project: String(projectPath ?? projectId),
+              base,
+            }),
           );
         }
-        return finish('error', `GitLab returned HTTP ${read.status} for ${path}`);
+        return finish(
+          'error',
+          say('integrations.health.gitlab.http', { status: String(read.status), path }),
+        );
       }
       if (path === '/user') {
         const user = read.body as { username?: string };
         return finish(
           'error',
-          `the token is valid (as ${user.username ?? 'an unnamed user'}) and this binding names no GitLab project`,
+          say('integrations.health.gitlab.noProject', {
+            user: user.username
+              ? verbatim(user.username)
+              : say('integrations.health.gitlab.unnamedUser'),
+          }),
         );
       }
       const project = read.body as { path_with_namespace?: string; default_branch?: string };
@@ -173,7 +184,7 @@ const gitlabAdapterMethods: IntegrationAdapterMethods<GitLabConfig, GitLabSecret
       if (fault) return finish('degraded', fault, diagnostics);
       return finish('ok', undefined, diagnostics);
     } catch (err) {
-      return finish('error', err instanceof Error ? err.message : String(err));
+      return finish('error', thrownSaid(err));
     }
   },
 

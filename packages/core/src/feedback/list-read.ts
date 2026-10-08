@@ -422,6 +422,7 @@ export function summaryOf(
     id: r.id,
     key: feedbackKey(r.fbSeq),
     title: withhold ? `${feedbackKey(r.fbSeq)} (${WITHHELD})` : r.title,
+    writtenLang: withhold ? null : r.writtenLang,
     kind: r.kind,
     severity: r.severity,
     status: r.status,

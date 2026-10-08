@@ -16,6 +16,7 @@ import {
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { NodeRef } from '@forge/contracts/workflow-health';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackDecisions } from '../db/schema-feedback.js';
@@ -23,6 +24,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
@@ -194,6 +196,8 @@ export async function preparedFeedback(
   projectId: string,
   actor: FeedbackActor,
   request: CreateFeedbackRequest,
+  /** The language of text copied from another row, which is that row's and never the copier's. */
+  copiedLang?: { writtenLang: WrittenLang | null },
 ): Promise<{ ok: true; values: NewFeedback } | { ok: false; refusals: Refusal[] }> {
   const count = targetCountRefusal(request, request.whereSeen);
   if (count) return { ok: false, refusals: [count] };
@@ -225,6 +229,17 @@ export async function preparedFeedback(
       reporterAgency: actor.agency,
       scrubbed: title.scrubbed,
       redactions: title.redactions + (body?.redactions ?? 0) + (whereSeen?.redactions ?? 0),
+      writtenLang:
+        request.writtenLang ??
+        (copiedLang
+          ? copiedLang.writtenLang
+          : await writtenLangFor(
+              actor,
+              projectId,
+              null,
+              undefined,
+              [title.text, body?.text].join('\n'),
+            )),
     },
   };
 }

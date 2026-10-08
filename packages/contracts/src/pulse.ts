@@ -3,6 +3,7 @@
 // output any good. Core composes it (`me/pulse-*.ts`), the overview dashboard renders it.
 
 import type { FailureCause } from "./failure-causes.js";
+import type { Said } from "./said.js";
 import type { PulseActionRow } from "./needs-you.js";
 
 /** A set the response counts in full and names only the first `shown.length` of. */
@@ -56,6 +57,8 @@ export interface PulseLiveGap {
 	baseBranch: string | null;
 	deploysFrom: string;
 	reason: string;
+	/** `reason` as said: core's own gaps by key, a reading's refusal verbatim. */
+	says: { reason: Said };
 }
 
 export interface PulseProjectIdentity {

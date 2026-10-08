@@ -7,6 +7,7 @@
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import type { RequirementSpec } from '@forge/contracts/requirements';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
@@ -18,6 +19,7 @@ import {
   requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
@@ -36,6 +38,8 @@ export interface RevisionWrite {
   criteria: CriterionInput[];
   /** The accepted suggestion this revision is the effect of (suggestion-lifecycle step accepted). */
   fromSuggestionId?: string | undefined;
+  /** The language its reason, summary and spec are written in, as declared; absent, derived. */
+  writtenLang?: WrittenLang | undefined;
 }
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
@@ -159,6 +163,13 @@ export async function createRequirementIn(
     authorId: (input.author ?? actor).userId,
     authorAgency: (input.author ?? actor).agency,
     fromSuggestionId: write.fromSuggestionId ?? null,
+    writtenLang: await writtenLangFor(
+      input.author ?? actor,
+      projectId,
+      write.writtenLang,
+      tx,
+      [write.reason, write.changeSummary, write.tldr].join('\n'),
+    ),
   });
   if (input.designs?.length) {
     await tx.insert(requirementWorkflows).values(
@@ -231,8 +242,8 @@ export async function newRevisionIn(
     .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
     .from(requirementRevisions)
     .where(eq(requirementRevisions.requirementId, requirementId));
-  await tx.insert(requirementRevisions).values(
-    newRevisionRow({
+  await tx.insert(requirementRevisions).values({
+    ...newRevisionRow({
       requirementId,
       revision: next,
       head: input.head,
@@ -241,7 +252,14 @@ export async function newRevisionIn(
       landing: input.landing,
       at: new Date(),
     }),
-  );
+    writtenLang: await writtenLangFor(
+      input.actor,
+      owner.projectId,
+      write.writtenLang,
+      tx,
+      [write.reason, write.changeSummary, write.tldr].join('\n'),
+    ),
+  });
   return writeCriteria(tx, requirementId, next, write.criteria);
 }
 

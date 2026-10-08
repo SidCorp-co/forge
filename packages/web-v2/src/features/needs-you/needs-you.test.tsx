@@ -2,6 +2,7 @@
 // its rows by area in the fixed area order, each row opens what it names (an issue in the list's
 // peek), and the menu's hint names the acts behind a count.
 
+import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "@/test/said";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -13,15 +14,20 @@ import type { NeedsYouItem } from "./types";
 const push = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
-const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({
-  area: "issues",
-  entity: "issue",
-  key: "ISS-7",
-  title: "Answer the agent's question",
-  waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }),
-  touchedAt: null,
-  ...over,
-});
+const item = (over: Partial<NeedsYouItem>): NeedsYouItem => {
+  const title = over.title ?? "Answer the agent's question";
+  return {
+    area: "issues",
+    entity: "issue",
+    key: "ISS-7",
+    title,
+    titleLang: null,
+    waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.answer"), rule: RULE }),
+    touchedAt: null,
+    says: { title: verbatim(title) },
+    ...over,
+  };
+};
 
 describe("the needs-you inbox", () => {
   it("groups its rows by area, in the fixed area order, and drops an empty area", () => {

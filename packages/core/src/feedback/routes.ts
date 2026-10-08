@@ -268,6 +268,7 @@ feedbackRoutes.post(
       actor: actorOf(c),
       audience: body.audience,
       text: body.text,
+      writtenLang: body.writtenLang,
     });
     if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
     const reply: FeedbackResponse = { feedback: out.feedback };

@@ -7,6 +7,7 @@ import {
   REVISION_STATES,
 } from '@forge/contracts/requirements';
 import { REQUIREMENT_CRITERION_FORMS } from '@forge/contracts/suggestions';
+import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -125,8 +126,14 @@ export const requirementRevisions = pgTable(
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
     }),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'requirement_revisions_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     pk: primaryKey({ columns: [t.requirementId, t.revision] }),
     oneCurrentUq: uniqueIndex('requirement_revisions_one_current_uq')
       .on(t.requirementId)

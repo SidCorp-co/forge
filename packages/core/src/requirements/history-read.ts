@@ -29,10 +29,10 @@ const SUGGESTION_LABEL: Record<string, SaidPlainKey> = {
   duplicate: 'requirements.history.what.duplicate',
 };
 
-const RECORD_KIND_LABEL: Record<string, string> = {
-  'record.decision': 'Decision',
-  'record.question': 'Question',
-  'record.answer': 'Answer',
+const RECORD_KIND_LABEL: Record<string, Said> = {
+  'record.decision': say('requirements.history.kind.Decision'),
+  'record.question': say('requirements.history.kind.Question'),
+  'record.answer': say('requirements.history.kind.Answer'),
 };
 
 const HISTORY_LIMIT = 80;
@@ -101,17 +101,21 @@ const SOMEONE = say('requirements.history.who.someone');
 const SIGNER = say('requirements.history.who.signer');
 const AN_AGENT = say('requirements.history.who.agent');
 
-type EntryInput = Omit<RequirementHistoryEntry, 'issue' | 'move' | 'who' | 'text' | 'says'> &
-  Partial<Pick<RequirementHistoryEntry, 'issue' | 'move'>> & { who: Said; text: Said };
+type EntryInput = Omit<
+  RequirementHistoryEntry,
+  'issue' | 'move' | 'who' | 'text' | 'kind' | 'says'
+> &
+  Partial<Pick<RequirementHistoryEntry, 'issue' | 'move'>> & { who: Said; text: Said; kind: Said };
 
-/** A history entry from what it says: its English `who` and `text` rendered from `says`. */
-const entry = ({ who, text, ...e }: EntryInput): RequirementHistoryEntry => ({
+/** A history entry from what it says: its English `who`, `text` and `kind` rendered from `says`. */
+const entry = ({ who, text, kind, ...e }: EntryInput): RequirementHistoryEntry => ({
   issue: null,
   move: null,
   ...e,
+  kind: sayEn(kind),
   who: sayEn(who),
   text: sayEn(text),
-  says: { who, text },
+  says: { who, text, kind },
 });
 
 function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
@@ -121,7 +125,7 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
       at: r.createdAt.toISOString(),
       source: n.sourceOf(r.authorId),
       who: n.who(r.authorId, SOMEONE),
-      kind: 'Revision',
+      kind: say('requirements.history.kind.Revision'),
       text: say(
         r.fromSuggestionId
           ? 'requirements.history.text.wroteSuggested'
@@ -137,7 +141,7 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
         at: r.proposedAt.toISOString(),
         source: n.sourceOf(r.proposedBy ?? r.authorId),
         who: n.who(r.proposedBy ?? r.authorId, SOMEONE),
-        kind: 'Revision',
+        kind: say('requirements.history.kind.Revision'),
         text: say('requirements.history.text.proposed', { r: r.revision }),
       }),
     );
@@ -149,7 +153,7 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
         at: r.decidedAt.toISOString(),
         source: 'person',
         who: n.who(r.decidedBy, SIGNER),
-        kind: 'Decision',
+        kind: say('requirements.history.kind.Decision'),
         text: r.acceptReason
           ? say('requirements.history.text.acceptedWhy', { r: r.revision, rest: r.acceptReason })
           : say('requirements.history.text.accepted', { r: r.revision }),
@@ -167,7 +171,7 @@ const returnEntry = (r: ReturnRow, n: Namer) =>
     at: r.returnedAt.toISOString(),
     source: 'person',
     who: n.who(r.returnedBy, SIGNER),
-    kind: 'Returned',
+    kind: say('requirements.history.kind.Returned'),
     text: say('requirements.history.text.returned', { r: r.revision, rest: r.reason }),
   });
 
@@ -177,7 +181,7 @@ const deferralEntry = (d: DeferralRow, n: Namer) =>
     at: d.decidedAt.toISOString(),
     source: 'person',
     who: n.who(d.decidedBy, SIGNER),
-    kind: 'Decision',
+    kind: say('requirements.history.kind.Decision'),
     text:
       d.act === 'defer'
         ? d.targetPhase
@@ -197,7 +201,7 @@ const baselineEntry = (b: BaselineRow, n: Namer) =>
     at: b.agreedAt.toISOString(),
     source: 'person',
     who: n.who(b.agreedBy, SIGNER),
-    kind: 'Agreed',
+    kind: say('requirements.history.kind.Agreed'),
     text: noted(baselineText(b), readinessNote(b.readiness)),
   });
 
@@ -239,7 +243,7 @@ const moveEntry = (m: MoveRow, n: Namer) =>
     at: m.createdAt.toISOString(),
     source: n.sourceOf(m.actorId),
     who: n.who(m.actorId, SIGNER),
-    kind: 'Decision',
+    kind: say('requirements.history.kind.Decision'),
     text: moveText(m),
   });
 
@@ -278,7 +282,7 @@ function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[
         s.producerKind === 'ba_assistant'
           ? say('requirements.history.who.assistant')
           : n.who(s.producerId, AN_AGENT),
-      kind: 'Suggestion',
+      kind: say('requirements.history.kind.Suggestion'),
       text: say('requirements.history.text.suggested', { what }),
     }),
   ];
@@ -303,7 +307,7 @@ function suggestionEntries(s: SuggestionRow, n: Namer): RequirementHistoryEntry[
         at: s.decidedAt.toISOString(),
         source: 'person',
         who: n.who(s.decidedBy, SOMEONE),
-        kind: 'Decision',
+        kind: say('requirements.history.kind.Decision'),
         text,
       }),
     );
@@ -324,7 +328,7 @@ function activityEntry(
       at: a.createdAt.toISOString(),
       source: 'system',
       who: say('requirements.history.who.forge'),
-      kind: 'Status',
+      kind: say('requirements.history.kind.Status'),
       text: say('standing.empty'),
       issue,
       move: { from: move.from || null, to: move.to },
@@ -337,7 +341,7 @@ function activityEntry(
     at: a.createdAt.toISOString(),
     source: a.actorAgency === 'agent' ? 'agent' : 'person',
     who: a.actorType === 'user' ? n.who(a.actorId, fallback) : fallback,
-    kind: RECORD_KIND_LABEL[a.action] ?? 'Record',
+    kind: RECORD_KIND_LABEL[a.action] ?? say('requirements.history.kind.Record'),
     text: lead ? verbatim(lead) : say('standing.empty'),
     issue,
   });

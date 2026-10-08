@@ -11,11 +11,13 @@ import type {
   FeedbackView,
 } from '@forge/contracts/feedback';
 import { feedbackKey } from '@forge/contracts/feedback';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { db, type Tx } from '../db/client.js';
 import { feedbackMessages } from '../db/schema-feedback.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { userNames } from '../lib/people.js';
 import type { Refusal } from '../lib/refusal.js';
+import { writtenLangFor } from '../lib/written-lang.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { type FeedbackActor, type Row, rowIn } from './read.js';
@@ -91,8 +93,16 @@ export async function sendMessage(input: {
   actor: FeedbackActor;
   audience: FeedbackMessageAudience;
   text: string;
+  writtenLang?: WrittenLang | undefined;
 }): Promise<{ ok: true; feedback: FeedbackView } | { ok: false; refusals: Refusal[] }> {
   const { projectId, actor, audience } = input;
+  const writtenLang = await writtenLangFor(
+    actor,
+    projectId,
+    input.writtenLang,
+    undefined,
+    input.text,
+  );
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const facts = await roleFacts(actor, projectId);
   const forbidden =
@@ -117,6 +127,7 @@ export async function sendMessage(input: {
         recipients: [],
         sentBy: actor.userId,
         sentAgency: actor.agency,
+        writtenLang,
       });
       return null;
     }
@@ -132,6 +143,7 @@ export async function sendMessage(input: {
       recipients,
       sentBy: actor.userId,
       sentAgency: actor.agency,
+      writtenLang,
     });
     await emitEvent(tx, 'feedback.reporterTold', {
       projectId,

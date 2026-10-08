@@ -16,6 +16,11 @@ type IssueNotice = {
   intent?: CommentIntent | undefined;
   parentId?: string | null | undefined;
   announce?: NewComment['announce'];
+  /**
+   * True when the body is the author's own words (a reason, a release note) and so is in the
+   * author's language; absent, the body is Forge's own English and is stored as `'en'`.
+   */
+  authorsWords?: boolean | undefined;
 };
 
 /**
@@ -32,6 +37,7 @@ export async function postIssueNotice(notice: IssueNotice, tx: Tx = db): Promise
       parentId: notice.parentId ?? null,
       intent: notice.intent ?? 'note',
       announce: notice.announce,
+      writtenLang: notice.authorsWords ? undefined : 'en',
     },
     tx,
   );

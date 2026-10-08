@@ -65,7 +65,7 @@ requirementRoutes.post(
   projectParam,
   strictBody(
     z.strictObject({ title: z.string().trim().min(1).max(500), ...revisionFields }),
-    '{ title, reason, spec?, tldr?, changeSummary?, criteria: [{ body, form? }] } writes REQ-n at revision 1',
+    '{ title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } writes REQ-n at revision 1',
   ),
   async (c) => {
     const { title, ...write } = c.req.valid('json');
@@ -95,7 +95,7 @@ requirementRoutes.post(
       title: z.string().trim().min(1).max(500),
       ...revisionFields,
     }),
-    '{ contract: "<provider>/<contract>", title, reason, spec?, tldr?, changeSummary?, criteria: [{ body, form? }] } lands a draft requirement in the provider',
+    '{ contract: "<provider>/<contract>", title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } lands a draft requirement in the provider',
   ),
   async (c) => {
     const { contract, title, ...write } = c.req.valid('json');

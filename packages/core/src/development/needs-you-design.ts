@@ -5,15 +5,15 @@
  */
 
 import type { NeedsYouEntity } from '@forge/contracts/needs-you';
-import { say } from '@forge/contracts/said';
+import { say, verbatim } from '@forge/contracts/said';
 import type { Standing } from '@forge/contracts/standing';
 import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
+import { composedTitle, type RowTitle, writtenTitle } from './row-title.js';
 
-interface DesignRow {
+interface DesignRow extends RowTitle {
   entity: NeedsYouEntity;
   key: string;
-  title: string;
   standing: Standing;
   touchedAt: string | null;
 }
@@ -24,7 +24,9 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
     return {
       entity: 'workflow',
       key: h.flow,
-      title: `${p.title} · revision ${p.revision} proposed`,
+      ...composedTitle(
+        say('needsYou.title.designProposed', { title: verbatim(p.title), revision: p.revision }),
+      ),
       standing: { attentionGroup: 'needs_you', waitingOn: p.waitingOn },
       touchedAt: p.proposedAt,
     };
@@ -33,7 +35,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
   return {
     entity: 'workflow',
     key: h.flow,
-    title: h.flow,
+    ...writtenTitle(h.flow, null),
     standing: {
       attentionGroup: 'needs_you',
       waitingOn: waitingOn(

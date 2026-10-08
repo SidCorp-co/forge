@@ -5,6 +5,7 @@
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
+import { Written } from "@/lib/i18n/written";
 import {
   ActorChip,
   AGENT_TINT,
@@ -66,7 +67,7 @@ function Overview({ d, projectId }: { d: RequirementDetail; projectId: string })
         <ViewHeading right={shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
           {t("requirements.overview.summary")}
         </ViewHeading>
-        {summary ? <p className="max-w-[80ch] text-15 leading-relaxed text-fg">{summary}</p> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
+        {summary ? <Written className="block max-w-[80ch] text-15 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
         {goalBeyond ? (
           <details className="mt-2 max-w-[72ch]">
             <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.overview.fullGoal")}</summary>
@@ -150,7 +151,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
           {proposed ? <PendingBadge /> : null}
         </span>
       </ViewHeading>
-      <p className="max-w-[80ch] text-14 leading-relaxed">{open.changeSummary ?? open.reason}</p>
+      <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
       {open.changeSummary && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
       <div className="mt-3">
         <FieldLabel>{t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}</FieldLabel>

@@ -439,6 +439,7 @@ function revisionView(
     returnReason: r.returnReason,
     acceptReason: r.acceptReason,
     fromSuggestionId: r.fromSuggestionId,
+    writtenLang: r.writtenLang,
     criteria: liveAt(criteria, r.revision).map(criterionView),
   };
 }

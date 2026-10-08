@@ -1,5 +1,7 @@
+import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { healthOf } from '../integrations/health-said.js';
 import {
   adapterOrRefuse,
   applySecretsPatch,
@@ -144,7 +146,12 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
     TEST_PROBE_TIMEOUT_MS,
   );
   if (result === null) {
-    return c.json({ status: 'error', message: 'healthcheck timed out after 10s' });
+    return c.json(
+      healthOf(
+        'error',
+        say('integrations.health.timedOut', { seconds: TEST_PROBE_TIMEOUT_MS / 1000 }),
+      ),
+    );
   }
   return c.json(result);
 });

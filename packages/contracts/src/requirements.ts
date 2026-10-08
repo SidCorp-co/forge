@@ -5,6 +5,7 @@
 
 import type { Said } from "./said.js";
 import { z } from "zod";
+import type { WrittenLang } from "./written-lang.js";
 import { REASON_TEXT_MAX } from "./comments.js";
 import type {
 	FeedbackKind,
@@ -429,7 +430,7 @@ export interface RequirementHistoryEntry {
 	kind: string;
 	text: string;
 	/** `who` and `text` as said (`said.ts`): a person's words carried as written, Forge's by key. */
-	says: { who: Said; text: Said };
+	says: { who: Said; text: Said; kind: Said };
 	/** The issue it was recorded on, when it came from one. */
 	issue: string | null;
 	/** A linked issue's status move, as raw statuses the reader labels; else null. */
@@ -674,6 +675,8 @@ export interface RequirementRevision {
 	returnReason: string | null;
 	acceptReason: string | null;
 	fromSuggestionId: string | null;
+	/** The language its reason, summary and spec were written in; null when written before it was kept. */
+	writtenLang: WrittenLang | null;
 	criteria: RequirementCriterion[];
 }
 

@@ -1,5 +1,6 @@
 import { AGENT_REPORT_LIMITS, type AgentReportSeverity } from '@forge/contracts/agent-reports';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import type { Tx } from '../db/client.js';
 import type { IssuePriority, issueCreationChannels } from '../db/schema.js';
 import { activeIssuePrefix, insertIssueRow } from '../issues/index.js';
@@ -17,6 +18,8 @@ interface FiledReport {
   severity: AgentReportSeverity;
   target: string;
   targetRef: string | null;
+  /** The language the report was written in, which an issue copying its words keeps. */
+  writtenLang?: WrittenLang | null | undefined;
 }
 
 const PRIORITY: Record<AgentReportSeverity, IssuePriority> = {
@@ -64,6 +67,11 @@ export async function fileIssueIn(
       createdById: actor.userId,
       createdByDeviceId: null,
       createdVia: channel,
+      // the report's words carried whole keep the report's language; a title or description the
+      // filer wrote is theirs, so the language is derived from the filer instead
+      ...(ask.title === undefined && ask.description === undefined && reports.length === 1
+        ? { writtenLang: first.writtenLang ?? null }
+        : {}),
     },
     { actor: { type: 'user', id: actor.userId, agency: actor.agency } },
   );

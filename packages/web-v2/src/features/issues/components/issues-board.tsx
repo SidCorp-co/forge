@@ -45,6 +45,7 @@ import { IssuePeek } from "./issue-peek";
 import { useEtaClock, useEtaSort, useProjectForecast } from "@/features/forecast/hooks";
 import { etaSortValue } from "@/features/forecast/eta";
 import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { Written } from "@/lib/i18n/written";
 
 type BoardMode = "attention" | "module" | "waves";
 
@@ -197,7 +198,7 @@ function Waves({ rows, onPeek, selected }: { rows: IssueStandingRow[]; onPeek: (
           <span className="font-mono text-12 font-semibold text-link">{r.key}</span>
           {issueBadge(r)}
         </span>
-        <span className={cn("text-13 font-medium text-fg", compact ? "truncate" : "line-clamp-2")}>{r.title}</span>
+        <Written className={cn("text-13 font-medium text-fg", compact ? "truncate" : "line-clamp-2")} text={r.title} lang={r.writtenLang} />
         {compact ? null : (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-11-5 text-subtle">
             {r.standing.module ? <span className="font-mono underline decoration-dotted underline-offset-2">{r.standing.module.path}</span> : null}

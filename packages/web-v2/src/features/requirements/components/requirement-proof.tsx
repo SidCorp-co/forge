@@ -3,12 +3,13 @@
 // The full page's views below the facts: the criteria with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
+import { Written } from "@/lib/i18n/written";
 import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, WhoMark } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { copyOr, type Copy, type ProductCopyKey } from "@/lib/i18n/product-copy";
+import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
@@ -260,7 +261,7 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
                   <ActorChip name={r.authorName ?? t("standing.who.itsAuthor")} kind={r.authorKind} size={16} />
                 </span>
               </div>
-              <p className="mt-1 text-13-5">{r.changeSummary ?? r.reason}</p>
+              <Written className="mt-1 block text-13-5" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
               {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
             </div>
             <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={time.dateTime(at)}>
@@ -291,9 +292,6 @@ function entryText(e: RequirementHistoryEntry, issueWord: (s: string) => string,
     </>
   );
 }
-
-/** The record's kind ("Decision", "Question") in the interface language; a kind the locale file lacks reads as core named it. */
-const kindWord = (kind: string, language: string) => copyOr(language, `requirements.history.kind.${kind}`, kind);
 
 const sourceLabel = (t: Copy, s: "all" | HistorySource) => t(`requirements.history.source.${s}` as ProductCopyKey);
 
@@ -329,7 +327,7 @@ export function History({ entries }: { entries: RequirementHistoryEntry[] }) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5 text-12 text-subtle">
                   <b className="text-13 font-semibold text-fg">{said(e.says.who, language)}</b>
-                  <span className="text-12 font-medium text-muted">{kindWord(e.kind, language)}</span>
+                  <span className="text-12 font-medium text-muted">{said(e.says.kind, language)}</span>
                   <span title={time.dateTime(e.at)}>{time.relative(e.at)}</span>
                 </div>
                 <div className="mt-0.5 break-words">{entryText(e, issueWord, language)}</div>

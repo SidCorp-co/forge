@@ -32,7 +32,7 @@ export type PipelineRunStep =
 export type PipelineRunGroup =
   | { source: 'run_group'; issues: string[]; detail: null }
   | { source: 'statuses_at_open'; issues: string[]; detail: null }
-  | { source: 'none'; issues: []; detail: string };
+  | { source: 'none'; issues: []; detail: string; says: { detail: Said } };
 
 function metadataObject(metadata: unknown): Record<string, unknown> | null {
   if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return null;
@@ -46,19 +46,26 @@ function stringsAt(metadata: Record<string, unknown> | null, key: string): strin
   return keys.length === 0 ? null : keys;
 }
 
-const NO_GROUP_DETAIL: Record<Exclude<PipelineRunLane, 'run_session'>, string> = {
-  job: 'a job-lane run carries its one issue in its own column, not a group',
-  master:
-    'a resident master opens its run over no group of issues; each issue it dispatches is carried by a run of its own',
-  system: 'this run was not opened over a group of issues',
+const NO_GROUP_DETAIL: Record<Exclude<PipelineRunLane, 'run_session'>, Said> = {
+  job: say('runs.group.job'),
+  master: say('runs.group.master'),
+  system: say('runs.group.system'),
 };
+
+/** A run with no group, and why, its English rendered from the sentence. */
+const noGroup = (detail: Said): PipelineRunGroup => ({
+  source: 'none',
+  issues: [],
+  detail: sayEn(detail),
+  says: { detail },
+});
 
 /** `runGroup`, which nothing rewrites. A run older than that key falls back to
  *  `runIssueStatuses`, stamped at the same open — members, not order, a jsonb map having none.
  *  The shrunken `runIssues` is never read: on a finished run it is no group, not a smaller one. */
 export function groupOf(row: Pick<RunRow, 'metadata'>, lane: PipelineRunLane): PipelineRunGroup {
   if (lane !== 'run_session') {
-    return { source: 'none', issues: [], detail: NO_GROUP_DETAIL[lane] };
+    return noGroup(NO_GROUP_DETAIL[lane]);
   }
   const metadata = metadataObject(row.metadata);
   const stamped = stringsAt(metadata, RUN_GROUP_METADATA_KEY);
@@ -68,12 +75,7 @@ export function groupOf(row: Pick<RunRow, 'metadata'>, lane: PipelineRunLane): P
   const keys = statuses === null ? [] : Object.keys(statuses);
   if (keys.length > 0) return { source: 'statuses_at_open', issues: keys, detail: null };
 
-  return {
-    source: 'none',
-    issues: [],
-    detail:
-      'this run was opened on the run-session lane before core recorded the group separately from what the run still holds, and every issue it held has since been given back, so the group it was opened over is not recoverable from this row',
-  };
+  return noGroup(say('runs.group.unrecoverable'));
 }
 
 export function laneOf(row: Pick<RunRow, 'issueId' | 'metadata'>): PipelineRunLane {

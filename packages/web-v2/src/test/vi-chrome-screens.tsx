@@ -1,3 +1,4 @@
+import { verbatim } from "@forge/contracts/said";
 import { RULE, say, waitingOn } from "./said";
 import type { ReactElement } from "react";
 import type { NeedsYouItem } from "@/features/needs-you/types";
@@ -27,6 +28,7 @@ import { AGENTS_SCREENS } from "./vi-chrome-agents";
 import { SESSIONS_SCREENS } from "./vi-chrome-sessions";
 import { CONVERSATION_SCREENS } from "./vi-chrome-conversations";
 import { GATE_SCREENS } from "./vi-chrome-gate";
+import { THREADS_SCREENS } from "./vi-chrome-threads";
 import { PROJECT_SETTINGS_SCREENS } from "./vi-chrome-project-settings.fixture";
 import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedbackList, feedbackPeek } from "./vi-chrome-feedback";
 
@@ -36,7 +38,7 @@ import { feedbackDetail, feedbackFacts, feedbackFilingForm, feedbackForms, feedb
 
 const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
 const you = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.cut", { v: "0.1.0", more: null }), rule: RULE });
-const needs = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: `Muc ${key}`, waitingOn: you, touchedAt: "2026-10-07T10:00:00Z" });
+const needs = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: `Muc ${key}`, titleLang: "vi", waitingOn: you, touchedAt: "2026-10-07T10:00:00Z", says: { title: verbatim(`Muc ${key}`) } });
 const row = (key: string, over: Partial<PlanRow> = {}): PlanRow => ({ kind: "requirement", key, title: `Muc ${key}`, release: null, href: `/projects/hop/requirements/${key}`, eta: null, late: null, ...over });
 
 export interface ChromeScreen {
@@ -100,5 +102,5 @@ export const CHROME_SCREENS: ChromeScreen[] = [
   { name: "Feedback facts and history", render: feedbackFacts },
   { name: "Feedback triage and message forms", render: feedbackForms },
   { name: "Feedback filing form", render: feedbackFilingForm },
-  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...QUESTION_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS, ...AUTOMATION_SCREENS, ...AGENTS_SCREENS, ...SESSIONS_SCREENS, ...CONVERSATION_SCREENS, ...GATE_SCREENS, ...PROJECT_SETTINGS_SCREENS,
+  ...SHELL_SCREENS, ...ACCOUNT_SCREENS, ...SHARED_SCREENS, ...ISSUE_SCREENS, ...QUESTION_SCREENS, ...OVERVIEW_SCREENS, ...RUNNER_SCREENS, ...INTEGRATION_SCREENS, ...SETTINGS_SCREENS, ...AUTOMATION_SCREENS, ...AGENTS_SCREENS, ...SESSIONS_SCREENS, ...CONVERSATION_SCREENS, ...GATE_SCREENS, ...PROJECT_SETTINGS_SCREENS, ...THREADS_SCREENS,
 ];

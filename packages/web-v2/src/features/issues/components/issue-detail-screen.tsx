@@ -67,6 +67,7 @@ import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { readStart } from "./start-issue-action";
 import { IssueActions } from "./detail/issue-actions";
+import { Written } from "@/lib/i18n/written";
 import {
   ActivityTab,
   type ActivityThread,
@@ -209,7 +210,7 @@ export function IssueDetailScreen({
         back={{ href: back, label: t("issues.screen.title") }}
         itemKey={issue.displayId}
         keyTitle={issue.id}
-        title={issue.title}
+        title={<Written text={issue.title} lang={issue.writtenLang} />}
         badge={badge}
         action={
           <IssueActions
@@ -238,7 +239,7 @@ export function IssueDetailScreen({
           </FactsRail>
         }
       >
-        <DetailMobileTitle itemKey={issue.displayId} title={<span className="break-words">{issue.title}</span>} badge={badge} />
+        <DetailMobileTitle itemKey={issue.displayId} title={<Written className="break-words" text={issue.title} lang={issue.writtenLang} />} badge={badge} />
         <div className="grid gap-3 px-8 pt-4 empty:hidden max-md:px-4">
           {!blocker && standingQ.data ? <IssueBanner standing={standingQ.data.standing} className="rounded-md" /> : null}
           {blocker && (

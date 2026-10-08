@@ -24,6 +24,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   const total = health.markers.length;
   const groups = markersByKind(health.markers);
   return (
@@ -83,7 +84,7 @@ function HealthGroup({ health, slug }: { health: WorkflowHealth; slug: string })
                         )}
                         <span className="min-w-0 truncate text-subtle">{targetWords(m.target, t)}</span>
                       </span>
-                      <span className="text-muted">{m.reason}</span>
+                      <span className="text-muted">{said(m.says.reason, language)}</span>
                     </li>
                   );
                 })}

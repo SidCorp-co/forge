@@ -1,5 +1,6 @@
-import { say } from '@forge/contracts/said';
+import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
+import { healthOf, thrownSaid } from '../health-said.js';
 import {
   declareIntegration,
   findConnectionById,
@@ -40,8 +41,11 @@ const CONTEXT_QUERY =
   'query ForgeAutoflowContext { apiKeyContext { organization_id stores { id slug name commerce_enabled active_theme_id } } }';
 
 /** How to get a fresh token, said wherever a token is refused. */
-function mintHint(config: AutoflowConfig): string {
-  return `an access token (sat_…) lives 12 hours and is renewed from its refresh token (srt_…) while one is stored; without one, sign in at ${autoflowBaseUrl(config)} through an MCP client of ${autoflowMcpUrl(config)}, pick the workspace and the site${config.shop ? ` "${config.shop}"` : ''}, and store the new token`;
+function mintHint(config: AutoflowConfig): Said {
+  const at = { base: autoflowBaseUrl(config), mcp: autoflowMcpUrl(config) };
+  return config.shop
+    ? say('integrations.health.autoflow.mintHintShop', { ...at, shop: config.shop })
+    : say('integrations.health.autoflow.mintHint', at);
 }
 
 async function settle(
@@ -53,7 +57,7 @@ async function settle(
   await updateConnection(connectionId, {
     ...(config ? { config } : {}),
     lastHealthStatus: status,
-    lastHealthDetail: status === 'ok' ? null : (result.message ?? null),
+    lastHealthDetail: status === 'ok' ? null : (result.says?.message ?? null),
     lastHealthAt: new Date(),
   });
   return result;
@@ -63,20 +67,28 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
   async healthcheck(ctx): Promise<HealthCheckResult> {
     let token = ctx.secrets?.accessToken;
     if (!token) {
-      return settle(ctx.connectionId, 'error', {
-        status: 'error',
-        message: 'no Autoflow access token configured',
-      });
+      return settle(
+        ctx.connectionId,
+        'error',
+        healthOf('error', say('integrations.health.autoflow.noToken')),
+      );
     }
     const url = autoflowGraphqlUrl(ctx.config);
     const refused = (fresh: Extract<AutoflowFreshToken, { kind: 'needs_reauth' }>) =>
-      settle(ctx.connectionId, 'needs_reauth', {
-        status: 'needs_reauth',
-        message: fresh.reason.startsWith('refresh_refused')
-          ? reauthDetail(fresh.reason, autoflowBaseUrl(ctx.config))
-          : `Autoflow access token expired and no refresh token is stored (${fresh.reason}); ${mintHint(ctx.config)}`,
-        diagnostics: { refresh: fresh.reason },
-      });
+      settle(
+        ctx.connectionId,
+        'needs_reauth',
+        healthOf(
+          'needs_reauth',
+          fresh.reason.startsWith('refresh_refused')
+            ? reauthDetail(fresh.reason, autoflowBaseUrl(ctx.config))
+            : say('integrations.health.autoflow.expired', {
+                reason: fresh.reason,
+                hint: mintHint(ctx.config),
+              }),
+          { refresh: fresh.reason },
+        ),
+      );
     try {
       const fresh = await ensureFreshAutoflowToken({
         connectionId: ctx.connectionId,
@@ -117,42 +129,72 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
         );
       }
       if (probe.kind === 'unauthorized') {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `Autoflow refused the access token (${probe.message}); ${mintHint(ctx.config)}`,
-          diagnostics: { httpStatus: probe.status },
-        });
+        return settle(
+          ctx.connectionId,
+          'needs_reauth',
+          healthOf(
+            'needs_reauth',
+            say('integrations.health.autoflow.refused', {
+              why: verbatim(probe.message),
+              hint: mintHint(ctx.config),
+            }),
+            { httpStatus: probe.status },
+          ),
+        );
       }
       if (probe.kind === 'http-error') {
-        return settle(ctx.connectionId, 'error', {
-          status: 'error',
-          message: `Autoflow API error (HTTP ${probe.status}) at ${url}`,
-          diagnostics: { httpStatus: probe.status },
-        });
+        return settle(
+          ctx.connectionId,
+          'error',
+          healthOf(
+            'error',
+            say('integrations.health.autoflow.http', { status: String(probe.status), url }),
+            { httpStatus: probe.status },
+          ),
+        );
       }
       if (probe.kind === 'graphql-error') {
-        return settle(ctx.connectionId, 'error', {
-          status: 'error',
-          message: `Autoflow answered apiKeyContext with an error: ${probe.message}`,
-        });
+        return settle(
+          ctx.connectionId,
+          'error',
+          healthOf(
+            'error',
+            say('integrations.health.autoflow.gqlError', { why: verbatim(probe.message) }),
+          ),
+        );
       }
 
       const apiCtx = probe.data.apiKeyContext as AutoflowApiKeyContext | null | undefined;
       const stores = apiCtx?.stores ?? [];
       // An OAuth access token is pinned to ONE site; anything else is not guessed at.
       if (stores.length !== 1 || !stores[0]) {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `the token resolves to ${stores.length} sites, and an Autoflow access token is minted for exactly one; ${mintHint(ctx.config)}`,
-        });
+        return settle(
+          ctx.connectionId,
+          'needs_reauth',
+          healthOf(
+            'needs_reauth',
+            say('integrations.health.autoflow.sites', {
+              n: stores.length,
+              hint: mintHint(ctx.config),
+            }),
+          ),
+        );
       }
       const store = stores[0];
       if (ctx.config.shop && store.slug !== ctx.config.shop) {
-        return settle(ctx.connectionId, 'needs_reauth', {
-          status: 'needs_reauth',
-          message: `the token was minted for site "${store.slug ?? '(no slug)'}", and this binding names shop "${ctx.config.shop}"; ${mintHint(ctx.config)}`,
-          diagnostics: { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
-        });
+        return settle(
+          ctx.connectionId,
+          'needs_reauth',
+          healthOf(
+            'needs_reauth',
+            say('integrations.health.autoflow.otherSite', {
+              site: store.slug ? verbatim(store.slug) : say('integrations.health.autoflow.noSlug'),
+              shop: ctx.config.shop,
+              hint: mintHint(ctx.config),
+            }),
+            { tokenSite: store.slug ?? null, bindingShop: ctx.config.shop },
+          ),
+        );
       }
 
       const connection = await findConnectionById(ctx.connectionId);
@@ -168,26 +210,28 @@ const autoflowAdapterMethods: IntegrationAdapterMethods<AutoflowConfig, Autoflow
       return settle(
         ctx.connectionId,
         'ok',
-        {
-          status: 'ok',
-          message: store.name ? `Connected to ${store.name}` : 'Autoflow access token is valid',
-          diagnostics: {
+        healthOf(
+          'ok',
+          store.name
+            ? say('integrations.health.connectedTo', { name: store.name })
+            : say('integrations.health.autoflow.valid'),
+          {
             orgId: apiCtx?.organization_id ?? null,
             storeId: store.id != null ? String(store.id) : null,
             storeSlug: store.slug ?? null,
             storeName: store.name ?? null,
             themeId: store.active_theme_id != null ? String(store.active_theme_id) : null,
           },
-        },
+        ),
         resolved,
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
+      const said = thrownSaid(err, true);
       logger.warn(
-        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
+        { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: sayEn(said) },
         'autoflow: healthcheck failed',
       );
-      return settle(ctx.connectionId, 'error', { status: 'error', message });
+      return settle(ctx.connectionId, 'error', healthOf('error', said));
     }
   },
 

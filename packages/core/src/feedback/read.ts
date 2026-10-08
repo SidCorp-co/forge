@@ -138,6 +138,7 @@ function messageViewsOf(
     id: m.id,
     audience: m.audience,
     text: withhold ? WITHHELD : m.body,
+    writtenLang: withhold ? null : m.writtenLang,
     sentBy: m.sentBy,
     sentByName: names.get(m.sentBy) ?? null,
     sentAgency: m.sentAgency,

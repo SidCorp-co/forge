@@ -1,27 +1,12 @@
+import type { Copy } from "@/lib/i18n/product-copy";
 import type { InboxView } from "./routes";
 import type { WorkspaceDraft, WorkspaceRead } from "./types";
 
 export type InboxRow = WorkspaceRead["threads"][number];
 
-export const INBOX_LABEL: Record<InboxView, string> = {
-  "needs-me": "Needs me",
-  waiting: "Waiting on others",
-  overdue: "Overdue",
-  held: "Held",
-  working: "Masters working",
-  answered: "Answered",
-  closed: "Closed",
-};
-
-export const INBOX_TIP: Record<InboxView, string> = {
-  "needs-me": "A project of yours owes these a reply, and nobody has held them",
-  waiting: "A project of yours sent these, and another member still owes the reply",
-  overdue: "A reply is past its due date",
-  held: "Someone held the thread, so the masters on it stop until it is released",
-  working: "A master of one of your projects has drafted the reply and it is not sent yet",
-  answered: "Every recipient owing a reply has sent it",
-  closed: "Withdrawn or superseded",
-};
+/** A view's name and what it holds, in the reader's language. */
+export const inboxLabel = (view: InboxView, t: Copy): string => t(`ecosystem.inbox.${view}`);
+export const inboxTip = (view: InboxView, t: Copy): string => t(`ecosystem.inboxTip.${view}`);
 
 const isHeld = (r: InboxRow) => r.hold?.action === "hold";
 

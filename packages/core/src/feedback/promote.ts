@@ -115,11 +115,17 @@ export async function promoteAgentReport(input: {
   if (request.body === undefined) copied.push('body');
   const said = [report.detail, report.suggestion ? `Suggested: ${report.suggestion}` : null];
   const { agentReport: _source, ...asked } = request;
-  const prepared = await preparedFeedback(projectId, actor, {
-    ...asked,
-    title: request.title ?? report.summary.slice(0, FEEDBACK_LIMITS.title),
-    body: request.body ?? (said.filter(Boolean).join('\n\n') || undefined),
-  });
+  const prepared = await preparedFeedback(
+    projectId,
+    actor,
+    {
+      ...asked,
+      title: request.title ?? report.summary.slice(0, FEEDBACK_LIMITS.title),
+      body: request.body ?? (said.filter(Boolean).join('\n\n') || undefined),
+    },
+    // the report's own words carried over are in the report's language; the promoter's own are theirs
+    copied.length === 2 ? { writtenLang: report.writtenLang } : undefined,
+  );
   if (!prepared.ok) return prepared;
   let id = '';
   const refusals = await inTx(async (tx) => {

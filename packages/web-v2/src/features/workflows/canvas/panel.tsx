@@ -7,7 +7,8 @@ import type { WorkflowStep } from "../types";
 import { type Canvas, type CanvasEdge, edgeText, purposeOf, titleOf } from "./model";
 import { HealthMark } from "../components/health-parts";
 import { rewriteWords } from "../health";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { said } from "@/lib/i18n/said";
 import { TypeChip } from "./nodes";
 import type { CanvasHealth } from "./workflow-canvas";
 import { WireframeThumb } from "./wireframe-thumb";
@@ -31,6 +32,7 @@ interface PanelProps {
 /** The selected step's markers, each with its reason, opening its source record. */
 function StepHealth({ health, id }: { health: CanvasHealth; id: string }) {
   const t = useCopy();
+  const language = useInterfaceLanguage();
   const h = health.nodes.get(id);
   if (!h || (h.markers.length === 0 && !h.rewrite)) return null;
   return (
@@ -51,7 +53,7 @@ function StepHealth({ health, id }: { health: CanvasHealth; id: string }) {
                   <span className="font-mono text-12 text-subtle">{m.source.key}</span>
                 )}
               </span>
-              <span className="text-13 text-muted">{m.reason}</span>
+              <span className="text-13 text-muted">{said(m.says.reason, language)}</span>
             </li>
           );
         })}

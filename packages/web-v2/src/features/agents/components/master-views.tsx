@@ -102,8 +102,13 @@ function outdatedText(m: MasterStanding, language: string): string {
   const o = m.outdated;
   if (!o) return "—";
   const t = productCopy(language);
-  return t("agents.master.outdated", { since: formatRelative(o.since, language), drain: o.draining ? t("agents.master.draining") : "", held: o.heldBy.join("; ") });
+  // a record stored before core wrote its sentences carries only its English
+  const held = o.says ? o.says.heldBy.map((h) => said(h, language)) : o.heldBy;
+  return t("agents.master.outdated", { since: formatRelative(o.since, language), drain: o.draining ? t("agents.master.draining") : "", held: held.join("; ") });
 }
+
+/** Why core judges the pane outdated, in the reader's words where core said it. */
+const outdatedWhy = (o: NonNullable<MasterStanding["outdated"]>, language: string): string => (o.says ? said(o.says.why, language) : o.why);
 
 export const masterRow =
   (href: string, t: Copy, language: string) =>
@@ -172,7 +177,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
         <Fact label={t("agents.master.lastPassFact")}>
           {m.lastPass ? <span title={time.dateTime(m.lastPass.endedAt)}>{lastPassText(m, language, true)}</span> : "—"}
         </Fact>
-        <Fact label={t("agents.master.outdatedFact")}>{m.outdated ? <span title={m.outdated.why}>{outdatedText(m, language)}</span> : "—"}</Fact>
+        <Fact label={t("agents.master.outdatedFact")}>{m.outdated ? <span title={outdatedWhy(m.outdated, language)}>{outdatedText(m, language)}</span> : "—"}</Fact>
       </FactsGroup>
       <FactsGroup title={t("agents.master.slots")}>
         <Fact label={t("agents.master.inUse")}>
@@ -181,7 +186,7 @@ export function MasterFacts({ m }: { m: MasterStanding }) {
         </Fact>
         <Fact label={t("agents.master.max")}>
           {m.slots?.undeclared ? (
-            <span className="text-danger" title={m.slots.undeclared.detail}>
+            <span className="text-danger" title={said(m.slots.undeclared.says.detail, language)}>
               {m.slots.undeclared.code}
             </span>
           ) : m.slots?.max != null ? (

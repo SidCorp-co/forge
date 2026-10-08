@@ -248,6 +248,19 @@ export function saidDisagreements(value: unknown, path = "$"): string[] {
 					if (typeof en === "string" && en !== "") out.push(`${p}.${k}: said nothing beside ${JSON.stringify(en)}`);
 					continue;
 				}
+				if (Array.isArray(s)) {
+					// a list of sentences beside the list of their English, one for one
+					if (!Array.isArray(en) || en.length !== s.length) {
+						out.push(`${p}.${k}: says ${s.length} sentence(s) beside ${JSON.stringify(en)}`);
+						continue;
+					}
+					s.forEach((x, i) => {
+						const parsed = saidSchema.safeParse(x);
+						if (!parsed.success) out.push(`${p}.says.${k}[${i}]: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`);
+						else if (sayEn(parsed.data) !== en[i]) out.push(`${p}.${k}[${i}]: says ${JSON.stringify(sayEn(parsed.data))} beside ${JSON.stringify(en[i])}`);
+					});
+					continue;
+				}
 				const parsed = saidSchema.safeParse(s);
 				if (!parsed.success) {
 					out.push(`${p}.says.${k}: ${parsed.error.issues[0]?.message ?? "not a said sentence"}`);

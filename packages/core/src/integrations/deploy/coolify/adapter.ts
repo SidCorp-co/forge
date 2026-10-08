@@ -1,6 +1,7 @@
-import { say } from '@forge/contracts/said';
+import { type Said, say, sayEn } from '@forge/contracts/said';
 import { traceStep } from '../../../lib/error-tracking.js';
 import { logger } from '../../../lib/logger.js';
+import { healthOf, thrownSaid } from '../../health-said.js';
 import {
   type AdapterContext,
   type DeployTargetDispatch,
@@ -17,7 +18,7 @@ import {
 import { coolifyApplicationNames } from './app-names.js';
 import { verifyCoolifyBindingTarget } from './binding-target.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
+import { CoolifyApiError, coolifyAbilityForRoute, coolifyForbiddenSaid } from './client.js';
 import { coolifyDeploymentRecords } from './deployment-records.js';
 import { buildClient } from './log-fetch.js';
 import {
@@ -45,7 +46,7 @@ interface DeployPayload extends Record<string, unknown> {
 interface CoolifyFailureVerdict {
   health: 'needs_reauth' | 'needs_scope' | 'error';
   /** Operator-facing sentence for a 403; `null` leaves the raw error message. */
-  message: string | null;
+  message: Said | null;
   route: string | null;
   missingAbility: string | null;
 }
@@ -64,7 +65,7 @@ function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
   if (status === 403 && err instanceof CoolifyApiError) {
     return {
       health: 'needs_scope',
-      message: describeCoolifyForbidden(err),
+      message: coolifyForbiddenSaid(err),
       route,
       missingAbility: coolifyAbilityForRoute(route),
     };
@@ -74,9 +75,12 @@ function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
 
 /** The message a failure is recorded and reported under. */
 function describeCoolifyFailure(err: unknown): string {
-  const verdict = classifyCoolifyFailure(err);
-  if (verdict.message) return verdict.message;
-  return err instanceof Error ? err.message : 'unknown error';
+  return sayEn(coolifyFailureSaid(classifyCoolifyFailure(err), err));
+}
+
+/** The failure as said: the 403's own sentence, else what the error wrote. */
+function coolifyFailureSaid(verdict: CoolifyFailureVerdict, err: unknown): Said {
+  return verdict.message ?? thrownSaid(err, true);
 }
 
 interface TargetOutcome {
@@ -193,10 +197,14 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     const started = Date.now();
     const client = buildClient(ctx);
     const targets = ctx.config.targets ?? [];
+    if (targets.length === 0) {
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: 'error',
+        lastHealthAt: new Date(),
+      });
+      return healthOf('error', say('integrations.health.coolify.noTargets'), { httpStatus: null });
+    }
     try {
-      if (targets.length === 0) {
-        throw new Error('coolify: no deploy targets configured');
-      }
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
@@ -211,18 +219,21 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       // connection is healthy again — clear an open breaker so dispatch (and the
       // pipeline auto-deploy) can resume without waiting for the cooldown.
       await maybeResetBreaker(ctx.connectionId);
-      return {
-        status: 'ok',
-        message:
-          targets.length === 1
-            ? `Reached ${names[0]}`
-            : `Reached ${targets.length} resources: ${names.join(', ')}`,
-        diagnostics: { durationMs, targetCount: targets.length },
-      } satisfies HealthCheckResult;
+      return healthOf(
+        'ok',
+        targets.length === 1
+          ? say('integrations.health.coolify.reached', { name: names[0] ?? '' })
+          : say('integrations.health.coolify.reachedMany', {
+              n: targets.length,
+              names: names.join(', '),
+            }),
+        { durationMs, targetCount: targets.length },
+      ) satisfies HealthCheckResult;
     } catch (err) {
       const status = err instanceof CoolifyApiError ? err.status : null;
       const verdict = classifyCoolifyFailure(err);
-      const message = verdict.message ?? (err instanceof Error ? err.message : 'unknown error');
+      const said = coolifyFailureSaid(verdict, err);
+      const message = sayEn(said);
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),
@@ -236,15 +247,11 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         },
         'coolify: healthcheck failed',
       );
-      return {
-        status: verdict.health,
-        message,
-        diagnostics: {
-          httpStatus: status,
-          ...(verdict.route ? { route: verdict.route } : {}),
-          ...(verdict.missingAbility ? { missingAbility: verdict.missingAbility } : {}),
-        },
-      } satisfies HealthCheckResult;
+      return healthOf(verdict.health, said, {
+        httpStatus: status,
+        ...(verdict.route ? { route: verdict.route } : {}),
+        ...(verdict.missingAbility ? { missingAbility: verdict.missingAbility } : {}),
+      }) satisfies HealthCheckResult;
     }
   },
 

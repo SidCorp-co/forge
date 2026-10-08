@@ -10,6 +10,7 @@ import { feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
+import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
@@ -100,6 +101,7 @@ export const entityCommentColumns = {
   parentId: comments.parentId,
   intent: comments.intent,
   decision: comments.decision,
+  writtenLang: comments.writtenLang,
   createdAt: comments.createdAt,
   updatedAt: comments.updatedAt,
 } as const;
@@ -113,6 +115,7 @@ export interface EntityCommentRow extends CommentArc {
   parentId: string | null;
   intent: CommentIntent;
   decision: DecisionFields | null;
+  writtenLang: WrittenLang | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -151,6 +154,7 @@ export function entityCommentView(
     body: withhold ? null : row.body,
     format: row.format,
     decision: withhold ? null : row.decision,
+    writtenLang: withhold ? null : row.writtenLang,
     parentId: row.parentId,
     author: { id: row.authorId, name: person?.name ?? null, agency },
     withheld: withhold,

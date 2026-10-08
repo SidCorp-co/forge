@@ -6,6 +6,7 @@ import {
   FEEDBACK_SEVERITIES,
   FEEDBACK_STATUSES,
 } from '@forge/contracts/feedback';
+import { WRITTEN_LANGS } from '@forge/contracts/written-lang';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
@@ -120,8 +121,14 @@ export const feedback = pgTable(
     dedupKey: text('dedup_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'feedback_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     arcChk: check(
       'feedback_arc_chk',
       sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
@@ -317,8 +324,14 @@ export const feedbackMessages = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     sentAgency: text('sent_agency', { enum: ['human', 'agent'] }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
+    writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
   },
   (t) => ({
+    writtenLangChk: check(
+      'feedback_messages_written_lang_chk',
+      sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
+    ),
     audienceChk: check(
       'feedback_messages_audience_chk',
       sql`${t.audience} IN (${inList(FEEDBACK_MESSAGE_AUDIENCES)})`,
