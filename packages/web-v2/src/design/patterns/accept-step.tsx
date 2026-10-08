@@ -10,6 +10,8 @@ export interface AcceptStepProps {
   confirmLabel: string;
   /** One line saying what confirming does, read before it is pressed. */
   consequence?: string;
+  /** The reason field's accessible label, named for the act ("Why it is agreed, …"); an accept's by default. */
+  reasonLabel?: string;
   loading?: boolean;
   /** The trimmed reason, or undefined where the field was left empty. */
   onConfirm: (reason: string | undefined) => void;
@@ -17,11 +19,15 @@ export interface AcceptStepProps {
 }
 
 /**
- * The confirm step every accept opens (ISS-281, FB-16): what accepting does, the person's reason and
- * the authority they accept under, then the act or Cancel. The reason is optional, as every accept
- * route keeps it (ISS-84); where it is given it is sent and kept on the act.
+ * The confirm step an accept of work opens (ISS-281, FB-16): what accepting does, the person's reason
+ * and the authority they accept under, then the act or Cancel. The reason is optional, as every accept
+ * route keeps it (ISS-84); where it is given it is sent and kept on the act. Three accepts do not open
+ * it: a release Approve (`release-batch/approvals.ts:parseDecision` refuses a reason on an approve), a
+ * design Approve ("Approve with a note" carries its conditions, FB-68) and an invitation accept, which
+ * is membership rather than an act on work. While it is open, the button that opened it is off, so a
+ * second press cannot close it and drop the typed reason; Cancel closes it.
  */
-export function AcceptStep({ confirmLabel, consequence, loading = false, onConfirm, onCancel }: AcceptStepProps) {
+export function AcceptStep({ confirmLabel, consequence, reasonLabel, loading = false, onConfirm, onCancel }: AcceptStepProps) {
   const t = useCopy();
   const [reason, setReason] = useState("");
   return (
@@ -36,7 +42,7 @@ export function AcceptStep({ confirmLabel, consequence, loading = false, onConfi
       {consequence ? <p className="text-12 text-muted">{consequence}</p> : null}
       <span className="flex flex-wrap items-center gap-2">
         <Input
-          aria-label={t("common.acceptWhyLabel")}
+          aria-label={reasonLabel ?? t("common.acceptWhyLabel")}
           placeholder={t("common.acceptWhy")}
           value={reason}
           onChange={(e) => setReason(e.target.value)}

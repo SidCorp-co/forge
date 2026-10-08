@@ -113,7 +113,7 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
       {m.can.accept || m.can.return || m.can.withdraw ? (
         <div className="flex flex-wrap items-center gap-2">
           {m.can.accept ? (
-            <Button type="button" size="sm" variant="primary" disabled={busy} aria-expanded={accepting} onClick={() => setAccepting((v) => !v)}>
+            <Button type="button" size="sm" variant="primary" disabled={busy || accepting} aria-expanded={accepting} onClick={() => setAccepting(true)}>
               {t("common.mockups.accept")}
             </Button>
           ) : null}

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.187] - 2026-10-08
+
+Requirement draft promotion asks only signers who can admit issues
+
+### Fixed
+
+- **Only someone who can admit issues is asked to promote a requirement's drafts.** A signer without that right now sees whom the drafts wait on, and a draft that cannot move is named in plain words.
+
 ## [0.4.0-dev.186] - 2026-10-08
 
 Chat can run a short computation in an isolated sandbox when no report answers

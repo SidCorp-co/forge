@@ -4,7 +4,8 @@
 // head, accept a delivery, defer or drop it — and the BA assistant door (ISS-58) that "Propose change" and the top
 // bar's Ask Agent open. The peek and the full page's header draw the same one primary act from the
 // same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff. Every sign-off
-// (accept, agree, re-pin, accept a delivery) opens a confirm step taking the signer's reason (ISS-281).
+// (accept, agree, re-pin, accept a delivery) opens a confirm step taking the signer's reason (ISS-281); while
+// it is open the button that opened it is off, so a second press cannot close it and drop the typed reason.
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
@@ -128,6 +129,7 @@ export function PrimaryActions({
         label={t("requirements.act.repin")}
         tip={s.waitingOn.says.effect ? said(s.waitingOn.says.effect, lang) : t("requirements.act.repinTip", { moved })}
         consequence={t("requirements.act.repinConsequence", { moved })}
+        reasonLabel={t("requirements.act.repinWhyLabel")}
         act={(reason) => ({ kind: "repin", revision: head.revision, reason })}
       />
     );
@@ -147,6 +149,7 @@ export function PrimaryActions({
         reqKey={d.key}
         label={t("requirements.act.agreeR", { r: head.revision })}
         consequence={t("requirements.act.agreeConsequence", { r: head.revision })}
+        reasonLabel={t("requirements.act.agreeWhyLabel")}
         act={(reason) => ({ kind: "agree", revision: head.revision, reason })}
       />
     );
@@ -158,10 +161,11 @@ export function PrimaryActions({
         label={t("requirements.act.acceptDeliveryR", { r: head.revision })}
         tip={t("requirements.act.acceptDeliveryTip", { r: head.revision })}
         consequence={t("requirements.act.acceptDeliveryConsequence", { r: head.revision })}
+        reasonLabel={t("requirements.act.acceptDeliveryWhyLabel")}
         act={(reason) => ({ kind: "accept-delivery", revision: head.revision, reason })}
       />
     );
-  } else if (d.canSignOff && draftIssuesToPromote(d.status, d.issues).length > 0) {
+  } else if (d.canPromote && draftIssuesToPromote(d.status, d.issues).length > 0) {
     primary = <PromoteDrafts projectId={projectId} d={d} />;
   }
   const deferrable = d.canSignOff && (d.status === "draft" || d.status === "agreed");
@@ -184,6 +188,7 @@ function SignOff({
   label,
   tip,
   consequence,
+  reasonLabel,
   act: build,
 }: {
   projectId: string;
@@ -191,12 +196,14 @@ function SignOff({
   label: string;
   tip?: string;
   consequence: string;
+  /** The reason field's label, named for this act. */
+  reasonLabel: string;
   act: (reason: string | undefined) => RequirementAction;
 }) {
   const act = useRequirementAction(projectId, reqKey);
   const [open, setOpen] = useState(false);
   const button = (
-    <Button type="button" size="sm" variant="primary" disabled={act.isPending} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+    <Button type="button" size="sm" variant="primary" disabled={act.isPending || open} aria-expanded={open} onClick={() => setOpen(true)}>
       {label}
     </Button>
   );
@@ -214,6 +221,7 @@ function SignOff({
           <AcceptStep
             confirmLabel={label}
             consequence={consequence}
+            reasonLabel={reasonLabel}
             loading={act.isPending}
             onCancel={() => setOpen(false)}
             onConfirm={(reason) => act.mutate(build(reason), { onSuccess: () => setOpen(false) })}
@@ -338,10 +346,10 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" disabled={busy} onClick={() => setStep((v) => (v === "accept" ? null : "accept"))} aria-expanded={step === "accept"}>
+        <Button type="button" size="sm" disabled={busy || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
           {t("requirements.act.accept")}
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep((v) => (v === "return" ? null : "return"))} aria-expanded={step === "return"}>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || step !== null} onClick={() => setStep("return")} aria-expanded={step === "return"}>
           {t("requirements.act.reject")}
         </Button>
       </div>
@@ -380,6 +388,9 @@ export function ProposalDecision({ projectId, d, revision }: { projectId: string
           />
           <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
             {t("requirements.act.returnR", { r: revision })}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep(null)}>
+            {t("common.cancel")}
           </Button>
         </form>
       ) : null}

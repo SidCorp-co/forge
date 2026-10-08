@@ -49,6 +49,20 @@ describe("accepting a mockup", () => {
     );
   });
 
+  // ISS-281's judge: a second press on Accept closed the open step and dropped the typed reason
+  it("keeps the typed reason: Accept is off while the step is open, and Cancel closes it", async () => {
+    const calls = panel([mockup()]);
+    const opener = await screen.findByRole("button", { name: "Accept" });
+    fireEvent.click(opener);
+    fireEvent.change(within(screen.getByTestId("accept-step")).getByRole("textbox"), { target: { value: "Matches the spec" } });
+    expect(opener).toBeDisabled();
+    fireEvent.click(opener);
+    expect(within(screen.getByTestId("accept-step")).getByRole("textbox")).toHaveValue("Matches the spec");
+    fireEvent.click(within(screen.getByTestId("accept-step")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("accept-step")).toBeNull();
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+  });
+
   it("shows an accepted mockup's reason as the accept's", async () => {
     panel([mockup({ status: "accepted", reason: "Matches the spec", can: { accept: false, return: false, withdraw: false } } as Partial<MockupView>)]);
     expect(await screen.findByText("Accepted: Matches the spec")).toBeInTheDocument();

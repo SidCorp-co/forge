@@ -4,10 +4,23 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import type { SuggestionBreakdownBlocker, SuggestionBreakdownRead, SuggestionBreakdownSlice } from "../types";
 
 /** What a slice waits on, in the words its accept would write the edge with, or the refusal it would give. */
-function blockerLine(b: SuggestionBreakdownBlocker, t: Copy, language: string): { text: string; refused?: string } {
+function blockerLine(b: SuggestionBreakdownBlocker, t: Copy, language: string, at: { n: number; count: number }): { text: string; refused?: string } {
   if ("slice" in b) return { text: t("requirements.suggestion.afterSlice", { n: b.slice + 1, title: b.title }) };
   if ("issue" in b) return { text: t("requirements.suggestion.afterIssue", { issue: b.issue, title: b.title, status: statusReading("issue", b.status, language).label }) };
+  if (/^\d+$/.test(b.ref)) return { text: sliceRefusal(Number(b.ref) + 1, at, t), refused: b.code };
   return { text: t("requirements.suggestion.wouldRefuse", { ref: b.ref, refusal: b.refusal }), refused: b.code };
+}
+
+/**
+ * A refused wait on another slice, by its 0-based index in the payload, worded with the slice numbers
+ * the list shows (the first is slice 1): Accept refuses a slice naming itself, a slice outside the
+ * breakdown, and the edge that closes a loop (`suggestions/rules.ts:blockerFaults`), and nothing else
+ * among the breakdown's own slices.
+ */
+function sliceRefusal(slice: number, at: { n: number; count: number }, t: Copy): string {
+  if (slice === at.n) return t("requirements.suggestion.wouldRefuseSelf");
+  if (slice > at.count) return t("requirements.suggestion.wouldRefuseOutside", { n: slice, count: at.count });
+  return t("requirements.suggestion.wouldRefuseCycle", { n: slice });
 }
 
 function buildsLine(s: SuggestionBreakdownSlice, t: Copy): string {
@@ -18,7 +31,7 @@ function buildsLine(s: SuggestionBreakdownSlice, t: Copy): string {
     : t("requirements.suggestion.buildsR", { flow: s.builds.flow, r: s.builds.designRevision });
 }
 
-function Slice({ s, n }: { s: SuggestionBreakdownSlice; n: number }) {
+function Slice({ s, n, count }: { s: SuggestionBreakdownSlice; n: number; count: number }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   return (
@@ -37,7 +50,7 @@ function Slice({ s, n }: { s: SuggestionBreakdownSlice; n: number }) {
       </ul>
       <p className={s.buildsRefusal ? "text-danger" : undefined}>{buildsLine(s, t)}</p>
       {s.blockedBy.map((b) => {
-        const line = blockerLine(b, t, language);
+        const line = blockerLine(b, t, language, { n, count });
         return (
           <p key={line.text} className={line.refused ? "text-danger" : undefined} title={line.refused}>
             {line.text}
@@ -71,7 +84,7 @@ export function BreakdownSlices({ read }: { read: SuggestionBreakdownRead | unde
     <div className="mt-1 grid gap-2" data-testid="breakdown-slices">
       <ol className="grid gap-2">
         {numbered(read.slices).map(({ s, n }) => (
-          <Slice key={`${n}. ${s.title}`} s={s} n={n} />
+          <Slice key={`${n}. ${s.title}`} s={s} n={n} count={read.slices.length} />
         ))}
       </ol>
       {read.uncovered.length > 0 ? (

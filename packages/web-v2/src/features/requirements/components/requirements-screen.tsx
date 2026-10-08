@@ -186,7 +186,7 @@ function StripRow({ s, r, projectId, onPeek }: { s: Suggestion; r: RequirementSu
       <span className="min-w-0 truncate">{summaryOf(s, lang)}</span>
       <span className="flex-1" />
       <PendingBadge />
-      <Button type="button" size="sm" disabled={decide.isPending} onClick={() => setAccepting((v) => !v)} aria-expanded={accepting}>
+      <Button type="button" size="sm" disabled={decide.isPending || accepting} onClick={() => setAccepting(true)} aria-expanded={accepting}>
         {t("requirements.assistant.accept")}
       </Button>
       <Button type="button" size="sm" variant="ghost" onClick={() => onPeek(r.key)}>

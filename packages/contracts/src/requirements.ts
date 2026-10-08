@@ -484,8 +484,8 @@ export const PROMOTE_REQUIREMENT_DRAFTS_SHAPE =
 	"{ issues? } — the draft issues to promote to open, each by key or uuid; left out, every draft issue linked to the requirement";
 
 /**
- * A requirement's linked issues still at `draft`, which a holder of requirements.approve promotes to
- * `open`. The standing's "promote N draft issues" line counts these, the promote act moves these, and
+ * A requirement's linked issues still at `draft`, which a holder of requirements.approve and issues.admit
+ * promotes to `open`. The standing's "promote N draft issues" line counts these, the promote act moves these, and
  * the web draws the act from these, so the ask and its act never disagree. Only an agreed or
  * accepted requirement has issues to promote: those are the statuses an issue is linked under.
  */
@@ -814,6 +814,11 @@ export interface RequirementDetail extends RequirementSummary {
 	releases: { version: string; at: string }[];
 	/** The viewer is a person allowed to accept, return or agree. */
 	canSignOff: boolean;
+	/**
+	 * The viewer may promote its draft issues: a signer who also holds issues.admit. Only they are asked
+	 * to (question 3b8292dc); who may admit an issue is not widened by signing.
+	 */
+	canPromote: boolean;
 	history: RequirementHistoryEntry[];
 	readiness: {
 		revision: number;
