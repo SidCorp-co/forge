@@ -12,6 +12,7 @@ const childProcess = require('node:child_process');
 const { syncBuiltinESMExports } = require('node:module');
 const { resolve } = require('node:path');
 const { fileURLToPath } = require('node:url');
+const { promisify } = require('node:util');
 
 const { VERIFY_MEMO_TRACE: out } = process.env;
 
@@ -72,13 +73,43 @@ if (out) {
     for (const name of LISTINGS) watch(host, name, 'L');
   }
 
-  for (const name of SPAWNERS) {
-    const original = childProcess[name];
-    childProcess[name] = function watched(...args) {
+  const arm = (name, args) => {
+    const at = name === 'exec' || name === 'execSync' ? 1 : Array.isArray(args[1]) ? 2 : 1;
+    const next = [...args];
+    if (typeof next[at] === 'function') next.splice(at, 0, {});
+    else if (next[at] === undefined || next[at] === null) next[at] = {};
+    else if (typeof next[at] !== 'object') return args;
+    const env = { ...(next[at].env ?? process.env) };
+    if (!(env.NODE_OPTIONS ?? '').includes(__filename)) {
+      env.NODE_OPTIONS = `${env.NODE_OPTIONS ?? ''} --require=${JSON.stringify(__filename)}`.trim();
+    }
+    env.VERIFY_MEMO_TRACE = out;
+    next[at] = { ...next[at], env };
+    return next;
+  };
+
+  const spawning = (name, original) => {
+    const watched = function watched(...args) {
       const argv = Array.isArray(args[1]) ? args[1] : [];
       noted.add(`S ${JSON.stringify([String(args[0]), ...argv.map(String)])}`);
-      return original.apply(this, args);
+      return original.apply(this, arm(name, args));
     };
+    for (const key of Reflect.ownKeys(original)) {
+      if (['length', 'name', 'prototype', promisify.custom].includes(key)) continue;
+      Object.defineProperty(watched, key, Object.getOwnPropertyDescriptor(original, key));
+    }
+    return watched;
+  };
+
+  for (const name of SPAWNERS) {
+    const original = childProcess[name];
+    childProcess[name] = spawning(name, original);
+    const custom = original[promisify.custom];
+    if (typeof custom === 'function') {
+      Object.defineProperty(childProcess[name], promisify.custom, {
+        value: spawning(name, custom),
+      });
+    }
   }
   syncBuiltinESMExports();
 

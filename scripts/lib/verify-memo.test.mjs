@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -27,6 +28,8 @@ import {
   Tree,
   traceEnv,
 } from './verify-memo.mjs';
+import { externalDeps, externalHolds } from './verify-memo-external.mjs';
+import { gitFault } from './verify-memo-git.mjs';
 import { Memo, memoListing } from './verify-memo-run.mjs';
 import { spawnFault } from './verify-memo-spawn.mjs';
 
@@ -112,10 +115,17 @@ describe('the key', () => {
     commit();
     put('dist/out.js', 'one');
     const built = { roots: ['src'], built: ['dist'] };
-    const before = key(built).key;
-    expect(key(decl).key).toBe(key(decl).key);
+    const [plainBefore, builtBefore] = [key(decl).key, key(built).key];
     put('dist/out.js', 'two');
-    expect(key(built).key).not.toBe(before);
+    expect(key(decl).key).toBe(plainBefore);
+    expect(key(built).key).not.toBe(builtBefore);
+  });
+
+  it('holds the content a link leads to, so a declared link cannot hide an undeclared file', () => {
+    symlinkSync('../docs/n.md', join(root, 'src/link.txt'));
+    const before = key(decl).key;
+    put('docs/n.md', 'the target changed');
+    expect(key(decl).key).not.toBe(before);
   });
 
   it('holds the variables a tool is known to read', () => {
@@ -209,7 +219,15 @@ describe('the store', () => {
 
 describe('the audit of a trace against a declaration', () => {
   const decl = { roots: ['src'], blind: [] };
-  const faults = (lines, d = decl) => audit({ root, decl: d, tree: new Tree(root), lines });
+  const held = {
+    head: 'a'.repeat(40),
+    parent: 'b'.repeat(40),
+    baseRef: 'origin/main',
+    base: `abc0000${'0'.repeat(33)}`,
+    baseTip: 'd'.repeat(40),
+  };
+  const faults = (lines, d = decl) =>
+    audit({ root, decl: d, tree: new Tree(root), lines, git: held });
   const R = (rel) => `R ${join(root, rel)}`;
 
   it('accepts a read inside the roots, and ignores node_modules, .git and the rest of the machine', () => {
@@ -260,11 +278,102 @@ describe('the audit of a trace against a declaration', () => {
     expect(faults([line('ls-files'), line('rev-parse', '--show-toplevel')])).toEqual([]);
     expect(faults([line('merge-base', 'origin/main', 'HEAD')])[0]).toMatch(/no `git`/);
     expect(
-      faults([line('merge-base', 'origin/main', 'HEAD'), line('diff', '--name-only', 'abc')], {
+      faults([line('merge-base', 'origin/main', 'HEAD'), line('diff', '--name-only', 'abc0000')], {
         ...decl,
         git: true,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('the git questions a check may ask', () => {
+  const sha = (c) => c.repeat(40);
+  const state = {
+    head: sha('a'),
+    parent: sha('b'),
+    baseRef: 'origin/main',
+    base: sha('c'),
+    baseTip: sha('d'),
+  };
+  const asks = { git: true };
+  const fault = (decl, ...argv) => gitFault(['git', ...argv], decl, state);
+
+  it('accepts the head, its parent, the base ref and the shas the key holds', () => {
+    expect(fault(asks, 'show', `${sha('b')}:CHANGELOG.md`)).toBeNull();
+    expect(fault(asks, 'diff', '--name-only', sha('c'))).toBeNull();
+    expect(fault(asks, 'merge-base', 'origin/main', 'HEAD')).toBeNull();
+    expect(fault(asks, 'rev-parse', '--verify', '--quiet', 'origin/main^{commit}')).toBeNull();
+    expect(fault(asks, 'log', '-1', '--format=%ct', '--', 'docs/VISION.md')).toBeNull();
+    expect(fault(asks, 'ls-remote', '--symref', 'origin', 'HEAD')).toBeNull();
+  });
+
+  it('refuses a revision the key does not hold, so another branch moving cannot serve a stale verdict', () => {
+    expect(fault(asks, 'show', 'origin/other:CHANGELOG.md')).toMatch(/names origin\/other/);
+    expect(fault(asks, 'diff', '--name-only', sha('e'))).toMatch(/names e+/);
+    expect(fault(asks, 'log', '--first-parent', 'origin/release', '^origin/main')).toMatch(
+      /names origin\/release/,
+    );
+  });
+
+  it('refuses a question to a remote beyond the default branch lookup', () => {
+    expect(fault(asks, 'ls-remote', 'origin')).toMatch(/asks a remote/);
+    expect(fault(asks, 'ls-remote', '--heads', 'origin')).toMatch(/asks a remote/);
+  });
+
+  it('refuses everything that asks history of a check declaring no git', () => {
+    expect(fault({}, 'merge-base', 'origin/main', 'HEAD')).toMatch(/no `git`/);
+    expect(fault({}, 'ls-remote', '--symref', 'origin', 'HEAD')).toMatch(/no `git`/);
+  });
+});
+
+describe('what a check reads outside the checkout', () => {
+  const home = '/nowhere/home';
+  const tmp = '/nowhere/tmp';
+  const deps = (lines) => externalDeps({ root, lines, home, tmp });
+
+  it('holds a config file by content, an absent probe as absent, and nothing of a directory', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    writeFileSync(join(outside, 'cfg'), 'one');
+    const found = deps([
+      `R ${join(outside, 'cfg')}`,
+      `R ${join(outside, 'missing')}`,
+      `R ${outside}`,
+    ]);
+    expect(
+      found.deps.map(([p, sig]) => [p.split('/').pop(), sig === '-' ? '-' : 'content']),
+    ).toEqual([
+      ['cfg', 'content'],
+      ['missing', '-'],
+    ]);
+    expect(externalHolds(found.deps)).toBe(true);
+    writeFileSync(join(outside, 'cfg'), 'two');
+    expect(externalHolds(found.deps)).toBe(false);
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('holds a probe that later appears, which would change what a tool resolves', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const found = deps([`R ${join(outside, 'package.json')}`]);
+    writeFileSync(join(outside, 'package.json'), '{}');
+    expect(externalHolds(found.deps)).toBe(false);
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('skips tool state and the machine, and a path the checkout spells in another case', () => {
+    const lines = [
+      `R ${home}/.npm/_logs/x.log`,
+      `R ${home}/.cache/a`,
+      `R ${tmp}/pipe`,
+      'R /usr/lib/x',
+      `R ${root.toUpperCase()}/NODE_MODULES/X`,
+    ];
+    expect(deps(lines)).toEqual({ deps: [], faults: [] });
+  });
+
+  it('names a directory listed outside the checkout, which no signature holds', () => {
+    expect(deps([`L ${home}/projects`]).faults).toEqual([
+      `listed ${home}/projects/, outside the checkout`,
+    ]);
   });
 });
 
@@ -326,6 +435,11 @@ import { readdirSync, readFileSync } from 'node:fs';
 const files = readdirSync('src');
 const bad = files.filter((f) => readFileSync('src/' + f, 'utf8').includes('BAD'));
 if (process.env.PEEK) readFileSync(process.env.PEEK);
+if (process.env.IMPORT) await import(process.env.IMPORT);
+if (process.env.CHILD) {
+  const { spawnSync } = await import('node:child_process');
+  spawnSync(process.execPath, ['-e', 'require("fs").readFileSync(process.argv[1])', process.env.CHILD], { env: {} });
+}
 console.log('c: ' + files.length + ' file(s) scanned');
 process.exit(bad.length ? 1 : 0);
 `;
@@ -402,6 +516,51 @@ describe('a check taken through the memo', () => {
     expect(done.verdict.code).toBe(2);
     expect(done.verdict.out).toContain('read docs/n.md');
     expect(listEntries(dir)).toEqual([]);
+  });
+
+  it('refuses a module the check imports from outside its declaration', () => {
+    put('docs/rule.mjs', 'export default 1;');
+    const done = run(memo(), { IMPORT: join(root, 'docs/rule.mjs') });
+    expect(done.verdict.code).toBe(2);
+    expect(done.verdict.out).toContain('docs/rule.mjs');
+    expect(listEntries(dir)).toEqual([]);
+  });
+
+  it('refuses a read made by a child that was started with no environment, which is still traced', () => {
+    const done = run(memo(), { CHILD: join(root, 'docs/n.md') });
+    expect(done.verdict.code).toBe(2);
+    expect(done.verdict.out).toContain('read docs/n.md');
+    expect(listEntries(dir)).toEqual([]);
+  });
+
+  it('serves an entry only while the files it read outside the checkout read as they did', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const peek = join(outside, 'user.rc');
+    writeFileSync(peek, 'one');
+    const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
+    const asMemo = () =>
+      new Memo({ root, args: [], env: env(), baseRef: 'main', base: 'x', declarations, places });
+    expect(run(asMemo(), { PEEK: peek }).plan.kind).toBe('miss');
+    expect(asMemo().plan(check).kind).toBe('hit');
+    writeFileSync(peek, 'two');
+    expect(asMemo().plan(check).kind).toBe('miss');
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('leaves a verdict unfiled, and says why, when the store cannot be written', () => {
+    const blocked = join(root, 'a-file');
+    writeFileSync(blocked, 'not a directory');
+    const m = new Memo({
+      root,
+      args: [],
+      env: { ...env(), VERIFY_MEMO_DIR: join(blocked, 'store') },
+      baseRef: 'main',
+      base: 'x',
+      declarations,
+    });
+    const done = run(m);
+    expect(done.verdict.code).toBe(0);
+    expect(m.unfiled[0].reason).toMatch(/the store refused it/);
   });
 
   it('shows the first of a long refusal and counts the rest', () => {

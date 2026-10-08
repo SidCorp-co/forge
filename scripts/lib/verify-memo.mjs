@@ -111,8 +111,12 @@ export function lookup(dir, key) {
     return null;
   }
   if (entry?.schema !== SCHEMA || entry.key !== key || entry.status !== 0) return null;
-  const now = new Date();
-  utimesSync(file, now, now);
+  try {
+    const now = new Date();
+    utimesSync(file, now, now);
+  } catch {
+    // Another worktree evicted it between the read and the touch: the verdict still stands.
+  }
   return entry;
 }
 
@@ -126,6 +130,17 @@ export function store(dir, key, entry, budget) {
   renameSync(tmp, file);
   evict(dir, budget);
   return { stored: true };
+}
+
+/** A link as the bytes it leads to: where it points, and the content there. */
+function linkBody(abs) {
+  let target = 'dangling';
+  try {
+    target = statSync(abs).isFile() ? sha(readFileSync(abs)) : 'not a file';
+  } catch {
+    // Stays dangling: the link's own text still moves the key.
+  }
+  return `link:${readlinkSync(abs)}:${target}`;
 }
 
 /** The checkout as a check sees it: tracked and untracked-unignored files, hashed by content. */
@@ -159,8 +174,8 @@ export class Tree {
     const st = lstatSync(abs, { bigint: true });
     const sig = `${st.size}:${st.mtimeNs}:${st.ino}:${st.mode}`;
     const seen = this.hashes.get(rel);
-    if (seen?.sig === sig) return seen.hash;
-    const body = st.isSymbolicLink() ? `link:${readlinkSync(abs)}` : readFileSync(abs);
+    if (seen?.sig === sig && !st.isSymbolicLink()) return seen.hash;
+    const body = st.isSymbolicLink() ? linkBody(abs) : readFileSync(abs);
     const hash = `${st.mode & 0o111n ? 'x' : '-'}${sha(body)}`;
     this.hashes.set(rel, { sig, hash });
     return hash;
@@ -280,7 +295,7 @@ function stats(root, rel) {
  * Every way a traced run read past its declaration: a file outside the roots, a directory listed
  * that they do not reach, a program asking git what the key does not hold. Empty where it held.
  */
-export function audit({ root, decl, tree, lines }) {
+export function audit({ root, decl, tree, lines, git }) {
   const reachable = new Set([...coveredFiles(tree, decl.roots), ...builtFiles(root, decl.built)]);
   const derived = new Set(decl.derived ?? []);
   const rootDirs = [...decl.roots.map(rootPath), ...(decl.built ?? []), ...(decl.listed ?? [])];
@@ -290,7 +305,7 @@ export function audit({ root, decl, tree, lines }) {
   for (const line of lines) {
     const body = line.slice(2);
     if (line[0] === 'S') {
-      const fault = spawnFault(JSON.parse(body), decl);
+      const fault = spawnFault(JSON.parse(body), decl, git);
       if (fault) faults.add(fault);
       continue;
     }

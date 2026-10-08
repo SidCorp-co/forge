@@ -17,9 +17,11 @@ export function listFiles(root) {
   return { tracked, untracked };
 }
 
-/** What `git: true` adds to a key: the head, and the base the change is judged against. */
+/** What `git: true` adds to a key: the head, its parent, the base ref and where it stands. */
 export function gitState(root, baseRef, base) {
-  return { head: git(root, ['rev-parse', 'HEAD'])?.trim() ?? null, baseRef, base };
+  const rev = (name) =>
+    git(root, ['rev-parse', '--verify', '--quiet', `${name}^{commit}`])?.trim() ?? null;
+  return { head: rev('HEAD'), parent: rev('HEAD~1'), baseRef, base, baseTip: rev(baseRef) };
 }
 
 /** The subcommand of a git argv, past `-c key=value`, `-C dir` and the other leading options. */
@@ -43,28 +45,39 @@ const LS_FILES_FLAGS = new Set([
   '--',
 ]);
 const TREE_REV_PARSE = new Set(['--show-toplevel', '--git-dir', '--is-shallow-repository']);
-/** Answers about history, branches and the base, held only where a declaration says `git: true`. */
-const STATE = new Set([
-  'rev-parse',
-  'symbolic-ref',
-  'ls-remote',
-  'merge-base',
-  'show',
-  'log',
-  'diff',
-  'cat-file',
-  'grep',
-  'rev-list',
-]);
+/** Answers about history and the base, held only where a declaration says `git: true`. */
+const STATE = new Set(['rev-parse', 'merge-base', 'show', 'log', 'diff', 'cat-file', 'rev-list']);
 const INDEX_FLAGS = new Set(['--cached', '--staged']);
 
-const revisions = (args) =>
-  args
-    .slice(0, args.indexOf('--') < 0 ? args.length : args.indexOf('--'))
-    .filter((a) => !a.startsWith('-'));
+const options = (args) => args.filter((a) => a.startsWith('-') && a !== '--');
+const operands = (args) => {
+  const end = args.indexOf('--');
+  return args.slice(0, end < 0 ? args.length : end).filter((a) => !a.startsWith('-'));
+};
+const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
-/** Why a git command a traced run made is not covered by `decl`, or null where it is. */
-export function gitFault(argv, decl) {
+/** The part of a revision argument the key does not hold, or null where it holds all of it. */
+function unheld(arg, state) {
+  const named = new RegExp(`^(HEAD|${literal(state.baseRef ?? 'HEAD')})([~^][0-9]*)*$`);
+  const known = [state.head, state.parent, state.base, state.baseTip].filter(Boolean);
+  const pieces = arg
+    .split(':')[0]
+    .replace(/\^\{(commit|tree)\}$/, '')
+    .split(/\.{2,3}/);
+  return (
+    pieces
+      .map((p) => p.replace(/^\^/, ''))
+      .find(
+        (p) =>
+          p !== '' &&
+          !named.test(p) &&
+          !(/^[0-9a-f]{7,64}$/.test(p) && known.some((k) => k.startsWith(p))),
+      ) ?? null
+  );
+}
+
+/** Why a git command a traced run made is not covered by `decl` and `state`, or null where it is. */
+export function gitFault(argv, decl, state = {}) {
   const { name, args } = gitCommand(argv);
   const said = `git ${name ?? argv.slice(1).join(' ')}`;
   const refuse = (why) => `ran \`${said}\`, ${why}`;
@@ -75,10 +88,33 @@ export function gitFault(argv, decl) {
   }
   if (name === 'check-ignore') return null;
   if (name === 'rev-parse' && args.every((a) => TREE_REV_PARSE.has(a))) return null;
+  if (!decl.git)
+    return refuse(
+      STATE.has(name) || name === 'symbolic-ref' || name === 'ls-remote'
+        ? 'but its declaration has no `git`'
+        : 'which the key cannot hold',
+    );
+  if (name === 'ls-remote') {
+    return args.join(' ') === '--symref origin HEAD'
+      ? null
+      : refuse('which asks a remote the key does not hold');
+  }
+  if (name === 'symbolic-ref') {
+    return args.every((a) => a === '--short' || /^refs\/remotes\/[^/]+\/HEAD$/.test(a))
+      ? null
+      : refuse('which names a ref the key does not hold');
+  }
+  if (name === 'grep')
+    return operands(args).length <= 1 && !options(args).some((a) => INDEX_FLAGS.has(a))
+      ? null
+      : refuse('which reads past the working tree');
   if (!STATE.has(name)) return refuse('which the key cannot hold');
   if (args.some((a) => INDEX_FLAGS.has(a) || a.startsWith(':')))
     return refuse('which reads the index');
-  if (name === 'diff' && revisions(args).length === 0)
+  if (name === 'diff' && operands(args).length === 0)
     return refuse('which with no revision reads the index');
-  return decl.git ? null : refuse('but its declaration has no `git`');
+  const stray = operands(args)
+    .map((a) => unheld(a, state))
+    .find(Boolean);
+  return stray ? refuse(`which names ${stray}, a revision the key does not hold`) : null;
 }

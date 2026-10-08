@@ -37,10 +37,10 @@ export function programsOf(argv) {
 }
 
 /** Why a program a traced run started is not covered by `decl`, or null where it is. */
-export function spawnFault(argv, decl) {
+export function spawnFault(argv, decl, state) {
   const direct = basename(argv[0]) === 'git';
   const programs = programsOf(argv);
-  if (direct) return gitFault(argv, decl);
+  if (direct) return gitFault(argv, decl, state);
   const unseen = programs.find(
     (p) => !(TRACED.has(p) || FED.has(p) || (decl.blind ?? []).includes(p)),
   );

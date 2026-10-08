@@ -16,6 +16,7 @@ import {
   Tree,
   traceEnv,
 } from './verify-memo.mjs';
+import { externalDeps, externalHolds } from './verify-memo-external.mjs';
 import { gitState } from './verify-memo-git.mjs';
 
 const SHOWN = 20;
@@ -28,7 +29,16 @@ const shown = (faults) =>
 
 export class Memo {
   /** @param {{ root: string, args: string[], env?: object, baseRef: string, base: string }} o */
-  constructor({ root, args, env = process.env, baseRef, base, declarations = INPUTS }) {
+  constructor({
+    root,
+    args,
+    env = process.env,
+    baseRef,
+    base,
+    declarations = INPUTS,
+    places = {},
+  }) {
+    this.places = places;
     this.declarations = declarations;
     this.root = root;
     this.env = env;
@@ -62,7 +72,7 @@ export class Memo {
       return { kind: 'bypass' };
     }
     const entry = lookup(this.dir, keyed.key);
-    if (entry) {
+    if (entry && externalHolds(entry.external)) {
       this.served.push(check.label);
       return { kind: 'hit', entry };
     }
@@ -79,7 +89,11 @@ export class Memo {
     const lines = readTrace(plan.dir);
     if (status !== 0 || verdict.code !== 0 || verdict.condition) return verdict;
     const { check, decl } = plan;
-    const faults = audit({ root: this.root, decl, tree: this.tree, lines });
+    const outside = externalDeps({ root: this.root, lines, ...this.places });
+    const faults = [
+      ...audit({ root: this.root, decl, tree: this.tree, lines, git: this.git }),
+      ...outside.faults,
+    ];
     if (faults.length > 0) return this.refuse(check, verdict, faults);
     if (!lines.some((l) => l[0] === 'R' || l[0] === 'L')) {
       this.unfiled.push({ label: check.label, reason: 'no process of it was traced' });
@@ -97,15 +111,19 @@ export class Memo {
       out,
       files: plan.count,
       storedAt: Date.now(),
+      external: outside.deps,
+      audit: decl.blind ? `traced, blind to ${decl.blind.join(', ')}` : 'traced',
     };
-    const filed = store(
-      this.dir,
-      plan.key,
-      { ...entry, audit: decl.blind ? `traced, blind to ${decl.blind.join(', ')}` : 'traced' },
-      this.budget,
-    );
-    if (filed.refused) this.unfiled.push({ label: check.label, reason: filed.refused });
-    else this.filed.push(check.label);
+    try {
+      const filed = store(this.dir, plan.key, entry, this.budget);
+      if (filed.refused) this.unfiled.push({ label: check.label, reason: filed.refused });
+      else this.filed.push(check.label);
+    } catch (err) {
+      this.unfiled.push({
+        label: check.label,
+        reason: `the store refused it: ${err.code ?? err.message}`,
+      });
+    }
     return verdict;
   }
 
