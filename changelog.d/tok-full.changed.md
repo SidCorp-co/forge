@@ -1,1 +1,0 @@
-**A token granted Full can now approve.** Full holds everything your role can do, approvals included; a named token holds an approval only when picked, and the token screen lists the approvals to pick.

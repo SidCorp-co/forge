@@ -1,1 +1,0 @@
-**The BA assistant's revision suggestions are checked when made.** A new criterion given an invented code is refused at once, a proposed revision is no longer held as unrecorded, and a check that cannot run says which and why.

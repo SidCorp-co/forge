@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.193] - 2026-10-08
+
+Full tokens can approve; BA suggestions refuse invented criterion codes and unreadable replies
+
+### Changed
+
+- **Forge's two halves are named.** The Product (requirements, workflows, feedback, releases) leads; Delivery (issue, pipeline, deploy, verdict) conforms to it (`VISION: requirement-leads-delivery`).
+- **A token granted Full can now approve.** Full holds everything your role can do, approvals included; a named token holds an approval only when picked, and the token screen lists the approvals to pick.
+
+### Fixed
+
+- **The BA assistant's revision suggestions are checked when made.** A new criterion given an invented code is refused at once, a proposed revision is no longer held as unrecorded, and a check that cannot run says which and why.
+
 ## [0.4.0-dev.192] - 2026-10-08
 
 Decisions, roadmap lanes and memory read on the item they are about
