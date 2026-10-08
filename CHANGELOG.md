@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.151] - 2026-10-08
+
+Status reports: dated snapshots, weekly schedules, and a History tab of changes
+
+### Added
+
+- **A status report is kept as dated history and sent weekly.** Save a report, or schedule it to members' inboxes in their language; History lists each report and what shipped, became late, stopped waiting or moved date since the last.
+
 ## [0.4.0-dev.150] - 2026-10-08
 
 Malformed question subjects are refused by name; verified releases name their provider

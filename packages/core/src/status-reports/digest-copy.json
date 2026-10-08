@@ -1,0 +1,32 @@
+{
+  "en": {
+    "title": "{project} status report, {date}",
+    "shipped": "Shipped in the last {days} days: {releases} releases, {issues} issues",
+    "shippedNone": "Nothing reached users in the last {days} days.",
+    "late": "Late: {n} ({keys})",
+    "lateNone": "Nothing is late.",
+    "waits": "Waiting on people: {n} ({keys})",
+    "waitsNone": "Nothing waits on a person.",
+    "next": "Next release: {version}, around {date}",
+    "nextShipped": "Next release: {version}, shipped {date}",
+    "nextUndated": "Next release: {version}, no date forecast yet",
+    "nextNone": "No release is being prepared.",
+    "since": "Since the last report ({date}): {shipped} releases shipped, {late} newly late, {cleared} no longer waiting, {moved} dates moved",
+    "first": "The first report this project kept: the next one will say what changed."
+  },
+  "vi": {
+    "title": "Báo cáo tình trạng {project}, {date}",
+    "shipped": "Đã tới người dùng trong {days} ngày qua: {releases} release, {issues} issue",
+    "shippedNone": "Không có gì tới người dùng trong {days} ngày qua.",
+    "late": "Trễ: {n} ({keys})",
+    "lateNone": "Không có gì trễ.",
+    "waits": "Đang chờ người: {n} ({keys})",
+    "waitsNone": "Không có việc nào chờ người.",
+    "next": "Release kế tiếp: {version}, dự kiến khoảng {date}",
+    "nextShipped": "Release kế tiếp: {version}, đã phát hành {date}",
+    "nextUndated": "Release kế tiếp: {version}, chưa dự báo được ngày",
+    "nextNone": "Chưa có release nào đang chuẩn bị.",
+    "since": "So với lần trước ({date}): {shipped} release đã phát hành, {late} mục mới trễ, {cleared} mục không còn chờ, {moved} ngày bị dời",
+    "first": "Đây là báo cáo đầu tiên của dự án: lần sau sẽ nêu những gì đã thay đổi."
+  }
+}

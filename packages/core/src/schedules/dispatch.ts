@@ -23,6 +23,7 @@ import {
 } from './scheduled-session.js';
 import { routeScheduleScriptFire } from './script-dispatch.js';
 import { routeScheduleSentryPullFire } from './sentry-pull-dispatch.js';
+import { routeScheduleStatusReportFire } from './status-report-dispatch.js';
 
 export async function dispatchScheduleRun(
   input: DispatchScheduleInput,
@@ -54,6 +55,8 @@ function routeFire(input: DispatchScheduleInput, fireId: string): Promise<Routed
       return routeScheduleReleaseBatchFire(input, fireId);
     case 'sentry_pull':
       return routeScheduleSentryPullFire(input, fireId);
+    case 'status_report':
+      return routeScheduleStatusReportFire(input, fireId);
     default:
       return routePromptFire(input, fireId);
   }

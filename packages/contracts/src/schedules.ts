@@ -7,6 +7,7 @@ export const SCHEDULE_KINDS = [
 	"script",
 	"release_batch",
 	"sentry_pull",
+	"status_report",
 ] as const;
 export type ScheduleKind = (typeof SCHEDULE_KINDS)[number];
 

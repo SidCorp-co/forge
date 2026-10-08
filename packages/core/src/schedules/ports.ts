@@ -31,7 +31,23 @@ interface SchedulesPorts {
     issueIds: string[];
     userId: string;
   }): Promise<{ runId: string; issueIds: string[] }>;
+  /** Store the period's report read as `viewerUserId` and tell each recipient once, in their language. */
+  sendStatusReport(args: {
+    projectId: string;
+    scheduleId: string;
+    viewerUserId: string;
+    recipients: string[];
+    days: number | undefined;
+    period: Date;
+    timeZone: string | null;
+    fireId: string;
+  }): Promise<StatusReportSendOutcome>;
 }
+
+/** What one period of a `status_report` schedule came to (`status-reports/send.ts`). */
+export type StatusReportSendOutcome =
+  | { status: 'success'; reportId: string; told: number; output: string }
+  | { status: 'refused'; code: string; detail: string };
 
 const slot = portSlot<SchedulesPorts>('schedules', 'provideSchedulesPorts');
 export const provideSchedulesPorts = slot.provide;

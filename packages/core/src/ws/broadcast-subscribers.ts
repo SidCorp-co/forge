@@ -121,6 +121,7 @@ export function registerWsBroadcastSubscribers(): void {
       issueId: p.issueId,
       secondaryIssueId: p.secondaryIssueId ?? null,
       agentSessionId: p.agentSessionId,
+      statusReportId: p.statusReportId ?? null,
     });
 
     if (p.type === 'pipeline_wedge' && p.projectId) {

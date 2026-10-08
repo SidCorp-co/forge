@@ -39,17 +39,20 @@ export function useAttention() {
     const mentions = base?.mentions ?? [];
     const failedJobs = base?.failedJobs ?? [];
     const channelGates = base?.channelGates ?? [];
+    const statusReports = base?.statusReports ?? [];
     return {
       needsYou,
       mentions,
       failedJobs,
       channelGates,
+      statusReports,
       offlineRunners,
       total:
         needsYou.length +
         mentions.length +
         failedJobs.length +
         channelGates.length +
+        statusReports.length +
         offlineRunners.length,
     };
   }, [attentionQ.data, offlineRunners]);

@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const refetch = vi.fn();
-const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], offlineRunners: [], total: 0 };
+const empty = { needsYou: [], mentions: [], failedJobs: [], channelGates: [], statusReports: [], offlineRunners: [], total: 0 };
 const hook = { view: empty, isLoading: false, isError: false, error: null as unknown, refetch };
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));

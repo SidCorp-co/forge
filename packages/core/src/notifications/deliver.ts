@@ -34,6 +34,7 @@ interface DeliverInput {
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   scheduleRunId?: string | null;
+  statusReportId?: string | null;
   severity: string;
   /** The condition's identity. Two emissions sharing it are one condition. */
   resolutionKey?: string | null;
@@ -170,6 +171,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         issueId: input.issueId ?? null,
         secondaryIssueId: input.secondaryIssueId ?? null,
         agentSessionId: input.agentSessionId ?? null,
+        statusReportId: input.statusReportId ?? null,
       });
       return true;
     });
@@ -215,6 +217,7 @@ export async function deliverExisting(
       secondaryIssueId: notifications.secondaryIssueId,
       agentSessionId: notifications.agentSessionId,
       resolutionKey: notifications.resolutionKey,
+      statusReportId: notifications.statusReportId,
     })
     .from(notifications)
     .where(eq(notifications.id, recordId))
@@ -296,6 +299,7 @@ export async function recordAndDeliver(
       secondaryIssueId: input.secondaryIssueId ?? null,
       agentSessionId: input.agentSessionId ?? null,
       scheduleRunId: input.scheduleRunId ?? null,
+      statusReportId: input.statusReportId ?? null,
       groupKey: input.groupKey ?? null,
       inhibitedBy,
       pendingSince: kind === 'condition' ? now : null,

@@ -13,6 +13,8 @@ interface EmitNotificationInput {
   secondaryIssueId?: string | null;
   agentSessionId?: string | null;
   scheduleRunId?: string | null;
+  /** The stored status report a `status_report` notice links to. */
+  statusReportId?: string | null;
   /** Overrides the contract default severity for this single event. */
   severity?: string | null;
   /** Stable per-condition key so a later resolver can auto-clear this row. */

@@ -1,5 +1,5 @@
 import { ISSUE_RESOLVED_STATUSES } from '@forge/contracts/issue-machine';
-import { and, desc, eq, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, notExists, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import {
@@ -120,4 +120,45 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
     )
     .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
     .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
+}
+
+export interface AttentionStatusReportRow {
+  title: string;
+  deliveredAt: Date;
+  reportId: string;
+  projectSlug: string;
+  projectName: string;
+}
+
+/** The status reports sent to the user that they have not opened, newest first, on projects they still read. */
+export function selectStatusReports(userId: string): Promise<AttentionStatusReportRow[]> {
+  return db
+    .select({
+      title: notifications.title,
+      deliveredAt: notificationDeliveries.createdAt,
+      reportId: sql<string>`${notifications.statusReportId}`,
+      projectSlug: projects.slug,
+      projectName: projects.name,
+    })
+    .from(notificationDeliveries)
+    .innerJoin(
+      notificationDeliveryMembers,
+      eq(notificationDeliveryMembers.deliveryId, notificationDeliveries.id),
+    )
+    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+    .innerJoin(projects, eq(projects.id, notifications.projectId))
+    .where(
+      and(
+        eq(notificationDeliveries.userId, userId),
+        isNull(notificationDeliveries.readAt),
+        eq(notifications.type, 'status_report'),
+        isNotNull(notifications.statusReportId),
+        visibleFilter(actorFor(userId), 'project.read', {
+          type: 'project',
+          projectId: notifications.projectId,
+        }),
+      ),
+    )
+    .orderBy(desc(notificationDeliveries.createdAt))
+    .limit(PER_BUCKET);
 }

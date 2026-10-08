@@ -1,6 +1,10 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notificationDeliveries } from '../db/schema.js';
+import {
+  notificationDeliveries,
+  notificationDeliveryMembers,
+  notifications,
+} from '../db/schema.js';
 import { emitEvent } from '../outbox/index.js';
 import { liveConditionOf, ownsDelivery } from './read.js';
 
@@ -46,4 +50,28 @@ export async function deleteDelivery(
   if (live) return { ok: false, code: 'CONDITION_STILL_TRUE', live };
   await db.delete(notificationDeliveries).where(eq(notificationDeliveries.id, deliveryId));
   return { ok: true };
+}
+
+/** The caller's unread deliveries of the notices that carried one status report, marked read on opening it. */
+export async function markStatusReportRead(
+  userId: string,
+  statusReportId: string,
+): Promise<number> {
+  const carrying = db
+    .select({ id: notificationDeliveryMembers.deliveryId })
+    .from(notificationDeliveryMembers)
+    .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+    .where(eq(notifications.statusReportId, statusReportId));
+  const updated = await db
+    .update(notificationDeliveries)
+    .set({ readAt: new Date() })
+    .where(
+      and(
+        eq(notificationDeliveries.userId, userId),
+        isNull(notificationDeliveries.readAt),
+        inArray(notificationDeliveries.id, carrying),
+      ),
+    )
+    .returning({ id: notificationDeliveries.id });
+  return updated.length;
 }

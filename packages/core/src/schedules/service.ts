@@ -6,14 +6,32 @@ import { refusalError } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
 import { projects, type ScheduleKind, schedules } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { refuser } from '../lib/refusal.js';
+import { RefusalError, refuser } from '../lib/refusal.js';
 import { badRequest, notFound } from '../middleware/route-errors.js';
 import { requireHeld } from '../permissions/index.js';
-import { nextRunFor, validateCron } from './cron.js';
+import { isTimeZone, nextRunFor, validateCron } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import { type LastFire, lastFires } from './fires.js';
+import { statusReportParamsOf } from './status-report-params.js';
 
 const refuse = refuser<ScheduleRefusalCode>('SCHEDULE_REFUSED');
+
+/** A zone the cron is read in, refused by name where this runtime cannot read one. */
+function assertTimeZone(timeZone: string | null | undefined): void {
+  if (timeZone && !isTimeZone(timeZone)) {
+    throw new HTTPException(400, {
+      message: `timeZone "${timeZone}" is not an IANA time zone (e.g. "Asia/Ho_Chi_Minh", "UTC")`,
+      cause: { code: 'INVALID_TIME_ZONE' },
+    });
+  }
+}
+
+/** The kinds that run no prompt and no script: each names what it does on its own. */
+const SELF_NAMED_KINDS: ReadonlySet<ScheduleKind> = new Set([
+  'release_batch',
+  'sentry_pull',
+  'status_report',
+]);
 
 // Cross-project routing via `targetProjectSlug` would otherwise let a source
 // project's admin plant jobs on any project they know the slug of. Require the
@@ -78,13 +96,15 @@ interface CreateScheduleInput {
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
+  timeZone?: string | null | undefined;
 }
 
 export async function createSchedule(input: CreateScheduleInput, actorUserId: string) {
   const access = await loadProjectAccess(input.projectId, actorUserId);
   requireHeld(access, 'project.admin');
 
-  const validation = validateCron(input.cron);
+  assertTimeZone(input.timeZone);
+  const validation = validateCron(input.cron, input.timeZone);
   if (!validation.ok) {
     throw new HTTPException(400, {
       message: validation.error ?? 'invalid cron',
@@ -103,15 +123,24 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
   if (kind === 'prompt' && !input.prompt) {
     throw badRequest('prompt is required when kind is "prompt"');
   }
-  if (kind === 'release_batch' || kind === 'sentry_pull') {
+  if (SELF_NAMED_KINDS.has(kind)) {
     const set = (['prompt', 'script'] as const).filter((f) => input[f] != null);
     if (set.length > 0) {
       throw badRequest(`${set.join(', ')} must be omitted when kind is "${kind}"`);
     }
   }
+  if (kind === 'status_report' && input.targetProjectSlug) {
+    throw badRequest(
+      'targetProjectSlug must be omitted when kind is "status_report": it reports on its own project to its members',
+    );
+  }
+  const params =
+    kind === 'status_report'
+      ? await statusReportParamsOf(input.projectId, input.params)
+      : input.params;
 
   const enabled = input.enabled ?? true;
-  const nextRunAt = enabled ? nextRunFor(input.cron) : null;
+  const nextRunAt = enabled ? nextRunFor(input.cron, new Date(), input.timeZone) : null;
 
   const [inserted] = await db
     .insert(schedules)
@@ -125,7 +154,8 @@ export async function createSchedule(input: CreateScheduleInput, actorUserId: st
       enabled,
       targetProjectSlug: input.targetProjectSlug ?? null,
       nextRunAt,
-      params: (input.params as never) ?? null,
+      params: (params as never) ?? null,
+      timeZone: input.timeZone ?? null,
       ownerId: actorUserId,
     })
     .returning();
@@ -143,6 +173,7 @@ interface UpdateSchedulePatch {
   enabled?: boolean | undefined;
   targetProjectSlug?: string | null | undefined;
   params?: Record<string, unknown> | null | undefined;
+  timeZone?: string | null | undefined;
 }
 
 export async function updateSchedule(id: string, patch: UpdateSchedulePatch, actorUserId: string) {
@@ -169,6 +200,22 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (effectiveKind === 'prompt' && !effectivePrompt) {
     throw badRequest('prompt is required when kind is "prompt"');
   }
+  const effectiveTarget =
+    patch.targetProjectSlug !== undefined ? patch.targetProjectSlug : row.targetProjectSlug;
+  if (effectiveKind === 'status_report' && effectiveTarget) {
+    throw badRequest(
+      'targetProjectSlug must be omitted when kind is "status_report": it reports on its own project to its members',
+    );
+  }
+  const effectiveParams =
+    effectiveKind === 'status_report'
+      ? await statusReportParamsOf(
+          row.projectId,
+          patch.params !== undefined ? patch.params : row.params,
+        )
+      : patch.params;
+  assertTimeZone(patch.timeZone);
+  const timeZone = patch.timeZone !== undefined ? patch.timeZone : row.timeZone;
 
   const updates: Record<string, unknown> = { updatedAt: new Date(), ownerId: actorUserId };
   if (patch.name !== undefined) updates.name = patch.name;
@@ -176,13 +223,16 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   if (patch.kind !== undefined) updates.kind = patch.kind;
   if (patch.script !== undefined) updates.script = patch.script;
   if (patch.targetProjectSlug !== undefined) updates.targetProjectSlug = patch.targetProjectSlug;
-  if (patch.params !== undefined) updates.params = patch.params;
+  if (patch.params !== undefined || effectiveKind === 'status_report') {
+    updates.params = effectiveParams ?? null;
+  }
+  if (patch.timeZone !== undefined) updates.timeZone = patch.timeZone;
 
   const cron = patch.cron ?? row.cron;
   const enabled = patch.enabled ?? row.enabled;
 
   if (patch.cron !== undefined) {
-    const validation = validateCron(patch.cron);
+    const validation = validateCron(patch.cron, timeZone);
     if (!validation.ok) {
       throw new HTTPException(400, {
         message: validation.error ?? 'invalid cron',
@@ -193,8 +243,8 @@ export async function updateSchedule(id: string, patch: UpdateSchedulePatch, act
   }
   if (patch.enabled !== undefined) updates.enabled = patch.enabled;
 
-  if (patch.cron !== undefined || patch.enabled !== undefined) {
-    updates.nextRunAt = enabled ? nextRunFor(cron) : null;
+  if (patch.cron !== undefined || patch.enabled !== undefined || patch.timeZone !== undefined) {
+    updates.nextRunAt = enabled ? nextRunFor(cron, new Date(), timeZone) : null;
   }
 
   const [updated] = await db.update(schedules).set(updates).where(eq(schedules.id, id)).returning();
@@ -247,12 +297,17 @@ export async function runScheduleNow(
       kind: schedule.kind,
       script: schedule.script ?? null,
       ownerId: schedule.ownerId,
+      cron: schedule.cron,
+      timeZone: schedule.timeZone,
     },
     actor,
     ...(resolvedTarget ? { resolvedTarget } : {}),
   });
 
   if (!result.ok && result.reason === 'refused') throw refusalError(result.refusal);
+  if (!result.ok && result.reason === 'rule-refused') {
+    throw new RefusalError([result.refusal], 'SCHEDULE_REFUSED');
+  }
   if (!result.ok) {
     // ISS-244 — manual /run no longer queues; surface "no device online"
     // synchronously so the user knows nothing was started.

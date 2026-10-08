@@ -6,12 +6,14 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import {
   type AttentionFailedJobRow,
   type AttentionMentionRow,
+  type AttentionStatusReportRow,
   selectFailedJobs,
   selectMentions,
+  selectStatusReports,
 } from './attention-buckets.js';
 import { type AttentionGateRow, selectChannelGates } from './attention-gates.js';
 
-type AttentionKind = 'mention' | 'failed_job' | 'channel_gate';
+type AttentionKind = 'mention' | 'failed_job' | 'channel_gate' | 'status_report';
 
 interface AttentionItem {
   kind: AttentionKind;
@@ -35,6 +37,8 @@ interface AttentionResponse {
   failedJobs: AttentionItem[];
   /** Documents waiting at an approve gate that this person's role may decide. */
   channelGates: AttentionItem[];
+  /** Status reports sent to this person that they have not opened. */
+  statusReports: AttentionItem[];
   total: number;
 }
 
@@ -80,6 +84,17 @@ function gateItem(r: AttentionGateRow): AttentionItem {
   };
 }
 
+function statusReportItem(r: AttentionStatusReportRow): AttentionItem {
+  return {
+    kind: 'status_report',
+    title: r.title,
+    link: `/projects/${r.projectSlug}/status?tab=history&report=${r.reportId}`,
+    since: r.deliveredAt.toISOString(),
+    projectSlug: r.projectSlug,
+    projectName: r.projectName,
+  };
+}
+
 export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
@@ -88,23 +103,32 @@ meAttentionRoutes.get('/attention', async (c) => {
   const agency = c.get('agency');
   if (!agency) throw new Error('me/attention: a request reached its handler without an auth gate');
 
-  const [needsYou, mentionRows, failedJobRows, channelGateRows] = await Promise.all([
-    readNeedsYouAcross(userId, agency),
-    selectMentions(userId),
-    selectFailedJobs(userId),
-    selectChannelGates(userId),
-  ]);
+  const [needsYou, mentionRows, failedJobRows, channelGateRows, statusReportRows] =
+    await Promise.all([
+      readNeedsYouAcross(userId, agency),
+      selectMentions(userId),
+      selectFailedJobs(userId),
+      selectChannelGates(userId),
+      selectStatusReports(userId),
+    ]);
 
   const mentions = mentionRows.map(mentionItem);
   const failedJobs = failedJobRows.map(failedJobItem);
   const channelGates = channelGateRows.map(gateItem);
+  const statusReports = statusReportRows.map(statusReportItem);
 
   const response: AttentionResponse = {
     needsYou,
     mentions,
     failedJobs,
     channelGates,
-    total: needsYou.length + mentions.length + failedJobs.length + channelGates.length,
+    statusReports,
+    total:
+      needsYou.length +
+      mentions.length +
+      failedJobs.length +
+      channelGates.length +
+      statusReports.length,
   };
 
   return c.json(response);

@@ -93,6 +93,7 @@ import {
   settleSessionFires,
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
+import { sendStatusReport } from './status-reports/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -195,6 +196,7 @@ export function provideExecutionPorts(): void {
     loadReleaseRoster,
     abortBlockedIssues,
     createReleaseBatch,
+    sendStatusReport,
   });
 
   provideAgentReportsPorts({ reportLinksOf });
