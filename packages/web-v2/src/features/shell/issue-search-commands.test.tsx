@@ -69,6 +69,15 @@ it("hands back a key refusal as the notice, beside Search issues", async () => {
   expect(result.current.commands.map((c) => c.label)).toEqual(["Search issues for “ISS-9999”"]);
 });
 
+it("says the search did not answer when it fails for any other reason, beside Search issues", async () => {
+  lookup.mockRejectedValue(new ApiError(503, "Service unavailable", "UNAVAILABLE"));
+  const { result } = mount("ISS-1280", "p1");
+
+  await waitFor(() => expect(result.current.notice).toMatch(/^The issues search did not answer/));
+  expect(result.current.notice).toContain("Service unavailable");
+  expect(result.current.commands.map((c) => c.label)).toEqual(["Search issues for “ISS-1280”"]);
+});
+
 it("asks nothing outside a project or for an empty box", () => {
   expect(mount("ISS-1280", undefined).result.current.commands).toEqual([]);
   expect(mount("   ", "p1").result.current.commands).toEqual([]);
