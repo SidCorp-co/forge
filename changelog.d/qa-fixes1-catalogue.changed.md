@@ -1,1 +1,0 @@
-**Report queries are listed under the project, so a token can reach them.** The catalogue moved to GET /api/projects/:id/report-queries, a member-checked project read under projects:read; an Agent chat turn already ran and posted reports.
