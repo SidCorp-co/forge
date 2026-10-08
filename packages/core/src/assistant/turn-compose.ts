@@ -17,6 +17,7 @@ import { egressDeep } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { repairIssueLinks } from '../messaging/reply-marks.js';
+import { type AgreementGate, agreementGate } from './agreement/turn-gate.js';
 import { correctFalseClaims } from './confab.js';
 import { STOPPED_BY_A_PERSON, TURN_TIMED_OUT } from './conversation-stops.js';
 import {
@@ -142,6 +143,25 @@ function withCaptures(
   return mergeToolsets(...own, ...(tools ? [tools] : []));
 }
 
+/**
+ * The turn's toolset with its writes held for the person's agreement (REQ-30 BC-4): every write
+ * the model calls becomes a proposal, and `forge_agree` binds a later reply to one.
+ */
+async function gateOf(ctx: TurnContext, inputs: TurnInputs): Promise<AgreementGate | null> {
+  const tools = cachedReads(ctx.conversationId, inputs.tools);
+  if (!tools) return null;
+  const { req } = ctx;
+  return agreementGate(tools, {
+    projectId: req.venue.projectId,
+    conversationId: ctx.conversationId,
+    personId: req.authority.userId,
+    handleUserId: req.handleUserId ?? null,
+    message: req.message,
+    authority: req.authority,
+    recordImages: inputs.recordImages,
+  });
+}
+
 /** One `await_reply` capture per attempt, where the venue records asks; none elsewhere. */
 const asksCapture = (req: ConversationTurnRequest): AwaitReplyCapture | null =>
   req.recordsAsks ? awaitReplyCapture() : null;
@@ -198,8 +218,10 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if ('send' in inputs) return inputs;
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const asks = asksCapture(req);
-  const writes = turnWrites(cachedReads(ctx.conversationId, inputs.tools));
+  const agreement = await gateOf(ctx, inputs);
+  const writes = turnWrites(agreement?.tools);
   ctx.writes = writes;
+  const held = () => (agreement?.heldThisTurn() ?? 0) > 0;
 
   ctx.setPhase('turn');
   const turn: ExternalChatTurnArgs = {
@@ -238,7 +260,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const settled = await settleFirst(ctx, first, capture);
   if ('send' in settled) return settled;
   const offered = (writes.tools?.tools ?? []).map((t) => t.function.name);
-  return screenReply(ctx, settled, asks?.declared() ?? false, offered, (instruction) => {
+  return screenReply(ctx, settled, asks?.declared() ?? false, held, offered, (instruction) => {
     const again = capture ? roomSendCapture() : null;
     const asksAgain = asksCapture(req);
     const done = writes.doneSoFar();
@@ -303,12 +325,14 @@ type Retry = (instruction: string) => {
  * Screen the reply, retrying where the door asks for it. `offeredTools` are the tools the turn could
  * call, which the screen holds a status claim to. `firstAsked` is whether the first attempt
  * called `await_reply`; a retry's own call replaces it, because the delivered text is the last
- * attempt's, and a code-authored line never awaits anything.
+ * attempt's, and a code-authored line never awaits anything. `held` is whether the turn held a
+ * write for the person's agreement: its reply then waits on them whatever the model declared.
  */
 async function screenReply(
   ctx: TurnContext,
   result: ExternalChatTurnResult,
   firstAsked: boolean,
+  held: () => boolean,
   offeredTools: readonly string[],
   retry: Retry,
 ): Promise<TurnReply> {
@@ -354,7 +378,7 @@ async function screenReply(
     send: true,
     message: screened,
     screenReplaced: screened.text.trim() !== repairIssueLinks(result.reply).trim(),
-    awaitsReply: asked && screened.proof !== null,
+    awaitsReply: (asked || held()) && screened.proof !== null,
     ...(blocks.length > 0 ? { blocks } : {}),
   };
 }

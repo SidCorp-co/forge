@@ -27,7 +27,8 @@ import {
 /** The room turn a REST caller's token answers, as `reports/rest-stage.ts` judges it. */
 async function restTurnOf(tokenId: string | null): Promise<RestTurn> {
   const door = tokenId ? await chatDoorOfToken(tokenId) : null;
-  if (!door) return { kind: 'none' };
+  // the write of an agreed proposal answers no turn of its own: it draws nothing in the room
+  if (!door || door.door === 'agreement') return { kind: 'none' };
   if (door.door === 'assistant-turn') return { kind: 'assistant-turn' };
   const read = await agentTurnOfSession(door.sessionId);
   if (!read.found) return { kind: 'session-gone', sessionId: door.sessionId };

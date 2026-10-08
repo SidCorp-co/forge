@@ -28,7 +28,7 @@ const KNOWLEDGE_READS: ReadonlySet<string> = new Set(['list', 'get', 'search']);
  */
 export const CHAT_FILES_NO_ISSUE =
   '`forge new` is not open from chat: a chat files no issue — issues come from requirement breakdown or feedback triage. ' +
-  'Record a problem or a wish with forge_feedback (linked to the requirement it touches), or a change to how the product should behave with forge_requirement_draft / forge_requirement_revise — after the person confirmed what you restated.';
+  "Record a problem or a wish with forge_feedback (linked to the requirement it touches), or a change to how the product should behave with forge_requirement_draft / forge_requirement_revise, which hold it for the person's agreement.";
 
 /** What the per-turn config's `withheld` carries: every CLI verb the job does not offer. */
 export function chatWithheld(): string[] {

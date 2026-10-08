@@ -3,6 +3,7 @@ import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
 import { criteriaFromDocument } from './document-criteria.js';
+import { designIdsOf, linkWorkflow } from './issue-links.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
 import { revisionFields } from './route-kit.js';
 import { createRequirement, writeRevision } from './service.js';
@@ -132,6 +133,13 @@ const draftInput = z.strictObject({
   ...revisionFields,
   criteria: revisionFields.criteria.default([]),
   criteriaFrom: criteriaFrom.optional(),
+  designs: z
+    .array(z.string().trim().min(1).max(200))
+    .max(10)
+    .optional()
+    .describe(
+      'the workflow designs this wish relates to, by flow name (e.g. chat-turn) or id: the draft is linked to each',
+    ),
   preview: z
     .boolean()
     .optional()
@@ -161,38 +169,77 @@ function drafted(outcome: RequirementOutcome) {
 }
 
 const WRITE_RULE =
-  'Write only after the person confirmed what you restated, or told you to just record it. Criteria are statements a person can check; what the input leaves unsettled goes in spec.openQuestions, never settled by you.';
+  "From a chat this call is held for the person's agreement: core keeps it as a proposal they see as a confirm card, and writes it as them once they agree. Criteria are statements a person can check; what the input leaves unsettled goes in spec.openQuestions, never settled by you.";
 
 export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirement_draft',
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, and write once they confirm.`,
+  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, then call it without preview.`,
   inputSchema: zodToMcpSchema(draftInput),
   handler: async (args) => {
-    const { projectId, title, criteriaFrom, preview, ...write } = draftInput.parse(args);
+    const { projectId, title, criteriaFrom, preview, designs, ...write } = draftInput.parse(args);
+    const linked = await designIdsOf(projectId, designs ?? []);
+    if (!linked.ok) return designRefusal(linked.missing);
+    const draft = async (criteria: typeof write.criteria) =>
+      linkDesigns(
+        ctx,
+        projectId,
+        linked.ids,
+        await createRequirement({
+          projectId,
+          actor: actorOf(ctx),
+          title,
+          write: { ...write, criteria },
+        }),
+      );
     if (!criteriaFrom) {
       if (preview) return documentRefusal('preview reads criteriaFrom, and this call names none');
-      return drafted(await createRequirement({ projectId, actor: actorOf(ctx), title, write }));
+      return drafted(await draft(write.criteria));
     }
     const taken = await documentCriteria(ctx, criteriaFrom, write.criteria.length);
     if (!taken.ok) return documentRefusal(taken.detail);
     if (preview) return { preview: previewOf(criteriaFrom, taken.criteria, taken.skipped) };
-    const criteria = taken.criteria.map(({ body }) => ({ body }));
-    const filed = drafted(
-      await createRequirement({
-        projectId,
-        actor: actorOf(ctx),
-        title,
-        write: { ...write, criteria },
-      }),
-    );
+    const filed = drafted(await draft(taken.criteria.map(({ body }) => ({ body }))));
     return 'requirement' in filed
       ? { ...filed, taken: takenFigures(taken.criteria, taken.skipped) }
       : filed;
   },
 });
+
+function designRefusal(missing: readonly string[]) {
+  return refusedAnswer(
+    [
+      {
+        code: 'REQUIREMENT_DESIGN_UNKNOWN',
+        path: '/designs',
+        detail: `this project holds no workflow design named ${missing.join(', ')}; name a design by its flow name or id, as the Workflows screen lists them`,
+      },
+    ],
+    'REQUIREMENT_REFUSED',
+  );
+}
+
+/** Link the drafted requirement to the designs its wish relates to; the outcome as it then reads. */
+async function linkDesigns(
+  ctx: Parameters<ContextScopedMcpToolFactory>[0],
+  projectId: string,
+  workflowIds: readonly string[],
+  outcome: RequirementOutcome,
+): Promise<RequirementOutcome> {
+  let latest = outcome;
+  for (const workflowId of workflowIds) {
+    if (!latest.ok) return latest;
+    latest = await linkWorkflow({
+      projectId,
+      ref: latest.requirement.key,
+      actor: actorOf(ctx),
+      workflowId,
+    });
+  }
+  return latest;
+}
 
 function documentRefusal(detail: string) {
   return refusedAnswer(

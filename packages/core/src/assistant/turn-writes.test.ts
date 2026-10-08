@@ -27,38 +27,20 @@ function tracker(failFirst = false) {
   };
 }
 
-describe('a record from chat is made once per turn and title', () => {
-  it('answers a second filing under the same title with the first, and says so', async () => {
-    const t = tracker();
-    const writes = turnWrites(t.tools);
-    await writes.tools?.execute('forge_feedback', filing('Tags sync from Hub to Helpdesk'));
-    const again = await writes.tools?.execute(
-      'forge_feedback',
-      filing('  tags sync from hub to helpdesk. '),
-    );
-    expect(t.filed()).toBe(1);
-    const said = again?.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n');
-    expect(said).toContain('Not recorded again');
-    expect(said).toContain('FB-1');
-  });
-
-  it('files once when the model files the same title twice in one round', async () => {
-    const t = tracker();
-    const writes = turnWrites(t.tools);
-    await Promise.all([
-      writes.tools?.execute('forge_feedback', filing('Same title')),
-      writes.tools?.execute('forge_feedback', filing('Same title')),
-    ]);
-    expect(t.filed()).toBe(1);
-  });
-
-  it('files again after a refused filing, and files a different title', async () => {
+describe('what a turn already did, as a retry is told it', () => {
+  it('lists a write that landed, and leaves out one that was refused', async () => {
     const t = tracker(true);
     const writes = turnWrites(t.tools);
     await writes.tools?.execute('forge_feedback', filing('First'));
-    await writes.tools?.execute('forge_feedback', filing('First'));
     await writes.tools?.execute('forge_feedback', filing('Second'));
-    expect(t.filed()).toBe(2);
+    expect(writes.calls().map((c) => c.write)).toEqual([true]);
+    expect(writes.doneSoFar()).toContain('Second');
+    expect(writes.doneSoFar()).not.toContain('First');
+  });
+
+  it('counts an agreement bound by forge_agree as a write a retry must not repeat', () => {
+    const agree = JSON.stringify({ proposal: 'p', kind: 'feedback', words: 'yes' });
+    expect(isWriteCall('forge_agree', agree)).toBe(true);
   });
 
   it('reads the title a record tool files under, and nothing from any other call', () => {

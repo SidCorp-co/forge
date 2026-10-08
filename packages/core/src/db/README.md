@@ -10,8 +10,8 @@ into the `schema` object in [`db/client.ts`](./client.ts); a new module of its o
 is added to one of the two. An enum array one schema file's columns read from
 another goes in the leaf [`schema-vocabulary.ts`](./schema-vocabulary.ts): the
 schema files import each other in a cycle, and a column built at load time from a
-binding that has not loaded yet throws. Migrations are generated into
-[`../../drizzle/migrations/`](../../drizzle/migrations) via `pnpm db:generate`.
+binding that has not loaded yet throws. Migrations are hand-written into
+[`../../drizzle/migrations/`](../../drizzle/migrations); how is in its README.
 
 The conventions below are set by Phase 2.1-C (ISS-146) and bind every later
 table (projects, issues, jobs, memories, …). Depart from them only with a
@@ -57,10 +57,13 @@ clear reason and a note in the owning issue.
 The `pgvector` extension is enabled in the migration that introduces the
 `memories` table. Do not enable it from earlier migrations.
 
-## Generating a migration
+## Writing a migration
+
+Every migration is hand-written, with its journal entry, as
+[`../../drizzle/migrations/README.md`](../../drizzle/migrations/README.md) says: `pnpm db:generate`
+diffs against the last snapshot drizzle kept and re-emits every change since, so it writes none.
 
 ```bash
 cd packages/core
-pnpm db:generate   # reads src/db/schema*.ts, writes drizzle/migrations/NNNN_*.sql
 pnpm db:migrate    # applies to $DATABASE_URL
 ```

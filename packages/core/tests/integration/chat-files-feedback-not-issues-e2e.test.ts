@@ -188,37 +188,48 @@ describe('a chat door cannot file an issue, by any route that reaches the insert
   });
 });
 
-describe('the chat doors file Feedback and draft Requirements instead', () => {
-  it('lets an Agent-mode session draft a requirement and file feedback linked to it', async () => {
-    const req = ok(
-      await say('agentSession', 'POST', at('/requirements'), {
-        title: 'The Ask Agent panel width',
-        reason: 'The owner asked for a wider default and a half-width toggle.',
-        criteria: [{ body: 'The panel opens at its maximum width.' }],
-      }),
-      201,
+// What a chat does instead reaches Feedback and a Requirement only once the person agrees
+// (ISS-439, REQ-30 BC-4): the agreed path is `chat-agreement-e2e.test.ts`. Here neither chat
+// credential writes by itself.
+describe('the chat doors reach Feedback and Requirements only through the person agreeing', () => {
+  it('refuses an Agent-mode session whose room cannot be read, since nobody could agree', async () => {
+    const before = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${projectId}`,
     );
-    const filed = ok(
-      await say('agentSession', 'POST', at('/feedback'), {
-        kind: 'change_request',
-        title: 'Open the Ask Agent panel at its maximum width',
-        body: 'With a toggle to half of that width.',
-        requirement: req.key,
-      }),
-      201,
-    ).feedback;
-    expect(filed.target).toMatchObject({ type: 'requirement', key: req.key });
+    for (const [path, body] of [
+      [
+        '/requirements',
+        {
+          title: 'The Ask Agent panel width',
+          reason: 'The owner asked for a wider default and a half-width toggle.',
+          criteria: [{ body: 'The panel opens at its maximum width.' }],
+        },
+      ],
+      [
+        '/feedback',
+        { kind: 'change_request', title: 'Open the Ask Agent panel at its maximum width' },
+      ],
+    ] as const) {
+      const r = await say('agentSession', 'POST', at(path), body);
+      expect(r.status, JSON.stringify(r.json)).toBe(409);
+      const [first] = r.json?.error?.refusals ?? [];
+      expect(first?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+      expect(first?.detail).toContain('cannot be read from it');
+    }
+    const after = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM feedback WHERE project_id = ${projectId}`,
+    );
+    expect(after[0]?.n).toBe(before[0]?.n);
   });
 
-  it('lets the assistant turn token file feedback', async () => {
-    ok(
-      await say('assistantTurn', 'POST', at('/feedback'), {
-        kind: 'bug',
-        title: 'The page beside the panel does not reflow',
-        screen: '/projects/forge/issues',
-      }),
-      201,
-    );
+  it('refuses the assistant turn token a Feedback write: its own tools hold it for the person', async () => {
+    const r = await say('assistantTurn', 'POST', at('/feedback'), {
+      kind: 'bug',
+      title: 'The page beside the panel does not reflow',
+      screen: '/projects/forge/issues',
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(409);
+    expect(r.json?.error?.refusals?.[0]?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
   });
 });
 

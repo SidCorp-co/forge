@@ -198,7 +198,9 @@ interface IssuePorts {
     boundProjectId: string | null;
   }) => Promise<string | null>;
   /** The chat door a credential was minted for, or null for any other (`agent-sessions/chat-door.ts`). */
-  chatDoorOfToken: (tokenId: string) => Promise<{ door: 'assistant-turn' | 'box-session' } | null>;
+  chatDoorOfToken: (
+    tokenId: string,
+  ) => Promise<{ door: 'assistant-turn' | 'box-session' | 'agreement' } | null>;
   issueDeleteRefusal: (issue: {
     id: string;
     projectId: string;

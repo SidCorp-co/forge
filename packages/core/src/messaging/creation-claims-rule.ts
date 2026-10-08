@@ -3,7 +3,8 @@
  *
  * Chat records Feedback (`forge_feedback`) or a Requirement draft or revision
  * (`forge_requirement_draft`, `forge_requirement_revise`; at a requirement's BA door `ba_suggest` and
- * `ba_suggest_requirement`) after the person confirms, and never an
+ * `ba_suggest_requirement`) once the person agrees — a chat's record is held until they do, and
+ * written by `forge_agree` or the proposal's agree route (`assistant/agreement`) — and never an
  * issue (owner ruling 2026-10-08: the kernel refuses a chat credential `CHAT_FILES_FEEDBACK_NOT_ISSUES`).
  * So "I recorded this as FB-112" is true only where this turn wrote a Feedback, and "I created an
  * issue" is false whatever the turn did. An Agent session has no record tools; its write is a REST
@@ -32,6 +33,7 @@
 
 // every Vietnamese literal here is an `i18n-allow` pragma carrying the phrasing the detector must read; people chat in Vietnamese.
 
+import { CHAT_AGREE_TOOL } from '@forge/contracts/chat-proposals';
 import { SHARE_TOKEN_PREFIX } from '@forge/contracts/shares';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
@@ -100,9 +102,32 @@ function restPostExact(c: Call, route: string): boolean {
 
 const named = (c: Call, tool: string) => c.name === tool || c.name.endsWith(`__${tool}`);
 
+/**
+ * A record the person agreed to and this turn wrote (REQ-30 BC-4): every chat write is held until
+ * they agree, so a turn that records one does it by binding their reply, through `forge_agree`
+ * (whose `kind` names the record) or, from an Agent session, a POST to the proposal's agree route.
+ * A held write is a refused call and grounds nothing.
+ */
+function agreedKinds(c: Call): readonly string[] {
+  if (named(c, CHAT_AGREE_TOOL)) {
+    try {
+      const kind = (JSON.parse(c.arguments) as { kind?: unknown }).kind;
+      return typeof kind === 'string' ? [kind] : [];
+    } catch {
+      return [];
+    }
+  }
+  const agreedOverRest =
+    c.name === 'Bash' &&
+    /conversations\/[^\s"'\\/]+\/proposals\/[^\s"'\\/]+\/agree\b/.test(c.arguments) &&
+    /(?:-X\s*POST|--request\s+POST|\s-d\s|--data)/.test(c.arguments);
+  return agreedOverRest ? ['feedback', 'requirement_draft', 'requirement_revision'] : [];
+}
+
 function feedbackWritten(calls: readonly Call[]): boolean {
   return writes(calls).some((c) => {
     if (named(c, 'forge_feedback') || restPost(c, 'feedback')) return true;
+    if (agreedKinds(c).includes('feedback')) return true;
     if (c.name !== 'forge') return false;
     try {
       const argv = (JSON.parse(c.arguments) as { argv?: unknown }).argv;
@@ -126,6 +151,9 @@ function requirementWritten(calls: readonly Call[], ref: string | null): boolean
   return writes(calls).some((c) => {
     if (named(c, 'forge_requirement_draft') || restPost(c, 'requirements')) return true;
     if (BA_REQUIREMENT_WRITES.some((tool) => named(c, tool))) return true;
+    if (agreedKinds(c).some((k) => k === 'requirement_draft' || k === 'requirement_revision')) {
+      return true;
+    }
     if (!named(c, 'forge_requirement_revise')) return false;
     if (ref === null) return true;
     try {

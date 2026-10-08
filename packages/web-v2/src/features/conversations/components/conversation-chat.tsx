@@ -43,6 +43,7 @@ import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
 import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useActOffers } from "../act-offers";
+import { ProposalCards } from "./proposal-cards";
 import { turnDoing } from "../turn-doing";
 
 export function ConversationChat({
@@ -227,6 +228,8 @@ export function ConversationChat({
           <div ref={bottomRef} />
         </div>
       </div>
+
+      <ProposalCards conversationId={resolvedId} threadLength={messages.length} />
 
       {refusal ? (
         <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">

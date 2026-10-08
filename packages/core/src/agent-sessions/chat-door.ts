@@ -1,6 +1,7 @@
 /**
  * Whether a credential belongs to a chat door: the assistant answering in a conversation, or a
- * session on a paired box answering a person (Agent mode, the Agents screen, a room escalation).
+ * session on a paired box answering a person (Agent mode, the Agents screen, a room escalation), or
+ * the token one proposal a person agreed to in a chat is written under (`assistant/agreement`).
  * The owner's ruling of 2026-10-08 is that no chat door files an issue — a wish or a report enters
  * as Feedback or a Requirement and issues come from those — so the issue kernel asks this before
  * the one insert into `issues`.
@@ -13,7 +14,8 @@ import { agentSessions, personalAccessTokens } from '../db/schema.js';
 
 export type ChatDoor =
   | { door: 'assistant-turn'; tokenId: string }
-  | { door: 'box-session'; tokenId: string; sessionId: string };
+  | { door: 'box-session'; tokenId: string; sessionId: string }
+  | { door: 'agreement'; tokenId: string; proposalId: string };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,6 +48,9 @@ export async function chatDoorOfToken(tokenId: string): Promise<ChatDoor | null>
   const origin = token ? turnTokenOrigin(token.name) : null;
   if (!origin) return null;
   if (origin.door === 'assistant-turn') return { door: 'assistant-turn', tokenId };
+  if (origin.door === 'agreement') {
+    return { door: 'agreement', tokenId, proposalId: origin.proposalId };
+  }
   const chat: ChatDoor = { door: 'box-session', tokenId, sessionId: origin.sessionId };
   if (!UUID_RE.test(origin.sessionId)) return chat;
   const [session] = await db

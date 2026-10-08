@@ -7,7 +7,9 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
   composeLayers,
+  holdChatRestWrite,
   METHOD_LAYERS,
+  provideAgreementReplay,
   provideChatTools,
   registerRoomBridges,
   registerRoomChat,
@@ -76,6 +78,7 @@ import {
   runMemorySearch,
 } from './memory/index.js';
 import { provideMessageReads } from './messaging/reads.js';
+import { provideChatWriteHold } from './middleware/chat-write-hold.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
@@ -281,6 +284,11 @@ provideFeedbackDependents({
 });
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
+
+// a chat write to a record route waits for the person to agree, and the agreed write is replayed
+// through this app as them (REQ-30 BC-4)
+provideChatWriteHold(holdChatRestWrite);
+provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 
 let corsOrigins: string[] | undefined;
 function allowedOrigins(): string[] {

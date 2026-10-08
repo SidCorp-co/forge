@@ -2990,6 +2990,13 @@
       "when": 1823212800000,
       "tag": "0466_an_awaiting_reply_names_the_person_it_waits_on",
       "breakpoints": true
+    },
+    {
+      "idx": 467,
+      "version": "7",
+      "when": 1823299200000,
+      "tag": "0467_a_chat_write_waits_for_the_person_to_agree",
+      "breakpoints": true
     }
   ]
 }

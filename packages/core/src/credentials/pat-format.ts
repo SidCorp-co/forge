@@ -63,16 +63,34 @@ const TURN_DEFAULT_NAME_PREFIX = 'turn ';
 export const turnTokenDefaultName = (at: Date, nonce: string) =>
   `${TURN_DEFAULT_NAME_PREFIX}${at.toISOString()} ${nonce}`;
 
+const AGREEMENT_NAME_PREFIX = 'chat agreement ';
+
+/**
+ * The token one agreed chat proposal is written under, as the person who agreed
+ * (`assistant/agreement/execute.ts`): minted for that proposal alone and revoked once it is written.
+ */
+export const agreementTokenNameFor = (proposalId: string) =>
+  `${AGREEMENT_NAME_PREFIX}${proposalId}`;
+
 export const isTurnTokenName = (name: string) =>
-  name.startsWith(TURN_TOKEN_NAME_PREFIX) || name.startsWith(TURN_DEFAULT_NAME_PREFIX);
+  name.startsWith(TURN_TOKEN_NAME_PREFIX) ||
+  name.startsWith(TURN_DEFAULT_NAME_PREFIX) ||
+  name.startsWith(AGREEMENT_NAME_PREFIX);
+
+export type TurnTokenOrigin =
+  | { door: 'assistant-turn' }
+  | { door: 'box-session'; sessionId: string }
+  | { door: 'agreement'; proposalId: string };
 
 /**
  * Which chat door minted a turn token: an in-process assistant turn (`turn <at> <nonce>`), a
- * session on a paired box (`turn:<sessionId>`), or none for any other token.
+ * session on a paired box (`turn:<sessionId>`), the write of one agreed proposal
+ * (`chat agreement <proposalId>`), or none for any other token.
  */
-export function turnTokenOrigin(
-  name: string,
-): { door: 'assistant-turn' } | { door: 'box-session'; sessionId: string } | null {
+export function turnTokenOrigin(name: string): TurnTokenOrigin | null {
+  if (name.startsWith(AGREEMENT_NAME_PREFIX)) {
+    return { door: 'agreement', proposalId: name.slice(AGREEMENT_NAME_PREFIX.length) };
+  }
   if (name.startsWith(TURN_DEFAULT_NAME_PREFIX)) return { door: 'assistant-turn' };
   if (name.startsWith(TURN_TOKEN_NAME_PREFIX)) {
     return { door: 'box-session', sessionId: name.slice(TURN_TOKEN_NAME_PREFIX.length) };
@@ -85,6 +103,7 @@ const CORE_NAME_PREFIXES = [
   WORKSPACE_TOKEN_NAME_PREFIX,
   TURN_TOKEN_NAME_PREFIX,
   TURN_DEFAULT_NAME_PREFIX,
+  AGREEMENT_NAME_PREFIX,
 ];
 
 // a person's token named like a turn token would make their CLI writes read as written through the assistant

@@ -35,6 +35,7 @@ import { z } from 'zod';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs } from './embeddings.js';
@@ -120,6 +121,7 @@ feedbackRoutes.post(
   '/:id/feedback',
   projectParam,
   strictBody(createFeedbackRequestSchema, CREATE_FEEDBACK_SHAPE),
+  holdChatWrite('feedback'),
   async (c) =>
     answer(
       c,
@@ -390,6 +392,7 @@ feedbackRoutes.post(
   '/:id/feedback/:fb/attachments',
   itemParam,
   strictBody(feedbackAttachmentRequestSchema, FEEDBACK_ATTACHMENT_SHAPE),
+  holdChatWrite('attachment'),
   async (c) => {
     const { id, fb } = c.req.valid('param');
     return answer(

@@ -155,6 +155,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       return {
         tools: fast.tools,
         images: fast.images,
+        recordImages: fast.images,
         resolveImage: fast.resolveImage,
         persona: s.persona,
         conversationContext: s.conversationContext,

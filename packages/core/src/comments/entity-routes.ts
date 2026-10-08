@@ -12,6 +12,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { type EntityCommentActor, listEntityCommentsAs } from './entity-read.js';
 import {
@@ -157,6 +158,7 @@ entityCommentRoutes.post(
   '/:id/requirements/:req/comments',
   targetParam(REQUIREMENT),
   createBody,
+  holdChatWrite('comment'),
   (c) => postFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
 );
 entityCommentRoutes.patch(
@@ -176,6 +178,7 @@ entityCommentRoutes.post(
   '/:id/workflows/:workflow/comments',
   targetParam(WORKFLOW),
   createBody,
+  holdChatWrite('comment'),
   (c) => postFor(c, WORKFLOW, c.req.valid('param') as Params, c.req.valid('json')),
 );
 entityCommentRoutes.patch(
@@ -188,8 +191,12 @@ entityCommentRoutes.patch(
 entityCommentRoutes.get('/:id/feedback/:fb/comments', targetParam(FEEDBACK), intentQuery, (c) =>
   listFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('query').intent),
 );
-entityCommentRoutes.post('/:id/feedback/:fb/comments', targetParam(FEEDBACK), createBody, (c) =>
-  postFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
+entityCommentRoutes.post(
+  '/:id/feedback/:fb/comments',
+  targetParam(FEEDBACK),
+  createBody,
+  holdChatWrite('comment'),
+  (c) => postFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
 );
 entityCommentRoutes.patch(
   '/:id/feedback/:fb/comments/:comment',

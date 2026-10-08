@@ -3,6 +3,7 @@
 // (`conversation-agent-bridge.ts`). Nothing here writes into the room, so no reader of it sees a
 // block before the reply it belongs to passes.
 
+import type { SessionAsker } from '@forge/contracts/agent-sessions';
 import { eq } from 'drizzle-orm';
 import { appendUnclaimedMarkerItem } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -10,9 +11,14 @@ import { agentSessions } from '../db/schema.js';
 import type { StagedBlock } from '../lib/staged-block.js';
 import { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent-meta.js';
 
-/** The room turn a session answers, read now: null where the session answers no room. */
+/**
+ * The room turn a session answers, read now: null where the session answers no room. `marked` says
+ * the session carries the room marker all the same, unreadable, so a reader that must know which
+ * room it answers can refuse rather than take it for a session that answers none.
+ */
 export type AgentTurnOfSession =
   | { found: false }
+  | { found: true; turn: null; marked: boolean }
   | {
       found: true;
       turn: {
@@ -21,18 +27,26 @@ export type AgentTurnOfSession =
         /** The bridge already took the reply for delivery: nothing may join it now. */
         settled: boolean;
         staged: StagedBlock[];
-      } | null;
+        /** The person the turn answers, and the project its room asked about. */
+        asker: SessionAsker | null;
+        projectId: string;
+        /** When the session started: what it was shown was proposed before this. */
+        startedAt: Date;
+      };
     };
 
 export async function agentTurnOfSession(sessionId: string): Promise<AgentTurnOfSession> {
   const [row] = await db
-    .select({ metadata: agentSessions.metadata })
+    .select({ metadata: agentSessions.metadata, createdAt: agentSessions.createdAt })
     .from(agentSessions)
     .where(eq(agentSessions.id, sessionId))
     .limit(1);
   if (!row) return { found: false };
   const meta = readConversationAgentMeta(row.metadata);
-  if (!meta) return { found: true, turn: null };
+  if (!meta) {
+    const marked = (row.metadata as Record<string, unknown> | null)?.[CONVERSATION_AGENT_MARKER];
+    return { found: true, turn: null, marked: marked !== undefined && marked !== null };
+  }
   return {
     found: true,
     turn: {
@@ -40,6 +54,9 @@ export async function agentTurnOfSession(sessionId: string): Promise<AgentTurnOf
       question: meta.question,
       settled: meta.claimedAt !== null || meta.deliveredAt !== null,
       staged: meta.staged,
+      asker: meta.asker,
+      projectId: meta.venue.projectId,
+      startedAt: row.createdAt,
     },
   };
 }

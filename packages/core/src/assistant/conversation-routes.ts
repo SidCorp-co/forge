@@ -37,6 +37,7 @@ import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, can, projectResource, requireHeld } from '../permissions/index.js';
 import { batchesOfConversation } from '../questionnaires/index.js';
+import { conversationProposalRoutes } from './agreement/routes.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
@@ -111,6 +112,7 @@ conversationRoutes.route('/', conversationMemberRoutes);
 conversationRoutes.route('/', conversationAttachmentRoutes);
 conversationRoutes.route('/', conversationPinRoutes);
 conversationRoutes.route('/', conversationMessageRoutes);
+conversationRoutes.route('/', conversationProposalRoutes);
 
 conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   const { projectId, page, pageSize, archived } = c.req.valid('query');

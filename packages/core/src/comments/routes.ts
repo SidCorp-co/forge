@@ -24,6 +24,7 @@ import {
   restActor,
   restAuthored,
 } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import {
   clientCapabilities,
   declares,
@@ -181,6 +182,7 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
     '/:id/comments',
     zValidator('param', idParamSchema),
     zValidator('json', commentCreateSchema),
+    holdChatWrite('comment'),
     async (c) => {
       const { id: issueId } = c.req.valid('param');
       const { body: sent, format, parentId, intent, decision, writtenLang } = c.req.valid('json');
