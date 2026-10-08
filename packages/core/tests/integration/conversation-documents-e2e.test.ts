@@ -194,7 +194,9 @@ describe('a conversation takes the documents a requirement comes from', () => {
 });
 
 describe('the assistant reads an attached spec and drafts its criteria line for line', () => {
-  it('shows the model both documents by name, scrubbed, and drafts all 120 criteria unchanged', async () => {
+  // Since REQ-30 BC-4 (ISS-439) the draft is held for the person's go-ahead: the turn writes nothing,
+  // and their press on the card writes all 120 criteria, read again from the room's document.
+  it('shows the model both documents by name, scrubbed, holds the draft, and the press writes all 120 criteria unchanged', async () => {
     const { appendMessages, readRoomDocumentByName } = await import(
       '../../src/conversations/index.js'
     );
@@ -242,7 +244,7 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
       { tool: { name: 'forge_requirement_draft', args: { ...draft, preview: true } } },
       { tool: { name: 'forge_requirement_draft', args: draft } },
       {
-        text: 'I drafted the requirement from criteria-120.md with its 120 criteria, lines 7 to 126.',
+        text: 'The draft requirement from criteria-120.md, with its 120 criteria from lines 7 to 126, waits for you: press Record it on the card to write it.',
       },
     ];
     const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
@@ -301,10 +303,24 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
     expect(previewed).toContain('\\"written\\":false');
     expect(previewed).toContain('exactly 120 criteria, from lines 7-126; no line was left out');
 
-    const wrote = script.seen[2]?.filter((m) => m.role === 'tool').at(-1);
-    expect(JSON.stringify(wrote?.content)).toContain('\\"state\\":\\"draft\\"');
-    const list = ok(await say('person', 'GET', `/api/projects/${projectId}/requirements`));
-    const rows = (Array.isArray(list) ? list : (list.requirements ?? list.items)) as Doc[];
+    const proposed = JSON.stringify(
+      script.seen[2]?.filter((m) => m.role === 'tool').at(-1)?.content,
+    );
+    expect(proposed).toContain('CHAT_WRITE_AWAITS_AGREEMENT: nothing was written');
+    const listed = async () => {
+      const list = ok(await say('person', 'GET', `/api/projects/${projectId}/requirements`));
+      return {
+        list,
+        rows: (Array.isArray(list) ? list : (list.requirements ?? list.items)) as Doc[],
+      };
+    };
+    expect((await listed()).rows, 'the turn wrote nothing itself').toHaveLength(0);
+    const proposal = /proposal ([0-9a-f-]{36})/.exec(proposed)?.[1];
+    const pressed = ok(
+      await say('person', 'POST', `/api/conversations/${room}/proposals/${proposal}/agree`, {}),
+    );
+    expect(pressed.proposal, JSON.stringify(pressed)).toMatchObject({ status: 'recorded' });
+    const { list, rows } = await listed();
     expect(rows, JSON.stringify(list).slice(0, 400)).toHaveLength(1);
     const req = ok(
       await say('person', 'GET', `/api/projects/${projectId}/requirements/${rows[0]?.key}`),

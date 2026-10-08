@@ -3,7 +3,6 @@
 // model rather than made a second time; a record the turn proposes is held for the person's
 // agreement (`agreement/turn-gate.ts`), one proposal per title however often it is asked again.
 
-import { CHAT_AGREE_TOOL } from '@forge/contracts/chat-proposals';
 import type { CallToolResult } from '../lib/tool-result.js';
 import type { ToolResultEntry } from '../messaging/facts.js';
 import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
@@ -24,8 +23,13 @@ const GROUNDING_CHARS = 24_000;
  */
 const ISSUE_WRITE_FLAG = /^--(set|blocks|relates|unlink|edge|redact)(=|$)/;
 const PROPOSE_FLAG = /^--propose(=|$)/;
+/**
+ * What `forge project` takes that changes a project: `new` creates one, `<slug> --set k=v` writes a
+ * field, `--archive` and `--unarchive` move it. A bare slug reads the record; no argument lists them.
+ */
+const PROJECT_WRITE_FLAG = /^--(set|archive|unarchive)(=|$)/;
+const HELP_FLAG = /^(-h|--help)$/;
 const WRITE_TOOLS: ReadonlySet<string> = new Set([
-  CHAT_AGREE_TOOL,
   'forge_memory_note',
   'forge_preferences',
   'forge_feedback',
@@ -47,6 +51,20 @@ export interface DoneCall {
   readonly keys: readonly string[];
 }
 
+/** A write the turn proposed and core held for the person's agreement: nothing of it landed. */
+export interface HeldCall {
+  readonly name: string;
+  readonly arguments: string;
+  /** The held proposal, so a call restating it is told once. */
+  readonly proposal: string | null;
+  /** The issue and record keys its arguments name. */
+  readonly keys: readonly string[];
+}
+
+/** The refusal the agreement gate answers a held write with (`agreement/turn-gate.ts`). */
+const HELD_CODE = 'CHAT_WRITE_AWAITS_AGREEMENT:';
+const PROPOSAL_RE = /as proposal ([0-9a-f-]{36})/;
+
 export interface TurnWrites {
   /** The toolset every attempt of the turn runs through. */
   readonly tools: ChatToolset | undefined;
@@ -54,6 +72,8 @@ export interface TurnWrites {
   doneSoFar(): string | null;
   /** Every call that landed so far, oldest first, across every attempt. */
   calls(): readonly DoneCall[];
+  /** Every write held for the person's agreement so far, one per proposal, oldest first. */
+  held(): readonly HeldCall[];
   /** The text of every result the model was shown this turn, refused ones included. */
   resultTexts(): readonly string[];
   /** The same results by the tool that returned each, a refused one marked so: a declared read grounds a figure (`figures-rule.ts`). */
@@ -123,8 +143,9 @@ function hasBody(argsJson: string): boolean {
 
 /**
  * Did this call change something? The record and note tools, and the `forge` forms that write: `attach`;
- * `comment` only with a body (without one it reads the thread); `issue` only with a write flag. A form
- * whose nature cannot be told is not a write.
+ * `comment` only with a body (without one it reads the thread); `issue` only with a write flag;
+ * `project` only as `new` or with a write flag, `-h` being a read. A form whose nature cannot be
+ * told is not a write.
  */
 export function isWriteCall(name: string, argsJson: string): boolean {
   if (WRITE_TOOLS.has(name)) return !isPreview(argsJson);
@@ -133,6 +154,10 @@ export function isWriteCall(name: string, argsJson: string): boolean {
   if (!argv?.[0]) return false;
   const rest = argv.slice(1);
   if (argv[0] === 'attach') return true;
+  if (argv[0] === 'project') {
+    if (rest.some((a) => HELP_FLAG.test(a))) return false;
+    return rest[0] === 'new' || rest.some((a) => PROJECT_WRITE_FLAG.test(a));
+  }
   if (argv[0] === 'comment')
     return rest.filter((a) => !a.startsWith('--')).length > 1 || hasBody(argsJson);
   if (argv[0] !== 'issue' || isProposalCall(name, argsJson)) return false;
@@ -147,12 +172,14 @@ const callSaid = (name: string, argsJson: string): string => {
 /** The turn's toolset with a ledger in front: every call that lands is remembered for the retry. */
 export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   const done: DoneCall[] = [];
+  const held = new Map<string, HeldCall>();
   const shown: ToolResultEntry[] = [];
   if (!tools) {
     return {
       tools,
       doneSoFar: () => null,
       calls: () => [],
+      held: () => [],
       resultTexts: () => [],
       results: () => [],
     };
@@ -161,6 +188,15 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
     const result = await tools.execute(name, argsJson);
     const text = toolResultText(result);
     shown.push({ name, text: text.slice(0, GROUNDING_CHARS), isError: result.isError === true });
+    if (result.isError && text.includes(HELD_CODE)) {
+      const proposal = PROPOSAL_RE.exec(text)?.[1] ?? null;
+      held.set(proposal ?? `${held.size}`, {
+        name,
+        arguments: argsJson,
+        proposal,
+        keys: [...new Set(argsJson.match(ISSUE_KEY_RE) ?? [])],
+      });
+    }
     if (!result.isError) {
       done.push({
         name,
@@ -177,6 +213,7 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   return {
     tools: ledgered,
     calls: () => [...done],
+    held: () => [...held.values()],
     resultTexts: () => shown.map((r) => r.text),
     results: () => [...shown],
     doneSoFar() {

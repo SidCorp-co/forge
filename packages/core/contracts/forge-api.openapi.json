@@ -4966,27 +4966,7 @@
             "application/json": {
               "schema": {
                 "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "enum": [
-                      "feedback",
-                      "requirement_draft",
-                      "requirement_revision",
-                      "comment",
-                      "attachment",
-                      "memory_note",
-                      "preferences",
-                      "report_save",
-                      "issue_change"
-                    ],
-                    "type": "string"
-                  },
-                  "words": {
-                    "maxLength": 8000,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
+                "properties": {},
                 "type": "object"
               }
             }
@@ -27131,6 +27111,15 @@
                       "type": "object"
                     },
                     "maxItems": 200,
+                    "type": "array"
+                  },
+                  "designs": {
+                    "items": {
+                      "maxLength": 200,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 10,
                     "type": "array"
                   },
                   "reason": {

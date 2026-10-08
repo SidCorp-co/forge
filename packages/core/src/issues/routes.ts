@@ -10,6 +10,7 @@ import { logger } from '../lib/logger.js';
 import { refused } from '../lib/refusal.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { heldTakeRefusal } from './blocked-by.js';
@@ -90,6 +91,7 @@ issueRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
   zValidator('json', issuePatchSchema, patchBodyAnswer),
+  holdChatWrite('issue_change'),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');

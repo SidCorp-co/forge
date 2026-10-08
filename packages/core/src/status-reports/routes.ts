@@ -13,6 +13,7 @@ import { loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { markStatusReportRead } from '../notifications/index.js';
@@ -110,6 +111,7 @@ statusReportRoutes.post(
     invalid('invalid path: /api/projects/<project>/status/reports'),
   ),
   zValidator('json', saveBody, invalid(SAVE_SHAPE)),
+  holdChatWrite('report_save'),
   async (c) => {
     const { id: projectId } = c.req.valid('param');
     const userId = c.get('userId');

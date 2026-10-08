@@ -79,12 +79,14 @@ export function reportOfFailure(
   return failureReport({
     door: req.door,
     projectId: req.venue.projectId,
+    conversationId: ctx.conversationId,
     name: req.handleName,
     language: req.replyLanguage ?? 'en',
     askedIn: askedInOf(ctx),
     question: req.message,
     ...failure,
     calls: ctx.writes?.calls() ?? [],
+    held: ctx.writes?.held() ?? [],
     draft: found.draft,
     toolResults: ctx.writes?.resultTexts() ?? [],
     namedResults: ctx.writes?.results() ?? [],
@@ -145,9 +147,9 @@ function withCaptures(
 
 /**
  * The turn's toolset with its writes held for the person's agreement (REQ-30 BC-4): every write
- * the model calls becomes a proposal, and `forge_agree` binds a later reply to one.
+ * the model calls becomes a proposal, written only when the person presses Record it on its card.
  */
-async function gateOf(ctx: TurnContext, inputs: TurnInputs): Promise<AgreementGate | null> {
+function gateOf(ctx: TurnContext, inputs: TurnInputs): AgreementGate | null {
   const tools = cachedReads(ctx.conversationId, inputs.tools);
   if (!tools) return null;
   const { req } = ctx;
@@ -156,8 +158,6 @@ async function gateOf(ctx: TurnContext, inputs: TurnInputs): Promise<AgreementGa
     conversationId: ctx.conversationId,
     personId: req.authority.userId,
     handleUserId: req.handleUserId ?? null,
-    message: req.message,
-    authority: req.authority,
     recordImages: inputs.recordImages,
   });
 }
@@ -218,7 +218,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if ('send' in inputs) return inputs;
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const asks = asksCapture(req);
-  const agreement = await gateOf(ctx, inputs);
+  const agreement = gateOf(ctx, inputs);
   const writes = turnWrites(agreement?.tools);
   ctx.writes = writes;
   const held = () => (agreement?.heldThisTurn() ?? 0) > 0;
@@ -343,6 +343,7 @@ async function screenReply(
   const screened = await screenedTurnReply({
     door: req.door,
     projectId: req.venue.projectId,
+    conversationId: ctx.conversationId,
     handleName: req.handleName,
     language: req.replyLanguage ?? 'en',
     askedIn: askedInOf(ctx),
@@ -390,7 +391,7 @@ async function screenReply(
 function failedReportText(ctx: TurnContext, cause: TurnFailureCause): string {
   const { req } = ctx;
   const language = req.replyLanguage ?? 'en';
-  const ledger = ledgerLines(ctx.writes?.calls() ?? [], language);
+  const ledger = ledgerLines(ctx.writes?.calls() ?? [], language, ctx.writes?.held() ?? []);
   return failedTurnReport({
     name: req.handleName,
     language,

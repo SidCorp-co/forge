@@ -14,6 +14,7 @@ import { issueDependencyKinds } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
@@ -78,6 +79,7 @@ issueDependencyRoutes.post(
   '/:id/dependencies',
   zValidator('param', idParamSchema),
   zValidator('json', createBodySchema),
+  holdChatWrite('issue_change'),
   async (c) => {
     const { id: toIssueId } = c.req.valid('param');
     const { dependsOnId: fromIssueId, kind, reason, validUntil } = c.req.valid('json');
@@ -110,6 +112,7 @@ issueDependencyRoutes.post(
 issueDependencyRoutes.delete(
   '/:id/dependencies/:edgeId',
   zValidator('param', edgeParamSchema),
+  holdChatWrite('issue_change'),
   async (c) => {
     const { id: issueId, edgeId } = c.req.valid('param');
     const userId = c.get('userId');

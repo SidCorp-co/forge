@@ -1,17 +1,16 @@
 // The held chat writes (`chat_proposals`): recorded when a chat's write is refused for want of an
 // agreement, decided once by the person it waits on. Every decision is one guarded UPDATE from
-// `pending`, so a second press, a press racing a reply, or a decline racing an agreement leaves
-// exactly one of them standing and refuses the other by name.
+// `pending`, so a second press, or a decline racing an agreement, leaves exactly one of them
+// standing and refuses the other by name.
 
 import type {
-  ChatAgreementVia,
   ChatProposalForm,
   ChatProposalKind,
   ChatProposalRecord,
   ChatProposalSummary,
 } from '@forge/contracts/chat-proposals';
-import { and, asc, eq, lt } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { and, asc, eq } from 'drizzle-orm';
+import { db, type Tx } from '../../db/client.js';
 import { type ChatProposalRow, chatProposals } from '../../db/schema-chat-proposals.js';
 
 export type { ChatProposalRow };
@@ -79,39 +78,34 @@ export function listProposals(conversationId: string): Promise<ChatProposalRow[]
     .orderBy(asc(chatProposals.createdAt));
 }
 
-/** What waits on `userId` in the room, proposed before `before`: what a reply may agree to. */
-export function pendingFor(
+/**
+ * The records this conversation wrote through an agreement, oldest first: what a reply's claim to
+ * have recorded something is held to (`messaging/creation-claims-rule.ts`).
+ */
+export async function recordedIn(
   conversationId: string,
-  userId: string,
-  before: Date,
-): Promise<ChatProposalRow[]> {
-  return db
-    .select()
+  tx: Tx = db,
+): Promise<{ kind: ChatProposalKind; ref: string | null }[]> {
+  const rows = await tx
+    .select({ kind: chatProposals.kind, record: chatProposals.record })
     .from(chatProposals)
     .where(
-      and(
-        eq(chatProposals.conversationId, conversationId),
-        eq(chatProposals.proposedTo, userId),
-        eq(chatProposals.status, 'pending'),
-        lt(chatProposals.createdAt, before),
-      ),
+      and(eq(chatProposals.conversationId, conversationId), eq(chatProposals.status, 'recorded')),
     )
     .orderBy(asc(chatProposals.createdAt));
+  return rows.map((r) => ({
+    kind: r.kind,
+    ref: (r.record as ChatProposalRecord | null)?.ref ?? null,
+  }));
 }
 
-/** Take the agreement: the row it moved, or null when it no longer waited. */
-export async function claimAgreement(
-  id: string,
-  by: string,
-  via: ChatAgreementVia,
-  words: string | null,
-): Promise<ChatProposalRow | null> {
+/** Take the person's press on the card: the row it moved, or null when it no longer waited. */
+export async function claimAgreement(id: string, by: string): Promise<ChatProposalRow | null> {
   const [row] = await db
     .update(chatProposals)
     .set({
       status: 'agreed',
-      agreedVia: via,
-      agreedWords: words,
+      agreedVia: 'card',
       decidedBy: by,
       decidedAt: new Date(),
     })

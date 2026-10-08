@@ -1,14 +1,12 @@
 // REQ-30 BC-4 on the Assistant's side: a write the model calls is held for the person's agreement,
-// never made, and only a reply core binds through forge_agree writes it. The store and the
-// agreement are stood in for here; `agree.test.ts` holds the binding, and the integration suite the
+// never made, and the turn has no tool that agrees: only the person's press on the card writes it.
+// The store is stood in for here; `agree.test.ts` holds the press, and the integration suite the
 // write itself (`tests/integration/chat-agreement-e2e.test.ts`).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const held: { id: string; kind: string; call: { name: string; arguments: string } }[] = [];
 const restated: { id: string; args: string }[] = [];
-const pending: { id: string; kind: string; summary: { title: string } }[] = [];
-const agreed: { id: string; as: unknown }[] = [];
 // the person's role: a viewer is refused a write by the permission it lacks, before anything is held
 let role = 'member';
 
@@ -26,11 +24,18 @@ vi.mock('../../permissions/index.js', async () => {
         );
       }
     },
+    requireOrgHeld: (_org: string, orgRole: string, permission: string) => {
+      if (orgRole !== 'admin') {
+        throw refuse('PERMISSION_FORBIDDEN', `This needs ${permission} on the organization`);
+      }
+    },
   };
 });
+vi.mock('../../lib/authz.js', () => ({
+  loadProjectAccess: async () => ({ orgId: 'o', orgRole: role === 'admin' ? 'admin' : 'member' }),
+}));
 
 vi.mock('./store.js', () => ({
-  pendingFor: async () => pending,
   recordProposal: async (p: { kind: string; call: { name: string; arguments: string } }) => {
     const row = { ...p, id: `p-${held.length + 1}`, createdAt: new Date() };
     held.push(row);
@@ -38,19 +43,6 @@ vi.mock('./store.js', () => ({
   },
   restateProposal: async (id: string, call: { arguments: string }) => {
     restated.push({ id, args: call.arguments });
-  },
-}));
-vi.mock('./agree.js', () => ({
-  agreeProposal: async (id: string, as: unknown) => {
-    agreed.push({ id, as });
-    return {
-      row: { id, kind: 'feedback' },
-      outcome: {
-        ok: true,
-        record: { ref: 'FB-7', href: null },
-        answered: '{"feedback":{"key":"FB-7"}}',
-      },
-    };
   },
 }));
 
@@ -76,8 +68,6 @@ const turn = {
   conversationId: 'c',
   personId: 'u-1',
   handleUserId: null,
-  message: 'Yes, record it.',
-  authority: { userId: 'u-1' } as never,
 };
 
 const text = (r: { content: { type: string; text?: string }[] }) =>
@@ -90,8 +80,6 @@ beforeEach(() => {
   role = 'member';
   held.length = 0;
   restated.length = 0;
-  pending.length = 0;
-  agreed.length = 0;
   writes.length = 0;
 });
 
@@ -119,6 +107,15 @@ describe('a chat write is held until the person agrees', () => {
       JSON.stringify({ text: 'The release code is bench-1a2b3c.' }),
       'memory_note',
     ],
+    // the report save and the issue change are held like every record (ISS-439 round 2: the judge
+    // found removing either hold turned no test red)
+    ['forge_template_save', JSON.stringify({ templateId: 'weekly', runs: ['r-1'] }), 'report_save'],
+    [
+      'forge',
+      JSON.stringify({ argv: ['issue', 'ISS-12', '--set', 'priority=urgent', '--why', 'asked'] }),
+      'issue_change',
+    ],
+    ['forge', JSON.stringify({ argv: ['issue', 'ISS-12', '--blocks', 'ISS-13'] }), 'issue_change'],
   ];
 
   for (const [name, args, kind] of calls) {
@@ -166,54 +163,40 @@ describe('a chat write is held until the person agrees', () => {
   });
 });
 
-describe('a reply agrees only through forge_agree', () => {
-  it('is not offered while nothing waits on the person', async () => {
+describe('a typed reply agrees to nothing: the turn has no tool that agrees', () => {
+  it('offers no agreeing tool, whether or not a proposal waits', async () => {
     const gate = await agreementGate(inner, turn);
-    expect(gate.tools.tools.map((t) => t.function.name)).not.toContain('forge_agree');
+    await gate.tools.execute('forge_feedback', feedback('Draft lost'));
+    expect(gate.tools.tools.map((t) => t.function.name)).toEqual(['forge_feedback']);
   });
 
-  it('is offered with what waits, and hands core the reply to bind', async () => {
-    pending.push({ id: 'p-9', kind: 'feedback', summary: { title: 'Feedback (bug): Draft lost' } });
+  it('tells the model only the press records it, and a typed yes or no writes nothing', async () => {
     const gate = await agreementGate(inner, turn);
-    const agree = gate.tools.tools.find((t) => t.function.name === 'forge_agree');
-    expect(agree?.function.description).toContain('p-9 (feedback): Feedback (bug): Draft lost');
-    const result = await gate.tools.execute(
-      'forge_agree',
-      JSON.stringify({
-        proposal: '00000000-0000-4000-8000-000000000009',
-        kind: 'feedback',
-        words: 'Yes, record it.',
-      }),
-    );
-    expect(result.isError).toBeFalsy();
-    expect(text(result)).toContain('FB-7');
-    expect(agreed).toMatchObject([
-      {
-        id: '00000000-0000-4000-8000-000000000009',
-        as: {
-          via: 'reply',
-          userId: 'u-1',
-          reply: {
-            conversationId: 'c',
-            message: 'Yes, record it.',
-            words: 'Yes, record it.',
-            kind: 'feedback',
-          },
-        },
-      },
-    ]);
+    const r = await gate.tools.execute('forge_feedback', feedback('Draft lost'));
+    expect(text(r)).toContain('Only their press records it');
+    expect(text(r)).toContain('a reply they type, yes or no, writes nothing');
+    expect(text(r)).not.toContain('forge_agree');
+  });
+});
+
+describe('a project change from the Assistant is held, and needs the org admin to be offered', () => {
+  const setName = JSON.stringify({ argv: ['project', 'forge', '--set', 'name=Forge 2'] });
+
+  it('holds forge project --set for an org admin as a project change, writing nothing', async () => {
+    role = 'admin';
+    const gate = await agreementGate(inner, turn);
+    const r = await gate.tools.execute('forge', setName);
+    expect(text(r)).toContain('(kind project_change)');
+    expect(held.map((h) => h.kind)).toEqual(['project_change']);
     expect(writes).toEqual([]);
   });
 
-  it('refuses an agreement with no words by its shape, binding nothing', async () => {
+  it('refuses a project member who is no org admin for the right they lack, holding nothing', async () => {
     const gate = await agreementGate(inner, turn);
-    const result = await gate.tools.execute(
-      'forge_agree',
-      JSON.stringify({ proposal: '00000000-0000-4000-8000-000000000009', kind: 'feedback' }),
-    );
-    expect(result.isError).toBe(true);
-    expect(text(result)).toContain('words');
-    expect(agreed).toEqual([]);
+    const r = await gate.tools.execute('forge', setName);
+    expect(text(r)).toContain('needs org.admin');
+    expect(held).toEqual([]);
+    expect(writes).toEqual([]);
   });
 });
 

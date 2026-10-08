@@ -228,6 +228,8 @@ export interface ScreenedTurnArgs {
   /** The door this reply goes out of; its row carries the pair and the repair budget. */
   door: DoorId;
   projectId: string;
+  /** The conversation the reply is posted in: a record the person agreed to in it grounds a claim to it. */
+  conversationId?: string;
   /** The answering handle's own name — the fallbacks speak as it. */
   handleName: string;
   /** The language the fallbacks answer in. */
@@ -298,6 +300,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     const verdict = await screenReplyAtDoor(args.door, {
       ...(args.stage ? { heldBlocks: args.stage.of(drewIn).map((b) => b.block.visual) } : {}),
       projectId: args.projectId,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       segments: [text],
       toolCalls: of.toolCalls,
       ...(args.offeredTools ? { offeredTools: args.offeredTools } : {}),

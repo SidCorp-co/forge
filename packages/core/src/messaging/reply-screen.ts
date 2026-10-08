@@ -53,6 +53,8 @@ interface ReplyScreenInput {
    * `figures-rule.ts:FIGURE_GROUNDING_RESULTS` declares ground a figure as a report run does.
    */
   readonly namedResults?: readonly ToolResultEntry[];
+  /** The conversation the reply is posted in: a record agreed in it grounds a claim to it. */
+  readonly conversationId?: string;
 }
 
 /** What the figures rule reads of this turn, or nothing where the turn could run no report. */
@@ -97,6 +99,7 @@ export async function screenReplyAtDoor(
     ...(input.question !== undefined ? { question: input.question } : {}),
     ...(figures ? { figures } : {}),
     ...(held ? { heldBlocks: held } : {}),
+    ...(input.conversationId ? { conversationId: input.conversationId } : {}),
     ...(input.executor ? { executor: input.executor } : {}),
   });
   const verdict = screenMessage({ audience, intent, segments: input.segments, facts });

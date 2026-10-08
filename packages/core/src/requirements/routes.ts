@@ -25,6 +25,7 @@ import { agreeRequirement } from './agree.js';
 import { requestContract } from './contract-request.js';
 import { readRequirementDecisionsAs } from './decisions-read.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
+import { designsNamed, draftLinked } from './draft-linked.js';
 import { requirementLinkRoutes } from './link-routes.js';
 import { requirementSummaryOf } from './projection.js';
 import { promoteDraftIssues } from './promote-drafts.js';
@@ -41,7 +42,6 @@ import {
   revisionFields,
   viewQuery,
 } from './route-kit.js';
-import { createRequirement } from './service.js';
 
 export const requirementRoutes = new Hono<RequirementEnv>();
 
@@ -72,20 +72,22 @@ requirementRoutes.post(
   '/:id/requirements',
   projectParam,
   strictBody(
-    z.strictObject({ title: z.string().trim().min(1).max(500), ...revisionFields }),
-    '{ title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } writes REQ-n at revision 1',
+    z.strictObject({
+      title: z.string().trim().min(1).max(500),
+      ...revisionFields,
+      designs: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
+    }),
+    '{ title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }], designs?: [flow name or id] } writes REQ-n at revision 1, linked to each design named',
   ),
   holdChatWrite('requirement_draft'),
   async (c) => {
-    const { title, ...write } = c.req.valid('json');
+    const { title, designs, ...write } = c.req.valid('json');
+    const projectId = c.req.valid('param').id;
+    const linked = await designsNamed(projectId, designs ?? []);
+    if (!linked.ok) return refused(c, [linked.refusal], 'REQUIREMENT_REFUSED');
     return answer(
       c,
-      await createRequirement({
-        projectId: c.req.valid('param').id,
-        actor: actorOf(c),
-        title,
-        write,
-      }),
+      await draftLinked({ projectId, actor: actorOf(c), title, write, workflowIds: linked.ids }),
     );
   },
 );

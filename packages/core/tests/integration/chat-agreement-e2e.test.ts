@@ -3,48 +3,30 @@
  * nothing until the person agrees. Before ISS-439 the agreement was an instruction to the model,
  * and forge_feedback, the requirement tools and an Agent session's REST POST wrote the moment they
  * were called. Here the real routes, the real toolset and the real database answer: a held write
- * leaves no row; the person's card press or a reply core binds writes exactly the held call, once,
- * as them, linked to what it named.
+ * leaves no row; only the person's press on the card writes exactly the held call, once, as them,
+ * linked to what it named. A typed reply, yes or no, writes nothing (ISS-439 round 2: the judge's
+ * probe A had a typed "No" bound as agreement, and core wrote it).
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  closeWorld,
-  type Doc,
-  type Reply,
-  requester,
-  startQueue,
-  testEnv,
-} from '../helpers/ecosystem-world.js';
-import {
-  addProjectMember,
-  createTestDevice,
-  createTestProject,
-  createTestUser,
-  rows,
-} from '../helpers/factories.js';
+import type { AgreementGate } from '../../src/assistant/agreement/turn-gate.js';
+import { type AgreementWorld, openAgreementWorld } from '../helpers/chat-agreement-world.js';
+import { closeWorld, type Doc, type Reply, requester } from '../helpers/ecosystem-world.js';
+import { rows } from '../helpers/factories.js';
 
 let projectId = '';
-let projectSlug = '';
 let owner = '';
 let roomId = '';
 let workflowId = '';
 let reqKey = '';
-let say: (
-  who: 'owner' | 'member' | 'agent',
-  method: string,
-  path: string,
-  body?: unknown,
-) => Promise<Reply>;
-let app: { request: (path: string, init: RequestInit) => Response | Promise<Response> };
+let say: AgreementWorld['say'];
+let app: AgreementWorld['app'];
 let tokens: Record<string, string>;
-let gateFor: (
-  message: string,
-) => Promise<import('../../src/assistant/agreement/turn-gate.js').AgreementGate>;
-let agentTurn: (question: string) => Promise<void>;
-
+let turnToken = '';
+// the person's message is the turn's, and nothing in the gate reads it: a typed reply agrees to nothing
+let gateFor: (message: string) => Promise<AgreementGate>;
+let agentTurn: AgreementWorld['agentTurn'];
 const QUESTION = 'The dock loses my draft when I switch tabs. Record it, please.';
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 const count = async (table: 'feedback' | 'requirements' | 'comments' | 'chat_proposals') =>
@@ -65,102 +47,9 @@ const codeOf = (r: Reply) => r.json?.error?.refusals?.[0]?.code ?? r.json?.code;
 const heldId = (said: string) => /proposal ([0-9a-f-]{36})/.exec(said)?.[1] ?? '';
 
 beforeAll(async () => {
-  testEnv();
-  const index = await import('../../src/index.js');
-  app = index.app;
-  await startQueue();
-  const { signUserToken } = await import('../../src/credentials/jwt.js');
-  const { AGENT_TURN_MENU, CHAT_TURN_MENU, mintTurnCredential } = await import(
-    '../../src/credentials/turn-credential.js'
-  );
-  const { resolveTurnAuthority } = await import('../../src/permissions/index.js');
-  const { createChatSessionRow, mintSessionCredential } = await import(
-    '../../src/agent-sessions/index.js'
-  );
-  const { buildProjectToolset } = await import('../../src/assistant/tools/registry.js');
-  const { buildChatToolContext } = await import('../../src/assistant/tools/principal.js');
-  const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
-  const { db } = await import('../../src/db/client.js');
-
-  owner = (await createTestUser({ verified: true })).id;
-  const member = (await createTestUser({ verified: true })).id;
-  const project = await createTestProject(owner);
-  projectId = project.id;
-  projectSlug = project.slug;
-  await addProjectMember(projectId, owner, 'owner');
-  await addProjectMember(projectId, member, 'member');
-  const deviceId = await createTestDevice(owner);
-  workflowId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO project_workflows (id, project_id, flow, kind, revision, document, written_by_user)
-    VALUES (${workflowId}, ${projectId}, 'chat-turn', 'flow', 1, '{}'::jsonb, ${owner})`);
-
-  const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
-  if (!resolved.ok) throw new Error(resolved.refusal.message);
-  const authority = resolved.authority;
-
-  tokens = { owner: await signUserToken(owner), member: await signUserToken(member) };
-  say = requester(index.app, tokens) as typeof say;
-  const opened = await say('owner', 'POST', '/api/conversations', {
-    projectId,
-    title: 'the dock',
-    people: [member],
-  });
-  expect(opened.status, JSON.stringify(opened.json)).toBe(201);
-  roomId = String(opened.json.id);
-  reqKey = (
-    await say('owner', 'POST', at('/requirements'), {
-      title: 'The chat dock keeps a draft',
-      reason: 'People lose what they typed.',
-      criteria: [{ body: 'A draft survives a tab switch.' }],
-    })
-  ).json.key;
-
-  const credential = await mintTurnCredential({ authority, menu: CHAT_TURN_MENU, ttlMs: 600_000 });
-  gateFor = async (message) =>
-    agreementGate(
-      buildProjectToolset(
-        buildChatToolContext({
-          credential,
-          projectSlug,
-          turn: { conversationId: roomId, speakerUserId: owner, handleUserId: null },
-        }),
-      ),
-      {
-        projectId,
-        conversationId: roomId,
-        personId: owner,
-        handleUserId: null,
-        message,
-        authority,
-      },
-    );
-
-  // each room turn an Agent-mode box answers is its own session, started when the turn was
-  agentTurn = async (question) => {
-    const session = await createChatSessionRow({
-      projectId,
-      userId: owner,
-      title: 'Agent: the dock',
-      runKind: 'system',
-      metadata: {
-        conversationAgent: {
-          venue: { adapter: 'web', externalId: roomId, projectId },
-          conversationId: roomId,
-          windowId: randomUUID(),
-          deliveryKey: `window:${randomUUID()}`,
-          question,
-          asker: { userId: owner, viaTokenId: null },
-        },
-      },
-    });
-    tokens.agent = await mintSessionCredential({
-      sessionId: session.id,
-      deviceId,
-      value: { authority, menu: AGENT_TURN_MENU },
-    });
-  };
-  await agentTurn(QUESTION);
+  const w = await openAgreementWorld(QUESTION);
+  ({ projectId, owner, roomId, workflowId, reqKey, say, app, tokens, turnToken, agentTurn } = w);
+  gateFor = async (_message) => w.gate();
 }, 120_000);
 
 afterAll(async () => {
@@ -272,7 +161,7 @@ describe('an Assistant write is held, and the card writes it as the person', () 
   });
 });
 
-describe('a reply agrees only when core binds it, through forge_agree', () => {
+describe('a typed reply agrees to nothing; only the press writes (REQ-30 BC-4)', () => {
   let held = '';
   const draft = {
     title: 'The dock autosaves a draft',
@@ -280,6 +169,8 @@ describe('a reply agrees only when core binds it, through forge_agree', () => {
     criteria: [{ body: 'A draft typed in the dock is there after a tab switch.' }],
     designs: ['chat-turn'],
   };
+  const press = (id: string) =>
+    say('owner', 'POST', `/api/conversations/${roomId}/proposals/${id}/agree`, {});
 
   it('holds the draft requirement, which names its design', async () => {
     const before = await count('requirements');
@@ -295,43 +186,68 @@ describe('a reply agrees only when core binds it, through forge_agree', () => {
     ]);
   });
 
-  it('refuses part of the reply, and the wrong kind, writing nothing', async () => {
-    const message = "No, don't draft it yet.";
-    const gate = await gateFor(message);
-    const before = await count('requirements');
-    for (const [kind, words] of [
-      ['requirement_draft', 'draft it'],
-      ['feedback', message],
-    ] as const) {
+  // the judge's probe A, and its mirror: neither a typed refusal nor a typed yes writes anything
+  for (const typed of ["No. Do not record this, I don't want it.", 'Yes, draft it as you said.']) {
+    it(`writes nothing on the typed reply "${typed}", in Assistant or Agent mode`, async () => {
+      const before = await count('requirements');
+      const gate = await gateFor(typed);
+      expect(gate.tools.tools.map((t) => t.function.name)).not.toContain('forge_agree');
       const r = await gate.tools.execute(
         'forge_agree',
-        JSON.stringify({ proposal: held, kind, words }),
+        JSON.stringify({ proposal: held, kind: 'requirement_draft', words: typed }),
       );
       expect(r.isError).toBe(true);
-      expect(text(r)).toContain('CHAT_AGREEMENT_UNBOUND');
-    }
-    expect(await count('requirements')).toBe(before);
-  });
 
-  it('writes the draft as the person when their whole reply is quoted, linked to its design', async () => {
-    const message = 'Yes, draft it as you said.';
-    const gate = await gateFor(message);
-    const r = await gate.tools.execute(
-      'forge_agree',
-      JSON.stringify({ proposal: held, kind: 'requirement_draft', words: message }),
-    );
-    expect(r.isError, text(r)).toBeFalsy();
-    const ref = JSON.parse(text(r)).recorded.ref as string;
+      await agentTurn(typed);
+      const bound = await say(
+        'agent',
+        'POST',
+        `/api/conversations/${roomId}/proposals/${held}/agree`,
+        {
+          words: typed,
+          kind: 'requirement_draft',
+        },
+      );
+      expect(bound.status).toBe(400);
+      const bare = await say(
+        'agent',
+        'POST',
+        `/api/conversations/${roomId}/proposals/${held}/agree`,
+        {},
+      );
+      expect(bare.status).toBe(403);
+      expect(codeOf(bare)).toBe('CHAT_AGREEMENT_DOOR');
+      const asTurn = await requester(app as never, { turn: turnToken })(
+        'turn',
+        'POST',
+        `/api/conversations/${roomId}/proposals/${held}/agree`,
+        {},
+      );
+      // the assistant's turn token reaches no conversation route at all, so it is refused there first
+      expect(asTurn.status).toBe(403);
+
+      expect(await count('requirements')).toBe(before);
+      expect((await proposals()).find((p) => p.id === held)?.status).toBe('pending');
+    });
+  }
+
+  it("writes the draft on the person's press, linked to its design", async () => {
+    const r = await press(held);
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(r.json.proposal).toMatchObject({
+      status: 'recorded',
+      agreedVia: 'card',
+      agreedWords: null,
+    });
+    const ref = r.json.proposal.record.ref as string;
     const req = (await say('owner', 'GET', at(`/requirements/${ref}`))).json;
     expect(req.title).toBe(draft.title);
     expect((req.workflows as Doc[]).map((wf) => wf.id ?? wf.workflowId)).toContain(workflowId);
-    const p = (await proposals()).find((x) => x.id === held);
-    expect(p).toMatchObject({ status: 'recorded', agreedVia: 'reply', agreedWords: message });
   });
 });
 
 describe("an Agent-mode session's REST write is held the same way", () => {
-  it('holds a Feedback POST, and the session binds the reply to write it', async () => {
+  it('holds a Feedback POST, which the session cannot agree to, and the press writes it', async () => {
     const before = await count('feedback');
     const r = await say('agent', 'POST', at('/feedback'), {
       kind: 'bug',
@@ -342,28 +258,23 @@ describe("an Agent-mode session's REST write is held the same way", () => {
     expect(codeOf(r)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(await count('feedback')).toBe(before);
     const id = heldId(JSON.stringify(r.json));
-    const agree = (words: string) =>
-      say('agent', 'POST', `/api/conversations/${roomId}/proposals/${id}/agree`, {
-        words,
-        kind: 'feedback',
-      });
-    // the turn that held it cannot agree to it: the person has not seen it yet
-    expect(codeOf(await agree(QUESTION))).toBe('CHAT_AGREEMENT_UNBOUND');
-
     await agentTurn('Yes, record both.');
-    expect(codeOf(await agree('record both'))).toBe('CHAT_AGREEMENT_UNBOUND');
-    expect(await count('feedback')).toBe(before);
-    const agreed = await say(
+    const bound = await say(
       'agent',
       'POST',
       `/api/conversations/${roomId}/proposals/${id}/agree`,
-      {
-        words: 'Yes, record both.',
-        kind: 'feedback',
-      },
+      {},
+    );
+    expect(codeOf(bound)).toBe('CHAT_AGREEMENT_DOOR');
+    expect(await count('feedback')).toBe(before);
+    const agreed = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${id}/agree`,
+      {},
     );
     expect(agreed.status, JSON.stringify(agreed.json)).toBe(200);
-    expect(agreed.json.proposal).toMatchObject({ status: 'recorded', agreedVia: 'reply' });
+    expect(agreed.json.proposal).toMatchObject({ status: 'recorded', agreedVia: 'card' });
     expect(await count('feedback')).toBe(before + 1);
     expect(JSON.parse(agreed.json.answered).feedback.target).toMatchObject({ key: reqKey });
   });

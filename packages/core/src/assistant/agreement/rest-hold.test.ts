@@ -74,7 +74,7 @@ beforeEach(() => {
 });
 
 describe("an Agent-mode session's record write waits for the person", () => {
-  it('is held with its method, path and bytes, and the reply is told how to agree', async () => {
+  it('is held with its method, path and bytes, and the session is told only the press writes it', async () => {
     door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
     session = {
       found: true,
@@ -91,7 +91,8 @@ describe("an Agent-mode session's record write waits for the person", () => {
     const refusal = await codeOf(r);
     expect(refusal?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(refusal?.detail).toContain('proposal p-1');
-    expect(refusal?.detail).toContain('/api/conversations/room/proposals/p-1/agree');
+    expect(refusal?.detail).toContain('Only their press writes it');
+    expect(refusal?.detail).not.toContain('/agree');
     expect(held).toHaveLength(1);
     expect(held[0]).toMatchObject({
       kind: 'feedback',

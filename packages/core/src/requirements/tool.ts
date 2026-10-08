@@ -3,10 +3,10 @@ import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
 import { criteriaFromDocument } from './document-criteria.js';
-import { designIdsOf, linkWorkflow } from './issue-links.js';
+import { designsNamed, draftLinked } from './draft-linked.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
 import { revisionFields } from './route-kit.js';
-import { createRequirement, writeRevision } from './service.js';
+import { writeRevision } from './service.js';
 import type { RequirementOutcome } from './write-tx.js';
 
 // One tool, one read, each one object: the chat adapter pins the session's projectId and drops
@@ -180,20 +180,16 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
   inputSchema: zodToMcpSchema(draftInput),
   handler: async (args) => {
     const { projectId, title, criteriaFrom, preview, designs, ...write } = draftInput.parse(args);
-    const linked = await designIdsOf(projectId, designs ?? []);
-    if (!linked.ok) return designRefusal(linked.missing);
-    const draft = async (criteria: typeof write.criteria) =>
-      linkDesigns(
-        ctx,
+    const linked = await designsNamed(projectId, designs ?? []);
+    if (!linked.ok) return refusedAnswer([linked.refusal], 'REQUIREMENT_REFUSED');
+    const draft = (criteria: typeof write.criteria) =>
+      draftLinked({
         projectId,
-        linked.ids,
-        await createRequirement({
-          projectId,
-          actor: actorOf(ctx),
-          title,
-          write: { ...write, criteria },
-        }),
-      );
+        actor: actorOf(ctx),
+        title,
+        write: { ...write, criteria },
+        workflowIds: linked.ids,
+      });
     if (!criteriaFrom) {
       if (preview) return documentRefusal('preview reads criteriaFrom, and this call names none');
       return drafted(await draft(write.criteria));
@@ -207,39 +203,6 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
       : filed;
   },
 });
-
-function designRefusal(missing: readonly string[]) {
-  return refusedAnswer(
-    [
-      {
-        code: 'REQUIREMENT_DESIGN_UNKNOWN',
-        path: '/designs',
-        detail: `this project holds no workflow design named ${missing.join(', ')}; name a design by its flow name or id, as the Workflows screen lists them`,
-      },
-    ],
-    'REQUIREMENT_REFUSED',
-  );
-}
-
-/** Link the drafted requirement to the designs its wish relates to; the outcome as it then reads. */
-async function linkDesigns(
-  ctx: Parameters<ContextScopedMcpToolFactory>[0],
-  projectId: string,
-  workflowIds: readonly string[],
-  outcome: RequirementOutcome,
-): Promise<RequirementOutcome> {
-  let latest = outcome;
-  for (const workflowId of workflowIds) {
-    if (!latest.ok) return latest;
-    latest = await linkWorkflow({
-      projectId,
-      ref: latest.requirement.key,
-      actor: actorOf(ctx),
-      workflowId,
-    });
-  }
-  return latest;
-}
 
 function documentRefusal(detail: string) {
   return refusedAnswer(

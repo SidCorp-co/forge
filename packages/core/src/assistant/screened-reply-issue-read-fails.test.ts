@@ -20,6 +20,7 @@ beforeAll(() => {
     contractHolding: async () => ({ projectSlug: 'p', versions: [], named: false }),
     readsTechnical: async () => true,
     reportRunFrames: async () => [],
+    agreedRecords: async () => [],
   });
 });
 

@@ -1,18 +1,26 @@
-// A reply that says it recorded something is held to what the turn wrote, in either language, at
-// every chat door; a reply that says it created an issue is held whatever the turn did.
+// A reply that says it recorded something is held to what this conversation wrote through the
+// person's agreement (REQ-30 BC-4: a chat's write lands only on their press of its card), in either
+// language, at every chat door; a held call grounds nothing; a reply that says it created an issue
+// is held whatever the turn did.
 
 import { describe, expect, it, vi } from 'vitest';
 import { facts } from './facts.js';
+import type { AgreedRecord } from './reads.js';
+
+/** What the conversation recorded through agreements, as the screen reads it. */
+let agreedNow: readonly AgreedRecord[] = [];
 
 vi.mock('./gather.js', () => ({
   gatherFacts: async (input: {
     toolCalls?: readonly { name: string; arguments: string; isError?: boolean }[];
+    conversationId?: string;
   }) =>
     facts({
       prefix: 'ISS',
       prefixes: ['ISS'],
       toolCalls: input.toolCalls ?? [],
       progress: null,
+      agreedRecords: input.conversationId ? agreedNow : [],
     }),
 }));
 
@@ -29,6 +37,7 @@ const REVISE30: Call = {
   name: 'mcp__forge__forge_requirement_revise',
   arguments: JSON.stringify({ projectId: PID, requirement: 'REQ-30' }),
 };
+const fb = (ref: string | null): AgreedRecord => ({ kind: 'feedback', ref });
 const post = (route: string): Call => ({
   name: 'Bash',
   arguments: JSON.stringify({
@@ -47,9 +56,12 @@ const held = async (
   text: string,
   toolCalls: Call[],
   door: (typeof DOORS)[number] = 'web-chat-reply',
+  agreed: readonly AgreedRecord[] = [],
 ) => {
+  agreedNow = agreed;
   const v = await screenReplyAtDoor(door, {
     projectId: PID,
+    conversationId: 'c-1',
     segments: [text],
     toolCalls,
     progress: null,
@@ -71,11 +83,27 @@ describe('a reply claiming it recorded Feedback or a Requirement', () => {
     expect(r[0]?.quote).toBe('I recorded this as FB-112');
   });
 
-  it('passes a true FB claim, from the MCP tool or from an Agent REST POST', async () => {
-    expect(await held('I recorded this as FB-112.', [FEEDBACK])).toEqual([]);
+  it('passes a true FB claim, recorded in this conversation through an agreement, at every door', async () => {
+    for (const door of DOORS) {
+      expect(await held('I recorded this as FB-112.', [], door, [fb('FB-112')]), door).toEqual([]);
+    }
+  });
+
+  it('grounds nothing on a held write: the MCP tool or an Agent REST POST recorded nothing', async () => {
+    expect(await held('I recorded this as FB-112.', [FEEDBACK])).toHaveLength(1);
     expect(
       await held('I recorded this as FB-112.', [post('feedback')], 'web-agent-completion'),
-    ).toEqual([]);
+    ).toHaveLength(1);
+    expect(await held('I drafted REQ-31 for you.', [DRAFT])).toHaveLength(1);
+    expect(
+      await held('I drafted REQ-31 for you.', [post('requirements')], 'web-agent-completion'),
+    ).toHaveLength(1);
+  });
+
+  it('holds a key the agreement did not record', async () => {
+    expect(
+      await held('I recorded this as FB-113.', [], 'web-chat-reply', [fb('FB-112')]),
+    ).toHaveLength(1);
   });
 
   it('holds an FB claim whose only call was refused', async () => {
@@ -91,62 +119,74 @@ describe('a reply claiming it recorded Feedback or a Requirement', () => {
   it('reads the Vietnamese claim the same way', async () => {
     const vi1 = 'Đã ghi nhận vào FB-112.'; // i18n-allow: the Vietnamese claim the detector must read
     expect(await held(vi1, [])).toHaveLength(1);
-    expect(await held(vi1, [FEEDBACK])).toEqual([]);
+    expect(await held(vi1, [], 'web-chat-reply', [fb('FB-112')])).toEqual([]);
+    expect(await held(vi1, [FEEDBACK])).toHaveLength(1);
     expect(await held(vi1, [post('requirements')])).toHaveLength(1);
   });
 
   it('holds drafted REQ-31 and a revision claim unless the turn wrote them', async () => {
     expect(await held('I drafted REQ-31 for you.', [])).toHaveLength(1);
-    expect(await held('I drafted REQ-31 for you.', [DRAFT])).toEqual([]);
+    expect(
+      await held('I drafted REQ-31 for you.', [], 'web-chat-reply', [
+        { kind: 'requirement_draft', ref: 'REQ-31' },
+      ]),
+    ).toEqual([]);
     expect(await held('I proposed revision r2 of REQ-30.', [])).toHaveLength(1);
-    expect(await held('I proposed revision r2 of REQ-30.', [REVISE30])).toEqual([]);
-    expect(await held('I proposed revision r2 of REQ-30.', [post('requirements')])).toEqual([]);
+    expect(
+      await held('I proposed revision r2 of REQ-30.', [], 'web-chat-reply', [
+        { kind: 'requirement_revision', ref: 'REQ-30 r2' },
+      ]),
+    ).toEqual([]);
+    expect(await held('I proposed revision r2 of REQ-30.', [REVISE30])).toHaveLength(1);
+    expect(await held('I proposed revision r2 of REQ-30.', [post('requirements')])).toHaveLength(1);
   });
 
   it('holds a revision of a different requirement than the one the claim names', async () => {
-    expect(await held('I proposed revision r2 of REQ-44.', [REVISE30])).toHaveLength(1);
+    expect(
+      await held('I proposed revision r2 of REQ-44.', [], 'web-chat-reply', [
+        { kind: 'requirement_revision', ref: 'REQ-30 r2' },
+      ]),
+    ).toHaveLength(1);
   });
 
   it('holds a keyless claim, and lets a question, a future offer and a read pass', async () => {
     expect(await held('I recorded your feedback.', [])).toHaveLength(1);
-    expect(await held('I recorded your feedback.', [FEEDBACK])).toEqual([]);
+    expect(await held('I recorded your feedback.', [], 'web-chat-reply', [fb('FB-7')])).toEqual([]);
+    expect(await held('I recorded your feedback.', [FEEDBACK])).toHaveLength(1);
     expect(await held('Shall I record this as FB-112?', [])).toEqual([]);
     expect(await held('I can record this as feedback once you confirm.', [])).toEqual([]);
     expect(await held('FB-112 is waiting for triage.', [])).toEqual([]);
   });
 });
 
-describe('a record the person agreed to, written through the agreement (REQ-30 BC-4)', () => {
-  const agreed = (kind: string, isError = false): Call => ({
-    name: 'forge_agree',
-    arguments: JSON.stringify({ proposal: 'p-1', kind, words: 'Yes, record it.' }),
-    ...(isError ? { isError } : {}),
-  });
-  const agreeOverRest: Call = {
-    name: 'Bash',
-    arguments: JSON.stringify({
-      command: `forge-runner api conversations/c-1/proposals/p-1/agree -X POST -d '{"words":"yes","kind":"feedback"}'`,
-    }),
-  };
-
-  it('grounds the claim on the agreement whose kind is that record', async () => {
-    expect(await held('I recorded this as FB-112.', [agreed('feedback')])).toEqual([]);
-    expect(await held('I drafted REQ-31 for you.', [agreed('requirement_draft')])).toEqual([]);
+describe('a record the person agreed to by pressing its card (REQ-30 BC-4)', () => {
+  it('grounds a claim only on a record of that kind; a typed agreement is no write', async () => {
+    const typedAgree: Call = {
+      name: 'forge_agree',
+      arguments: JSON.stringify({ proposal: 'p-1', kind: 'feedback', words: 'Yes, record it.' }),
+    };
+    expect(await held('I recorded this as FB-112.', [typedAgree])).toHaveLength(1);
     expect(
-      await held('I proposed revision r2 of REQ-30.', [agreed('requirement_revision')]),
-    ).toEqual([]);
+      await held('I recorded this as FB-112.', [], 'web-chat-reply', [
+        { kind: 'requirement_draft', ref: 'REQ-31' },
+      ]),
+    ).toHaveLength(1);
     expect(
-      await held('I recorded this as FB-112.', [agreeOverRest], 'web-agent-completion'),
-    ).toEqual([]);
+      await held('I drafted REQ-31 for you.', [], 'web-chat-reply', [
+        { kind: 'memory_note', ref: null },
+      ]),
+    ).toHaveLength(1);
   });
 
-  it('holds the claim when the write was only held, the agreement refused, or of another kind', async () => {
-    expect(await held('I recorded this as FB-112.', [{ ...FEEDBACK, isError: true }])).toHaveLength(
-      1,
-    );
-    expect(await held('I recorded this as FB-112.', [agreed('feedback', true)])).toHaveLength(1);
-    expect(await held('I recorded this as FB-112.', [agreed('requirement_draft')])).toHaveLength(1);
-    expect(await held('I drafted REQ-31 for you.', [agreed('memory_note')])).toHaveLength(1);
+  it('reads no agreement where the reply belongs to no conversation', async () => {
+    agreedNow = [fb('FB-112')];
+    const v = await screenReplyAtDoor('web-chat-reply', {
+      projectId: PID,
+      segments: ['I recorded this as FB-112.'],
+      toolCalls: [],
+      progress: null,
+    });
+    expect(v.ok).toBe(false);
   });
 });
 
@@ -168,7 +208,7 @@ describe('a reply claiming it created an issue', () => {
 
 describe('a reply claiming it shared an answer or saved a report', () => {
   const shared = post('shares');
-  const saved = post('status/reports');
+  const saved: AgreedRecord = { kind: 'report_save', ref: null };
 
   it('holds a fabricated share claim at every chat door, and passes a true one', async () => {
     for (const door of DOORS) {
@@ -198,7 +238,10 @@ describe('a reply claiming it shared an answer or saved a report', () => {
 
   it('holds a fabricated save claim and passes a true one', async () => {
     expect(await held('I saved the report for you.', [])).toHaveLength(1);
-    expect(await held('I saved the report for you.', [saved])).toEqual([]);
+    expect(await held('I saved the report for you.', [], 'web-chat-reply', [saved])).toEqual([]);
+    expect(
+      await held('I saved the report for you.', [post('status/reports')], 'web-agent-completion'),
+    ).toHaveLength(1);
     expect(
       await held('I saved the report for you.', [post('status/reports/r-1/read')]),
     ).toHaveLength(1);
@@ -216,7 +259,7 @@ describe('a reply claiming it shared an answer or saved a report', () => {
     expect(await held(share, [])).toHaveLength(1);
     expect(await held(share, [shared])).toEqual([]);
     expect(await held(save, [])).toHaveLength(1);
-    expect(await held(save, [saved])).toEqual([]);
+    expect(await held(save, [], 'web-chat-reply', [saved])).toEqual([]);
   });
 });
 
@@ -242,10 +285,12 @@ describe('a save claim in any phrasing', () => {
     'Kết quả được lưu trong lịch sử báo cáo.', // i18n-allow: a passive Vietnamese save claim
   ];
 
-  it('holds the two replies the QA saw, and passes them after a forge_template_save call', async () => {
+  it('holds the two replies the QA saw, and passes them once the person recorded the save', async () => {
+    const agreedSave: AgreedRecord = { kind: 'report_save', ref: null };
     for (const said of QA) {
       expect(await held(said, []), said).toHaveLength(1);
-      expect(await held(said, [SAVE_TOOL]), said).toEqual([]);
+      expect(await held(said, [], 'web-chat-reply', [agreedSave]), said).toEqual([]);
+      expect(await held(said, [SAVE_TOOL]), said).toHaveLength(1);
       expect(await held(said, [{ ...SAVE_TOOL, isError: true }]), said).toHaveLength(1);
     }
   });
@@ -281,7 +326,7 @@ describe('a hedged claim to have written a record', () => {
     const r = await held(hedged, []);
     expect(r).toHaveLength(1);
     expect(r[0]?.quote).toBe('I recorded this as FB-9999 (unverified, this may be wrong)');
-    expect(await held(hedged, [FEEDBACK])).toEqual([]);
+    expect(await held(hedged, [], 'web-chat-reply', [fb('FB-9999')])).toEqual([]);
   });
 
   it('holds a hedged share, save and issue claim the same way', async () => {

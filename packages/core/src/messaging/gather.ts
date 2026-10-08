@@ -50,6 +50,8 @@ interface GatherInput {
   readonly question?: string;
   /** The blocks held with this reply, as JSON (`facts.ts:MessageFacts`). */
   readonly heldBlocks?: readonly string[];
+  /** The conversation the reply is posted in: the records agreed in it ground a claim (`facts.ts:MessageFacts`). */
+  readonly conversationId?: string;
   /**
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
@@ -146,6 +148,10 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     asked: input.question === undefined ? new Set() : askedValues(input.question),
     figures: await figureFactsFor(input, needs, tx),
     heldBlocks: input.heldBlocks ?? null,
+    agreedRecords:
+      needs.has('agreed-records') && input.conversationId
+        ? await messageReads().agreedRecords(input.conversationId, tx)
+        : [],
   };
   if (needs.size === 0) return base;
   if (needs.size === 1 && needs.has('issue-rows')) return base;

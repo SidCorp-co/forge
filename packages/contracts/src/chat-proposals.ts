@@ -1,13 +1,11 @@
 // A chat's write is a proposal until the person it answers agrees (REQ-30 BC-4, workflow chat-turn
 // steps restate, confirm, write). Core holds the call the model or an Agent session made instead
-// of running it, the conversation shows it as a confirm card, and the person agrees by pressing it
-// or by a reply the chat binds to it. Only then does core make that exact call, as that person.
+// of running it, the conversation shows it as a confirm card, and the person agrees by pressing
+// Record it on that card, from their own sign-in. A typed reply agrees to nothing, whatever it says:
+// only then does core make that exact call, as that person.
 
 import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
-
-/** The tool an Assistant turn binds a person's reply to a proposal with. */
-export const CHAT_AGREE_TOOL = "forge_agree" as const;
 
 /** What a proposal would write, as the card names it. */
 export const CHAT_PROPOSAL_KINDS = [
@@ -20,6 +18,8 @@ export const CHAT_PROPOSAL_KINDS = [
 	"preferences",
 	"report_save",
 	"issue_change",
+	"requirement_link",
+	"project_change",
 ] as const;
 export type ChatProposalKind = (typeof CHAT_PROPOSAL_KINDS)[number];
 
@@ -37,7 +37,11 @@ export const CHAT_PROPOSAL_STATUSES = [
 ] as const;
 export type ChatProposalStatus = (typeof CHAT_PROPOSAL_STATUSES)[number];
 
-/** How the person agreed: the card's button, or a reply the chat bound to the proposal. */
+/**
+ * How the person agreed. `card`: they pressed Record it, the only way an agreement is made. `reply`:
+ * a reply a chat bound to the proposal, which ISS-439's first build accepted (dev.195 to dev.197); no
+ * path makes it now, and it stays readable so a proposal recorded that way says how it was.
+ */
 export const CHAT_AGREEMENT_VIAS = ["card", "reply"] as const;
 export type ChatAgreementVia = (typeof CHAT_AGREEMENT_VIAS)[number];
 
@@ -50,7 +54,6 @@ export const CHAT_PROPOSAL_REFUSAL_CODES = [
 	"CHAT_PROPOSAL_UNKNOWN",
 	"CHAT_PROPOSAL_SETTLED",
 	"CHAT_PROPOSAL_NOT_YOURS",
-	"CHAT_AGREEMENT_UNBOUND",
 	"CHAT_AGREEMENT_DOOR",
 	"CHAT_AGREEMENT_SPENT",
 	"CHAT_PROPOSAL_TOO_LARGE",
@@ -98,7 +101,7 @@ export const chatProposalViewSchema = z.strictObject({
 	/** The viewer is the person it waits on, and it still waits. */
 	canDecide: z.boolean(),
 	agreedVia: z.enum(CHAT_AGREEMENT_VIAS).nullable(),
-	/** The person's own words, when a reply was bound to it. */
+	/** The person's own words, on a proposal a reply was bound to before agreement was the card alone. */
 	agreedWords: z.string().nullable(),
 	record: chatProposalRecordSchema.nullable(),
 	/** Why the agreed write was refused, when it was. */
@@ -109,24 +112,12 @@ export const chatProposalViewSchema = z.strictObject({
 export type ChatProposalView = z.infer<typeof chatProposalViewSchema>;
 
 /**
- * Agreeing. From the person's own sign-in (the card) nothing more is needed. From a chat turn's
- * credential (an Agent session binding the person's reply) `words` is the person's whole message
- * and `kind` the kind of the proposal it agrees, both checked against what was proposed.
+ * Agreeing is the press itself: the person it waits on sends nothing more, from their own sign-in.
+ * What they typed in the chat is never an agreement, so the request carries no words to bind.
  */
-export const agreeChatProposalRequestSchema = z.strictObject({
-	words: z.string().trim().min(1).max(8000).optional(),
-	kind: z.enum(CHAT_PROPOSAL_KINDS).optional(),
-});
+export const agreeChatProposalRequestSchema = z.strictObject({});
 export type AgreeChatProposalRequest = z.infer<
 	typeof agreeChatProposalRequestSchema
 >;
 export const AGREE_CHAT_PROPOSAL_SHAPE =
-	"{ words?, kind? } — from a chat session both are required: the person's whole message and the proposal's kind";
-
-/** `forge_agree`'s arguments: the proposal, its kind, and the person's whole message. */
-export const chatAgreeParamsSchema = z.strictObject({
-	proposal: z.uuid(),
-	kind: z.enum(CHAT_PROPOSAL_KINDS),
-	words: z.string().trim().min(1).max(8000),
-});
-export type ChatAgreeParams = z.infer<typeof chatAgreeParamsSchema>;
+	"{} — the person it waits on agrees by pressing Record it, from their own sign-in; nothing else is sent, and a typed reply is never an agreement";

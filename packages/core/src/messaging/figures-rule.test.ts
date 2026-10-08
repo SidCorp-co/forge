@@ -36,6 +36,7 @@ beforeAll(() => {
     readsTechnical: async () => true,
     reportRunFrames: async (projectId, ids) =>
       projectId === PID ? ids.flatMap((id) => (STORED[id] ? [STORED[id]] : [])) : [],
+    agreedRecords: async () => [],
   });
 });
 

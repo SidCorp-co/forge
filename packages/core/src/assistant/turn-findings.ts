@@ -21,9 +21,11 @@ import { repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { withReplyLanguage } from './screened-reply.js';
 import { ledgerLines } from './turn-partial.js';
-import type { DoneCall } from './turn-writes.js';
+import type { DoneCall, HeldCall } from './turn-writes.js';
 
 export interface FailureReportArgs {
+  /** The conversation the report is posted in: a record agreed in it grounds a claim to it. */
+  conversationId?: string;
   door: DoorId;
   projectId: string;
   /** The handle the report speaks as. */
@@ -37,6 +39,8 @@ export interface FailureReportArgs {
   code: TurnFailureCode;
   cause: TurnFailureCause;
   calls: readonly DoneCall[];
+  /** The writes the turn proposed and core held for the person's go-ahead: named, never as done. */
+  held?: readonly HeldCall[];
   /** The text the turn had streamed in its last round, or nothing. */
   draft: string | null;
   toolResults: readonly string[];
@@ -56,6 +60,7 @@ async function screenedDraft(
   try {
     const verdict = await screenReplyAtDoor(args.door, {
       projectId: args.projectId,
+      ...(args.conversationId ? { conversationId: args.conversationId } : {}),
       segments: [draft],
       toolCalls: args.calls.map((c) => ({ name: c.name, arguments: c.arguments })),
       offeredTools: args.offeredTools,
@@ -79,7 +84,7 @@ async function screenedDraft(
 export async function failureReport(args: FailureReportArgs): Promise<ScreenedMessage> {
   const words = findingsWords(args.language);
   const parts: string[] = [];
-  const ledger = ledgerLines(args.calls, args.language);
+  const ledger = ledgerLines(args.calls, args.language, args.held);
   if (ledger.length > 0) parts.push(ledger.join('\n'));
   const draft = args.draft ? repairIssueLinks(args.draft).trim() : '';
   const shown = draft ? await screenedDraft(args, draft) : null;

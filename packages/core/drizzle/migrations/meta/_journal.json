@@ -3004,6 +3004,13 @@
       "when": 1823472000000,
       "tag": "0469_a_corrected_memory_keeps_its_old_text_and_its_writer",
       "breakpoints": true
+    },
+    {
+      "idx": 470,
+      "version": "7",
+      "when": 1823558400000,
+      "tag": "0470_a_chat_holds_its_design_links_and_project_changes",
+      "breakpoints": true
     }
   ]
 }

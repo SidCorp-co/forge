@@ -38,7 +38,7 @@ describe('the card names what a held Assistant call would record, and what it li
     });
     expect(s).toEqual({
       title: 'New requirement: Keep chat drafts',
-      lines: ['Why: People lose drafts.', 'A draft survives a tab switch.'],
+      lines: ['Why: People lose drafts.', '1. A draft survives a tab switch.'],
       relates: ['design chat-turn'],
     });
     expect(
@@ -73,27 +73,116 @@ describe('the card names what a held Assistant call would record, and what it li
 
 describe('the card names what a held Agent request would record', () => {
   it('reads the record from the body and the target from the path', () => {
+    const rest = (
+      kind: Parameters<typeof summaryOfRest>[0]['kind'],
+      path: string,
+      body = {},
+      method = 'POST',
+    ) => summaryOfRest({ kind, method, path, body, attachmentName: null });
+    expect(rest('comment', '/api/projects/p/requirements/REQ-30/comments', { body: 'Hi' })).toEqual(
+      {
+        title: 'Comment on REQ-30',
+        lines: ['Hi'],
+        relates: ['REQ-30'],
+      },
+    );
     expect(
-      summaryOfRest(
-        'comment',
-        '/api/projects/p/requirements/REQ-30/comments',
-        { body: 'Hi' },
-        null,
-      ),
-    ).toEqual({ title: 'Comment on REQ-30', lines: ['Hi'], relates: ['REQ-30'] });
-    expect(summaryOfRest('attachment', '/api/issues/ISS-4/attachments', {}, 'log.txt')).toEqual({
-      title: 'Attach to ISS-4',
-      lines: ['log.txt'],
-      relates: ['ISS-4'],
-    });
+      summaryOfRest({
+        kind: 'attachment',
+        method: 'POST',
+        path: '/api/issues/ISS-4/attachments',
+        body: {},
+        attachmentName: 'log.txt',
+      }),
+    ).toEqual({ title: 'Attach to ISS-4', lines: ['log.txt'], relates: ['ISS-4'] });
     expect(
-      summaryOfRest(
-        'requirement_revision',
-        '/api/projects/p/requirements/REQ-9/revisions',
-        {},
-        null,
-      ).relates,
+      rest('requirement_revision', '/api/projects/p/requirements/REQ-9/revisions').relates,
     ).toEqual(['REQ-9']);
+  });
+
+  it('an issue change: every field it would set, on the issue it names', () => {
+    expect(
+      summaryOfRest({
+        kind: 'issue_change',
+        method: 'PATCH',
+        path: '/api/issues/9e7434fd-4507-42d0-bb4a-db1e25248536',
+        body: { priority: 'high', title: 'Renamed by the chat' },
+        attachmentName: null,
+      }),
+    ).toEqual({
+      title: 'Change 9e7434fd-4507-42d0-bb4a-db1e25248536',
+      lines: ['priority: high', 'title: Renamed by the chat'],
+      relates: ['9e7434fd-4507-42d0-bb4a-db1e25248536'],
+    });
+  });
+
+  it("a requirement's design link, and the designs a REST draft names", () => {
+    expect(
+      summaryOfRest({
+        kind: 'requirement_link',
+        method: 'POST',
+        path: '/api/projects/p/requirements/REQ-3/workflows',
+        body: { workflowId: 'w-1' },
+        attachmentName: null,
+      }),
+    ).toEqual({ title: 'Link REQ-3 to design w-1', lines: [], relates: ['REQ-3', 'design w-1'] });
+    expect(
+      summaryOfRest({
+        kind: 'requirement_draft',
+        method: 'POST',
+        path: '/api/projects/p/requirements',
+        body: { title: 'T', reason: 'R', criteria: [], designs: ['chat-turn'] },
+        attachmentName: null,
+      }).relates,
+    ).toEqual(['design chat-turn']);
+  });
+
+  it('a project change, by what it does to the project', () => {
+    expect(
+      summaryOfRest({
+        kind: 'project_change',
+        method: 'POST',
+        path: '/api/projects/p/archive',
+        body: {},
+        attachmentName: null,
+      }).title,
+    ).toBe('Archive the project');
+  });
+});
+
+describe('the card leaves nothing out', () => {
+  it('lists every criterion, unclipped, and every field the call carries', () => {
+    const long = 'x'.repeat(900);
+    const s = card('forge_requirement_draft', {
+      title: 'Many criteria',
+      reason: long,
+      criteria: Array.from({ length: 20 }, (_, i) => ({ body: `C${i + 1} holds.` })),
+      tldr: 'Short.',
+      spec: { openQuestions: ['Who sees it?'] },
+    });
+    expect(s.lines).toEqual([
+      `Why: ${long}`,
+      ...Array.from({ length: 20 }, (_, i) => `${i + 1}. C${i + 1} holds.`),
+      'tldr: Short.',
+      'spec: {"openQuestions":["Who sees it?"]}',
+    ]);
+  });
+
+  it('a forge issue change: each flag with its value', () => {
+    expect(
+      card('forge', {
+        argv: ['issue', 'ISS-12', '--set', 'priority=urgent', '--why', 'the chat asked'],
+      }),
+    ).toEqual({
+      title: 'Change ISS-12',
+      lines: ['--set priority=urgent', '--why the chat asked'],
+      relates: ['ISS-12'],
+    });
+    expect(card('forge', { argv: ['project', 'forge', '--set', 'name=Forge 2'] })).toEqual({
+      title: 'Change project forge',
+      lines: ['--set name=Forge 2'],
+      relates: [],
+    });
   });
 });
 

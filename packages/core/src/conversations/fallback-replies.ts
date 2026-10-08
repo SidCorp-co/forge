@@ -278,6 +278,13 @@ export const causeOfCode = (code: TurnFailureCode): TurnFailureCause =>
  * What a turn that ran past its first ceiling posts while it keeps working: what it did, what it
  * read, and that the rest follows in this same thread. `seconds` is how long the person has waited.
  */
+/**
+ * Leads the writes a turn proposed and core holds for the person's go-ahead (REQ-30 BC-4): nothing
+ * of them is written. English in every room: new copy is English only (owner ruling ISS-403).
+ */
+const PARTIAL_HELD =
+  'Waiting for a go-ahead, nothing written until Record it is pressed on its card:';
+
 const PARTIAL: Record<
   ReplyLanguage,
   {
@@ -285,6 +292,8 @@ const PARTIAL: Record<
     did: string;
     /** Leads the one sentence that says, by tool in plain words, what the turn read. */
     read: string;
+    /** Leads the writes held for the person's agreement. */
+    held: string;
     nothingYet: string;
   }
 > = {
@@ -293,6 +302,7 @@ const PARTIAL: Record<
       `${name} has not finished this after ${seconds} seconds, so here is what it has so far — still working… the rest will be posted in this conversation.`,
     did: 'Done so far:',
     read: 'Read so far:',
+    held: PARTIAL_HELD,
     nothingYet: 'Nothing is finished yet; it is still reading the project.',
   },
   vi: {
@@ -300,6 +310,7 @@ const PARTIAL: Record<
       `${name} chưa xong yêu cầu này sau ${seconds} giây nên gửi trước phần đã có — đang làm tiếp… phần còn lại sẽ được gửi ngay trong cuộc trò chuyện này.`, // i18n-allow: user-facing channel reply
     did: 'Đã làm:', // i18n-allow: user-facing channel reply
     read: 'Đã đọc:', // i18n-allow: user-facing channel reply
+    held: PARTIAL_HELD,
     nothingYet: 'Chưa có việc nào xong; đang đọc dữ liệu dự án.', // i18n-allow: user-facing channel reply
   },
 };

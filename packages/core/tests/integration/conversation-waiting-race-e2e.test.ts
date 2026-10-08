@@ -11,8 +11,9 @@
  * (dev.123): heard and declined, left out as addressed to a person, or a stop request quieting the
  * room. The owner's turn ends three ways: a delivered reply, a partial reply and its continuation
  * (dev.129), and a failure whose report is posted (dev.139). The model is the one thing scripted;
- * the continued case also gives the turn a short first ceiling and a comment tool, since a group
- * room hears a partial only from a turn that already wrote.
+ * the continued case also gives the turn a short first ceiling and a comment, since a group room
+ * hears a partial only from a turn that already changed something in it: since REQ-30 BC-4 that
+ * comment is held for the owner's go-ahead (ISS-439), and the card it puts in the room is the change.
  */
 
 import { asc, eq } from 'drizzle-orm';

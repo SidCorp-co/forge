@@ -38,6 +38,15 @@ export interface ContractHolding {
   readonly named: boolean;
 }
 
+/**
+ * A record a chat wrote because the person it waited on agreed to it (REQ-30 BC-4): its kind, as the
+ * held proposal names it, and the key the write answered with, where it answered one.
+ */
+export interface AgreedRecord {
+  readonly kind: string;
+  readonly ref: string | null;
+}
+
 export interface MessageReads {
   activeIssuePrefix(projectId: string, tx: Tx): Promise<string | null>;
   heldIssuePrefixes(projectId: string, tx: Tx): Promise<readonly string[]>;
@@ -62,6 +71,8 @@ export interface MessageReads {
     runIds: readonly string[],
     tx: Tx,
   ): Promise<readonly ReportFrame[]>;
+  /** The records written in this conversation through an agreement, oldest first. */
+  agreedRecords(conversationId: string, tx: Tx): Promise<readonly AgreedRecord[]>;
 }
 
 let provided: MessageReads | null = null;

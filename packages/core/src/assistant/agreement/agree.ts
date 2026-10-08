@@ -1,14 +1,10 @@
-// Agreeing to a held chat write (workflow chat-turn step confirm, edge "agrees"). Two ways count:
-// the person presses the confirm card, as themselves; or a chat turn binds the person's reply to the
-// proposal, and that binding is checked here rather than trusted: the proposal waits on the person
-// the turn answers, in the same conversation, was made before they replied, is of the kind named,
-// and the words quoted are their whole message. Then the held call is written as them, once.
+// Agreeing to a held chat write (workflow chat-turn step confirm, edge "agrees"). One way counts: the
+// person it waits on presses Record it on the confirm card, as themselves. What anybody typed in the
+// chat is never an agreement, whatever it says: core has no rule for reading assent in free text, and
+// a model that judged it wrote a requirement the person had refused (ISS-439, the judge's probe A).
+// Then the held call is written as them, once.
 
-import {
-  CHAT_PROPOSAL_KINDS,
-  type ChatProposalKind,
-  type ChatProposalRefusalCode,
-} from '@forge/contracts/chat-proposals';
+import type { ChatProposalRefusalCode } from '@forge/contracts/chat-proposals';
 import type { TurnAuthority } from '../../credentials/turn-credential.js';
 import { logger } from '../../lib/logger.js';
 import { isRefusal, refuser } from '../../lib/refusal.js';
@@ -23,31 +19,16 @@ import {
 
 const refuse = refuser<ChatProposalRefusalCode>('CHAT_PROPOSAL_UNKNOWN');
 
-/** The reply a chat turn binds, and the facts the binding is checked against. */
-export interface BoundReply {
-  conversationId: string;
-  /** The person's message that started the turn, as the turn read it. */
-  message: string;
-  /** When that turn started: a proposal made after it is one the person has not seen. */
-  startedAt: Date;
-  words: string;
-  kind: ChatProposalKind;
+/** The person pressing the card, and the authority their press writes under. */
+export interface AgreeAs {
+  userId: string;
+  authority: TurnAuthority;
 }
 
-export type AgreeAs =
-  | { via: 'card'; userId: string; authority: TurnAuthority }
-  | { via: 'reply'; userId: string; authority: TurnAuthority; reply: BoundReply };
-
-/** Two texts are the same message when they differ only in case and spacing. */
-const sameMessage = (a: string, b: string): boolean => {
-  const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
-  return norm(a).length > 0 && norm(a) === norm(b);
-};
-
 /** The proposal `id`, as `userId` may decide it, or the refusal naming why not. */
-async function decidable(id: string, userId: string, conversationId: string | null) {
+async function decidable(id: string, userId: string) {
   const row = await readProposal(id);
-  if (!row || (conversationId !== null && row.conversationId !== conversationId)) {
+  if (!row) {
     throw refuse(
       'CHAT_PROPOSAL_UNKNOWN',
       `proposal ${id} is not one made in this conversation; the proposals waiting are read with GET /api/conversations/<id>/proposals`,
@@ -69,39 +50,13 @@ async function decidable(id: string, userId: string, conversationId: string | nu
   return row;
 }
 
-function checkBinding(row: ChatProposalRow, reply: BoundReply): void {
-  if (row.createdAt >= reply.startedAt) {
-    throw refuse(
-      'CHAT_AGREEMENT_UNBOUND',
-      `proposal ${row.id} was made in this same turn, so the person has not seen it yet: a reply agrees only to a proposal shown before they wrote it. Ask for their go-ahead and end the turn.`,
-      '/proposal',
-    );
-  }
-  if (reply.kind !== row.kind) {
-    throw refuse(
-      'CHAT_AGREEMENT_UNBOUND',
-      `proposal ${row.id} would write ${row.kind}, not ${reply.kind}: an agreement names the kind of the record it agrees to (${CHAT_PROPOSAL_KINDS.join(', ')})`,
-      '/kind',
-    );
-  }
-  if (!sameMessage(reply.words, reply.message)) {
-    throw refuse(
-      'CHAT_AGREEMENT_UNBOUND',
-      'words must be the whole message the person sent, quoted as they wrote it: an agreement is their reply, never a part of it or a paraphrase. If that message does not agree, nothing is written.',
-      '/words',
-    );
-  }
-}
-
 /** Agree to proposal `id` and write it; the settled row and what the write made or why it failed. */
 export async function agreeProposal(
   id: string,
   as: AgreeAs,
 ): Promise<{ row: ChatProposalRow; outcome: WriteOutcome }> {
-  const row = await decidable(id, as.userId, as.via === 'reply' ? as.reply.conversationId : null);
-  if (as.via === 'reply') checkBinding(row, as.reply);
-  const words = as.via === 'reply' ? as.reply.words : null;
-  const claimed = await claimAgreement(row.id, as.userId, as.via, words);
+  const row = await decidable(id, as.userId);
+  const claimed = await claimAgreement(row.id, as.userId);
   if (!claimed) {
     throw refuse(
       'CHAT_PROPOSAL_SETTLED',
@@ -125,7 +80,7 @@ export async function agreeProposal(
 }
 
 export async function declineAs(id: string, userId: string): Promise<ChatProposalRow> {
-  await decidable(id, userId, null);
+  await decidable(id, userId);
   const row = await declineProposal(id, userId);
   if (!row) {
     throw refuse(

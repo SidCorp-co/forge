@@ -9,6 +9,7 @@ import {
 } from '../lib/authz.js';
 import { pluginDesignationsPatchSchema } from '../lib/plugin-designation.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { findPersonalOrgId } from '../orgs/index.js';
@@ -117,6 +118,7 @@ projectRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema),
   zValidator('json', updateProjectPatchSchema),
+  holdChatWrite('project_change'),
   async (c) => {
     const { id } = c.req.valid('param');
     const patch = c.req.valid('json');
@@ -162,29 +164,39 @@ projectRoutes.delete('/:id', zValidator('param', idParamSchema), async (c) => {
 // dispatching new auto-pipeline jobs (see orchestrator.loadProjectPolicy);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
-projectRoutes.post('/:id/archive', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+projectRoutes.post(
+  '/:id/archive',
+  zValidator('param', idParamSchema),
+  holdChatWrite('project_change'),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(id, userId);
-  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    const access = await loadProjectAccess(id, userId);
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-  const updated = await archiveProject(id);
-  if (!updated) throw notFound();
-  return c.json(updated);
-});
+    const updated = await archiveProject(id);
+    if (!updated) throw notFound();
+    return c.json(updated);
+  },
+);
 
-projectRoutes.post('/:id/unarchive', zValidator('param', idParamSchema), async (c) => {
-  const { id } = c.req.valid('param');
-  const userId = c.get('userId');
+projectRoutes.post(
+  '/:id/unarchive',
+  zValidator('param', idParamSchema),
+  holdChatWrite('project_change'),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
 
-  const access = await loadProjectAccess(id, userId);
-  requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
+    const access = await loadProjectAccess(id, userId);
+    requireOrgHeld(access.orgId, access.orgRole, 'org.admin');
 
-  const updated = await unarchiveProject(id);
-  if (!updated) throw notFound();
-  return c.json(updated);
-});
+    const updated = await unarchiveProject(id);
+    if (!updated) throw notFound();
+    return c.json(updated);
+  },
+);
 
 projectRoutes.patch(
   '/:id/plugins',

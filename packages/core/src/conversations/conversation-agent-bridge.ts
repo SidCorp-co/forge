@@ -200,6 +200,7 @@ async function composeOutcome(
     screen: () =>
       screenReplyAtDoor(meta.door, {
         projectId: session.projectId,
+        conversationId: meta.conversationId,
         segments: [text],
         toolCalls: extractToolCalls(messages),
         progress: readProgressFacts(session.metadata),
