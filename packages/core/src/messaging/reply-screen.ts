@@ -2,7 +2,7 @@ import type { Tx } from '../db/client.js';
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
 import type { ProgressFacts, ToolResultEntry } from './facts.js';
-import { groundingTexts, isReportTool } from './figures-rule.js';
+import { groundingTexts } from './figures-rule.js';
 import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
@@ -32,9 +32,10 @@ interface ReplyScreenInput {
    */
   readonly toolResults?: readonly string[];
   /**
-   * What the person asked. Given, a figure the reply states is held to the turn's report runs
-   * (`figures-rule.ts`), where the turn was offered a report tool or `restResults` are given; a
-   * number the person typed may be said back.
+   * What the person asked. Given, a figure the reply states is held to the turn's report runs and
+   * declared reads (`figures-rule.ts`), whatever tools the turn was offered: a door with no report
+   * tool still holds a figure to what it read (REQ-32 BC-6). A number the person typed may only be
+   * said back as theirs.
    */
   readonly question?: string;
   /**
@@ -57,7 +58,11 @@ interface ReplyScreenInput {
   readonly conversationId?: string;
 }
 
-/** What the figures rule reads of this turn, or nothing where the turn could run no report. */
+/**
+ * What the figures rule reads of this turn, or nothing where the caller gave no question. Whether the
+ * turn could run a report does not decide it: the BA door offers none, and judged nothing there, so
+ * the asker's own figure went out as the project's (QA of ISS-446 on 0.4.0-dev.202).
+ */
 function figureInput(
   input: ReplyScreenInput,
   held: readonly string[],
@@ -67,12 +72,9 @@ function figureInput(
     ...input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments),
     ...held,
   ];
+  const results = input.restResults ?? input.toolResults ?? [];
   const reads = groundingTexts(input.namedResults ?? []);
-  if (input.restResults) {
-    return { asked: input.question, texts: [...input.restResults, ...sent], reads };
-  }
-  if (!input.offeredTools?.some(isReportTool)) return undefined;
-  return { asked: input.question, texts: [...(input.toolResults ?? []), ...sent], reads };
+  return { asked: input.question, texts: [...results, ...sent], reads };
 }
 
 export async function screenReplyAtDoor(

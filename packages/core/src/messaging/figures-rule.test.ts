@@ -123,12 +123,13 @@ describe('a figure the reply types', () => {
     expect(await figureRefusals('42 issues in all.', { calls: [drew] })).toEqual([]);
   });
 
-  it('is not judged where the turn was offered no report tool', async () => {
-    expect(
-      await figureRefusals('The release has 42 issues left.', {
-        offered: ['forge_project_status'],
-      }),
-    ).toEqual([]);
+  it('is judged where the turn was offered no report tool: a read is then its only ground', async () => {
+    const r = await figureRefusals('The release has 42 issues left.', {
+      offered: ['forge_project_status'],
+    });
+    expect(r.map((x) => x.quote)).toEqual(['42']);
+    expect(r[0]?.why).toContain('this door runs no report');
+    expect(r[0]?.why).not.toContain('forge_report');
   });
 
   it('passes a clause marked unverified', async () => {

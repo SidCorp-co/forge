@@ -23,8 +23,10 @@
  * only said back as theirs or declined (`figure-exemptions.ts:saidBackAt`), never stated as the
  * project's (REQ-32 BC-6).
  *
- * A turn that could run no report (a door without the report tools, a synthesis turn) has nothing
- * to hold a figure to, and is not judged: `facts.figures` is null there.
+ * Every reply screened with its question is judged, whatever tools its turn was offered: a door with
+ * no report tool (the BA door) holds a figure to the reads it declares here, and stated from none of
+ * them the figure is held (QA of ISS-446 on 0.4.0-dev.202: the BA door judged nothing). Only a screen
+ * given no question (a synthesis turn) has `facts.figures` null.
  */
 
 import type { ReportFrame } from '@forge/contracts/report-queries';
@@ -50,10 +52,13 @@ export const isReportTool = (name: string): boolean =>
 /**
  * The reads whose own result grounds a figure, and the part of the result that does: what code
  * computed from the project's records, or (`forge_requirement_draft`'s `preview` and `taken`) the
- * count code took from a document the person attached. Absent here on purpose: `forge_show`,
- * `forge_feedback`, `forge_requirement_revise` and `forge_memory_note`, which answer with what the
- * model sent them; `forge_memory`, a dated source and never a current fact (MJ-5); and `forge`, the
- * CLI, whose verbs write as well as read and whose output is no one shape.
+ * count code took from a document the person attached. The BA doors' record reads are the same
+ * kind: `ba_read_requirement` is `forge_requirement` for the room's requirement, `ba_find_similar`
+ * answers code's similarity scores, `ba_read_journeys` the designs onboarding drafted. Absent here on
+ * purpose: `forge_show`, `forge_feedback`, `forge_requirement_revise`, `forge_memory_note` and
+ * `ba_suggest`, which answer with what the model sent them; `ba_read_issue`, an issue's free text as
+ * someone wrote it, as `forge_issue` is; `forge_memory`, a dated source and never a current fact
+ * (MJ-5); and `forge`, the CLI, whose verbs write as well as read and whose output is no one shape.
  */
 export const FIGURE_GROUNDING_RESULTS: readonly {
   readonly tool: string;
@@ -67,6 +72,9 @@ export const FIGURE_GROUNDING_RESULTS: readonly {
   { tool: 'forge_metrics_project_step_durations' },
   { tool: 'forge_metrics_project_timeseries' },
   { tool: 'forge_requirement_draft', keys: ['preview', 'taken'] },
+  { tool: 'ba_read_requirement' },
+  { tool: 'ba_find_similar' },
+  { tool: 'ba_read_journeys' },
 ];
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -99,7 +107,11 @@ export function groundingTexts(results: readonly ToolResultEntry[]): string[] {
   return out;
 }
 
-/** Every value a result states: its JSON numbers and the figures its strings state, or its text read whole. */
+/**
+ * Every value a result states: its JSON numbers, the figures its strings state and how many items
+ * each of its lists holds (code counted them: "REQ-6 has 3 criteria" from a read of its three), or
+ * its text read whole.
+ */
 function valuesOfResult(text: string): number[] {
   let parsed: unknown;
   try {
@@ -112,8 +124,10 @@ function valuesOfResult(text: string): number[] {
     if (typeof v === 'number') out.push(v);
     else if (typeof v === 'string') {
       for (const f of figuresIn(v)) for (const r of f.readings) out.push(r.value);
-    } else if (Array.isArray(v)) v.forEach(walk);
-    else if (isRecord(v)) Object.values(v).forEach(walk);
+    } else if (Array.isArray(v)) {
+      out.push(v.length);
+      v.forEach(walk);
+    } else if (isRecord(v)) Object.values(v).forEach(walk);
   };
   walk(parsed);
   return out;
@@ -213,13 +227,28 @@ function shownOf(heldBlocks: readonly string[] | null): readonly ReadonlySet<num
 const ASK_FOR_A_RUN =
   'call forge_report or forge_template (in Agent mode, POST /api/projects/<id>/report-queries/<query>/runs) and state the figure its frame returns, or leave it out';
 
-function proseBreak(figure: StatedFigure, f: FigureFacts): RuleBreak {
+/**
+ * Why a figure in the prose is held, asking for what the turn can do: a report run where it was
+ * offered a report tool (or, offered no named tools, is an Agent session running reports over REST),
+ * and otherwise a read, the person's number said back as theirs, or nothing.
+ */
+function proseBreak(figure: StatedFigure, f: FigureFacts, offered: readonly string[]): RuleBreak {
+  const q = figure.quote;
+  if (f.runs > 0) {
+    return {
+      quote: q,
+      why: `the reply states the figure ${q}, and none of the ${f.runs} report run(s) this turn read holds it, nor any read it made — state only figures their frames returned, or leave it out`,
+    };
+  }
+  if (offered.length > 0 && !offered.some(isReportTool)) {
+    return {
+      quote: q,
+      why: `the reply states the figure ${q}, and no read this turn made returned it — this door runs no report: state a figure only as a read of this turn returned it, a number the person typed only to say it back as theirs ("the ${q} you gave"), or leave it out`,
+    };
+  }
   return {
-    quote: figure.quote,
-    why:
-      f.runs === 0
-        ? `the reply states the figure ${figure.quote}, and this turn ran no report and no read that returned it — ${ASK_FOR_A_RUN}`
-        : `the reply states the figure ${figure.quote}, and none of the ${f.runs} report run(s) this turn read holds it, nor any read it made — state only figures their frames returned, or leave it out`,
+    quote: q,
+    why: `the reply states the figure ${q}, and this turn ran no report and no read that returned it — ${ASK_FOR_A_RUN}`,
   };
 }
 
@@ -346,7 +375,7 @@ export const FIGURES_GROUNDED: MessageRule = {
     const scan = blankMarkedClauses(text).normalize('NFC');
     for (const fig of statedFigures(scan)) {
       if (askersOwn(scan, fig, held.asked) || holds(fig, held.read)) continue;
-      if (!holds(fig, held.held)) breaks.push(proseBreak(fig, held));
+      if (!holds(fig, held.held)) breaks.push(proseBreak(fig, held, f.offeredTools));
       else if (shown !== null && !holds(fig, shown)) breaks.push(unshownBreak(fig));
     }
     return [...breaks, ...blockBreaks(f, held)];
