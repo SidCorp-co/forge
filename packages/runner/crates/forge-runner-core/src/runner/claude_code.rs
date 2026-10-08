@@ -345,10 +345,16 @@ async fn write_next_waiting(sessions: &Sessions, job_id: &str) {
     }
 }
 
-/// The session ended with messages still waiting for a turn: each is refused.
+/// The session ended with messages still waiting for a turn: each is refused,
+/// and the session takes no more, since nothing reads its turns now. Under one
+/// lock, so a message accepted a moment later is refused at the door and not
+/// queued behind a loop that has ended.
 async fn refuse_waiting(sessions: &Sessions, job_id: &str) {
     let rest: Vec<Waiting> = match sessions.lock().await.get_mut(job_id) {
-        Some(sess) => sess.waiting.drain(..).collect(),
+        Some(sess) => {
+            sess.stdin = None;
+            sess.waiting.drain(..).collect()
+        }
         None => return,
     };
     for w in rest {
@@ -2413,6 +2419,13 @@ mod tests {
             said.said()
         );
         s.turns.await.expect("the loop ends");
+        let (tx, _late) = mpsc::channel(16);
+        assert!(
+            Runner::send(&runner, &id, "a message after the loop ended".into(), tx)
+                .await
+                .is_err(),
+            "a session whose turns are no longer read takes no message into a queue nobody empties"
+        );
     }
 
     #[tokio::test]
