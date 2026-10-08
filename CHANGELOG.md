@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.145] - 2026-10-08
+
+One approval clears every design whose only change is a moved base pin
+
+### Added
+
+- **One act approves a moved base's pin-only dependents.** A proposal changing only its basedOn pins reads "Pin-only change" with proof; the base's page re-pins and approves them together, one decision each, refusing other changes. Needs you shows one row.
+
 ## [0.4.0-dev.144] - 2026-10-07
 
 A release keeps its version across failed attempts; the list counts releases
