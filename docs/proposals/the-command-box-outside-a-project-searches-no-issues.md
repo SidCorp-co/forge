@@ -18,7 +18,7 @@ out of scope. A key alone does not settle it either: `ISS` is the prefix every p
 `ISS-1280` names one issue in each project that has reached 1280, and a cross-project answer is a
 list to choose from, not a row.
 
-## What it costs
+## Honest costs
 
 A person on a page outside a project who types a key into ⌘K is told `No matches.`, the symptom
 ISS-1334 was filed for, until they open the project first. Inside a project the same text answers.
