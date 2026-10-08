@@ -10,15 +10,13 @@ import type { OutboxEventPayload } from '@forge/contracts/outbox-events';
 import { inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { userPreferences } from '../db/schema.js';
+import { languageOfTag } from '../lib/language-tag.js';
 import { emitEvent } from '../outbox/index.js';
 import { readContentLanguage } from '../project-config/index.js';
 import copy from './reporter-copy.json' with { type: 'json' };
 
 export type NoticeLanguage = keyof typeof copy;
 type NoticeCopyKey = keyof (typeof copy)['en'];
-
-const baseOf = (tag: string | null | undefined): NoticeLanguage =>
-  tag?.toLowerCase().split('-')[0] === 'vi' ? 'vi' : 'en';
 
 /** Each person's chosen language, else the project's content language, else English. */
 export async function reporterLanguagesOf(
@@ -33,9 +31,9 @@ export async function reporterLanguagesOf(
     .where(inArray(userPreferences.userId, ids));
   const chosen = new Map(prefs.map((p) => [p.userId, p.language]));
   const fallback = ids.some((id) => !chosen.get(id))
-    ? baseOf((await readContentLanguage(projectId)).contentLanguage)
+    ? languageOfTag((await readContentLanguage(projectId)).contentLanguage)
     : 'en';
-  return new Map(ids.map((id) => [id, chosen.get(id) ? baseOf(chosen.get(id)) : fallback]));
+  return new Map(ids.map((id) => [id, chosen.get(id) ? languageOfTag(chosen.get(id)) : fallback]));
 }
 
 export async function reporterLanguageOf(

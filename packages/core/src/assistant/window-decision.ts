@@ -21,7 +21,6 @@ import {
   type RequestTrack,
   readMessagesInRange,
   replyLanguageOf,
-  replyLanguageOfTag,
   replyTargetsOf,
   reserveDelivery,
   roomHandles,
@@ -33,6 +32,7 @@ import {
   withTerminalStatus,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
+import { languageOfTag } from '../lib/language-tag.js';
 import {
   firstRequirementsOnboardingOf,
   firstRequirementsStarterOf,
@@ -396,7 +396,7 @@ async function takeTurn(
   track.handleName = inputs.handleName;
   track.language =
     replyLanguageOf(anchor?.text ?? speaker?.content) ??
-    replyLanguageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
+    languageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
   const group = venue.shape === 'group';
   const addressee =
     anchor && group && (await personCount(window.conversationId)) > 1 ? anchor.authorLabel : null;

@@ -40,7 +40,6 @@ export {
   partialReplyWords,
   type ReplyLanguage,
   replyLanguageOf,
-  replyLanguageOfTag,
   type TurnFailureCause,
   type TurnFailureCode,
   turnFailureReason,

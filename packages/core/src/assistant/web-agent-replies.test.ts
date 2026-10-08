@@ -13,7 +13,6 @@ vi.mock('../conversations/index.js', async (importOriginal) => {
     ...(await importOriginal<object>()),
     codeAuthored: (text: string) => ({ text, proof: null }),
     replyLanguageOf: replies.replyLanguageOf,
-    replyLanguageOfTag: replies.replyLanguageOfTag,
     startConversationAgentTurn: async (args: { replies: Record<string, unknown> }) => {
       dispatched.push(args);
       return { started: false, reason };
