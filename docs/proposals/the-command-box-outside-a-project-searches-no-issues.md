@@ -20,8 +20,11 @@ list to choose from, not a row.
 
 ## Honest costs
 
-A person on a page outside a project who types a key into ⌘K is told `No matches.`, the symptom
-ISS-1334 was filed for, until they open the project first. Inside a project the same text answers.
+- A person on a page outside a project who types a key into ⌘K is told `No matches.`, the symptom
+  ISS-1334 was filed for, until they open the project first.
+- The button reads `Search issues, runs…` on every page, and outside a project it searches neither.
+- Closing it costs a new cross-project route and a palette that groups hits by project; leaving it
+  costs nothing inside a project, where the same text answers.
 
 ## What would close it
 
