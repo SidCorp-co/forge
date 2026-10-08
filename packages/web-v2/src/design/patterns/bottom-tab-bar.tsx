@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { badgeFace, type BadgeRead } from "./badge-read";
 
 export interface BottomTabItem {
   key: string;
@@ -9,6 +10,8 @@ export interface BottomTabItem {
   icon: IconName;
   /** Optional count pill (e.g. Attention). Falsy / 0 hides it. */
   badge?: number;
+  /** Set where the figure is not read: it is no statement, a held `badge` included, and the tab says why. */
+  badgeRead?: BadgeRead;
   /** Custom leading element replacing the icon — e.g. a ProjectMark glyph for the project switcher. */
   leading?: React.ReactNode;
 }
@@ -33,14 +36,14 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
     >
       {items.map((it) => {
         const active = it.key === activeKey;
-        const count = it.badge && it.badge > 0 ? it.badge : 0;
+        const face = badgeFace(it);
         return (
           <button
             key={it.key}
             type="button"
             onClick={() => onSelect(it.key)}
             aria-current={active ? "page" : undefined}
-            aria-label={count > 0 ? `${it.label}, ${count} need attention` : it.label}
+            aria-label={face ? `${it.label}, ${face.phrase}` : it.label}
             className={cn(
               "relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
               active ? "text-accent-text" : "text-muted hover:text-fg",
@@ -50,12 +53,12 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
               {it.leading ?? (
                 <Icon name={it.icon} size={20} style={active ? { color: "var(--accent)" } : undefined} />
               )}
-              {count > 0 && (
+              {face && (
                 <span
                   className="absolute -right-2.5 -top-1.5 inline-flex min-w-[15px] items-center justify-center rounded-pill px-1 font-semibold"
-                  style={{ fontSize: "var(--text-9-5)", lineHeight: "14px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+                  style={{ fontSize: "var(--text-9-5)", lineHeight: "14px", color: face.color, background: face.background }}
                 >
-                  {count > 99 ? "99+" : count}
+                  {face.text}
                 </span>
               )}
             </span>

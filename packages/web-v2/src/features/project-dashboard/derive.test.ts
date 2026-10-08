@@ -120,7 +120,6 @@ describe("projectAttention (ISS-1156)", () => {
     unseenDrafts: [],
     unseenDraftsTotal: 0,
     projectTotals: {},
-    total: awaitingInput.length,
     offlineRunners: [],
   });
 
@@ -224,7 +223,6 @@ describe("attentionCut (ISS-1156)", () => {
     projectTotals: {
       sable: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 0, ...totals },
     },
-    total: 0,
     offlineRunners: [],
   });
 

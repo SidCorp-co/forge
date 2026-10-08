@@ -30,7 +30,6 @@ vi.mock("../hooks", () => ({
       unseenDrafts: [],
       unseenDraftsTotal: 0,
       projectTotals: {},
-      total: state.offline.length,
       offlineRunners: state.offline,
     },
     read: state.read,

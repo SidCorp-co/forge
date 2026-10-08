@@ -12,6 +12,7 @@
 // live in `useRailPrefs` and are toggled from the account menu.
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/design/icons/icon';
+import { badgeFace, type BadgeRead } from '@/design/patterns/badge-read';
 import { Menu, type MenuItem } from '@/design/patterns/menu';
 import { Popover } from '@/design/primitives/popover';
 import { ProjectMark } from '@/design/primitives/project-mark';
@@ -24,6 +25,8 @@ export interface RailItem {
   icon: IconName;
   /** Count pill on actionable queues (Issues / Agents). Falsy/0 hides it. */
   badge?: number;
+  /** Set where the figure is not read: it is no statement, a held `badge` included, and the row says why. */
+  badgeRead?: BadgeRead;
 }
 
 export interface SwitcherProject {
@@ -95,14 +98,14 @@ function RailButton({
   active: boolean;
   onClick: () => void;
 }) {
-  const count = item.badge && item.badge > 0 ? item.badge : 0;
+  const face = badgeFace(item);
   return (
     <button
       type="button"
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
-      aria-label={item.label}
-      title={item.label}
+      aria-label={face ? `${item.label}, ${face.phrase}` : item.label}
+      title={face ? `${item.label}, ${face.phrase}` : item.label}
       className={cn(
         'relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
         'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
@@ -125,12 +128,19 @@ function RailButton({
       >
         {item.label}
       </span>
-      {count > 0 && (
+      {face && (
         <span
-          className="absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold text-white"
-          style={{ background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }}
+          className={cn(
+            'absolute right-2 top-3px inline-flex h-[15px] min-w-[15px] items-center justify-center rounded-pill px-[3px] font-mono text-9 font-bold',
+            face.state === 'count' && 'text-white',
+          )}
+          style={
+            face.state === 'count'
+              ? { background: 'var(--accent)', border: '1.5px solid var(--bg-surface)' }
+              : { color: face.color, background: face.background, border: '1.5px solid var(--bg-surface)' }
+          }
         >
-          {count > 99 ? '99+' : count}
+          {face.text}
         </span>
       )}
     </button>

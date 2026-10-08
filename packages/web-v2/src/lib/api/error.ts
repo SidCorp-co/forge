@@ -86,25 +86,11 @@ export function formatApiError(err: unknown): string {
 
 
 /**
- * Map a pipeline stage *status* (as it appears in error `details`) to the
- * human-facing auto-stage toggle label shown in the Pipeline settings tab.
- * Mirrors `STEP_TOGGLE_LABELS` in `features/project-settings/types.ts`.
- * Any status outside the 8 toggle stages (STAGE_HAS_ISSUES / DEAD_END_CONFIG
- * can reference others) falls back to its raw status name.
+ * A stage named in a save refusal's `details` is named by its status's own word, the one every
+ * screen reads (`ISSUE_STATUS_LABELS`). A status the vocabulary does not hold keeps its raw name.
  */
-const STAGE_LABELS: Record<string, string> = {
-  open: 'Auto triage',
-  confirmed: 'Auto clarify',
-  clarified: 'Auto plan',
-  approved: 'Auto code',
-  developed: 'Auto review',
-  testing: 'Auto test',
-  reopen: 'Auto fix',
-  awaiting_release: 'Auto release',
-};
-
 function stageLabel(status: string): string {
-  return STAGE_LABELS[status] ?? status;
+  return (ISSUE_STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
 /** Read a `string[]` field from the untyped `details` blob, defensively. */
@@ -158,7 +144,7 @@ export function formatPipelineConfigError(err: unknown): string {
       const stages = detailStringList(err.details, 'stagesMissingSkill');
       if (stages.length === 0) break;
       const labels = joinStageLabels(stages);
-      return `Can't save: ${labels} ${stages.length === 1 ? 'needs' : 'need'} a registered skill before ${stages.length === 1 ? 'it' : 'they'} can run automatically. Register a skill for ${stages.length === 1 ? 'that stage' : 'those stages'} (Library) or turn the toggle off.`;
+      return `Can't save: ${labels} ${stages.length === 1 ? 'needs' : 'need'} a registered skill before ${stages.length === 1 ? 'it' : 'they'} can run automatically. Register a skill for ${stages.length === 1 ? 'that stage' : 'those stages'} (Library) or switch automatic running off for ${stages.length === 1 ? 'it' : 'them'}.`;
     }
     case 'STAGE_HAS_ISSUES': {
       const stages = detailStringList(err.details, 'stagesBlocked');
@@ -219,15 +205,12 @@ const STAGE_SETTING_LABELS: Record<string, string> = {
   mcpServers: 'Stage permissions',
 };
 
-/** A stage as the SETTINGS rows name it: the status's own word, the same `pipelineStatusLabel` reads. */
-const SETTINGS_STAGE_LABELS: Record<string, string> = ISSUE_STATUS_LABELS;
-
 /** `states.open.deviceIds` → "Runner pools (Open)"; `intakeGate.enabled` → "Intake gate". */
 export function settingLabel(path: string): string {
   const parts = path.split('.');
   if (parts[0] === 'states' && parts.length >= 3) {
     const leaf = STAGE_SETTING_LABELS[parts[2]] ?? 'Stage settings';
-    return `${leaf} (${SETTINGS_STAGE_LABELS[parts[1]] ?? parts[1]})`;
+    return `${leaf} (${stageLabel(parts[1])})`;
   }
   for (const [prefix, label] of SETTING_LABELS) {
     if (path === prefix || path.startsWith(prefix)) return label;
