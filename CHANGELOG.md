@@ -3150,6 +3150,8 @@
 
 ### Fixed
 
+- **A pane the runner starts keeps the runner's temp directory, however old the tmux server is.** A long-lived server wrote panes' scratch to the RAM-backed `/tmp`; the runner now hands each pane its own and corrects a stale server.
+
 - **A viewer can no longer record a dependency through `forge_project_pm`.** It was the one door that let them; the web route and `forge_issues` already refused. Every door now needs the member role, and the refusal names the role held.
 
 - **A project's admins can see its GitHub App, wherever it was created.** The connections list, its

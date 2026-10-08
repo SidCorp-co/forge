@@ -4111,4 +4111,58 @@ mod own_exe_reporting_tests {
             );
         }
     }
+
+    /// ISS-1325 criterion 13, at a job pane: on a server started before the
+    /// daemon had `TMPDIR`, the pane's own `/proc/<pid>/environ` carries it.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_job_pane_on_an_older_server_carries_the_daemons_tmpdir() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _serial = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("jobenv");
+        if !terminal::available() || !iso.took() {
+            terminal::testing::cannot_run("no tmux of this test's own here");
+            return;
+        }
+        let tmp = crate::test_scratch::Scratch::new("jobenv-tmp");
+        let home = crate::test_scratch::Scratch::new("jobenv-home");
+        let stub_dir = crate::test_scratch::Scratch::new("jobenv-stub");
+        let probe = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
+        terminal::testing::write_shim(
+            &stub_dir.join("claude"),
+            &format!("#!/bin/sh\n{probe}exec sleep 603\n"),
+        );
+        let _claude =
+            crate::runner::process::testing::StubClaude::installed(&stub_dir.join("claude"));
+        let _home = ScopedVar::set("HOME", home.path());
+        let _daemon = ScopedVar::set("TMPDIR", tmp.path());
+        let sock = terminal::socket_path().expect("the isolated socket");
+        assert!(
+            std::process::Command::new("tmux")
+                .args(["-S", &sock.to_string_lossy()])
+                .args(["new-session", "-d", "-s", "older", "sleep", "600"])
+                .env_remove("TMPDIR")
+                .stdin(std::process::Stdio::null())
+                .status()
+                .expect("tmux runs")
+                .success(),
+            "the server starts before the daemon's value reaches it"
+        );
+        let cwd = crate::test_scratch::Scratch::new("jobenv-cwd");
+        let name = "forge-job-jobenv";
+        let servers = serde_json::Map::new();
+        let (opened, seen) = tokio::join!(
+            TmuxPanes.open(name, cwd.path(), "prompt", &[], &servers),
+            terminal::testing::environ_once_running(name, "603"),
+        );
+        let _ = terminal::kill(name).await;
+        let _ = opened;
+        assert_eq!(
+            seen.get("TMPDIR").map(String::as_str),
+            tmp.path().to_str(),
+            "the job pane carries the daemon's TMPDIR"
+        );
+    }
 }

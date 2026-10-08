@@ -125,7 +125,7 @@ fn tmux_command() -> Command {
     Command::new("tmux")
 }
 
-async fn tmux(args: &[&str]) -> Result<std::process::Output> {
+pub(super) async fn tmux(args: &[&str]) -> Result<std::process::Output> {
     tmux_with_path(args, None).await
 }
 
@@ -352,6 +352,16 @@ const KEEPALIVE: &str = "forge-session-host";
 async fn ensure_server() -> bool {
     static PLACING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_attempt = PLACING.lock().await;
+    let up = bring_up_server().await;
+    if up {
+        for found in super::daemon_env::reconcile_server().await {
+            found.say();
+        }
+    }
+    up
+}
+
+async fn bring_up_server() -> bool {
     if server_answers().await {
         // A server an older runner left up, or one whose keepalive was killed, holds sessions
         // and no keepalive; the master placed now would become its last session (ISS-1344 r5).
@@ -583,7 +593,9 @@ pub async fn ensure(
         "-y".into(),
         "60".into(),
     ];
-    for (k, v) in env {
+    // The server's own environment is not what a pane is owed: the daemon's
+    // variables go to each pane here, the one place a pane is placed (ISS-1325).
+    for (k, v) in env.iter().chain(super::daemon_env::for_pane(env).iter()) {
         args.push("-e".into());
         args.push(format!("{k}={v}"));
     }
@@ -1233,20 +1245,71 @@ pub(crate) mod testing {
     #[cfg(unix)]
     impl RefusingKill {
         pub(crate) fn installed() -> Self {
-            let real = which::which("tmux").expect("a real tmux to pass everything else to");
-            let dir = crate::test_scratch::Scratch::new("refuse");
-            let shim = dir.join("tmux");
-            write_shim(
-                &shim,
-                &format!(
-                    "#!/bin/sh\n{PROBE_LINE}for a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
-                    shim_quote(&real.to_string_lossy())
-                ),
-            );
-            Self {
-                _installed: Installed::new(shim, Vec::new()),
-                _dir: dir,
+            let (_installed, _dir) = refusing("kill-session");
+            Self { _installed, _dir }
+        }
+    }
+
+    #[cfg(unix)]
+    /// A tmux that refuses `set-environment`, the verb the daemon reconciles the
+    /// session server's environment with, and answers every other from the real
+    /// server (ISS-1325).
+    pub(crate) struct RefusingSetEnvironment {
+        _installed: Installed,
+        _dir: crate::test_scratch::Scratch,
+    }
+
+    #[cfg(unix)]
+    impl RefusingSetEnvironment {
+        pub(crate) fn installed() -> Self {
+            let (_installed, _dir) = refusing("set-environment");
+            Self { _installed, _dir }
+        }
+    }
+
+    #[cfg(unix)]
+    fn refusing(verb: &str) -> (Installed, crate::test_scratch::Scratch) {
+        let real = which::which("tmux").expect("a real tmux to pass everything else to");
+        let dir = crate::test_scratch::Scratch::new("refuse");
+        let shim = dir.join("tmux");
+        write_shim(
+            &shim,
+            &format!(
+                "#!/bin/sh\n{PROBE_LINE}for a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    {verb}) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
+                shim_quote(&real.to_string_lossy())
+            ),
+        );
+        (Installed::new(shim, Vec::new()), dir)
+    }
+
+    /// The environment of `name`'s pane process once its program is the one
+    /// started: read before the exec it is still the server's.
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn environ_once_running(
+        name: &str,
+        marker: &str,
+    ) -> std::collections::HashMap<String, String> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Some(pid) = super::pane_pid(name).await {
+                let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
+                if String::from_utf8_lossy(&cmdline).contains(marker) {
+                    let raw = std::fs::read(format!("/proc/{pid}/environ")).expect("environ");
+                    return raw
+                        .split(|b| *b == 0)
+                        .filter_map(|kv| {
+                            let kv = String::from_utf8_lossy(kv).into_owned();
+                            kv.split_once('=')
+                                .map(|(k, v)| (k.to_string(), v.to_string()))
+                        })
+                        .collect();
+                }
             }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{name} never ran {marker}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
     }
 

@@ -17,6 +17,7 @@ pub mod chat;
 pub mod checkpoint;
 pub mod composer;
 pub mod control;
+pub mod daemon_env;
 pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
