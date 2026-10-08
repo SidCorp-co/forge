@@ -4,8 +4,10 @@
 // draft, in the room.
 
 import { describe, expect, it } from 'vitest';
+import type { ChatToolset } from './tools/mcp-adapter.js';
 import { partialReplyText } from './turn-partial.js';
 import type { DoneCall } from './turn-writes.js';
+import { turnWrites } from './turn-writes.js';
 
 const call = (name: string, args: unknown, extra: Partial<DoneCall> = {}): DoneCall => {
   const argsJson = JSON.stringify(args);
@@ -100,5 +102,78 @@ describe('the partial a turn posts at its first ceiling', () => {
 
   it('says it is still reading when nothing has landed yet', () => {
     expect(text([], 'en')).toContain('Nothing is finished yet; it is still reading the project.');
+  });
+
+  // REQ-32 BC-6 r3, dev.193 ISS-430: a turn that only read through `forge issue` was told as "updated an issue".
+  describe('a CLI call is told as a write only when it wrote', () => {
+    const ran = async (calls: Array<{ name: string; args: unknown }>): Promise<DoneCall[]> => {
+      const tools: ChatToolset = {
+        tools: [],
+        ranAs: () => null,
+        async execute() {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: '{"issues":[{"key":"ISS-17"},{"key":"REQ-17"}]}',
+              },
+            ],
+          };
+        },
+      };
+      const writes = turnWrites(tools);
+      for (const c of calls) await writes.tools?.execute(c.name, JSON.stringify(c.args));
+      return [...writes.calls()];
+    };
+    const said = async (argv: string[], extra: Record<string, unknown> = {}) =>
+      text(await ran([{ name: 'forge', args: { argv, ...extra } }]), 'en');
+
+    it.each([
+      ['one issue shown', ['issue', 'ISS-17']],
+      ['a list filtered by status', ['issue', '--status', 'open', '--limit', '5']],
+      ['a search', ['issue', '--search', 'share']],
+      ['fields asked for', ['issue', 'ISS-17', '--fields', 'status,title', '--full']],
+      ['another project read', ['issue', '--project', 'hop', '--status', 'open']],
+      ['a thread read with no body', ['comment', 'ISS-17']],
+    ])('%s: no write line', async (_name, argv) => {
+      const t = await said(argv);
+      expect(t).not.toContain('Done so far');
+      expect(t).not.toContain('updated an issue');
+      expect(t).not.toContain('commented');
+      expect(t).toContain('Read so far: looked up the tracker.');
+    });
+
+    it.each([
+      [
+        'a field set',
+        ['issue', 'ISS-17', '--set', 'priority=high', '--why', 'x'],
+        {},
+        'updated an issue',
+      ],
+      ['an edge', ['issue', 'ISS-17', '--blocks', 'ISS-18'], {}, 'updated an issue'],
+      ['an edge removed', ['issue', 'ISS-17', '--unlink', 'ISS-18'], {}, 'updated an issue'],
+      ['a comment with a body', ['comment', 'ISS-17', '-'], { body: 'hello' }, 'commented'],
+      ['an attachment', ['attach', 'issue', 'ISS-17', 'a.png'], {}, 'attached a file'],
+    ])('%s: a write line with its keys', async (_name, argv, extra, line) => {
+      expect(await said(argv, extra)).toContain(`Done so far:\n- ${line} → ISS-17, REQ-17`);
+    });
+
+    it('a proposal is neither a write nor a lookup: it is told as used', async () => {
+      const t = await said(['issue', 'ISS-17', '--propose', '--set', 'priority=high']);
+      expect(t).not.toContain('Done so far');
+      expect(t).toContain('Read so far: used forge issue.');
+    });
+
+    it('a read and a write in one turn name only the write as done', async () => {
+      const calls = await ran([
+        { name: 'forge', args: { argv: ['issue', 'ISS-17'] } },
+        {
+          name: 'forge',
+          args: { argv: ['issue', 'ISS-17', '--set', 'priority=high'] },
+        },
+      ]);
+      const t = text(calls, 'en');
+      expect(t.match(/updated an issue/g)).toHaveLength(1);
+    });
   });
 });
