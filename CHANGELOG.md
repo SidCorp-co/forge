@@ -122,6 +122,8 @@
 
 ### Added
 
+- **A dependency can now wait for a release to ship.** An edge can carry `holdsUntil: "shipped"`, holding its dependent until the blocker closes. Other edges behave as before; the `forge` CLI's `next` still reads the old rule.
+
 - **The public guide list says it is not the whole set.** Method guides are served by the `forge` CLI; the list, `llms.txt` and a refused slug now say so. A new guide, `what-forge-is`, maps what Forge can do.
 
 - **The guides page says its count is not the whole set.** `/guides` now states beside the agent page count that the method guides are served by the `forge` CLI, in the API index's own words.

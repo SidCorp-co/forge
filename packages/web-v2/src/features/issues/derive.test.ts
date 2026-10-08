@@ -6,6 +6,7 @@ import {
 } from "@forge/contracts/pipeline-registry";
 import {
 	BLOCKER_SETTLED_STATUSES,
+	BLOCKER_SHIPPED_STATUSES,
 	REASON_REQUIRED_ISSUE_STATUSES,
 } from "@forge/contracts/status-sets";
 import {
@@ -822,6 +823,7 @@ function incomingBlocks(
 		kind: "blocks",
 		reason: null,
 		createdAt: "2026-01-01T00:00:00.000Z",
+		...(over.holdsUntil ? { holdsUntil: over.holdsUntil } : {}),
 		fromDisplayId: over.fromDisplayId ?? "ISS-9",
 		fromTitle: over.fromTitle ?? "Blocker",
 		fromStatus: over.fromStatus ?? "in_progress",
@@ -873,6 +875,26 @@ describe("openBlockingRefs", () => {
 				(s) => !(BLOCKER_SETTLED_STATUSES as readonly string[]).includes(s),
 			),
 		);
+	});
+});
+
+describe("openBlockingRefs for an edge that holds until shipped (ISS-1225)", () => {
+	const held = (status: IssueStatus, holdsUntil?: "settled" | "shipped") =>
+		openBlockingRefs(incomingBlocks({ fromStatus: status, holdsUntil }));
+
+	it("flags a shipped edge's blocker at awaiting_release, where a settled edge's is released", () => {
+		expect(held("awaiting_release", "shipped").map((r) => r.displayId)).toEqual([
+			"ISS-9",
+		]);
+		expect(held("awaiting_release", "settled")).toEqual([]);
+		expect(held("awaiting_release")).toEqual([]);
+	});
+
+	it("releases a shipped edge's blocker only at the shipped statuses", () => {
+		const released = REGISTRY_ISSUE_STATUSES.filter(
+			(s) => held(s, "shipped").length === 0,
+		);
+		expect(released).toEqual([...BLOCKER_SHIPPED_STATUSES]);
 	});
 });
 

@@ -8,7 +8,12 @@
 import { and, eq, inArray, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
-import { type IssueDependencyKind, issueDependencies, issues } from '../db/schema.js';
+import {
+  type IssueDependencyHold,
+  type IssueDependencyKind,
+  issueDependencies,
+  issues,
+} from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 
@@ -22,6 +27,7 @@ export type IssueDependencyEdge = {
   createdById: string | null;
   createdAt: Date;
   validUntil: Date | null;
+  holdsUntil: IssueDependencyHold;
   fromTitle: string | null;
   fromStatus: string | null;
   fromMergedAt: Date | null;
@@ -84,6 +90,7 @@ export async function loadIssueDependencyEdgesForIssues(
       createdById: issueDependencies.createdById,
       createdAt: issueDependencies.createdAt,
       validUntil: issueDependencies.validUntil,
+      holdsUntil: issueDependencies.holdsUntil,
       fromIssSeq: fromIssue.issSeq,
       fromProjectId: fromIssue.projectId,
       fromTitle: fromIssue.title,
@@ -148,6 +155,7 @@ export type IssueRelationDigest = {
   otherStatus: string | null;
   otherMergedAt: Date | null;
   validUntil: Date | null;
+  holdsUntil: IssueDependencyHold;
   expired: boolean;
 };
 
@@ -167,6 +175,7 @@ function digest(edge: IssueDependencyEdge, issueId: string, now: number): IssueR
     otherStatus: outgoing ? edge.toStatus : edge.fromStatus,
     otherMergedAt: outgoing ? edge.toMergedAt : edge.fromMergedAt,
     validUntil: edge.validUntil,
+    holdsUntil: edge.holdsUntil,
     expired,
   };
 }

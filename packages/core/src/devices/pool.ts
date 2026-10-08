@@ -7,6 +7,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import type { IssueDependencyHold } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { ADMITTED_RUNNER } from './pool-admission.js';
 import { runnerMayTakeJob } from './release-label.js';
@@ -17,6 +18,7 @@ export type PoolRelation = {
   blockerStatus: string | null;
   blockerMergedAt: string | null;
   edgeValidUntil: string | null;
+  holdsUntil: IssueDependencyHold;
 };
 
 export type PoolEntry = {
@@ -42,7 +44,8 @@ const RELATIONS = sql`
       'dependsOnKey', coalesce(pp.issue_prefix, 'ISS') || '-' || p.iss_seq,
       'blockerStatus', p.status,
       'blockerMergedAt', p.merged_at,
-      'edgeValidUntil', d.valid_until
+      'edgeValidUntil', d.valid_until,
+      'holdsUntil', d.holds_until
     ))
     FROM issue_dependencies d
     JOIN issues p ON p.id = d.from_issue_id

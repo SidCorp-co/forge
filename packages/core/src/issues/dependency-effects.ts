@@ -1,4 +1,4 @@
-import type { IssueDependencyKind, IssueStatus } from '../db/schema.js';
+import type { IssueDependencyHold, IssueDependencyKind, IssueStatus } from '../db/schema.js';
 
 export const WORK_EVIDENCE_WAIVER_KIND: IssueDependencyKind = 'decomposes';
 
@@ -21,10 +21,29 @@ export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = [
   'closed',
 ];
 
+/**
+ * The statuses that release a dependent behind an edge that declared `holdsUntil: 'shipped'`.
+ * `awaiting_release` is by name the status where the work has NOT shipped, so only `closed`
+ * qualifies; a dropped blocker never reaches here because dropping it expires its edges.
+ */
+export const BLOCKER_SHIPPED_STATUSES: readonly IssueStatus[] = ['closed'];
+
+export const DEFAULT_EDGE_HOLD: IssueDependencyHold = 'settled';
+
+/** The statuses at which a blocker releases the dependent behind an edge of this hold. */
+export const releasingStatusesFor = (hold: IssueDependencyHold): readonly IssueStatus[] =>
+  hold === 'shipped' ? BLOCKER_SHIPPED_STATUSES : BLOCKER_SETTLED_STATUSES;
+
 export const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +
   `from an A that has not reached \`${BLOCKER_SETTLED_STATUSES[0]}\` — the statuses that release ` +
-  `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. A reopened A blocks ` +
+  `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. An edge written with ` +
+  `\`holdsUntil: "shipped"\` (only on a \`blocks\` edge) holds B until A is ` +
+  `${BLOCKER_SHIPPED_STATUSES.map((s) => `\`${s}\``).join(', ')}, which is how a dependency says ` +
+  "'not until this has actually shipped'; omitting `holdsUntil` leaves the edge `settled`, " +
+  'exactly the reading above. The forge-plugin CLI (`forge next`, `forge advance`) keeps its own ' +
+  'floor and does not yet read `holdsUntil`, so it can still call B eligible while the master and ' +
+  'every other door here hold it. A reopened A blocks ' +
   'again. Retracting the edge (`validUntil` in the past) stops it holding B here, and dropping A ' +
   'expires its edges for the same reason — but NOT yet at the master, whose own reading ignores ' +
   'expiry (forge-plugin ISS-347), so a B released that way is offered and then declined. Moving A ' +

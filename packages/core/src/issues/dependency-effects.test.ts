@@ -2,12 +2,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { issueDependencyKinds } from '../db/schema.js';
+import { issueDependencyHolds, issueDependencyKinds } from '../db/schema.js';
 import { FORGE_GUIDES } from '../guides/registry.js';
 import { FORGE_FACTS } from '../prompt/facts/registry.js';
 import {
+  BLOCKER_SETTLED_STATUSES,
+  BLOCKER_SHIPPED_STATUSES,
+  DEFAULT_EDGE_HOLD,
   describeDependencyKind,
   GATES_DISPATCH_NOTE,
+  releasingStatusesFor,
   WORK_EVIDENCE_WAIVER_KIND,
   WORK_EVIDENCE_WAIVER_NOTE,
 } from './dependency-effects.js';
@@ -54,6 +58,42 @@ describe('describeDependencyKind', () => {
     const note = describeDependencyKind(WORK_EVIDENCE_WAIVER_KIND).note;
     expect(note).toContain('work-evidence gate');
     expect(note).not.toMatch(/gates nothing|holds nothing back|no lifecycle of its own/);
+  });
+});
+
+describe('the statuses an edge releases at (ISS-1225)', () => {
+  it('releases a settled edge at exactly the settled statuses, which is the reading before the field existed', () => {
+    expect(releasingStatusesFor('settled')).toEqual([
+      'developed',
+      'testing',
+      'awaiting_release',
+      'closed',
+    ]);
+    expect(releasingStatusesFor('settled')).toBe(BLOCKER_SETTLED_STATUSES);
+  });
+
+  it('releases a shipped edge at `closed` and nowhere short of it, `awaiting_release` included', () => {
+    expect(releasingStatusesFor('shipped')).toEqual(['closed']);
+    expect(releasingStatusesFor('shipped')).not.toContain('awaiting_release');
+    expect(releasingStatusesFor('shipped')).toBe(BLOCKER_SHIPPED_STATUSES);
+  });
+
+  it('never releases a shipped edge at a status a settled edge would hold it at', () => {
+    for (const status of BLOCKER_SHIPPED_STATUSES) {
+      expect(BLOCKER_SETTLED_STATUSES).toContain(status);
+    }
+  });
+
+  it('defaults a hold to `settled`, which is what the column default says too', () => {
+    expect(DEFAULT_EDGE_HOLD).toBe('settled');
+    expect([...issueDependencyHolds]).toEqual(['settled', 'shipped']);
+  });
+
+  it('is told to every agent-facing surface that writes an edge', () => {
+    const guide = FORGE_GUIDES.find((g) => g.slug === 'issue-dependencies');
+    expect(guide?.body).toContain('holdsUntil');
+    expect(forgePmSetDependencyTool(fakeCtx).description).toContain('holdsUntil');
+    expect(forgeProjectPmTool(fakeCtx).description).toContain('holdsUntil');
   });
 });
 

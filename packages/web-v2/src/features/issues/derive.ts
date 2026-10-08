@@ -19,6 +19,7 @@ import {
 } from "@forge/contracts/work-state";
 import {
 	BLOCKER_SETTLED_STATUSES,
+	BLOCKER_SHIPPED_STATUSES,
 	REASON_REQUIRED_ISSUE_STATUSES,
 } from "@forge/contracts/status-sets";
 import {
@@ -669,6 +670,14 @@ function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState
 }
 
 const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
+const SHIPPED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SHIPPED_STATUSES);
+
+/** Whether the blocker's status releases this edge's dependent: `shipped` edges wait for close. */
+const releasesDependent = (edge: IssueDependencyEdge): boolean => {
+	const releasing =
+		edge.holdsUntil === "shipped" ? SHIPPED_BLOCKERS : SETTLED_BLOCKERS;
+	return Boolean(edge.fromStatus && releasing.has(edge.fromStatus));
+};
 
 /** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
  *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
@@ -679,9 +688,7 @@ export function openBlockingRefs(
 	if (!deps) return [];
 	return deps.incoming
 		.filter(
-			(e) =>
-				e.kind === "blocks" &&
-				!(e.fromStatus && SETTLED_BLOCKERS.has(e.fromStatus)),
+			(e) => e.kind === "blocks" && !releasesDependent(e),
 		)
 		.map((e) => ({
 			id: e.fromIssueId,
