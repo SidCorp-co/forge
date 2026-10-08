@@ -126,23 +126,28 @@ export async function persistMessages(turn: ConversationTurn): Promise<void> {
 
 /**
  * The window in the provider's wire shape, with this turn's pending user
- * messages on the end so the model sees what was just said.
+ * messages on the end so the model sees what was just said. A message's
+ * documents follow its text as the blocks `turn-documents.ts` rendered.
  */
 export function toProviderMessages(
   turn: ConversationTurn,
   resolvedImages?: ReadonlyMap<string, string>,
+  resolvedDocuments?: ReadonlyMap<string, string>,
 ): ChatMessage[] {
   const resolve = (images: ConversationImage[]) =>
     images.map((i) => resolvedImages?.get(i.ref)).filter((u): u is string => !!u);
+  const textOf = (content: string, files: ConversationImage[]) =>
+    [content, ...files.map((f) => resolvedDocuments?.get(f.ref)).filter((d): d is string => !!d)]
+      .filter((t) => t.length > 0)
+      .join('\n\n');
   return [...turn.history, ...turn.pending]
-    .filter(
-      (m) => m.silenceReason === null && (m.content.length > 0 || resolve(m.images).length > 0),
-    )
-    .map(({ role, content, images }) => {
+    .map((m) => ({ ...m, text: textOf(m.content, m.images) }))
+    .filter((m) => m.silenceReason === null && (m.text.length > 0 || resolve(m.images).length > 0))
+    .map(({ role, text, images }) => {
       const urls = resolve(images);
-      if (urls.length === 0) return { role, content };
+      if (urls.length === 0) return { role, content: text };
       const parts: ChatContentPart[] = [];
-      if (content.length > 0) parts.push({ type: 'text', text: content });
+      if (text.length > 0) parts.push({ type: 'text', text });
       for (const url of urls) parts.push({ type: 'image_url', image_url: { url } });
       return { role, content: parts };
     });

@@ -210,6 +210,7 @@ export async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     pageContext: inputs.pageContext ?? null,
     tools: withCaptures([capture, asks], writes.tools),
     resolveImage: inputs.resolveImage,
+    resolveDocument: inputs.resolveDocument,
     signal: ctx.abort.signal,
     message: req.message,
     replyLanguage: askedInOf(ctx),

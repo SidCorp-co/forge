@@ -1,4 +1,8 @@
-import type { AttachmentRefusalCode } from '@forge/contracts/attachments';
+import {
+  type AttachmentRefusalCode,
+  conversationAcceptedList,
+  conversationAttachmentType,
+} from '@forge/contracts/attachments';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { uploadTickets } from '../db/schema.js';
@@ -69,7 +73,7 @@ export async function createUploadTicket(
   if (!allowed.mimes.includes(input.mime)) {
     throw refuse(
       'MIME_NOT_ALLOWED',
-      `mime not allowed: ${input.mime}; this ${input.targetType} takes ${allowed.mimes.join(', ')}`,
+      `mime not allowed: ${input.mime}; this ${input.targetType} takes ${conversationAcceptedList(env.UPLOADS_MAX_BYTES)} (${allowed.mimes.join(', ')})`,
       '/mime',
     );
   }
@@ -81,7 +85,10 @@ export async function createUploadTicket(
     );
   }
   const expiresAt = new Date(Date.now() + UPLOAD_TICKET_TTL_MS);
-  const maxBytes = env.UPLOADS_MAX_BYTES;
+  const maxBytes = Math.min(
+    conversationAttachmentType(input.mime)?.maxBytes ?? env.UPLOADS_MAX_BYTES,
+    env.UPLOADS_MAX_BYTES,
+  );
   const [row] = await db
     .insert(uploadTickets)
     .values({

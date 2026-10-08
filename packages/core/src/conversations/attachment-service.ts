@@ -7,7 +7,13 @@
  * below; this is where the bytes behind that reference live.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import {
+  CONVERSATION_DOCUMENT_MIMES,
+  conversationAcceptedList,
+  conversationAttachmentType,
+  formatAttachmentCap,
+} from '@forge/contracts/attachments';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { conversationAttachments } from '../db/schema-conversations.js';
 import { getStorage } from '../integrations/index.js';
@@ -19,6 +25,7 @@ import {
   resolveAttachmentMime,
   safeName,
 } from '../lib/attachment-mime.js';
+import { isDocumentMime, readDocumentText } from '../lib/document-text.js';
 import { env } from '../lib/env.js';
 import { refuseConversation } from './refusals.js';
 
@@ -59,6 +66,26 @@ export function attachmentIdFromRef(conversationId: string, ref: string): string
 }
 
 /**
+ * The bytes a document is stored as. Its text is read now, so a file the assistant could never read
+ * — a scanned PDF, a broken one — is refused while the person is still there to attach another,
+ * rather than at the turn that needed it. A text document is stored scrubbed: the secret it carried
+ * never reaches storage, the model or a box. A PDF or a Word file is stored as sent, since its bytes
+ * cannot be rewritten, and its text is scrubbed wherever it is read (`lib/document-text.ts`).
+ */
+async function documentBytesToStore(name: string, mime: string, bytes: Buffer): Promise<Buffer> {
+  const read = await readDocumentText(bytes, mime);
+  if (!read.ok) {
+    throw refuseConversation(
+      'DOCUMENT_UNREADABLE',
+      `${name} (${mime}) cannot be read as a document: ${read.reason}`,
+      '/file',
+    );
+  }
+  const rewritable = mime.startsWith('text/') || mime === 'application/json';
+  return read.redacted && rewritable ? Buffer.from(read.text, 'utf8') : bytes;
+}
+
+/**
  * Validate and store one staged file. The type is decided from the BYTES, so a
  * `.png` that is not one is refused here rather than reaching the model as
  * something it cannot read.
@@ -80,7 +107,7 @@ export async function persistConversationAttachment(
   if (input.bytes.byteLength > env.UPLOADS_MAX_BYTES) {
     throw refuseConversation(
       'FILE_TOO_LARGE',
-      `file too large: ${input.bytes.byteLength} bytes, and an attachment is at most ${env.UPLOADS_MAX_BYTES}`,
+      `file too large: ${name} is ${input.bytes.byteLength} bytes, and an attachment here is at most ${env.UPLOADS_MAX_BYTES}; a conversation takes ${conversationAcceptedList(env.UPLOADS_MAX_BYTES)}`,
     );
   }
   const resolved = resolveAttachmentMime({
@@ -92,13 +119,26 @@ export async function persistConversationAttachment(
   if (!resolved.ok) {
     throw refuseConversation(
       'MIME_NOT_ALLOWED',
-      `${mimeRefusalMessage(resolved)}; a conversation takes ${allowedSetForTarget('conversation').mimes.join(', ')}`,
+      `${name}: ${mimeRefusalMessage(resolved)}; a conversation takes ${conversationAcceptedList(env.UPLOADS_MAX_BYTES)} (${allowedSetForTarget('conversation').mimes.join(', ')})`,
       '/mime',
     );
   }
+  const cap = Math.min(
+    conversationAttachmentType(resolved.mime)?.maxBytes ?? env.UPLOADS_MAX_BYTES,
+    env.UPLOADS_MAX_BYTES,
+  );
+  if (input.bytes.byteLength > cap) {
+    throw refuseConversation(
+      'FILE_TOO_LARGE',
+      `file too large: ${name} is ${input.bytes.byteLength} bytes of ${resolved.mime}, and a conversation takes ${resolved.mime} up to ${formatAttachmentCap(cap)} (${cap} bytes); it takes ${conversationAcceptedList(env.UPLOADS_MAX_BYTES)}`,
+    );
+  }
+  const bytes = isDocumentMime(resolved.mime)
+    ? await documentBytesToStore(name, resolved.mime, input.bytes)
+    : input.bytes;
 
   const key = `conversations/${input.conversationId}/${Date.now()}-${name}`;
-  const { path: storedPath } = await getStorage().put(key, input.bytes, resolved.mime);
+  const { path: storedPath } = await getStorage().put(key, bytes, resolved.mime);
 
   const [row] = await db
     .insert(conversationAttachments)
@@ -108,7 +148,7 @@ export async function persistConversationAttachment(
       name,
       path: storedPath,
       mime: resolved.mime,
-      size: input.bytes.byteLength,
+      size: bytes.byteLength,
     })
     .returning({
       id: conversationAttachments.id,
@@ -189,4 +229,28 @@ export async function loadConversationAttachment(
     )
     .limit(1);
   return row ?? null;
+}
+
+/** The documents a room holds, newest first — what a turn reads a named file from. */
+export async function listConversationDocuments(
+  conversationId: string,
+): Promise<ConversationAttachmentForFetch[]> {
+  return db
+    .select({
+      id: conversationAttachments.id,
+      conversationId: conversationAttachments.conversationId,
+      name: conversationAttachments.name,
+      mime: conversationAttachments.mime,
+      size: conversationAttachments.size,
+      path: conversationAttachments.path,
+      uploaderId: conversationAttachments.uploaderId,
+    })
+    .from(conversationAttachments)
+    .where(
+      and(
+        eq(conversationAttachments.conversationId, conversationId),
+        inArray(conversationAttachments.mime, [...CONVERSATION_DOCUMENT_MIMES]),
+      ),
+    )
+    .orderBy(desc(conversationAttachments.createdAt));
 }

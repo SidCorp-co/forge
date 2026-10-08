@@ -13,6 +13,8 @@ import {
   languageOfTag,
   type ReplyLanguage,
   readMessages,
+  readRoomDocumentByName,
+  readRoomDocumentByRef,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
@@ -222,8 +224,16 @@ async function prepareWebTurn(
   const ctx = buildChatToolContext({
     credential: await minting,
     projectSlug: args.project.slug,
-    turn: { conversationId, speakerUserId, handleUserId, ecosystemId: room?.ecosystemId ?? null },
+    turn: {
+      conversationId,
+      speakerUserId,
+      handleUserId,
+      ecosystemId: room?.ecosystemId ?? null,
+      readDocument: (file) => readRoomDocumentByName(conversationId, file),
+    },
   });
+  const resolveDocument = (file: ConversationImage) =>
+    readRoomDocumentByRef(conversationId, file.ref);
   // a room opened about a requirement answers through the BA door: its persona and its
   // narrow tool set only, never the project toolset or the UI actions
   if (room?.requirementId) {
@@ -231,6 +241,7 @@ async function prepareWebTurn(
     return {
       persona: baDoorPersona(args.project.name, key, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
+      resolveDocument,
       tools: buildBaToolset(ctx, { projectId: args.project.id, requirementId: room.requirementId }),
     };
   }
@@ -239,6 +250,7 @@ async function prepareWebTurn(
     return {
       persona: baFirstRequirementsPersona(args.project.name, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
+      resolveDocument,
       tools: fenceToolsetToOrigin(
         buildBaFirstRequirementsToolset(ctx, { projectId: args.project.id, onboardingId }),
         authority.origin,
@@ -248,6 +260,7 @@ async function prepareWebTurn(
   return {
     persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
     resolveImage: makeConversationImageResolver(conversationId),
+    resolveDocument,
     pageContext: uiSnapshotPageContext(conversationId),
     tools: mergeToolsets(
       buildProjectToolset(ctx),

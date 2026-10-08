@@ -54,7 +54,8 @@ export async function resolveVisionImages(
     if (!images || images.length === 0) continue;
     if (++turns > VISION_LOOKBACK_TURNS) break;
     for (const image of images) {
-      if (out.has(image.ref)) continue;
+      // a document is read as text (`turn-documents.ts`), never sent as a picture
+      if (!image.mime.startsWith('image/') || out.has(image.ref)) continue;
       let b64 = byRef.get(image.ref) ?? null;
       if (b64 === null && resolve) {
         try {
