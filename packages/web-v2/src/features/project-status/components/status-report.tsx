@@ -7,7 +7,7 @@
 import type { ProjectStatus, RoadmapItem } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
 import { IssueProgressText } from "@/features/forecast/components/issue-progress";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
@@ -86,11 +86,14 @@ export interface StatusReportProps {
   s: ProjectStatus;
   slug: string;
   clock: EtaClock;
-  window: StatusWindow;
-  onWindow: (w: StatusWindow) => void;
+  /** The live read's window control; a kept report has none, its window fixed when it was stored. */
+  window?: StatusWindow;
+  onWindow?: (w: StatusWindow) => void;
+  /** More header actions beside Copy and Print, such as saving the live read. */
+  actions?: ReactNode;
 }
 
-export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportProps) {
+export function StatusReport({ s, slug, clock, window, onWindow, actions }: StatusReportProps) {
   const t = useCopy();
   const label = useLabel();
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
@@ -112,6 +115,7 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
             {s.name} — {t("status.title")}
           </h1>
           <div className="flex items-center gap-2 print:hidden">
+            {actions}
             <Button onClick={copy} data-testid="status-copy">
               {copied === "done" ? t("status.copied") : t("status.copy")}
             </Button>
@@ -123,13 +127,15 @@ export function StatusReport({ s, slug, clock, window, onWindow }: StatusReportP
         <p className="text-13 text-muted" data-testid="status-as-of">
           {t("status.asOf", { at: when(s.asOf) })} · {t("status.window", { days: s.days })}
         </p>
-        <div className="print:hidden">
-          <SegmentedControl
-            value={window}
-            onChange={onWindow}
-            options={STATUS_WINDOWS.map((w) => ({ value: w, label: t("status.days", { days: w }) }))}
-          />
-        </div>
+        {window && onWindow ? (
+          <div className="print:hidden">
+            <SegmentedControl
+              value={window}
+              onChange={onWindow}
+              options={STATUS_WINDOWS.map((w) => ({ value: w, label: t("status.days", { days: w }) }))}
+            />
+          </div>
+        ) : null}
         {copied === "failed" ? (
           <p role="alert" className="text-13 text-danger">
             {t("status.copyFailed")}

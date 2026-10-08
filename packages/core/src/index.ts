@@ -104,6 +104,7 @@ import {
   readDeclaredSource,
   readProjectDocument,
 } from './project-config/index.js';
+import { readProjectStatus, statusViewerOf } from './project-status/index.js';
 import {
   findProjectIdBySlug,
   findProjectOrgId,
@@ -131,6 +132,7 @@ import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
+import { provideStatusReportsPorts } from './status-reports/index.js';
 import {
   proposeRequirementDuplicate,
   redactFeedbackSuggestions,
@@ -159,6 +161,10 @@ providePermissionsPorts({
 });
 provideWorkPorts();
 provideExecutionPorts();
+provideStatusReportsPorts({
+  readProjectStatus: ({ projectId, access, userId, agency, days, now }) =>
+    readProjectStatus(projectId, statusViewerOf(access, userId, agency), days, now),
+});
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,

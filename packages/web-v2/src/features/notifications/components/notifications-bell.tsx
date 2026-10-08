@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { keptReportHref } from "@/lib/routes/status";
 import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { BELL_PAGE_SIZE } from "../api";
@@ -128,7 +129,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
             const row = rows.find((n) => n.id === id);
             if (row?.readAt === null) markRead.mutate(id);
             onClose();
-            openIssue(row?.projectId, row?.issueId);
+            if (row?.subject?.kind === "status_report") router.push(keptReportHref(row.subject.key, row.subject.id));
+            else openIssue(row?.projectId, row?.issueId);
           }}
           onMarkAllRead={() => markAllRead.mutate()}
           expandedId={expandedId}

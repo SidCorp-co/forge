@@ -28,6 +28,13 @@ const scheduleFields = {
   enabled: z.boolean().optional(),
   targetProjectSlug: z.string().trim().min(1).max(200).nullable().optional(),
   params: z.record(z.string(), z.unknown()).nullable().optional(),
+  timeZone: z.string().trim().min(1).max(64).nullable().optional(),
+};
+
+const SELF_NAMED: Record<'release_batch' | 'sentry_pull' | 'status_report', string> = {
+  release_batch: 'it cuts whatever is waiting at the gate',
+  sentry_pull: "it pulls whatever the project's Sentry binding declares",
+  status_report: 'it sends the project status read to the recipients its params name',
 };
 
 const createSchema = z
@@ -55,11 +62,8 @@ const createSchema = z
           message: 'prompt must be omitted when kind is "script"',
         });
       }
-    } else if (kind === 'release_batch' || kind === 'sentry_pull') {
-      const what =
-        kind === 'release_batch'
-          ? 'it cuts whatever is waiting at the gate'
-          : "it pulls whatever the project's Sentry binding declares";
+    } else if (kind === 'release_batch' || kind === 'sentry_pull' || kind === 'status_report') {
+      const what = SELF_NAMED[kind];
       for (const field of ['prompt', 'script'] as const) {
         if (data[field] !== undefined && data[field] !== null) {
           ctx.addIssue({

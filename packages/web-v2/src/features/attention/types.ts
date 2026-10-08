@@ -1,7 +1,7 @@
 
 import type { NeedsYouProjectItem } from "@/features/needs-you/types";
 
-export type AttentionKind = "mention" | "failed_job" | "runner_offline" | "channel_gate";
+export type AttentionKind = "mention" | "failed_job" | "runner_offline" | "channel_gate" | "status_report";
 
 export interface AttentionItem {
   kind: AttentionKind;
@@ -24,6 +24,8 @@ export interface AttentionResponse {
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   channelGates: AttentionItem[];
+  /** Status reports sent to the caller that they have not opened, each linking to the kept report. */
+  statusReports: AttentionItem[];
   total: number;
 }
 

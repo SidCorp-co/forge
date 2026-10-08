@@ -52,6 +52,7 @@ export async function listDeliveries(
       issueId: sql<string | null>`min(${notifications.issueId}::text)`,
       secondaryIssueId: sql<string | null>`min(${notifications.secondaryIssueId}::text)`,
       agentSessionId: sql<string | null>`min(${notifications.agentSessionId}::text)`,
+      statusReportId: sql<string | null>`min(${notifications.statusReportId}::text)`,
       notificationId: sql<string>`min(${notifications.id}::text)`,
     })
     .from(notificationDeliveries)
