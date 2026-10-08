@@ -725,12 +725,15 @@ fn no_pane_line(
     )
 }
 
-/// Whether this box can take a chat session, which runs holding only its own turn credential.
+/// Whether this box can take a chat session, which runs holding only its own turn credential on
+/// a network that reaches only the hosts its egress allows.
 /// A box that cannot still runs masters and jobs, so this row informs and does not fail.
 fn confinement_row(confine: &runner_platform::confine::Availability) -> String {
     match confine {
         runner_platform::confine::Availability::Available => {
-            "✔ chat sandbox a chat session runs holding only its own turn credential".to_string()
+            "✔ chat sandbox a chat session runs holding only its own turn credential, reaching \
+             only the model, core and its MCP servers"
+                .to_string()
         }
         runner_platform::confine::Availability::Unavailable(why) => format!(
             "• chat sandbox core refuses chat sessions on this box, which cannot confine one: {why}"

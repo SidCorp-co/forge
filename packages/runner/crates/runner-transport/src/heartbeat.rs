@@ -170,14 +170,19 @@ pub(crate) fn heartbeat_body(
 /// What this box can do for a session. A session handed a `forgeToken` on `agent:start` runs
 /// under it (ISS-17), and so does a follow-up handed one on `agent:send` (ISS-27); core picks
 /// only a box that says so for a turn that answers a person. `confinedChat` is whether a session
-/// core marks `confined` runs holding that token alone, and where it cannot, why not, which core
-/// names when it refuses a chat door's turn here.
+/// core marks `confined` runs holding that token alone, `confinedChatNetwork` whether it also
+/// reaches only the hosts its egress proxy allows — a runner that predates it says nothing — and
+/// where it cannot, why not, which core names when it refuses a chat door's turn here.
 pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
     let mut out = serde_json::json!({ "turnCredential": true, "followUpCredential": true });
     match confine {
-        runner_platform::confine::Availability::Available => out["confinedChat"] = true.into(),
+        runner_platform::confine::Availability::Available => {
+            out["confinedChat"] = true.into();
+            out["confinedChatNetwork"] = true.into();
+        }
         runner_platform::confine::Availability::Unavailable(why) => {
             out["confinedChat"] = false.into();
+            out["confinedChatNetwork"] = false.into();
             out["confinedChatUnavailable"] = why.clone().into();
         }
     }
@@ -198,9 +203,11 @@ mod tests {
         use runner_platform::confine::Availability;
         let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
         assert_eq!(caps["confinedChat"], false, "{caps}");
+        assert_eq!(caps["confinedChatNetwork"], false, "{caps}");
         assert_eq!(caps["confinedChatUnavailable"], "no bwrap", "{caps}");
         let caps = capabilities(&Availability::Available);
         assert_eq!(caps["confinedChat"], true, "{caps}");
+        assert_eq!(caps["confinedChatNetwork"], true, "{caps}");
         assert!(caps.get("confinedChatUnavailable").is_none(), "{caps}");
         assert_eq!(caps["turnCredential"], true, "{caps}");
         assert_eq!(caps["followUpCredential"], true, "{caps}");

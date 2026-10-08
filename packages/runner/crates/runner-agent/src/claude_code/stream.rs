@@ -92,6 +92,8 @@ pub(crate) struct Completion {
     pub(crate) reader: tokio::task::JoinHandle<()>,
     pub(crate) stderr: tokio::task::JoinHandle<String>,
     pub(crate) mcp_path: std::path::PathBuf,
+    /// Held until the process is reaped: a confined session's network ends with it.
+    pub(crate) egress: Option<super::EgressGuard>,
     pub(crate) invoked_with_resume: bool,
     pub(crate) tx: mpsc::Sender<RunnerEvent>,
 }
@@ -139,6 +141,8 @@ pub(crate) async fn complete(c: Completion) {
         .and_then(|r| r.ok())
         .unwrap_or_default();
     let _ = std::fs::remove_file(&c.mcp_path);
+    // The process is reaped: its network goes when this completion ends.
+    let _egress = c.egress;
     if !already_reported {
         let o = c.outcome.lock().await;
         let terminal = terminal_event(&o, killed_exit, &stderr, c.invoked_with_resume);

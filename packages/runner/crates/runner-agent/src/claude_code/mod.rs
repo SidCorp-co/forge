@@ -303,6 +303,21 @@ impl ClaudeCodeRunner {
     }
 }
 
+/// The credential a session holds: the one core handed it, else — for a run only — this box's
+/// own. A confined session handed none is refused rather than given the box's.
+fn session_credential(spec: &JobSpec) -> Result<String> {
+    match (&spec.credential, &spec.confinement) {
+        (Some(handed), _) => Ok(handed.0.clone()),
+        (None, Some(_)) => Err(Error::Other(
+            "[CHAT_CONFINEMENT_NO_CREDENTIAL] core asked for this session to hold only the \
+             credential it was handed, and handed none; this box's own PAT is not put in its \
+             place"
+                .into(),
+        )),
+        (None, None) => mcp::config::job_credential(),
+    }
+}
+
 #[async_trait]
 impl Runner for ClaudeCodeRunner {
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
@@ -322,17 +337,7 @@ impl Runner for ClaudeCodeRunner {
             .prompt
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
-        let credential =
-            match (&spec.credential, &spec.confinement) {
-                (Some(handed), _) => handed.0.clone(),
-                (None, Some(_)) => return Err(Error::Other(
-                    "[CHAT_CONFINEMENT_NO_CREDENTIAL] core asked for this session to hold only \
-                     the credential it was handed, and handed none; this box's own PAT is not \
-                     put in its place"
-                        .into(),
-                )),
-                (None, None) => mcp::config::job_credential()?,
-            };
+        let credential = session_credential(&spec)?;
 
         let invoked_with_resume = spec.resume_id.is_some();
 
@@ -348,7 +353,14 @@ impl Runner for ClaudeCodeRunner {
         )?;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let mut child = spawn_claude(&spec, &effective_repo, &credential, &mcp_path).await?;
+        let (mut child, egress) = spawn_claude(
+            &spec,
+            &effective_repo,
+            &credential,
+            &mcp_path,
+            &self.core_url,
+        )
+        .await?;
         tracing::info!("[claude] spawned job={job_id}");
         let session_stdin = Some(write_first_turn(&mut child, &prompt).await?);
 
@@ -425,6 +437,7 @@ impl Runner for ClaudeCodeRunner {
             reader,
             stderr: stderr_handle,
             mcp_path,
+            egress,
             invoked_with_resume,
             tx,
         }));
@@ -474,18 +487,36 @@ impl Runner for ClaudeCodeRunner {
     }
 }
 
+/// What a confined session's network runs through for as long as it lives; dropped once the
+/// process is reaped. Nothing elsewhere, where no session is confined.
+#[cfg(target_os = "linux")]
+pub(crate) type EgressGuard = runner_platform::confine::egress::Proxy;
+#[cfg(not(target_os = "linux"))]
+pub(crate) type EgressGuard = std::convert::Infallible;
+
 /// Spawn `claude` for `spec` in `repo`, its MCP config at `mcp_path`.
 async fn spawn_claude(
     spec: &JobSpec,
     repo: &str,
     credential: &str,
     mcp_path: &std::path::Path,
-) -> Result<tokio::process::Child> {
+    core_url: &str,
+) -> Result<(tokio::process::Child, Option<EgressGuard>)> {
     let args = build_args(spec, &mcp_path.to_string_lossy());
     let program = std::ffi::OsStr::new(resolve_claude_bin());
-    let made = session_command(spec, program, &args, repo, credential, mcp_path, None).await;
-    let mut cmd = match made {
-        Ok(cmd) => cmd,
+    let made = SessionCommand {
+        spec,
+        program,
+        args: &args,
+        repo,
+        credential,
+        mcp_path,
+        core_url,
+    }
+    .build(None)
+    .await;
+    let (mut cmd, egress) = match made {
+        Ok(made) => made,
         Err(e) => {
             let _ = std::fs::remove_file(mcp_path);
             return Err(e);
@@ -494,58 +525,136 @@ async fn spawn_claude(
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    cmd.spawn().map_err(|e| {
+    let child = cmd.spawn().map_err(|e| {
         let _ = std::fs::remove_file(mcp_path);
         Error::Other(format!("failed to spawn claude: {e}"))
+    })?;
+    Ok((child, egress))
+}
+
+/// What one session is spawned from.
+pub(crate) struct SessionCommand<'a> {
+    pub spec: &'a JobSpec,
+    pub program: &'a std::ffi::OsStr,
+    pub args: &'a [String],
+    pub repo: &'a str,
+    pub credential: &'a str,
+    pub mcp_path: &'a std::path::Path,
+    pub core_url: &'a str,
+}
+
+impl SessionCommand<'_> {
+    /// The command a session runs as. A run inherits this runner's environment and view of the
+    /// box, with `credential` as its `$FORGE_PAT`; a confined session gets
+    /// [`confine::chat_sandbox`] and the egress proxy its network runs through, and is refused by
+    /// name where this box cannot confine. `view` stands in for this process's own.
+    pub(crate) async fn build(
+        &self,
+        view: Option<confine::BoxView>,
+    ) -> Result<(tokio::process::Command, Option<EgressGuard>)> {
+        let Self {
+            spec,
+            program,
+            args,
+            repo,
+            credential,
+            mcp_path,
+            core_url,
+        } = *self;
+        let Some(confinement) = &spec.confinement else {
+            return Ok((
+                unconfined_command(spec, program, args, repo, credential),
+                None,
+            ));
+        };
+        let view = match view {
+            Some(view) => view,
+            None => confine::BoxView::current()?,
+        };
+        let repo = std::path::Path::new(repo);
+        let (git_dirs, git_identity) = confine::read_git(repo).await;
+        let handed = confine::Handed {
+            repo,
+            credential,
+            mcp_config: mcp_path,
+            reads: &confinement.reads,
+            project_slug: spec.project_slug.as_deref(),
+            project_id: &spec.project_id,
+            git_dirs,
+            git_identity,
+            core_url,
+            egress_socket: view.egress_dir.join(egress_dir_name()).join("s"),
+        };
+        let allow = confine::egress_allow(&view, &handed)?;
+        let upstream = confine::upstream(&view)?;
+        let mut cmd = confine::chat_sandbox(&view, &handed)?.command(program, args)?;
+        own_session(&mut cmd);
+        let egress = start_egress(&handed.egress_socket, allow, upstream)?;
+        Ok((cmd, Some(egress)))
+    }
+}
+
+/// The proxy a confined session's network runs through, listening at `socket`.
+#[cfg(target_os = "linux")]
+fn start_egress(
+    socket: &std::path::Path,
+    allow: Vec<runner_platform::confine::egress::Host>,
+    upstream: Option<runner_platform::confine::egress::Upstream>,
+) -> Result<EgressGuard> {
+    runner_platform::confine::egress::Proxy::start(socket, allow, upstream).map_err(|e| {
+        Error::Other(format!(
+            "[CHAT_CONFINEMENT_UNAVAILABLE] the egress proxy a confined chat session's network \
+             runs through cannot listen at {}: {e}",
+            socket.display()
+        ))
     })
 }
 
-/// The command a session runs as. A run inherits this runner's environment and view of the box,
-/// with `credential` as its `$FORGE_PAT`; a confined session gets [`confine::chat_sandbox`] and
-/// is refused by name where this box cannot confine. `view` stands in for this process's own.
-pub(crate) async fn session_command(
+/// No box but a Linux one confines a session, and its sandbox command is refused before this.
+#[cfg(not(target_os = "linux"))]
+fn start_egress(
+    _socket: &std::path::Path,
+    _allow: Vec<runner_platform::confine::egress::Host>,
+    _upstream: Option<runner_platform::confine::egress::Upstream>,
+) -> Result<EgressGuard> {
+    Err(Error::Other(
+        "[CHAT_CONFINEMENT_UNAVAILABLE] a chat session's egress is confined only on Linux".into(),
+    ))
+}
+
+/// A directory name no other session of this or an earlier runner process holds, short enough
+/// that the socket inside fits a unix socket path.
+fn egress_dir_name() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos());
+    format!("{:x}-{n:x}-{nanos:x}", std::process::id())
+}
+
+/// A run's command: this runner's environment and view of the box, `credential` its
+/// `$FORGE_PAT`.
+fn unconfined_command(
     spec: &JobSpec,
     program: &std::ffi::OsStr,
     args: &[String],
     repo: &str,
     credential: &str,
-    mcp_path: &std::path::Path,
-    view: Option<confine::BoxView>,
-) -> Result<tokio::process::Command> {
-    let Some(confinement) = &spec.confinement else {
-        let mut cmd = build_command_for(program, args, repo);
-        cmd.env("FORGE_PAT", credential);
-        for (k, v) in project_env(spec) {
-            cmd.env(k, v);
-        }
-        // Give MCP servers room to connect before the `system/init` snapshot.
-        // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
-        // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
-        // claude default is tight. Caller-set env wins (don't clobber an override).
-        if std::env::var_os("MCP_TIMEOUT").is_none() {
-            cmd.env("MCP_TIMEOUT", "15000");
-        }
-        return Ok(cmd);
-    };
-    let view = match view {
-        Some(view) => view,
-        None => confine::BoxView::current()?,
-    };
-    let repo = std::path::Path::new(repo);
-    let (git_dirs, git_identity) = confine::read_git(repo).await;
-    let handed = confine::Handed {
-        repo,
-        credential,
-        mcp_config: mcp_path,
-        reads: &confinement.reads,
-        project_slug: spec.project_slug.as_deref(),
-        project_id: &spec.project_id,
-        git_dirs,
-        git_identity,
-    };
-    let mut cmd = confine::chat_sandbox(&view, &handed).command(program, args)?;
-    own_session(&mut cmd);
-    Ok(cmd)
+) -> tokio::process::Command {
+    let mut cmd = build_command_for(program, args, repo);
+    cmd.env("FORGE_PAT", credential);
+    for (k, v) in project_env(spec) {
+        cmd.env(k, v);
+    }
+    // Give MCP servers room to connect before the `system/init` snapshot.
+    // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
+    // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
+    // claude default is tight. Caller-set env wins (don't clobber an override).
+    if std::env::var_os("MCP_TIMEOUT").is_none() {
+        cmd.env("MCP_TIMEOUT", "15000");
+    }
+    cmd
 }
 
 /// Write the first turn into the spawn's stdin, and hand the stdin back held
@@ -610,16 +719,21 @@ mod confine_elsewhere_tests {
             runner_config: None,
             claude_bin: None,
             temp_dir: repo.clone(),
+            runner_exe: Some(repo.join("forge-runner")),
+            egress_dir: repo.join("egress"),
+            egress_allow: vec![],
         };
-        let made = session_command(
-            &spec,
-            std::ffi::OsStr::new("claude"),
-            &[],
-            &repo.to_string_lossy(),
-            "t",
-            &repo.join("mcp.json"),
-            Some(view),
-        )
+        let mcp_path = repo.join("mcp.json");
+        let made = SessionCommand {
+            spec: &spec,
+            program: std::ffi::OsStr::new("claude"),
+            args: &[],
+            repo: &repo.to_string_lossy(),
+            credential: "t",
+            mcp_path: &mcp_path,
+            core_url: "https://core.example",
+        }
+        .build(Some(view))
         .await;
         let err = made.expect_err("a confined session was built on a box that cannot confine");
         assert!(

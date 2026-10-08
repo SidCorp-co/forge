@@ -12,7 +12,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use super::confine::BoxView;
-use super::session_command;
+use super::SessionCommand;
 use crate::{Confinement, JobSpec, TurnCredential};
 use runner_platform::confine::{availability, Availability};
 
@@ -153,6 +153,17 @@ fn plant() -> Planted {
     write(&home.join(".claude/settings.json"), "{}");
     let mcp = home.join(".config/forge-runner/mcp/forge-mcp-p-s1.json");
     write(&mcp, &format!("{{\"token\":\"{TURN}\"}}"));
+    // The bridge `forge-runner` runs inside the sandbox, standing in: it runs the program after
+    // `--` and carries no network, which `forge-runner`'s own egress test proves.
+    let bridge = root.join("bin/forge-runner");
+    write(
+        &bridge,
+        "#!/bin/sh\nwhile [ \"$1\" != -- ]; do shift; done; shift; exec \"$@\"",
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bridge, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
     Planted {
         root,
         home,
@@ -176,6 +187,9 @@ fn view(p: &Planted) -> BoxView {
         runner_config: Some(p.config.clone()),
         claude_bin: None,
         temp_dir: std::env::temp_dir(),
+        runner_exe: Some(p.root.join("bin/forge-runner")),
+        egress_dir: p.root.join("egress"),
+        egress_allow: vec![],
     }
 }
 
@@ -216,6 +230,8 @@ async fn run_probe(p: &Planted, confined: bool) -> (String, std::process::Comman
          echo \"PROCS=$(ls -d /proc/[0-9]* | wc -l)\"; \
          echo written > '{repo}/written-by-session' 2>/dev/null && echo CHECKOUT-WRITABLE; \
          echo '[core] sshCommand = tamper' >> '{repo}/.git/config' 2>/dev/null && echo GIT-CONFIG-WRITABLE; \
+         echo \"IFACES=$(tail -n +3 /proc/net/dev | cut -d: -f1 | tr -d ' ' | grep -vx lo | wc -l)\"; \
+         ls /run/systemd/resolve 2>/dev/null | grep -q . && echo RESOLVER-REACHABLE; \
          true",
         files = paths
             .iter()
@@ -227,18 +243,18 @@ async fn run_probe(p: &Planted, confined: bool) -> (String, std::process::Comman
         repo = p.repo.display(),
     );
     let args = vec!["-c".to_string(), script];
-    let cmd = session_command(
-        &spec(p, confined),
-        std::ffi::OsStr::new("/bin/sh"),
-        &args,
-        &p.repo.to_string_lossy(),
-        TURN,
-        &p.mcp,
-        Some(view(p)),
-    )
+    let (mut cmd, _egress) = SessionCommand {
+        spec: &spec(p, confined),
+        program: std::ffi::OsStr::new("/bin/sh"),
+        args: &args,
+        repo: &p.repo.to_string_lossy(),
+        credential: TURN,
+        mcp_path: &p.mcp,
+        core_url: "https://core.example",
+    }
+    .build(Some(view(p)))
     .await
     .expect("the session command is built");
-    let mut cmd = cmd;
     let out = cmd
         .stdin(std::process::Stdio::null())
         .output()
@@ -315,6 +331,22 @@ async fn a_confined_chat_session_holds_its_turn_token_and_no_other_credential_of
     assert!(
         seen.contains("CHECKOUT-WRITABLE") && p.repo.join("written-by-session").is_file(),
         "the session cannot write the checkout it was bound to"
+    );
+    assert!(
+        seen.contains("IFACES=0"),
+        "the session shares a network interface with the box, so it reaches hosts without the egress proxy"
+    );
+    assert!(
+        seen.lines()
+            .any(|l| l == "HTTPS_PROXY=http://127.0.0.1:3128")
+            && seen
+                .lines()
+                .any(|l| l == "https_proxy=http://127.0.0.1:3128"),
+        "the session's proxy variables do not name its egress bridge"
+    );
+    assert!(
+        !seen.contains("RESOLVER-REACHABLE"),
+        "systemd-resolved's socket is in the session's view, which answers a lookup for any name"
     );
     let git_config = std::fs::read_to_string(p.repo.join(".git/config")).unwrap();
     assert!(
