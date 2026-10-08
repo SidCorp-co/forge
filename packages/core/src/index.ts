@@ -69,7 +69,7 @@ import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { logger } from './lib/logger.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
-import { CHAT_READ_MODEL_TOOLS, CHAT_RECORD_TOOLS } from './mcp/index.js';
+import { CHAT_READ_MODEL_TOOLS, CHAT_RECORD_TOOLS, CHAT_REPORT_TOOLS } from './mcp/index.js';
 import {
   provideMemoryIssueReads,
   registerMemoryReconcileWorker,
@@ -127,6 +127,7 @@ import {
   registerReleaseBatchFinish,
   releaseVersionsAmong,
 } from './release-batch/index.js';
+import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
 import {
   embedRequirementHead,
@@ -220,7 +221,8 @@ provideProjectConfigPorts({
   recordSecretResolve,
   rememberHandedOut,
 });
-provideChatTools([...CHAT_READ_MODEL_TOOLS, ...CHAT_RECORD_TOOLS]);
+provideReportPorts();
+provideChatTools([...CHAT_READ_MODEL_TOOLS, ...CHAT_RECORD_TOOLS, ...CHAT_REPORT_TOOLS]);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
 );

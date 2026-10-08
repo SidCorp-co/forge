@@ -39,6 +39,7 @@ export * from './schema-preferences.js';
 export * from './schema-product-state.js';
 export * from './schema-project-config.js';
 export * from './schema-projects.js';
+export * from './schema-report-runs.js';
 export * from './schema-runners.js';
 export * from './schema-schedule-runs.js';
 export * from './schema-schedules.js';

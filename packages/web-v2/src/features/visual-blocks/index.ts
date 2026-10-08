@@ -2,4 +2,5 @@
 export { VISUAL_BLOCK_KINDS } from "@forge/contracts/visual-blocks";
 export { type SourceFacts, VisualBlockProvider, type VisualBlockContextValue } from "./context";
 export { BLOCK_RENDERERS, KINDS_NOT_DRAWN_YET, registryParity } from "./registry";
+export { runFactsIn } from "./source-facts";
 export { UnsupportedBlock, VisualBlockView } from "./visual-block";

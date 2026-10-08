@@ -130,6 +130,7 @@ import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
+import { reportRoutes } from './reports/routes.js';
 import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
@@ -250,6 +251,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', statusReportRoutes);
   app.route('/api', reportQueryRoutes);
+  app.route('/api', reportRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
   app.route('/api/projects', labelProjectRoutes);

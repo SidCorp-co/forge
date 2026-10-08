@@ -1,4 +1,9 @@
-// The reports domain: runs queries as the asker and keeps their provenance. It reaches queries and
-// executors only through ports its process entry provides, so the assistant never imports it.
+// The reports domain: runs queries as the asker, keeps each run's provenance and frame for 30 days,
+// and posts the blocks drawn from a run. It reaches queries and rooms only through ports its process
+// entry provides, so the assistant never imports it.
 export type { Executor } from '@forge/contracts/report-executions';
 export type { ReportDocument, ReportTemplate } from '@forge/contracts/report-templates';
+export { type AttachedBlock, attachVisualBlock } from './blocks.js';
+export { provideReportsPorts, type ReportAsker } from './ports.js';
+export { readReportRun, runReport } from './runs.js';
+export { sweepExpiredReportRuns } from './sweep.js';

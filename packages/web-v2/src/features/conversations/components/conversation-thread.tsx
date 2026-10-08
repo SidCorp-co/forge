@@ -20,7 +20,7 @@ import { isStructured, StructuredMessage } from "@/features/onboarding/component
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
-import { VisualBlockProvider } from "@/features/visual-blocks";
+import { runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
@@ -341,7 +341,7 @@ export function ConversationThread({
   }, undefined);
   return (
     <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
-    <VisualBlockProvider value={{ projectSlug }}>
+    <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn(messages) }}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said")
