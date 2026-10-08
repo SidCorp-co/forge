@@ -2,7 +2,7 @@ import type { MemoryRefusalCode } from '@forge/contracts/memory';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { memories, memorySources } from '../db/schema.js';
+import { memories, memoryWritableSources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
@@ -15,7 +15,7 @@ import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
 export const writeMemoryInputSchema = z.object({
   projectId: z.uuid(),
-  source: z.enum(memorySources),
+  source: z.enum(memoryWritableSources),
   sourceRef: z.string().trim().min(1).max(512),
   textContent: z.string().trim().min(1).max(100_000),
   metadata: z.record(z.string(), z.unknown()).optional(),

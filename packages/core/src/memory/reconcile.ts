@@ -66,7 +66,9 @@ An issue just released. Decide which existing memories the release text CONTRADI
   structure/flow/field the release removed or replaced). Include one-sentence \`evidence\`
   quoting or paraphrasing the specific release fact that disproves it.
 - **possiblyStale** — the release plausibly affects this memory's area, but you cannot be sure
-  it is actually wrong now (default here when uncertain).
+  it is actually wrong now (default here when uncertain). Give one-sentence \`reason\` naming the
+  release fact and the claim of the memory it bears on; a candidate you cannot give a reason for
+  is **unaffected**.
 - **unaffected** — the release does not bear on this memory at all.
 
 Be conservative: only use \`contradicted\` when you are confident the release text disproves the
@@ -75,13 +77,13 @@ memory outright. When unsure, prefer \`possiblyStale\` over \`contradicted\`.
 ## Output JSON only (no markdown, no explanation):
 {
   "contradicted": [{ "id": "<memory id>", "evidence": "..." }],
-  "possiblyStale": [{ "id": "<memory id>" }],
+  "possiblyStale": [{ "id": "<memory id>", "reason": "..." }],
   "unaffected": ["<memory id>", "..."]
 }`;
 
 interface ReconcileActions {
   contradicted?: Array<{ id?: unknown; evidence?: unknown }>;
-  possiblyStale?: Array<{ id?: unknown }>;
+  possiblyStale?: Array<{ id?: unknown; reason?: unknown }>;
   unaffected?: unknown[];
 }
 
@@ -123,7 +125,7 @@ function emptyReconcileResult(
  * returns a `skipped` result rather than throwing, so a flaky reconcile never
  * blocks the release flow that triggered it.
  */
-async function reconcileForReleasedIssue(
+export async function reconcileForReleasedIssue(
   projectId: string,
   issueId: string,
 ): Promise<ReconcileResult> {
@@ -140,15 +142,15 @@ async function reconcileForReleasedIssue(
   }
 }
 
-async function alreadyReconciled(projectId: string, decisionRef: string): Promise<boolean> {
+async function alreadyReconciled(projectId: string, recordRef: string): Promise<boolean> {
   const [existing] = await db
     .select({ id: memories.id })
     .from(memories)
     .where(
       and(
         eq(memories.projectId, projectId),
-        eq(memories.source, 'decision'),
-        eq(memories.sourceRef, decisionRef),
+        eq(memories.source, 'bookkeeping'),
+        eq(memories.sourceRef, recordRef),
       ),
     )
     .limit(1);
@@ -211,24 +213,36 @@ async function archiveContradicted(
   return contradictedRefs;
 }
 
+/**
+ * A "possibly stale" flag is a claim about the row, so it carries the model's reason — the release
+ * fact and the claim it bears on — or it is not made: an item with no usable reason is counted as
+ * unexplained in the bookkeeping record and the row is left unflagged (MJ-4).
+ */
 async function stampPossiblyStale(
   scope: ReconcileScope,
   items: ReconcileActions['possiblyStale'],
   mergedAt: Date,
-): Promise<string[]> {
+  guard: ScriptRefuser,
+): Promise<{ staleRefs: string[]; unexplained: string[] }> {
   const { projectId, issueId, issRef, byId } = scope;
   const staleRefs: string[] = [];
+  const unexplained: string[] = [];
   const staleSinceIso = mergedAt.toISOString();
   for (const item of firstItems(items, RECONCILE_MAX_CANDIDATES)) {
     if (typeof item.id !== 'string') continue;
     const candidate = byId.get(item.id);
     if (!candidate) continue;
+    const reason = typeof item.reason === 'string' ? item.reason.trim().slice(0, 500) : '';
+    if (!reason || guard.refuse(reason, 'reason')) {
+      unexplained.push(candidate.sourceRef);
+      continue;
+    }
     try {
       const md = (candidate.metadata ?? {}) as Record<string, unknown>;
       const updated = await db
         .update(memories)
         .set({
-          metadata: { ...md, staleSince: staleSinceIso, supersededBy: issRef },
+          metadata: { ...md, staleSince: staleSinceIso, supersededBy: issRef, staleReason: reason },
           updatedAt: sql`now()`,
         })
         .where(eq(memories.id, candidate.id))
@@ -241,21 +255,22 @@ async function stampPossiblyStale(
       );
     }
   }
-  return staleRefs;
+  return { staleRefs, unexplained };
 }
 
 async function recordReconcile(
   scope: ReconcileScope,
-  decisionRef: string,
+  recordRef: string,
   summary: string,
   contradictedRefs: string[],
   staleRefs: string[],
+  unexplained: string[],
 ): Promise<void> {
   await indexMemoryBestEffort({
     projectId: scope.projectId,
-    source: 'decision',
-    sourceRef: decisionRef,
-    text: `${summary}${contradictedRefs.length > 0 ? `\ncontradicted: ${contradictedRefs.join(', ')}` : ''}${staleRefs.length > 0 ? `\nstale-stamped: ${staleRefs.join(', ')}` : ''}`,
+    source: 'bookkeeping',
+    sourceRef: recordRef,
+    text: `${summary}${contradictedRefs.length > 0 ? `\ncontradicted: ${contradictedRefs.join(', ')}` : ''}${staleRefs.length > 0 ? `\nstale-stamped: ${staleRefs.join(', ')}` : ''}${unexplained.length > 0 ? `\nnot flagged, no reason given: ${unexplained.join(', ')}` : ''}`,
     metadata: {
       cause: 'memory-reconcile',
       issueId: scope.issueId,
@@ -263,6 +278,7 @@ async function recordReconcile(
       possiblyStale: staleRefs.length,
       contradictedRefs,
       staleRefs,
+      unexplainedRefs: unexplained,
     },
   });
 }
@@ -274,11 +290,11 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   }
 
   const issRef = formatIssueRef(issueRow.issuePrefix, issueRow.issSeq);
-  const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
+  const recordRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release
   // re-fires the transition hook; don't double-spend LLM cost or re-archive).
-  if (await alreadyReconciled(projectId, decisionRef)) {
+  if (await alreadyReconciled(projectId, recordRef)) {
     return emptyReconcileResult('already-reconciled', `reconcile already recorded for ${issRef}`);
   }
 
@@ -333,12 +349,17 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     byId: new Map(candidates.map((c) => [c.id, c])),
   };
   const contradictedRefs = await archiveContradicted(scope, actions.contradicted, guard);
-  const staleRefs = await stampPossiblyStale(scope, actions.possiblyStale, mergedAt);
+  const { staleRefs, unexplained } = await stampPossiblyStale(
+    scope,
+    actions.possiblyStale,
+    mergedAt,
+    guard,
+  );
 
   const contradicted = contradictedRefs.length;
   const possiblyStale = staleRefs.length;
   const summary = `reconcile ${issRef}: ${contradicted} contradicted, ${possiblyStale} possibly-stale of ${candidates.length} candidates`;
-  await recordReconcile(scope, decisionRef, summary, contradictedRefs, staleRefs);
+  await recordReconcile(scope, recordRef, summary, contradictedRefs, staleRefs, unexplained);
 
   return { contradicted, possiblyStale, refused: guard.count, summary };
 }

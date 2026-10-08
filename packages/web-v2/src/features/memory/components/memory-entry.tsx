@@ -5,12 +5,17 @@
 // as the guess it is, and every correction or retirement with its reason. Correct and Retire each
 // take a reason before they send; a mirror of an issue, comment or job offers neither.
 
-import { MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
-import { useState } from "react";
+import { MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
+import Link from "next/link";
+import { Fragment, type ReactNode, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { formatDate } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
+import { Written } from "@/lib/i18n/written";
+import { issueHref } from "@/lib/routes/issues";
+import { releaseHref } from "@/lib/routes/releases";
+import { requirementHref } from "@/lib/routes/requirements";
 
 /** A reason short enough to be a word is not one; core holds the same floor. */
 const REASON_MIN = 3;
@@ -36,9 +41,54 @@ function staleWhy(t: Copy, r: MemoryStaleRef): string {
   return t(`memory.why.${r.why}` as ProductCopyKey);
 }
 
+/** Why decay or a verdict archived a row, in the reader's words; evidence and recorded text stay as written. */
+function archivedLine(t: Copy, cause: MemoryArchiveCause | null, date: string): ReactNode {
+  if (!cause) return t("memory.archivedUnknown", { date });
+  if (cause.rule === "unused") return t("memory.archived.unused", { date });
+  if (cause.rule === "flagged") return t("memory.archived.flagged", { date, by: cause.by ?? "—" });
+  const text = cause.rule === "outdated" ? cause.evidence : cause.text;
+  return (
+    <>
+      {t(cause.rule === "outdated" ? "memory.archived.outdated" : "memory.archived.recorded", { date })} <Written text={text} lang={null} />
+    </>
+  );
+}
+
 const sourceLabel = (t: Copy, source: string) => t(`memory.source.${source}` as ProductCopyKey);
 
-export function MemoryEntryRow({ entry, timeZone, busy, onCorrect, onRetire }: MemoryEntryRowProps) {
+const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+
+/** A key as the reader reads it: bare in this project, with its project's slug in another. */
+const keyLabel = (ref: string, project: string | null | undefined, slug: string) => (project && project !== slug ? `${project} ${ref}` : ref);
+
+/** Where a cited source lives (MJ-6): an issue, requirement or release page, or the commit on the repository host. */
+function citeHref(c: MemoryCite): string | null {
+  if (c.kind === "commit") return c.url ?? null;
+  if (!c.project) return null;
+  if (c.kind === "issue") return issueHref(c.project, c.ref);
+  if (c.kind === "requirement") return requirementHref(c.project, c.ref);
+  return releaseHref(c.project, c.ref);
+}
+
+function Cite({ cite, slug }: { cite: MemoryCite; slug: string }) {
+  const t = useCopy();
+  const label = keyLabel(cite.ref, cite.project, slug);
+  if (cite.kind !== "commit" && !cite.project) return <span>{t("memory.citeElsewhere", { ref: cite.ref })}</span>;
+  const href = citeHref(cite);
+  const mono = cite.kind === "commit" ? "font-mono" : "";
+  if (!href) return <span className={mono}>{label}</span>;
+  return cite.kind === "commit" ? (
+    <a href={href} target="_blank" rel="noreferrer" className={`${LINK} ${mono}`}>
+      {label}
+    </a>
+  ) : (
+    <Link href={href} className={`${LINK} ${cite.state === "gone" ? "line-through" : ""}`}>
+      {label}
+    </Link>
+  );
+}
+
+export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const day = (iso: string) => formatDate(iso, lang, timeZone);
@@ -70,18 +120,33 @@ export function MemoryEntryRow({ entry, timeZone, busy, onCorrect, onRetire }: M
       </p>
       {mode === "correct" ? null : <p className="whitespace-pre-wrap text-13 text-fg">{entry.text}</p>}
       {entry.cites.length > 0 ? (
-        <p className="text-12 text-subtle" translate="no">
-          {t("memory.cites", { refs: entry.cites.join(", ") })}
+        <p className="flex flex-wrap gap-x-1.5 text-12 text-subtle" data-testid="memory-cites">
+          <span>{t("memory.cites")}</span>
+          {entry.cites.map((c, i) => (
+            <Fragment key={`${c.kind}:${c.project ?? "-"}:${c.ref}`}>
+              {i > 0 ? <span aria-hidden>·</span> : null}
+              <span translate="no">
+                <Cite cite={c} slug={slug} />
+              </span>
+            </Fragment>
+          ))}
         </p>
       ) : null}
       {entry.staleRefs.length > 0 ? (
         <p className="text-12-5 font-semibold text-danger" data-testid="memory-stale-refs">
-          {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${r.ref} (${staleWhy(t, r)})`).join(", ") })}
+          {t("memory.staleRefs", { refs: entry.staleRefs.map((r) => `${keyLabel(r.ref, r.project, slug)} (${staleWhy(t, r)})`).join(", ") })}
         </p>
       ) : null}
       {entry.flagged ? (
         <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-flagged">
-          {t("memory.flagged", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })}
+          {entry.flagged.reason !== null ? (
+            <>
+              {t("memory.flaggedBecause", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })} <Written text={entry.flagged.reason} lang={null} />
+              {t("memory.flaggedCheck")}
+            </>
+          ) : (
+            t("memory.flaggedNoReason", { by: entry.flagged.by ?? "—", date: day(entry.flagged.since) })
+          )}
         </p>
       ) : null}
       {entry.corrections.length > 0 ? (
@@ -95,9 +160,7 @@ export function MemoryEntryRow({ entry, timeZone, busy, onCorrect, onRetire }: M
         <p className="text-12-5 text-muted" data-testid="memory-retired">
           {entry.retired
             ? t("memory.retiredBy", { name: actorName(t, entry.retired.by), date: day(entry.retired.at), reason: entry.retired.reason })
-            : entry.archivedBy
-              ? t("memory.archivedBy", { date: day(entry.archivedAt as string), why: entry.archivedBy })
-              : t("memory.archivedUnknown", { date: day(entry.archivedAt as string) })}
+            : archivedLine(t, entry.archivedBy, day(entry.archivedAt as string))}
         </p>
       ) : null}
       {mirror ? (

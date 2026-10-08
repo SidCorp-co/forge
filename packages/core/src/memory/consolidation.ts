@@ -320,7 +320,7 @@ async function recordConsolidation(
 ): Promise<void> {
   await indexMemoryBestEffort({
     projectId,
-    source: 'decision',
+    source: 'bookkeeping',
     sourceRef: `consolidation:${new Date().toISOString().slice(0, 10)}-${crypto.randomBytes(4).toString('hex')}`,
     text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
     metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },

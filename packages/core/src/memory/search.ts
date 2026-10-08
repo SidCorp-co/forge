@@ -1,5 +1,5 @@
-import type { MemoryStaleRef } from '@forge/contracts/memory';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import type { MemoryCite, MemoryStaleRef } from '@forge/contracts/memory';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { cosineDistance } from '../db/pgvector.js';
 import { type MemorySource, memories } from '../db/schema.js';
@@ -41,6 +41,10 @@ export interface MemoryHit {
   verifiedAt: Date | null;
   /** Each record the text names that no longer resolves (MJ-3); present only when one does not. */
   staleRefs?: MemoryStaleRef[];
+  /** Every source the text cites, linked (MJ-6); present only when it cites one. */
+  cites?: MemoryCite[];
+  /** Why a release flagged this row possibly stale; present alongside `stale: true`. */
+  staleReason?: string;
   /** True when `metadata.staleSince` is set — a later release may have
    *  contradicted this row (see `reconcileForReleasedIssue`). */
   stale: boolean;
@@ -103,6 +107,7 @@ export function toMemoryHit(r: MemoryHitRow, score: number): MemoryHit {
         : r.updatedAt,
     verifiedAt: r.lastVerifiedAt,
     ...(typeof md.supersededBy === 'string' ? { stale, supersededBy: md.supersededBy } : { stale }),
+    ...(typeof md.staleReason === 'string' ? { staleReason: md.staleReason } : {}),
   };
 }
 
@@ -115,6 +120,9 @@ function baseWhereClauses(input: BaseSearchInput) {
   ];
   if (input.sourceFilter && input.sourceFilter.length > 0) {
     whereClauses.push(inArray(memories.source, input.sourceFilter));
+  } else {
+    // Memory's own upkeep records are not what the team knows: a search returns them only by name.
+    whereClauses.push(ne(memories.source, 'bookkeeping'));
   }
   if (input.metadataFilter && Object.keys(input.metadataFilter).length > 0) {
     whereClauses.push(sql`${memories.metadata} @> ${JSON.stringify(input.metadataFilter)}::jsonb`);

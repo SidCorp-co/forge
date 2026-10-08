@@ -5,7 +5,13 @@ export { provideProjectsPorts } from './ports.js';
 export type { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 export { unreservedProjectKeyRefusal } from './project-facts.js';
 export { resolveEffectiveProjectId, resolveProjectIdFromSlug } from './project-scope.js';
-export { listProjectHeads, projectCreatorOf, projectHead, projectOrgHead } from './read.js';
+export {
+  listProjectHeads,
+  orgSiblingProjects,
+  projectCreatorOf,
+  projectHead,
+  projectOrgHead,
+} from './read.js';
 export {
   type CreateProjectInput,
   createProjectSchema,

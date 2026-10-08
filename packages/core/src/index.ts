@@ -105,6 +105,7 @@ import {
   readContentLanguage,
   readDeclaredSource,
   readProjectDocument,
+  webUrlOf,
 } from './project-config/index.js';
 import { readProjectStatus, statusViewerOf } from './project-status/index.js';
 import {
@@ -113,6 +114,7 @@ import {
   findProjectOrgIds,
   findVisibleProjectIds,
   listProjectHeads,
+  orgSiblingProjects,
   projectDocumentNames,
   projectHead,
   projectOrgIdSql,
@@ -123,6 +125,7 @@ import {
   provideReleaseBatchPorts,
   registerDeployWorker,
   registerReleaseBatchFinish,
+  releaseVersionsAmong,
 } from './release-batch/index.js';
 import {
   embedRequirementHead,
@@ -192,6 +195,12 @@ provideMemoryIssueReads({
   }),
   issueStandings: issueStandingsBySeq,
   requirementStatuses: requirementStatusesBySeq,
+  siblingProjects: orgSiblingProjects,
+  repositoryWebUrl: async (projectId) => {
+    const repository = (await readDeclaredSource(projectId)).repository;
+    return repository ? webUrlOf(repository) : null;
+  },
+  releaseVersions: releaseVersionsAmong,
 });
 provideProjectsPorts({
   claimIssuePrefix,

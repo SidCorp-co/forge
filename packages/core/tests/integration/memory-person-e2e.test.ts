@@ -71,7 +71,14 @@ describe('the Memory page read and a person acts on it', () => {
 
   it('names each cited record that no longer resolves, and none that still does', async () => {
     const row = byRef(await entries(w), 'gotcha/cites');
-    expect(row?.cites).toEqual(['ISS-1', 'ISS-2', 'ISS-3', 'ISS-99', 'REQ-1', 'REQ-9']);
+    expect(((row?.cites ?? []) as { ref: string }[]).map((c) => c.ref)).toEqual([
+      'ISS-1',
+      'ISS-2',
+      'ISS-3',
+      'ISS-99',
+      'REQ-1',
+      'REQ-9',
+    ]);
     expect(row?.staleRefs).toEqual([
       { ref: 'ISS-1', kind: 'issue', why: 'dropped' },
       { ref: 'ISS-3', kind: 'issue', why: 'archived' },
@@ -118,11 +125,15 @@ describe('the Memory page read and a person acts on it', () => {
 
   it('a correction keeps the old body, names who and why, verifies the row and clears the release flag', async () => {
     await db.execute(sql`
-      UPDATE memories SET metadata = metadata || '{"staleSince":"2026-10-01T00:00:00Z","supersededBy":"ISS-2"}'::jsonb
+      UPDATE memories SET metadata = metadata || '{"staleSince":"2026-10-01T00:00:00Z","supersededBy":"ISS-2","staleReason":"ISS-2 moved the board to cards"}'::jsonb
       WHERE project_id = ${w.projectId} AND source_ref = 'gotcha/clean'
     `);
     const flagged = byRef(await entries(w), 'gotcha/clean') as Entry;
-    expect(flagged.flagged).toEqual({ since: '2026-10-01T00:00:00Z', by: 'ISS-2' });
+    expect(flagged.flagged).toEqual({
+      since: '2026-10-01T00:00:00Z',
+      by: 'ISS-2',
+      reason: 'ISS-2 moved the board to cards',
+    });
     expect(flagged.verifiedAt).toBeNull();
 
     const res = await act(w, flagged.id, 'correct', {
@@ -191,13 +202,11 @@ describe('the Memory page read and a person acts on it', () => {
     await db.execute(sql`
       INSERT INTO memories (project_id, source, source_ref, text_content, metadata, retrieval_count)
       VALUES (${w.projectId}, 'note', 'gotcha/flagged-long-ago', 'old fact',
-              ${JSON.stringify({ staleSince: new Date(Date.now() - 20 * 86_400_000).toISOString(), supersededBy: 'ISS-2' })}::jsonb, 5)
+              ${JSON.stringify({ staleSince: new Date(Date.now() - 20 * 86_400_000).toISOString(), supersededBy: 'ISS-2', staleReason: 'ISS-2 moved it' })}::jsonb, 5)
     `);
     await runMemoryDecay();
     const row = byRef(await entries(w, '&state=retired'), 'gotcha/flagged-long-ago') as Entry;
-    expect(row.archivedBy).toMatch(
-      /^decay: flagged stale 14\+ days and never confirmed after ISS-2$/,
-    );
+    expect(row.archivedBy).toEqual({ rule: 'flagged', by: 'ISS-2' });
     expect(row.retired).toBeNull();
   });
 

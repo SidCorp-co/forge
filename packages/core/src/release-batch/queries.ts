@@ -11,7 +11,7 @@
 // the ledger, the method gate and the promotion-aware abort landed.
 
 import { contentLanguageName, releaseNoteAttention } from '@forge/contracts/content-language';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/index.js';
@@ -410,4 +410,22 @@ export async function waitingIssueIds(projectId: string): Promise<string[]> {
     )
     .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
   return rows.map((r) => r.id);
+}
+
+/** Which of these versions the project has a release run for, as `release_version` holds them. */
+export async function releaseVersionsAmong(
+  projectId: string,
+  versions: readonly string[],
+): Promise<Set<string>> {
+  if (versions.length === 0) return new Set();
+  const rows = await db
+    .selectDistinct({ version: pipelineRuns.releaseVersion })
+    .from(pipelineRuns)
+    .where(
+      and(
+        eq(pipelineRuns.projectId, projectId),
+        inArray(pipelineRuns.releaseVersion, [...new Set(versions)]),
+      ),
+    );
+  return new Set(rows.map((r) => r.version).filter((v): v is string => v !== null));
 }

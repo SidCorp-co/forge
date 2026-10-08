@@ -37,6 +37,30 @@ export interface MemoryStaleRef {
 	ref: string;
 	kind: "issue" | "requirement";
 	why: MemoryStaleWhy;
+	/** The project the key was read in, by slug, when the memory places it in another project. */
+	project?: string;
+}
+
+export const MEMORY_CITE_KINDS = ["issue", "requirement", "commit", "release"] as const;
+export type MemoryCiteKind = (typeof MEMORY_CITE_KINDS)[number];
+
+/**
+ * One source a memory names, as the reader links it (MJ-6). An issue or requirement key is read in
+ * the project the text places it in — this one unless a sibling project is named beside it — and a
+ * key the text places in a project it does not name is `unchecked`, never read against this
+ * project's numbers. A commit links to the project's repository and is not checked; a release is a
+ * cite only when the project has that release.
+ */
+export interface MemoryCite {
+	ref: string;
+	kind: MemoryCiteKind;
+	/** Slug of the project the cite was read in; null when the memory places it in a project it does not name. */
+	project: string | null;
+	state: "resolved" | "gone" | "unchecked";
+	/** Set when `state` is `gone`. */
+	why?: MemoryStaleWhy;
+	/** A commit's page on the project's repository host. */
+	url?: string;
 }
 
 /** The person or agent account behind a write or an act. */
@@ -66,17 +90,32 @@ export interface MemoryEntry {
 	/** When an agent or person last checked it against what is live; null when never. */
 	verifiedAt: string | null;
 	/** The issue and requirement keys the text names, as written. */
-	cites: string[];
+	cites: MemoryCite[];
 	/** Each cited record that no longer resolves; empty when every one does. */
 	staleRefs: MemoryStaleRef[];
-	/** A release later flagged the row as possibly outdated (a model's guess): when, and by which issue. */
-	flagged: { since: string; by: string | null } | null;
+	/**
+	 * A release later flagged the row as possibly outdated (a model's guess): when, by which issue,
+	 * and the reason it gave — null only on a flag written by hand, which the reader says has none.
+	 */
+	flagged: { since: string; by: string | null; reason: string | null } | null;
 	corrections: MemoryAct[];
 	retired: MemoryAct | null;
-	/** Why the row is archived when no person retired it: the decay rule, or a recall verdict. */
 	archivedAt: string | null;
-	archivedBy: string | null;
+	/** Why the row is archived when no person retired it; null when nothing recorded why. */
+	archivedBy: MemoryArchiveCause | null;
 }
+
+/**
+ * Why a row no person retired was archived, as facts a reader words in its own language: decay's
+ * unused rule, decay's rule for a flag nobody confirmed (and the issue that flagged it), an
+ * agent's outdated verdict with its evidence (written text), or a cause recorded in words core
+ * does not hold a rule for (written text, shown as written).
+ */
+export type MemoryArchiveCause =
+	| { rule: "unused" }
+	| { rule: "flagged"; by: string | null }
+	| { rule: "outdated"; evidence: string }
+	| { rule: "recorded"; text: string };
 
 export const MEMORY_ENTRY_STATES = ["live", "stale", "retired"] as const;
 export type MemoryEntryState = (typeof MEMORY_ENTRY_STATES)[number];
