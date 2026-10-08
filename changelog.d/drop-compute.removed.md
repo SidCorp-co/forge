@@ -1,1 +1,0 @@
-**The assistant no longer runs computations on a runner.** The runner sandbox, its `compute.run` exchange and `forge-runner compute` are gone; a computation is refused by name, and a figure no report covers is asked in Agent mode.

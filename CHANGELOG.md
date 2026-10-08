@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.202] - 2026-10-08
+
+Computations no longer run on the team runner; the runner sandbox is removed
+
+### Removed
+
+- **The assistant no longer runs computations on a runner.** The runner sandbox, its `compute.run` exchange and `forge-runner compute` are gone; a computation is refused by name, and a figure no report covers is asked in Agent mode.
+
 ## [0.4.0-dev.201] - 2026-10-08
 
 Release requirements drawn as criteria bars; requirement view progress strip
