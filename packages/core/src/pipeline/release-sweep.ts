@@ -6,7 +6,7 @@
 // unattended path. ISS-1215: every way it declines a waiting row is written on that row
 // (`release-hold.ts`), never on the log alone.
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
@@ -24,6 +24,7 @@ import {
   servingClause,
   whyUncorroborated,
 } from '../release-batch/serving-reading.js';
+import { oldestMergeFirst } from '../release-batch/waiting-order.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
@@ -207,7 +208,7 @@ async function waitingIssueIds(projectId: string): Promise<string[]> {
         isNull(issues.releaseBatchRunId),
       ),
     )
-    .orderBy(sql`${issues.mergedAt} ASC NULLS LAST`, asc(issues.id));
+    .orderBy(...oldestMergeFirst());
   return rows.map((r) => r.id);
 }
 

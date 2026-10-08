@@ -11,6 +11,7 @@ import { issues } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
+import { readAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
@@ -22,6 +23,7 @@ import {
   type ReleaseBlockerReport,
   type ReleaseDoor,
   type ReleaseWarning,
+  rosterInPartsWarningSentence,
   runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
 import { type CarriedCheck, judgeCarried } from './carried.js';
@@ -40,6 +42,7 @@ import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
+import { oldestMergeFirst } from './waiting-order.js';
 
 export * from './blocker-sentences.js';
 
@@ -66,6 +69,7 @@ async function countNearGate(
 }
 
 interface RosterRead {
+  /** What the note, close and carried-range checks judge: the roster, or the part it is cut in. */
   ids: string[];
   /** The subset no release batch has claimed, which is what the sweep works on. */
   unclaimed: string[];
@@ -77,6 +81,7 @@ async function resolveRoster(
   gateStatus: IssueStatus,
   issueIds: string[] | undefined,
   out: ReleaseBlocker[],
+  warnings: ReleaseWarning[],
 ): Promise<RosterRead | undefined> {
   // Sized like the roster; an empty named list falls through to read the gate.
   if (issueIds && issueIds.length > 0) {
@@ -106,21 +111,54 @@ async function resolveRoster(
       await db
         .select({ id: issues.id, claimed: issues.releaseBatchRunId })
         .from(issues)
-        .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus))),
+        .where(and(eq(issues.projectId, projectId), eq(issues.status, gateStatus)))
+        .orderBy(...oldestMergeFirst()),
     out,
   );
   if (!rows) return undefined;
-  const ids = rows.map((r) => r.id);
+  let ids = rows.map((r) => r.id);
+  let unclaimed = rows.filter((r) => r.claimed === null).map((r) => r.id);
   if (ids.length === 0) {
     const nearGate = await countNearGate(projectId, out);
     out.push(
       blocker('RELEASE_ROSTER_EMPTY', nearGate === undefined ? undefined : { nearGate }, 'roster'),
     );
   } else if (ids.length > RELEASE_ROSTER_LIMIT) {
-    out.push(oversize(ids.length));
+    const part = await partOfAutomaticRoster(projectId, unclaimed, out);
+    if (part) {
+      // The cap binds the unclaimed rows, which are what the next cut carries; a claimed row is a
+      // release already running, and `BATCH_IN_FLIGHT` is the answer for that.
+      ids = unclaimed = part.part;
+      if (part.later > 0) {
+        const { waiting, later } = part;
+        warnings.push({
+          code: 'RELEASE_ROSTER_IN_PARTS',
+          message: rosterInPartsWarningSentence(waiting, part.part.length, later),
+          details: { waiting, limit: RELEASE_ROSTER_LIMIT, part: part.part.length, later },
+        });
+      }
+    } else {
+      out.push(oversize(ids.length));
+    }
   }
   if (issueIds) return { ids: [], unclaimed: [] };
-  return { ids, unclaimed: rows.filter((r) => r.claimed === null).map((r) => r.id) };
+  return { ids, unclaimed };
+}
+
+/**
+ * The part of an over-cap roster the next automatic cut carries, or undefined where a person cuts
+ * this project's releases and the roster is theirs to size (ISS-1360). `unclaimed` is already
+ * oldest merge first, which is the order the sweep names its cut in.
+ */
+async function partOfAutomaticRoster(
+  projectId: string,
+  unclaimed: string[],
+  out: ReleaseBlocker[],
+): Promise<{ part: string[]; waiting: number; later: number } | undefined> {
+  const auto = await evaluate('auto-release', async () => await readAutoProdDeploy(projectId), out);
+  if (auto !== true) return undefined;
+  const part = unclaimed.slice(0, RELEASE_ROSTER_LIMIT);
+  return { part, waiting: unclaimed.length, later: unclaimed.length - part.length };
 }
 
 /** What the range carries beyond the roster, judged into the reasons and the warning it raises. */
@@ -416,7 +454,7 @@ async function gatedBlockers(
   const channels = ch.value ?? null;
 
   const roster: ReleaseBlocker[] = [];
-  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, roster);
+  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, roster, warnings);
   if (issueIds && issueIds.length > 0) {
     await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, roster);
   }

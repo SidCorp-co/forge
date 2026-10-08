@@ -20,7 +20,8 @@ vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => Object.assign(selectRows(), { limit: selectLimit }),
+        where: () =>
+          Object.assign(selectRows(), { limit: selectLimit, orderBy: () => selectRows() }),
         innerJoin: () => ({ where: () => joinRows() }),
       }),
     }),
@@ -59,7 +60,7 @@ vi.mock('../runners/ineligible.js', async (importActual) => {
 
 const autoRelease = vi.fn(async () => false);
 vi.mock('../pipeline/auto-prod-deploy.js', () => ({
-  projectAutoProdDeploy: () => autoRelease(),
+  readAutoProdDeploy: () => autoRelease(),
 }));
 
 const unearned = vi.fn(async () => [] as unknown[]);

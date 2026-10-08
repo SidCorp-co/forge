@@ -16,7 +16,8 @@ const execRows = vi.fn(async () => [] as unknown[]);
 
 // The claim check joins the issue's project and claiming run; a join reads the same rows.
 const fromChain: Record<string, unknown> = {};
-fromChain.where = () => Object.assign(selectRows(), { limit: selectLimit });
+fromChain.where = () =>
+  Object.assign(selectRows(), { limit: selectLimit, orderBy: () => selectRows() });
 fromChain.innerJoin = fromChain.leftJoin = () => fromChain;
 vi.mock('../db/client.js', () => ({
   db: {

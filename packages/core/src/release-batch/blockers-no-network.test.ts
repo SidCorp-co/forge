@@ -50,7 +50,7 @@ vi.mock('../issues/release-record-required.js', async (importActual) => {
 });
 
 // On, so the criteria check runs and weighs what it is handed rather than returning first.
-vi.mock('../pipeline/auto-prod-deploy.js', () => ({ projectAutoProdDeploy: async () => true }));
+vi.mock('../pipeline/auto-prod-deploy.js', () => ({ readAutoProdDeploy: async () => true }));
 
 const { collectReleaseBlockers } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
