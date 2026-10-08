@@ -18,6 +18,8 @@ import { type Said, say } from '@forge/contracts/said';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
+import { activeIssuePrefix } from '../issues/index.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { readMasterStanding } from '../masters/index.js';
 import { holderNames } from '../permissions/index.js';
 import { onlineCapableDeviceIds, releaseIneligibleRunners } from '../runners/index.js';
@@ -32,7 +34,11 @@ interface SampleRow {
   minutes: number;
 }
 
-export async function readHistory(projectId: string, now: Date): Promise<History> {
+export async function readHistory(
+  projectId: string,
+  now: Date,
+  width: number | null = null,
+): Promise<History> {
   const [rows, peak] = await Promise.all([
     landedRows(projectId, now),
     readPeakLiveRuns(projectId, now),
@@ -48,7 +54,92 @@ export async function readHistory(projectId: string, now: Date): Promise<History
   const spanDays = Number.isFinite(first)
     ? Math.min(FORECAST_WINDOW_DAYS, Math.max(1, (now.getTime() - first) / DAY_MS))
     : 0;
-  return { samples, spanDays, peak };
+  return { samples, spanDays, peak, width };
+}
+
+interface EventRow {
+  kind: 'transition' | 'filed' | 'blocker_added' | 'blocker_ended' | 'run_started' | 'run_ended';
+  at: string;
+  seq: number | null;
+  other: number | null;
+  status: string | null;
+}
+
+/** The event a forecast is anchored on: its moment, and what happened, said by key. */
+export interface Anchor {
+  at: Date;
+  event: Said;
+}
+
+/**
+ * The last moment the facts a forecast reads moved, at or before `now`: an issue's status change, a
+ * new issue, a `blocks` edge added or ended, a declared run started or a run finished. Every
+ * time-varying input the simulation reads — the landing window, the run peak, an in-flight item's age
+ * — is read as of this moment, so a read with no event since gives the same dates, and a date that
+ * moves names the event that moved it (Jira Plans' "current vs new value" before a schedule is
+ * accepted; Linear's prediction recomputed from velocity, not from the clock).
+ */
+export async function readAnchor(projectId: string, now: Date): Promise<Anchor> {
+  const at = now.toISOString();
+  const [row] = rowsOf<EventRow>(
+    await db.execute(sql`
+      SELECT * FROM (
+        SELECT 'transition' AS kind, al.created_at AS at, i.iss_seq AS seq, NULL::int AS other,
+               al.payload ->> 'to' AS status
+          FROM activity_log al JOIN issues i ON i.id = al.issue_id
+         WHERE i.project_id = ${projectId} AND al.action = 'issue.statusChanged'
+           AND al.created_at <= ${at}::timestamptz
+        UNION ALL
+        SELECT 'filed', i.created_at, i.iss_seq, NULL, NULL
+          FROM issues i WHERE i.project_id = ${projectId} AND i.created_at <= ${at}::timestamptz
+        UNION ALL
+        SELECT 'blocker_added', d.created_at, t.iss_seq, f.iss_seq, NULL
+          FROM issue_dependencies d
+          JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
+         WHERE d.project_id = ${projectId} AND d.kind = 'blocks' AND d.created_at <= ${at}::timestamptz
+        UNION ALL
+        SELECT 'blocker_ended', d.valid_until, t.iss_seq, f.iss_seq, NULL
+          FROM issue_dependencies d
+          JOIN issues f ON f.id = d.from_issue_id JOIN issues t ON t.id = d.to_issue_id
+         WHERE d.project_id = ${projectId} AND d.kind = 'blocks' AND d.valid_until <= ${at}::timestamptz
+        UNION ALL
+        SELECT 'run_started', s.started_at, i.iss_seq, NULL, NULL
+          FROM agent_sessions s JOIN pipeline_runs r ON r.id = s.pipeline_run_id
+          LEFT JOIN issues i ON i.id = r.issue_id
+         WHERE s.project_id = ${projectId} AND s.kind = ${RUN_SESSION_KIND}
+           AND s.started_at <= ${at}::timestamptz
+        UNION ALL
+        SELECT 'run_ended', r.finished_at, i.iss_seq, NULL, NULL
+          FROM pipeline_runs r JOIN agent_sessions s ON s.pipeline_run_id = r.id AND s.kind = ${RUN_SESSION_KIND}
+          LEFT JOIN issues i ON i.id = r.issue_id
+         WHERE r.project_id = ${projectId} AND r.finished_at <= ${at}::timestamptz
+      ) e
+      ORDER BY e.at DESC, e.kind
+      LIMIT 1`),
+  );
+  if (!row) return { at: now, event: say('forecast.event.none') };
+  return { at: new Date(row.at), event: eventSaid(row, await activeIssuePrefix(projectId)) };
+}
+
+function eventSaid(e: EventRow, prefix: string | null): Said {
+  const key = e.seq !== null ? formatIssueRef(prefix, e.seq) : null;
+  const other = e.other !== null ? formatIssueRef(prefix, e.other) : null;
+  switch (e.kind) {
+    case 'transition':
+      return key && e.status
+        ? say('forecast.event.transition', { key, status: e.status })
+        : say('forecast.event.none');
+    case 'filed':
+      return key ? say('forecast.event.filed', { key }) : say('forecast.event.none');
+    case 'blocker_added':
+      return say('forecast.event.blockerAdded', { key: key ?? '?', blocker: other ?? '?' });
+    case 'blocker_ended':
+      return say('forecast.event.blockerEnded', { key: key ?? '?', blocker: other ?? '?' });
+    case 'run_started':
+      return key ? say('forecast.event.runStarted', { key }) : say('forecast.event.runStartedAny');
+    case 'run_ended':
+      return key ? say('forecast.event.runEnded', { key }) : say('forecast.event.runEndedAny');
+  }
 }
 
 async function landedRows(projectId: string, now: Date): Promise<SampleRow[]> {

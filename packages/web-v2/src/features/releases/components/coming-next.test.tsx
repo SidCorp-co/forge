@@ -15,7 +15,7 @@ const at = (min: number) => new Date(NOW + min * 60_000).toISOString();
 const stamp = { label: "forecast" as const, asOf: at(0) };
 const range: Forecast = {
   ...stamp,
-  kind: "forecast",
+  kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 },
   p50At: at(60),
   p85At: at(240),
   p50Minutes: 60,
@@ -30,10 +30,10 @@ const manual = { kind: "person" as const, mode: "manual" as const, ...forecastWa
 const delivery = (landing: Forecast): DeliveryForecast => ({ ...stamp, landing, release: manual, inHands: null, shipped: null });
 const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-90) };
 
-const req: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-4", title: "The board keeps its cards", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery(range) };
+const req: ScopeForecast = { ...stamp, scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "REQ-4", title: "The board keeps its cards", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery(range) };
 const draftScope: ScopeForecast = {
   ...stamp,
-  scope: "release",
+  scope: "release", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null,
   key: "draft",
   title: null,
   progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },

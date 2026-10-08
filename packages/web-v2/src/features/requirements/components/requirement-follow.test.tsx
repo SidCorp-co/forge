@@ -19,7 +19,7 @@ const approval = {
 };
 const delivery = { ...stamp, landing: landed, release: approval, inHands: null, shipped: null };
 
-const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-19", title: "t", progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery };
+const scope: ScopeForecast = { ...stamp, scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "REQ-19", title: "t", progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery };
 
 describe("a requirement follows its work to the release", () => {
   it("links the release its progress line names and names who owes the cut", () => {

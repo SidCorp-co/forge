@@ -4,7 +4,7 @@
 // already draw, so a status report and the screens it summarises cannot disagree. Every section
 // carries `asOf`, the moment its own read answered, and a forecast carries its own label.
 
-import type { DeliveryForecast, ForecastLate, IssueProgress, ScopeForecast } from "./forecast.js";
+import type { DeliveryForecast, ForecastLate, ForecastMove, IssueProgress, ScopeForecast } from "./forecast.js";
 import type { WrittenLang } from "./written-lang.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
@@ -15,7 +15,7 @@ import type {
 } from "./releases.js";
 import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
-import type { WaitingOn } from "./standing.js";
+import type { WaitingKind, WaitingOn } from "./standing.js";
 
 export const PROJECT_STATUS_DAYS_DEFAULT = 7;
 export const PROJECT_STATUS_DAYS_MAX = 90;
@@ -50,9 +50,18 @@ export interface StatusShipped extends Stamped {
 	/** Every shipped release in the window; `releases` carries at most PROJECT_STATUS_ROWS. */
 	releaseCount: number;
 	issueCount: number;
-	/** Requirements whose last issue shipped inside the window. */
+	/** Requirements delivered in full inside the window: the last issue shipped AND every live criterion proven (`provenInFull`). */
 	requirementsShipped: { key: string; title: string; at: string }[];
+	/**
+	 * Requirements whose last issue shipped inside the window while a live criterion is still unproven:
+	 * shipped, not delivered in full. Absent on a report stored before the proof rule.
+	 */
+	requirementsAwaitingProof?: { key: string; title: string; at: string; proven: number; total: number }[];
 }
+
+/** Delivered in full: at least one live criterion, and every one proven. The status read and a release's `completes` read the same rule. */
+export const provenInFull = (c: { proven: number; total: number }): boolean =>
+	c.total > 0 && c.proven === c.total;
 
 export interface StatusInFlightIssue {
 	key: string;
@@ -87,11 +96,25 @@ export interface StatusWait {
 	says: { title: Said };
 }
 
-/** Every row whose turn is a person's, with the person and the act its read model names. */
+/** One person (or role a person holds) and how many member asks wait on them. */
+export interface StatusWaitPerson {
+	kind: WaitingKind;
+	who: string;
+	says: { who: Said };
+	count: number;
+}
+
+/**
+ * Every member ask (`NEEDS_YOU_AREA_SPACE` = asks) whose turn is a person's, grouped by that person:
+ * `byPerson` the one owing most first, and `people` the rows in that grouping, each person's oldest
+ * first. Ops upkeep (agent reports, schedules, contracts) is Development's and never listed here.
+ */
 export interface StatusWaits extends Stamped {
 	people: StatusWait[];
+	/** The persons `people` is grouped by, in its order; absent on a report stored before the grouping. */
+	byPerson?: StatusWaitPerson[];
 	peopleCount: number;
-	/** The viewer's own needs-you count, the number the dashboard and the inbox show. */
+	/** The viewer's own asks (`NeedsYouResponse.asks`), the number the home and /attention show. */
 	needsYou: number;
 }
 
@@ -106,6 +129,8 @@ export interface StatusRequirement {
 	waitingOn: WaitingOn;
 	/** When the last of its issues is in people's hands; null where it holds no open work. */
 	delivery: DeliveryForecast | null;
+	/** How its forecast last moved and why (`ScopeForecast.moved`); absent on a report stored before moves were kept. */
+	moved?: ForecastMove | null;
 }
 
 /** Requirements on the delivery line, and how many of their criteria are proven. */
@@ -153,6 +178,8 @@ export interface RoadmapItem {
 	title: string;
 	state: RequirementState;
 	delivery: DeliveryForecast | null;
+	/** How its forecast last moved and why (`ScopeForecast.moved`); absent on a report stored before moves were kept. */
+	moved?: ForecastMove | null;
 	deferral: {
 		reason: string;
 		targetPhase: string | null;

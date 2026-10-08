@@ -9,7 +9,6 @@
 import {
   FORECAST_HISTORY_FLOOR,
   FORECAST_LABEL,
-  FORECAST_PEAK_DAYS,
   FORECAST_TRIALS,
   FORECAST_WINDOW_DAYS,
   type Forecast,
@@ -22,23 +21,18 @@ import {
 import type { ProjectPermission } from '@forge/contracts/permissions';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct } from '@forge/contracts/standing';
+import {
+  type Concurrency,
+  type CycleSample,
+  concurrencyOf,
+  confidenceOf,
+  type History,
+} from './capacity.js';
 import { lateAfterP85, latestLate, lateWaiting } from './late.js';
 
+export { type CycleSample, concurrencyOf, confidenceOf, type History };
+
 const MINUTE = 60_000;
-const DAY_MINUTES = 1440;
-
-export interface CycleSample {
-  minutes: number;
-  complexity: string | null;
-}
-
-export interface History {
-  samples: readonly CycleSample[];
-  /** Days the landings were counted over. */
-  spanDays: number;
-  /** The most declared runs live at once over the recent days; null where none was live. */
-  peak: number | null;
-}
 
 export interface Wait {
   who: string;
@@ -98,13 +92,11 @@ export interface WorkItem {
   wait: Wait | null;
 }
 
-interface Concurrency {
-  value: number;
-  basis: string;
-}
-
 interface ForecastInput {
+  /** The simulation's clock: the forecast's anchor, the moment of the last event its facts moved on. */
   now: Date;
+  /** When it is read, which lateness is measured against; the anchor where not given. */
+  readAt?: Date;
   items: readonly WorkItem[];
   history: History;
   /** A wait that holds the whole project, such as no runner able to take work. */
@@ -152,35 +144,6 @@ export function percentile(sorted: ArrayLike<number>, p: number): number {
 }
 
 const ascending = (values: readonly number[]) => [...values].sort((a, b) => a - b);
-
-/**
- * Little's law, L = λ·W: the issues the project has had in progress at once on average, read from
- * its landings per day and their mean duration, never above the most runs it has actually had live
- * at once lately. A burst of landings reads a λ no lane ever sustained, and the work a master runs
- * as a two-run wave is never worked six at a time (HOP ISS-71's next-day p85), however many issues
- * stand at `in_progress` meanwhile.
- */
-export function concurrencyOf(history: History): Concurrency | null {
-  const n = history.samples.length;
-  if (n === 0 || history.spanDays <= 0) return null;
-  const perDay = n / history.spanDays;
-  const meanMinutes = history.samples.reduce((s, c) => s + c.minutes, 0) / n;
-  const wip = (perDay * meanMinutes) / DAY_MINUTES;
-  const little = Math.max(1, Math.round(wip));
-  const read = `Little's law over the last ${FORECAST_WINDOW_DAYS} days: ${perDay.toFixed(1)} landings a day × ${Math.round(meanMinutes)} min mean in progress ≈ ${wip.toFixed(1)} at once`;
-  if (history.peak === null) {
-    return {
-      value: little,
-      basis: `${read}, not held to a run count: no run was live in the last ${FORECAST_PEAK_DAYS} days`,
-    };
-  }
-  const cap = Math.max(1, history.peak);
-  if (little <= cap) return { value: little, basis: read };
-  return {
-    value: cap,
-    basis: `${read}, held to ${cap}: the most runs live at once over the last ${FORECAST_PEAK_DAYS} days`,
-  };
-}
 
 /** The most spells open at one instant; a spell ending as another starts does not overlap it. */
 export function peakOf(spells: readonly (readonly [number, number])[]): number {
@@ -347,7 +310,8 @@ function dispatchOrder(items: readonly WorkItem[]): WorkItem[] {
 export function runForecast(input: ForecastInput): ForecastRun {
   const floor = input.floor ?? FORECAST_HISTORY_FLOOR;
   const trials = input.trials ?? FORECAST_TRIALS;
-  const asOf = input.now.toISOString();
+  const readAt = input.readAt ?? input.now;
+  const asOf = readAt.toISOString();
   const forecasts = new Map<string, Forecast>();
   const landings = new Map<string, Float64Array>();
   const n = input.history.samples.length;
@@ -433,7 +397,7 @@ export function runForecast(input: ForecastInput): ForecastRun {
       rangeOf(asOf, input.now, at, basis, {
         ahead: order.slice(0, position).map((i) => i.key),
         waitsOn: [...item.blockedBy],
-        late: lateAfterP85(item.startedAt, basis.cycleP85Minutes, input.now),
+        late: lateAfterP85(item.startedAt, basis.cycleP85Minutes, readAt),
       }),
     );
   });
@@ -455,6 +419,8 @@ export function rangeOf(
   return {
     ...stamp(asOf),
     kind: 'forecast',
+    anchoredAt: now.toISOString(),
+    confidence: confidenceOf(basis, p50, p85),
     p50Minutes: p50,
     p85Minutes: p85,
     p50At: new Date(now.getTime() + p50 * MINUTE).toISOString(),

@@ -11,6 +11,12 @@ import type {
   ReleaseVersionRule,
 } from '@forge/contracts/releases';
 import { RELEASE_VERSION_DECISIONS } from '@forge/contracts/releases';
+import { type Said, say } from '@forge/contracts/said';
+import { and, eq, inArray } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { issues } from '../db/schema.js';
+import { activeIssuePrefix } from '../issues/index.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
@@ -94,10 +100,28 @@ function ruleOf(metadata: Record<string, unknown>): ReleaseVersionRule {
   };
 }
 
+/** What a finish refusal means, said by key so a reader in another language reads it; the text stays verbatim beside it. */
+const REFUSAL_SAYS: Readonly<Record<string, Said>> = {
+  RELEASE_NOT_VERIFIED: say('releases.refused.notVerified'),
+  RELEASE_NOTHING_RECORDED: say('releases.refused.nothingRecorded'),
+  RELEASE_ALL_SHIPPED_EARLIER: say('releases.refused.allShippedEarlier'),
+  RELEASE_FINISHED_FOR_OTHER_COMMIT: say('releases.refused.otherCommit'),
+  CONTRACT_PROVIDER_NOT_LIVE: say('releases.refused.providerNotLive'),
+  RELEASE_CRITERIA_UNEARNED: say('releases.refused.criteriaUnearned'),
+  RELEASE_FINISH_ERRORED: say('releases.refused.finishErrored'),
+};
+
+export function refusalSays(code: string | null): Said {
+  return (
+    (code ? REFUSAL_SAYS[code] : undefined) ?? say('releases.refused.other', { code: code ?? '—' })
+  );
+}
+
 function refusalOf(run: LineageRun): ReleaseCutView['refusal'] {
   const finish = readFinishRecord(run.metadata);
   if (finish?.state !== 'failed' || !finish.refusal) return null;
-  return { code: finish.refusal.code || null, text: finish.refusal.reason };
+  const code = finish.refusal.code || null;
+  return { code, text: finish.refusal.reason, says: refusalSays(code) };
 }
 
 function endedAtOf(run: LineageRun): Date | null {
@@ -109,11 +133,31 @@ function endedAtOf(run: LineageRun): Date | null {
  * One release's attempts, first first. `own` is the run the page is about and the state the read
  * model gave it, so the open attempt reads the same state the header does.
  */
+export type RosterIssue = ReleaseCutView['roster'][number];
+
+const byKey = (a: RosterIssue, b: RosterIssue) =>
+  a.key.localeCompare(b.key, 'en', { numeric: true });
+
+/** An attempt's roster as issues; an id the project no longer holds is refused by name, never dropped. */
+function rosterOf(run: LineageRun, known: ReadonlyMap<string, RosterIssue>): RosterIssue[] {
+  return [...new Set(run.roster)]
+    .map((id) => {
+      const issue = known.get(id);
+      if (!issue)
+        throw new Error(
+          `release attempt ${run.id} (${run.version}): its roster names issue ${id}, which this project does not hold`,
+        );
+      return issue;
+    })
+    .sort(byKey);
+}
+
 export function cutViewsOf(
   runs: readonly LineageRun[],
   own: { runId: string | null; state: ReleaseState },
   cutters: ReadonlyMap<string, ReleasePerson>,
   people: ReadonlyMap<string, ReleasePerson>,
+  known: ReadonlyMap<string, RosterIssue> = new Map(),
 ): ReleaseCutView[] {
   return runs.map((run, i) => {
     const decider = deciderIdOf(run);
@@ -139,22 +183,52 @@ export function cutViewsOf(
       decidedBy: decider ? (people.get(decider) ?? null) : null,
       rule: ruleOf(run.metadata),
       carried: reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null,
+      roster: rosterOf(run, known),
     };
   });
 }
 
 /** Fills each part's attempts, with every person they name read once. */
+/** The issues every attempt's roster names, keyed as the project writes them, in one read. */
+async function rosterIssues(
+  projectId: string,
+  runs: readonly LineageRun[],
+): Promise<Map<string, RosterIssue>> {
+  const ids = [...new Set(runs.flatMap((r) => r.roster))];
+  if (ids.length === 0) return new Map();
+  const [rows, prefix] = await Promise.all([
+    db
+      .select({ id: issues.id, seq: issues.issSeq, title: issues.title })
+      .from(issues)
+      .where(and(eq(issues.projectId, projectId), inArray(issues.id, ids))),
+    activeIssuePrefix(projectId),
+  ]);
+  return new Map(
+    rows.map((r) => [
+      r.id,
+      { key: r.seq != null ? formatIssueRef(prefix, r.seq) : r.id, title: r.title ?? '' },
+    ]),
+  );
+}
+
 export async function fillCuts(
+  projectId: string,
   parts: readonly Part[],
   groupOf: (p: Part) => LineageRun[],
   cutters: ReadonlyMap<string, ReleasePerson>,
 ): Promise<void> {
   const groups = parts.map((p) => [p, groupOf(p)] as const);
-  const named = await peopleOf(groups.flatMap(([, runs]) => peopleNamedBy(runs)));
+  const [named, known] = await Promise.all([
+    peopleOf(groups.flatMap(([, runs]) => peopleNamedBy(runs))),
+    rosterIssues(
+      projectId,
+      groups.flatMap(([, runs]) => runs),
+    ),
+  ]);
   const people = new Map<string, ReleasePerson>(
     [...named].map(([id, person]) => [id, { id, ...person }]),
   );
   for (const [p, runs] of groups) {
-    p.cuts = cutViewsOf(runs, { runId: p.runId, state: p.state }, cutters, people);
+    p.cuts = cutViewsOf(runs, { runId: p.runId, state: p.state }, cutters, people, known);
   }
 }

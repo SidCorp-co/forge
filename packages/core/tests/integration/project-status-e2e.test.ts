@@ -129,7 +129,9 @@ describe('the project status read', () => {
       expect(count, state).toBe(list.filter((r) => (r.standing as Body).state === state).length);
     }
     const needsYou = await get(w, '/needs-you');
-    expect((status.waits as Body).needsYou).toBe((needsYou.items as Body[]).length);
+    const asks = (needsYou.items as Body[]).filter((i) => i.space === 'asks');
+    expect((status.waits as Body).needsYou).toBe(needsYou.asks);
+    expect(needsYou.asks).toBe(asks.length);
     const releases = (await get(w, '/releases')).releases as Body[];
     const draft = releases.find((r) => r.state === 'draft');
     expect((status.nextRelease as Body).version).toBe(draft?.version ?? null);

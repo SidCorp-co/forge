@@ -3,9 +3,10 @@
 // page said when it was copied. A row that waits on the viewer reads "You" on the page; copied, it
 // names the viewer, since the reader of a pasted report is somebody else.
 
-import type { ProjectStatus, RoadmapItem, StatusWait } from "@forge/contracts/project-status";
+import type { ProjectStatus, RoadmapItem, StatusWait, StatusWaitPerson, StatusWaits } from "@forge/contracts/project-status";
 import { ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
+import { honestyLine } from "@/features/forecast/honesty";
 import { progressText } from "@/features/forecast/progress";
 import { needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
@@ -44,7 +45,26 @@ function roadmapLine(i: RoadmapItem, w: ReportWords): string {
       : w.t("status.deferred", { reason: i.deferral.reason })
     : null;
   const notAgreed = i.state === "draft" ? w.t("status.notAgreed") : null;
-  return `- **${i.key}** ${i.title} · ${join([w.label("requirementState", i.state), etaText(i.delivery, w.clock), deferral, notAgreed])}`;
+  return `- **${i.key}** ${i.title} · ${join([w.label("requirementState", i.state), etaText(i.delivery, w.clock), honestyLine(i.delivery, i.moved, w.t, w.clock.lang), deferral, notAgreed])}`;
+}
+
+const personKey = (w: { kind: string; says: { who: Said } }) => `${w.kind}:${JSON.stringify(w.says.who)}`;
+
+/** The rows core grouped by person, under each person core named; a report stored before the grouping reads as one unheaded group. */
+export function waitGroups(w: Pick<StatusWaits, "people" | "byPerson">): { person: StatusWaitPerson | null; rows: StatusWait[] }[] {
+  if (!w.byPerson) return w.people.length > 0 ? [{ person: null, rows: w.people }] : [];
+  const rows = new Map<string, StatusWait[]>();
+  for (const x of w.people) rows.set(personKey(x.waitingOn), [...(rows.get(personKey(x.waitingOn)) ?? []), x]);
+  return w.byPerson.flatMap((person) => {
+    const own = rows.get(personKey(person)) ?? [];
+    return own.length > 0 ? [{ person, rows: own }] : [];
+  });
+}
+
+/** A person's heading: who, and how many asks wait on them; `you` names the viewer when given. */
+export function personHeading(p: StatusWaitPerson, t: Copy, lang: string, viewerName?: string | null): string {
+  const who = p.kind === "you" && viewerName ? viewerName : said(p.says.who, lang);
+  return t("status.waitsPerson", { who, n: p.count });
 }
 
 function waitLine(x: StatusWait, s: ProjectStatus, w: ReportWords): string {
@@ -70,6 +90,9 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   if (s.shipped.requirementsShipped.length > 0) {
     out.push("", `${t("status.requirementsShipped")}: ${s.shipped.requirementsShipped.map((r) => `${r.key} ${r.title}`).join("; ")}`);
   }
+  if ((s.shipped.requirementsAwaitingProof ?? []).length > 0) {
+    out.push("", `${t("status.requirementsAwaitingProof")}: ${(s.shipped.requirementsAwaitingProof ?? []).map((r) => `${r.key} ${r.title} (${t("status.criteriaProven", { proven: r.proven, total: r.total })})`).join("; ")}`);
+  }
   out.push("", readAt(s.shipped.asOf, w), "");
 
   out.push(`## ${t("status.inFlight")}`, "");
@@ -82,7 +105,11 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
 
   out.push(`## ${t("status.waits")}`, "");
   if (s.waits.people.length === 0) out.push(t("status.waitsNone"));
-  for (const x of s.waits.people) out.push(waitLine(x, s, w));
+  for (const g of waitGroups(s.waits)) {
+    if (g.person) out.push(`### ${personHeading(g.person, t, clock.lang, s.viewer.name)}`, "");
+    for (const x of g.rows) out.push(waitLine(x, s, w));
+    if (g.person) out.push("");
+  }
   if (s.waits.peopleCount > s.waits.people.length) out.push(`- ${t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}`);
   out.push("", readAt(s.waits.asOf, w), "");
 

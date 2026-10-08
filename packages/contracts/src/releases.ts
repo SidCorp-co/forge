@@ -255,8 +255,8 @@ export interface ReleaseCutView {
 	cutBy: ReleasePerson | null;
 	outcome: VersionStatus;
 	endedAt: string | null;
-	/** The finish refusal that ended it, word for word, where one did. */
-	refusal: { code: string | null; text: string } | null;
+	/** The finish refusal that ended it: its code, its text word for word, and what it means said by key (`releases.refused.*`). */
+	refusal: { code: string | null; text: string; says: Said } | null;
 	/** The abort's own reason, word for word, where it was aborted. */
 	abortReason: string | null;
 	/** Who ended it: the abort's or the finish's actor; null where Forge ended it itself or it is still open. */
@@ -264,6 +264,8 @@ export interface ReleaseCutView {
 	rule: ReleaseVersionRule;
 	/** What outside Forge carries this attempt's version: `[]` where it was said nothing does, `null` where nobody said. */
 	carried: ReleaseVersionCarrier[] | null;
+	/** The issues this attempt was cut with (`metadata.issueIds`), in key order: its own roster, not the release's last. */
+	roster: { key: string; title: string }[];
 }
 
 /** Where a version that did not ship went: the release that carried the same roster on. */

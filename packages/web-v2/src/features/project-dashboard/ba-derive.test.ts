@@ -1,8 +1,7 @@
-import { forecastWait, RULE, say, verbatim, waitingOn } from "@/test/said";
+import { forecastWait, RULE, say } from "@/test/said";
 import type { ForecastBasis, ForecastLate, ForecastPaused, ForecastRange, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
-import type { NeedsYouItem } from "@/features/needs-you/types";
-import { baNeedsYou, feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "./ba-derive";
+import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "./ba-derive";
 
 // Wednesday 7 Oct 2026, 12:00 UTC
 const NOW = Date.parse("2026-10-07T12:00:00Z");
@@ -10,11 +9,11 @@ const clock = { lang: "en" as const, now: NOW, timeZone: "UTC" };
 const stamp = { label: "forecast" as const, asOf: new Date(NOW).toISOString() };
 const basis: ForecastBasis = { n: 20, floor: 10, windowDays: 60, complexity: null, cycleP50Minutes: 60, cycleP85Minutes: 90, throughputPerDay: 1, concurrency: 1, concurrencyBasis: "t" };
 
-const range = (p50: string, late: ForecastLate | null = null): ForecastRange => ({ ...stamp, kind: "forecast", p50At: p50, p85At: p50, p50Minutes: 1, p85Minutes: 1, ahead: 0, aheadKeys: [], waitsOn: [], basis, late });
+const range = (p50: string, late: ForecastLate | null = null): ForecastRange => ({ ...stamp, kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 }, p50At: p50, p85At: p50, p50Minutes: 1, p85Minutes: 1, ahead: 0, aheadKeys: [], waitsOn: [], basis, late });
 const paused = (late: ForecastLate | null): ForecastPaused => ({ ...stamp, kind: "paused", ...forecastWait(say("standing.who.holderOf", { perm: "project.write" }), say("issues.standing.act.answer"), RULE), ref: null, since: null, late });
 
 const scope = (key: string, forecast: ForecastRange | ForecastPaused): ScopeForecast => ({
-  ...stamp, scope: "requirement", key, progress: { total: 2, shipped: 0, awaitingRelease: 0, toDo: 2 }, forecast, next: null, title: `Title ${key}`,
+  ...stamp, scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key, progress: { total: 2, shipped: 0, awaitingRelease: 0, toDo: 2 }, forecast, next: null, title: `Title ${key}`,
   delivery: { ...stamp, landing: forecast, release: null, inHands: null, shipped: null },
 });
 const reqs = (...s: ScopeForecast[]): RequirementForecasts => ({ ...stamp, projectId: "p", requirements: s });
@@ -55,21 +54,6 @@ describe("the BA dashboard", () => {
 
   it("calls nothing late that core did not", () => {
     expect(lateRows(planRows(inputs(reqs(scope("REQ-1", range("2026-10-08T10:00:00Z")))), clock))).toEqual([]);
-  });
-
-  it("keeps issue, contract and automation rows off the dashboard's Needs you, and the workflow approval on it", () => {
-    const wait = waitingOn("you", { who: say("standing.who.you"), act: verbatim("a"), rule: RULE });
-    const item = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: key, titleLang: null, waitingOn: wait, touchedAt: null, says: { title: verbatim(key) } });
-    const kept = baNeedsYou([
-      item("issues", "issue", "ISS-120"),
-      item("designs", "workflow", "hop-staff-shell-ux"),
-      item("requirements", "requirement", "REQ-1"),
-      item("contracts", "contract", "c"),
-      item("automation", "schedule", "s"),
-      item("feedback", "feedback", "FB-1"),
-      item("releases", "release", "0.1.0"),
-    ]);
-    expect(kept.map((n) => n.key)).toEqual(["hop-staff-shell-ux", "REQ-1", "FB-1", "0.1.0"]);
   });
 
   it("counts requirements by state in lifecycle order, and feedback open, untriaged and aging", () => {

@@ -11,6 +11,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { Button, MonoTag, SegmentedControl, StatusBadge, ViewHeading, WaitingOn } from "@/design";
 import { IssueProgressText } from "@/features/forecast/components/issue-progress";
 import { type EtaClock, etaInline, etaOfDelivery } from "@/features/forecast/eta";
+import { honestyLine } from "@/features/forecast/honesty";
 import { spanText } from "@/features/forecast/text";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
@@ -20,7 +21,7 @@ import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you/routes";
 import { verifiedSentence } from "@/features/releases/verified";
-import { statusMarkdown } from "../report-markdown";
+import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
 
 export const STATUS_WINDOWS = ["7", "14", "30"] as const;
@@ -46,6 +47,17 @@ function eta(d: RoadmapItem["delivery"], clock: EtaClock) {
   return d ? <span className="text-12-5 text-muted">{etaInline(etaOfDelivery(d, clock), clock)}</span> : null;
 }
 
+/** The forecast's move and why, its confidence and its release: core's, said in the reader's language. */
+function Honesty({ d, moved, clock }: { d: RoadmapItem["delivery"]; moved: RoadmapItem["moved"]; clock: EtaClock }) {
+  const t = useCopy();
+  const line = honestyLine(d, moved, t, clock.lang);
+  return line ? (
+    <span className="w-full text-12-5 text-muted" data-testid="forecast-honesty">
+      {line}
+    </span>
+  ) : null;
+}
+
 /** Now, Next and Later from core's roadmap read; `rules` says under each how it is filled and ordered. */
 export function Roadmap({ s, slug, clock, rules = false }: { s: Pick<ProjectStatus, "roadmap">; slug: string; clock: EtaClock; rules?: boolean }) {
   const t = useCopy();
@@ -66,6 +78,7 @@ export function Roadmap({ s, slug, clock, rules = false }: { s: Pick<ProjectStat
                   </Link>
                   <span className="min-w-0 flex-1">{i.title}</span>
                   {eta(i.delivery, clock)}
+                  <Honesty d={i.delivery} moved={i.moved} clock={clock} />
                   {i.deferral ? (
                     <span className="w-full text-12-5 text-muted">
                       {i.deferral.targetPhase
@@ -180,6 +193,20 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
             ))}
           </p>
         ) : null}
+        {(s.shipped.requirementsAwaitingProof ?? []).length > 0 ? (
+          <p className="mt-1.5 text-13" data-testid="status-awaiting-proof">
+            <span className="text-muted">{t("status.requirementsAwaitingProof")}: </span>
+            {(s.shipped.requirementsAwaitingProof ?? []).map((r, i) => (
+              <span key={r.key}>
+                {i > 0 ? ", " : ""}
+                <Link href={requirementHref(slug, r.key)} className={KEY_LINK} title={r.title}>
+                  {r.key}
+                </Link>{" "}
+                <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.proven, total: r.total })}</span>
+              </span>
+            ))}
+          </p>
+        ) : null}
       </Section>
 
       <Section title={t("status.inFlight")} asOf={s.inFlight.asOf} clock={clock} testId="status-in-flight">
@@ -210,20 +237,25 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
         {s.waits.people.length === 0 ? (
           <Quiet>{t("status.waitsNone")}</Quiet>
         ) : (
-          <ul className={LIST}>
-            {s.waits.people.map((x) => (
-              <li key={`${x.area}:${x.key}`} className={ROW}>
-                <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
-                  {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
-                </Link>
-                <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
-                <WaitingOn w={x.waitingOn} />
-              </li>
+          <div className="grid gap-4">
+            {waitGroups(s.waits).map((g) => (
+              <div key={g.person ? `${g.person.kind}:${g.person.who}` : "all"} data-testid="status-wait-person">
+                {g.person ? <h3 className="mb-1.5 text-13 font-semibold text-fg">{personHeading(g.person, t, language)}</h3> : null}
+                <ul className={LIST}>
+                  {g.rows.map((x) => (
+                    <li key={`${x.area}:${x.key}`} className={ROW}>
+                      <Link href={needsYouHref(slug, x)} className={KEY_LINK}>
+                        {needsYouKeyLabel(x, (a) => label("needsYouArea", a))}
+                      </Link>
+                      <Written className="min-w-0 flex-1" text={said(x.says.title, language)} lang={x.titleLang} />
+                      <span className="text-12-5 text-muted">{said(x.waitingOn.says.act, language)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-            {s.waits.peopleCount > s.waits.people.length ? (
-              <li className={`${ROW} text-muted`}>{t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}</li>
-            ) : null}
-          </ul>
+            {s.waits.peopleCount > s.waits.people.length ? <p className="text-13 text-muted">{t("status.waitsMore", { n: s.waits.peopleCount - s.waits.people.length })}</p> : null}
+          </div>
         )}
       </Section>
 
@@ -245,6 +277,7 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
                 <span className="text-12-5 text-muted">{t("status.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total })}</span>
                 <IssueProgressText progress={r.progress} className="text-12-5 text-muted" />
                 {eta(r.delivery, clock)}
+                <Honesty d={r.delivery} moved={r.moved} clock={clock} />
               </li>
             ))}
           </ul>

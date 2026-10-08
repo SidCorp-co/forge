@@ -61,8 +61,31 @@ interface ForecastStamp {
 	asOf: string;
 }
 
+export const FORECAST_CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
+export type ForecastConfidenceLevel = (typeof FORECAST_CONFIDENCE_LEVELS)[number];
+
+/**
+ * How far a range can be leaned on, read off what it was sampled from: `high` with at least three
+ * times the history floor and a p85 at most half again past the p50, `low` under twice the floor or
+ * a p85 more than two and a half times the p50, `medium` between. Core decides it; no screen does.
+ */
+export interface ForecastConfidence {
+	level: ForecastConfidenceLevel;
+	/** The landed issues sampled. */
+	n: number;
+	/** (p85 − p50) / p50, the range's own width. */
+	spread: number;
+}
+
 export interface ForecastRange extends ForecastStamp {
 	kind: "forecast";
+	/**
+	 * The moment the range is computed from: the last event its facts moved on (a transition, a new
+	 * issue, a blocker added or ended, a run started or ended). Two reads with no event between them
+	 * give the same dates; `asOf` is only when it was read.
+	 */
+	anchoredAt: string;
+	confidence: ForecastConfidence;
 	p50At: string;
 	p85At: string;
 	p50Minutes: number;
@@ -155,6 +178,31 @@ export interface IssueProgress {
 	toDo: number;
 }
 
+/** The event a forecast is anchored on, said by key (`forecast.event.*`). */
+export interface ForecastAnchor {
+	at: string;
+	event: Said;
+}
+
+/**
+ * A scope's dates moved since the anchor before: from where, to where, and the event that moved
+ * them. Recorded once per anchor (`forecast_moves`), so a reader sees "moved 2 h later because
+ * ISS-88 moved to awaiting release" rather than a date that slid in silence.
+ */
+export interface ForecastMove {
+	/** The anchor before, and the range it gave. */
+	fromAt: string;
+	fromP50At: string;
+	fromP85At: string;
+	/** This anchor, and the range it gives. */
+	at: string;
+	toP50At: string;
+	toP85At: string;
+	/** toP50At − fromP50At, whole minutes; negative where it moved earlier. */
+	byMinutes: number;
+	because: Said;
+}
+
 /** A requirement's issues, or a draft release's: forecast when all of them have landed. */
 export interface ScopeForecast extends ForecastStamp {
 	scope: ForecastScope;
@@ -168,6 +216,10 @@ export interface ScopeForecast extends ForecastStamp {
 	title: string | null;
 	/** When the last of them is in people's hands; null where the scope holds no issue. */
 	delivery: DeliveryForecast | null;
+	/** The event the simulation is anchored on. */
+	anchor: ForecastAnchor;
+	/** How its dates last moved and why; null where they have not moved since first read. */
+	moved: ForecastMove | null;
 }
 
 /**

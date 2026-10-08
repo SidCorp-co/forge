@@ -18,9 +18,11 @@ import {
   issueRowsOfRequirements,
   liveRequirements,
   type RequirementRow,
+  readAnchor,
   requirementBySeq,
 } from './facts.js';
 import { scopeForecast, scopeLandings, seedOf, waitOn } from './model.js';
+import { withMoves } from './moves.js';
 import { issueProgressOf } from './progress.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
 import { type ForecastViewer, readReleaseFacts, readShipped } from './release.js';
@@ -39,9 +41,10 @@ export async function readsFor(
   viewer: ForecastViewer | null,
 ): Promise<Reads> {
   const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
+  const anchor = await readAnchor(projectId, now);
   const [f, release, shipped] = await Promise.all([
-    simulate(projectId, now, viewer),
-    readReleaseFacts(projectId, now, viewer),
+    simulate(projectId, now, viewer, anchor),
+    readReleaseFacts(projectId, anchor.at, viewer),
     readShipped(projectId, closed),
   ]);
   return { f, release, shipped };
@@ -113,6 +116,8 @@ export function scopeOf(
     forecast,
     next: null,
     delivery,
+    anchor: { at: f.anchor.at.toISOString(), event: f.anchor.event },
+    moved: null,
   };
 }
 
@@ -128,7 +133,10 @@ export async function readRequirementForecast(
   const req = await requirementBySeq(projectId, reqSeq);
   if (!req) return null;
   const rows = (await issueRowsOfRequirements(projectId, [req.id])).get(req.id) ?? [];
-  return requirementScope(await readsFor(projectId, now, rows, viewer), req, rows);
+  const [scope] = await withMoves(projectId, [
+    requirementScope(await readsFor(projectId, now, rows, viewer), req, rows),
+  ]);
+  return scope ?? null;
 }
 
 async function allRequirementScopes(
@@ -156,7 +164,11 @@ export async function readRequirementForecasts(
   now: Date = new Date(),
 ): Promise<RequirementForecasts> {
   const { reads, scopes } = await allRequirementScopes(projectId, now, viewer);
-  return { ...stamp(reads.f.run.asOf), projectId, requirements: scopes };
+  return {
+    ...stamp(reads.f.run.asOf),
+    projectId,
+    requirements: await withMoves(projectId, scopes),
+  };
 }
 
 /**
@@ -189,7 +201,11 @@ export async function readDraftReleaseForecast(
   now: Date = new Date(),
 ): Promise<ScopeForecast> {
   const rows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
-  return draftScope(await readsFor(projectId, now, rows, viewer), rows);
+  const [draft] = await withMoves(projectId, [
+    draftScope(await readsFor(projectId, now, rows, viewer), rows),
+  ]);
+  if (!draft) throw new Error('forecast: the draft scope left its own move read');
+  return draft;
 }
 
 const SOONEST: Record<Forecast['kind'], number> = {
@@ -210,7 +226,13 @@ export async function readForecastLine(
   now: Date = new Date(),
 ): Promise<{ requirements: ScopeForecast[]; coming: ComingNextForecast }> {
   const draftRows = await issueRowsByIds(projectId, await draftReleaseIssueIds(projectId));
-  const { reads, scopes } = await allRequirementScopes(projectId, now, viewer, draftRows);
+  const all = await allRequirementScopes(projectId, now, viewer, draftRows);
+  const reads = all.reads;
+  const [draftRead, ...scopes] = await withMoves(projectId, [
+    draftScope(reads, draftRows),
+    ...all.scopes,
+  ]);
+  if (!draftRead) throw new Error('forecast: the draft scope left its own move read');
   const open = scopes.filter(
     (s) => s.forecast && s.forecast.kind !== 'landed' && s.forecast.kind !== 'ended',
   );
@@ -228,7 +250,7 @@ export async function readForecastLine(
       ...stamp(reads.f.run.asOf),
       projectId,
       requirements: open,
-      draft: draftScope(reads, draftRows),
+      draft: draftRead,
     },
   };
 }

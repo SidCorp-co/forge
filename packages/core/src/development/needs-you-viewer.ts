@@ -1,6 +1,6 @@
 // Who reads needs-you and across which projects: the viewer each list's route builds, and the visible-project sweep.
 
-import type { NeedsYouProjectItem } from '@forge/contracts/needs-you';
+import { asksOf, type NeedsYouProjectItem } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -30,7 +30,7 @@ export const needsYouViewerOf = (
  */
 export const NEEDS_YOU_ACROSS_CONCURRENCY = 2;
 
-/** The same rows across every project the viewer can see, each project read by `readNeedsYou`. */
+/** A member's asks across every project the viewer can see, each project read by `readNeedsYou` and kept by `asksOf`, so a project's section equals its home's Needs you. */
 export async function readNeedsYouAcross(
   userId: string,
   agency: ActorAgency,
@@ -49,7 +49,7 @@ export async function readNeedsYouAcross(
         const access = await effectiveProjectRole(userId, p.id);
         if (!access || !holds(access, 'project.read')) return [];
         const read = await readNeedsYou(p.id, needsYouViewerOf(access, userId, agency), now);
-        return read.items.map((i) => ({ ...i, projectSlug: p.slug, projectName: p.name }));
+        return asksOf(read.items).map((i) => ({ ...i, projectSlug: p.slug, projectName: p.name }));
       }),
     ),
   );

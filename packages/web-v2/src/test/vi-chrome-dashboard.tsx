@@ -13,7 +13,7 @@ import type { ChromeScreen } from "./vi-chrome-screens";
 
 const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
 const you = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.cut", { v: "0.1.0", more: null }), rule: RULE });
-const needs = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, entity, key, title: `Muc ${key}`, titleLang: "vi", waitingOn: you, touchedAt: "2026-10-07T10:00:00Z", says: { title: verbatim(`Muc ${key}`) } });
+const needs = (area: NeedsYouItem["area"], entity: NeedsYouItem["entity"], key: string): NeedsYouItem => ({ area, space: "asks", entity, key, title: `Muc ${key}`, titleLang: "vi", waitingOn: you, touchedAt: "2026-10-07T10:00:00Z", says: { title: verbatim(`Muc ${key}`) } });
 const row = (key: string, over: Partial<PlanRow> = {}): PlanRow => ({ kind: "requirement", key, title: `Muc ${key}`, release: null, href: `/projects/hop/requirements/${key}`, eta: null, late: null, ...over });
 
 export const SCREENS: ChromeScreen[] = [

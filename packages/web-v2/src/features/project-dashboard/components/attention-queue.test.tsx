@@ -3,7 +3,7 @@ import { RULE, say, waitingOn } from "@/test/said";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AttentionQueue } from "./attention-queue";
-import { baNeedsYou } from "../ba-derive";
+import { asksOf } from "@forge/contracts/needs-you";
 import type { NeedsYouItem } from "@/features/needs-you/types";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -16,12 +16,12 @@ const follows = (n: number) =>
     rule: RULE,
     effect: say("standing.effect.follow", { names: [say("standing.effect.designAt", { title: `Design ${n}`, r: 2 })] }),
   });
-const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ area: "requirements", entity: "requirement", key: "REQ-1", title: "T", titleLang: null, waitingOn: you, touchedAt: null, says: { title: verbatim(over.title ?? "T") }, ...over });
+const item = (over: Partial<NeedsYouItem>): NeedsYouItem => ({ area: "requirements", space: "asks", entity: "requirement", key: "REQ-1", title: "T", titleLang: null, waitingOn: you, touchedAt: null, says: { title: verbatim(over.title ?? "T") }, ...over });
 
 describe("the dashboard's Needs you", () => {
   it("draws the workflow row and counts exactly the rows it draws", () => {
-    const payload = [item({}), item({ area: "designs", entity: "workflow", key: "hop-staff-shell-ux", title: "Staff shell · revision 3 proposed" }), item({ area: "issues", entity: "issue", key: "ISS-1" })];
-    render(<AttentionQueue items={baNeedsYou(payload)} slug="hop" />);
+    const payload = [item({}), item({ area: "designs", entity: "workflow", key: "hop-staff-shell-ux", title: "Staff shell · revision 3 proposed" }), item({ area: "automation", space: "ops", entity: "report", key: "r-1" })];
+    render(<AttentionQueue items={asksOf(payload)} slug="hop" />);
     expect(screen.getAllByText("Workflows").length).toBeGreaterThan(0);
     expect(screen.getByText("Staff shell · revision 3 proposed")).toBeInTheDocument();
     expect(screen.getAllByTestId("waiting-on")[1]).toHaveTextContent("You · approve or return revision 3");

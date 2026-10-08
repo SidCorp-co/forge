@@ -222,6 +222,16 @@ interface IssuePorts {
   ) => Promise<string | null>;
   proposesWorkflowOf: (issueId: string) => Promise<object | null>;
   requirementOfIssue: (issueId: string) => Promise<object | null>;
+  /** The issue's requirement and its criterion wordings, which a `(REQ-n BC-m)` trace resolves against. */
+  traceWordingsOf: (
+    tx: Tx,
+    issueId: string,
+  ) => Promise<{
+    requirement: { seq: number; revision: number | null } | null;
+    wordings: { id: string; code: string; sinceRevision: number; retiredRevision: number | null }[];
+  }>;
+  /** Of these traced wordings, the live ones of the issue's own requirement, as `REQ-n BC-m`. */
+  liveTracedCodesOf: (tx: Tx, issueId: string, ids: readonly string[]) => Promise<string[]>;
   /** The release that shipped the issue, by version and when; null while none has. */
   shippedReleaseOf: (
     projectId: string,
@@ -344,6 +354,8 @@ export const buildsWorkflowOf = port('buildsWorkflowOf');
 export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowOf = port('proposesWorkflowOf');
 export const requirementOfIssue = port('requirementOfIssue');
+export const traceWordingsOf = port('traceWordingsOf');
+export const liveTracedCodesOf = port('liveTracedCodesOf');
 export const shippedReleaseOf = port('shippedReleaseOf');
 export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');

@@ -24,7 +24,7 @@ const stamp = { label: "forecast" as const, asOf: at(0) };
 
 describe("forecast text", () => {
   it("reads a range as two clock times, labelled a forecast, its durations and as-of only in the tooltip", () => {
-    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(150), p85At: at(420), p50Minutes: 150, p85Minutes: 420, ahead: 3, aheadKeys: ["ISS-1", "ISS-2", "ISS-3"], waitsOn: [], basis, late: null };
+    const f: Forecast = { ...stamp, kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 }, p50At: at(150), p85At: at(420), p50Minutes: 150, p85Minutes: 420, ahead: 3, aheadKeys: ["ISS-1", "ISS-2", "ISS-3"], waitsOn: [], basis, late: null };
     const { line, detail } = forecastText(f, CLOCK);
     expect(line).toBe("Forecast 14:30 – 19:00 today");
     expect(line).not.toMatch(/\d+(\.\d)? (min|h|d)\b/);
@@ -34,7 +34,7 @@ describe("forecast text", () => {
   });
 
   it("says each day once where the range crosses midnight", () => {
-    const f: Forecast = { ...stamp, kind: "forecast", p50At: at(600), p85At: at(1500), p50Minutes: 600, p85Minutes: 1500, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
+    const f: Forecast = { ...stamp, kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 }, p50At: at(600), p85At: at(1500), p50Minutes: 600, p85Minutes: 1500, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
     expect(forecastText(f, CLOCK).line).toBe("Forecast 22:00 today – tomorrow 13:00");
   });
 
@@ -54,7 +54,7 @@ describe("forecast text", () => {
     const line = scopeText(
       {
         ...stamp,
-        scope: "release",
+        scope: "release", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null,
         key: "draft",
         progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 },
         forecast: { ...stamp, kind: "landed", landedAt: at(-60) },
@@ -72,7 +72,7 @@ describe("forecast text", () => {
   });
 });
 
-const range: Forecast = { ...stamp, kind: "forecast", p50At: at(120), p85At: at(300), p50Minutes: 120, p85Minutes: 300, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
+const range: Forecast = { ...stamp, kind: "forecast", anchoredAt: "2026-10-07T00:00:00.000Z", confidence: { level: "medium", n: 12, spread: 0.5 }, p50At: at(120), p85At: at(300), p50Minutes: 120, p85Minutes: 300, ahead: 0, aheadKeys: [], waitsOn: [], basis, late: null };
 const lag = { kind: "automatic" as const, basis: { n: 14, floor: 10, windowDays: 60, lagP50Minutes: 30, lagP85Minutes: 90 } };
 const span = (lo: number, hi: number) => ({ p50At: at(lo), p85At: at(hi), p50Minutes: lo, p85Minutes: hi });
 const delivery = (over: Partial<DeliveryForecast>): DeliveryForecast => ({ ...stamp, landing: range, release: lag, inHands: span(150, 390), shipped: null, ...over });
@@ -120,14 +120,14 @@ describe("feedback and requirement lines", () => {
   });
 
   it("reads the proof so far, then when the rest is in people's hands", () => {
-    const scope: ScopeForecast = { ...stamp, scope: "requirement", key: "REQ-3", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery({}) };
+    const scope: ScopeForecast = { ...stamp, scope: "requirement", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "REQ-3", title: "t", progress: { total: 3, shipped: 0, awaitingRelease: 1, toDo: 2 }, forecast: range, next: null, delivery: delivery({}) };
     expect(criteriaRestText(2, 5, scope, CLOCK)?.line).toBe("2 of 5 criteria proven · rest forecast live 14:30 – 18:30 today");
     expect(criteriaRestText(5, 5, scope, CLOCK)?.line).toBe("All 5 criteria proven");
   });
 
   it("adds the release lag to a draft that has landed where nobody cuts it", () => {
     const landed: Forecast = { ...stamp, kind: "landed", landedAt: at(-60) };
-    const draft: ScopeForecast = { ...stamp, scope: "release", key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
+    const draft: ScopeForecast = { ...stamp, scope: "release", anchor: { at: "2026-10-07T00:00:00.000Z", event: { key: "forecast.event.none" } }, moved: null, key: "draft", title: null, progress: { total: 2, shipped: 0, awaitingRelease: 2, toDo: 0 }, forecast: landed, next: null, delivery: delivery({ landing: landed, inHands: span(20, 80) }) };
     expect(scopeText(draft, CLOCK).line).toMatch(/^All 2 landed by .+ · forecast live 12:20 – 13:20 today$/);
   });
 });

@@ -9,14 +9,17 @@
 import type {
   DeliveryForecast,
   ForecastLate,
+  ForecastMove,
   IssueProgress,
   ScopeForecast,
 } from '@forge/contracts/forecast';
 import { ISSUE_STATUSES } from '@forge/contracts/issue-machine';
+import { NEEDS_YOU_AREA_SPACE, type NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   PROJECT_STATUS_ROWS,
   type ProjectStatus,
+  provenInFull,
   type RoadmapItem,
   type StatusInFlight,
   type StatusLate,
@@ -26,6 +29,7 @@ import {
   type StatusRoadmap,
   type StatusShipped,
   type StatusWait,
+  type StatusWaitPerson,
   type StatusWaits,
 } from '@forge/contracts/project-status';
 import type { ReleaseListResponse, ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
@@ -86,9 +90,40 @@ async function stamped<T>(p: Promise<T>): Promise<{ value: T; at: string }> {
   return { value, at: new Date().toISOString() };
 }
 
+/**
+ * The requirements whose last issue shipped inside the window, split by proof: delivered in full only
+ * where every live criterion is proven (`provenInFull`, the rule a release's `completes` reads), and
+ * shipped-awaiting-proof otherwise — never "delivered in full" on a criterion nobody judged.
+ */
+export function requirementsShippedOf(
+  scopes: readonly Pick<ScopeForecast, 'key' | 'title' | 'delivery'>[],
+  requirements: readonly Pick<RequirementSummary, 'key' | 'delivery'>[],
+  since: Date,
+) {
+  const coverage = new Map(requirements.map((r) => [r.key, r.delivery.criteriaCoverage]));
+  const inFull: StatusShipped['requirementsShipped'] = [];
+  const awaitingProof: NonNullable<StatusShipped['requirementsAwaitingProof']> = [];
+  for (const s of scopes) {
+    const at = s.delivery?.shipped?.at ?? null;
+    if (!at || Date.parse(at) < since.getTime()) continue;
+    const c = coverage.get(s.key);
+    if (!c)
+      throw new Error(
+        `project status: ${s.key} shipped and the requirements list read no coverage for it — the forecast and the list read one set`,
+      );
+    const proof = { proven: c.passing, total: c.criteria };
+    const row = { key: s.key, title: s.title ?? s.key, at };
+    if (provenInFull(proof)) inFull.push(row);
+    else awaitingProof.push({ ...row, ...proof });
+  }
+  const newest = (a: { at: string }, b: { at: string }) => b.at.localeCompare(a.at);
+  return { inFull: inFull.sort(newest), awaitingProof: awaitingProof.sort(newest) };
+}
+
 function shippedOf(
   releases: ReleaseListResponse,
   scopes: readonly ScopeForecast[],
+  requirements: readonly RequirementSummary[],
   since: Date,
   asOf: string,
 ): StatusShipped {
@@ -105,13 +140,8 @@ function shippedOf(
     contents: r.contents,
     verified: r.verified,
   });
-  const requirementsShipped = scopes.flatMap((s) => {
-    const at = s.delivery?.shipped?.at ?? null;
-    return at && Date.parse(at) >= since.getTime()
-      ? [{ key: s.key, title: s.title ?? s.key, at }]
-      : [];
-  });
-  requirementsShipped.sort((a, b) => b.at.localeCompare(a.at));
+  const { inFull: requirementsShipped, awaitingProof: requirementsAwaitingProof } =
+    requirementsShippedOf(scopes, requirements, since);
   // the counts lead and the lists follow, so a reader cut short (a chat result's grounding cap)
   // still holds every figure the section states
   return {
@@ -120,6 +150,7 @@ function shippedOf(
     releaseCount: inWindow.length,
     issueCount: inWindow.reduce((n, r) => n + r.issueCount, 0),
     requirementsShipped,
+    requirementsAwaitingProof,
     latest: shipped[0] ? view(shipped[0]) : null,
     releases: inWindow.slice(0, PROJECT_STATUS_ROWS).map(view),
   };
@@ -151,14 +182,24 @@ function inFlightOf(
   };
 }
 
-function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWaits {
-  const all = Object.entries(rows).flatMap(([area, list]) => list.map((r) => ({ area, row: r })));
-  const people = all
+const personKey = (w: StatusWait['waitingOn']) => `${w.kind}:${JSON.stringify(w.says.who)}`;
+
+/**
+ * The member asks whose turn is a person's, grouped by that person: the one owing most first, each
+ * person's oldest row first. A row of an ops area (`NEEDS_YOU_AREA_SPACE`) is Development's — an
+ * agent report's triage is Forge upkeep, not something a project member was asked — and is not here.
+ */
+export function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWaits {
+  const all = Object.entries(rows).flatMap(([area, list]) =>
+    NEEDS_YOU_AREA_SPACE[area as NeedsYouAreaKey] === 'asks'
+      ? list.map((r) => ({ area: area as NeedsYouAreaKey, row: r }))
+      : [],
+  );
+  const owed = all
     .filter(({ row }) => PERSON_KINDS.has(row.standing.waitingOn.kind))
-    .sort((a, b) => (a.row.touchedAt ?? '').localeCompare(b.row.touchedAt ?? ''))
     .map(
       ({ area, row }): StatusWait => ({
-        area: area as StatusWait['area'],
+        area,
         entity: row.entity,
         key: row.key,
         title: row.title,
@@ -168,9 +209,35 @@ function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): StatusWait
         says: { title: row.says.title },
       }),
     );
+  const groups = new Map<string, { person: StatusWaitPerson; rows: StatusWait[] }>();
+  for (const w of owed) {
+    const key = personKey(w.waitingOn);
+    const g = groups.get(key) ?? {
+      person: {
+        kind: w.waitingOn.kind,
+        who: w.waitingOn.who,
+        says: { who: w.waitingOn.says.who },
+        count: 0,
+      },
+      rows: [],
+    };
+    g.person.count += 1;
+    g.rows.push(w);
+    groups.set(key, g);
+  }
+  const ordered = [...groups.values()].sort(
+    (a, b) =>
+      Number(b.person.kind === 'you') - Number(a.person.kind === 'you') ||
+      b.person.count - a.person.count ||
+      a.person.who.localeCompare(b.person.who),
+  );
+  const people = ordered.flatMap((g) =>
+    [...g.rows].sort((a, b) => (a.touchedAt ?? '').localeCompare(b.touchedAt ?? '')),
+  );
   return {
     asOf,
     people: people.slice(0, PROJECT_STATUS_ROWS),
+    byPerson: ordered.map((g) => g.person),
     peopleCount: people.length,
     needsYou: all.filter(({ row }) => needsViewer(row.standing)).length,
   };
@@ -204,6 +271,7 @@ function requirementsOf(
       progress: scopeOf(r.key).progress,
       waitingOn: r.standing.waitingOn,
       delivery: scopeOf(r.key).delivery,
+      moved: scopeOf(r.key).moved,
     }))
     .sort(
       (a, b) =>
@@ -319,6 +387,7 @@ async function roadmapOf(
   list: readonly RequirementSummary[],
   coming: readonly ScopeForecast[],
   delivery: ReadonlyMap<string, DeliveryForecast | null>,
+  moved: ReadonlyMap<string, ForecastMove | null> = new Map(),
 ): Promise<StatusRoadmap> {
   const rank = new Map(coming.map((s, at) => [s.key, at]));
   const soonest = (a: { key: string }, b: { key: string }) =>
@@ -329,6 +398,7 @@ async function roadmapOf(
     title: r.title,
     state: r.standing.state,
     delivery: delivery.get(r.key) ?? null,
+    moved: moved.get(r.key) ?? null,
     deferral,
   });
   const inState = (state: RequirementState) => list.filter((r) => r.standing.state === state);
@@ -378,6 +448,7 @@ export async function readProjectStatus(
   const { value: read, at } = attention;
   const scopes = new Map(line.requirements.map((s) => [s.key, s]));
   const delivery = new Map(line.requirements.map((s) => [s.key, s.delivery]));
+  const moved = new Map(line.requirements.map((s) => [s.key, s.moved]));
   const draftVersion = read.releases.releases.find((r) => r.state === 'draft')?.version ?? null;
   return {
     projectId,
@@ -393,9 +464,9 @@ export async function readProjectStatus(
       feedback: new Map(read.feedback.map((f) => [f.key, f.title])),
       draft: draftVersion,
     }),
-    shipped: shippedOf(read.releases, line.requirements, since, at),
+    shipped: shippedOf(read.releases, line.requirements, read.requirements, since, at),
     requirements: requirementsOf(read.requirements, scopes, at),
     waits: waitsOf(read.rows, at),
-    roadmap: await roadmapOf(read.requirements, line.coming.requirements, delivery),
+    roadmap: await roadmapOf(read.requirements, line.coming.requirements, delivery, moved),
   };
 }

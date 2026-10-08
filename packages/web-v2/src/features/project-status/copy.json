@@ -42,8 +42,9 @@
     "status.print": "Print",
     "status.readAt": "read {at}",
     "status.requirements": "Requirements",
+    "status.requirementsAwaitingProof": "Shipped, criteria not yet all proven",
     "status.requirementsNone": "No requirement is on the delivery line.",
-    "status.requirementsShipped": "Requirements now fully shipped",
+    "status.requirementsShipped": "Requirements delivered in full (every criterion proven)",
     "status.roadmap": "Roadmap",
     "status.running": "A run is on these",
     "status.runningNone": "No run is on any issue right now.",
@@ -84,6 +85,7 @@
     "status.waits": "Waiting on people",
     "status.waitsMore": "and {n} more",
     "status.waitsNone": "Nothing waits on a person.",
+    "status.waitsPerson": "{who} · {n}",
     "status.window": "the last {days} days",
     "status.windowLabel": "Window"
   },
@@ -130,8 +132,9 @@
     "status.print": "In",
     "status.readAt": "đọc lúc {at}",
     "status.requirements": "Yêu cầu",
+    "status.requirementsAwaitingProof": "Đã giao, tiêu chí chưa chứng minh hết",
     "status.requirementsNone": "Chưa có yêu cầu nào đang được giao.",
-    "status.requirementsShipped": "Yêu cầu đã tới người dùng trọn vẹn",
+    "status.requirementsShipped": "Yêu cầu đã tới người dùng trọn vẹn (mọi tiêu chí đã chứng minh)",
     "status.roadmap": "Lộ trình",
     "status.running": "Đang có lượt chạy",
     "status.runningNone": "Hiện không có lượt chạy nào.",
@@ -172,6 +175,7 @@
     "status.waits": "Đang chờ người",
     "status.waitsMore": "và {n} việc khác",
     "status.waitsNone": "Không có việc nào chờ người.",
+    "status.waitsPerson": "{who} · {n}",
     "status.window": "{days} ngày qua",
     "status.windowLabel": "Khoảng thời gian"
   }
