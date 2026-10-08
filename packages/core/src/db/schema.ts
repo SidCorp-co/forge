@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
+import { jobEventKinds } from './job-event-vocabulary.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -30,6 +31,7 @@ import {
 } from './session-vocabulary.js';
 import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
 
+export { type JobEventKind, jobEventKinds } from './job-event-vocabulary.js';
 export {
   type AgentSessionFailureReason,
   type AgentSessionKind,
@@ -773,21 +775,6 @@ export const promptBlobs = pgTable('prompt_blobs', {
   refCount: integer('ref_count').notNull().default(0),
 });
 
-export const jobEventKinds = [
-  'stdout',
-  'stderr',
-  'tool_call',
-  'tool_result',
-  'progress',
-  'result',
-  // ISS-442 C0 — audited manual intervention (e.g. single-job cancel). `kind`
-  // is a plain text column, so this is additive with no migration; the
-  // interventions metric (C6) counts rows with this kind.
-  'intervention',
-  'kill_ack',
-] as const;
-export type JobEventKind = (typeof jobEventKinds)[number];
-
 export const jobEvents = pgTable(
   'job_events',
   {
@@ -1046,6 +1033,7 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    mergedClaimedCommit: text('merged_claimed_commit'),
     // ISS-1384 — where THIS issue's work lands, declared on it; NULL answers the project's kind.
     declaredLandingShape: text('declared_landing_shape', { enum: landingShapes }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
@@ -1092,6 +1080,10 @@ export const issues = pgTable(
     mergedLandingChk: check(
       'issues_merged_landing_chk',
       sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
+    ),
+    mergedClaimedCommitChk: check(
+      'issues_merged_claimed_commit_chk',
+      sql`${t.mergedClaimedCommit} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedCommitSha} IS NULL AND ${t.mergedClaimedCommit} ~ '^[0-9a-f]{7,64}$')`,
     ),
     declaredLandingShapeChk: check(
       'issues_declared_landing_shape_chk',

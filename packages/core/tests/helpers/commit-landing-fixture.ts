@@ -240,6 +240,16 @@ export function useCommitLandingWorld() {
       });
     },
 
+    /** The mark taken back, by `agency`. */
+    async unmark(issue: Issue, agency: Agency = 'agent') {
+      const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
+      return applyMergeMarker({
+        issue: { ...issue, mergedAt: new Date() },
+        op: 'unmark',
+        actor: actor(agency),
+      });
+    },
+
     async advance(id: string, from: string, to: string, agency: Agency = 'agent') {
       const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
       return transitionIssueStatus(

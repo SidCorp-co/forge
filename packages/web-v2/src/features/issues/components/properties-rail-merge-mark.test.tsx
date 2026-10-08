@@ -38,6 +38,7 @@ function rail(
   mergedCommitSha?: string | null,
   mergedLanding?: string | null,
   landingShape?: IssueDetail["landingShape"],
+  mergedClaimedCommit?: string | null,
 ): ReactNode {
   const issue = {
     id: "i1",
@@ -51,6 +52,7 @@ function rail(
     mergeMark: mark,
     mergedCommitSha,
     mergedLanding,
+    mergedClaimedCommit,
     landingShape,
   } as unknown as IssueDetail;
   return (
@@ -71,6 +73,25 @@ describe("the merge mark on the issue rail", () => {
     render(rail("asserted", null));
     expect(screen.getByText("claimed")).toBeInTheDocument();
     expect(screen.queryByText("observed")).toBeNull();
+  });
+
+  it("says an unverified claim is claimed, shows its commit and says it is not verified (ISS-1409)", () => {
+    render(rail("asserted", null, null, "git", SHA));
+    expect(screen.getByText("claimed")).toBeInTheDocument();
+    expect(screen.getByTestId("merged-claim")).toHaveTextContent(`${SHA.slice(0, 10)} — not verified`);
+    expect(screen.queryByText("observed")).toBeNull();
+  });
+
+  it("shows a plain claim with no commit as before, with no not-verified line (ISS-1409)", () => {
+    render(rail("asserted", null, null, "git", null));
+    expect(screen.getByText("claimed")).toBeInTheDocument();
+    expect(screen.queryByTestId("merged-claim")).toBeNull();
+  });
+
+  it("never shows a claimed commit beside an observed merge (ISS-1409)", () => {
+    render(rail("observed", SHA, null, "git", SHA));
+    expect(screen.getByText("observed")).toBeInTheDocument();
+    expect(screen.queryByTestId("merged-claim")).toBeNull();
   });
 
   it("says a merge Forge observed is observed", () => {

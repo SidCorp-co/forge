@@ -8,7 +8,7 @@ what the columns MEAN.
 | `merged_at` | `merged_commit_sha` | `merged_landing` | kind |
 |---|---|---|---|
 | empty | — | — | `unmarked` |
-| set | empty | empty | `asserted` |
+| set | empty | empty | `asserted` (the commit an agent named, where Forge could not check it, in `merged_claimed_commit`) |
 | set | empty | text | `landed` |
 | set | a sha | — | `observed` |
 
@@ -56,8 +56,8 @@ branch or the release chain's live branch contains it. Then `merged_at` and
 `merged_commit_sha` are stamped with the full sha the repository resolved and its committer
 date, and the mark reads `observed`. Every other answer is a refusal by name and writes
 nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
-`COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
-evidence unchecked. On the git route the cause is one of five. The first is that the name of the
+`COMMIT_UNVERIFIED` where a repository Forge is configured to read could not be read; where it
+is configured to read none, the commit is kept as a claim instead (below, ISS-1409). On the git route the cause is one of five. The first is that the name of the
 host the URL names did not resolve, which is found before any connection is made
 (`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
 what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words
@@ -84,9 +84,52 @@ its first 40 digits. So each reader refuses it `COMMIT_NOT_IN_REPOSITORY` by its
 host is asked, naming how many digits it has
 (`packages/core/src/projects/repository-reader.ts:overlongCommitName`).
 
+## Where core has no way to read the repository (ISS-1409)
+
+`COMMIT_UNVERIFIED` above is the refusal for a repository Forge is configured to read and could not.
+Where the project declares no way to read one — no GitHub binding, and no deploy key beside a
+repository URL (`RepositoryAccess` answers `refused` with `unbound: true`, which
+`readCommitLanding` passes up as `unreadable`) — a project that works with Forge purely through the
+CLI and API, its repository connected only on the developer's machine, could never finish an issue
+whose work landed on the base branch. The missing connection is a configuration Forge lacks, not
+evidence the work is false, so the agent's mark is **accepted**, as the `asserted` kind (the
+columns above, unchanged) and with the commit it named kept in `issues.merged_claimed_commit`.
+
+- **It is a claim and says so.** `merged_commit_sha` stays empty, so `mergeMarkKindOf` reads
+  `asserted` and every surface that shows merges — the rail, `forge issue`, live reach, release
+  weighing — reads it as one: live reach and the weighing take `merged_commit_sha`, never the
+  claim, and a project with no reader gives live reach no reading at all. The mark's answer, its
+  audit comment (both `describeMergeMark`'s one sentence) and `mergedClaimedCommit` on every issue
+  row say the commit was NOT verified and name once what would verify it: the deploy key under
+  Settings → Runners → Git access, or a GitHub binding.
+- **It is work evidence.** `collectWorkEvidence` counts a standing claim like a recorded branch,
+  so the issue reaches `developed` and `testing` for an agent. A person's bare mark, which names no
+  commit, is still not evidence; an agent's claim may be attached to it (`recordIssueMerge`'s
+  `unverifiedCommit` gate), where it would otherwise be refused and dropped.
+- **Only "no reader is declared" is softened.** A repository that can be read and says no (the
+  commit absent, another issue's, not on the base or live branch), a reader configured and failing
+  (a GitHub read or token-mint failure, a host that refuses the key or cannot be reached, a missing
+  branch, a repository URL that is no SSH remote, no vault, an undecryptable key) and a project
+  naming no base branch are refused as before, by name. A person's mark naming a commit, and an
+  agent's naming one on an issue that already holds a branch or handoff, still go through
+  `resolveMarkCommit` and are refused `COMMIT_UNVERIFIED` where nothing can read.
+- **It is verified later by a repeat mark.** With a claim standing, `agentEvidence` reads the
+  repository for the commit the repeat names, or the claim, before it takes the claim as evidence.
+  Readable and agreeing: the one writer's observed stamp, whose gate is the empty
+  `merged_commit_sha`, writes the full sha, replaces `merged_at` with the commit's own date and
+  clears the claim in the same statement; the issue may be `closed`. Readable and contradicting, or
+  configured and failing: refused by name, the unverified mark untouched. Still nothing to read:
+  answered `already_merged`, still unverified. No sweep does this on its own; a second place
+  deciding what a mark means is the defect this file opens with. `unmark` clears the claim with the
+  mark, and the table's CHECK holds a claim beside a mark and never beside a commit.
+- **The automatic release is not softened.** It reads the judged commit against production, not the
+  merge columns, and keeps its hold where it cannot read; a release a person presses with named
+  issues never made this check.
+
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
 `merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the
-column — it reaches the audit trail as the caller's claim. That is why the tool description
+column — it reaches the audit trail as the caller's claim (and, where nothing can read the
+repository, `merged_claimed_commit`, above). That is why the tool description
 states the condition the column is written under rather than a blanket "always" or "never":
 both blankets have been written into it and both were false.
 

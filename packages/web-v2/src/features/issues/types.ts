@@ -101,6 +101,8 @@ export interface IssueRow {
   mergeMark?: MergeMarkKind;
   /** ISS-1327 — where the work landed outside git, on a mark that named one. */
   mergedLanding?: string | null;
+  /** ISS-1409 — the commit an `asserted` mark names that Forge had no way to check. A claim; core's. */
+  mergedClaimedCommit?: string | null;
   /** ISS-1384 — what this issue accepts as landed, its own or its project's; core's, never re-derived. */
   landingShape?: LandingShape;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
