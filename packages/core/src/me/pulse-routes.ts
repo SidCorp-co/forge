@@ -16,10 +16,10 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { foldWorkStates, openWorkCountsOf } from '../issues/work-state.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readPulseFlow } from './pulse-flow.js';
-import { emptyBuckets } from './pulse-folds.js';
 import { readPulseLiveness } from './pulse-liveness.js';
 import { readPulseQuality } from './pulse-quality.js';
 import { PULSE_THRESHOLDS, type PulseResponse, type PulseWork } from './pulse-types.js';
@@ -31,14 +31,14 @@ const badRequest = (details: unknown) =>
 const pulseQuerySchema = z.object({ orgId: z.uuid().optional() });
 
 const emptyWork = (): PulseWork => ({
-  buckets: emptyBuckets(),
+  buckets: openWorkCountsOf(foldWorkStates([])),
   abandoned: { total: 0, shown: [] },
   releaseWaiting: { total: 0, shown: [] },
   notOnLive: { total: 0, shown: [] },
   liveUnmeasured: { total: 0, shown: [] },
   silentProjects: { total: 0, shown: [] },
   neverRanProjects: { total: 0, shown: [] },
-  humanBlockedAges: [],
+  blockedOnPersonAges: [],
   perProject: [],
 });
 

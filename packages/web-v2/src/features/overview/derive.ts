@@ -1,15 +1,18 @@
 
-import { TONE_META } from "@/design/status";
 import {
-  PULSE_BUCKET_LABELS,
-  PULSE_BUCKET_STATUSES,
-  type PulseIssueIdentity,
-  type PulseNotOnLiveIdentity,
-  type PulseProjectIdentity,
-  type PulseQuality,
-  type PulseResponse,
-  type PulseThresholds,
-  type PulseWorkBuckets,
+  OPEN_WORK_STATES,
+  type OpenWorkState,
+  WORK_STATE_LABELS,
+} from "@forge/contracts/work-state";
+import { TONE_META } from "@/design/status";
+import type {
+  PulseIssueIdentity,
+  PulseNotOnLiveIdentity,
+  PulseProjectIdentity,
+  PulseQuality,
+  PulseResponse,
+  PulseThresholds,
+  PulseWorkBuckets,
 } from "./types";
 
 /** Elapsed seconds as one calm phrase. */
@@ -52,27 +55,22 @@ export type Destination =
 
 export type PanelKey = "liveJobs" | "stuckRuns" | ActionKey;
 
-export const BUCKET_ORDER: Array<keyof PulseWorkBuckets> = [
-  "open",
-  "inProgress",
-  "awaitingRelease",
-  "humanBlocked",
-];
+export const BUCKET_ORDER: readonly OpenWorkState[] = OPEN_WORK_STATES;
 
-const BUCKET_TONE: Record<keyof PulseWorkBuckets, keyof typeof TONE_META> = {
+const BUCKET_TONE: Record<OpenWorkState, keyof typeof TONE_META> = {
   open: "neutral",
-  inProgress: "active",
-  awaitingRelease: "success",
-  humanBlocked: "attention",
+  in_flight: "active",
+  awaiting_release: "success",
+  blocked_on_person: "attention",
 };
 
-/** The issues list URL that carries exactly the statuses a bucket counted. */
-export function bucketHref(slug: string, bucket: keyof PulseWorkBuckets): string {
-  return `/projects/${slug}/issues?status=${PULSE_BUCKET_STATUSES[bucket].join(",")}`;
+/** The issues list on the segment that counted a bucket, so the list's count is the figure's. */
+export function bucketHref(slug: string, bucket: OpenWorkState): string {
+  return `/projects/${slug}/issues?filter=${bucket}`;
 }
 
 export interface WaffleCell {
-  key: keyof PulseWorkBuckets;
+  key: OpenWorkState;
   label: string;
   count: number;
   color: string;
@@ -83,7 +81,7 @@ export interface WaffleCell {
 export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
   return BUCKET_ORDER.map((key) => ({
     key,
-    label: PULSE_BUCKET_LABELS[key],
+    label: WORK_STATE_LABELS[key],
     count: buckets[key],
     color: TONE_META[BUCKET_TONE[key]].dot,
     destination: { kind: "anchor", anchorId: "pulse-per-project" } as const,
@@ -297,11 +295,11 @@ export function projectSilenceRows(pulse: PulseResponse, nowMs: number): Project
     .map((p) => {
       const buckets: PulseWorkBuckets = {
         open: p.open,
-        inProgress: p.inProgress,
-        awaitingRelease: p.awaitingRelease,
-        humanBlocked: p.humanBlocked,
+        in_flight: p.in_flight,
+        awaiting_release: p.awaiting_release,
+        blocked_on_person: p.blocked_on_person,
       };
-      const backlog = p.open + p.inProgress + p.awaitingRelease + p.humanBlocked;
+      const backlog = OPEN_WORK_STATES.reduce((n, state) => n + buckets[state], 0);
       return {
         id: p.id,
         slug: p.slug,

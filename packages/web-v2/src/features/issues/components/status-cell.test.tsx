@@ -8,9 +8,9 @@
 // importing test stays green while two rows report the wrong status. The
 // fixture is the second opinion, so a wrong word in the map fails here.
 //
-// The lane vocabulary folds seven statuses onto "Running" and two onto "Needs a
-// human", so the two collapse cases assert the SHAPE — n statuses, n distinct
-// words, the lane word absent — which no hardcoded entry satisfies by accident.
+// The lane vocabulary folds seven statuses onto "In flight" and two onto "Blocked on a person —
+// needs an answer", so the two collapse cases assert the SHAPE — n statuses, n distinct words, the
+// column head absent — which no hardcoded entry satisfies by accident.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -93,20 +93,21 @@ describe("the column headed STATUS prints the kernel status", () => {
     expect(Object.keys(EXPECTED).sort()).toEqual([...ISSUE_STATUSES].sort());
   });
 
-  it("tells apart every status the lane folds onto Running", () => {
-    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Running");
+  it("tells apart every status the lane folds onto In flight", () => {
+    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "In flight");
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);
-    expect(words).not.toContain("Running");
+    expect(words).not.toContain("In flight");
   });
 
-  it("tells apart every status the lane folds onto Needs a human", () => {
-    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === "Needs a human");
+  it("tells apart every status the lane folds onto a person's answer", () => {
+    const head = "Blocked on a person — needs an answer";
+    const folded = ISSUE_STATUSES.filter((s) => LABEL_VIEW[toAutonomousLabel(s, true)].label === head);
     expect(folded.length).toBeGreaterThan(1);
     const words = folded.map(printed);
     expect(new Set(words).size).toBe(folded.length);
-    expect(words).not.toContain("Needs a human");
+    expect(words).not.toContain(head);
   });
 
   it("tells releasing from approved", () => {

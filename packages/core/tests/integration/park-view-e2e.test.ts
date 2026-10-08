@@ -328,8 +328,8 @@ describe('an answer behind a long thread', () => {
   });
 });
 
-describe('the park view exists for exactly the issues Needs you lists', () => {
-  it('agrees with the search Needs you reads, row for row', async () => {
+describe('the park view exists for the issues Blocked on a person lists, but the one set on hold', () => {
+  it('agrees with the search Blocked on a person reads, row for row, bar an issue nobody asked anything of', async () => {
     const ids = {
       needsInfo: await insertIssue('needs_info'),
       waiting: await insertIssue('waiting', 'needs_resource'),
@@ -341,7 +341,7 @@ describe('the park view exists for exactly the issues Needs you lists', () => {
     await openQuestion(ids.marked);
     await openQuestion(ids.peerOnly, 'master_or_peer');
     const res = await app.request(
-      `/api/projects/${projectId}/issues/search?status=needs_info&status=waiting&orWaitingOnPerson=true`,
+      `/api/projects/${projectId}/issues/search?workState=blocked_on_person`,
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const listed = ((await res.json()) as { items: Array<{ id: string }> }).items.map((i) => i.id);
@@ -349,8 +349,8 @@ describe('the park view exists for exactly the issues Needs you lists', () => {
     for (const id of Object.values(ids)) {
       if (await parkView.loadIssuePark(id)) viewed.push(id);
     }
-    expect(viewed.sort()).toEqual(listed.sort());
-    expect(viewed.sort()).toEqual([ids.needsInfo, ids.waiting, ids.marked].sort());
+    expect(listed.sort()).toEqual([ids.needsInfo, ids.waiting, ids.marked, ids.held].sort());
+    expect(viewed.sort()).toEqual(listed.filter((id) => id !== ids.held).sort());
   });
 });
 

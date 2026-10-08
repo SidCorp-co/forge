@@ -150,16 +150,16 @@ function pageLoad(): PipelineConfig {
 
 async function saveRunnerPool(device = "box-a"): Promise<void> {
 	const pools = within(screen.getByTestId("pools"));
-	fireEvent.click(pools.getByRole("button", { name: `Queued on ${device}` }));
+	fireEvent.click(pools.getByRole("button", { name: `Open on ${device}` }));
 	fireEvent.click(pools.getByRole("button", { name: /save runner pools/i }));
 }
 
 async function saveStagePermission(): Promise<void> {
 	const perms = within(screen.getByTestId("perms"));
-	fireEvent.click(perms.getByRole("button", { name: /Queued/ }));
+	fireEvent.click(perms.getByRole("button", { name: /Open/ }));
 	const boxes = await perms.findAllByRole("checkbox");
 	fireEvent.click(boxes[0]);
-	fireEvent.click(perms.getByRole("button", { name: /save queued permissions/i }));
+	fireEvent.click(perms.getByRole("button", { name: /save open permissions/i }));
 }
 
 beforeEach(() => {
@@ -202,14 +202,14 @@ describe("two sections of one page load", () => {
 
 	it("let one section save twice in a row, each write against what it now holds", async () => {
 		mountPage();
-		await screen.findByRole("button", { name: "Queued on box-a" });
+		await screen.findByRole("button", { name: "Open on box-a" });
 
 		await saveRunnerPool("box-a");
 		await waitFor(() => expect(statesOf(stored).open.deviceIds).toEqual(["box-a"]));
 		// The page re-seeds from what came back; the second edit is made on THAT, as a
 		// person clicking twice would.
 		await waitFor(() =>
-			expect(screen.getByRole("button", { name: "Queued on box-a" })).toHaveAttribute(
+			expect(screen.getByRole("button", { name: "Open on box-a" })).toHaveAttribute(
 				"aria-pressed",
 				"true",
 			),
@@ -249,13 +249,13 @@ describe("a write against a document that moved under it", () => {
 		stored = applyDocumentPatch(stored, { states: { open: { deviceIds: ["box-b"] } } });
 		await saveRunnerPool();
 		const banner = await screen.findByText(/changed by someone else/i);
-		expect(banner.textContent).toContain("Runner pools (Queued)");
+		expect(banner.textContent).toContain("Runner pools (Open)");
 		expect(banner.textContent).toMatch(/nothing was saved/i);
 	});
 
 	it("offers the re-read, which re-seeds the section from what is stored now", async () => {
 		mountPage();
-		await screen.findByRole("button", { name: "Queued on box-a" });
+		await screen.findByRole("button", { name: "Open on box-a" });
 		const before = reads;
 
 		stored = applyDocumentPatch(stored, { states: { open: { deviceIds: ["box-b"] } } });
@@ -265,7 +265,7 @@ describe("a write against a document that moved under it", () => {
 		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
 		await waitFor(() => expect(reads).toBeGreaterThan(before));
 		await waitFor(() =>
-			expect(screen.getByRole("button", { name: "Queued on box-b" })).toHaveAttribute(
+			expect(screen.getByRole("button", { name: "Open on box-b" })).toHaveAttribute(
 				"aria-pressed",
 				"true",
 			),

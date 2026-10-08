@@ -3,6 +3,7 @@
 import { Stat } from '@/design';
 import { formatSpend } from '../derive';
 import type { WorkspaceTotals } from '../types';
+import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from '@forge/contracts/work-state';
 
 export interface StatsBandProps {
   totals: WorkspaceTotals;
@@ -21,8 +22,8 @@ export function StatsBand({ totals }: StatsBandProps) {
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
         {totals.liveRuns} live runs
       </span>
-      <Stat icon="inbox" title="In-flight issues (not closed)">
-        {totals.openIssues} active
+      <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
+        {totals.openIssues} {OPEN_WORK_LABEL.toLowerCase()}
       </Stat>
       <Stat icon="server">{totals.runners} runners</Stat>
       <Stat icon="dollar" title="Trailing 24h spend">

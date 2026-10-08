@@ -1,5 +1,6 @@
 
 import {
+	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
 	ISSUE_STATUS_LABELS,
 	LABEL_TO_KERNEL,
@@ -10,6 +11,12 @@ import {
 	REGISTRY_ISSUE_STATUSES,
 	type StatusExits,
 } from "@forge/contracts/pipeline-registry";
+import {
+	LABEL_WORK_STATE,
+	WORK_STATE_LABELS,
+	WORK_STATES,
+	type WorkState,
+} from "@forge/contracts/work-state";
 import {
 	BLOCKER_SETTLED_STATUSES,
 	REASON_REQUIRED_ISSUE_STATUSES,
@@ -42,23 +49,25 @@ import type {
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
-/**
- * The lane vocabulary's own words. A label is not its kernel status renamed: `running` is written
- * "Running" where `in_progress` is written "In progress", and `needs_human` is written "Needs a
- * human" where `needs_info` is written "Needs info". Only the WORD is written here.
- */
-const LABEL_WORDS: Record<AutonomousLabel, string> = {
-	draft: "Draft",
-	open: "Open",
-	running: "Running",
-	unheld: "No check-in",
-	needs_human: "Needs a human",
-	reopened: "Reopened",
-	paused: "Paused",
-	awaiting_release: "Awaiting release",
-	done: "Done",
-	dropped: "Dropped",
+/** A board column head begins with its work state's word, then says after a dash why it is a column of its own. */
+const LABEL_QUALIFIER: Partial<Record<AutonomousLabel, string>> = {
+	unheld: "no check-in",
+	needs_human: "needs an answer",
+	paused: "on hold",
+	reopened: "reopened",
+	done: "closed",
+	dropped: "dropped",
 };
+
+const LABEL_WORDS = Object.fromEntries(
+	AUTONOMOUS_LABELS.map((label) => {
+		const state = WORK_STATE_LABELS[LABEL_WORK_STATE[label]];
+		const qualifier = LABEL_QUALIFIER[label];
+		return [label, qualifier ? `${state} — ${qualifier}` : state];
+	}),
+) as Record<AutonomousLabel, string>;
+
+export const NO_CHECK_IN_CHIP = "No check-in";
 
 const PAUSED_CHIP = statusToChip(LABEL_TO_KERNEL.paused);
 
@@ -233,7 +242,7 @@ export function groupedTransitions(
 	return out;
 }
 
-/** A move target has no holder, so it is named by its own status word, never "Running" (ISS-1213). */
+/** A move target has no holder, so it is named by its own status word, never by the word of a column it only seems to sit in (ISS-1213). */
 export function transitionLabels(targets: IssueStatus[]): string[] {
 	return targets.map(statusLabel);
 }
@@ -280,58 +289,19 @@ export function depCounts(deps: IssueDependencies | undefined): DepCounts {
 	return { blockedBy, blocks, subtasks, hasParent };
 }
 
-export function filterToQueryParams(filter: IssueFilter): {
-	status?: IssueStatus[];
-	statusNot?: IssueStatus[];
-	origin?: "detector" | "human";
-	/** Also match an issue a person owes an answer, whatever its status (ISS-1257). */
-	orWaitingOnPerson?: boolean;
-} {
-	switch (filter) {
-		case "draft":
-			return { status: ["draft"], origin: "human" };
-		case "findings":
-			return { origin: "detector" };
-		case "you":
-			return {
-				status: statusesForLabels(
-					"needs_human",
-					"paused",
-					"awaiting_release",
-					"reopened",
-				),
-				orWaitingOnPerson: true,
-			};
-		case "agent":
-			return { status: statusesForLabels("open", "running", "unheld") };
-		case "done":
-			return { status: statusesForLabels("done", "dropped") };
-		default:
-			return {};
-	}
+export function filterToQueryParams(filter: IssueFilter): { workState?: WorkState } {
+	return filter === "all" ? {} : { workState: filter };
 }
 
-/**
- * How many issues a filter segment holds, from the search's buckets. A filter that
- * also takes the issues a person owes an answer adds those at the statuses it does
- * not name, each counted once (ISS-1257).
- */
+/** A strip segment's count; All is the six summed, so the segments add up to it. */
 export function filterCount(
 	filter: IssueFilter,
-	buckets: {
-		byStatus: Partial<Record<IssueStatus, number>>;
-		waitingOnPersonByStatus: Partial<Record<IssueStatus, number>>;
-	},
+	buckets: { byWorkState: Record<WorkState, number> },
 ): number {
-	const { status, orWaitingOnPerson } = filterToQueryParams(filter);
-	const named = new Set<string>(status ?? []);
-	let n = 0;
-	for (const s of named) n += buckets.byStatus[s as IssueStatus] ?? 0;
-	if (!orWaitingOnPerson) return n;
-	for (const [s, v] of Object.entries(buckets.waitingOnPersonByStatus)) {
-		if (!named.has(s)) n += v ?? 0;
+	if (filter === "all") {
+		return WORK_STATES.reduce((n, s) => n + (buckets.byWorkState[s] ?? 0), 0);
 	}
-	return n;
+	return buckets.byWorkState[filter] ?? 0;
 }
 
 /**

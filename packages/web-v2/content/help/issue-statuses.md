@@ -10,8 +10,26 @@ audience: user
 Every issue carries one status. The status answers a single question — **who holds
 this work right now** — and from that follows what, if anything, you have to do.
 
-There are only three answers, and the tabs on the Issues list are named after
-them: the work is **with an agent**, it **needs you**, or it is **finished**.
+Every screen that counts work groups the statuses into the same six states, and
+the tabs on the Issues list are those states, so two screens showing the same
+project at the same moment can be read against each other:
+
+| State | What it counts | Statuses |
+|---|---|---|
+| **Open, not picked up** | Work nobody has started | Open |
+| **In flight** | Work an agent is on | Confirmed, Clarified, Approved, In progress, Developed, Testing, Releasing |
+| **Awaiting release** | Work built and checked that waits to be released | Tested, Awaiting release |
+| **Blocked on a person** | Work stopped until you act | Needs info, Waiting, On hold, Reopened, and any open or in-flight issue that holds a question you have not answered |
+| **Draft** | Work nobody has asked for yet | Draft |
+| **Finished** | Work that is over | Closed, Dropped |
+
+**Open work** is the first four added together: it is the figure on the project
+dashboard, on the Issues tab in the side rail and in the workspace tables. Drafts
+and finished work are never in it. The tabs on the Issues list add up to **All**,
+and the dashboard chart draws a row for every state that has an issue in it.
+
+The **Source** filter beside the tabs narrows the list, and every count on the
+tabs, to issues a person filed or issues a detector filed.
 
 ## The short version
 
@@ -71,9 +89,9 @@ instead of a fresh run starting seconds later.
 
 **Awaiting release is not finished.** The work is built and verified and is
 waiting to be released — by a person choosing **Release now**, or by the next
-scheduled release, whichever the issue page names. It sits under *Needs you* on the
-Issues list for that reason — counting it as done is how a gate stops being
-noticed.
+scheduled release, whichever the issue page names. It sits under *Awaiting release*
+on the Issues list, and counts as open work, for that reason — counting it as done
+is how a gate stops being noticed.
 
 **Reopened does not restart anything by itself.** Reopening an issue puts it back
 in your hands, not an agent's. Move it on when you want the work to resume.
@@ -109,8 +127,8 @@ discarded out from under you.
 
 ## Verify it worked
 
-- Open a project's Issues list. Each tab carries a count, and **Needs you** is the
-  one that wants your attention.
+- Open a project's Issues list. Each tab carries a count, the tabs add up to **All**,
+  and **Blocked on a person** is the one that wants your attention.
 - Open an issue at *Needs info*: it shows the question and a box to answer it.
 - Open an issue at *On hold*: it shows a resume action and no question.
 

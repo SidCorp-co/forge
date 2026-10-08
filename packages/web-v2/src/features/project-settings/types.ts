@@ -1,4 +1,5 @@
 import { buildDocumentPatch } from "@forge/contracts/document-patch";
+import { ISSUE_STATUS_LABELS } from "@forge/contracts/issue-vocabulary";
 import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
 
 /** A settings write: the keys being changed, and the values they were read against.
@@ -340,20 +341,22 @@ export const MCP_CATALOG: Record<
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
+const pipelineRow = (status: "open" | "in_progress" | "needs_info" | "awaiting_release") => ({
+	status,
+	label: ISSUE_STATUS_LABELS[status],
+});
+
+/** The four statuses a project's stages are configured at, in the words every other screen writes them. */
 export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
-	{ status: "open", label: "Queued" },
-	{ status: "in_progress", label: "Running" },
-	{ status: "needs_info", label: "Needs a human" },
-	{ status: "awaiting_release", label: "Awaiting release" },
+	pipelineRow("open"),
+	pipelineRow("in_progress"),
+	pipelineRow("needs_info"),
+	pipelineRow("awaiting_release"),
 ];
 
-const PIPELINE_STATUS_LABELS: Record<string, string> = Object.fromEntries(
-	PIPELINE_STATUS_ROWS.map((r) => [r.status, r.label]),
-);
-
-/** status → step label; falls back to the raw status for one core doesn't list here yet. */
+/** status → the status's word; falls back to the raw status for one this table does not configure. */
 export function pipelineStatusLabel(status: string): string {
-	return PIPELINE_STATUS_LABELS[status] ?? status;
+	return (ISSUE_STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
 export interface HumanizedToolName {

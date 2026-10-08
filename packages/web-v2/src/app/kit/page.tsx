@@ -26,6 +26,7 @@ import {
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -90,13 +91,13 @@ const NOTES: NotificationItem[] = [
   { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
-/** The kit's own sample columns — the lane's own labels and their tones, which is what a real
+/** The kit's own sample columns — the work states' words and their tones, which is what a real
  *  board draws (`features/pipeline/derive.ts:boardColumns`). */
 const KANBAN_COLUMNS: { title: string; color: string }[] = [
-  { title: "Open", color: TONE_META.neutral.dot },
-  { title: "Running", color: TONE_META.active.dot },
-  { title: "Needs a human", color: TONE_META.attention.dot },
-  { title: "Awaiting release", color: TONE_META.shipped.dot },
+  { title: WORK_STATE_LABELS.open, color: TONE_META.neutral.dot },
+  { title: WORK_STATE_LABELS.in_flight, color: TONE_META.active.dot },
+  { title: WORK_STATE_LABELS.blocked_on_person, color: TONE_META.attention.dot },
+  { title: WORK_STATE_LABELS.awaiting_release, color: TONE_META.shipped.dot },
 ];
 
 const NAV_ANCHORS = [
@@ -585,10 +586,10 @@ export default function KitPage() {
                     key={c.title}
                     title={c.title}
                     color={c.color}
-                    count={c.title === "Running" ? 2 : 0}
+                    count={c.title === WORK_STATE_LABELS.in_flight ? 2 : 0}
                     emptyHint={`No issues are ${c.title.toLowerCase()}.`}
                   >
-                    {c.title === "Running" && (
+                    {c.title === WORK_STATE_LABELS.in_flight && (
                       <>
                         <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
                         <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />

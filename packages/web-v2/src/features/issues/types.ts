@@ -5,6 +5,7 @@ import {
   REGISTRY_ISSUE_PRIORITIES,
   REGISTRY_ISSUE_STATUSES,
 } from "@forge/contracts/pipeline-registry";
+import type { WorkState } from "@forge/contracts/work-state";
 import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 
@@ -175,7 +176,11 @@ export interface IssueDependencies {
   incoming: IssueDependencyEdge[];
 }
 
-export type IssueFilter = "all" | "draft" | "findings" | "you" | "agent" | "done";
+/** The strip's segments: one work state each, so the segments partition the issues, or all of them. */
+export type IssueFilter = "all" | WorkState;
+
+/** Which kind of writer filed an issue: a detector, or a person. */
+export type IssueOrigin = "detector" | "human";
 
 /** Client-side grouping for the list. */
 export type GroupBy = "none" | "status" | "priority" | "creator";
@@ -194,6 +199,8 @@ export type IssueSort =
 export interface IssueSearchOpts {
   q?: string;
   filter?: IssueFilter;
+  /** Narrows the list and every count drawn from it to one kind of writer. */
+  origin?: IssueOrigin;
   priority?: IssuePriority;
   /** Member userId, or the literal "agent" (ISS-756). */
   createdBy?: string;

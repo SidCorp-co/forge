@@ -35,9 +35,10 @@ and the status are two facts: the status says how far the work has got, and an o
 blocker kind `human` is the **marker** that a person owes the issue an answer. The marker is never
 stored — `questions/issue-coupling.ts:holdsOpenHumanQuestion` reads it from the question rows every
 time, so answering or voiding the last one clears it with no second write. The Issues list's
-`Needs you` (`orWaitingOnPerson` on the search, and `waitingOnPersonByStatus` in its buckets), the
-issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row chip each read
-status OR marker.
+`Blocked on a person` segment (`workState` on the search, and `byWorkState` in its buckets, both from
+`issues/work-state.ts:workStateOf`, which files an issue an agent holds under that state while the
+marker is set), the issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row
+chip each read status OR marker.
 
 - **An ask moves nothing.** `askAs`, behind `POST /api/questions` and `forge_questions`, writes the
   question and leaves the issue at its rung, whatever the blocker kind.

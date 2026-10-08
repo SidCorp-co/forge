@@ -27,6 +27,7 @@ import {
   type SegmentOption,
   type SelectOption,
 } from "@/design";
+import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { replaceLocationSearch, useLocationSearch } from "@/lib/utils/use-location-search";
@@ -61,6 +62,7 @@ import {
   type GroupBy,
   ISSUE_PRIORITIES,
   type IssueFilter,
+  type IssueOrigin,
   type IssuePriority,
   type IssueSort,
 } from "../types";
@@ -71,15 +73,13 @@ import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
 import { useGuardedTransition } from "./use-guarded-transition";
 
+// One segment per work state, so the segments are a partition and the counts on them add up to the
+// count on All. What a segment counts is its state's definition in `@forge/contracts/work-state`.
 const FILTERS: SegmentOption<IssueFilter>[] = [
-  { value: "you", label: "Needs you" },
-  { value: "agent", label: "With agent" },
-  { value: "draft", label: "Draft" },
-  { value: "findings", label: "Findings" },
-  { value: "done", label: "Finished" },
+  ...WORK_STATES.map((state) => ({ value: state, label: WORK_STATE_LABELS[state] })),
   { value: "all", label: "All" },
 ];
-const VALID_FILTERS: IssueFilter[] = ["all", "draft", "findings", "you", "agent", "done"];
+const VALID_FILTERS: IssueFilter[] = FILTERS.map((o) => o.value);
 /* status-tuple: differs — this is the "Finished" segment's cut of the status counts, not core's
    ISSUE_TERMINAL_STATUSES. It names which buckets that one filter chip sums, and a segment added
    or re-cut here moves it without anything about the issue lifecycle having changed. */
@@ -91,19 +91,19 @@ function withCounts(
   buckets: IssueBuckets | undefined,
 ): SegmentOption<IssueFilter>[] {
   if (!buckets) return options;
-  const all = Object.values(buckets.byStatus).reduce<number>((n, v) => n + (v ?? 0), 0);
-  return options.map((o) => {
-    const count =
-      o.value === "all"
-        ? all
-        : o.value === "findings"
-          ? buckets.detector
-          : o.value === "draft"
-            ? buckets.humanDraft
-            : filterCount(o.value, buckets);
-    return { ...o, count, countTone: o.value === "you" ? "attention" : "neutral" };
-  });
+  return options.map((o) => ({
+    ...o,
+    count: filterCount(o.value, buckets),
+    countTone: o.value === "blocked_on_person" ? "attention" : "neutral",
+  }));
 }
+
+const ORIGIN_OPTIONS: SelectOption[] = [
+  { value: "", label: "Source: anyone" },
+  { value: "detector", label: "Source: machine-filed" },
+  { value: "human", label: "Source: filed by a person" },
+];
+const VALID_ORIGINS: IssueOrigin[] = ["detector", "human"];
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },
@@ -149,7 +149,13 @@ export function IssuesListView({
   const sp = useMemo(() => new URLSearchParams(search), [search]);
   const q = sp.get("q") ?? "";
   const rawFilter = decodeFilter<IssueFilter>(sp, "filter", DEFAULT_FILTER);
-  const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : "all";
+  const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : DEFAULT_FILTER;
+  // A saved link can name a segment this strip no longer has; it shows every issue, and says so.
+  const unknownFilter = VALID_FILTERS.includes(rawFilter) ? null : rawFilter;
+  const rawOrigin = sp.get("origin") ?? "";
+  const origin = (VALID_ORIGINS as string[]).includes(rawOrigin)
+    ? (rawOrigin as IssueOrigin)
+    : undefined;
   const rawPriority = sp.get("priority") ?? "";
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
     ? (rawPriority as IssuePriority)
@@ -238,6 +244,7 @@ export function IssuesListView({
   const issuesQ = useIssues(projectId, {
     q,
     filter,
+    origin,
     priority,
     createdBy: createdBy || undefined,
     label: label || undefined,
@@ -336,7 +343,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, priority, createdBy, label, moduleId, sort, page]);
+  }, [q, filter, origin, priority, createdBy, label, moduleId, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -367,6 +374,7 @@ export function IssuesListView({
   const isFiltered =
     q !== "" ||
     filter !== DEFAULT_FILTER ||
+    !!origin ||
     !!priority ||
     !!createdBy ||
     !!label ||
@@ -380,6 +388,7 @@ export function IssuesListView({
   // state, so applying a filter here updates the list + badge live.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const activeFilterCount =
+    (origin ? 1 : 0) +
     (priority ? 1 : 0) +
     (createdBy ? 1 : 0) +
     (label ? 1 : 0) +
@@ -419,6 +428,13 @@ export function IssuesListView({
           {activeFilterCount > 0 && <Badge tone="accent">{activeFilterCount}</Badge>}
         </Button>
         <div className="hidden sm:contents">
+          <Select
+            aria-label="Source filter"
+            value={origin ?? ""}
+            options={ORIGIN_OPTIONS}
+            onChange={(v) => setParams({ origin: v, page: "" })}
+            className="w-52"
+          />
           <Select
             aria-label="Priority filter"
             value={priority ?? ""}
@@ -519,6 +535,13 @@ export function IssuesListView({
       >
         <div className="flex flex-col gap-4">
           <Select
+            aria-label="Source filter"
+            value={origin ?? ""}
+            options={ORIGIN_OPTIONS}
+            onChange={(v) => setParams({ origin: v, page: "" })}
+            className="w-full"
+          />
+          <Select
             aria-label="Priority filter"
             value={priority ?? ""}
             options={PRIORITY_FILTER_OPTIONS}
@@ -565,7 +588,14 @@ export function IssuesListView({
         </div>
       </SlideOver>
 
-      {filter === "done" && (
+      {unknownFilter !== null && (
+        <p role="status" className="fg-body-sm mb-4 text-muted">
+          This link names the filter <code className="font-mono">{unknownFilter}</code>, which the
+          Issues strip no longer has, so every issue is shown.
+        </p>
+      )}
+
+      {filter === "finished" && (
         <div className="mb-4 flex items-center gap-2">
           <span className="fg-caption text-muted">Outcome</span>
           <SegmentedControl
@@ -634,6 +664,7 @@ export function IssuesListView({
                     setParams({
                       q: "",
                       filter: "",
+                      origin: "",
                       priority: "",
                       createdBy: "",
                       label: "",

@@ -24,9 +24,6 @@ export const ASSERTS_WORK_IN_PROGRESS: readonly IssueStatus[] = [
 /** The issue has nothing left to do: a job that failed against it no longer matters. */
 export const ISSUE_RESOLVED_STATUSES: readonly IssueStatus[] = ['awaiting_release', 'closed'];
 
-/** The issue is not counted as open work in a project's totals. */
-export const NON_OPEN_STATUSES: readonly IssueStatus[] = ['awaiting_release', 'closed', 'draft'];
-
 /** Each status in a person's words: contracts' map, which core cannot import at runtime; held equal by a parity test. */
 export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
   open: 'Open',

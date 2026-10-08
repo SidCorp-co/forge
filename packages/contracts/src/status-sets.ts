@@ -12,14 +12,6 @@ export const LIVE_JOB_STATUSES = [
   'held',
 ] as const;
 
-/* status-tuple: differs — the browser's copy of core's `issues/status-sets.ts` NON_OPEN_STATUSES,
-   read by the project dashboard's open-issue count; status-sets-parity.test.ts binds the two. */
-export const NON_OPEN_ISSUE_STATUSES = [
-  'awaiting_release',
-  'closed',
-  'draft',
-] as const;
-
 /* status-tuple: differs — the browser's copy of core's `issues/transition-reason.ts`
    REASON_REQUIRED_STATUSES, read by the transition dialog so the browser asks for the reason the
    server would refuse the move without; status-sets-parity.test.ts binds the two. */

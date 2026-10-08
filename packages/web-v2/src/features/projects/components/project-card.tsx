@@ -10,6 +10,7 @@ import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
 import { MemberStack } from './member-stack';
+import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from '@forge/contracts/work-state';
 
 export interface ProjectCardProps {
   project: ProjectConsoleItem;
@@ -73,7 +74,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
 
       <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
         <LiveCount n={project.liveRuns} />
-        <Stat icon="inbox" title="In-flight issues (not closed)">
+        <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
           {project.openIssues}
         </Stat>
         <Stat icon="server" title="Online runners">

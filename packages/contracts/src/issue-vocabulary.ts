@@ -57,9 +57,18 @@ const KERNEL_TO_LABEL: Record<KernelIssueStatus, WritableLabel> = {
   dropped: 'dropped',
 };
 
-/** `held` (the search row's own) is required: a status alone cannot say whether a run is behind it. */
-export function toAutonomousLabel(status: KernelIssueStatus, held: boolean): AutonomousLabel {
+/**
+ * `held` (the search row's own) is required: a status alone cannot say whether a run is behind it.
+ * `owesAnswer` is the row's other fact, a person owing it an answer, which makes an issue not yet
+ * picked up or in flight read `needs_human` as `workStateOf` reads it blocked on a person.
+ */
+export function toAutonomousLabel(
+  status: KernelIssueStatus,
+  held: boolean,
+  owesAnswer = false,
+): AutonomousLabel {
   const label = KERNEL_TO_LABEL[status];
+  if (owesAnswer && (label === 'open' || label === 'running')) return 'needs_human';
   return label === 'running' && !held ? 'unheld' : label;
 }
 

@@ -149,10 +149,10 @@ describe("cardStatus", () => {
     expect(card.label).toBe("No runner online");
   });
 
-  it("falls back to the lane word a held row reads with no run and nothing queued", () => {
+  it("falls back to the issue's own status word on a held row with no run and nothing queued", () => {
     const card = cardStatus(issue(), undefined);
     expect(card.domain).toBe("issue");
-    expect(card.label).toBe("Running");
+    expect(card.label).toBe("In progress");
     expect(card.status).toBe(statusToChip("in_progress"));
   });
 
@@ -201,9 +201,9 @@ describe("cardStatus", () => {
     expect(card.note).toBe("");
   });
 
-  it("keeps a party's word on a row nothing holds, since no run was owed there", () => {
+  it("keeps the status's own word on a row nothing holds, since no run was owed there", () => {
     const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
-    expect(card.label).toBe("Needs a human");
+    expect(card.label).toBe("Needs info");
   });
 });
 

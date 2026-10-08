@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
+import { readWorkStateRows } from '../issues/work-state-read.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
 
@@ -41,16 +42,9 @@ function idList(projectIds: string[]) {
   );
 }
 
+/** How many issues sit at each status, split by whether a person owes one an answer — the rows `foldWorkStates` counts work from. */
 const readStatusRows = (projectIds: string[]) =>
-  db
-    .select({
-      projectId: issues.projectId,
-      status: issues.status,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(issues)
-    .where(inArray(issues.projectId, projectIds))
-    .groupBy(issues.projectId, issues.status);
+  readWorkStateRows(inArray(issues.projectId, projectIds), false);
 
 const readBlockerRows = (projectIds: string[]) =>
   db

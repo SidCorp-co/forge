@@ -63,7 +63,7 @@ vi.mock("@/lib/api/client", async () => {
 const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
-/** What the tab holds when the person arrives. The Queued stage already denies one tool, so a
+/** What the tab holds when the person arrives. The Open stage already denies one tool, so a
  *  second writer has something to move. */
 const START: Doc = {
 	enabled: true,
@@ -112,11 +112,11 @@ function typeInAssistantWeekly(value: string): void {
 	fireEvent.change(pinnedField(), { target: { value } });
 }
 
-function expandQueued(): void {
-	fireEvent.click(within(screen.getByTestId("perms")).getByRole("button", { name: /Queued/ }));
+function expandOpenStage(): void {
+	fireEvent.click(within(screen.getByTestId("perms")).getByRole("button", { name: /Open/ }));
 }
 
-/** The colliding section's unsaved edit: one more denied tool id on Queued. */
+/** The colliding section's unsaved edit: one more denied tool id on Open. */
 async function typeADeniedTool(id: string): Promise<void> {
 	const perms = within(screen.getByTestId("perms"));
 	const field = await perms.findByLabelText("Add a tool id to Denied tools");
@@ -134,9 +134,9 @@ function deniedChips(): string[] {
 		.filter((t): t is string => t !== null);
 }
 
-async function saveQueuedPermissions(): Promise<void> {
+async function saveOpenStagePermissions(): Promise<void> {
 	const perms = within(screen.getByTestId("perms"));
-	fireEvent.click(perms.getByRole("button", { name: /save queued permissions/i }));
+	fireEvent.click(perms.getByRole("button", { name: /save open permissions/i }));
 }
 
 beforeEach(() => {
@@ -151,7 +151,7 @@ describe("the way out of a refused save", () => {
 		mountPage();
 		await screen.findByLabelText(/pinned issue key/i);
 
-		expandQueued();
+		expandOpenStage();
 		typeInAssistantWeekly("ISS-9999-UNSAVED");
 		await typeADeniedTool("qa_probe_typed_X");
 		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
@@ -161,7 +161,7 @@ describe("the way out of a refused save", () => {
 		stored = applyDocumentPatch(stored, {
 			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
 		});
-		await saveQueuedPermissions();
+		await saveOpenStagePermissions();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
@@ -172,7 +172,7 @@ describe("the way out of a refused save", () => {
 		expect(pinnedField().value).toBe("ISS-9999-UNSAVED");
 		// The screen says what it replaced rather than leaving it to be noticed.
 		const after = await screen.findByText(/loaded what is stored now/i);
-		expect(after.textContent).toContain("Stage permissions (Queued)");
+		expect(after.textContent).toContain("Stage permissions (Open)");
 		expect(after.textContent).toMatch(/every other edit on this page is as you left it/i);
 	});
 
@@ -180,14 +180,14 @@ describe("the way out of a refused save", () => {
 		mountPage();
 		await screen.findByLabelText(/pinned issue key/i);
 
-		expandQueued();
+		expandOpenStage();
 		typeInAssistantWeekly("ISS-9999-UNSAVED");
 		await typeADeniedTool("qa_probe_typed_X");
 
 		stored = applyDocumentPatch(stored, {
 			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
 		});
-		await saveQueuedPermissions();
+		await saveOpenStagePermissions();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /keep my changes/i }));
@@ -196,7 +196,7 @@ describe("the way out of a refused save", () => {
 		expect(deniedChips()).toContain("qa_probe_typed_X");
 
 		const perms = within(screen.getByTestId("perms"));
-		fireEvent.click(perms.getByRole("button", { name: /save queued permissions/i }));
+		fireEvent.click(perms.getByRole("button", { name: /save open permissions/i }));
 		await waitFor(() =>
 			expect((stored.states as Doc).open).toMatchObject({
 				disallowedTools: ["Bash(rm:*)", "qa_probe_typed_X"],
@@ -208,7 +208,7 @@ describe("the way out of a refused save", () => {
 	it("replaces the colliding setting alone, not the section it sits in", async () => {
 		mountPage();
 		await screen.findByLabelText(/pinned issue key/i);
-		expandQueued();
+		expandOpenStage();
 
 		await typeADeniedTool("qa_probe_typed_X");
 		const perms = within(screen.getByTestId("perms"));
@@ -221,7 +221,7 @@ describe("the way out of a refused save", () => {
 		stored = applyDocumentPatch(stored, {
 			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
 		});
-		await saveQueuedPermissions();
+		await saveOpenStagePermissions();
 		await screen.findByText(/changed by someone else/i);
 
 		fireEvent.click(screen.getByRole("button", { name: /use the current values/i }));
@@ -239,12 +239,12 @@ describe("the way out of a refused save", () => {
 	it("names what it will do to the edits it holds, before the button is pressed", async () => {
 		mountPage();
 		await screen.findByLabelText(/pinned issue key/i);
-		expandQueued();
+		expandOpenStage();
 		await typeADeniedTool("qa_probe_typed_X");
 		stored = applyDocumentPatch(stored, {
 			states: { open: { disallowedTools: ["Bash(rm:*)", "WebFetch"] } },
 		});
-		await saveQueuedPermissions();
+		await saveOpenStagePermissions();
 		await screen.findByText(/changed by someone else/i);
 
 		const banner = screen.getByText(/changed by someone else/i).closest("div") as HTMLElement;

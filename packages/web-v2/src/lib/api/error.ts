@@ -1,3 +1,4 @@
+import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError } from './client';
 
@@ -218,16 +219,10 @@ const STAGE_SETTING_LABELS: Record<string, string> = {
   mcpServers: 'Stage permissions',
 };
 
-/** A stage as the SETTINGS rows name it, which is not what the auto-stage toggles are
- *  called: mirrors `PIPELINE_STATUS_ROWS` in `features/project-settings/types.ts`. */
-const SETTINGS_STAGE_LABELS: Record<string, string> = {
-  open: 'Queued',
-  in_progress: 'Running',
-  needs_info: 'Needs a human',
-  awaiting_release: 'Awaiting release',
-};
+/** A stage as the SETTINGS rows name it: the status's own word, the same `pipelineStatusLabel` reads. */
+const SETTINGS_STAGE_LABELS: Record<string, string> = ISSUE_STATUS_LABELS;
 
-/** `states.open.deviceIds` → "Runner pools (Queued)"; `intakeGate.enabled` → "Intake gate". */
+/** `states.open.deviceIds` → "Runner pools (Open)"; `intakeGate.enabled` → "Intake gate". */
 export function settingLabel(path: string): string {
   const parts = path.split('.');
   if (parts[0] === 'states' && parts.length >= 3) {

@@ -29,6 +29,7 @@ function makeChain() {
     'innerJoin',
     'orderBy',
     'groupBy',
+    'as',
     'limit',
     'offset',
     'set',
@@ -147,19 +148,21 @@ describe('GET /api/projects/health', () => {
     expect(beta?.pendingEscalations).toBe(2); // needs_info bucket
   });
 
-  it('totalActive counts all non-terminal statuses and excludes released/closed/draft (ISS-528)', async () => {
+  it('totalActive is open work: the four open states summed, awaiting release in it and draft, closed and dropped out', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
     queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
     queryQueue.push([
-      { projectId: PROJECT_A_ID, status: 'open', n: 2 },
-      { projectId: PROJECT_A_ID, status: 'clarified', n: 1 },
-      { projectId: PROJECT_A_ID, status: 'on_hold', n: 3 },
-      { projectId: PROJECT_A_ID, status: 'needs_info', n: 1 },
-      { projectId: PROJECT_A_ID, status: 'tested', n: 1 },
-      { projectId: PROJECT_A_ID, status: 'awaiting_release', n: 5 },
-      { projectId: PROJECT_A_ID, status: 'closed', n: 100 },
-      { projectId: PROJECT_A_ID, status: 'draft', n: 4 },
+      { projectId: PROJECT_A_ID, status: 'open', owesAnswer: false, n: 2 },
+      { projectId: PROJECT_A_ID, status: 'clarified', owesAnswer: false, n: 1 },
+      { projectId: PROJECT_A_ID, status: 'in_progress', owesAnswer: true, n: 2 },
+      { projectId: PROJECT_A_ID, status: 'on_hold', owesAnswer: false, n: 3 },
+      { projectId: PROJECT_A_ID, status: 'needs_info', owesAnswer: false, n: 1 },
+      { projectId: PROJECT_A_ID, status: 'tested', owesAnswer: false, n: 1 },
+      { projectId: PROJECT_A_ID, status: 'awaiting_release', owesAnswer: false, n: 5 },
+      { projectId: PROJECT_A_ID, status: 'closed', owesAnswer: false, n: 100 },
+      { projectId: PROJECT_A_ID, status: 'dropped', owesAnswer: false, n: 59 },
+      { projectId: PROJECT_A_ID, status: 'draft', owesAnswer: false, n: 4 },
     ]); // statusRows
     queryQueue.push([]); // blockerRowsAll
     queryQueue.push([]); // throughputRows
@@ -169,8 +172,20 @@ describe('GET /api/projects/health', () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ totalActive: number }>;
-    expect(body[0]?.totalActive).toBe(8);
+    const body = (await res.json()) as Array<{
+      totalActive: number;
+      work: Record<string, number>;
+    }>;
+    expect(body[0]?.work).toEqual({
+      open: 2,
+      in_flight: 1,
+      awaiting_release: 6,
+      blocked_on_person: 6,
+      draft: 4,
+      finished: 159,
+    });
+    expect(body[0]?.totalActive).toBe(15);
+    expect(body[0]).not.toHaveProperty('statusDistribution');
   });
 
   it('200 with throughput=0 when no activity rows match (regression: empty result must not 500)', async () => {

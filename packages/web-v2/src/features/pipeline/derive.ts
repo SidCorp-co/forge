@@ -5,7 +5,7 @@ import {
 } from "@forge/contracts/issue-vocabulary";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
-import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
+import { LABEL_VIEW, NO_CHECK_IN_CHIP, statusLabel, statusToChip } from "@/features/issues/derive";
 import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
@@ -137,9 +137,13 @@ export function labelTone(label: AutonomousLabel): SemanticTone {
   return LABEL_VIEW[label].tone;
 }
 
-/** The lane label a board row reads: its status, and whether anything is on it now. */
+/** The lane label a board row reads: its status, whether anything holds it, and whether a person owes it an answer. */
 export function rowLabel(issue: PipelineIssueRow): AutonomousLabel {
-  return toAutonomousLabel(issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number], issue.held);
+  return toAutonomousLabel(
+    issue.status as (typeof REGISTRY_ISSUE_STATUSES)[number],
+    issue.held,
+    issue.waitingOnPersonSince != null,
+  );
 }
 
 /** Group issues into the board's columns by the label each row reads as. */
@@ -298,7 +302,7 @@ export function cardStatus(
   if (label === "unheld") {
     return {
       status: LABEL_VIEW.unheld.status,
-      label: LABEL_VIEW.unheld.label,
+      label: NO_CHECK_IN_CHIP,
       domain: "issue",
       waitingReason: "",
       note: checkInLine(issue.lastCheckInAt, now),
@@ -325,7 +329,7 @@ export function cardStatus(
   }
   return {
     status: statusToChip(issue.status as IssueStatus),
-    label: LABEL_VIEW[label].label,
+    label: statusLabel(issue.status as IssueStatus),
     domain: "issue",
     waitingReason: "",
     note: "",

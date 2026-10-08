@@ -25,7 +25,7 @@ import {
   usageRecords,
   users,
 } from '../db/schema.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import { OPEN_WORK_STATUSES } from '../issues/work-state.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
@@ -261,12 +261,7 @@ adminAggregateRoutes.get(
       db
         .select({ projectId: issues.projectId, n: count() })
         .from(issues)
-        .where(
-          sql`${issues.status} NOT IN (${sql.join(
-            [...NON_OPEN_STATUSES].map((s) => sql`${s}`),
-            sql`, `,
-          )})`,
-        )
+        .where(inArray(issues.status, [...OPEN_WORK_STATUSES]))
         .groupBy(issues.projectId),
     ]);
 

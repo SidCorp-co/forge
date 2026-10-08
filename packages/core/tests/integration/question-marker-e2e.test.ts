@@ -302,14 +302,14 @@ describe('the reads a person looks at see the marker as well as the status', () 
       items: Array<{ id: string }>;
       buckets?: {
         byStatus: Record<string, number>;
-        waitingOnPersonByStatus: Record<string, number>;
+        byWorkState: Record<string, number>;
       };
     };
   }
 
-  const NEEDS_YOU = 'status=needs_info&status=waiting&orWaitingOnPerson=true';
+  const NEEDS_YOU = 'workState=blocked_on_person';
 
-  it('lists an issue at testing holding a person’s question under Needs you, beside a needs_info park', async () => {
+  it('lists an issue at testing holding a person’s question under Blocked on a person, beside a needs_info park', async () => {
     const marked = await insertIssue('testing');
     await openQuestion(marked);
     const parked = await insertIssue('needs_info');
@@ -319,7 +319,7 @@ describe('the reads a person looks at see the marker as well as the status', () 
     expect(body.items.map((i) => i.id).sort()).toEqual([marked, parked].sort());
   });
 
-  it('drops the issue from Needs you once its last question for a person is answered', async () => {
+  it('drops the issue from Blocked on a person once its last question for a person is answered', async () => {
     const marked = await insertIssue('testing');
     await answer(await openQuestion(marked));
     const body = await search(NEEDS_YOU);
@@ -327,23 +327,22 @@ describe('the reads a person looks at see the marker as well as the status', () 
     expect(await attention.selectAwaitingInput(ownerId)).toEqual([]);
   });
 
-  it('refuses orWaitingOnPerson sent with no status to widen, by name', async () => {
-    const res = await app.request(
-      `/api/projects/${projectId}/issues/search?orWaitingOnPerson=true`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-    expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toMatch(/orWaitingOnPerson/);
+  it('does not list the same issue under In flight while a person owes it an answer', async () => {
+    const marked = await insertIssue('testing');
+    await openQuestion(marked);
+    const working = await insertIssue('testing');
+    const body = await search('workState=in_flight');
+    expect(body.items.map((i) => i.id)).toEqual([working]);
   });
 
-  it('counts marker holders by status in the buckets, once per issue', async () => {
+  it('counts an issue holding a person’s question once, under Blocked on a person and not under its status’s state', async () => {
     const marked = await insertIssue('testing');
     await openQuestion(marked);
     await openQuestion(marked);
     await insertIssue('testing');
     const body = await search('withBuckets=true');
-    expect(body.buckets?.waitingOnPersonByStatus).toEqual({ testing: 1 });
     expect(body.buckets?.byStatus.testing).toBe(2);
+    expect(body.buckets?.byWorkState).toMatchObject({ in_flight: 1, blocked_on_person: 1 });
   });
 
   it('puts an issue at testing holding a person’s question in the viewer’s Attention', async () => {

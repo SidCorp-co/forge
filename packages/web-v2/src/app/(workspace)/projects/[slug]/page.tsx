@@ -128,7 +128,7 @@ export default function ProjectOverviewPage() {
     anyLimited ? tick : now,
     activeRunnersQ.data?.runners,
   );
-  const donut = statusDonut(health?.statusDistribution);
+  const donut = statusDonut(health?.work);
   const spend = spendByStage(durationsQ.data);
   const schedules = upcomingSchedules(schedulesQ.data);
 
@@ -180,7 +180,7 @@ export default function ProjectOverviewPage() {
           busyRunners={runners.busyCount}
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
-          openIssues={health?.totalActive ?? donut.total}
+          openWork={donut.total}
           spendTodayUsd={health?.spend24hUsd ?? 0}
           inFlightUsd={inFlight}
         />
