@@ -33,7 +33,7 @@ const { classifyError } = await import('../mcp/server.js');
 
 const LONG = 'S3cr3tVal-r5-QZX';
 const SHORT = 'q9z';
-const LEAKS = new RegExp(`${LONG}|${SHORT}`);
+const LEAKS = new RegExp(`${LONG}|${SHORT}|private-tail`);
 const enc = (text: string) => JSON.stringify({ m: text });
 const refusal = (v: string) => `invalid input syntax for type uuid: "${v}"`;
 
@@ -75,6 +75,13 @@ const WRAPPERS: [string, () => Error][] = [
   [
     'another failed query quoted, a parameterless failed query as cause',
     () => new Error(`retry gave up after: ${failedInsert().message}`, { cause: parameterless() }),
+  ],
+  [
+    'a short value quoted right after an anchor, other text after it, its error as cause',
+    () =>
+      new Error(`upstream: malformed array literal: "${SHORT}"private-tail`, {
+        cause: shortRefusal(),
+      }),
   ],
 ];
 

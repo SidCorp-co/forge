@@ -198,13 +198,31 @@ function sealedSpans(text: string, kept: string[], taken: Span[]): Mark[] {
 }
 
 /**
+ * Where the failed-query pattern and the first quoted-value anchor start redacting to the end, read
+ * in the original text with only sealed messages masked, so no value's redaction hides an anchor.
+ */
+function patternSpans(text: string, kept: string[]): Span[] {
+  let masked = text;
+  for (const [from, to] of sealedSpans(text, kept, [])) {
+    masked = `${masked.slice(0, from)}${PRIVATE_USE.repeat(to - from)}${masked.slice(to)}`;
+  }
+  const spans: Span[] = [];
+  const found = [
+    masked.includes('Failed query: ') ? FAILED_QUERY_PARAMS.exec(masked) : null,
+    quotesAValue(masked) ? QUOTED_VALUE.exec(masked) : null,
+  ];
+  for (const m of found) if (m) spans.push([m.index + (m[1] ?? '').length, text.length]);
+  return spans;
+}
+
+/**
  * `text` redacted against `chain`: its bound values found first, in the original text, then each
  * sealed message clear of them held whole, so no pattern reads a sealed message as a raw one.
  */
 function redactText(text: string, chain: ChainReading | null): string {
   if (!chain && !text.includes('Failed query: ') && !quotesAValue(text)) return text;
-  const bound = chain ? boundSpans(text, chain) : [];
   const kept = [...new Set(chain?.sealed ?? [])].sort((a, b) => b.length - a.length);
+  const bound = mergeSpans([...(chain ? boundSpans(text, chain) : []), ...patternSpans(text, kept)]);
   const sealed = sealedSpans(
     text,
     kept,
@@ -223,8 +241,6 @@ function redactText(text: string, chain: ChainReading | null): string {
     at = to;
   }
   out += text.slice(at);
-  out = out.replace(FAILED_QUERY_PARAMS, `$1${held}`);
-  if (quotesAValue(out)) out = out.replace(QUOTED_VALUE, `$1${held}`);
   const token = new RegExp(`${keep}(\\d+)${keep}`, 'g');
   return out.split(held).join(REDACTED).replace(token, (_, i) => kept[Number(i)] ?? '');
 }

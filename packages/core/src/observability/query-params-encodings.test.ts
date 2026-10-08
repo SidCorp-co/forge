@@ -188,10 +188,21 @@ describe('a failed query that bound nothing, beside one that bound values', () =
       'abcdefgh',
       `${failed('abcdefgh').message}: private-tail`,
     ],
+    [
+      'quotes a short value right after an anchor, other text after it',
+      'q9z',
+      'malformed array literal: "q9z"private-tail',
+    ],
+    [
+      'quotes a short value in another refusal, other text after it',
+      'q9z',
+      'invalid input value for enum mood: "q9z", then private-tail',
+    ],
   ])('redacts to the end where the error in hand %s', (_, v, text) => {
     for (const t of [text, json(text), json(json(text))]) {
       const out = redactQueryParams(t, failed(v));
-      expect(out).toMatch(/^Failed query: select/);
+      expect(out.slice(0, 12)).toBe(t.slice(0, 12));
+      expect(out).toContain(REDACTED);
       expect(out).not.toMatch(/cd-other|private-tail|unrelated-secret/);
     }
   });
