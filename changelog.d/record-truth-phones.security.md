@@ -1,0 +1,1 @@
+**A phone number is masked however it was typed.** On a project that scrubs on write, a number split by no-break or thin spaces, dashes or bracketed area codes is stored as [number]; a date with its time stays.
