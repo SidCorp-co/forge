@@ -32,6 +32,7 @@ const DESCRIPTION = [
   'Remember something from this conversation for the project — a fact, a decision, a preference the',
   'person stated — when they ask you to remember it or it is plainly worth keeping.',
   'Give the text and, if useful, a title; where it came from and who said it is stamped for you.',
+  "Name another project's issue key with that project's slug, `<slug> ISS-n`: a bare key is read as this project's.",
   "The note is listed on the project's Memory page, where a person with write access corrects or retires it with a reason.",
 ].join(' ');
 
