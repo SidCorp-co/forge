@@ -1,4 +1,4 @@
-import type { PromoteDraftsAnswer } from "@forge/contracts/requirements";
+import type { PromoteDraftsAnswer, RequirementDecisionsResponse } from "@forge/contracts/requirements";
 import { apiClient } from "@/lib/api/client";
 import type {
   CreateRequirementBody,
@@ -40,6 +40,13 @@ export const requirementsApi = {
   /** Promotes the named draft issues to open, or every linked draft when none is named (FB-93). */
   promoteDrafts: (projectId: string, req: string, issues?: string[]) =>
     apiClient<PromoteDraftsAnswer>(`${one(projectId, req)}/promote`, post(issues ? { issues } : {})),
+  /** Its decisions and those on its issues, with the answers its questions and its issues' questions took. */
+  decisions: (projectId: string, req: string) => apiClient<RequirementDecisionsResponse>(`${one(projectId, req)}/decisions`),
+  /** Links an existing issue as one that delivers it; `adoptPlan` records the issue's plan as written against the current revision. */
+  linkIssue: (projectId: string, req: string, issue: string, adoptPlan: boolean) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/issues`, post({ issue, ...(adoptPlan ? { adoptPlan: true } : {}) })),
+  unlinkIssue: (projectId: string, req: string, issue: string) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/issues/${encodeURIComponent(issue)}`, { method: "DELETE" }),
   /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
   openAssistant: (projectId: string, req: string) =>
     apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),

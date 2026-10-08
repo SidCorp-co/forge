@@ -14,7 +14,11 @@ const item = (over: Partial<ReleaseFeedbackView>): ReleaseFeedbackView => ({
   toldAt: "2026-10-07T08:00:00Z",
   ...over,
 });
-const release = (feedbackAnswered: ReleaseFeedbackView[]) => ({ feedbackAnswered }) as unknown as ReleaseDetail;
+const release = (feedbackAnswered: ReleaseFeedbackView[]) =>
+  ({
+    feedbackAnswered,
+    feedbackToldCounts: Object.fromEntries((["on_ship", "told", "not_told", "before_notices"] as const).map((k) => [k, feedbackAnswered.filter((f) => f.told === k).length])),
+  }) as unknown as ReleaseDetail;
 
 describe("Feedback answered on a release", () => {
   it("renders nothing when the release carries no feedback", () => {
@@ -36,6 +40,14 @@ describe("Feedback answered on a release", () => {
     expect(rows[1]?.textContent).toContain("Reporter was not told");
     expect(rows[2]?.textContent).toContain("told when this release ships");
     expect(rows[3]?.textContent).toContain("an agent");
+    expect(screen.getByTestId("release-feedback-counts").textContent).toBe("1 told · 2 not told · 1 told when it ships");
     expect(screen.queryAllByRole("link").every((a) => a.getAttribute("href")?.includes("/feedback/"))).toBe(true);
+  });
+
+  it("names an item that shipped before release notices existed, and counts it apart", () => {
+    render(<FeedbackAnswered r={release([item({ key: "FB-95", told: "before_notices", toldAt: null }), item({})])} slug="forge" />);
+    const rows = screen.getAllByTestId("release-feedback-row");
+    expect(rows[0]?.textContent).toContain("Shipped before release notices existed: not told");
+    expect(screen.getByTestId("release-feedback-counts").textContent).toBe("1 told · 1 shipped before release notices existed");
   });
 });

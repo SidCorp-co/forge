@@ -17,6 +17,7 @@ import type { CriterionWithVerdict } from '../issues/index.js';
 
 /** One claimed issue as the verification reads it: its verdicts and its merged mark. */
 export interface RosterIssue {
+  id: string;
   key: string;
   criteria: readonly CriterionWithVerdict[];
   /** When the mark was stamped: the time a landing it names was recorded. */
@@ -25,6 +26,8 @@ export interface RosterIssue {
   artifacts: readonly LandingArtifact[] | null;
   /** Linked as the build of a workflow: an approval on it is evidence, never its landing. */
   builds: boolean;
+  /** Artifacts other issues' marks say this issue carries: its landing inherits them. */
+  inherited: ReadonlyArray<{ from: string; mergedAt: string | null; artifact: LandingArtifact }>;
 }
 
 interface Landed {
@@ -66,9 +69,16 @@ export interface DesignLanding {
 }
 
 /** A landing what the provider serves does not carry, or an issue that names nothing it can attest. */
+/** An artifact a mark says another issue's own release ships (`carriedBy`, the carrier's key). */
+export interface CarriedLanding {
+  issue: string;
+  ref: string;
+  carrier: string;
+}
+
 export interface ProviderMismatch {
   issue: string;
-  kind: StorefrontArtifact['kind'] | 'design' | null;
+  kind: StorefrontArtifact['kind'] | 'design' | 'carried' | null;
   /** The workflow, route, page, theme or setting it landed, or the design revision. */
   ref: string | null;
   workflow: string | null;
@@ -85,6 +95,7 @@ export interface Landings {
   themes: ThemeLanding[];
   settings: SettingLanding[];
   design: DesignLanding[];
+  carried: CarriedLanding[];
   /** What a mark names that the provider reports no state for: a table, test rows, a domain. */
   unattested: Array<{ issue: string; ref: string }>;
   unprovable: ProviderMismatch[];
@@ -122,24 +133,54 @@ function verdictWorkflows(issue: RosterIssue): WorkflowLanding[] {
 }
 
 /** What a mark names: its artifacts, else its landing read clause by clause. */
-function markArtifacts(
-  issue: RosterIssue,
-): Array<{ ref: string; artifact: StorefrontArtifact | null; design: boolean; removed: boolean }> {
-  if (issue.artifacts && issue.artifacts.length > 0) {
-    return issue.artifacts.map((a) => ({
-      ref: a.ref,
-      artifact: a.surface === 'design' ? null : storefrontArtifactOf(a.ref),
-      design: a.surface === 'design',
-      removed: a.change === 'removed',
-    }));
-  }
+interface Named {
+  ref: string;
+  artifact: StorefrontArtifact | null;
+  design: boolean;
+  removed: boolean;
+  carriedBy: string | null;
+}
+
+const namedOf = (a: LandingArtifact): Named => ({
+  ref: a.ref,
+  artifact: a.surface === 'design' ? null : storefrontArtifactOf(a.ref),
+  design: a.surface === 'design',
+  removed: a.change === 'removed',
+  carriedBy: a.carriedBy ?? null,
+});
+
+/** What a mark names: its artifacts, else its landing read clause by clause. */
+function markArtifacts(issue: RosterIssue): Named[] {
+  if (issue.artifacts && issue.artifacts.length > 0) return issue.artifacts.map(namedOf);
   const design = designLandingRef(issue.landing);
-  if (design) return [{ ref: design, artifact: null, design: true, removed: false }];
+  if (design) {
+    return [{ ref: design, artifact: null, design: true, removed: false, carriedBy: null }];
+  }
   return storefrontLandingClauses(issue.landing).map((c) => ({
     ...c,
     design: false,
     removed: false,
+    carriedBy: null,
   }));
+}
+
+/** What other issues' marks say this one carries, as its own landings recorded when they were. */
+function inheritedArtifacts(
+  issue: RosterIssue,
+): Array<Named & { landedAt: string | null; inherited: boolean }> {
+  return issue.inherited.flatMap(({ from, mergedAt, artifact }) =>
+    artifact.surface === 'design'
+      ? []
+      : [
+          {
+            ...namedOf(artifact),
+            ref: `${artifact.ref} (carried from ${from})`,
+            carriedBy: null,
+            landedAt: mergedAt,
+            inherited: true,
+          },
+        ],
+  );
 }
 
 function unprovableWhy(issue: RosterIssue, named: string[], label: string): string {
@@ -177,18 +218,32 @@ export function landingsOf(roster: readonly RosterIssue[], label = 'the provider
     themes: [],
     settings: [],
     design: [],
+    carried: [],
     unattested: [],
     unprovable: [],
   };
   for (const issue of roster) {
-    const fromVerdicts = verdictWorkflows(issue);
+    const named = markArtifacts(issue);
+    // a workflow the mark says another issue carries is that issue's to ship, verdict or not
+    const carriedWorkflows = new Set(
+      named.flatMap((n) => (n.carriedBy && n.artifact?.kind === 'workflow' ? [n.artifact.id] : [])),
+    );
+    const fromVerdicts = verdictWorkflows(issue).filter((w) => !carriedWorkflows.has(w.workflowId));
     const seen = new Set(fromVerdicts.map((w) => w.workflowId));
     out.workflows.push(...fromVerdicts);
     let attested = fromVerdicts.length;
-    const named = markArtifacts(issue);
     const designRefs: string[] = [];
     const unattested: string[] = [];
-    for (const { ref, artifact, design, removed } of named) {
+    const own = named.map((n) => ({ ...n, landedAt: issue.mergedAt, inherited: false }));
+    for (const { ref, artifact, design, removed, carriedBy, landedAt, inherited } of [
+      ...own,
+      ...inheritedArtifacts(issue),
+    ]) {
+      if (carriedBy) {
+        out.carried.push({ issue: issue.key, ref, carrier: carriedBy });
+        attested += 1;
+        continue;
+      }
       if (design) {
         designRefs.push(ref);
         continue;
@@ -197,10 +252,11 @@ export function landingsOf(roster: readonly RosterIssue[], label = 'the provider
         unattested.push(ref);
         continue;
       }
-      const base = { issue: issue.key, ref, landedAt: issue.mergedAt, removed };
+      const base = { issue: issue.key, ref, landedAt, removed };
       switch (artifact.kind) {
         case 'workflow':
-          if (seen.has(artifact.id)) break;
+          // another issue's landing it carries is its own landing, judged whatever this one names
+          if (seen.has(artifact.id) && !inherited) break;
           seen.add(artifact.id);
           out.workflows.push({
             ...base,

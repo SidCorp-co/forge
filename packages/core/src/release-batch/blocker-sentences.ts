@@ -91,6 +91,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
+  RELEASE_VERSION_UNDECIDED:
+    'An earlier attempt at this same roster ended without saying whether anything outside Forge carries the version it wore, so the next attempt can neither wear that version again nor take a new one. Say what carries it on that attempt: `POST /api/projects/:projectId/release-batches/:runId/carried` with `{"carried": []}` when nothing does, or each `{"kind": "tag"|"commit"|"artifact"|"notice", "name": "…"}` that does.',
   RELEASE_CRITERIA_UNEARNED:
     'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
   RELEASE_RUNTIME_UNROUTED:
@@ -125,6 +127,7 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
   BATCH_IN_FLIGHT: [],
+  RELEASE_VERSION_UNDECIDED: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_RUNTIME_UNROUTED: [],
   RELEASE_CHECK_UNEVALUATED: [],
@@ -287,6 +290,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
       ` This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`,
     );
   }
+  if (code === 'RELEASE_VERSION_UNDECIDED' && typeof details?.version === 'string') {
+    return undecidedSentence(details);
+  }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;
   }
@@ -303,6 +309,24 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** Names the version, the attempt that went silent and the call that ends the silence (ADR 0011). */
+function undecidedSentence(details: Record<string, unknown>): string {
+  const v = details.version as string;
+  const n = typeof details.attempt === 'number' ? details.attempt : null;
+  const run = typeof details.runId === 'string' ? details.runId : ':runId';
+  const project = typeof details.projectId === 'string' ? details.projectId : ':projectId';
+  const which = n === null ? 'An earlier attempt' : `Attempt ${n}`;
+  return (
+    `${v} was cut for this same roster. ${which} at it (run ${run}) ended without saying whether a ` +
+    `tag, a release commit, a published artifact or a notice outside Forge carries ${v}, so the ` +
+    `next attempt can neither wear ${v} again nor take a new version: wearing it could collide ` +
+    `with what left, and moving past it would burn ${v} on a guess. Say what carries it: ` +
+    `\`POST /api/projects/${project}/release-batches/${run}/carried\` with \`{"carried": []}\` when ` +
+    `nothing does, or each \`{"kind": "tag"|"commit"|"artifact"|"notice", "name": "…"}\` that ` +
+    `does. The next cut then wears ${v}, or takes a new version and names what carries ${v}.`
+  );
 }
 
 const AGREEMENT: readonly (readonly [string, string, string])[] = [

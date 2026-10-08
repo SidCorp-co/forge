@@ -2,7 +2,8 @@
 
 // A feedback item's full page: what the reporter said and the acts a person can take (Overview), the
 // mockups proposed about it (Mockups), and every decision on it (History), as tabs beside the sticky
-// facts rail. The phase, whose turn and what carries it live in the rail only.
+// facts rail. The page leads with the reporter's answer (where it stands, when, the release that
+// shipped it); the phase, whose turn and what carries it live in the rail.
 
 import { Written, WrittenMark } from "@/lib/i18n/written";
 import type { ReactNode } from "react";
@@ -26,6 +27,7 @@ import { useEtaClock, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackItem } from "../hooks";
 import type { FeedbackView } from "../types";
 import { FeedbackActions, Proposals } from "./feedback-actions";
+import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
@@ -138,6 +140,7 @@ export function FeedbackPage({
             }
           >
             <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
+            <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>

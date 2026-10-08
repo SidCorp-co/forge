@@ -1,7 +1,7 @@
 "use client";
 
 // A requirement's full page: a main column for reading and acting, split into six views by tabs
-// (Overview, Criteria, Revisions, Mockups, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
+// (Overview with what is still unclear, Criteria, Revisions, Mockups, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
@@ -20,19 +20,19 @@ import {
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { useEntityDecisions } from "@/features/comments/hooks";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { useRequirement } from "../hooks";
+import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts, RequirementPhoneProgressOf } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
+import { RequirementDecisions } from "./requirement-decisions";
+import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
 import { RequirementBanner } from "./standing-bits";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "activity"] as const;
@@ -53,7 +53,7 @@ function Bullets({ items }: { items: string[] }) {
 
 const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
 
-function Overview({ d, projectId }: { d: RequirementDetail; projectId: string }) {
+function Overview({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
   const t = useCopy();
   const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
   const spec = shown?.spec ?? {};
@@ -75,6 +75,8 @@ function Overview({ d, projectId }: { d: RequirementDetail; projectId: string })
           </details>
         ) : null}
       </section>
+      <UnclearSection questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
+      {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} /> : null}
       {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
         <section>
           <ViewHeading>{t("requirements.overview.servesAndScope")}</ViewHeading>
@@ -197,7 +199,7 @@ export function RequirementPage({
 }) {
   const t = useCopy();
   const q = useRequirement(projectId, reqKey);
-  const decisions = useEntityDecisions(projectId, "requirement", reqKey);
+  const decisions = useRequirementDecisions(projectId, reqKey);
   const proposedAt =
     q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
     q.data?.currentRevision ??
@@ -212,11 +214,11 @@ export function RequirementPage({
         const s = d.standing;
         const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
         const tabs = [
-          { value: "overview" as const, label: t("requirements.tab.overview") },
+          { value: "overview" as const, label: t("requirements.tab.overview"), count: d.unclear || undefined },
           { value: "criteria" as const, label: t("requirements.tab.criteria"), count: s.coverage.length },
           { value: "revisions" as const, label: t("requirements.tab.revisions"), count: d.revisions.length },
           { value: "mockups" as const, label: t("requirements.tab.mockups"), count: mockups.data?.returned },
-          { value: "decisions" as const, label: t("requirements.tab.decisions"), count: decisions.data?.returned },
+          { value: "decisions" as const, label: t("requirements.tab.decisions"), count: decisions.data ? decisions.data.decisions.length + decisions.data.answers.length : undefined },
           { value: "activity" as const, label: t("requirements.tab.activity"), count: d.history.length },
         ];
         return (
@@ -234,14 +236,13 @@ export function RequirementPage({
             <RequirementPhoneProgressOf d={d} slug={slug} projectId={projectId} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
-              {tab === "overview" ? <Overview d={d} projectId={projectId} /> : null}
+              {tab === "overview" ? <Overview d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
               {tab === "decisions" ? (
                 <section data-testid="view-decisions" aria-label={t("requirements.tab.decisions")}>
-                  <ViewHeading>{t("requirements.tab.decisions")}</ViewHeading>
-                  <DecisionsPanel projectId={projectId} scope="requirement" targetRef={d.key} />
+                  <RequirementDecisions projectId={projectId} slug={slug} reqKey={d.key} />
                 </section>
               ) : null}
               {tab === "activity" ? (

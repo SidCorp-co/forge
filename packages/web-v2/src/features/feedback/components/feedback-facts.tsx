@@ -183,6 +183,11 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
               </Link>
             </>
           ) : null}
+          {notice.says.told ? (
+            <span className="block text-12-5 text-muted" data-testid="ship-notice-how">
+              {said(notice.says.told, language)}
+            </span>
+          ) : null}
         </span>
       </Fact>
     );
@@ -191,7 +196,7 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
     <Fact label={t("feedback.fact.reporterTold")} testId="facts-ship-notice">
       <span className="fg-body-sm text-muted" data-testid="ship-notice-not-told">
         <ShippedLine notice={notice} slug={slug} />
-        {said(notice.says.reason, language)}
+        {notice.beforeNotices ? <span data-testid="ship-notice-before">{said(notice.says.reason, language)}</span> : said(notice.says.reason, language)}
       </span>
     </Fact>
   );

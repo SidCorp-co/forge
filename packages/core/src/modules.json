@@ -1189,6 +1189,9 @@
     "issues": {
       "serves": ["REQ-11", "REQ-2"]
     },
+    "memory": {
+      "serves": ["personal-data-flow#pr-memory", "personal-data-flow#ds-memory"]
+    },
     "mockups": {
       "serves": ["REQ-12"]
     },

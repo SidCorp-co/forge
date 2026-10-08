@@ -9,6 +9,62 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.144] - 2026-10-07
+
+A release keeps its version across failed attempts; the list counts releases
+
+### Changed
+
+- **A release keeps its version across attempts.** Re-cutting the same issues reuses the version unless a tag, commit, artifact or notice already carries it, which the page names; each release lists its attempts, and the list counts releases.
+
+## [0.4.0-dev.143] - 2026-10-07
+
+Project memory gets a page: see, correct, retire and date what Forge remembers
+
+### Added
+
+- **A project's memory has its own page.** Each memory shows who wrote it, when, whether anyone checked it and which cited issues or requirements are gone; Correct and Retire take a reason, and the assistant cites memory with its date.
+
+## [0.4.0-dev.142] - 2026-10-07
+
+Feedback reporters hear in their language what shipped, or someone relays it
+
+### Fixed
+
+- **A reporter hears their feedback shipped**: every reporter notice reads in their language; one ship notice per item; untold items owe a relay on Needs you, or, shipped before release notices, read a dated state with "Tell the reporter now".
+
+## [0.4.0-dev.141] - 2026-10-07
+
+Requirements carry open questions and decisions; Decisions log and Roadmap pages
+
+### Added
+
+- **A requirement says what is still unclear**: revisions carry open questions and assumptions; a blocking open question refuses the agree; business answers become requirement decisions; a project Decisions log and a Roadmap page; issues link to requirements from either page.
+
+## [0.4.0-dev.140] - 2026-10-07
+
+A landing can say another issue carries a workflow it touched
+
+### Added
+
+- **A landing artifact can be marked carried by another issue.** Its release reports it carried while the carrier is open and outside the roster, the carrier's release verifies it, and both issues and the release page say so.
+
+## [0.4.0-dev.139] - 2026-10-07
+
+Failed chat turns explain themselves, rewrites keep true answers, rooms add project members
+
+### Fixed
+
+- **A failed chat turn now delivers what it found, and a true answer is never rewritten into a false one.** Failures post reads and draft in the asker's language; rewrites add no claims; Add person lists project members.
+
+## [0.4.0-dev.138] - 2026-10-07
+
+Standing sentences become registry keys, so Vietnamese pages read Vietnamese
+
+### Changed
+
+- **Vietnamese screens now read every standing sentence in Vietnamese.** Core sends each wait, act, rule, blocker and run outcome as a registry key with typed values beside its English; the web renders the key, marking one it lacks.
+
 ## [0.4.0-dev.137] - 2026-10-07
 
 A question waiting on a merge is answered when the merge mark is stamped

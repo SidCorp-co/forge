@@ -102,7 +102,17 @@ const plain =
   () =>
     say(key);
 
+const versionOf = (d: Details): string => (typeof d?.version === 'string' ? d.version : '?');
+
 const READINGS: Record<ReleaseReasonCode, Reading> = {
+  RELEASE_VERSION_UNDECIDED: {
+    title: 'standing.gate.title.versionUndecided',
+    plain: (d) =>
+      say('standing.gate.versionUndecided', {
+        v: versionOf(d),
+        n: numberOf(d?.attempt) ?? 1,
+      }),
+  },
   NO_RELEASE_GATE: { title: 'standing.gate.title.noGate', plain: plain('standing.gate.noGate') },
   RELEASE_TARGET_UNDECLARED: {
     title: 'standing.gate.title.nowhere',
@@ -262,6 +272,10 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
       typeof d?.version === 'string'
         ? say('standing.act.queuedBehind', { v: d.version })
         : say('standing.act.releaseRunning'),
+  },
+  RELEASE_VERSION_UNDECIDED: {
+    by: 'master',
+    act: (d) => say('standing.act.declareCarried', { v: versionOf(d) }),
   },
   RELEASE_CRITERIA_UNEARNED: { by: 'master', act: act('standing.act.judgeCriteria') },
   RELEASE_RUNTIME_UNROUTED: { by: 'admin', act: act('standing.act.productionReadable') },

@@ -149,12 +149,36 @@ export interface SuggestionRefusal {
 }
 
 /** A requirement revision's spec, as ISS-57's revision write takes it. */
+/**
+ * A business question the revision leaves open: who answers it, and whether the agree waits for it
+ * (REQUIREMENT_OPEN_QUESTIONS). Written without `questionId`, core asks it as a question on the
+ * requirement and stores the id; a later revision carries the id to keep the same question.
+ */
+export const requirementOpenQuestionSchema = z.strictObject({
+	question: z.string().trim().min(5).max(2_000),
+	whoAnswers: z.string().trim().min(1).max(200),
+	blocking: z.boolean(),
+	questionId: z.uuid().optional(),
+});
+
+/** Something the revision takes as true without proof: whose it is, and how it will be confirmed. */
+export const requirementAssumptionSchema = z.strictObject({
+	text: z.string().trim().min(5).max(2_000),
+	owner: z.string().trim().min(1).max(200),
+	confirmBy: z.string().trim().min(3).max(1_000),
+});
+
 export const requirementSpecSchema = z.strictObject({
 	goal: z.string().max(20_000).optional(),
 	personas: z.array(z.string().max(500)).max(50).optional(),
 	scopeIn: z.array(z.string().max(2_000)).max(100).optional(),
 	scopeOut: z.array(z.string().max(2_000)).max(100).optional(),
+	openQuestions: z.array(requirementOpenQuestionSchema).max(50).optional(),
+	assumptions: z.array(requirementAssumptionSchema).max(50).optional(),
 });
+
+export const REQUIREMENT_SPEC_CLARITY_SHAPE =
+	"spec.openQuestions?: [{ question, whoAnswers, blocking: boolean, questionId? }] — a blocking one open refuses the agree (REQUIREMENT_OPEN_QUESTIONS); spec.assumptions?: [{ text, owner, confirmBy }]";
 
 export const REQUIREMENT_CRITERION_FORMS = ["statement", "scenario"] as const;
 

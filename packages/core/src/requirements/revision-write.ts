@@ -20,6 +20,7 @@ import {
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import { writtenLangFor } from '../lib/written-lang.js';
+import { withAskedQuestions } from './clarity.js';
 import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
@@ -153,10 +154,16 @@ export async function createRequirementIn(
     })
     .returning({ id: requirements.id });
   if (!row) throw new Error('requirements: the insert returned no row');
+  const asked = await withAskedQuestions(tx, {
+    projectId,
+    requirementId: row.id,
+    spec: specOf(write.spec),
+  });
+  if ('refusals' in asked) return { id: row.id, refusals: asked.refusals };
   await tx.insert(requirementRevisions).values({
     requirementId: row.id,
     revision: 1,
-    spec: specOf(write.spec),
+    spec: asked.spec,
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
@@ -238,6 +245,12 @@ export async function newRevisionIn(
     openRevisionRefusal(await openRevisionOf(tx, requirementId)) ??
     staleBaseRefusal(input.baseRevision, input.head);
   if (refusal) return [refusal];
+  const asked = await withAskedQuestions(tx, {
+    projectId: owner.projectId,
+    requirementId,
+    spec: specOf(write.spec),
+  });
+  if ('refusals' in asked) return asked.refusals;
   const [{ next } = { next: 1 }] = await tx
     .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
     .from(requirementRevisions)
@@ -248,7 +261,7 @@ export async function newRevisionIn(
       revision: next,
       head: input.head,
       author: input.actor,
-      write,
+      write: { ...write, spec: asked.spec },
       landing: input.landing,
       at: new Date(),
     }),

@@ -44,7 +44,7 @@ async function orUnavailable<T>(run: () => Promise<T>): Promise<T> {
 
 const DESCRIPTION =
   `Project memory, the same service \`/api/memory\` serves. Actions: ${ACTIONS.join(' | ')}. ` +
-  '`search` { query, topK?, sourceFilter?, strategy? }: semantic (default, cosine scores), keyword (Postgres FTS — exact identifiers, error codes) or hybrid (RRF fusion; scores are fused ranks). A semantic or hybrid search costs one embedding call (`embedMs`). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. Rows carrying `via` are one-hop neighbours of an issue hit (score 0, context, not matches); a hit with `stale: true` was superseded (`supersededBy`). Hits are point-in-time: verify, then report with `feedback`. ' +
+  '`search` { query, topK?, sourceFilter?, strategy? }: semantic (default, cosine scores), keyword (Postgres FTS — exact identifiers, error codes) or hybrid (RRF fusion; scores are fused ranks). A semantic or hybrid search costs one embedding call (`embedMs`). When the question names an issue key, a status or a count, answer from the tracker (`forge issue …`) and do not search. Rows carrying `via` are one-hop neighbours of an issue hit (score 0, context, not matches); a hit with `stale: true` was superseded (`supersededBy`). Hits are point-in-time: each carries writtenAt, asOf (the date it speaks as of — cite it with that date, never as how things stand now), verifiedAt, and staleRefs naming each issue or requirement it cites that no longer resolves. Verify, then report with `feedback`. ' +
   '`write` { source, sourceRef, textContent, metadata? }: upsert under (projectId, source, sourceRef) — the ref you name is the ref written, and a rewrite REPLACES its body (the old one stays readable at `GET /api/memory/revisions`). Answers {id, embeddedAt, truncated, degraded, nearDuplicateOf?, dedupeScore?}; nearDuplicateOf is advisory — refine that record by writing under its sourceRef. Agent-authored sources (note/knowledge/policy): textContent ≤8192 chars and no fenced code block over 5 lines. ' +
   '`get` { source?, sourceRef?, metadataFilter?, includeArchived?, limit?, offset?, orderBy?, orderDir? }: natural-key lookup, no embedding; includeArchived also answers soft-deleted rows, each carrying archivedAt. ' +
   '`delete` { source, sourceRef }: idempotent, answers {deleted: the number of rows removed}. ' +
@@ -112,6 +112,6 @@ export const forgeMemoryTool: ContextScopedMcpToolFactory = ({ principal }) => (
 
     const input = writeMemoryInputSchema.parse(rest);
     await requireCan(actorFor(principal.userId), 'project.write', projectResource(input.projectId));
-    return runMemoryWrite(input);
+    return runMemoryWrite(input, { writtenBy: principal.userId });
   },
 });

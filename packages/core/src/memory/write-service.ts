@@ -1,6 +1,8 @@
 import type { MemoryRefusalCode } from '@forge/contracts/memory';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { memorySources } from '../db/schema.js';
+import { db } from '../db/client.js';
+import { memories, memorySources } from '../db/schema.js';
 import { refuser } from '../lib/refusal.js';
 import { type IndexResult, indexMemory, MAX_EMBED_CHARS } from './indexer.js';
 
@@ -78,15 +80,59 @@ function assertAgentMemoryQuality(input: WriteMemoryInput): void {
   }
 }
 
-export async function runMemoryWrite(input: WriteMemoryInput): Promise<IndexResult> {
+/**
+ * What a rewrite under an existing ref keeps of the row it replaces: the corrections people made
+ * (MJ-1). A row a person retired is refused, not revived — the upsert would otherwise clear the
+ * retirement and its reason in silence.
+ */
+async function carriedFromExisting(input: WriteMemoryInput): Promise<Record<string, unknown>> {
+  const [row] = await db
+    .select({ metadata: memories.metadata, archivedAt: memories.archivedAt })
+    .from(memories)
+    .where(
+      and(
+        eq(memories.projectId, input.projectId),
+        eq(memories.source, input.source),
+        eq(memories.sourceRef, input.sourceRef),
+      ),
+    )
+    .limit(1);
+  if (!row) return {};
+  const md = (row.metadata ?? {}) as Record<string, unknown>;
+  const retired = md.retired as { at?: unknown; reason?: unknown } | undefined;
+  if (row.archivedAt !== null && retired) {
+    throw refuse(
+      'MEMORY_ALREADY_RETIRED',
+      `${input.source} ${input.sourceRef} was retired by a person at ${String(retired.at)} ("${String(retired.reason)}"); write what is true now under a new sourceRef`,
+      '/sourceRef',
+    );
+  }
+  return Array.isArray(md.corrections) ? { corrections: md.corrections } : {};
+}
+
+/** Who is writing, stamped on the row as `metadata.writtenBy` (MJ-2). */
+interface WriteBy {
+  writtenBy?: string | undefined;
+}
+
+export async function runMemoryWrite(
+  input: WriteMemoryInput,
+  by: WriteBy = {},
+): Promise<IndexResult> {
   assertAgentMemoryQuality(input);
+  const carried = await carriedFromExisting(input);
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...carried,
+    ...(by.writtenBy ? { writtenBy: by.writtenBy } : {}),
+  };
   return indexMemory(
     {
       projectId: input.projectId,
       source: input.source,
       sourceRef: input.sourceRef,
       text: input.textContent,
-      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+      metadata,
     },
     { nearDuplicateProbe: NEAR_DUPLICATE_PROBE_SOURCES.has(input.source) },
   );

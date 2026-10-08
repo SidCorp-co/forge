@@ -277,7 +277,10 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     const both = await said(room.id);
     expect(both).toHaveLength(2);
     expect(both[0]?.content).toContain('forge ["issue","ISS-61"]');
-    expect(both[1]?.content).toContain('đã dừng trước khi làm xong phần còn lại');
+    expect(both[1]?.content).toContain(
+      'forge chưa trả lời xong trong thời gian cho phép của một lượt. (ASSISTANT_TURN_TIMED_OUT)', // i18n-allow: the Vietnamese report under test
+    );
+    expect(both[1]?.content).toContain('forge ["issue","ISS-61"]');
   });
 
   it('a room that may stay silent hears no partial from a turn that only read', async () => {

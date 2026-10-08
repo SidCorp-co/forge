@@ -15,21 +15,21 @@ const changes: ReleaseChanges = {
       count: 1,
       shipsNothing: false,
       issues: ["ISS-1"],
-      artifacts: [{ ref: "screen:/cases", change: "added", issues: ["ISS-1"] }],
+      artifacts: [{ ref: "screen:/cases", change: "added", issues: ["ISS-1"], carriedBy: null }],
     },
     {
       surface: "data",
       count: 1,
       shipsNothing: false,
       issues: ["ISS-2"],
-      artifacts: [{ ref: "table:hop_attention", change: "removed", issues: ["ISS-2"] }],
+      artifacts: [{ ref: "table:hop_attention", change: "removed", issues: ["ISS-2"], carriedBy: null }],
     },
     {
       surface: "design",
       count: 1,
       shipsNothing: true,
       issues: ["ISS-3"],
-      artifacts: [{ ref: "discharge-post-care@rev7", change: "changed", issues: ["ISS-3"] }],
+      artifacts: [{ ref: "discharge-post-care@rev7", change: "changed", issues: ["ISS-3"], carriedBy: null }],
     },
   ],
   risks: [
@@ -73,6 +73,27 @@ describe("What changes", () => {
     const artifact = within(ui).getByTestId("release-artifact");
     expect(artifact.textContent).toContain("screen:/cases");
     expect(artifact.textContent).toContain("Added");
+  });
+
+  it("says an artifact another issue's release ships is carried by it, in both languages", () => {
+    const carried: ReleaseChanges = {
+      ...changes,
+      surfaces: [
+        {
+          surface: "logic",
+          count: 1,
+          shipsNothing: false,
+          issues: ["ISS-54"],
+          artifacts: [
+            { ref: "workflow 193 @999dcf6d: access block", change: "changed", issues: ["ISS-54"], carriedBy: "ISS-110" },
+          ],
+        },
+      ],
+    };
+    render(<WhatChanges changes={carried} slug="hop" />);
+    fireEvent.click(screen.getByTestId("release-surface-toggle"));
+    expect(screen.getByTestId("release-artifact-carried").textContent).toBe("carried by ISS-110");
+    expect(productCopy("vi")("releases.changes.carriedBy", { issue: "ISS-110" })).toBe("phát hành cùng ISS-110"); // i18n-allow: asserts the vi carriage copy
   });
 
   it("says a release of design revisions alone ships nothing", () => {

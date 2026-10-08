@@ -8,6 +8,8 @@ import {
   type ReleaseApprovalView,
   type ReleaseAttemptView,
   type ReleaseContentGroup,
+  type ReleaseContinuation,
+  type ReleaseCutView,
   type ReleaseDetail,
   type ReleaseFeedbackView,
   type ReleaseGateView,
@@ -53,6 +55,10 @@ export interface Part {
   verification: RecordedVerification | null;
   /** The commit a finished release's probes verified live (`metadata.finish.commit`); null before. */
   commit: string | null;
+  /** Every attempt at this release, first first (`release-cuts.ts`); a draft lists those before it. */
+  cuts: ReleaseCutView[];
+  /** Where this version's roster went on under another version; null where it is its release's own. */
+  continuedAs: ReleaseContinuation | null;
 }
 
 export interface Shared {
@@ -220,6 +226,8 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
     openedAt: iso(p.openedAt),
     releasedAt: iso(p.releasedAt),
     at: lastChange(p, s),
+    cutCount: p.cuts.length,
+    continuedAs: p.continuedAs,
   };
 }
 
@@ -335,9 +343,17 @@ export function detailOf(
   const reqIds = new Set(facts.flatMap((i) => (i.requirementId ? [i.requirementId] : [])));
   const latest = p.approvals[0] ?? null;
   const strip = ({ runId: _run, ...view }: ApprovalView): ReleaseApprovalView => view;
+  const toldCount = (told: ReleaseFeedbackView['told']) =>
+    feedbackAnswered.filter((f) => f.told === told).length;
   return {
     ...summary,
     feedbackAnswered,
+    feedbackToldCounts: {
+      on_ship: toldCount('on_ship'),
+      told: toldCount('told'),
+      not_told: toldCount('not_told'),
+      before_notices: toldCount('before_notices'),
+    },
     issues,
     changes: releaseChangesOf(issues.map((i) => ({ key: i.key, reading: i.landing }))),
     requirementsCompleted: [...reqIds]
@@ -356,6 +372,7 @@ export function detailOf(
     approvers: s.approvers,
     approvalRequired: s.required,
     attempts: p.attempts.map(attemptView),
+    cuts: p.cuts,
     production,
     verifiedBy,
     head:

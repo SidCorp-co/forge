@@ -11,6 +11,10 @@ const PURGE_ARCHIVED_AFTER_DAYS = 90;
 /** ISS-708: grace period after a stale-flag stamp before it becomes archive-eligible. */
 export const STALE_UNCONFIRMED_DAYS = 14;
 
+/** The `metadata.archivedBy` decay writes: unused, or flagged by a release and never confirmed. */
+export const DECAY_UNUSED = 'decay: unused';
+export const DECAY_FLAGGED = `decay: flagged stale ${STALE_UNCONFIRMED_DAYS}+ days and never confirmed after`;
+
 // UTC arithmetic — setDate() math is local-time/DST-dependent and the
 // compared columns are timestamptz.
 function daysAgo(days: number): Date {
@@ -30,30 +34,37 @@ interface DecayResult {
 export async function runMemoryDecay(): Promise<DecayResult> {
   const t0 = Date.now();
 
+  // A confirmed verification (last_verified_at, ISS-603) counts as activity: an agent just proved
+  // the row correct, so it must not be archived as "unused" even with a low retrieval count.
+  const unused = sql`(
+    (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgoParam(PRUNE_ZERO_RETRIEVAL_DAYS)})
+    OR
+    (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgoParam(PRUNE_LOW_RETRIEVAL_DAYS)})
+  )`;
+  const flaggedUnconfirmed = sql`(
+    ${memories.metadata}->>'staleSince' IS NOT NULL
+    AND (${memories.metadata}->>'staleSince')::timestamptz < ${daysAgoParam(STALE_UNCONFIRMED_DAYS)}
+    AND (
+      ${memories.lastVerifiedAt} IS NULL
+      OR ${memories.lastVerifiedAt} < (${memories.metadata}->>'staleSince')::timestamptz
+    )
+  )`;
+
+  // MJ-3: the rule that archived a row is written on it, so the Memory page's Retired list says
+  // why rather than the row vanishing from every read in silence.
   const archivedRows = await db
     .update(memories)
-    .set({ archivedAt: sql`now()` })
+    .set({
+      archivedAt: sql`now()`,
+      metadata: sql`${memories.metadata} || jsonb_build_object('archivedBy', CASE
+        WHEN ${flaggedUnconfirmed} THEN ${DECAY_FLAGGED}::text || COALESCE(' ' || (${memories.metadata}->>'supersededBy'), '')
+        ELSE ${DECAY_UNUSED}::text END)`,
+    })
     .where(
       and(
         isNull(memories.archivedAt),
         inArray(memories.source, DECAY_SOURCES),
-        // A confirmed verification (last_verified_at, ISS-603) counts as
-        // activity: an agent just proved the row correct, so it must not be
-        // archived as "unused" even with a low retrieval count.
-        sql`(
-          (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgoParam(PRUNE_ZERO_RETRIEVAL_DAYS)})
-          OR
-          (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgoParam(PRUNE_LOW_RETRIEVAL_DAYS)})
-          OR
-          (
-            ${memories.metadata}->>'staleSince' IS NOT NULL
-            AND (${memories.metadata}->>'staleSince')::timestamptz < ${daysAgoParam(STALE_UNCONFIRMED_DAYS)}
-            AND (
-              ${memories.lastVerifiedAt} IS NULL
-              OR ${memories.lastVerifiedAt} < (${memories.metadata}->>'staleSince')::timestamptz
-            )
-          )
-        )`,
+        sql`(${unused} OR ${flaggedUnconfirmed})`,
       ),
     );
 

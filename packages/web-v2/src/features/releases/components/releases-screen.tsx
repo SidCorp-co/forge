@@ -60,6 +60,7 @@ const rowOf =
       t("releases.issuesCount", { n: r.issueCount }),
       requirementsOf(r, t),
       r.criteria.total === 0 ? t("releases.noCriteria") : t("releases.criteriaProven", { proven: r.criteria.proven, total: r.criteria.total }),
+      ...(r.cutCount > 1 ? [t("releases.attemptsCount", { n: r.cutCount })] : []),
       ...(r.current ? [t("releases.servingProduction")] : []),
     ],
     state: <StatusBadge family="releaseState" value={r.state} />,

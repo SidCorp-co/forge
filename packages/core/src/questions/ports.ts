@@ -1,6 +1,6 @@
 // What a question needs from the contexts below work: the channel gate it may decide, the door a
-// person answered through, the conversation turn that asked it, and the masters to wake. The
-// composition root provides them at boot.
+// person answered through, the conversation turn that asked it, and the requirement or contract it
+// is about. The composition root provides them at boot.
 
 import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { Context } from 'hono';
@@ -33,6 +33,10 @@ interface QuestionPorts {
   doorOfRequest: (c: Context<{ Variables: AuthVars }>) => Promise<PersonVia>;
   /** Null when the session ran no conversation turn; `{ meta: null }` when its record of one is unreadable. */
   conversationTurnOf: (metadata: unknown) => { meta: ConversationTurnMeta | null } | null;
+  /** The requirement `ref` (REQ-n or uuid) names in the project, or null when it names none. */
+  requirementIdIn: (tx: Tx, projectId: string, ref: string) => Promise<string | null>;
+  /** Why `contract` is not one the project publishes or consumes; null when it is. */
+  contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
 }
 
 const slot = portSlot<QuestionPorts>('questions', 'provideQuestionPorts');
@@ -42,3 +46,5 @@ const { port } = slot;
 export const decideChannelGate = port('decideChannelGate');
 export const doorOfRequest = port('doorOfRequest');
 export const conversationTurnOf = port('conversationTurnOf');
+export const requirementIdIn = port('requirementIdIn');
+export const contractAboutRefusal = port('contractAboutRefusal');

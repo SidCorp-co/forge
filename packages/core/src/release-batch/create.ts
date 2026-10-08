@@ -130,7 +130,7 @@ async function openClaimedRun(args: {
   const runSpec: OneShotRunSpec = { projectId, kind: 'system', metadata };
   const { run, version } = await db.transaction(async (tx) => {
     const row = await insertOneShotRun(tx, runSpec);
-    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId });
+    const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, issueIds });
     return { run: row, version: cut };
   });
   const claimed = await claimRoster(projectId, issueIds, run.id);

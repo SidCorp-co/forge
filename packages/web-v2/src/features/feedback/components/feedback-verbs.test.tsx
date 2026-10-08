@@ -13,7 +13,7 @@ import { TriageVerbs, snoozeUntil } from "./feedback-verbs";
 
 afterEach(() => vi.unstubAllGlobals());
 
-const CAN = { triage: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: true, snooze: true, message: true, note: true, attach: false };
+const CAN = { triage: true, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: true, snooze: true, message: true, tellShipped: false, note: true, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",
@@ -167,7 +167,7 @@ describe("messages to reporters", () => {
   });
 
   it("marks an internal note as members-only, says it is never sent, and sends it with no preview", async () => {
-    const note = { id: "m1", audience: "internal", text: "Call Ana first.", sentBy: "u1", sentByName: "Dana", sentAgency: "human", sentAt: "2026-10-07T01:00:00.000Z", recipients: [], writtenLang: "en" };
+    const note = { id: "m1", audience: "internal", text: "Call Ana first.", sentBy: "u1", sentByName: "Dana", sentAgency: "human", sentAt: "2026-10-07T01:00:00.000Z", recipients: [], relayed: false, writtenLang: "en" };
     const calls = core((c) => (c.path.endsWith("/messages") ? { body: { feedback: merged } } : undefined));
     renderWithQuery(<Messages projectId="p1" f={view({ messages: [note] as FeedbackView["messages"], reporters: merged.reporters })} />);
     expect(screen.getByTestId("feedback-note")).toHaveTextContent("Internal note · members only");

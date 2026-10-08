@@ -73,6 +73,7 @@ const TOLD: Record<ReleaseFeedbackView["told"], (f: ReleaseFeedbackView, t: Copy
   on_ship: (_f, t) => t("releases.toldOnShip"),
   told: (f, t, stamp) => (f.toldAt ? t("releases.toldAt", { at: stamp(f.toldAt) }) : t("releases.told")),
   not_told: (f, t) => (f.agency === "agent" ? t("releases.notToldAgent") : t("releases.notTold")),
+  before_notices: (_f, t) => t("releases.toldBeforeNotices"),
 };
 
 /** The feedback the release answers: who asked, and whether this release told them. Flush rows, no cards. */
@@ -83,6 +84,12 @@ export function FeedbackAnswered({ r, slug }: { r: ReleaseDetail; slug: string }
   return (
     <section aria-label={t("releases.feedbackAnswered")} data-testid="release-feedback">
       <ViewHeading hint={t("releases.feedbackAnsweredHint")}>{t("releases.feedbackAnswered")}</ViewHeading>
+      <p className="mb-2 text-12-5 text-muted" data-testid="release-feedback-counts">
+        {(["told", "not_told", "before_notices", "on_ship"] as const)
+          .filter((k) => r.feedbackToldCounts[k] > 0)
+          .map((k) => t(`releases.toldCount.${k}`, { n: r.feedbackToldCounts[k] }))
+          .join(" · ")}
+      </p>
       <ul className="border-t border-line-subtle">
         {r.feedbackAnswered.map((f) => (
           <li key={f.key} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13" data-testid="release-feedback-row" data-told={f.told}>

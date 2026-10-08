@@ -19,6 +19,7 @@ import {
   searchMemories,
   touchMemories,
 } from './search.js';
+import { resolveCitations } from './stale-refs.js';
 
 /**
  * Run a memory search. Shared between the `POST /api/memory/search` REST
@@ -85,7 +86,7 @@ interface MemorySearchResult {
   rerankHoldout?: true;
   /** True when rows carrying `via` were appended after the ranked hits. */
   expanded: boolean;
-  /** How many retrieved hits were moved below the fresh ones because they carry `staleSince`. Absent when none were. */
+  /** How many retrieved hits were moved below the fresh ones because they carry `staleSince` or `staleRefs`. Absent when none were. */
   demotedStale?: number;
 }
 
@@ -98,11 +99,38 @@ interface SearchOutcome {
   demotedStale?: number;
 }
 
+/** Flagged by a release, or naming a record that no longer resolves. */
+const readsStale = (h: MemoryHit) => h.stale || (h.staleRefs?.length ?? 0) > 0;
+
 function demoteStale(hits: MemoryHit[]): { hits: MemoryHit[]; demoted: number } {
-  const fresh = hits.filter((h) => !h.stale);
+  const fresh = hits.filter((h) => !readsStale(h));
   if (fresh.length === hits.length) return { hits, demoted: 0 };
-  const stale = hits.filter((h) => h.stale);
+  const stale = hits.filter(readsStale);
   return { hits: [...fresh, ...stale], demoted: stale.length };
+}
+
+/**
+ * Each hit that names a record no longer resolving carries `staleRefs` (MJ-3). A failed resolution
+ * leaves the hits as they were and says so in the log: the search still answers.
+ */
+async function withStaleRefs(projectId: string, hits: MemoryHit[]): Promise<MemoryHit[]> {
+  if (hits.length === 0) return hits;
+  try {
+    const resolved = await resolveCitations(
+      projectId,
+      hits.map((h) => h.text),
+    );
+    return hits.map((h, i) => {
+      const refs = resolved[i]?.staleRefs ?? [];
+      return refs.length > 0 ? { ...h, staleRefs: refs } : h;
+    });
+  } catch (err) {
+    logger.warn(
+      { err: (err as Error).message, projectId },
+      'memory.search: cited-record resolution failed, hits carry no staleRefs',
+    );
+    return hits;
+  }
 }
 
 function rerankEligible(input: RunMemorySearchInput, flags: RetrievalFlags): boolean {
@@ -209,6 +237,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     hits = hits.slice(0, topK);
   }
 
+  hits = await withStaleRefs(input.projectId, hits);
   const demotion = demoteStale(hits);
   hits = demotion.hits;
   if (demotion.demoted > 0) outcome.demotedStale = demotion.demoted;

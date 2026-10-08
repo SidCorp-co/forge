@@ -284,3 +284,47 @@ export async function editEntityComment(input: {
     };
   });
 }
+
+/**
+ * A decision recorded on a requirement by a write another module owns, in that write's transaction:
+ * the answer to a business question asked of it or about it reaches it as a decision. The answerer
+ * already passed the answer's own permission, so nothing else is checked here.
+ */
+export async function recordRequirementDecisionIn(
+  tx: Tx,
+  input: {
+    projectId: string;
+    requirementId: string;
+    authorId: string;
+    agency: EntityCommentActor['agency'];
+    decision: DecisionFields;
+  },
+): Promise<string> {
+  await lockCommentTarget(tx, input.requirementId);
+  const decision = scrubbedDecision(await dataPolicyOf(input.projectId), input.decision);
+  const body = preparedBody(decisionBody(decision), 'markdown');
+  if (!body.ok)
+    throw new Error(`comments: a recorded decision body was refused: ${body.refusal.detail}`);
+  const [row] = await tx
+    .insert(comments)
+    .values({
+      requirementId: input.requirementId,
+      authorId: input.authorId,
+      body: body.prepared.body,
+      format: body.prepared.format,
+      intent: 'decision',
+      decision,
+    })
+    .returning({ id: comments.id, body: comments.body, decision: comments.decision });
+  if (!row) throw new Error('comments: the recorded decision returned no row');
+  await tx.insert(commentEvents).values({
+    projectId: input.projectId,
+    commentId: row.id,
+    kind: 'posted',
+    body: row.body,
+    decision: row.decision,
+    actorId: input.authorId,
+    actorAgency: input.agency,
+  });
+  return row.id;
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { WrittenMark } from "@/lib/i18n/written";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -16,7 +16,8 @@ function Line({ label, children }: { label: string; children: string }) {
   );
 }
 
-function DecisionRow({ c }: { c: EntityCommentView }) {
+/** One decision; `onTarget` names what it sits on when a list holds more than one target's. */
+export function DecisionRow({ c, onTarget }: { c: EntityCommentView; onTarget?: ReactNode }) {
   const d = c.decision;
   const t = useCopy();
   const time = useTimeFormat();
@@ -40,13 +41,19 @@ function DecisionRow({ c }: { c: EntityCommentView }) {
         <span aria-hidden>·</span>
         <span title={time.dateTime(c.createdAt)}>{time.relative(c.createdAt)}</span>
         <WrittenMark lang={c.writtenLang} />
+        {onTarget ? (
+          <>
+            <span aria-hidden>·</span>
+            {onTarget}
+          </>
+        ) : null}
         {c.edited ? <span title={t("common.decisions.editedAt", { at: time.dateTime(c.updatedAt) })}>· {t("common.decisions.edited")}</span> : null}
       </span>
     </li>
   );
 }
 
-function DecisionComposer({ projectId, scope, targetRef }: { projectId: string; scope: EntityCommentScope; targetRef: string }) {
+export function DecisionComposer({ projectId, scope, targetRef }: { projectId: string; scope: EntityCommentScope; targetRef: string }) {
   const post = usePostEntityComment(projectId, scope, targetRef);
   const [decision, setDecision] = useState("");
   const [reason, setReason] = useState("");

@@ -8,6 +8,7 @@
 import { contentLanguageBlock } from '@forge/contracts/content-language';
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import { eq } from 'drizzle-orm';
+import type { ReplyLanguage } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
@@ -81,6 +82,16 @@ export interface ExternalChatTurnArgs {
    * The question is already a row of this conversation, so it is not appended again.
    */
   questionInHistory?: boolean;
+  /**
+   * The language the person wrote this message in, where it can be told: the turn is told to answer
+   * in it from its first word, beside the message, where a long English prompt cannot outweigh it.
+   */
+  replyLanguage?: ReplyLanguage | null | undefined;
+  /**
+   * An earlier attempt of this same turn — its tool rounds and the reply it wrote — set before this
+   * attempt's message, so a rewrite reads the results the first attempt read instead of a digest.
+   */
+  priorRounds?: readonly ChatMessage[] | undefined;
 }
 
 export interface ExternalChatTurnResult {
@@ -99,6 +110,12 @@ export interface ExternalChatTurnResult {
   }>;
   /** The progress snapshot injected into THIS turn's system prompt (ISS-671), or `null` on a computation failure; callers screen the reply against it rather than re-querying, so the guard never bounces a reply that matched what the model was shown. */
   progress: ProjectProgress | null;
+  /** Where an `error` came from: the provider's stream, or the turn loop itself. */
+  errorSource?: 'provider' | 'loop' | null;
+  /** On `error`, the draft the turn had streamed before it broke. */
+  partial?: string;
+  /** This attempt's tool rounds and final reply, for a rewrite to read. */
+  rounds?: readonly ChatMessage[];
 }
 
 // everything a chat turn's model reads is the conversation (surface `conversation`), the
@@ -178,17 +195,20 @@ async function setUpTurn(
   });
   const history = turn ? [...turn.history, ...turn.pending].slice(-PROVIDER_HISTORY_WINDOW) : [];
   const resolvedImages = await resolveVisionImages(history, images, args.resolveImage);
+  const said: ChatMessage[] = turn
+    ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
+    : [{ role: 'user' as const, content: args.message }];
+  const prior = args.priorRounds ?? [];
   const [system, ...spoken] = applyTurnContext(
     [
       { role: 'system' as const, content: systemPrompt },
-      ...(turn
-        ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
-        : [{ role: 'user' as const, content: args.message }]),
+      ...(prior.length > 0 ? [...said.slice(0, -1), ...prior, ...said.slice(-1)] : said),
     ],
     {
       conversationContext: args.conversationContext,
       pageContext: args.pageContext ?? null,
       speakerContext,
+      replyLanguage: args.replyLanguage ?? null,
     },
   );
   const what = `conversation ${turn?.conversationId ?? 'turn'}`;
@@ -259,6 +279,9 @@ export async function runExternalChatTurn(
     reply: result.finalText,
     terminal: result.terminal,
     error: result.errorMessage,
+    errorSource: result.errorSource,
+    partial: result.partialText,
+    rounds: result.rounds,
     iterations: result.iterations,
     toolCalls: result.toolCalls,
     progress,

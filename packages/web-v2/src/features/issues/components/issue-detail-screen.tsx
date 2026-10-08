@@ -200,6 +200,7 @@ export function IssueDetailScreen({
       canMarkMerged={canWrite}
       park={statusPark}
       moves={moves}
+      requirementKey={standingQ.data ? (standingQ.data.standing.requirement?.key ?? null) : undefined}
     />
   );
 

@@ -23,6 +23,8 @@ interface GatherInput {
   readonly offeredTools?: readonly string[];
   /** The counts the writer's own reads returned (`facts.ts:MessageFacts`). */
   readonly readCounts?: ReadonlySet<number>;
+  /** The dates the memories the writer read speak as of (`facts.ts:MessageFacts`). */
+  readonly memoryDates?: ReadonlySet<string>;
   /** The snapshot the writer's own turn was shown. */
   readonly progress?: ProgressFacts | null;
   /**
@@ -99,6 +101,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     toolCalls: input.toolCalls ?? [],
     offeredTools: input.offeredTools ?? [],
     readCounts: input.readCounts ?? new Set(),
+    memoryDates: input.memoryDates ?? new Set(),
   };
   if (needs.size === 0) return base;
   if (needs.size === 1 && needs.has('issue-rows')) return base;

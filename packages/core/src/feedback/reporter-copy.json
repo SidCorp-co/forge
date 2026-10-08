@@ -1,0 +1,32 @@
+{
+  "en": {
+    "shipped.title": "{key} shipped in {version}: {title}",
+    "shipped.body": "{version} carries the work your feedback asked for.",
+    "verifyAsk.title": "{key} is resolved: {title}",
+    "verifyAsk.body": "The work your feedback asked for has shipped. Verify the fix, or reopen the item saying what it does not answer.",
+    "shipped.titleNoRelease": "{key} shipped: {title}",
+    "shipped.bodyNoRelease": "The work your feedback asked for has shipped.",
+    "declined.title": "{key} was declined: {title}",
+    "declined.body": "It will not be done.\nReason: {reason}",
+    "duplicate.title": "{key}: {title} is already reported as {original}",
+    "duplicate.body": "Your report was merged into {original}. You will hear about it there, and your report stays on record.",
+    "autoVerified.title": "{key} was verified: {title}",
+    "autoVerified.body": "Verified automatically after {days} days with no reply. If the fix does not answer your report, file it again as new feedback.",
+    "message.title": "A message about {key}: {title}"
+  },
+  "vi": {
+    "shipped.title": "{key} đã được phát hành trong bản {version}: {title}",
+    "shipped.body": "Bản {version} có phần việc mà phản hồi của bạn yêu cầu.",
+    "verifyAsk.title": "{key} đã được giải quyết: {title}",
+    "verifyAsk.body": "Phần việc mà phản hồi của bạn yêu cầu đã được phát hành. Hãy xác nhận bản sửa, hoặc mở lại mục này và nói rõ điều gì chưa được giải quyết.",
+    "shipped.titleNoRelease": "{key} đã được phát hành: {title}",
+    "shipped.bodyNoRelease": "Phần việc mà phản hồi của bạn yêu cầu đã được phát hành.",
+    "declined.title": "{key} đã bị từ chối: {title}",
+    "declined.body": "Mục này sẽ không được thực hiện.\nLý do: {reason}",
+    "duplicate.title": "{key}: {title} đã được báo trước đó trong {original}",
+    "duplicate.body": "Báo cáo của bạn đã được gộp vào {original}. Bạn sẽ nhận tin về nó ở đó, và báo cáo của bạn vẫn được lưu lại.",
+    "autoVerified.title": "{key} đã được xác nhận: {title}",
+    "autoVerified.body": "Tự động xác nhận sau {days} ngày không có phản hồi. Nếu bản sửa chưa giải quyết điều bạn báo, hãy gửi lại thành một phản hồi mới.",
+    "message.title": "Tin nhắn về {key}: {title}"
+  }
+}

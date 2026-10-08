@@ -111,10 +111,27 @@ export type EditEntityCommentRequest = z.infer<
 
 export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE}, ${WRITTEN_LANG_SHAPE} } — body or decision, or both; decision only on a decision`;
 
+const ref = z.string().trim().min(1).max(200);
+
+/**
+ * The project's decisions, newest first. `requirement` (REQ-n or uuid) keeps those on the
+ * requirement and on the issues that deliver it; `workflow` (flow or uuid), `issue` (key or uuid)
+ * and `who` (a user uuid) keep those on it or by them; `since` and `until` bound when each was made.
+ */
 export const listDecisionsQuerySchema = z.strictObject({
 	scope: z.enum(COMMENT_SCOPES).optional(),
 	limit: z.coerce.number().int().min(1).max(DECISIONS_LIST_MAX).optional(),
+	requirement: ref.optional(),
+	workflow: ref.optional(),
+	issue: ref.optional(),
+	who: z.uuid().optional(),
+	since: z.iso.date().or(z.iso.datetime()).optional(),
+	until: z.iso.date().or(z.iso.datetime()).optional(),
 });
+
+export type ListDecisionsQuery = z.infer<typeof listDecisionsQuerySchema>;
+
+export const LIST_DECISIONS_QUERY_SHAPE = `scope? (${COMMENT_SCOPES.join(" | ")}), limit? (1..${DECISIONS_LIST_MAX}), requirement? (REQ-n or uuid), workflow? (flow or uuid), issue? (key or uuid), who? (user uuid), since?, until? (an ISO date or date-time)`;
 
 export interface CommentTargetView {
 	scope: CommentScope;

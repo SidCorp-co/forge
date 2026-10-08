@@ -284,7 +284,15 @@ export function releaseChangesOf(
 ): ReleaseChanges {
   const bySurface = new Map<
     LandingSurface,
-    Map<string, { ref: string; change: LandingArtifact['change']; issues: Set<string> }>
+    Map<
+      string,
+      {
+        ref: string;
+        change: LandingArtifact['change'];
+        carriedBy: string | null;
+        issues: Set<string>;
+      }
+    >
   >();
   const gaps: ReleaseChanges['unclassified'] = [];
   const boxRead: string[] = [];
@@ -295,8 +303,14 @@ export function releaseChangesOf(
     if (reading.kind === 'unclassified') continue;
     for (const a of reading.artifacts) {
       const held = bySurface.get(a.surface) ?? new Map();
-      const id = `${a.change}\u0000${a.ref}`;
-      const entry = held.get(id) ?? { ref: a.ref, change: a.change, issues: new Set<string>() };
+      const carriedBy = a.carriedBy ?? null;
+      const id = `${a.change}\u0000${a.ref}\u0000${carriedBy ?? ''}`;
+      const entry = held.get(id) ?? {
+        ref: a.ref,
+        change: a.change,
+        carriedBy,
+        issues: new Set<string>(),
+      };
       entry.issues.add(key);
       held.set(id, entry);
       bySurface.set(a.surface, held);
@@ -306,7 +320,12 @@ export function releaseChangesOf(
     const held = bySurface.get(surface);
     if (!held) return [];
     const artifacts = [...held.values()]
-      .map((e) => ({ ref: e.ref, change: e.change, issues: [...e.issues] }))
+      .map((e) => ({
+        ref: e.ref,
+        change: e.change,
+        issues: [...e.issues],
+        carriedBy: e.carriedBy,
+      }))
       .sort((a, b) => a.ref.localeCompare(b.ref, 'en') || a.change.localeCompare(b.change));
     return [
       {

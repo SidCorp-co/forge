@@ -47,14 +47,15 @@ import { ETA_COPY } from "@/features/forecast/eta-copy";
 import { useEtaClock, useEtaSort, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
-import type { FeedbackSummary } from "../types";
+import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
 import { FeedbackPeek } from "./feedback-peek";
 
 const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
 
-function Funnel({ rows }: { rows: FeedbackSummary[] }) {
+function Funnel({ rows, untold }: { rows: FeedbackSummary[]; untold: FeedbackListResponse["untold"] | undefined }) {
   const t = useCopy();
+  const time = useTimeFormat();
   const language = useInterfaceLanguage();
   const n = (p: string) => rows.filter((r) => r.phase === p).length;
   const total = Math.max(1, ...FUNNEL.map((p) => n(p)));
@@ -86,6 +87,18 @@ function Funnel({ rows }: { rows: FeedbackSummary[] }) {
           nReopened: n("reopened"),
         })}
       </p>
+      {untold && (untold.owed > 0 || untold.beforeNotices > 0) ? (
+        <p className="text-12 text-muted" data-testid="feedback-untold">
+          {[
+            untold.owed > 0 ? t("feedback.funnel.untoldOwed", { n: untold.owed }) : "",
+            untold.beforeNotices > 0
+              ? t("feedback.funnel.untoldBefore", { n: untold.beforeNotices, date: untold.noticesBegan ? time.date(untold.noticesBegan) : "" })
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -236,7 +249,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 </div>
               ) : (
                 <>
-                  <Funnel rows={all} />
+                  <Funnel rows={all} untold={q.data?.untold} />
                   <GroupedList
                     ariaLabel={t("feedback.title")}
                     groups={groups}

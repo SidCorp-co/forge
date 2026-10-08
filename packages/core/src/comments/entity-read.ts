@@ -5,19 +5,20 @@ import type {
   EntityCommentListResponse,
   EntityCommentScope,
   EntityCommentView,
+  ListDecisionsQuery,
 } from '@forge/contracts/comments';
 import { feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { WrittenLang } from '@forge/contracts/written-lang';
-import { and, asc, desc, eq, isNotNull, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, lt, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
-import { activeIssuePrefix, isUuid } from '../issues/index.js';
+import { activeIssuePrefix, isUuid, resolveIssueKeyInProject } from '../issues/index.js';
 import {
   dataPolicyOf,
   type EgressReader,
@@ -235,14 +236,43 @@ async function egressOfScopes(projectId: string, actor: EntityCommentActor, door
 
 const DECISIONS_DEFAULT_LIMIT = 100;
 
+const DAY_MS = 86_400_000;
+
+/** A bound as an instant: a bare date's `until` takes in the whole of that day. */
+function boundAt(value: string, end: boolean): Date {
+  const at = new Date(value);
+  return end && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(at.getTime() + DAY_MS) : at;
+}
+
+/** The narrowing a decisions query names, each ref resolved in the project or refused as not found. */
+async function decisionFilters(projectId: string, query: ListDecisionsQuery) {
+  const requirementId = query.requirement
+    ? (await requirementRowIn(db, projectId, query.requirement)).id
+    : null;
+  const workflowId = query.workflow ? (await workflowIn(db, projectId, query.workflow)).id : null;
+  const issueId = query.issue ? await resolveIssueKeyInProject(query.issue, projectId) : null;
+  return and(
+    query.scope ? isNotNull(ARC_COLUMN[query.scope]) : undefined,
+    requirementId
+      ? or(eq(comments.requirementId, requirementId), eq(issues.requirementId, requirementId))
+      : undefined,
+    workflowId ? eq(comments.workflowId, workflowId) : undefined,
+    issueId ? eq(comments.issueId, issueId) : undefined,
+    query.who ? eq(comments.authorId, query.who) : undefined,
+    query.since ? gte(comments.createdAt, boundAt(query.since, false)) : undefined,
+    query.until ? lt(comments.createdAt, boundAt(query.until, true)) : undefined,
+  );
+}
+
 export async function listDecisionsAs(
   actor: EntityCommentActor,
   projectId: string,
-  query: { scope?: CommentScope | undefined; limit?: number | undefined } = {},
+  query: ListDecisionsQuery = {},
   door: ReadDoor = {},
 ): Promise<DecisionListResponse> {
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const limit = query.limit ?? DECISIONS_DEFAULT_LIMIT;
+  const narrowed = await decisionFilters(projectId, query);
   const inProject = or(
     eq(issues.projectId, projectId),
     eq(requirements.projectId, projectId),
@@ -266,13 +296,7 @@ export async function listDecisionsAs(
     .leftJoin(requirements, eq(comments.requirementId, requirements.id))
     .leftJoin(projectWorkflows, eq(comments.workflowId, projectWorkflows.id))
     .leftJoin(feedback, eq(comments.feedbackId, feedback.id))
-    .where(
-      and(
-        eq(comments.intent, 'decision'),
-        inProject,
-        query.scope ? isNotNull(ARC_COLUMN[query.scope]) : undefined,
-      ),
-    )
+    .where(and(eq(comments.intent, 'decision'), inProject, narrowed))
     .orderBy(desc(comments.createdAt), desc(comments.id))
     .limit(limit);
   const [authors, prefix, egress] = await Promise.all([

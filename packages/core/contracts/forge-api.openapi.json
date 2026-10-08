@@ -707,6 +707,13 @@
                   "targetRef": {
                     "maxLength": 500,
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -3267,6 +3274,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }
@@ -6825,6 +6839,44 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "about": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "requirement": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "requirement"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "contract": {
+                            "pattern": "^[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "contract"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "agentSessionId": {
                     "type": "string"
                   },
@@ -10580,6 +10632,13 @@
                     "x-forge-refinements": [
                       "`workState` names no field to write"
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "type": "object",
@@ -11033,6 +11092,13 @@
                   "parentId": {
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -11787,6 +11853,11 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "carriedBy": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "change": {
                           "enum": [
                             "added",
@@ -11947,6 +12018,11 @@
                     "items": {
                       "additionalProperties": false,
                       "properties": {
+                        "carriedBy": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
                         "change": {
                           "enum": [
                             "added",
@@ -14069,6 +14145,94 @@
         ]
       }
     },
+    "/api/memory/entries": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sources",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "enum": [
+                "live",
+                "stale",
+                "retired"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "query"
+        ]
+      }
+    },
     "/api/memory/feedback": {
       "post": {
         "requestBody": {
@@ -14307,6 +14471,146 @@
         ],
         "x-forge-validated": [
           "json"
+        ]
+      }
+    },
+    "/api/memory/{memoryId}/correct": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memoryId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "text": {
+                    "maxLength": 100000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "text",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "json",
+          "param",
+          "query"
+        ]
+      }
+    },
+    "/api/memory/{memoryId}/retire": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memoryId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "maxLength": 1000,
+                    "minLength": 3,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "json",
+          "param",
+          "query"
         ]
       }
     },
@@ -18333,9 +18637,72 @@
                   "spec": {
                     "additionalProperties": false,
                     "properties": {
+                      "assumptions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "confirmBy": {
+                              "maxLength": 1000,
+                              "minLength": 3,
+                              "type": "string"
+                            },
+                            "owner": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "text": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "owner",
+                            "confirmBy"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
                       "goal": {
                         "maxLength": 20000,
                         "type": "string"
+                      },
+                      "openQuestions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blocking": {
+                              "type": "boolean"
+                            },
+                            "question": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            },
+                            "questionId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "whoAnswers": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "question",
+                            "whoAnswers",
+                            "blocking"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
                       },
                       "personas": {
                         "items": {
@@ -18379,6 +18746,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -18878,6 +19252,84 @@
               "minimum": 1,
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "requirement",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workflow",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "issue",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "who",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$",
+                  "type": "string"
+                },
+                {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -19239,6 +19691,13 @@
                   "workflow": {
                     "maxLength": 200,
                     "minLength": 1,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -20039,6 +20498,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -20265,6 +20731,13 @@
                       "html"
                     ],
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "type": "object"
@@ -20332,8 +20805,18 @@
                     ],
                     "type": "string"
                   },
+                  "relayed": {
+                    "type": "boolean"
+                  },
                   "text": {
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -20406,8 +20889,18 @@
                     ],
                     "type": "string"
                   },
+                  "relayed": {
+                    "type": "boolean"
+                  },
                   "text": {
                     "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -20780,6 +21273,63 @@
                   "until",
                   "reason"
                 ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/feedback/{fb}/tell-shipped": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fb",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {},
                 "type": "object"
               }
             }
@@ -22189,6 +22739,13 @@
                   "title": {
                     "maxLength": 500,
                     "minLength": 1,
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
                     "type": "string"
                   }
                 },
@@ -25756,9 +26313,72 @@
                   "spec": {
                     "additionalProperties": false,
                     "properties": {
+                      "assumptions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "confirmBy": {
+                              "maxLength": 1000,
+                              "minLength": 3,
+                              "type": "string"
+                            },
+                            "owner": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "text": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "owner",
+                            "confirmBy"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
                       "goal": {
                         "maxLength": 20000,
                         "type": "string"
+                      },
+                      "openQuestions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blocking": {
+                              "type": "boolean"
+                            },
+                            "question": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            },
+                            "questionId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "whoAnswers": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "question",
+                            "whoAnswers",
+                            "blocking"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
                       },
                       "personas": {
                         "items": {
@@ -25802,6 +26422,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -26332,6 +26959,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -26556,6 +27190,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }
@@ -26822,6 +27463,50 @@
         ],
         "x-forge-validated": [
           "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/requirements/{req}/decisions": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "req",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
           "param"
         ]
       }
@@ -27325,9 +28010,72 @@
                   "spec": {
                     "additionalProperties": false,
                     "properties": {
+                      "assumptions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "confirmBy": {
+                              "maxLength": 1000,
+                              "minLength": 3,
+                              "type": "string"
+                            },
+                            "owner": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "text": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "owner",
+                            "confirmBy"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
                       "goal": {
                         "maxLength": 20000,
                         "type": "string"
+                      },
+                      "openQuestions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blocking": {
+                              "type": "boolean"
+                            },
+                            "question": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            },
+                            "questionId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "whoAnswers": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "question",
+                            "whoAnswers",
+                            "blocking"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
                       },
                       "personas": {
                         "items": {
@@ -27366,6 +28114,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -27487,9 +28242,72 @@
                   "spec": {
                     "additionalProperties": false,
                     "properties": {
+                      "assumptions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "confirmBy": {
+                              "maxLength": 1000,
+                              "minLength": 3,
+                              "type": "string"
+                            },
+                            "owner": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "text": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "text",
+                            "owner",
+                            "confirmBy"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
+                      },
                       "goal": {
                         "maxLength": 20000,
                         "type": "string"
+                      },
+                      "openQuestions": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "blocking": {
+                              "type": "boolean"
+                            },
+                            "question": {
+                              "maxLength": 2000,
+                              "minLength": 5,
+                              "type": "string"
+                            },
+                            "questionId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            "whoAnswers": {
+                              "maxLength": 200,
+                              "minLength": 1,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "question",
+                            "whoAnswers",
+                            "blocking"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 50,
+                        "type": "array"
                       },
                       "personas": {
                         "items": {
@@ -27528,6 +28346,13 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -29802,6 +30627,13 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
+                    ],
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -30026,6 +30858,13 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "writtenLang": {
+                    "enum": [
+                      "en",
+                      "vi"
                     ],
                     "type": "string"
                   }
@@ -32721,6 +33560,34 @@
                     ],
                     "type": "object"
                   },
+                  "carried": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "tag",
+                            "commit",
+                            "artifact",
+                            "notice"
+                          ],
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 300,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  },
                   "promotedRoster": {
                     "enum": [
                       "hold",
@@ -32891,6 +33758,95 @@
           "content": {
             "application/json": {
               "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{projectId}/release-batches/{runId}/carried": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "runId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "carried": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "tag",
+                            "commit",
+                            "artifact",
+                            "notice"
+                          ],
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 300,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 50,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "carried"
+                ],
+                "type": "object"
+              }
             }
           },
           "required": true
@@ -33564,6 +34520,44 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "about": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "requirement": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "requirement"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "contract": {
+                            "pattern": "^[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "contract"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "assumed": {
                     "additionalProperties": {},
                     "propertyNames": {

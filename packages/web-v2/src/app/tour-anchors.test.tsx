@@ -24,9 +24,9 @@ vi.mock("next/navigation", () => ({
 
 const CHANGES: ReleaseChanges = {
   surfaces: [
-    { surface: "ui", count: 1, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/releases/:v", change: "added", issues: ["ISS-1"] }] },
-    { surface: "data", count: 1, shipsNothing: false, issues: ["ISS-2"], artifacts: [{ ref: "table:issues", change: "changed", issues: ["ISS-2"] }] },
-    { surface: "design", count: 1, shipsNothing: true, issues: ["ISS-3"], artifacts: [{ ref: "issue-to-release@rev10", change: "changed", issues: ["ISS-3"] }] },
+    { surface: "ui", count: 1, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/releases/:v", change: "added", issues: ["ISS-1"], carriedBy: null }] },
+    { surface: "data", count: 1, shipsNothing: false, issues: ["ISS-2"], artifacts: [{ ref: "table:issues", change: "changed", issues: ["ISS-2"], carriedBy: null }] },
+    { surface: "design", count: 1, shipsNothing: true, issues: ["ISS-3"], artifacts: [{ ref: "issue-to-release@rev10", change: "changed", issues: ["ISS-3"], carriedBy: null }] },
   ],
   risks: [{ risk: "data_changed", surface: "data", ref: "table:issues", issues: ["ISS-2"], sentence: "table:issues changes shape" }],
   unclassified: [],

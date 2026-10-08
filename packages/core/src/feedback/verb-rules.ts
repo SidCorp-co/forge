@@ -69,21 +69,31 @@ export function messageRefusal(
   audience: 'reporter' | 'all_reporters' | 'internal',
   text: string,
   reached: number,
+  relayed = false,
 ): FeedbackRefusal | null {
   if (!text.trim()) {
     return refusal(
       'FEEDBACK_MESSAGE_EMPTY',
       '/text',
-      'a message says something; the text is empty.',
+      relayed
+        ? 'a relay records what you told the reporter; the text is empty.'
+        : 'a message says something; the text is empty.',
     );
   }
-  if (audience !== 'internal' && reached === 0) {
+  if (relayed && audience === 'internal') {
+    return refusal(
+      'FEEDBACK_RELAY_NOT_TO_REPORTERS',
+      '/relayed',
+      'a relay records what you told reporters outside Forge, and an internal note is told to nobody; pick reporter or all_reporters, or drop relayed.',
+    );
+  }
+  if (!relayed && audience !== 'internal' && reached === 0) {
     return refusal(
       'FEEDBACK_MESSAGE_NO_RECIPIENT',
       '/audience',
       audience === 'reporter'
-        ? 'this reporter has no bell to tell (an agent, or a reporter Forge cannot reach); write an internal note, or tell them where they listen.'
-        : 'none of the reporters merged into this item has a bell to tell; write an internal note, or tell them where they listen.',
+        ? 'this reporter has no bell to tell (an agent, or a reporter Forge cannot reach); tell them where they listen and send it with relayed: true to record it, or write an internal note.'
+        : 'none of the reporters merged into this item has a bell to tell; tell them where they listen and send it with relayed: true to record it, or write an internal note.',
     );
   }
   return null;

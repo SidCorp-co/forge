@@ -1,1 +1,0 @@
-**Vietnamese screens now read every standing sentence in Vietnamese.** Core sends each wait, act, rule, blocker and run outcome as a registry key with typed values beside its English; the web renders the key, marking one it lacks.

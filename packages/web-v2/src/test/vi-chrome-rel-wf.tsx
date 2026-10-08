@@ -5,6 +5,7 @@ import type { ReactElement } from "react";
 import { ComingNext } from "@/features/releases/components/coming-next";
 import { ReleaseActions } from "@/features/releases/components/release-actions";
 import { ReleaseItemScreen } from "@/features/releases/components/release-item-screen";
+import { ContinuedAs } from "@/features/releases/components/release-attempts";
 import { ChecksPane } from "@/features/releases/components/release-checks";
 import { WhatChanges } from "@/features/releases/components/release-changes";
 import { CriteriaPane, IssuesPane, NotesPane } from "@/features/releases/components/release-panes";
@@ -57,6 +58,8 @@ const summary = (over: Record<string, unknown>) => ({
   openedAt: null,
   releasedAt: null,
   at: AT,
+  cutCount: 0,
+  continuedAs: null,
   attentionGroup: "needs_you",
   waitingOn: you(CUT),
   ...over,
@@ -70,14 +73,18 @@ const draft = summary({
     effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitRest", { n: 13 }) }),
   }),
 });
-const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT });
+const shipped = summary({ key: "0.0.9", version: "0.0.9", state: "shipped", current: true, attentionGroup: "done", waitingOn: nobody, requirements: ["REQ-1"], criteria: { total: 0, proven: 0, failing: 0, open: 0 }, owner: lan, ownerAct: "Cut", openedAt: AT, releasedAt: AT, cutCount: 3 });
+
+const cut = (n: number, version: string, over: Record<string, unknown>) => ({ n, runId: `r${n}`, version, cutAt: AT, cutBy: lan, outcome: "aborted", endedAt: AT, refusal: null, abortReason: null, decidedBy: lan, rule: { decided: "reused", from: null, carriers: [], line: null, taken: false }, carried: [], ...over });
 
 const detail = {
   ...draft,
   feedbackAnswered: [
     { key: "FB-1", title: "Muc", reporter: "Lan", agency: "human", told: "on_ship", toldAt: null },
     { key: "FB-2", title: "Muc", reporter: "Minh", agency: "agent", told: "not_told", toldAt: null },
+    { key: "FB-3", title: "Muc", reporter: "Lan", agency: "human", told: "before_notices", toldAt: null },
   ],
+  feedbackToldCounts: { on_ship: 1, told: 0, not_told: 1, before_notices: 1 },
   issues: [
     { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
     { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
@@ -86,7 +93,7 @@ const detail = {
   issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent" }] }],
   changes: {
     surfaces: [
-      { surface: "ui", count: 2, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/a", change: "added", issues: ["ISS-1"] }] },
+      { surface: "ui", count: 2, shipsNothing: false, issues: ["ISS-1"], artifacts: [{ ref: "screen:/a", change: "added", issues: ["ISS-1"], carriedBy: null }] },
       { surface: "api", count: 1, shipsNothing: false, issues: ["ISS-1"], artifacts: [] },
       { surface: "design", count: 1, shipsNothing: true, issues: ["ISS-1"], artifacts: [] },
     ],
@@ -120,6 +127,15 @@ const detail = {
   attempts: [
     { id: "t1", stage: "deploy", verdict: "ok", health: "up", commit: "abcdef123", providerRef: null, identity: null, readings: ["doc"], verdictReason: null, account: null, startedAt: AT, settledAt: AT },
     { id: "t2", stage: "verify", verdict: "unverified", health: "down", commit: null, providerRef: null, identity: null, readings: [], verdictReason: null, account: null, startedAt: AT, settledAt: null },
+  ],
+  cutCount: 6,
+  cuts: [
+    cut(1, "0.0.7", { rule: { decided: "unrecorded", from: null, carriers: [], line: null, taken: false }, carried: null, decidedBy: null, outcome: "failed" }),
+    cut(2, "0.0.8", { rule: { decided: "first", from: null, carriers: [], line: null, taken: false }, refusal: { code: "RELEASE_NOT_VERIFIED", text: "Loi" }, abortReason: "ly do", carried: [{ kind: "tag", name: "v0.0.8" }, { kind: "notice", name: "thu" }] }),
+    cut(3, "0.1.0", { rule: { decided: "bumped", from: "0.0.8", carriers: [{ kind: "tag", name: "v0.0.8" }, { kind: "commit", name: "abc" }, { kind: "artifact", name: "goi" }], line: null, taken: false } }),
+    cut(4, "0.1.0", { rule: { decided: "reused", from: "0.1.0", carriers: [], line: null, taken: false } }),
+    cut(5, "0.1.1", { rule: { decided: "bumped", from: "0.1.0", carriers: [], line: null, taken: true } }),
+    cut(6, "0.2.0-dev.1", { rule: { decided: "bumped", from: "0.1.0", carriers: [], line: "0.2.0-dev", taken: false }, outcome: "in_progress", decidedBy: null, endedAt: null, carried: null }),
   ],
   production: { name: null, url: "https://a.vn" },
   head: null,
@@ -155,10 +171,12 @@ export const releaseDetailScreen = (): ReactElement => (
     <ReleaseActions projectId={P} r={{ ...detail, can: { cut: false, decide: false, split: true }, split: { issueIds: ["i1"], rest: 13 } } as never} />
     <IssuesPane r={detail as never} slug="hop" />
     <CriteriaPane r={detail as never} />
-    <ChecksPane r={detail as never} />
+    <ChecksPane r={detail as never} slug="hop" />
+    <ContinuedAs to={{ version: "0.0.9", shipped: true }} slug="hop" />
+    <ContinuedAs to={{ version: "0.0.9", shipped: false }} slug="hop" />
     <NotesPane r={detail as never} slug="hop" />
     <WhatChanges changes={detail.changes as never} slug="hop" />
-    <ChecksPane r={{ ...detail, attempts: [], approvals: [] } as never} />
+    <ChecksPane r={{ ...detail, attempts: [], approvals: [], cuts: [] } as never} slug="hop" />
     <NotesPane r={{ ...detail, notes: { ...detail.notes, sections: [], withoutNotes: [] } } as never} slug="hop" />
   </Seeded>
 );

@@ -1,5 +1,6 @@
 // One declaration of the codes a question write is refused with; core throws them and both doors
 // answer them in the refusal envelope.
+import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
 
 export const QUESTION_REFUSAL_CODES = [
@@ -27,6 +28,9 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_HOLD_NO_ISSUE",
 	"QUESTION_HOLD_REASON_REQUIRED",
 	"QUESTION_HOLD_BLOCKER_UNKNOWN",
+	"QUESTION_ABOUT_UNKNOWN",
+	"QUESTION_ABOUT_NO_REQUIREMENT",
+	"QUESTION_ABOUT_ON_MERGE_WAIT",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
@@ -61,3 +65,37 @@ export type AnswerOutcome =
 
 /** An outcome as the answer resume records it on the answered round, with when. */
 export type AnswerResume = AnswerOutcome & { at: string };
+
+export const QUESTION_ABOUT_KINDS = ["requirement", "contract"] as const;
+export type QuestionAboutKind = (typeof QUESTION_ABOUT_KINDS)[number];
+
+/**
+ * What a question is about, as its asker named it, stored beside the question (`agent_questions.about`).
+ * It is not `requirementId`: that column is the BA clarification link and moves the question to the
+ * requirement's operational surface, while `about` keeps the question where it was asked (its issue,
+ * or no issue at all) and only lists it on the requirement it names, whose page records its answer
+ * as a decision. A contract is `<project>/<contract>`.
+ */
+export type QuestionAbout =
+	| { kind: "requirement"; requirementId: string }
+	| { kind: "contract"; contract: string };
+
+/**
+ * `about` on an ask body. `{ requirement }` names a requirement by key (REQ-n) or uuid; on a question
+ * asked on an issue it may be left out (`{ requirement: null }`), which names the requirement the
+ * issue delivers. `{ contract }` names `<project>/<contract>`, a contract this project publishes or
+ * consumes. Core never reads it from the prompt's prose.
+ */
+export const questionAboutRequestSchema = z.union([
+	z.strictObject({ requirement: z.string().trim().min(1).max(200).nullable() }),
+	z.strictObject({
+		contract: z
+			.string()
+			.trim()
+			.regex(/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/, "a contract reads <project>/<contract>"),
+	}),
+]);
+export type QuestionAboutRequest = z.infer<typeof questionAboutRequestSchema>;
+
+export const QUESTION_ABOUT_SHAPE =
+	"about?: { requirement: 'REQ-n' | uuid | null } | { contract: '<project>/<contract>' } — what the question is about; on an issue, `requirement: null` names the requirement the issue delivers";

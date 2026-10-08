@@ -50,7 +50,14 @@ function useMeta(): (r: ReleaseSummary) => string {
   const time = useTimeFormat();
   return (r) => {
     const at = r.releasedAt ?? r.openedAt;
-    return [label("releaseState", r.state), at ? time.date(at) : null, t("releases.issuesCount", { n: r.issueCount })].filter(Boolean).join(" · ");
+    return [
+      label("releaseState", r.state),
+      at ? time.date(at) : null,
+      t("releases.issuesCount", { n: r.issueCount }),
+      r.cutCount > 1 ? t("releases.attemptsCount", { n: r.cutCount }) : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
   };
 }
 

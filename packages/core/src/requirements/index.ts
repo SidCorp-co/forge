@@ -1,6 +1,8 @@
 export { dropAsDuplicateIn } from './acceptance.js';
 export { latestBaselineIn } from './baselines.js';
+export { requirementStatusesBySeq } from './cited-requirements.js';
 export {
+  contractAboutRefusal,
   provideInterfaceContracts,
   type StaleContractPin,
   staleOnContract,
@@ -15,7 +17,7 @@ export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
 export { changedTracedOf, planDriftOf } from './plan-drift.js';
-export { readRequirementAs, rowIn } from './read.js';
+export { readRequirementAs, requirementIdIn, rowIn } from './read.js';
 export {
   createRequirementIn,
   newRevisionIn,
