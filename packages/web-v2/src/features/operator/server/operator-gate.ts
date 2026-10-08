@@ -1,23 +1,23 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import type { OperatorWhoamiResult } from "../types";
-import { AUTH_COOKIE_NAME, fetchOperatorWhoami } from "./whoami-fetch";
+import { SESSION_ENDED_LOGIN, fetchOperatorWhoami } from "./whoami-fetch";
 
 type OperatorGateDecision = { kind: "redirect"; to: string } | { kind: "render" };
 
 function operatorGateDecision(result: OperatorWhoamiResult): OperatorGateDecision {
-  if (result.kind === "unauthenticated") return { kind: "redirect", to: "/login" };
+  if (result.kind === "session-ended") return { kind: "redirect", to: SESSION_ENDED_LOGIN };
   if (result.kind === "not-admin") return { kind: "redirect", to: "/" };
   return { kind: "render" };
 }
 
 export async function operatorGate(request: NextRequest): Promise<NextResponse> {
-  const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const decision = operatorGateDecision(await fetchOperatorWhoami(token));
+  const decision = operatorGateDecision(await fetchOperatorWhoami(request.headers.get("cookie")));
   if (decision.kind === "render") return NextResponse.next();
 
   const url = request.nextUrl.clone();
-  url.pathname = decision.to;
-  url.search = "";
+  const [pathname, search = ""] = decision.to.split("?");
+  url.pathname = pathname ?? decision.to;
+  url.search = search ? `?${search}` : "";
   return NextResponse.redirect(url);
 }

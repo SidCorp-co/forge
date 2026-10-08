@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
+import { formatApiError } from '@/lib/api/error';
 import { useAuth } from '@/providers/auth-provider';
 import { PasswordMeter } from './components/password-meter';
 import { extractFieldErrors } from './extract-field-errors';
@@ -43,7 +44,7 @@ export function RegisterForm() {
       if (Object.keys(fieldMap).length > 0) {
         setFieldErrors(fieldMap);
       } else {
-        setTopError(err instanceof Error ? err.message : 'Registration failed');
+        setTopError(err instanceof Error ? formatApiError(err) : 'Registration failed');
       }
     } finally {
       setLoading(false);

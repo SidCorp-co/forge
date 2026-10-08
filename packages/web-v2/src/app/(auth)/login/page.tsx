@@ -9,6 +9,7 @@ interface LoginPageProps {
     registered?: string;
     email?: string;
     oauth_error?: string;
+    session?: string;
   }>;
 }
 
@@ -56,7 +57,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       )}
 
       <SocialLogin redirectTo="/" />
-      <LoginForm presetEmail={presetEmail} />
+      <LoginForm presetEmail={presetEmail} sessionEnded={sp.session === 'ended'} />
     </AuthShell>
   );
 }

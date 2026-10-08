@@ -24,5 +24,6 @@ export type OperatorWhoamiResult =
   | { kind: "admin"; email: string }
   | { kind: "not-admin" }
   | { kind: "unverified" }
-  | { kind: "unauthenticated" }
+  | { kind: "session-ended" }
+  | { kind: "undetermined" }
   | { kind: "error"; message: string };

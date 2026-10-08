@@ -34,6 +34,12 @@ describe("a session that ended", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
 
+  it("shows the same line when a server-side gate sent the person here", async () => {
+    fakeCore((c) => (c.path === "/auth/me" ? { status: 401, body: { code: "UNAUTHENTICATED", message: "no session" } } : undefined));
+    render(<AuthProvider><LoginForm sessionEnded /></AuthProvider>);
+    expect(await screen.findByRole("status")).toHaveTextContent("Your session ended. Please sign in again.");
+  });
+
   it("signs a signed-in person out when any later request is answered session-ended", async () => {
     let ended = false;
     fakeCore((c) => {
