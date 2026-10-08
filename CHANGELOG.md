@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.209] - 2026-10-08
+
+Scheduled scripts fire on SQL-written due times and report their own failures
+
+### Fixed
+
+- **An Agent session can no longer lift its own hold on a chat's writes.** Its token is never taken for its box's, it cannot rewrite where it answers, and a session started from a room is always held.
+- **A schedule that ran and failed now says why.** Run now answers SCHEDULE_RUN_FAILED with the script's own error, not "session-failed"; ctx.notify names what it was given; a due time SQL wrote now fires on the tick.
+
 ## [0.4.0-dev.208] - 2026-10-08
 
 Assistant prose dates read like the Requirements list; Computation copy names server sandbox
