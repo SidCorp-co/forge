@@ -8,3 +8,5 @@ export { provideReportsPorts, type ReportAsker } from './ports.js';
 export { readReportRun, runReport } from './runs.js';
 export { messageShareSource } from './share-source.js';
 export { sweepExpiredReportRuns } from './sweep.js';
+export { templateOutputSubject, templateShareSource } from './template-share-source.js';
+export { checkTemplateNarrative, listReportTemplates, runTemplate } from './templates.js';

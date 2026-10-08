@@ -276,7 +276,21 @@ ruling and is not registered.
   `forge_template` (run a template) and, in Phase C, `forge_compute` (run an execution) join
   `CHAT_REPORT_TOOLS` in `packages/core/src/mcp/chat-report-tools.ts` and reach the
   assistant through `provideChatTools`. The assistant's turn loop, prompt composer and providers
-  are unchanged; the system prompt gains one guide entry saying when to answer with a block.
+  are unchanged; the system prompt gains one guide entry saying when to answer with a block, as
+  text in `packages/core/src/assistant/prompt/base.ts:BASE_LAYER` (prompt text, not logic).
+- **A template run.** `forge_template` (`packages/core/src/reports/templates.ts:runTemplate`)
+  runs each of the template's queries as the asker through `runReport`, so every figure is a
+  stored run, draws the layout over their frames and answers the slots empty with their guidance.
+  A block its frame cannot fill (a `kpi` or `timeline` over no rows) is named in `notDrawn`, never
+  dropped quietly. A second call with `runIds` and `narrative` is
+  `checkTemplateNarrative`: the runs must be the template's own queries in its order, and a slot
+  over its words or stating a number no run returned is refused by name. Agent mode reaches both
+  over `POST /api/projects/:id/report-templates/:templateId/runs` and `.../narrative`.
+- **Sharing a template output.** The `template-output` subject is `<templateId>:<runId>,<runId>`
+  (`reports/template-share-source.ts`); each run is read again as the creator. The narrative is
+  held nowhere a share can reach before B3 stores a `ReportDocument`, so a shared output carries
+  its blocks and runs with every slot empty. Saving and scheduling a template run through
+  `status_reports` is B3 and needs its migration.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts`) gains the turn's
   runs and attached blocks. A new rule, `figures-grounded`, refuses a reply whose prose states a
   count, percentage, date or range that neither an attached block nor a run read this turn holds,

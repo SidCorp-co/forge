@@ -6,6 +6,7 @@ import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js
 import { attachVisualBlock } from './blocks.js';
 import { reportsPorts } from './ports.js';
 import { refuse, runReport } from './runs.js';
+import { checkTemplateNarrative, listReportTemplates, runTemplate } from './templates.js';
 
 // The chat's two report tools, composed into the assistant's allowlist by the process entry
 // (`mcp/chat-report-tools.ts`), so no assistant file names them: forge_report reads, forge_show
@@ -83,6 +84,74 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
       projectId,
       raw: block,
       asker: { userId: ctx.principal.userId, agency: principalAgency(ctx.principal) },
+    });
+  },
+});
+
+const templateInput = z.strictObject({
+  projectId: z.uuid(),
+  templateId: z.string().min(1).max(64).describe('a template id, as listed in this description'),
+  params: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("the template's params; unknown names are refused"),
+  runIds: z
+    .array(z.string().min(1).max(64))
+    .max(12)
+    .optional()
+    .describe(
+      "with narrative: the run of each of the template's queries, in order, as the first call returned them",
+    ),
+  narrative: z
+    .strictObject({
+      summary: z.string().optional(),
+      risks: z.string().optional(),
+      recommendations: z.string().optional(),
+    })
+    .optional()
+    .describe('your slots, to be checked against those runs before you state them'),
+});
+
+export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_template',
+  reach: 'project',
+  route: '/api/projects',
+  grant: 'projects:read',
+  description: `Runs a report template as the asker: ${listReportTemplates()
+    .map(
+      (t) => `${t.id} (${t.title}${t.params.length > 0 ? `; params ${t.params.join(', ')}` : ''})`,
+    )
+    .join(
+      '; ',
+    )}. Answers { document: { runs, blocks }, slots, notDrawn } and keeps each run 30 days. Draw each block with forge_show (source its run), then write each slot from document.runs alone. Before you state the slots, call again with runIds and narrative: a slot over its words, or a figure no run returned, is refused by name.`,
+  inputSchema: zodToMcpSchema(templateInput),
+  handler: async (args) => {
+    const input = templateInput.parse(args);
+    const userId = ctx.principal.userId;
+    const agency = principalAgency(ctx.principal);
+    if (input.narrative !== undefined) {
+      if (input.runIds === undefined) {
+        throw refuse(
+          'REPORT_TEMPLATE_RUNS_MISMATCH',
+          "a narrative is checked against the runs it cites; give runIds, the run of each of the template's queries in order, as the first call returned them",
+          '/runIds',
+        );
+      }
+      return checkTemplateNarrative({
+        projectId: input.projectId,
+        templateId: input.templateId,
+        runIds: input.runIds,
+        narrative: input.narrative,
+        userId,
+        agency,
+      });
+    }
+    return runTemplate({
+      projectId: input.projectId,
+      templateId: input.templateId,
+      params: input.params,
+      asker: { userId, agency, access: await loadProjectAccess(input.projectId, userId) },
+      surface: 'chat',
     });
   },
 });
