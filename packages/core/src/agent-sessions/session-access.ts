@@ -1,4 +1,5 @@
-import { eq, sql } from 'drizzle-orm';
+import { CONVERSATION_AGENT_MARKER, readSessionAsker } from '@forge/contracts/agent-sessions';
+import { eq, type SQL, sql } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -54,14 +55,16 @@ export async function ensureSessionRole(
 
 /**
  * Owner-or-admin gate shared by the session-owner mutating blocks: the session
- * owner may act on their own session; project owners/admins may act on any.
- * Sessions with no owner (userId = NULL, e.g. pipeline rows) pass.
+ * owner may act on their own session; project owners/admins may act on any but a
+ * conversation turn's, which is its asker's alone. Sessions with no owner
+ * (userId = NULL, e.g. pipeline rows) pass.
  */
 export function assertSessionOwnerOrAdmin(
-  session: { userId: string | null },
+  session: { userId: string | null; metadata: unknown },
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
+  assertConversationTurnAsker(session, userId);
   if (session.userId && session.userId !== userId && !holds(access, 'project.admin')) {
     throw refuseSession(
       'SESSION_OWNER_FORBIDDEN',
@@ -99,9 +102,32 @@ export function isOwnerPrivateChat(session: ChatSpecies): boolean {
 export const ownerPrivateChatSql = sql`(${agentSessions.kind} = 'chat' AND (${agentSessions.metadata}->>'unattended') IS DISTINCT FROM 'true')`;
 
 /**
+ * The person a conversation turn's session answers, where the session is one (REQ-32 criterion 6):
+ * it ran as them, and its transcript holds the reply before the screen judged it and every tool's
+ * input and output, so its transcript, its live frames and its held reply are theirs alone — no
+ * other member of the room, and no holder of project.admin either. `undefined` for any other
+ * session; null for a turn whose asker cannot be read, which nobody reads.
+ */
+export function conversationTurnAskerOf(session: {
+  metadata: unknown;
+  userId: string | null;
+}): string | null | undefined {
+  const marker = (session.metadata as Record<string, unknown> | null)?.[CONVERSATION_AGENT_MARKER];
+  if (!marker || typeof marker !== 'object') return undefined;
+  return readSessionAsker((marker as { asker?: unknown }).asker)?.userId ?? session.userId ?? null;
+}
+
+/** A conversation turn's session is listed to its asker alone, the reader `conversationTurnAskerOf` names. */
+export function conversationTurnListedTo(viewerId: string): SQL {
+  const marker = sql`${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text`;
+  return sql`(${marker} IS NULL OR coalesce(${marker} -> 'asker' ->> 'userId', ${agentSessions.userId}::text) = ${viewerId})`;
+}
+
+/**
  * Who a session's live frames are for: a project-wide session's project room, or a person's own
  * chat's readers by name — its owner and every holder of project.admin, the people
- * `assertAgentChatOwner` admits — so a frame never reaches a socket the read would refuse.
+ * `assertAgentChatOwner` admits — or a conversation turn's asker alone, so a frame never reaches a
+ * socket the read would refuse.
  */
 export interface SessionAudience {
   projectWide: boolean;
@@ -111,6 +137,8 @@ export interface SessionAudience {
 export async function sessionAudience(
   session: ChatSpecies & { projectId: string; userId: string | null },
 ): Promise<SessionAudience> {
+  const asker = conversationTurnAskerOf(session);
+  if (asker !== undefined) return { projectWide: false, userIds: asker ? [asker] : [] };
   if (!isOwnerPrivateChat(session)) return { projectWide: true, userIds: [] };
   const admins = (await holdersOf('project.admin', [session.projectId])).get(session.projectId);
   const readers = new Set(admins ?? []);
@@ -138,6 +166,7 @@ export function assertAgentChatOwner(
   access: Awaited<ReturnType<typeof loadProjectAccess>>,
   userId: string,
 ) {
+  assertConversationTurnAsker(session, userId);
   if (!isOwnerPrivateChat(session)) return;
   if (session.userId !== userId && !holds(access, 'project.admin')) {
     throw refuseSession(
@@ -145,6 +174,19 @@ export function assertAgentChatOwner(
       "only the conversation's owner or a holder of project.admin acts on another person's agent chat",
     );
   }
+}
+
+/** A conversation turn's session is read and acted on by its asker alone (`conversationTurnAskerOf`). */
+export function assertConversationTurnAsker(
+  session: { metadata: unknown; userId: string | null },
+  userId: string,
+) {
+  const asker = conversationTurnAskerOf(session);
+  if (asker === undefined || (asker !== null && asker === userId)) return;
+  throw refuseSession(
+    'CONVERSATION_TURN_ASKER_ONLY',
+    "a conversation turn's session holds the reply before it was checked and every tool's input; only the person it answered reads it",
+  );
 }
 
 /**

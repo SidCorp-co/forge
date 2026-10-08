@@ -58,6 +58,7 @@ agentSessionProjectReadRoutes.get(
       status,
       issueId,
       privateChatsOf: holds(access, 'project.admin') ? null : userId,
+      viewerId: userId,
       limit: overfetch(limit),
     });
 

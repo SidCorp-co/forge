@@ -54,6 +54,11 @@ const PARTIAL_AFTER_MS = 90_000;
 const CONTINUED_CEILING_MS = 8 * 60 * 1000;
 /** A turn past its abort that has not returned is given up this much later. */
 const HANDLE_GRACE_MS = 30_000;
+/**
+ * How long past its abort and grace a continued turn's delivery is waited on before its window's
+ * record says the rest never settled: the two writes it makes (the message and its record).
+ */
+const CONTINUED_DELIVERY_GRACE_MS = 30_000;
 /** The turn's token outlives the turn's own ceiling and a CLI call begun at its edge; it is revoked when the turn ends. */
 const CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
@@ -98,6 +103,8 @@ interface PartialReply {
   cancel: () => void;
   /** Point the work's stream at the entry the rest is recorded under. */
   continueIn: (entry: ContinuedEntry | null) => void;
+  /** The latest the rest can settle: the turn's ceiling from its start, its handle's grace, its delivery's. */
+  continuesUntil: Date;
 }
 
 type Composed = TurnReply | TurnOutcome | PartialReply;
@@ -262,6 +269,9 @@ async function composeWithin(
     continueIn: (entry) => {
       stream.current = entry?.onTurnEvent;
     },
+    continuesUntil: new Date(
+      startedAt + budget.ceilingMs + HANDLE_GRACE_MS + CONTINUED_DELIVERY_GRACE_MS,
+    ),
   };
 }
 
@@ -346,9 +356,12 @@ async function deliverPartial(
   reply.continueIn(entry);
   return {
     ...outcome,
-    continuation: continueInThread(req, transport, conversationId, reply, entry, stage).then(
-      (rest) => withDrops(req, stage, rest),
-    ),
+    continuation: {
+      rest: continueInThread(req, transport, conversationId, reply, entry, stage).then((rest) =>
+        withDrops(req, stage, rest),
+      ),
+      until: reply.continuesUntil,
+    },
   };
 }
 

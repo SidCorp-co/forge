@@ -66,13 +66,32 @@ async function readersOf(conversationId: string): Promise<string[]> {
   return out;
 }
 
-/** An ephemeral frame (lib/ephemeral.ts) for every person who may currently see this room. */
-export async function publishEphemeralToConversationReaders(
+/**
+ * One ephemeral frame (lib/ephemeral.ts) in two views (REQ-32 criterion 6): `forAsker` to the person the turn acts as,
+ * `forRoom` to every other reader. The split is taken here, at the fan-out, so a frame carrying a
+ * draft or a tool's input never reaches another member's socket whatever the web draws. With no
+ * asker named, or an asker who may no longer read the room, every reader is given the room's view.
+ */
+export async function publishEphemeralByViewer(
   conversationId: string,
-  frame: { event: string; data: unknown },
+  frames: {
+    event: string;
+    askerUserId: string | null;
+    forAsker: unknown;
+    /** Null where the room's view did not change since the last frame it was given. */
+    forRoom: unknown | null;
+  },
 ): Promise<void> {
   const userIds = await readersOf(conversationId);
-  if (userIds.length > 0) publishEphemeral({ userIds }, frame);
+  const asker =
+    frames.askerUserId !== null && userIds.includes(frames.askerUserId) ? frames.askerUserId : null;
+  const room = userIds.filter((u) => u !== asker);
+  if (asker !== null) {
+    publishEphemeral({ userIds: [asker] }, { event: frames.event, data: frames.forAsker });
+  }
+  if (room.length > 0 && frames.forRoom !== null) {
+    publishEphemeral({ userIds: room }, { event: frames.event, data: frames.forRoom });
+  }
 }
 
 /** Push to every person who may currently see this room, through the outbox. */

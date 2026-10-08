@@ -445,8 +445,15 @@ export function ConversationThread({
   );
 }
 
+/** Whether an entry carries prose — in the asker's view before the verdict, a draft. */
+function carriesProse(entry: MessageEntry): boolean {
+  return (entry.blocks ?? []).some((b) => b.type === "text" && !!b.text) || (typeof entry.content === "string" && entry.content.trim() !== "");
+}
+
 /**
- * The turn running right now, and — where the door replaced its draft — that fact.
+ * The turn running right now, in the view core sent this reader. The person it answers sees the
+ * draft as it streams, labelled unchecked until the verdict replaces it with the reply or takes it
+ * back; every other reader is sent only that it works and the tools it ran (REQ-32 criterion 6).
  */
 function LiveTurn({
   progress,
@@ -457,14 +464,64 @@ function LiveTurn({
   withdrawn?: string;
   newestAgentId?: string;
 }) {
+  const t = useCopy();
+  if (progress.view === "room") return <RoomLiveTurn progress={progress} />;
+  const draft = !progress.verdict && carriesProse(progress.entry);
   return (
-    <div className="flex flex-col gap-2" data-testid="thread-live-turn">
+    <div className="flex flex-col gap-2" data-testid="thread-live-turn" data-live-view="asker">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {draft && (
+        <p className="fg-caption flex items-center gap-1.5 text-subtle" data-testid="thread-live-draft" title={t("conversations.live.draftWhy")}>
+          <Icon name="alert" size={12} className="flex-none" />
+          {t("conversations.live.draft")}
+        </p>
+      )}
+      {progress.verdict === "withheld" && (
+        <p className="fg-body-sm text-muted" data-testid="thread-live-withheld">
+          {t("conversations.live.withheld")}
+        </p>
+      )}
       <AssistantTurn
         entry={progress.entry}
-        streaming={!progress.replaced}
+        streaming={!progress.replaced && !progress.verdict}
         {...(newestAgentId ? { newestAgentId } : {})}
       />
+    </div>
+  );
+}
+
+/** A turn somebody else asked: that it works, and the tools it ran by name and time — nothing it said. */
+function RoomLiveTurn({ progress }: { progress: ConversationProgressEntry }) {
+  const t = useCopy();
+  const time = useTimeFormat();
+  const tools = progress.tools ?? [];
+  return (
+    <div className="flex flex-col gap-1" data-testid="thread-live-turn" data-live-view="room">
+      <p className="fg-body-sm text-muted">{t("conversations.live.working")}</p>
+      {tools.length > 0 && (
+        <ul className="flex flex-col divide-y divide-line-subtle border-y border-line-subtle">
+          {tools.map((tool) => (
+            <li key={tool.id} className="flex items-center gap-2 py-1" data-testid="thread-live-tool">
+              <Icon
+                name={tool.isError ? "alert" : "dot"}
+                size={12}
+                className="flex-none"
+                style={{ color: tool.isError ? "var(--red-600)" : "var(--fg-subtle)" }}
+              />
+              <span className="flex-1 truncate font-mono" style={{ fontSize: "var(--text-12)" }}>{tool.name}</span>
+              <span className="flex-none font-mono text-subtle" style={{ fontSize: "var(--text-11)" }}>
+                {!tool.done
+                  ? t("conversations.live.toolRunning")
+                  : typeof tool.durationMs === "number"
+                    ? tool.durationMs >= 1000
+                      ? `${time.number(Number((tool.durationMs / 1000).toFixed(1)))}s`
+                      : `${tool.durationMs}ms`
+                    : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
