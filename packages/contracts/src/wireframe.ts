@@ -126,6 +126,28 @@ function boundsRefusal(raw: Record<string, unknown>, at: string): (WireframePars
   return null;
 }
 
+/** An arrow end that is neither { id } nor { x, y }, named with the form it takes: a model's natural
+ *  reading is a bare id string (forge-dev 2026-10-08, REQ-36), which the schema alone answers only
+ *  as "Invalid input". */
+function looseArrowEnd(raw: Record<string, unknown>, at: string): (WireframeParse & { ok: false }) | null {
+  for (const side of ['from', 'to'] as const) {
+    const e = raw[side];
+    if (isRecord(e) && (typeof e.id === 'string' || (isNum(e.x) && isNum(e.y)))) continue;
+    const got =
+      e === undefined
+        ? 'it is missing'
+        : typeof e === 'string'
+          ? `got the bare string ${JSON.stringify(e)}; write { "id": ${JSON.stringify(e)} }`
+          : `got ${JSON.stringify(e)}`;
+    return refuse(
+      'WIREFRAME_INVALID',
+      `${at}.${side}`,
+      `an arrow end is { "id": "<another shape's id>" } or a point { "x": n, "y": n }; ${got}`,
+    );
+  }
+  return null;
+}
+
 /**
  * Parse one document: the typed wireframe, or the first refusal naming its code and where it sits.
  * Order matters — an unknown shape is named as one before its fields are judged, and geometry is judged
@@ -149,6 +171,8 @@ export function parseWireframe(input: unknown): WireframeParse {
       );
     const bounds = boundsRefusal(raw, at);
     if (bounds) return bounds;
+    const loose = raw.type === 'arrow' ? looseArrowEnd(raw, at) : null;
+    if (loose) return loose;
     if (typeof raw.id === 'string') {
       if (seen.has(raw.id))
         return refuse('WIREFRAME_DUPLICATE_ID', `${at}.id`, `"${raw.id}" is already the id of an earlier shape`);

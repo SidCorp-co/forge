@@ -23,7 +23,9 @@ export {
   createRequirementIn,
   criteriaRefusalsAt,
   newRevisionIn,
+  openRevisionOf,
   type RevisionWrite,
+  rewriteRevisionIn,
 } from './revision-write.js';
 export { linkIssueRefusal } from './rules.js';
 export { deliveredAmong, requirementStatesOf, standingsOf } from './standing-read.js';

@@ -13,7 +13,13 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { lockRequirements } from '../requirements/index.js';
 import type { Effect } from './effects.js';
-import { type Row, type SuggestionActor, type SuggestionTarget, viewOf } from './read.js';
+import {
+  openBaseOf,
+  type Row,
+  type SuggestionActor,
+  type SuggestionTarget,
+  viewOf,
+} from './read.js';
 import { baseStaleRefusal } from './rules.js';
 
 export type SuggestionOutcome =
@@ -83,7 +89,8 @@ export async function recordDecision(
   );
 }
 
-/** A suggestion's base names a revision the head has moved past: the refusal names both. */
-export function movedBase(row: Row, target: SuggestionTarget, head: number | null) {
-  return target.type === 'requirement' ? baseStaleRefusal(row.baseRevision, head) : null;
+/** A suggestion's base names a revision the target has moved past: the refusal names both. */
+export async function movedBaseIn(tx: Tx, row: Row, target: SuggestionTarget, head: number | null) {
+  if (target.type !== 'requirement') return null;
+  return baseStaleRefusal(row.baseRevision, head, await openBaseOf(tx, row.kind, target));
 }

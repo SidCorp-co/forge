@@ -56,17 +56,22 @@ export function fingerprintOf(kind: SuggestionKind, payload: unknown): string {
 }
 
 // The base a suggestion names is the target's head when it is written and when it is
-// accepted (compare-and-set); otherwise SUGGESTION_BASE_STALE naming both revisions
+// accepted (compare-and-set); otherwise SUGGESTION_BASE_STALE naming both revisions. A revision_diff
+// on a requirement with an open (draft or proposed) revision builds on that one instead: the BA
+// improves a new requirement's draft (REQ-30 BC-3; owner ruling REQ-34 r2, gate as little as possible)
 export function baseStaleRefusal(
   base: number | null,
   head: number | null,
+  open: { revision: number; state: string } | null = null,
 ): SuggestionRefusal | null {
-  if (base === head) return null;
+  if (base === (open ? open.revision : head)) return null;
   const name = (n: number | null) => (n === null ? 'no revision' : `revision ${n}`);
   return {
     code: 'SUGGESTION_BASE_STALE',
     path: '/baseRevision',
-    detail: `the suggestion is based on ${name(base)}, but the target's head is ${name(head)}; it is stale. Read the head and propose against it.`,
+    detail: open
+      ? `the suggestion is based on ${name(base)}, but revision ${open.revision} is open (${open.state}) and a revision suggestion builds on the open revision; it is stale. Read the requirement and propose against revision ${open.revision}.`
+      : `the suggestion is based on ${name(base)}, but the target's head is ${name(head)}; it is stale. Read the head and propose against it.`,
   };
 }
 

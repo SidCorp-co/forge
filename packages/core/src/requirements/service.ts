@@ -12,19 +12,14 @@ import {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
-import { writtenLangFor } from '../lib/written-lang.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { withAskedQuestions } from './clarity.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
 import {
   createRequirementIn,
   newRevisionIn,
   type RevisionWrite,
-  resetDraftCriteria,
-  specOf,
-  storedWrite,
-  writeCriteria,
+  rewriteRevisionIn,
 } from './revision-write.js';
 import { reasonRefusal, staleBaseRefusal, stateRefusal } from './rules.js';
 import {
@@ -89,33 +84,13 @@ export async function writeRevision(input: {
     const target = await revisionIn(tx, current, input.revision);
     const notDraft = stateRefusal(target.revision, target.state as RevisionState, 'draft');
     if (notDraft) return [notDraft];
-    const stored = storedWrite(await dataPolicyOf(projectId), write);
-    const asked = await withAskedQuestions(tx, {
+    return rewriteRevisionIn(tx, {
       projectId,
       requirementId: row.id,
-      spec: specOf(stored.spec),
+      revision: target.revision,
+      actor,
+      write,
     });
-    if ('refusals' in asked) return asked.refusals;
-    await tx
-      .update(requirementRevisions)
-      .set({
-        spec: asked.spec,
-        tldr: stored.tldr ?? null,
-        changeSummary: stored.changeSummary ?? null,
-        reason: stored.reason.trim(),
-        authorId: actor.userId,
-        authorAgency: actor.agency,
-        writtenLang: await writtenLangFor(
-          actor,
-          projectId,
-          write.writtenLang,
-          tx,
-          [write.reason, write.changeSummary, write.tldr].join('\n'),
-        ),
-      })
-      .where(revisionWhere(row.id, target.revision));
-    const own = await resetDraftCriteria(tx, row.id, target.revision);
-    return writeCriteria(tx, row.id, target.revision, stored.criteria, own);
   });
   return answer(projectId, row.id, actor, refusals);
 }
