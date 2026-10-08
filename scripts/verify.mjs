@@ -5,9 +5,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
+import { undeclared } from './lib/check-inputs.mjs';
 import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
 import { checksFor, entryEligibility, MODES, unlayered } from './lib/verify-layers.mjs';
+import { Memo, memoListing } from './lib/verify-memo-run.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -420,6 +422,18 @@ function assertEveryCheckProvesScan() {
   process.exit(2);
 }
 
+function assertEveryCheckDeclaresItsInputs() {
+  const missing = undeclared(CHECKS);
+  if (missing.length === 0) return;
+  console.error(
+    `verify: ${missing.length} check(s) declare nothing to key a stored verdict on:\n` +
+      missing.map((m) => `  ${m}`).join('\n') +
+      '\nDeclare each in scripts/lib/check-inputs.mjs. Exit 2 — a check the memo has not been told\n' +
+      'about would be filed under a key that names none of what it reads.\n',
+  );
+  process.exit(2);
+}
+
 function verdict(check, status, out) {
   if (status === 2) {
     return {
@@ -457,7 +471,7 @@ function verdict(check, status, out) {
   return { ...check, code: status ?? 1, out };
 }
 
-function runCheck(check, base) {
+function runCheck(check, base, memo) {
   const missing = absentPrerequisites(ROOT, check.needs);
   if (missing.length > 0) {
     return Promise.resolve({
@@ -478,9 +492,11 @@ function runCheck(check, base) {
       why: 'no base revision available — cannot scope the diff',
     });
   }
+  const plan = memo.plan(check);
+  if (plan.kind === 'hit') return Promise.resolve(verdict(check, 0, plan.entry.out));
   const argv = check.json ? [...cmd, '--json'] : cmd;
   return new Promise((done) => {
-    const child = spawn(argv[0], argv.slice(1), { cwd: ROOT });
+    const child = spawn(argv[0], argv.slice(1), { cwd: ROOT, env: plan.env ?? process.env });
     let out = '';
     child.stdout.on('data', (d) => {
       out += d;
@@ -489,15 +505,19 @@ function runCheck(check, base) {
       out += d;
     });
     child.on('error', (err) =>
-      done({
-        ...check,
-        code: 2,
-        condition: 'blocked',
-        out,
-        why: `could not spawn: ${err.message}`,
-      }),
+      done(
+        memo.settle(plan, null, out, {
+          ...check,
+          code: 2,
+          condition: 'blocked',
+          out,
+          why: `could not spawn: ${err.message}`,
+        }),
+      ),
     );
-    child.on('close', (status) => done(verdict(check, status, out)));
+    child.on('close', (status) =>
+      done(memo.settle(plan, status, out, verdict(check, status, out))),
+    );
   });
 }
 
@@ -525,7 +545,7 @@ function groupGate() {
   };
 }
 
-async function runAll(checks, base, width) {
+async function runAll(checks, base, width, memo) {
   const results = new Array(checks.length);
   const tty = process.stdout.isTTY;
   const inGroup = groupGate();
@@ -533,7 +553,7 @@ async function runAll(checks, base, width) {
   let landed = 0;
   const worker = async () => {
     for (let i = next++; i < checks.length; i = next++) {
-      results[i] = await inGroup(checks[i].exclusive, () => runCheck(checks[i], base));
+      results[i] = await inGroup(checks[i].exclusive, () => runCheck(checks[i], base, memo));
       landed += 1;
       if (tty) process.stdout.write(`  … ${landed}/${checks.length} checks${' '.repeat(20)}\r`);
     }
@@ -748,7 +768,7 @@ function reportBlocked(results) {
   }
 }
 
-function report(results, { code: parityCode, said }) {
+function report(results, { code: parityCode, said }, memo) {
   const counted = parityCode === 0 ? said.join('\n').match(CI_PARITY.scanned) : null;
   const parity = parityCode === 0 && !counted ? 2 : parityCode;
   const parityAside =
@@ -771,6 +791,7 @@ function report(results, { code: parityCode, said }) {
     `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label.padEnd(width)}${parityAside}`,
   );
   console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
+  for (const line of memo.summary()) console.log(line);
   reportBlocked(results);
   reportNotRunHere();
 
@@ -786,16 +807,23 @@ function report(results, { code: parityCode, said }) {
 }
 
 const args = process.argv.slice(2);
-const bad = args.filter((a) => !['--ci-parity', '--entry', '--window'].includes(a));
+const bad = args.filter(
+  (a) => !['--ci-parity', '--entry', '--window', '--all', '--memo'].includes(a),
+);
 if (bad.length || (args.includes('--entry') && args.includes('--window'))) {
   console.error(
-    `usage: verify.mjs [--ci-parity | --entry | --window]\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
+    `usage: verify.mjs [--ci-parity | --entry | --window] [--all]  |  --memo\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
   );
   process.exit(2);
+}
+if (args.includes('--memo')) {
+  for (const line of memoListing()) console.log(line);
+  process.exit(0);
 }
 
 assertEveryCheckIsLayered();
 assertEveryCheckProvesScan();
+assertEveryCheckDeclaresItsInputs();
 assertEverySkipIsCovered();
 
 if (args.includes('--ci-parity')) process.exit(ciParity());
@@ -831,7 +859,8 @@ if (mode === 'entry') {
   console.log(`  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`);
 }
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const results = await runAll(checks, base, WIDTH);
+const memo = new Memo({ root: ROOT, args, baseRef: BASE_REF });
+const results = await runAll(checks, base, WIDTH, memo);
 
 const said = [];
-process.exit(report(results, { code: ciParity(true, said), said }));
+process.exit(report(results, { code: ciParity(true, said), said }, memo));
