@@ -398,9 +398,8 @@ ruling and is not registered.
   or a template's `ReportDocument` (`template_id`, `template_version`, `document`; migration 0463),
   immutable either way. `POST /api/projects/:id/status/reports` with `{ templateId, runIds, narrative? }`
   judges the narrative with `checkTemplateNarrative` and keeps the document, so the narrative is
-  stored with who saved it; it lists in the same history as the status reads, exports as Markdown
-  (`GET .../status/reports/:reportId/export`, `reportDocumentMarkdown`: the narrative, then each
-  block's `toText`, with unwritten slots named), and is removed by its author or a project admin. A
+  stored with who saved it; it lists in the same history as the status reads, exports through core
+  (B4, below), and is removed by its author or a project admin. A
   `status_report` schedule with `params.templateId` runs the template for its owner on each fire and
   stores the output with its narrative (`status-reports/narrative.ts:writeFireNarrative`): after the
   runs are stored, one model call is given the template's slot guidance and the frames of this
@@ -412,9 +411,25 @@ ruling and is not registered.
   model and tokens go to `usage_records` (source `api`, `agent-sessions:recordModelCallUsage`). Which
   path ran is kept on the report (`narrative_outcome`, migration 0464; `StatusReportNarrative`:
   `written`, `retried`, or `not_written` with the reason), and a narrative not written leaves the slots
-  empty and the notice says why (`not written: <reason>`). The `status-report` share subject
+  empty and the notice says why (`Summary not written: <reason>`,
+  `packages/contracts/src/status-reports.ts:narrativeOutcomeLine`). The `status-report` share subject
   (`status-reports/share-source.ts`) freezes the kept document, so a shared saved report carries its
   narrative; a kept project status read is refused by name.
+- **Exporting a kept template report (B4).** Core alone builds every export, at
+  `GET .../status/reports/:reportId/export`: Markdown by default (`reportDocumentMarkdown`: the
+  narrative outcome line, the narrative, each block's `toText`, then the slots nobody wrote named with
+  why, `unwrittenNarrativeLine`), or `?format=csv&block=<index>` for one `table` block
+  (`packages/contracts/src/visual-blocks.ts:tableCsv`: RFC 4180, CRLF, a UTF-8 byte order mark, a
+  heading row of the column labels, the rows the table shows; a text cell a spreadsheet would run as a
+  formula opens with an apostrophe). A block that is not a table, or not there, is refused naming the
+  report's table blocks. The page downloads what the route answers: Export, and a Download CSV beside
+  each table and in its Open wide view; it builds no file itself. The saved report shows the same
+  outcome line. A `status` cell reads as its sentence-case label everywhere
+  (`packages/contracts/src/report-queries.ts:stateLabel` over `REPORT_VOCABULARY_LABELS`, the
+  domain's own label maps the web badge reads), so `toText` and the CSV never print a stored token.
+  A kept report and `/s/[token]` print as the report alone: the print block in
+  `packages/web-v2/src/app/globals.css` drops what a page marks `data-print="chrome"`, every action
+  carries `print:hidden`, a table row never breaks across a page and a table prints all its rows.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts:FigureFacts`) carries
   the values of the turn's report runs: every run a result of this turn or a block it drew names by
   id, read from `report_runs` through the `reportRunFrames` message read
@@ -447,7 +462,22 @@ ruling and is not registered.
   screens the reply with those blocks, releases them with a reply that passes, keeps them on a held
   reply, where only its asker reads them under "Show the held reply", and names them under
   `droppedBlocks` when no reply goes out. A turn token whose block cannot wait — an assistant turn's,
-  a session that is gone, another room, a reply already taken — is refused by name.
+  a session that is gone, another room, a reply already taken — is refused by name. A turn that
+  outruns 90 seconds closes its window on a partial reply with `continuing: true` and the bound
+  `continuesUntil` (its ceiling, 30 s for a handle past its abort, 30 s for delivery); the rest's
+  decision and its `droppedBlocks` are written onto that record as `continued`
+  (`packages/core/src/assistant/route-window.ts:recordContinuation`), or `undetermined` at the bound.
+- **A turn's draft and tool calls reach its asker alone.** While a turn runs, the person it acts as
+  is sent the stream in full, the draft labelled "Draft, not yet checked" until the verdict frame
+  swaps it for the reply that went out or takes it back; every other reader is sent only that it
+  works and its tools by name and time. The split is taken at the fan-out
+  (`packages/core/src/assistant/conversation-adapter.ts:publishEphemeralByViewer`), never in the
+  web. An Agent-mode turn's session — transcript, listing, live frames — is its asker's alone, an
+  admin included (`packages/core/src/agent-sessions/session-access.ts:conversationTurnAskerOf`).
+  Standards: Slack's `chat.postEphemeral` shows a message to one user in a shared channel, and
+  Teams streams a bot's reply in one-on-one chats only, a group seeing the finished message.
+  Divergence: a group room here streams to its asker, and shows the others tool names, which Teams
+  shows nobody.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
   never drives a write without the person's confirmation (REQ-30 BC-4).

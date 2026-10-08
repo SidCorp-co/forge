@@ -33,13 +33,25 @@ function RefusedBlock({ kind, why = "does not match its shape", reasons }: { kin
 /** The kinds whose drawing gains from room: each offers to open at full width. A figure row and a status list read the same at any width. */
 const WIDENS: ReadonlySet<VisualBlockKind> = new Set(["table", "chart", "flow", "timeline"]);
 
-function Caption({ title, action }: { title?: string | undefined; action?: React.ReactNode }) {
-  if (!title && !action) return null;
+function Caption({ title, actions }: { title?: string | undefined; actions: React.ReactNode[] }) {
+  if (!title && actions.length === 0) return null;
   return (
     <figcaption className="mb-1 flex min-w-0 items-baseline justify-between gap-3">
       <span className="min-w-0 text-[12.5px] font-semibold text-fg">{title}</span>
-      {action}
+      {actions.length > 0 && <span className="flex flex-none items-baseline gap-3 print:hidden">{actions}</span>}
     </figcaption>
+  );
+}
+
+const ACTION =
+  "flex-none text-[11.5px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+
+/** A table's CSV, as the screen showing the block exports it: offered beside the table and again in its wide view. */
+function CsvAction({ onCsv, testId }: { onCsv: () => void; testId: string }) {
+  return (
+    <button type="button" className={ACTION} onClick={onCsv} data-testid={testId}>
+      Download CSV
+    </button>
   );
 }
 
@@ -47,23 +59,35 @@ function Caption({ title, action }: { title?: string | undefined; action?: React
  * One block's frame: its title, its drawing, its source. Every screen that shows a block, the chat
  * panel, the full-page thread and a share page, draws it through this one frame, so the same content
  * is drawn the same way and only the width differs. A kind that gains from room offers to open the
- * same drawing at full width in the shared dialog.
+ * same drawing at full width in the shared dialog, and a table a kept report exports offers its CSV
+ * in both places. The actions are the screen's, so the print stylesheet drops them.
  */
-function Frame({ kind, title, children }: { kind: VisualBlockKind; title?: string | undefined; children: React.ReactNode }) {
+function Frame({
+  kind,
+  title,
+  onCsv,
+  children,
+}: {
+  kind: VisualBlockKind;
+  title?: string | undefined;
+  onCsv?: (() => void) | undefined;
+  children: React.ReactNode;
+}) {
   const [wide, setWide] = useState(false);
-  const action = WIDENS.has(kind) ? (
-    <button
-      type="button"
-      className="flex-none text-[11.5px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-      onClick={() => setWide(true)}
-      data-testid="visual-block-open-wide"
-    >
-      Open wide
-    </button>
-  ) : undefined;
+  const csv = kind === "table" ? onCsv : undefined;
+  const actions = [
+    ...(csv ? [<CsvAction key="csv" onCsv={csv} testId="visual-block-csv" />] : []),
+    ...(WIDENS.has(kind)
+      ? [
+          <button key="wide" type="button" className={ACTION} onClick={() => setWide(true)} data-testid="visual-block-open-wide">
+            Open wide
+          </button>,
+        ]
+      : []),
+  ];
   return (
     <figure className="m-0 my-1 min-w-0 max-w-full" data-testid="visual-block" data-kind={kind}>
-      <Caption title={title} action={action} />
+      <Caption title={title} actions={actions} />
       {children}
       {wide && (
         <Dialog open onOpenChange={(next) => !next && setWide(false)}>
@@ -71,7 +95,10 @@ function Frame({ kind, title, children }: { kind: VisualBlockKind; title?: strin
             className="flex max-h-[90vh] w-[min(96vw,1200px)] max-w-none flex-col gap-2 overflow-y-auto bg-app p-5 sm:max-w-none"
             data-testid="visual-block-wide"
           >
-            <DialogTitle className="pr-8 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
+            <div className="flex items-baseline gap-3 pr-8">
+              <DialogTitle className="min-w-0 flex-1 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
+              {csv && <CsvAction onCsv={csv} testId="visual-block-wide-csv" />}
+            </div>
             <div className="min-w-0">{children}</div>
           </DialogContent>
         </Dialog>
@@ -86,7 +113,7 @@ function Frame({ kind, title, children }: { kind: VisualBlockKind; title?: strin
  * dropped. A drawn block shows its source: the query and the moment it was read; a block of a run
  * whose query and read time this screen was not given is refused by name, never drawn untraced.
  */
-export function VisualBlockView({ block: raw }: { block: unknown }) {
+export function VisualBlockView({ block: raw, onCsv }: { block: unknown; onCsv?: (() => void) | undefined }) {
   const { sourceFacts } = useVisualBlockContext();
   const kind = kindOf(raw);
   if (!isVisualBlockKind(kind)) return <UnsupportedBlock kind={kind} />;
@@ -105,7 +132,7 @@ export function VisualBlockView({ block: raw }: { block: unknown }) {
     );
   }
   return (
-    <Frame kind={kind} title={block.title}>
+    <Frame kind={kind} title={block.title} onCsv={onCsv}>
       <Renderer block={block as never} />
       <SourceNote source={block.source} facts={facts} />
     </Frame>

@@ -1,7 +1,7 @@
 
 import { isAssistantTurnFailureCode } from "@forge/contracts/conversations";
 import type { OnboardingStatus, QuestionnaireView } from "@forge/contracts/onboarding";
-import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
+import { type CanonicalBlock, type MessageEntry, parseMessages, type RenderBlock } from "@/features/session/types";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { formatDateTime } from "@/lib/i18n/format";
 
@@ -92,19 +92,48 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
+/** A tool the turn ran, as a reader who did not ask is shown it: its name, and its time once done. */
+export interface ConversationRoomTool {
+  id: string;
+  name: string;
+  done: boolean;
+  durationMs?: number;
+  isError?: true;
+}
+
 /**
- * A turn in flight, as the socket carries it.
+ * A turn in flight, as the socket carries it, in the view core chose for this reader (REQ-32
+ * criterion 6). Only the person the turn answers is sent the `asker` view, with the draft and the
+ * tool calls in full; everyone else is sent the `room` view, which carries no text and no tool
+ * input or output — the web does not hide them, it never receives them.
  */
 export interface ConversationProgressEntry {
   conversationId: string;
   /** Monotonic per turn. A frame below the highest already drawn is ignored. */
   rev: number;
-  /** The growing canonical entry, under the id the settled row will carry. */
+  view: "asker" | "room";
+  /** The growing canonical entry, under the id the settled row will carry; empty in the room's view. */
   entry: MessageEntry;
+  /** The room's view of the tools the turn ran. */
+  tools?: ConversationRoomTool[];
+  /** Absent while the text streamed is a draft the reply check has not passed. */
+  verdict?: "checked" | "withheld";
   /**
    * Set when the text that went out is NOT the prose these frames streamed.
    */
   replaced?: { draft: string };
+}
+
+/**
+ * The render blocks a live turn's stage line reads: the entry's own for the asker, and for the room
+ * the tools by name alone — a done one with an empty result, a running one with none.
+ */
+export function liveRenderBlocks(progress: ConversationProgressEntry): RenderBlock[] | undefined {
+  if (progress.view !== "room") return parseMessages([progress.entry])[0]?.blocks;
+  return (progress.tools ?? []).map((tool) => ({
+    type: "tool" as const,
+    tool: { id: tool.id, name: tool.name, ...(tool.done ? { result: "" } : {}) },
+  }));
 }
 
 export interface ConversationWindow {

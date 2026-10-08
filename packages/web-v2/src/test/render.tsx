@@ -20,11 +20,18 @@ export interface Call {
   body: unknown;
 }
 
+/** A reply that is a file rather than JSON: its text as sent and its own headers (a download's type and name). */
+export interface FileReply {
+  status?: number;
+  file: string;
+  headers: Record<string, string>;
+}
+
 /**
  * Stands in for core over `fetch`: each request is recorded and answered by `reply`, which sees the
  * path after `/api`. A reply of `undefined` is a test that did not expect the call, and fails it.
  */
-export function fakeCore(reply: (call: Call) => { status?: number; body: unknown } | typeof HANG | undefined) {
+export function fakeCore(reply: (call: Call) => { status?: number; body: unknown } | FileReply | typeof HANG | undefined) {
   const calls: Call[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://forge.test");
@@ -37,6 +44,7 @@ export function fakeCore(reply: (call: Call) => { status?: number; body: unknown
     const r = reply(call);
     if (!r) throw new Error(`fakeCore: no reply for ${call.method} ${call.path}`);
     if ("hang" in r) return new Promise<Response>(() => {});
+    if ("file" in r) return new Response(r.file, { status: r.status ?? 200, headers: r.headers });
     return new Response(JSON.stringify(r.body), {
       status: r.status ?? 200,
       headers: { "content-type": "application/json" },

@@ -75,10 +75,23 @@ export interface WsFramePayloads extends JobFrames {
 	"comment.created": CommentFrame;
 	"comment.updated": CommentFrame;
 	"comment.deleted": CommentFrame;
+	/**
+	 * A turn in flight, in the view core chose for this socket (REQ-32 criterion 6): `asker` carries
+	 * the draft and the tool calls in full, `room` only that the turn works and its tools by name.
+	 */
 	"conversation.progress": {
 		conversationId: string;
 		rev: number;
+		view: "asker" | "room";
 		entry: { id: string };
+		tools?: {
+			id: string;
+			name: string;
+			done: boolean;
+			durationMs?: number;
+			isError?: true;
+		}[];
+		verdict?: "checked" | "withheld";
 		replaced?: { draft: string };
 	};
 	"conversation.accepted": {

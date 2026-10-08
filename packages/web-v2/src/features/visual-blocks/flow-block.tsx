@@ -151,7 +151,7 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   }
   if (!flow) return <p className="text-[12px] text-subtle">Laying out the diagram.</p>;
   return (
-    <div ref={scroller} className={`overflow-auto ${FLOW_BOX}`} data-testid="flow-scroll">
+    <div ref={scroller} className={`overflow-auto ${FLOW_BOX} print:max-h-none print:overflow-visible`} data-testid="flow-scroll">
     <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">
       <ReactFlow
         // the canvas takes no gesture of its own, so a finger on it scrolls the box as anywhere else

@@ -89,7 +89,7 @@
     "status.tab.history": "History",
     "status.tab.report": "Report",
     "status.template.export": "Export as Markdown",
-    "status.template.unwritten": "Narrative not written: {slots}.",
+    "status.template.exportFailed": "Export failed",
     "status.title": "Status report",
     "status.truncated": "Counted over the most recent open issues only.",
     "status.waits": "Waiting on people",

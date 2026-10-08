@@ -186,8 +186,19 @@ export async function routeWebWindow(
       window,
       handoffFor: async (windowId) =>
         (await import('../conversations/index.js')).conversationAgentTurnForWindow(windowId),
-      inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
-        webConversationTurn({
+      inputs: ({
+        venue,
+        conversationId,
+        windowId,
+        deliveryKey,
+        mode,
+        messages,
+        reserve,
+        authority,
+      }) => {
+        // the person this turn acts as is the one reader shown its draft and its tool calls
+        progress.askedBy(authority.userId);
+        return webConversationTurn({
           project: subject.project,
           handleName: subject.handle.handle,
           askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
@@ -204,7 +215,8 @@ export async function routeWebWindow(
           },
           progress,
           externalStop: stop.signal,
-        }),
+        });
+      },
     });
   } finally {
     stop.release();

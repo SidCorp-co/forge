@@ -167,6 +167,52 @@ describe('a block posted on an Agent-mode turn waits on its reply', () => {
     expect(await visualRows(member.token)).toEqual([]);
   });
 
+  it("keeps the held turn's session — its transcript, its listing, its frames — to the asker alone", async () => {
+    const turn = await agentTurn();
+    await setSessionMarkerField(turn.sessionId, 'conversationAgent', 'held', {
+      at: new Date().toISOString(),
+      text: 'Here is where it stands.',
+      refusals: [{ rule: 'no-empty-promise', why: 'w', quote: null, shape: 's' }],
+      blocks: [],
+    });
+    const adminUser = await createTestUser({ verified: true });
+    await addProjectMember(w.projectId, adminUser.id, 'admin');
+    const admin = await userToken(adminUser.id);
+    const listed = async (token: string) =>
+      (
+        ((await api(token, 'GET', `/api/agent-sessions?projectId=${w.projectId}&pageSize=100`)).body
+          .items ?? []) as Body[]
+      ).map((s) => s.id);
+    const listedForAgents = async (token: string) =>
+      (
+        ((await api(token, 'GET', `/api/projects/${w.projectId}/agent-sessions?limit=100`)).body
+          .sessions ?? []) as Body[]
+      ).map((s) => s.id);
+
+    expect((await api(w.token, 'GET', `/api/agent-sessions/${turn.sessionId}`)).status).toBe(200);
+    expect(await listed(w.token)).toContain(turn.sessionId);
+    for (const token of [member.token, admin]) {
+      const read = await api(token, 'GET', `/api/agent-sessions/${turn.sessionId}`);
+      expect(read.status).toBe(403);
+      expect(code(read)).toBe('CONVERSATION_TURN_ASKER_ONLY');
+      const turns = await api(token, 'GET', `/api/agent-sessions/${turn.sessionId}/turns`);
+      expect(code(turns)).toBe('CONVERSATION_TURN_ASKER_ONLY');
+      const agentRead = await api(
+        token,
+        'GET',
+        `/api/projects/${w.projectId}/agent-sessions/${turn.sessionId}`,
+      );
+      expect(code(agentRead)).toBe('CONVERSATION_TURN_ASKER_ONLY');
+      expect(await listed(token)).not.toContain(turn.sessionId);
+      expect(await listedForAgents(token)).not.toContain(turn.sessionId);
+    }
+    const { sessionAudienceById } = await import('../../src/agent-sessions/session-access.js');
+    expect(await sessionAudienceById(turn.sessionId)).toEqual({
+      projectWide: false,
+      userIds: [w.userId],
+    });
+  });
+
   it('shows the block in the room once the reply releasing it is delivered', async () => {
     const turn = await agentTurn();
     const run = await runQuery(turn.token);

@@ -41,7 +41,7 @@ function RemoveReport({ projectId, report, when, onRemoved }: { projectId: strin
   const remove = useDeleteStatusReport(projectId);
   return (
     <>
-      <Button size="sm" variant="ghost" onClick={() => setAsking(true)} data-testid="status-history-remove">
+      <Button size="sm" variant="ghost" className="print:hidden" onClick={() => setAsking(true)} data-testid="status-history-remove">
         {t("status.history.delete")}
       </Button>
       <ConfirmDialog
@@ -91,7 +91,7 @@ function OpenReport({ projectId, reportId, slug, clock }: { projectId: string; r
       {q.data.document ? (
         <div className="grid gap-3">
           <ViewHeading>{t("status.history.stored")}</ViewHeading>
-          <TemplateReport projectId={projectId} meta={q.data.report} document={q.data.document} clock={clock} />
+          <TemplateReport projectId={projectId} detail={q.data} document={q.data.document} clock={clock} />
         </div>
       ) : q.data.status ? (
         <>
@@ -115,7 +115,8 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
   return (
     <div className="grid gap-9" data-testid="status-history">
-      <section aria-label={t("status.history.title")} className="grid gap-3">
+      {/* an open report prints alone: the list and the schedule are this screen's, not the report's */}
+      <section aria-label={t("status.history.title")} className={open ? "grid gap-3 print:hidden" : "grid gap-3"}>
         <ViewHeading>{t("status.history.title")}</ViewHeading>
         {q.isError ? (
           <ErrorState title={t("status.history.loadFailed")} message={formatApiError(q.error)} onRetry={() => q.refetch()} />
@@ -147,7 +148,9 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
         )}
       </section>
       {open ? <OpenReport projectId={projectId} reportId={open} slug={slug} clock={clock} /> : null}
-      <ReportSchedule projectId={projectId} />
+      <div className="print:hidden">
+        <ReportSchedule projectId={projectId} />
+      </div>
     </div>
   );
 }

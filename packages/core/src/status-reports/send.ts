@@ -10,10 +10,11 @@ import { statusReportNoticeKey } from '@forge/contracts/notifications';
 import { PROJECT_STATUS_DAYS_DEFAULT, type ProjectStatus } from '@forge/contracts/project-status';
 import type { ReportDocument } from '@forge/contracts/report-templates';
 import {
+  narrativeOutcomeLine,
   type StatusReportNarrative,
   statusReportDiff,
   templateTitleOf,
-  unwrittenSlots,
+  unwrittenNarrativeLine,
 } from '@forge/contracts/status-reports';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -177,14 +178,12 @@ function templateNoticeText(
     timeZone: timeZone ?? 'UTC',
   }).format(new Date(read));
   const title = templateTitleOf(document.templateId);
-  const unwritten = unwrittenSlots(document);
   const summary = document.narrative.summary?.trim();
+  // the same lines the saved report's page and its Markdown export read
   const empty =
-    unwritten.length === 0
-      ? null
-      : narrative?.path === 'not_written'
-        ? `Narrative (${unwritten.join(', ')}) not written: ${narrative.reason}.`
-        : `Narrative not written: ${unwritten.join(', ')}.`;
+    narrative?.path === 'not_written'
+      ? narrativeOutcomeLine(narrative)
+      : unwrittenNarrativeLine(document, narrative);
   return {
     title: `${title} report, ${day}`,
     body: [

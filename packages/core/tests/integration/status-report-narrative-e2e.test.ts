@@ -68,6 +68,17 @@ async function fire(on: World): Promise<{ id: string; detail: Body; notices: str
   return { id, detail: opened.body, notices: [...told].map((n) => n.body) };
 }
 
+/** The report's Markdown export, as core serves it. */
+const exportOf = async (on: World, id: string): Promise<string> => {
+  const res = await api(
+    on.token,
+    'GET',
+    `/api/projects/${on.projectId}/status/reports/${id}/export`,
+  );
+  expect(res.status, JSON.stringify(res.body)).toBe(200);
+  return String(res.body.text);
+};
+
 const usageOf = async (projectId: string) => [
   ...(await db.execute<{ model: string; request_count: number; input_tokens: number }>(sql`
       SELECT model, request_count, input_tokens FROM usage_records
@@ -78,7 +89,8 @@ const usageOf = async (projectId: string) => [
 describe('a scheduled template report writes its narrative', () => {
   it('stores the narrative the model wrote, from the slot guidance and its own runs alone', async () => {
     answers = [JSON.stringify(CLEAN)];
-    const { detail, notices } = await fire(w);
+    const { id, detail, notices } = await fire(w);
+    expect(await exportOf(w, id)).toContain('_Summary written by scripted-model._');
     expect(detail.narrative).toEqual({
       path: 'written',
       reason: null,
@@ -112,7 +124,10 @@ describe('a scheduled template report writes its narrative', () => {
 
   it('refuses a narrative with an invented number, and the one retry carrying the refusal stores a clean one', async () => {
     answers = [JSON.stringify(INVENTED), JSON.stringify(CLEAN)];
-    const { detail } = await fire(w);
+    const { id, detail } = await fire(w);
+    expect(await exportOf(w, id)).toContain(
+      '_Summary written by scripted-model on its one retry, after the first answer was refused._',
+    );
     expect(detail.narrative).toEqual({
       path: 'retried',
       reason: null,
@@ -130,7 +145,10 @@ describe('a scheduled template report writes its narrative', () => {
 
   it('stores the slots empty after two refusals, names the reason in the notice, and calls no third time', async () => {
     answers = [JSON.stringify(INVENTED), JSON.stringify(INVENTED), JSON.stringify(CLEAN)];
-    const { detail, notices } = await fire(w);
+    const { id, detail, notices } = await fire(w);
+    const exported = await exportOf(w, id);
+    expect(exported).toContain("_Summary not written: the model's narrative was refused twice (");
+    expect(exported).not.toContain('Narrative not written');
     expect(asked).toHaveLength(2);
     expect(detail.narrative).toMatchObject({
       path: 'not_written',
@@ -147,9 +165,7 @@ describe('a scheduled template report writes its narrative', () => {
     });
     expect(notices.length).toBeGreaterThan(0);
     for (const body of notices) {
-      expect(body).toContain(
-        "Narrative (summary, risks, recommendations) not written: the model's narrative was refused twice",
-      );
+      expect(body).toContain("Summary not written: the model's narrative was refused twice");
     }
   });
 
@@ -171,7 +187,7 @@ describe('a scheduled template report writes its narrative', () => {
     });
     for (const body of notices) {
       expect(body).toContain(
-        "not written: the project's data policy forbids sending its data to a model, so no model was asked.",
+        "Summary not written: the project's data policy forbids sending its data to a model, so no model was asked.",
       );
     }
     expect(await usageOf(closed.projectId)).toEqual([]);

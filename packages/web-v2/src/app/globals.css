@@ -302,3 +302,19 @@
   .skeleton::after { display: none; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
 }
+
+/* ── Print: a kept report, and a share page (/s/<token>), print as the report alone ──
+   A page marks what is not the report: the workspace's chrome with data-print="chrome", every
+   action on the report (Export, Print, Share, Download CSV, Open wide, Show all) with the
+   `print:hidden` utility. The shell's one-screen frame (data-print="frame") lets the page run onto
+   as many sheets as it needs. Flat as on screen: hairlines, no boxes. A table row, a list row and a
+   block's caption never break across a page; a table repeats its heading on each sheet; a chart,
+   a figure row and a timeline keep together. Source lines are text and print as they read. */
+@media print {
+  @page { margin: 14mm 12mm; }
+  [data-print="chrome"] { display: none !important; }
+  [data-print="frame"] { display: block !important; height: auto !important; overflow: visible !important; padding-bottom: 0 !important; }
+  tr, li, figcaption { break-inside: avoid; }
+  thead { display: table-header-group; }
+  figure[data-kind="chart"], figure[data-kind="kpi"], figure[data-kind="timeline"] { break-inside: avoid; }
+}

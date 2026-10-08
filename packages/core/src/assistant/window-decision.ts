@@ -45,6 +45,7 @@ import { refuseAuthority } from './authority-refusal.js';
 import type { RoutedWindow, RouteWindowArgs, WindowCut } from './route-window.js';
 import { handoffPersonSpoke, handoffVenueRefusal } from './turn-origin.js';
 import { runConversationTurn, type TurnOutcome } from './turn-runner.js';
+import { routedOutcome } from './window-outcome.js';
 
 /** How many messages back a window may reach for its own contents. */
 const WINDOW_MESSAGE_CAP = 50;
@@ -440,55 +441,4 @@ async function takeTurn(
     track,
     ...(outcome.kind === 'failed' ? { report: outcome.report } : {}),
   });
-}
-
-/**
- * The decision a turn's outcome closes the window under, naming the blocks the turn drew that
- * nobody will see.
- */
-function routedOutcome(outcome: TurnOutcome): RoutedWindow {
-  const routed = routedDecision(outcome);
-  if (!outcome.droppedBlocks?.length) return routed;
-  return {
-    ...routed,
-    detail: { ...(routed.detail as Record<string, unknown>), droppedBlocks: outcome.droppedBlocks },
-  };
-}
-
-function routedDecision(outcome: TurnOutcome): RoutedWindow {
-  switch (outcome.kind) {
-    case 'delivered':
-      return {
-        decision: 'answered',
-        detail: {
-          messageId: outcome.messageId,
-          ...(outcome.continuation ? { continuing: true } : {}),
-        },
-      };
-    case 'declined':
-      return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
-    case 'failed':
-      return {
-        decision: 'unreachable',
-        detail: { code: outcome.code, reason: outcome.reason, cause: outcome.cause },
-      };
-    case 'stopped':
-      return { decision: 'stopped', detail: { reason: outcome.reason } };
-    case 'diverted':
-      return { decision: 'handed-off', detail: { reason: outcome.reason } };
-    case 'superseded':
-      return { decision: 'undetermined', detail: { reason: outcome.reason, superseded: true } };
-    case 'undeliverable':
-      return {
-        decision: 'undetermined',
-        detail: {
-          code: outcome.code,
-          reason: outcome.reason,
-          attempted: true,
-          undeliveredReply: outcome.reply,
-        },
-      };
-    default:
-      return { decision: 'undetermined', detail: { reason: outcome.reason, attempted: true } };
-  }
 }

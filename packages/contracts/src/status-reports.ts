@@ -275,6 +275,39 @@ export function unwrittenSlots(document: ReportDocument): string[] {
 	);
 }
 
+const sentence = (text: string): string => text.trim().replace(/\.+$/, "");
+
+/**
+ * How a schedule fire's summary came to be, as one line: written by the model, written on its one
+ * retry, or not written with the reason. Null for a report a person saved, which holds no outcome.
+ * The saved report's page, its Markdown export and its notice all read this line.
+ */
+export function narrativeOutcomeLine(n: StatusReportNarrative | null): string | null {
+	if (!n) return null;
+	const model = n.model ?? "the model";
+	if (n.path === "written") return `Summary written by ${model}.`;
+	if (n.path === "retried")
+		return `Summary written by ${model} on its one retry, after the first answer was refused.`;
+	return `Summary not written: ${sentence(n.reason ?? "no reason was kept")}.`;
+}
+
+/**
+ * The narrative slots a stored report left empty, named with why: left empty when a person saved
+ * it, or left empty by the model. Null when every slot holds words, and when the fire wrote no
+ * narrative at all, since `narrativeOutcomeLine` already says why every slot is empty.
+ */
+export function unwrittenNarrativeLine(
+	document: ReportDocument,
+	n: StatusReportNarrative | null,
+): string | null {
+	const unwritten = unwrittenSlots(document);
+	if (unwritten.length === 0 || n?.path === "not_written") return null;
+	const why = n
+		? "the model wrote nothing for them"
+		: "left empty when the report was saved";
+	return `Narrative not written: ${unwritten.join(", ")} (${why}).`;
+}
+
 const SLOT_HEADINGS = {
 	summary: "Summary",
 	risks: "Risks",
@@ -282,21 +315,23 @@ const SLOT_HEADINGS = {
 } as const;
 
 /**
- * A stored template report as Markdown: the narrative a person or a model wrote, then every block as
- * its plain text (`blockToText`), and the slots nobody wrote named at the end rather than left out.
+ * A stored template report as Markdown: how its summary came to be, the narrative a person or a
+ * model wrote, then every block as its plain text (`blockToText`), and the slots nobody wrote named
+ * with why at the end rather than left out. Core's export route is the one caller that serves it.
  */
 export function reportDocumentMarkdown(
 	document: ReportDocument,
-	meta: { title: string; asOf: string },
+	meta: { title: string; asOf: string; narrative: StatusReportNarrative | null },
 ): string {
 	const parts = [`# ${meta.title}`, `_As of ${meta.asOf}_`];
+	const outcome = narrativeOutcomeLine(meta.narrative);
+	if (outcome) parts.push(`_${outcome}_`);
 	for (const slot of TEMPLATE_NARRATIVE_SLOTS) {
 		const text = document.narrative[slot]?.trim();
 		if (text) parts.push(`## ${SLOT_HEADINGS[slot]}\n\n${text}`);
 	}
 	for (const block of document.blocks) parts.push(blockToText(block));
-	const unwritten = unwrittenSlots(document);
-	if (unwritten.length > 0)
-		parts.push(`_Narrative not written: ${unwritten.join(", ")}._`);
+	const unwritten = unwrittenNarrativeLine(document, meta.narrative);
+	if (unwritten) parts.push(`_${unwritten}_`);
 	return `${parts.join("\n\n")}\n`;
 }

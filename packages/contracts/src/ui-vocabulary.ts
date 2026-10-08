@@ -23,6 +23,12 @@ import type {
 	ScheduleRunTrigger,
 } from "./schedules.js";
 
+/** `change_request` reads "Change request": the words of a value no map names, never the raw token. */
+export function sentenceCase(v: string): string {
+	const t = v.replace(/[_-]+/g, " ").trim();
+	return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /** A state value's reading: sentence-case label, legend tone, and the glyph drawn for its dot. */
 export type Reading = readonly [
 	label: string,

@@ -6,6 +6,7 @@ import {
   reportDocumentMarkdown,
   type StatusReportRefusalCode,
 } from '@forge/contracts/status-reports';
+import { tableCsv } from '@forge/contracts/visual-blocks';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess, type ProjectAccess } from '../lib/authz.js';
@@ -29,6 +30,16 @@ import {
 
 const projectParam = z.strictObject({ id: z.uuid() });
 const reportParam = z.strictObject({ id: z.uuid(), reportId: z.uuid() });
+const exportQuery = z.strictObject({
+  format: z.enum(['markdown', 'csv']).default('markdown'),
+  block: z
+    .string()
+    .regex(/^(0|[1-9][0-9]{0,2})$/)
+    .transform(Number)
+    .optional(),
+});
+const EXPORT_SHAPE =
+  'invalid query: ?format=markdown (the default) exports the whole report, ?format=csv&block=<index of a table block, from 0> exports that table';
 const saveStatusBody = z.strictObject({
   days: z.number().int().min(1).max(PROJECT_STATUS_DAYS_MAX).optional(),
 });
@@ -160,7 +171,15 @@ statusReportRoutes.get(
   },
 );
 
-/** A stored template report as Markdown: the narrative as kept, then each block's plain text. */
+/** A download's file name: the template, the day it was read, and the block a CSV holds. */
+const exportName = (templateId: string, asOf: string, ext: string, block?: number): string =>
+  `${templateId}-${asOf.slice(0, 10)}${block === undefined ? '' : `-block-${block + 1}`}.${ext}`;
+
+/**
+ * A stored template report as a file: Markdown (the narrative outcome, the narrative as kept, then
+ * each block's plain text), or one table block as CSV. Core alone builds the export; the page
+ * downloads what this answers.
+ */
 statusReportRoutes.get(
   '/:id/status/reports/:reportId/export',
   zValidator(
@@ -168,8 +187,10 @@ statusReportRoutes.get(
     reportParam,
     invalid('invalid path: /api/projects/<project>/status/reports/<report id>/export'),
   ),
+  zValidator('query', exportQuery, invalid(EXPORT_SHAPE)),
   async (c) => {
     const { id: projectId, reportId } = c.req.valid('param');
+    const { format, block } = c.req.valid('query');
     requireHeld(await loadProjectAccess(projectId, c.get('userId')), 'project.read');
     const row = await reportRow(projectId, reportId);
     if (!row) throw notFound(`status report ${reportId} is not one of this project's reports`);
@@ -188,14 +209,48 @@ statusReportRoutes.get(
       detail,
       'a stored template report',
     );
-    return c.body(
-      reportDocumentMarkdown(safe.document ?? detail.document, {
-        title: detail.report.template?.title ?? detail.document.templateId,
-        asOf: detail.report.asOf,
-      }),
-      200,
-      { 'content-type': 'text/markdown; charset=utf-8' },
-    );
+    const document = safe.document ?? detail.document;
+    const { templateId } = document;
+    if (format === 'markdown') {
+      if (block !== undefined) {
+        throw refuse(
+          'STATUS_REPORT_REFUSED',
+          `block=${block} names one table, which only ?format=csv exports; the Markdown export is the whole report`,
+          '/block',
+        );
+      }
+      return c.body(
+        reportDocumentMarkdown(document, {
+          title: detail.report.template?.title ?? templateId,
+          asOf: detail.report.asOf,
+          narrative: detail.narrative,
+        }),
+        200,
+        {
+          'content-type': 'text/markdown; charset=utf-8',
+          'content-disposition': `attachment; filename="${exportName(templateId, detail.report.asOf, 'md')}"`,
+        },
+      );
+    }
+    const tables = document.blocks.flatMap((b, i) => (b.kind === 'table' ? [i] : []));
+    const named = block === undefined ? undefined : document.blocks[block];
+    if (block === undefined || named?.kind !== 'table') {
+      throw refuse(
+        'STATUS_REPORT_REFUSED',
+        `${
+          block === undefined
+            ? 'a CSV export names its table with block=<index>'
+            : named
+              ? `block ${block} is a ${named.kind}, not a table`
+              : `block ${block} is not in this report, which holds ${document.blocks.length} block(s)`
+        }; this report's table blocks are ${tables.length > 0 ? tables.join(', ') : 'none'}`,
+        '/block',
+      );
+    }
+    return c.body(tableCsv(named), 200, {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${exportName(templateId, detail.report.asOf, 'csv', block)}"`,
+    });
   },
 );
 

@@ -6,7 +6,7 @@
 // short line with the run behind its disclosure; a table, chart, flow or timeline opens wide in the
 // shared dialog; a flow scrolls at its own size rather than shrink.
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { formatClock, formatDateTime } from "@/lib/i18n/format";
 
@@ -144,6 +144,22 @@ describe("a table in a narrow container", () => {
     fireEvent.click(more);
     expect(bodyRows()).toHaveLength(33);
     expect(more.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("prints every row it shows, unclamped and unscrolled, with no Show all on the paper", () => {
+    show(table);
+    expect(bodyRows()).toHaveLength(TABLE_ROW_CAP);
+    act(() => {
+      window.dispatchEvent(new Event("beforeprint"));
+    });
+    expect(bodyRows()).toHaveLength(33);
+    expect(screen.getByTestId("table-show-all").className).toMatch(/\bprint:hidden\b/);
+    expect(screen.getByTestId("table-scroll").className).toMatch(/\bprint:overflow-visible\b/);
+    expect((screen.getAllByTestId("table-text")[0] as HTMLElement).className).toMatch(/\bprint:line-clamp-none\b/);
+    act(() => {
+      window.dispatchEvent(new Event("afterprint"));
+    });
+    expect(bodyRows()).toHaveLength(TABLE_ROW_CAP);
   });
 
   it(`offers no control for a table of ${TABLE_ROW_CAP} rows or fewer`, () => {
