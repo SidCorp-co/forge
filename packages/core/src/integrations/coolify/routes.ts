@@ -48,6 +48,7 @@ import {
   runCoolifyCancel,
   runCoolifyRollback,
 } from './controls.js';
+import { CoolifyReadFailedError } from './rollback-images-read.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const deployBodySchema = z
@@ -191,6 +192,12 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
         throw new HTTPException(424, {
           message: describeCoolifyRollbackImagesRefusal(err),
           cause: { code: 'COOLIFY_API_ERROR' },
+        });
+      }
+      if (err instanceof CoolifyReadFailedError) {
+        throw new HTTPException(424, {
+          message: err.message,
+          cause: { code: 'COOLIFY_UNREACHABLE' },
         });
       }
       return asHttp(err);

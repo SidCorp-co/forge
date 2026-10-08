@@ -193,6 +193,56 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(JSON.stringify(await res.json())).toContain('`read` ability');
   });
 
+  /** The transport's own failure, through the real client and the helper the controls call it by. */
+  const transportFails = async (fetchImpl: typeof fetch, timeoutMs?: number) => {
+    const { CoolifyClient } = await import('./client.js');
+    const { readRollbackImagesNamingFailure } = await import('./rollback-images-read.js');
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    });
+    const { listCoolifyRollbackImages } = await import('./controls.js');
+    vi.mocked(listCoolifyRollbackImages).mockImplementationOnce(async () => {
+      await readRollbackImagesNamingFailure(client, 'app-uuid');
+      throw new Error('the stubbed Coolify answer was a failure');
+    });
+  };
+
+  it('answers 424 naming an unreachable Coolify, not a 500', async () => {
+    await transportFails((async () => {
+      throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } });
+    }) as typeof fetch);
+    const res = await images();
+    expect(res.status).toBe(424);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_UNREACHABLE');
+    expect(body.message).toContain('Could not reach Coolify');
+  });
+
+  it('answers 424 naming a Coolify that timed out, not a 500', async () => {
+    await transportFails(
+      ((_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          );
+        })) as unknown as typeof fetch,
+      5,
+    );
+    const res = await images();
+    expect(res.status).toBe(424);
+    expect(JSON.stringify(await res.json())).toContain('Coolify timed out');
+  });
+
+  it('answers 424 naming a 200 that is not JSON, not a 500', async () => {
+    await transportFails((async () => new Response('<html>', { status: 200 })) as typeof fetch);
+    const res = await images();
+    expect(res.status).toBe(424);
+    expect(JSON.stringify(await res.json())).toContain('something that is not JSON');
+  });
+
   it('still answers 400 for a caller error, which is not Coolify refusing anything', async () => {
     const { listCoolifyRollbackImages } = await import('./controls.js');
     const { CoolifyCommandError } = await import('./commands.js');
