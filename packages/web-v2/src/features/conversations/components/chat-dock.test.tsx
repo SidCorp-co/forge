@@ -33,22 +33,28 @@ function row(id: string, title: string, threadStatus: string, minute: number) {
     updatedAt: `2026-10-06T16:${minute}:00Z`,
     archivedAt: null,
     ecosystemId: null,
-    kind: null,
+    kind: null as string | null,
     threadStatus,
-    subjectKey: null,
+    subjectKey: null as string | null,
   };
 }
+
+type Room = ReturnType<typeof row>;
 
 const drafted = row("c-req1", "Draft REQ-1", "waiting_on_you", 51);
 const later = row("c-other", "Something else", "done", 53);
 
-function core(rooms: unknown[] | "refused") {
+function core(rooms: Room[] | "refused") {
   return fakeCore(({ path }) => {
     if (path === "/projects") return { body: [project] };
     if (path.startsWith("/conversations?")) {
       return rooms === "refused" ? { status: 500, body: { error: { message: "list read failed" } } } : { body: { items: rooms, total: rooms.length } };
     }
-    if (path.startsWith("/conversations/")) return { body: { id: path.split("/")[2], subjectKey: null, ecosystemId: null } };
+    if (path.startsWith("/conversations/")) {
+      const id = path.split("/")[2];
+      const listed = rooms === "refused" ? undefined : (rooms as Room[]).find((r) => r.id === id);
+      return { body: { id, subjectKey: listed?.subjectKey ?? null, kind: listed?.kind ?? null, ecosystemId: null } };
+    }
     return undefined;
   });
 }
@@ -134,5 +140,46 @@ describe("a conversation waiting on the person", () => {
     renderWithQuery(<ChatDockBody dock={dock} />);
     fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
     expect(dock.select).toHaveBeenCalledWith({ kind: "draft", projectId: "p1" });
+  });
+});
+
+// FB-100: on the Dashboard, Ask Agent reopened the REQ-17 room, which reads only REQ-17; a whole-
+// project question asked there was refused after 20 s, and nothing on the panel said why
+describe("a room scoped to a record", () => {
+  const req17: Room = { ...row("c-req17", "REQ-17 export", "done", 55), kind: "requirement", subjectKey: "REQ-17" };
+
+  it("is not reopened off its record's page when it is not waiting on the person", async () => {
+    core([later, req17]);
+    const dock = dockOn(targetInScope(null, "p1"));
+    renderWithQuery(<ChatDockBody dock={dock} />);
+    await waitFor(() =>
+      expect(dock.select).toHaveBeenCalledWith({ kind: "room", projectId: "p1", conversationId: "c-other" }),
+    );
+  });
+
+  it("names its scope and what its agent cannot read, and offers the whole project in one click", async () => {
+    core([later, req17]);
+    const dock = dockOn({ kind: "room", projectId: "p1", conversationId: "c-req17" });
+    renderWithQuery(<ChatDockBody dock={dock} />);
+    const note = await screen.findByTestId("subject-scope-notice");
+    expect(note.textContent).toContain(
+      "This conversation is about REQ-17. Its agent reads REQ-17, the issues you name and similar requirements; it cannot read the rest of the project.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New conversation about the whole project" }));
+    expect(dock.select).toHaveBeenCalledWith({ kind: "draft", projectId: "p1" });
+  });
+
+  it("names a first-requirements room's scope too, and says nothing over a project room", async () => {
+    const first: Room = { ...row("c-first", "First requirements", "done", 56), kind: "first_requirements" };
+    core([later, first]);
+    const { unmount } = renderWithQuery(
+      <ChatDockBody dock={dockOn({ kind: "room", projectId: "p1", conversationId: "c-first" })} />,
+    );
+    expect((await screen.findByTestId("subject-scope-notice")).textContent).toContain("drafts the first requirements");
+    unmount();
+    renderWithQuery(<ChatDockBody dock={dockOn({ kind: "room", projectId: "p1", conversationId: "c-other" })} />);
+    expect(await screen.findByTestId("chat")).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByTestId("subject-scope-notice")).toBeNull();
   });
 });

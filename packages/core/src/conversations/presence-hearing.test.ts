@@ -41,6 +41,26 @@ describe('a message, taken whole, asks the handle to stop', () => {
   });
 });
 
+// a project handle is its slug, and a slug may hold a hyphen or a dot (ISS-277, found by probe P7:
+// every group-room window under a `test-…` handle closed `unreachable` on an invalid expression)
+describe('a handle with a hyphen or a dot is read as a word, not as an expression', () => {
+  const named = ['forge-dev', 'acme.ops'];
+  it.each([
+    ['stop replying @forge-dev', true],
+    ['acme.ops, be quiet', true],
+    ['forge-dev stop the deploy on staging', false],
+  ])('%s → %s', (content, expected) => {
+    expect(asksToStop(content, named)).toBe(expected);
+  });
+
+  it('names the hyphenated handle and not a longer word that holds it', async () => {
+    const { namesHandle } = await import('./presence.js');
+    expect(namesHandle('@forge-dev draft REQ-9', 'forge-dev')).toBe(true);
+    expect(namesHandle('ask forge-devops instead', 'forge-dev')).toBe(false);
+    expect(namesHandle('acmexops is down', 'acme.ops')).toBe(false);
+  });
+});
+
 describe('a room records a quiet in its presence', () => {
   it('takes a well-formed quiet and refuses a malformed one by name', () => {
     expect(

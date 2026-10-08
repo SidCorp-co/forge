@@ -401,7 +401,7 @@ async function continueInThread(
       text: receipt.deliveredText ?? message.text,
       receipt,
       ...(req.deliveryKey ? { deliveryKey: `${req.deliveryKey}:continued` } : {}),
-      awaitsReply: rest.send && rest.awaitsReply === true,
+      awaitsReplyFrom: awaitsReplyFrom(req, rest.send && rest.awaitsReply === true),
       ...(row ? { messageId: row.id, blocks: row.blocks } : {}),
     });
     await transport.notifySettled?.(req.venue).catch(() => undefined);
@@ -423,6 +423,16 @@ async function continueInThread(
     stop.release();
     await entry?.close();
   }
+}
+
+/**
+ * The person a reply that awaits an answer waits on: the one this turn answered and acts as, the
+ * author of the message that started it or the starter an onboarding hand-off acts for. Never the
+ * newest person to write before the reply lands, who may have written while the turn was out
+ * (ISS-277, probe P7).
+ */
+function awaitsReplyFrom(req: ConversationTurnRequest, awaits: boolean): string | null {
+  return awaits ? req.authority.userId : null;
 }
 
 async function deliverReply(
@@ -467,7 +477,7 @@ async function deliverReply(
       text: receipt.deliveredText ?? reply.message.text,
       receipt,
       deliveryKey: req.deliveryKey,
-      awaitsReply: reply.awaitsReply === true,
+      awaitsReplyFrom: awaitsReplyFrom(req, reply.awaitsReply === true),
       ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
     });
   } catch (err) {
