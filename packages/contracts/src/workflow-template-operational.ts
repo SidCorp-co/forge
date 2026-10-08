@@ -116,7 +116,7 @@ export const operationalFlow: WorkflowTemplate = {
     {
       id: 'ENTITY',
       label: 'Entity',
-      tooltip: 'A record the flow reads: a patient, an episode.',
+      tooltip: 'A record the flow reads: a customer, an episode.',
       icon: 'table',
       colour: 'indigo',
       required: ['label'],

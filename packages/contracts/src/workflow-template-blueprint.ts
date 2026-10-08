@@ -1,4 +1,4 @@
-// service-blueprint: what the patient goes through on both sides of the line of visibility, with
+// service-blueprint: what the customer goes through on both sides of the line of visibility, with
 // its cross-functional preset, whose lanes are the roles a design names.
 
 import {
@@ -14,7 +14,7 @@ const blueprintTypes: TemplateNodeType[] = [
   {
     id: 'EVIDENCE',
     label: 'Evidence',
-    tooltip: 'What the patient sees or holds: a letter, a message, a screen.',
+    tooltip: 'What the customer sees or holds: a letter, a message, a screen.',
     icon: 'eye',
     colour: 'neutral',
     required: ['label'],
@@ -22,8 +22,8 @@ const blueprintTypes: TemplateNodeType[] = [
   },
   {
     id: 'CUSTOMER_ACTION',
-    label: 'Patient action',
-    tooltip: 'What the patient or caregiver does.',
+    label: 'Customer action',
+    tooltip: 'What the customer does.',
     icon: 'user',
     colour: 'orange',
     required: ['label', 'persona'],
@@ -32,7 +32,7 @@ const blueprintTypes: TemplateNodeType[] = [
   {
     id: 'FRONTSTAGE',
     label: 'Frontstage',
-    tooltip: 'What staff or the product do in front of the patient, on a channel (`channel`).',
+    tooltip: 'What staff or the product do in front of the customer, on a channel (`channel`).',
     icon: 'monitor',
     colour: 'blue',
     required: ['label', 'owner', 'channel'],
@@ -49,7 +49,7 @@ const blueprintTypes: TemplateNodeType[] = [
   {
     id: 'BACKSTAGE',
     label: 'Backstage',
-    tooltip: 'What staff do out of the patient’s sight.',
+    tooltip: 'What staff do out of the customer’s sight.',
     icon: 'folder',
     colour: 'pink',
     required: ['label', 'owner'],
@@ -115,7 +115,7 @@ const blueprintKinds: TemplateEdgeKind[] = [
   {
     id: 'flow',
     label: 'Flow',
-    tooltip: 'The next step. A patient action reaches a system only through the frontstage.',
+    tooltip: 'The next step. A customer action reaches a system only through the frontstage.',
     direction: 'forward',
     required: [],
     toTypes: ACTING,
@@ -147,7 +147,7 @@ const blueprintKinds: TemplateEdgeKind[] = [
   {
     id: 'evidences',
     label: 'Evidences',
-    tooltip: 'What the patient sees of a step.',
+    tooltip: 'What the customer sees of a step.',
     direction: 'forward',
     required: [],
     toTypes: ['EVIDENCE'],
@@ -162,7 +162,7 @@ export const serviceBlueprint: WorkflowTemplate = {
   version: 1,
   title: 'Service blueprint',
   purpose:
-    'Use when you are drawing what a patient or customer goes through and what staff and systems do for it, on both sides of the line of visibility: evidence, patient actions, frontstage, backstage and support. Patient and journey maps are drawn in it. For a process where the lanes are roles you name, use its cross-functional preset.',
+    'Use when you are drawing what a customer goes through and what staff and systems do for it, on both sides of the line of visibility: evidence, customer actions, frontstage, backstage and support. Journey maps are drawn in it. For a process where the lanes are roles you name, use its cross-functional preset.',
   layout: { family: 'lane-grid', direction: 'right' },
   lanes: {
     from: 'template',
@@ -170,13 +170,13 @@ export const serviceBlueprint: WorkflowTemplate = {
       {
         id: 'evidence',
         label: 'Evidence',
-        tooltip: 'What the patient sees or holds.',
+        tooltip: 'What the customer sees or holds.',
         types: ['EVIDENCE'],
       },
       {
         id: 'customer',
-        label: 'Patient',
-        tooltip: 'What the patient or caregiver does. Line of interaction below.',
+        label: 'Customer',
+        tooltip: 'What the customer does. Line of interaction below.',
         types: ['CUSTOMER_ACTION'],
       },
       {

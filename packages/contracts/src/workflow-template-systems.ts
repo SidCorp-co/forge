@@ -1,5 +1,5 @@
 // The templates about systems and data: system-context, the master list of systems the others name;
-// integration-sequence, the calls between them; data-flow, where patient data goes; and
+// integration-sequence, the calls between them; data-flow, where personal data goes; and
 // decision-model, the table behind a rule.
 
 import { WORKFLOW_TEMPLATE_SCHEMA_ID, type WorkflowTemplate } from './workflow-template-schema.js';
@@ -177,7 +177,7 @@ export const dataFlow: WorkflowTemplate = {
   version: 1,
   title: 'Data flow',
   purpose:
-    "Use when you are drawing where patient data goes: the source systems it comes from, the datasets it lands in (each with its owner), the processes that move it and the outside parties it reaches, inside the trust boundaries the design declares in `lanes` (hospital, product, outside channels). Its shape is OpenLineage's jobs and datasets; every source is a system of the project's system-context design.",
+    "Use when you are drawing where personal data goes: the source systems it comes from, the datasets it lands in (each with its owner), the processes that move it and the outside parties it reaches, inside the trust boundaries the design declares in `lanes` (your organisation, the product, outside channels). Its shape is OpenLineage's jobs and datasets; every source is a system of the project's system-context design.",
   layout: { family: 'boundaries', direction: 'right' },
   lanes: { from: 'design', noun: 'trust boundary' },
   nodeTypes: [
