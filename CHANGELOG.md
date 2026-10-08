@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.168] - 2026-10-08
+
+Shared contracts for chat-visual reports, blocks, templates, executors and shares
+
+### Added
+
+- **The shapes chat uses to answer with tables, charts, diagrams and share links are now declared.** Report queries, six block kinds with checks and text fallbacks, report templates, sandbox executors and Forge share links each have a contract.
+
 ## [0.4.0-dev.167] - 2026-10-08
 
 Agent chat network confined to the model, Forge and its own tools

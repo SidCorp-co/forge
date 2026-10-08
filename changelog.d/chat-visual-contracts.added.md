@@ -1,1 +1,0 @@
-**The shapes chat uses to answer with tables, charts, diagrams and share links are now declared.** Report queries, six block kinds with checks and text fallbacks, report templates, sandbox executors and Forge share links each have a contract.
