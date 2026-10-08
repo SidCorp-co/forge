@@ -63,6 +63,7 @@ export class Memo {
     }
     let keyed;
     let git = null;
+    this.tree.refresh();
     try {
       git = decl.git ? gitState(this.root, this.baseRef) : null;
       keyed = keyFor({ check, decl, tree: this.tree, git, env: this.env });

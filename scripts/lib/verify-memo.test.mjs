@@ -310,6 +310,8 @@ describe('the git questions a check may ask', () => {
     expect(fault(asks, 'show', 'origin/main:CHANGELOG.md')).toMatch(/names origin\/main/);
     expect(fault(asks, 'diff', '--name-only', 'origin/main')).toMatch(/names origin\/main/);
     expect(fault(asks, 'diff', '--name-only', sha('e'))).toMatch(/names e+/);
+    expect(fault(asks, 'rev-parse', 'origin/main')).toMatch(/names origin\/main/);
+    expect(fault(asks, 'rev-parse', '--verify', 'origin/main')).toMatch(/names origin\/main/);
     expect(fault(asks, 'log', '--first-parent', 'origin/release', '^origin/main')).toMatch(
       /names origin\/release/,
     );
@@ -465,16 +467,31 @@ describe('the preload', () => {
     expect(lines).toContain('S ["git","ls-files"]');
     expect(existsSync(traced.dir)).toBe(false);
   });
+
+  it('records whether an async read found its file, for a promise and for a callback', () => {
+    const traced = traceEnv({ PATH: process.env.PATH });
+    put(
+      'async.cjs',
+      "const fs=require('node:fs');(async()=>{await fs.promises.readFile('src/a.txt');await fs.promises.readFile('gone.txt').catch(()=>{});fs.readFile('src/a.txt',()=>{});fs.readFile('gone-too.txt',()=>{});})();",
+    );
+    spawnSync('node', ['async.cjs'], { cwd: root, env: traced.env, encoding: 'utf8' });
+    const lines = readTrace(traced.dir);
+    expect(lines).toContain(`R ${join(root, 'src/a.txt')}`);
+    expect(lines).toContain(`M ${join(root, 'gone.txt')}`);
+    expect(lines).toContain(`M ${join(root, 'gone-too.txt')}`);
+  });
 });
 
 /** A check as verify runs one: `node check.mjs` over the files under `src`, red when one holds BAD. */
 const CHECK = `
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs';
 const files = readdirSync('src');
 const bad = files.filter((f) => readFileSync('src/' + f, 'utf8').includes('BAD'));
 if (process.env.PEEK) readFileSync(process.env.PEEK);
 if (process.env.IMPORT) await import(process.env.IMPORT);
 if (process.env.PROBE) existsSync(process.env.PROBE);
+if (process.env.STREAM) await new Promise((done) => createReadStream(process.env.STREAM).on('data', () => {}).on('close', done));
+if (process.env.ASYNC) await (await import('node:fs/promises')).readFile(process.env.ASYNC);
 if (process.env.SHELLED) {
   const { spawnSync } = await import('node:child_process');
   spawnSync('node', [process.env.SHELLED + ' < docs/n.md'], { shell: true });
@@ -533,6 +550,16 @@ describe('a check taken through the memo', () => {
     const restored = run(memo());
     expect(restored.plan.kind).toBe('hit');
     expect(restored.status).toBe(0);
+  });
+
+  it('sees a file added between two plans of one memo, so a hit never uses a stale file list', () => {
+    const m = memo();
+    run(m);
+    expect(m.plan(check).kind).toBe('hit');
+    put('src/zz.txt', 'BAD');
+    const next = run(m);
+    expect(next.plan.kind).toBe('miss');
+    expect(next.status).toBe(1);
   });
 
   it('never files a red, and never serves one', () => {
@@ -634,6 +661,16 @@ describe('a check taken through the memo', () => {
     const read = join(outside, 'read.rc');
     writeFileSync(read, 'passing');
     expect(settled({ PEEK: read }, () => rmSync(read))[0]).toMatch(/outside the checkout changed/);
+    const awaited = join(outside, 'awaited.rc');
+    writeFileSync(awaited, 'passing');
+    expect(settled({ ASYNC: awaited }, () => rmSync(awaited))[0]).toMatch(
+      /outside the checkout changed/,
+    );
+    const streamed = join(outside, 'streamed.rc');
+    writeFileSync(streamed, 'passing');
+    expect(settled({ STREAM: streamed }, () => rmSync(streamed))[0]).toMatch(
+      /outside the checkout changed/,
+    );
     const probed = join(outside, 'probed.rc');
     expect(settled({ PROBE: probed }, () => writeFileSync(probed, 'appeared'))[0]).toMatch(
       /outside the checkout changed/,

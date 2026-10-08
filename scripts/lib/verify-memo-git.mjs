@@ -60,6 +60,10 @@ const operands = (args) => {
 };
 const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
+/** Whether a rev-parse is the `--verify <ref>^{commit}` lookup a merge base is taken from. */
+const resolves = (args) =>
+  args.includes('--verify') && operands(args).every((a) => a.endsWith('^{commit}'));
+
 /** The part of a revision argument the key does not hold; the base ref's tip only reaches a merge base. */
 function unheld(arg, state, tipOk) {
   const names = tipOk ? `HEAD|${literal(state.baseRef ?? 'HEAD')}` : 'HEAD';
@@ -121,7 +125,7 @@ export function gitFault(argv, decl, state = {}) {
   if (name === 'diff' && operands(args).length === 0)
     return refuse('which with no revision reads the index');
   const stray = operands(args)
-    .map((a) => unheld(a, state, name === 'merge-base' || name === 'rev-parse'))
+    .map((a) => unheld(a, state, name === 'merge-base' || (name === 'rev-parse' && resolves(args))))
     .find(Boolean);
   return stray ? refuse(`which names ${stray}, a revision the key does not hold`) : null;
 }

@@ -41,6 +41,15 @@ const READS = [
 const LISTINGS = ['readdir', 'readdirSync', 'opendir', 'opendirSync'];
 const SPAWNERS = ['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork'];
 
+/** The trace letter for a call's outcome: a read that found nothing is `M`, not `R`. */
+function letter(kind, name, err, value) {
+  const absent =
+    err?.code === 'ENOENT' ||
+    value === false ||
+    (!err && value === undefined && /^l?stat(Sync)?$/.test(name));
+  return kind === 'R' && absent ? 'M' : kind;
+}
+
 function pathOf(arg) {
   if (typeof arg === 'string') return resolve(arg);
   if (Buffer.isBuffer(arg)) return resolve(arg.toString());
@@ -59,19 +68,42 @@ if (out) {
     const watched = function watched(...args) {
       const at = pathOf(args[0]);
       if (at === null) return original.apply(this, args);
-      if (!sync) {
-        noted.add(`${kind === 'R' ? 'Q' : kind} ${at}`);
+      const record = (err, value) => noted.add(`${letter(kind, name, err, value)} ${at}`);
+      if (sync) {
+        try {
+          const result = original.apply(this, args);
+          record(null, result);
+          return result;
+        } catch (err) {
+          record(err);
+          throw err;
+        }
+      }
+      const last = args.length - 1;
+      if (typeof args[last] === 'function') {
+        const done = args[last];
+        args[last] = function called(...got) {
+          if (name === 'exists') record(null, got[0]);
+          else record(got[0], got[1]);
+          return done.apply(this, got);
+        };
         return original.apply(this, args);
       }
-      try {
-        const result = original.apply(this, args);
-        const absent = result === false || (result === undefined && /^l?statSync$/.test(name));
-        noted.add(`${absent && kind === 'R' ? 'M' : kind} ${at}`);
-        return result;
-      } catch (err) {
-        noted.add(`${err?.code === 'ENOENT' ? 'M' : kind} ${at}`);
-        throw err;
+      const result = original.apply(this, args);
+      if (typeof result?.then === 'function') {
+        return result.then(
+          (value) => {
+            record(null, value);
+            return value;
+          },
+          (err) => {
+            record(err);
+            throw err;
+          },
+        );
       }
+      noted.add(`${kind === 'R' ? 'Q' : kind} ${at}`);
+      return result;
     };
     for (const key of Reflect.ownKeys(original)) {
       if (['length', 'name', 'prototype'].includes(key)) continue;
