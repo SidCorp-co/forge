@@ -37,8 +37,8 @@ interface GatherInput {
   /** The snapshot the writer's own turn was shown. */
   readonly progress?: ProgressFacts | null;
   /**
-   * Where the turn could run a report: what the person asked, and the texts its reads returned and
-   * its calls sent, whose run ids name the runs a figure is held to. Absent, no figure is judged.
+   * What the person asked, and the texts the turn's reads returned and its calls sent, whose run ids
+   * name the runs a figure is held to. Absent (no question given), no figure is judged.
    */
   readonly figures?: {
     readonly asked: string;

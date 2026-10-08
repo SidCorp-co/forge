@@ -403,12 +403,14 @@ ruling and is not registered.
   flow labels included. Where the door shows the answer's blocks, a run's figure must also be one a
   block of the answer shows (ISS-419), or it is held asking for the block that shows it. A figure is
   also grounded by the result of a read the rule declares (`FIGURE_GROUNDING_RESULTS`: the project
-  status, requirement, release and metrics reads, and the `preview` and `taken` count
-  `forge_requirement_draft` took from an attached document; ISS-421), never by a tool that answers
-  with what the model sent it, nor by a refused call. Dates, ids, versions, ordinals, quoted sources and numbers the person typed
-  in the question are exempt, by the table in `figure-exemptions.ts`. It judges at the chat doors
-  where the turn could run a report: a turn offered `forge_report` or `forge_template`, and an
-  Agent session, whose REST runs are read from its tool results. A block whose frame differs from
+  status, requirement, release and metrics reads, the BA doors' requirement, dedup and journey
+  reads, and the `preview` and `taken` count `forge_requirement_draft` took from an attached
+  document; ISS-421), counts of the lists those reads returned included, never by a tool that
+  answers with what the model sent it, nor by a refused call. Dates, ids, versions, ordinals and
+  quoted sources are exempt, and a number the person typed only said back as theirs, by the table in
+  `figure-exemptions.ts`. It judges every chat reply screened with its question, whatever tools the
+  turn was offered: the BA door offers no report tool and is held to its reads (ISS-446), and an
+  Agent session's REST runs are read from its tool results. A block whose frame differs from
   its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`),
   and so is a block whose title or labels state a number its own run does not hold, by the same
   check the screen holds a block's text to

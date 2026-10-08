@@ -73,7 +73,7 @@ export interface MessageFacts {
    * theirs, said back, and no rule reads it as the reply's own claim.
    */
   readonly asked: ReadonlySet<number>;
-  /** Null where the turn could run no report, so a figure has nothing to be held to. */
+  /** Null only where the screen was given no question (a synthesis turn); any door's turn is judged. */
   readonly figures: FigureFacts | null;
   /**
    * The blocks held with this reply, as JSON, where the caller holds them: they are what would be
