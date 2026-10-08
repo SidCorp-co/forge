@@ -2,7 +2,7 @@
 // the project, its source naming the query and the moment it was read as core stored them from the
 // run, and a block this screen cannot draw named in place, never dropped.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationMessage, ConversationWindow } from "../types";
 import { ConversationThread } from "./conversation-thread";
@@ -76,9 +76,12 @@ describe("a stored answer holding report blocks", () => {
       <ConversationThread projectSlug="forge-dev" messages={[answer([{ type: "visual", visual: block, run }])]} windows={[window1]} />,
     );
     const note = screen.getByTestId("visual-block-source");
-    expect(note.textContent).toContain("Report run run-9");
     expect(screen.getByTestId("visual-block-query").textContent).toBe("progress-by-requirement");
     expect(note.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-08T03:46:58.000Z");
+    // the run itself sits behind the line's disclosure
+    expect(note.textContent).not.toContain("run-9");
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    expect(screen.getByTestId("visual-block-source-detail").textContent).toContain("Report run run-9");
   });
 
   it("refuses a stored block whose run's query and read time were not stored with it, by name", () => {

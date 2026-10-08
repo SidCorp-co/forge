@@ -8,6 +8,27 @@ import type { ReportQueryDescriptor, ReportRun } from '@forge/contracts/report-q
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { portSlot } from '../lib/port-slot.js';
+import type { StagedBlock } from '../lib/staged-block.js';
+
+/**
+ * What turn a REST caller's token answers: none (a person's token, or a session that answers no
+ * room), an assistant chat turn's, a session that is gone, or an Agent-mode turn in a room, whose
+ * reply a block can wait on.
+ */
+export type RestTurn =
+  | { kind: 'none' }
+  | { kind: 'assistant-turn' }
+  | { kind: 'session-gone'; sessionId: string }
+  | {
+      kind: 'agent-turn';
+      sessionId: string;
+      conversationId: string;
+      question: string;
+      /** The reply was already taken for delivery. */
+      settled: boolean;
+      /** Hold a block on the turn; false where its reply was taken for delivery meanwhile. */
+      stage(block: StagedBlock): Promise<boolean>;
+    };
 
 /** Who runs a query or reads a run back: every read is made as this person. */
 export interface ReportAsker {
@@ -44,6 +65,8 @@ interface ReportsPorts {
     content: string;
     blocks: readonly ContentBlock[];
   }): Promise<{ messageId: string }>;
+  /** The room turn the token a REST call arrived on answers (`rest-stage.ts` judges it). */
+  restTurnOf(tokenId: string | null): Promise<RestTurn>;
 }
 
 const slot = portSlot<ReportsPorts>('reports', 'provideReportsPorts');

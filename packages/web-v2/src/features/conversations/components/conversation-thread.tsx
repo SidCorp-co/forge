@@ -20,7 +20,9 @@ import { isStructured, StructuredMessage } from "@/features/onboarding/component
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
-import { runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
+import { settingsHref } from "@/features/project-settings/sections";
+import { ShareAction, shareSubjectOf } from "@/features/shares";
+import { runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
@@ -133,7 +135,7 @@ function spokenAt(iso: string, time: ReturnType<typeof useTimeFormat>): { label:
  * Read-only affordances only: a conversation is an append-only log, so nothing
  * here rewrites a turn (ISS-1004's rule, which stands).
  */
-function MessageActions({ message }: { message: ConversationMessage }) {
+function MessageActions({ message, share }: { message: ConversationMessage; share?: ShareScope | undefined }) {
   const [copied, setCopied] = useState(false);
   const t = useCopy();
   const when = spokenAt(message.createdAt, useTimeFormat());
@@ -167,7 +169,27 @@ function MessageActions({ message }: { message: ConversationMessage }) {
       >
         {copied ? t("shell.thread.copied") : t("shell.thread.copy")}
       </button>
+      {share && <ShareOf message={message} share={share} />}
     </div>
+  );
+}
+
+/** The project an answer is shared from, and the slug that names where its links are listed. */
+interface ShareScope {
+  projectId: string;
+  projectSlug: string | undefined;
+}
+
+/** Share, beside Copy, on an answer that holds a report block or a template's output; else nothing. */
+function ShareOf({ message, share }: { message: ConversationMessage; share: ShareScope }) {
+  const subject = shareSubjectOf(message);
+  if (!subject) return null;
+  return (
+    <ShareAction
+      projectId={share.projectId}
+      subject={subject}
+      manageHref={share.projectSlug ? settingsHref(share.projectSlug, "people", "shares") : undefined}
+    />
   );
 }
 
@@ -196,11 +218,13 @@ function Said({
   withdrawn,
   newestAgentId,
   firstDesigns,
+  share,
 }: {
   message: ConversationMessage;
   withdrawn?: string;
   newestAgentId?: string;
   firstDesigns?: boolean;
+  share?: ShareScope | undefined;
 }) {
   const t = useCopy();
   // a questionnaire, its answers and a designs list are structured messages a service wrote;
@@ -249,7 +273,7 @@ function Said({
     <div className="flex flex-col gap-2">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
-      <MessageActions message={message} />
+      <MessageActions message={message} share={share} />
     </div>
   );
 }
@@ -299,6 +323,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
 }
 
 export function ConversationThread({
+  projectId,
   projectSlug,
   messages,
   windows,
@@ -310,6 +335,8 @@ export function ConversationThread({
   onRetry,
   afterEntry,
 }: {
+  /** The project the room is about, so an answer holding a report can be shared from it. */
+  projectId?: string | undefined;
   /** The project's slug, for the links a report block's refs open; plain text until it is known. */
   projectSlug?: string | undefined;
   messages: ConversationMessage[];
@@ -353,6 +380,7 @@ export function ConversationThread({
                 {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
                 {...(newestAgentId ? { newestAgentId } : {})}
                 firstDesigns={entry.message.id === firstDesignsId}
+                share={projectId ? { projectId, projectSlug } : undefined}
               />
               {afterEntry?.(entry.message.id)}
             </div>
@@ -366,7 +394,8 @@ export function ConversationThread({
             </p>
           );
         }
-        if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
+        if (entry.kind === "agent-turn")
+          return <AgentTurnEntry key={entry.key} turn={entry.turn} projectSlug={projectSlug} />;
         if (entry.kind === "handed") {
           return (
             <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-handed-to-job">
@@ -443,7 +472,7 @@ function LiveTurn({
 /**
  * A runner-hosted turn, in whichever of its states it is in.
  */
-function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
+function AgentTurnEntry({ turn, projectSlug }: { turn: AgentTurn; projectSlug?: string | undefined }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   const failed = turn.state === "failed";
@@ -478,6 +507,17 @@ function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
         <div className="mt-2 border-t border-line pt-2" data-testid="thread-held-reply">
           <p className="fg-caption text-subtle">{t("conversations.agentTurn.heldBy", { reason: held.reason })}</p>
           <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{held.reply}</p>
+          {held.blocks && held.blocks.length > 0 && (
+            // the blocks the session drew for this reply, held with it: nobody else in the room sees them
+            <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn([{ blocks: held.blocks }]) }}>
+              <div className="mt-2 flex flex-col gap-3" data-testid="thread-held-blocks">
+                {held.blocks.map((b, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the held reply's block order is fixed
+                  <VisualBlockView key={i} block={b.visual} />
+                ))}
+              </div>
+            </VisualBlockProvider>
+          )}
         </div>
       )}
     </div>

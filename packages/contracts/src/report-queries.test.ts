@@ -3,6 +3,8 @@ import { z } from "zod";
 import {
   defineReportQuery,
   parseReportParams,
+  REPORT_FIELD_VOCABULARIES,
+  ReportFieldSchema,
   ReportFrameSchema,
   ReportQueryDescriptorViewSchema,
   ReportRunSchema,
@@ -69,6 +71,31 @@ describe("ReportFrameSchema", () => {
   });
   it("accepts a null cell for any type", () => {
     expect(ReportFrameSchema.safeParse({ ...f, rows: [{ n: null }] }).success).toBe(true);
+  });
+});
+
+describe("a status field's vocabulary", () => {
+  const state = { name: "state", type: "status", label: "State" } as const;
+  it("names the shared state family its values are read through", () => {
+    for (const vocabulary of REPORT_FIELD_VOCABULARIES) {
+      expect(ReportFieldSchema.safeParse({ ...state, vocabulary }).success).toBe(true);
+    }
+    expect(ReportFieldSchema.safeParse(state).success).toBe(true);
+  });
+  it("refuses a vocabulary no family carries, naming the ones that exist", () => {
+    const r = ReportFieldSchema.safeParse({ ...state, vocabulary: "mood" });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0]?.path).toEqual(["vocabulary"]);
+  });
+  it("refuses a vocabulary on a field that is not a status, by name", () => {
+    const r = ReportFieldSchema.safeParse({ name: "n", type: "number", label: "N", vocabulary: "requirement" });
+    expect(r.error?.issues.map((i) => i.message)).toEqual([
+      'field "n" is number and names the vocabulary "requirement"; only a status field reads its values through a vocabulary',
+    ]);
+  });
+  it("is refused at definition time, naming the query", () => {
+    const bad = { ...ok, output: [{ name: "n", type: "number" as const, label: "N", vocabulary: "requirement" as const }] };
+    expect(() => defineReportQuery(bad)).toThrow('report query "progress-by-requirement": output field "n" is invalid');
   });
 });
 

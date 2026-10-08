@@ -29,14 +29,33 @@ export const REPORT_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
 const NAME = z.string().min(1).max(64);
 
+/**
+ * The shared state vocabulary a `status` column's values belong to, named as web's badge legend
+ * names its state families: a value is drawn with that family's sentence-case label and tone, the
+ * stored value only in its tooltip. A `status` column that names none is still drawn as a badge,
+ * sentence-cased and neutral.
+ */
+export const REPORT_FIELD_VOCABULARIES = ["requirement", "releaseState", "bcVerdict"] as const;
+export type ReportFieldVocabulary = (typeof REPORT_FIELD_VOCABULARIES)[number];
+
 export const ReportFieldSchema = z
   .object({
     name: NAME,
     type: z.enum(REPORT_FIELD_TYPES),
     unit: z.string().min(1).max(24).optional(),
     label: z.string().min(1).max(80),
+    vocabulary: z.enum(REPORT_FIELD_VOCABULARIES).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((f, ctx) => {
+    if (f.vocabulary !== undefined && f.type !== "status") {
+      ctx.addIssue({
+        code: "custom",
+        path: ["vocabulary"],
+        message: `field "${f.name}" is ${f.type} and names the vocabulary "${f.vocabulary}"; only a status field reads its values through a vocabulary`,
+      });
+    }
+  });
 export type ReportField = z.infer<typeof ReportFieldSchema>;
 
 /** A `ref` cell is an entity key (ISS-12, REQ-3, FB-9, a release version); a duration is milliseconds, a date ISO 8601. */
@@ -228,6 +247,10 @@ export const REPORT_REFUSAL_CODES = [
   "REPORT_BLOCK_FIGURE_NOT_IN_RUN",
   "REPORT_BLOCK_NO_ROOM",
   "REPORT_BLOCK_ROOM_NOT_WEB",
+  "REPORT_BLOCK_TURN_DOOR",
+  "REPORT_BLOCK_TURN_UNKNOWN",
+  "REPORT_BLOCK_OTHER_ROOM",
+  "REPORT_BLOCK_REPLY_SETTLED",
   "REPORT_TEMPLATE_NOT_FOUND",
   "REPORT_TEMPLATE_PARAM_REFUSED",
   "REPORT_TEMPLATE_RUNS_MISMATCH",
@@ -240,4 +263,5 @@ export const REPORT_REFUSAL_STATUSES = {
   REPORT_RUN_EXPIRED: 404,
   REPORT_RUN_READ_FORBIDDEN: 403,
   REPORT_TEMPLATE_NOT_FOUND: 404,
+  REPORT_BLOCK_REPLY_SETTLED: 409,
 } as const satisfies RefusalStatuses<ReportRefusalCode>;

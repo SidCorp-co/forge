@@ -5,6 +5,7 @@
 // A chat records Feedback, never an issue (owner ruling 2026-10-08), so the filing is forge_feedback.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TurnBlockStage } from './turn-stage.js';
 
 const TITLE = 'Push the draft issues through review';
 const FILING = JSON.stringify({
@@ -101,6 +102,7 @@ function ctx() {
     abort: new AbortController(),
     setPhase: () => undefined,
     draft: { text: '' },
+    stage: new TurnBlockStage(''),
     credential: async () => {
       throw new Error('no token in this test');
     },

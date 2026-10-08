@@ -39,6 +39,8 @@ interface GatherInput {
    * its calls sent, whose run ids name the runs a figure is held to. Absent, no figure is judged.
    */
   readonly figures?: { readonly asked: string; readonly texts: readonly string[] };
+  /** The blocks held with this reply, as JSON (`facts.ts:MessageFacts`). */
+  readonly heldBlocks?: readonly string[];
   /**
    * The handle to read through. A caller inside a transaction MUST pass its own.
    */
@@ -128,6 +130,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     readCounts: input.readCounts ?? new Set(),
     memoryDates: input.memoryDates ?? new Set(),
     figures: await figureFactsFor(input, needs, tx),
+    heldBlocks: input.heldBlocks ?? null,
   };
   if (needs.size === 0) return base;
   if (needs.size === 1 && needs.has('issue-rows')) return base;

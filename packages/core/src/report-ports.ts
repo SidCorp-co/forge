@@ -5,19 +5,44 @@
 // C2 adds Anthropic code execution, C3 E2B), so every computation is refused by name until one is.
 
 import { eq } from 'drizzle-orm';
-import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
+import { chatDoorOfToken } from './agent-sessions/index.js';
+import { postServiceAnswer } from './assistant/index.js';
 import {
-  appendMessages,
+  agentTurnOfSession,
   derivedScope,
-  handleForProject,
   readableConversation,
+  stageAgentTurnBlock,
 } from './conversations/index.js';
 import { db } from './db/client.js';
 import { conversationMessages } from './db/schema-conversations.js';
-import { logger } from './lib/logger.js';
 import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
-import { provideExecutorPorts, provideExecutors, provideReportsPorts } from './reports/index.js';
+import {
+  provideExecutorPorts,
+  provideExecutors,
+  provideReportsPorts,
+  type RestTurn,
+} from './reports/index.js';
+
+/** The room turn a REST caller's token answers, as `reports/rest-stage.ts` judges it. */
+async function restTurnOf(tokenId: string | null): Promise<RestTurn> {
+  const door = tokenId ? await chatDoorOfToken(tokenId) : null;
+  if (!door) return { kind: 'none' };
+  if (door.door === 'assistant-turn') return { kind: 'assistant-turn' };
+  const read = await agentTurnOfSession(door.sessionId);
+  if (!read.found) return { kind: 'session-gone', sessionId: door.sessionId };
+  // a session on the Agents screen answers no room: it has no reply there for a block to wait on
+  if (!read.turn) return { kind: 'none' };
+  const sessionId = door.sessionId;
+  return {
+    kind: 'agent-turn',
+    sessionId,
+    conversationId: read.turn.conversationId,
+    question: read.turn.question,
+    settled: read.turn.settled,
+    stage: (block) => stageAgentTurnBlock(sessionId, block),
+  };
+}
 
 export function provideReportPorts(): void {
   provideReportsPorts({
@@ -39,22 +64,8 @@ export function provideReportPorts(): void {
         .limit(1);
       return row ?? null;
     },
-    postAnswer: async ({ conversationId, projectId, askerUserId, content, blocks }) => {
-      const author = (await handleForProject(conversationId, projectId)) ?? askerUserId;
-      const [message] = await appendMessages({
-        conversationId,
-        messages: [{ role: 'assistant', authorUserId: author, content, blocks }],
-      });
-      if (!message)
-        throw new Error(`reports: the answer to conversation ${conversationId} was not stored`);
-      await publishToConversationReaders(conversationId, {
-        event: WEB_CONVERSATION_EVENT,
-        data: { conversationId, messageId: message.id, role: 'assistant', content: '' },
-      }).catch((err: unknown) => {
-        logger.warn({ err, conversationId }, 'reports: the room was not told of the block');
-      });
-      return { messageId: message.id };
-    },
+    postAnswer: postServiceAnswer,
+    restTurnOf,
   });
   provideExecutorPorts({
     computePolicyOf: async (projectId) => (await readProjectDocument(projectId))?.document.compute,

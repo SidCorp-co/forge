@@ -2,6 +2,7 @@
 
 import type { VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { share, type TimelineItem, timelineModel } from "./timeline-model";
+import { useStateLabel } from "./cells";
 import { TextAlternative } from "./text-alternative";
 
 const PLAN = "var(--chart-2)";
@@ -53,8 +54,10 @@ function Marks({ item, axis }: { item: TimelineItem; axis: { min: number; max: n
 /** A timeline block: each item a row on one linear time axis that runs exactly from the earliest date the frame holds to the latest. */
 export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> }) {
   const m = timelineModel(block);
+  const laneField = block.frame.fields.find((f) => f.name === block.lane);
+  const words = useStateLabel();
   return (
-    <div data-testid="timeline-block">
+    <div className="min-w-0" data-testid="timeline-block">
       {(m.hasSpan || m.hasForecast) && (
         <ul className="m-0 mb-1 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[11.5px] text-muted" data-testid="timeline-legend">
           {m.hasSpan && (
@@ -77,7 +80,9 @@ export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> 
           // biome-ignore lint/suspicious/noArrayIndexKey: items are positional
           <div key={i} className="contents" data-testid="timeline-item">
             {item.lane !== null && item.lane !== m.items[i - 1]?.lane && (
-              <div className="col-span-2 mt-2 text-[11.5px] font-semibold text-subtle first:mt-0">{item.lane}</div>
+              <div className="col-span-2 mt-2 text-[11.5px] font-semibold text-subtle first:mt-0" title={item.lane} data-testid="timeline-lane">
+                {laneField ? words(laneField, item.lane) : item.lane}
+              </div>
             )}
             <div className="truncate border-b border-line-subtle py-1.5 pr-3 text-fg" title={item.label}>
               {item.label}

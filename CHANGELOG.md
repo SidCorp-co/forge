@@ -9,6 +9,30 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.181] - 2026-10-08
+
+Hold a held chat reply's visual blocks and refuse invented chart labels
+
+### Fixed
+
+- **A chat answer's charts and tables now wait for its reply.** They appear only once the reply passes its check, stay with a held reply for the asker alone, and a typed number in a title or label is refused.
+
+## [0.4.0-dev.180] - 2026-10-08
+
+Chat-panel report tables stay readable; flow diagrams draw arrows
+
+### Changed
+
+- **Chat answers stay readable in the narrow Assistant panel.** Tables scroll sideways with the first column held, show ten rows then "Show all", draw states as badges, and open wide; diagrams scroll and keep their lines.
+
+## [0.4.0-dev.179] - 2026-10-08
+
+Share links: create, list and revoke them from the web UI
+
+### Added
+
+- **An answer holding a report can be shared from its own row.** Share sets who opens it and for how long, shows the link once, and Project settings → People lists each link with its state and Revoke.
+
 ## [0.4.0-dev.178] - 2026-10-08
 
 Template reports can be saved, scheduled, exported and shared

@@ -1,8 +1,11 @@
 // A visual block reaches a message only through here, written by this service and never by a model's
 // text. The block names its run, or a computed block its execution; either is read back as the asker,
 // its frame is copied in, and the registry checks the result. A block that brings its own frame must
-// bring exactly its source's, or it is refused naming each figure the source never held. A computed
-// block carries its execution beside it and says it was computed, wherever it is read.
+// bring exactly its source's, or it is refused naming each figure the source never held; a title or
+// label stating a number its source does not hold is refused the same way, by the check its reply is
+// screened with. A computed block carries its execution beside it and says it was computed, wherever
+// it is read. A block a turn draws waits on that turn's stage until its reply is judged, and is posted
+// only with a reply that passes.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
 import type { ExecutionFacts } from '@forge/contracts/report-executions';
@@ -15,13 +18,18 @@ import {
 } from '@forge/contracts/visual-blocks';
 import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
+import type { BlockStage, StagedBlock } from '../lib/staged-block.js';
+import { blockTextsIn, figureFactsOf, ungroundedBlockFigures } from '../messaging/figures-rule.js';
 import { readExecution } from './executions.js';
 import { figuresNotInRun } from './figures.js';
 import { reportsPorts } from './ports.js';
 import { factsOf, readReportRun, refuse } from './runs.js';
 
 export interface AttachedBlock {
-  messageId: string;
+  /** The row the block was posted as; null while it waits on its turn's reply. */
+  messageId: string | null;
+  /** It waits on the reply of the turn that drew it, and is shown only with a reply that passes. */
+  held: boolean;
   kind: VisualBlock['kind'];
   run: ReportRunFacts | null;
   /** The execution a computed block was drawn from; its frame is labelled computed. */
@@ -152,15 +160,46 @@ async function sourced(
 }
 
 /**
+ * Refuses a block whose title or labels state a number its source does not hold, naming each one: the
+ * check its reply is screened with (`messaging/figures-rule.ts:ungroundedBlockFigures`), held here to
+ * the block's own run or execution, so the model corrects it inside the turn. A block that names no run holds
+ * no figure at all; a number the person typed in the question may stand.
+ */
+function refuseTypedFigures(
+  raw: Record<string, unknown>,
+  frame: unknown,
+  source: string | null,
+  asked: string,
+): void {
+  const frames = source === null ? [] : [frame as ReportFrame];
+  const typed = ungroundedBlockFigures(
+    blockTextsIn(JSON.stringify(raw)),
+    figureFactsOf(asked, frames),
+  );
+  if (typed.length === 0) return;
+  throw refusedBlock(
+    'REPORT_BLOCK_FIGURE_NOT_IN_RUN',
+    typed.map(({ text, figure }) =>
+      source === null
+        ? `the ${text.kind} block's ${text.key} "${text.text}" states the figure ${figure.quote}, and the block names no run to hold it: take the number out of the ${text.key}, or draw it from a forge_report run's frame`
+        : `the ${text.kind} block's ${text.key} "${text.text}" states the figure ${figure.quote}, which ${source} does not hold: a block's text holds no figure of its own, so take it out of the ${text.key} and let the frame show it`,
+    ),
+  );
+}
+
+/**
  * Checks a proposed block against the registry and its run, and posts it into the room as the
- * project's answer. `raw` is a block of any registered kind with `source: { runId }` and no frame
- * (the run's is copied in); a `flow` block may name no run and then holds no figures.
+ * project's answer — or, given a `stage`, holds it there until the reply of the turn that drew it is
+ * judged. `raw` is a block of any registered kind with `source: { runId }` and no frame (the run's
+ * is copied in); a `flow` block may name no run and then holds no figures.
  */
 export async function attachVisualBlock(args: {
   conversationId: string;
   projectId: string;
   raw: unknown;
   asker: { userId: string; agency: ActorAgency };
+  /** The turn the block waits on; null posts it now, for a caller that answers no turn. */
+  stage: BlockStage | null;
   now?: Date;
 }): Promise<AttachedBlock> {
   const now = args.now ?? new Date();
@@ -193,6 +232,12 @@ export async function attachVisualBlock(args: {
     args.projectId,
     now,
   );
+  const sourceName = facts
+    ? `run ${facts.runId}`
+    : execution
+      ? `execution ${execution.executionId}`
+      : null;
+  refuseTypedFigures(args.raw, block.frame, sourceName, args.stage?.question ?? '');
   const checked = checkBlock(block);
   if (!checked.ok)
     throw refusedBlock(
@@ -204,19 +249,31 @@ export async function attachVisualBlock(args: {
   const text = execution
     ? `${drawn}\n\nComputed by execution ${execution.executionId} (${execution.language} on ${execution.adapter}), not read from a report.`
     : drawn;
+  const visual = {
+    type: 'visual' as const,
+    visual: checked.block,
+    ...(facts ? { run: facts } : {}),
+    ...(execution ? { execution } : {}),
+  };
+  const attached = { kind: checked.block.kind, run: facts, execution, text };
+  if (args.stage) {
+    const staged: StagedBlock = {
+      text,
+      block: visual,
+      kind: checked.block.kind,
+      runId: facts?.runId ?? null,
+      projectId: args.projectId,
+      askerUserId: args.asker.userId,
+    };
+    await args.stage.hold(staged);
+    return { messageId: null, held: true, ...attached };
+  }
   const { messageId } = await ports.postAnswer({
     conversationId: args.conversationId,
     projectId: args.projectId,
     askerUserId: args.asker.userId,
     content: text,
-    blocks: [
-      {
-        type: 'visual',
-        visual: checked.block,
-        ...(facts ? { run: facts } : {}),
-        ...(execution ? { execution } : {}),
-      },
-    ],
+    blocks: [visual],
   });
-  return { messageId, kind: checked.block.kind, run: facts, execution, text };
+  return { messageId, held: false, ...attached };
 }

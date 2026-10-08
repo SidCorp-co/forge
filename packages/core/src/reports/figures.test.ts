@@ -51,6 +51,17 @@ describe('figuresNotInRun', () => {
     expect(out).toContain('frame.rows: the block holds 3 row(s), run r1 read 2');
   });
 
+  it('names a status field read through another vocabulary than the run declared', () => {
+    const held: ReportFrame = {
+      fields: [{ name: 'state', type: 'status', label: 'State', vocabulary: 'requirement' }],
+      rows: [{ state: 'agreed' }],
+    };
+    const typed = { ...held, fields: [{ ...held.fields[0], vocabulary: 'releaseState' }] };
+    expect(figuresNotInRun(typed, held, 'r1')).toEqual([
+      'frame.fields.0: field "state" is declared {"name":"state","type":"status","label":"State","vocabulary":"releaseState"}, but run r1 declared it {"name":"state","type":"status","label":"State","vocabulary":"requirement"}',
+    ]);
+  });
+
   it('names a frame that is no frame at all', () => {
     expect(figuresNotInRun(7, run, 'r1')[0]).toContain('not a frame');
   });

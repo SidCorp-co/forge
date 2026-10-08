@@ -11,6 +11,7 @@ import type {
 import type { TurnAuthority, TurnCredential } from '../credentials/turn-credential.js';
 import type { ChatStreamEvent } from '../integrations/llm/index.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import type { BlockStage, DroppedBlock, StagedBlock } from '../lib/staged-block.js';
 import type { DoorId } from '../messaging/contract.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
@@ -47,6 +48,8 @@ export interface TurnHookContext {
   conversationId: string;
   /** The handle answering for the venue's project in this room, or null where none is in it. */
   handleUserId: string | null;
+  /** Where a block the turn draws waits until its reply is judged; a door that draws blocks hands it to its tools. */
+  blockStage: BlockStage;
 }
 
 export type TurnReply =
@@ -67,7 +70,14 @@ export type TurnReply =
    * `awaitsReply`: the attempt whose text this is called `await_reply`, and the text is the model's
    * own (screened, not code-authored). The row is written with it; nothing reads it from the text.
    */
-  | { send: true; message: ScreenedMessage; screenReplaced: boolean; awaitsReply?: boolean };
+  | {
+      send: true;
+      message: ScreenedMessage;
+      screenReplaced: boolean;
+      awaitsReply?: boolean;
+      /** The blocks this reply releases: drawn for the answer whose words it is, posted just above it. */
+      blocks?: readonly StagedBlock[];
+    };
 
 /**
  * Where a turn that outran its first ceiling streams and records the rest: a fresh entry beside
@@ -189,26 +199,31 @@ export type TurnOutcome =
    * `continuation`: the delivered text was a partial reply, and this settles once the rest of the
    * turn has been posted to the same thread, or the line saying why it was not.
    */
-  | { kind: 'delivered'; messageId: string | null; continuation?: Promise<TurnOutcome> }
-  | { kind: 'stopped'; reason: string }
-  | { kind: 'superseded'; reason: string }
-  | { kind: 'diverted'; reason: string }
-  | { kind: 'declined'; reason: string }
-  | { kind: 'not-dispatched'; reason: string }
-  /** `report`: the message the person is owed for it, posted as the window's one terminal status. */
-  | {
-      kind: 'failed';
-      code: TurnFailureCode;
-      reason: string;
-      cause: TurnFailureCause;
-      report: ScreenedMessage;
-    }
-  /**
-   * The composed reply rides along, so a failed delivery does not lose what was written. `reason`
-   * is read by every reader of the conversation, so it is a fixed sentence keyed by `code`; the
-   * transport's own error goes to logs and error tracking only.
-   */
-  | { kind: 'undeliverable'; code: typeof REPLY_NOT_DELIVERED; reason: string; reply: string };
+  (
+    | { kind: 'delivered'; messageId: string | null; continuation?: Promise<TurnOutcome> }
+    | { kind: 'stopped'; reason: string }
+    | { kind: 'superseded'; reason: string }
+    | { kind: 'diverted'; reason: string }
+    | { kind: 'declined'; reason: string }
+    | { kind: 'not-dispatched'; reason: string }
+    /** `report`: the message the person is owed for it, posted as the window's one terminal status. */
+    | {
+        kind: 'failed';
+        code: TurnFailureCode;
+        reason: string;
+        cause: TurnFailureCause;
+        report: ScreenedMessage;
+      }
+    /**
+     * The composed reply rides along, so a failed delivery does not lose what was written. `reason`
+     * is read by every reader of the conversation, so it is a fixed sentence keyed by `code`; the
+     * transport's own error goes to logs and error tracking only.
+     */
+    | { kind: 'undeliverable'; code: typeof REPLY_NOT_DELIVERED; reason: string; reply: string }
+  ) & {
+    /** The blocks the turn drew that nobody will see, and why: named in the window's record, never silent. */
+    droppedBlocks?: readonly DroppedBlock[];
+  };
 
 export const REPLY_NOT_DELIVERED = 'REPLY_NOT_DELIVERED';
 export const REPLY_NOT_DELIVERED_REASON = 'the reply could not be pushed to this conversation';

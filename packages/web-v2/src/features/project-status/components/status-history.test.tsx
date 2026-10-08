@@ -131,7 +131,10 @@ describe("a kept template report", () => {
       if (call.method === "GET" && call.path === "/projects/p1/status/reports/r-template")
         return { body: { report: TEMPLATE, status: null, document, previous: null, diff: null } };
       if (call.method === "POST" && call.path === "/projects/p1/status/reports/r-template/read") return { body: { read: 0 } };
-      if (call.method === "POST" && call.path === "/projects/p1/shares") return { status: 201, body: { share: {}, url: "/s/forge_share_abc" } };
+      if (call.method === "GET" && call.path === "/projects/p1/shares/audiences")
+        return { body: { audiences: [{ audience: "members", refusal: null }, { audience: "link", refusal: { code: "PERMISSION_FORBIDDEN", message: "needs shares.public" } }] } };
+      if (call.method === "POST" && call.path === "/projects/p1/shares")
+        return { status: 201, body: { share: { id: "s1", audience: "members", expiresAt: "2026-10-15T09:00:00.000Z", title: "Progress" }, url: "https://forge.test/s/forge_share_abc" } };
       if (call.path.startsWith("/schedules?")) return { body: [] };
       return undefined;
     });
@@ -155,12 +158,13 @@ describe("a kept template report", () => {
     expect(await screen.findByTestId("template-report")).toHaveTextContent("One requirement moved.");
     expect(screen.getByTestId("template-report")).toHaveTextContent("Narrative not written: risks, recommendations.");
     expect(screen.getByTestId("template-report-export")).toBeInTheDocument();
-    await user.click(screen.getByTestId("template-report-share"));
-    expect(await screen.findByTestId("template-report-link")).toHaveTextContent("/s/forge_share_abc");
+    await user.click(screen.getByTestId("message-share"));
+    await user.click(await screen.findByRole("button", { name: "Create link" }));
+    expect(await screen.findByTestId("share-link")).toHaveValue("https://forge.test/s/forge_share_abc");
     expect(calls).toContainEqual({
       method: "POST",
       path: "/projects/p1/shares",
-      body: { subjectKind: "status-report", subjectId: "r-template", audience: "members" },
+      body: { subjectKind: "status-report", subjectId: "r-template", audience: "members", expiresInDays: 7 },
     });
   });
 

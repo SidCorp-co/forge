@@ -1,5 +1,6 @@
 import type { SpeakerRefusalCode } from '@forge/contracts/assistant';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
+import type { StagedBlock } from '../lib/staged-block.js';
 import type { DoorId, MessageVerdict } from '../messaging/contract.js';
 import { type ProvenMessage, proven, wholeAgentText } from '../messaging/proven.js';
 
@@ -39,6 +40,11 @@ export interface DeliveryOptions {
   addressee?: string | null | undefined;
   /** The transport's id for the message this delivery answers, where it wants to attach it — a Rocket.Chat thread; ignored by a transport with no such thing. */
   anchor?: string | null | undefined;
+  /**
+   * The blocks held with this reply, which it releases: posted into the room just above it. Only a
+   * transport that draws blocks takes them; any other refuses a delivery that carries one.
+   */
+  blocks?: readonly StagedBlock[] | undefined;
 }
 
 /**

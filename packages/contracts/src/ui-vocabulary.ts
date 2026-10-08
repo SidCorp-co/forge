@@ -400,6 +400,12 @@ export const ENUM_LABELS = {
 		user_cancelled: "Cancelled by a person",
 		unclassified: "Unclassified",
 	},
+	/** Where a share link stands (contracts `shares.ts:SHARE_STATES`). */
+	shareState: { active: "Active", expired: "Expired", revoked: "Revoked" },
+	/** Who opens a share link (contracts `shares.ts:SHARE_AUDIENCES`). */
+	shareAudience: { members: "Project members", link: "Anyone with the link" },
+	/** What a share link froze (contracts `shares.ts:SHARE_SUBJECT_KINDS`). */
+	shareSubject: { message: "Chat answer", "template-output": "Report output", "status-report": "Status report" },
 	/** What an environment reading stands on (web `project-config/types.ts`). */
 	environmentEvidence: {
 		"runtime-confirmed": "Confirmed at runtime",

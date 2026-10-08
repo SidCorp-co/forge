@@ -19,7 +19,7 @@ const descriptor = defineReportQuery({
   params: z.object({}),
   output: [
     { name: 'release', type: 'ref', label: 'Release' },
-    { name: 'state', type: 'status', label: 'State' },
+    { name: 'state', type: 'status', label: 'State', vocabulary: 'releaseState' },
     { name: 'total', type: 'number', unit: 'issues', label: 'Issues' },
     { name: 'shipped', type: 'number', unit: 'issues', label: 'Shipped' },
     { name: 'awaitingRelease', type: 'number', unit: 'issues', label: 'Awaiting release' },

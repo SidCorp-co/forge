@@ -6,6 +6,7 @@ import type { PatPermission, PatRoute } from '../credentials/pat-permissions.js'
 import type { McpPrincipal } from '../middleware/require-pat.js';
 import { loadVisibleProjectIds } from './authz.js';
 import { type Refusal, type RefusalEnvelope, refusalEnvelope } from './refusal.js';
+import type { BlockStage } from './staged-block.js';
 
 export type ToolGrantNone = { readonly none: string };
 
@@ -60,6 +61,11 @@ export interface ChatTurnFacts {
    * takes the document's own lines rather than the model's retyping of them.
    */
   readDocument?: (file: string) => Promise<TurnDocument>;
+  /**
+   * Where a block this turn draws waits until the turn's reply is judged; absent where the turn's
+   * door draws no block.
+   */
+  blockStage?: BlockStage;
 }
 
 export type TurnDocument =

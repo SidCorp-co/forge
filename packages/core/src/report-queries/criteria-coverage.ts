@@ -26,7 +26,7 @@ const descriptor = defineReportQuery({
     { name: 'title', type: 'string', label: 'Requirement title' },
     { name: 'criterion', type: 'string', label: 'Criterion' },
     { name: 'body', type: 'string', label: 'What must hold' },
-    { name: 'verdict', type: 'status', label: 'Verdict' },
+    { name: 'verdict', type: 'status', label: 'Verdict', vocabulary: 'bcVerdict' },
     { name: 'issues', type: 'string', label: 'Traced by' },
     { name: 'issueCount', type: 'number', unit: 'issues', label: 'Issues' },
   ],

@@ -90,9 +90,12 @@ never dropped.)
   such as feedback is classed as it is today), `surfaces` (`rest`, `chat`, `cli` — the
   one-question-one-answer flag of `docs/proposals/destination/one-question-one-answer.md`).
 - `ReportFrame` — the one interchange shape, after Grafana's frame: `fields[]` of
-  `{ name, type: 'string'|'number'|'date'|'duration'|'status'|'ref', unit?, label }` and `rows[]`;
+  `{ name, type: 'string'|'number'|'date'|'duration'|'status'|'ref', unit?, label, vocabulary? }` and `rows[]`;
   a `ref` cell is an entity key (`ISS-12`, `REQ-3`, `FB-9`, a release version) the renderer turns
-  into a link for a member.
+  into a link for a member. A `status` cell is drawn as the shared state badge; `vocabulary`
+  (`REPORT_FIELD_VOCABULARIES` in `packages/contracts/src/report-queries.ts`) names the state
+  family whose label and tone it wears, and a `status` field naming none reads sentence-cased and
+  neutral.
 - `ReportRun` — `{ runId, queryId, version, params, projectId, actor, asOf, frame }`: **every
   figure carries the query and the read that produced it.**
 
@@ -130,9 +133,9 @@ union on `kind`, each kind a zod schema with a `v` (schema version):
 
 | Kind | Holds | Drawn by (web) |
 |---|---|---|
-| `table` | columns picked from the frame, sort, row limit | flush table, hairline dividers |
+| `table` | columns picked from the frame, sort, row limit | flush table, hairline dividers; in a narrow container it scrolls sideways with its first column held, text clamped to two lines, ten rows then "Show all" |
 | `chart` | `variant: bar \| line \| burndown`, x field, y fields, series | `packages/web-v2/src/components/ui/chart.tsx` over recharts |
-| `flow` | nodes and edges with plain-text labels, at most 60 nodes; or a `workflow-status` frame's graph | `@xyflow/react` laid out by `elkjs`, as the workflow canvas does |
+| `flow` | nodes and edges with plain-text labels, at most 60 nodes; or a `workflow-status` frame's graph | `@xyflow/react` laid out by `elkjs`, as the workflow canvas does, drawn at its own size and scrolled sideways where its container is narrower |
 | `timeline` | items with a start, an end or a p50–p85 range, and a lane | a flat roadmap strip |
 | `kpi` | two to six figures, each a field of one row, with a label and an optional delta | a flat row of figures, no cards |
 | `status-list` | rows of `{ ref, status, waitingOn }` | a list whose `ref` links to the entity |
@@ -296,6 +299,12 @@ ruling and is not registered.
   stands only while its creator still holds the permission that created it (`shares.write`, or
   `shares.public` for a `link` share), read on every open, so a creator who leaves the project or
   loses that permission stops their links on the next request.
+- **Offered, never guessed.** `GET /api/projects/:id/shares/audiences` answers each audience as open
+  or with the refusal creating it would answer, from the same checks
+  (`packages/core/src/shares/service.ts:shareAudienceOptions`). The web's Share action on an
+  answer with a report block or a template's output reads it before offering "Anyone with the
+  link", shows the link once, and Project settings → People lists and revokes the project's links
+  (`packages/web-v2/src/features/shares/components/share-list.tsx:ShareList`).
 - **Read-only.** The page `/s/[token]` draws the snapshot as data — each block by its text fallback
   (`packages/web-v2/src/features/shares/components/shared-answer.tsx:SharedBlock`) while the web block
   registry holds no renderer for it — with no actions, no navigation and no live reads; for the `link` audience, `ref` cells render as text,
@@ -354,11 +363,28 @@ ruling and is not registered.
   in the question are exempt, by the table in `figure-exemptions.ts`. It judges at the chat doors
   where the turn could run a report: a turn offered `forge_report` or `forge_template`, and an
   Agent session, whose REST runs are read from its tool results. A block whose frame differs from
-  its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`).
+  its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`),
+  and so is a block whose title or labels state a number its own run does not hold, by the same
+  check the screen holds a block's text to
+  (`packages/core/src/messaging/figures-rule.ts:ungroundedBlockFigures`), so the model corrects it
+  inside the turn.
   `status-claims-rule.ts` counts the report tools as grounding every claim family but a decision;
   `creation-claims-rule.ts` refuses "I shared this", a share link, or "I saved the report" where the
   turn made no share (`POST /api/projects/:id/shares`) or status-report save, and no
   unverified mark exempts a claim to have written a record.
+- **A block waits on its reply.** A block is never written into the room when it is drawn: it is
+  staged outside `conversation_messages`, so neither the room's REST read nor its socket can show
+  it, and is posted just above the reply only once that reply passes the reply check. A chat turn
+  stages on a per-turn stage handed to `forge_show` (`packages/core/src/assistant/turn-stage.ts`);
+  each attempt is screened with the blocks it drew, the reply that goes out releases its own
+  answer's blocks through the web transport, and every other block is dropped and named under
+  `droppedBlocks` in the window's record — a rewrite keeps a block by drawing it again, as its
+  corrective instruction says. An Agent-mode turn's `POST /api/conversations/:id/blocks` answers 202
+  and stages on its session's marker (`packages/core/src/reports/rest-stage.ts`); the bridge
+  screens the reply with those blocks, releases them with a reply that passes, keeps them on a held
+  reply, where only its asker reads them under "Show the held reply", and names them under
+  `droppedBlocks` when no reply goes out. A turn token whose block cannot wait — an assistant turn's,
+  a session that is gone, another room, a reply already taken — is refused by name.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block (and in its text, `reports/blocks.ts:attachVisualBlock`), and
   never drives a write without the person's confirmation (REQ-30 BC-4).

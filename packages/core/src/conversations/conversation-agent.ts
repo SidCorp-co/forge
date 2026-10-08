@@ -145,6 +145,8 @@ function markerOf(
     claimedAt: null,
     deliveredAt: null,
     failure: null,
+    staged: [],
+    droppedBlocks: [],
     images: [...(args.images ?? [])],
   };
 }

@@ -38,6 +38,7 @@ import {
   type TurnOutcome,
   type TurnReply,
 } from './turn-request.js';
+import { TurnBlockStage } from './turn-stage.js';
 
 export type {
   ConversationTurnRequest,
@@ -124,8 +125,20 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     );
   }
   const conversation = await openConversation(req.venue);
-  const reply = await composeWithin(req, conversation.id);
-  if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply);
+  const stage = new TurnBlockStage(req.message);
+  const reply = await composeWithin(req, conversation.id, stage);
+  if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply, stage);
+  return withDrops(req, stage, await settledOutcome(req, transport, conversation.id, reply, stage));
+}
+
+/** How a composed turn that posted no partial reply ends: delivered, or the reason it was not. */
+async function settledOutcome(
+  req: ConversationTurnRequest,
+  transport: Transport,
+  conversationId: string,
+  reply: TurnReply | TurnOutcome,
+  stage: TurnBlockStage,
+): Promise<TurnOutcome> {
   if ('kind' in reply) return reply;
   if (!reply.send) {
     if (reply.ended === 'failed') {
@@ -139,7 +152,22 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     }
     return { kind: reply.ended ?? 'diverted', reason: reply.reason };
   }
-  return deliverReply(req, transport, conversation.id, reply);
+  return deliverReply(req, transport, conversationId, reply, stage);
+}
+
+/** The outcome with the blocks the turn drew and nobody will see named on it, and logged. */
+function withDrops(
+  req: ConversationTurnRequest,
+  stage: TurnBlockStage,
+  outcome: TurnOutcome,
+): TurnOutcome {
+  const dropped = stage.dropped();
+  if (dropped.length === 0) return outcome;
+  logger.warn(
+    { ...req.log, outcome: outcome.kind, dropped },
+    'conversations: blocks this turn drew are dropped, unseen',
+  );
+  return { ...outcome, droppedBlocks: dropped };
 }
 
 /**
@@ -150,6 +178,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
 async function composeWithin(
   req: ConversationTurnRequest,
   conversationId: string,
+  stage: TurnBlockStage,
 ): Promise<Composed> {
   const budget = budgetOf(req);
   const startedAt = Date.now();
@@ -176,6 +205,7 @@ async function composeWithin(
     credential: credential.get,
     writes: null,
     draft: { text: '' },
+    stage,
   };
   const settle = async () => {
     clearTimeout(ceiling);
@@ -298,22 +328,27 @@ async function deliverPartial(
   transport: Transport,
   conversationId: string,
   reply: PartialReply,
+  stage: TurnBlockStage,
 ): Promise<TurnOutcome> {
-  const outcome = await deliverReply(req, transport, conversationId, {
-    send: true,
-    message: reply.partial,
-    screenReplaced: false,
-  });
+  const outcome = await deliverReply(
+    req,
+    transport,
+    conversationId,
+    { send: true, message: reply.partial, screenReplaced: false },
+    stage,
+  );
   if (outcome.kind !== 'delivered') {
     reply.cancel();
     void reply.rest.catch(() => undefined);
-    return outcome;
+    return withDrops(req, stage, outcome);
   }
   const entry = req.continueEntry?.() ?? null;
   reply.continueIn(entry);
   return {
     ...outcome,
-    continuation: continueInThread(req, transport, conversationId, reply, entry),
+    continuation: continueInThread(req, transport, conversationId, reply, entry, stage).then(
+      (rest) => withDrops(req, stage, rest),
+    ),
   };
 }
 
@@ -324,6 +359,7 @@ async function continueInThread(
   conversationId: string,
   reply: PartialReply,
   entry: ContinuedEntry | null,
+  stage: TurnBlockStage,
 ): Promise<TurnOutcome> {
   const stop = registerTurnStop(conversationId);
   const onStop = () => reply.cancel();
@@ -339,9 +375,12 @@ async function continueInThread(
         ? rest.report
         : codeAuthored(nothingMoreReply(req.handleName, language));
     entry?.onSettled?.({ text: message.text, screenReplaced: rest.send && rest.screenReplaced });
+    const blocks = rest.send ? (rest.blocks ?? []) : [];
     const receipt = await transport.deliver(req.venue, message, {
       addressee: req.addressee ?? null,
+      ...(blocks.length > 0 ? { blocks } : {}),
     });
+    stage.released(blocks);
     const row = entry?.replyEntry?.(message.text);
     await recordDeliveredReply({
       conversationId,
@@ -378,6 +417,7 @@ async function deliverReply(
   transport: Transport,
   conversationId: string,
   reply: Extract<TurnReply, { send: true }>,
+  stage: TurnBlockStage,
 ): Promise<TurnOutcome> {
   const where = { ...req.log, adapter: req.venue.adapter, externalId: req.venue.externalId };
   let receipt: Awaited<ReturnType<Transport['deliver']>>;
@@ -386,9 +426,12 @@ async function deliverReply(
       return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
     }
     req.onSettled?.({ text: reply.message.text, screenReplaced: reply.screenReplaced });
+    const blocks = reply.blocks ?? [];
     receipt = await transport.deliver(req.venue, reply.message, {
       addressee: req.addressee ?? null,
+      ...(blocks.length > 0 ? { blocks } : {}),
     });
+    stage.released(blocks);
   } catch (err) {
     logger.error(
       { err, ...where },

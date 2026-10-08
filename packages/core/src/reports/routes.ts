@@ -8,6 +8,7 @@ import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { attachVisualBlock } from './blocks.js';
 import { computeExecution } from './compute.js';
 import { readExecution } from './executions.js';
+import { restBlockStage } from './rest-stage.js';
 import { readReportRun } from './runs.js';
 import { checkTemplateNarrative, listReportTemplates, runTemplate } from './templates.js';
 
@@ -64,7 +65,8 @@ reportRoutes.get(
 
 /**
  * Agent mode's door to the block service the chat's forge_show calls: one block of a run the caller
- * made, posted into the room as the project's answer.
+ * made. Posted on an Agent-mode turn's token, it waits on that turn's reply and answers 202; posted
+ * on any other token, it is posted into the room as the project's answer and answers 201.
  */
 reportRoutes.post(
   '/conversations/:id/blocks',
@@ -77,13 +79,18 @@ reportRoutes.post(
   async (c) => {
     const { id: conversationId } = c.req.valid('param');
     const { projectId, block } = c.req.valid('json');
+    const stage = await restBlockStage({
+      tokenId: c.get('patTokenId') ?? null,
+      conversationId,
+    });
     const attached = await attachVisualBlock({
       conversationId,
       projectId,
       raw: block,
       asker: { userId: c.get('userId'), agency: gated(c.get('agency')) },
+      stage,
     });
-    return c.json(attached, 201);
+    return c.json(attached, attached.held ? 202 : 201);
   },
 );
 
