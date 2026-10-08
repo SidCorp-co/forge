@@ -51,6 +51,40 @@ function extractCause(cause: unknown): {
   return {};
 }
 
+/**
+ * What Sentry is told for a 5xx `HTTPException` that stands in for a different failure.
+ *
+ * ISS-1252: a handler that catches what its dependency threw and answers with a fixed refusal gives
+ * the caller the refusal and Sentry the refusal too, so every such failure arrives as one event and
+ * one group whatever broke. The caught error and what identifies the call are held here, beside
+ * the exception and not on it: `cause` and `details` reach the response body, and this is meant to
+ * stay on the server.
+ */
+export interface SentryCause {
+  /** The error that was caught; sent in place of the exception that replaced it. */
+  error: unknown;
+  /** Tags naming what the failing call was, set on the event beside the request's own. */
+  tags: Record<string, string>;
+}
+
+const sentryCauses = new WeakMap<HTTPException, SentryCause>();
+
+/** Hands `exception`'s capture the error it replaces, and returns `exception` for `throw`. */
+export function withSentryCause(exception: HTTPException, cause: SentryCause): HTTPException {
+  sentryCauses.set(exception, {
+    error: cause.error instanceof Error ? cause.error : notAnError(cause.error),
+    tags: cause.tags,
+  });
+  return exception;
+}
+
+/** A thrown string or object has no stack and no name to tell it from another; this says what it was. */
+function notAnError(thrown: unknown): Error {
+  return new Error(`a handler threw a value that is not an Error (${typeof thrown})`, {
+    cause: thrown,
+  });
+}
+
 export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c) => {
   const log = getLogger(c);
 
@@ -100,13 +134,15 @@ function captureToSentry(
   c: Context<{ Variables: RequestIdVars }>,
   code: string,
 ): void {
+  const carried = err instanceof HTTPException ? sentryCauses.get(err) : undefined;
   Sentry.withScope((scope) => {
+    if (carried) scope.setTags(carried.tags);
     scope.setTag('http.method', c.req.method);
     scope.setTag('http.path', c.req.path);
     scope.setTag('error.code', code);
     const requestId = c.get('requestId');
     if (requestId) scope.setTag('request.id', requestId);
-    Sentry.captureException(err);
+    Sentry.captureException(carried ? carried.error : err);
   });
 }
 
