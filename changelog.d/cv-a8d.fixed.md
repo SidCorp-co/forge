@@ -1,1 +1,0 @@
-**Sharing a chat answer shares the whole answer.** Share on any message of a turn freezes its question as the title, its reply and every block it drew; the 90-second partial reply names what it read in plain words.

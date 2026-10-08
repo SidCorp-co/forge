@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.189] - 2026-10-08
+
+Shared chat answers hold the whole turn; tool content stays the asker's
+
+### Changed
+
+- **Release readiness reports what shipped, not only what is in flight.** It lists the releases shipped in the last 14 days (the `days` param) with date, version and issue count, and says when none is in flight.
+
+### Fixed
+
+- **Sharing a chat answer shares the whole answer.** Share on any message of a turn freezes its question as the title, its reply and every block it drew; the 90-second partial reply names what it read in plain words.
+
+### Security
+
+- **A chat reply's tool inputs and outputs are shown only to the person who asked.** Every other member of the room sees which tools ran, how long each took, and the reply.
+
 ## [0.4.0-dev.188] - 2026-10-08
 
 Design revisions re-proposed under a new issue point at that issue

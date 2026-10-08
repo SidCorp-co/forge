@@ -1,1 +1,0 @@
-**Release readiness reports what shipped, not only what is in flight.** It lists the releases shipped in the last 14 days (the `days` param) with date, version and issue count, and says when none is in flight.
