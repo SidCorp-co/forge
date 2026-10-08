@@ -30,8 +30,12 @@ const BIOME = [
   'packages/biome.jsonc',
 ];
 const BUILT = ['packages/contracts/dist', 'packages/observability/dist'];
-/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`. */
-const BUILD_READ = ['packages/web-v2/next-env.d.ts', 'packages/web-v2/.next/types'];
+/** Ignored build output that archmap reads (`next build`'s manifest above `.next/types` too), or only stats. */
+const BUILD_READ = [
+  'packages/web-v2/next-env.d.ts',
+  'packages/web-v2/.next/types',
+  'packages/web-v2/.next/package.json',
+];
 const BUILD_PROBED = ['packages/web-v2/tsconfig.tsbuildinfo', 'packages/runner/target'];
 
 const DECLARED = {
