@@ -1,0 +1,1 @@
+**Report queries can be listed and run over REST.** `progress-by-requirement` and `roadmap-eta` answer as the caller, over what they may read, and each result names the query, params and read time that produced it.
