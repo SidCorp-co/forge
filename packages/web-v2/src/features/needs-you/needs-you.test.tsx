@@ -5,6 +5,7 @@
 import { RULE, say, waitingOn } from "@/test/said";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { NeedsYouList } from "./components/needs-you-list";
 import { needsYouHint } from "./hint";
 import { needsYouHref, needsYouPeekHref } from "./routes";
@@ -55,6 +56,19 @@ describe("the needs-you inbox", () => {
     const w = waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.splitRelease"), rule: RULE, effect: say("releases.effect.split", { limit: 50, left: say("releases.effect.splitOthers") }) });
     render(<NeedsYouList slug="hop" foldKey="t2b" empty="" items={[item({ area: "releases", entity: "release", key: "0.1.0", waitingOn: w })]} />);
     expect(within(screen.getByTestId("list-row")).getByTestId("row-note")).toHaveTextContent("Cuts the oldest 50 merged issues as this release and leaves the others at the release gate for the next one.");
+  });
+
+  it("words a row core says itself in the reader's language: one row for a base's pin-only dependents", () => {
+    const title = say("designs.title.repinBatch", { n: 6, designs: "designs", need: "need", its: "their", r: 13 });
+    const w = waitingOn("you", { who: say("standing.who.you"), act: say("designs.act.repinBatch", { n: 6, changes: "changes", r: 13 }), rule: RULE });
+    render(
+      <InterfaceLanguageScope language="vi">
+        <NeedsYouList slug="hop" foldKey="t2c" empty="" items={[item({ area: "designs", entity: "workflow", key: "access", title: "6 designs only need their pin moved → r13", says: { title }, waitingOn: w })]} />
+      </InterfaceLanguageScope>,
+    );
+    const row = screen.getByTestId("list-row");
+    expect(row).toHaveTextContent("6 thiết kế chỉ cần đổi ghim → r13"); // i18n-allow: asserts the vi copy of the re-pin act
+    expect(within(row).getByTestId("waiting-on")).toHaveTextContent("duyệt 6 bản chỉ đổi ghim → r13"); // i18n-allow: asserts the vi copy of the re-pin act
   });
 
   it("says so when nothing waits on the viewer", () => {

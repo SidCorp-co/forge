@@ -1,6 +1,6 @@
 import { type DesignStatus, WORKFLOW_DESIGN_MACHINE } from '@forge/contracts/design-status';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -147,7 +147,7 @@ export async function moveDesign(
   movedRow(moved);
 }
 
-interface StoredDesign {
+export interface StoredDesign {
   workflowId: string;
   revision: number;
   document: unknown;
@@ -251,6 +251,28 @@ export async function designsOf(tx: Tx, workflowId: string): Promise<StoredDesig
     .from(projectWorkflowDesigns)
     .where(eq(projectWorkflowDesigns.workflowId, workflowId))
     .orderBy(desc(projectWorkflowDesigns.revision));
+}
+
+/**
+ * Each design of the project's approved revision and newest revision, the two a pin-only reading
+ * compares; one statement for the project, never one per design.
+ */
+export async function headDesignsOf(tx: Tx, projectId: string): Promise<StoredDesign[]> {
+  const newest = sql`(SELECT max(d2.revision) FROM project_workflow_designs d2 WHERE d2.workflow_id = ${projectWorkflowDesigns.workflowId})`;
+  return tx
+    .select(designColumns)
+    .from(projectWorkflowDesigns)
+    .innerJoin(projectWorkflows, eq(projectWorkflows.id, projectWorkflowDesigns.workflowId))
+    .where(
+      and(
+        eq(projectWorkflows.projectId, projectId),
+        or(
+          eq(projectWorkflowDesigns.revision, projectWorkflows.approvedRevision),
+          eq(projectWorkflowDesigns.revision, newest),
+        ),
+      ),
+    )
+    .orderBy(asc(projectWorkflowDesigns.workflowId), desc(projectWorkflowDesigns.revision));
 }
 
 /** The reason on each workflow's latest decided revision, for those whose latest decision is a return. */
