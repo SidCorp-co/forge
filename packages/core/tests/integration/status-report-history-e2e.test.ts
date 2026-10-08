@@ -148,6 +148,15 @@ describe('a status report kept as dated history and sent on a schedule', () => {
     expect(byUser.get(w.userId)?.n).toBe(1);
     expect(byUser.get(member.id)?.n).toBe(1);
     expect(byUser.size).toBe(2);
+    // what a toast is drawn from: each recipient's live event names the kept report it opens
+    const live = await db.execute<{ user_id: string; report: string | null }>(sql`
+      SELECT payload->>'userId' AS user_id, payload->>'statusReportId' AS report
+        FROM pipeline_outbox
+       WHERE type = 'notification.created' AND payload->>'type' = 'status_report'
+         AND payload->>'projectId' = ${w.projectId}
+    `);
+    expect([...live].map((r) => r.user_id).sort()).toEqual([w.userId, member.id].sort());
+    for (const r of live) expect(r.report).toMatch(/^[0-9a-f-]{36}$/);
     expect(byUser.get(member.id)?.title).toMatch(new RegExp(`^${copy.vi.title.split(' {')[0]} `));
     expect(byUser.get(w.userId)?.title).toMatch(/status report/);
     const fires = await db.execute<{

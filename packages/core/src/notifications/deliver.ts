@@ -171,6 +171,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         issueId: input.issueId ?? null,
         secondaryIssueId: input.secondaryIssueId ?? null,
         agentSessionId: input.agentSessionId ?? null,
+        statusReportId: input.statusReportId ?? null,
       });
       return true;
     });
@@ -216,6 +217,7 @@ export async function deliverExisting(
       secondaryIssueId: notifications.secondaryIssueId,
       agentSessionId: notifications.agentSessionId,
       resolutionKey: notifications.resolutionKey,
+      statusReportId: notifications.statusReportId,
     })
     .from(notifications)
     .where(eq(notifications.id, recordId))

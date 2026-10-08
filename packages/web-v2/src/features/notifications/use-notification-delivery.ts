@@ -52,6 +52,8 @@ export interface DeliveryNotification {
   severity: NotificationSeverity;
   issueId: string | null;
   projectId: string | null;
+  /** The kept status report a `status_report` notice opens. */
+  statusReportId?: string | null;
 }
 
 /**

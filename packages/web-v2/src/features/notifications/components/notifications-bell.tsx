@@ -62,6 +62,11 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
     const slug = projects?.find((p) => p.id === projectId)?.slug;
     if (slug && issueId) router.push(`/projects/${slug}/issues/${issueId}`);
   };
+  /** A sent status report's notice opens the kept report, on its project's History tab. */
+  const openReport = (projectId: string | null | undefined, reportId: string) => {
+    const slug = projects?.find((p) => p.id === projectId)?.slug;
+    if (slug) router.push(keptReportHref(slug, reportId));
+  };
 
   const nextPage = Math.min(remaining, BELL_PAGE_SIZE);
   const more =
@@ -89,7 +94,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   // ISS-510: toasts and browser notifications for live deliveries reuse the bell's mark-read + deep link.
   useNotificationDelivery((n) => {
     markRead.mutate(n.notificationId);
-    openIssue(n.projectId, n.issueId);
+    if (n.statusReportId) openReport(n.projectId, n.statusReportId);
+    else openIssue(n.projectId, n.issueId);
   });
   // ISS-523: the open count on the favicon and the title, from the same source as the bell.
   useOpenIndicator(openCount?.count ?? 0);
