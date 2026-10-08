@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../integrations/llm/index.js';
+import { requestReader } from '../lib/authz.js';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
@@ -30,6 +31,7 @@ memorySearchRoutes.post('/search', zValidator('json', memorySearchInputSchema), 
       sourceFilter: body.sourceFilter,
       strategy: body.strategy,
       surface: 'web',
+      reader: requestReader(userId),
     });
   } catch (err) {
     if (err instanceof EmbeddingUnavailableError) {

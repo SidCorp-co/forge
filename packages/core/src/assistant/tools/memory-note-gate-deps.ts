@@ -20,6 +20,8 @@ export function memoryNoteGateFor(projectId: string): PreCall {
         sourceFilter: ['note'],
         strategy: 'semantic',
         surface: 'web',
+        // the gate reads only the notes' text: their cites are read for no person
+        reader: 'own-project',
       });
       return found.hits.map((h) => ({ text: h.text, score: h.score }));
     },

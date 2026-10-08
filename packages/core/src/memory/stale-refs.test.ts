@@ -28,7 +28,7 @@ const project = (
 });
 const HOP = project('p-hop', 'hop', 'HOP — Hospital Operations Platform');
 const EPOD = project('p-epod', 'epod');
-const CTX: CiteContext = { self: HOP, siblings: [HOP, EPOD] };
+const CTX: CiteContext = { self: HOP, siblings: [HOP, EPOD], unreadable: new Set() };
 
 const refsIn = (text: string) =>
   parseCites(text, CTX).map((c) => [c.kind, c.ref, c.project?.slug ?? null]);
@@ -90,7 +90,11 @@ describe('the sources a memory cites', () => {
 
   it('reads a renamed project under its active prefix and every one it held', () => {
     const renamed = { ...HOP, prefixes: issuePrefixSet({ active: 'HOP', held: ['HOP', 'HP'] }) };
-    const cites = parseCites('HOP-1, HP-2, ISS-3', { self: renamed, siblings: [renamed] });
+    const cites = parseCites('HOP-1, HP-2, ISS-3', {
+      self: renamed,
+      siblings: [renamed],
+      unreadable: new Set(),
+    });
     expect(cites.map((c) => c.ref)).toEqual(['HOP-1', 'HP-2']);
   });
 
@@ -108,6 +112,30 @@ describe('the sources a memory cites', () => {
     ).toEqual([
       ['issue', 'ISS-96', null],
       ['commit', '4ff620437', 'hop'],
+    ]);
+  });
+
+  it('reads a key beside a sibling the reader may not read exactly as one in a project it does not name (REQ-30 BC-10)', () => {
+    const EPD = project('p-epd', 'epd', 'epd', 'EPD');
+    const fenced: CiteContext = {
+      self: HOP,
+      siblings: [HOP, EPOD, EPD],
+      unreadable: new Set([EPOD.id, EPD.id]),
+    };
+    const read = (text: string) =>
+      parseCites(text, fenced).map((c) => [c.kind, c.ref, c.project?.slug ?? null]);
+    expect(read('the epod ISS-5 fix; see epod#ISS-6 and epod/REQ-2')).toEqual([
+      ['issue', 'ISS-5', null],
+      ['issue', 'ISS-6', null],
+      ['requirement', 'REQ-2', null],
+    ]);
+    // the same reading as a key in a project the text does not name, deduplicated with it
+    expect(read('epod ISS-5 and core ISS-5')).toEqual([['issue', 'ISS-5', null]]);
+    // an unreadable sibling's own prefix says nothing: a key under it is no cite at all
+    expect(read('epd EPD-3 and core EPD-4')).toEqual([]);
+    const held = new Map([[HOP.id, holdings()]]);
+    expect(resolveCites(parseCites('epod ISS-5', fenced), held)).toEqual([
+      { ref: 'ISS-5', kind: 'issue', project: null, state: 'unchecked' },
     ]);
   });
 

@@ -2,6 +2,7 @@ import { MEMORY_ENTRY_STATES } from '@forge/contracts/memory';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { memorySources } from '../db/schema.js';
+import { requestReader } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -106,6 +107,7 @@ memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async 
       limit,
       offset,
     }),
+    requestReader(userId),
   );
   return c.json({ ...listResponse(c, rows, total, { limit, offset }), counts });
 });

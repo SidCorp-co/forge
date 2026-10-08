@@ -4,7 +4,8 @@
 // count, read by the same rule. Behind `GET /api/memory/entries`. A person reads it on the record
 // it names (REQ-33 BC-4): `cites` keeps the memories naming that one requirement, issue or workflow.
 //
-// Does NOT check authorization — callers MUST verify project membership before invoking.
+// Does NOT check authorization on the project — callers MUST verify project membership before
+// invoking. `reader` decides which other projects a row's cites are read in (REQ-30 BC-10).
 
 import {
   MEMORY_AUTHORED_SOURCES,
@@ -27,7 +28,7 @@ import { peopleOf } from '../lib/people.js';
 import { DECAY_FLAGGED, DECAY_UNUSED } from './decay.js';
 import { memoryOfLiveIssue } from './live-issue.js';
 import { memoryIssueReads } from './ports.js';
-import { type Citations, resolveCitations } from './stale-refs.js';
+import { type Citations, type CiteReader, resolveCitations } from './stale-refs.js';
 
 const NO_CITATIONS: Citations = { cites: [], staleRefs: [] };
 
@@ -177,10 +178,16 @@ function checkReasons(r: Read, c: Citations, changed: readonly MemoryCite[], now
   return MEMORY_CHECK_REASONS.filter((k) => held[k]);
 }
 
-async function checked(projectId: string, read: Read[], now: number): Promise<Checked[]> {
+async function checked(
+  projectId: string,
+  read: Read[],
+  now: number,
+  reader: CiteReader,
+): Promise<Checked[]> {
   const resolved = await resolveCitations(
     projectId,
     read.map((r) => r.text),
+    reader,
   );
   return read.map((r, i) => {
     const c = resolved[i] ?? NO_CITATIONS;
@@ -200,6 +207,7 @@ async function countOf(where: SQL | undefined): Promise<number> {
 
 export async function readMemoryEntries(
   input: MemoryEntriesInput,
+  reader: CiteReader,
   now = Date.now(),
 ): Promise<{ rows: MemoryEntry[]; total: number; counts: Record<MemoryEntryState, number> }> {
   const scope: SQL[] = [
@@ -220,8 +228,8 @@ export async function readMemoryEntries(
     // which rows cite an item here is known only once each resolves: all are read, then counted
     // and cut by the same rule
     const [liveRows, retiredRows] = await Promise.all([
-      ordered(live).then((r) => checked(input.projectId, r, now)),
-      ordered(retired).then((r) => checked(input.projectId, r, now)),
+      ordered(live).then((r) => checked(input.projectId, r, now, reader)),
+      ordered(retired).then((r) => checked(input.projectId, r, now, reader)),
     ]);
     const cites = input.cites;
     const keep = (rows: Checked[]) =>
@@ -243,7 +251,7 @@ export async function readMemoryEntries(
       sql`(coalesce(${memories.lastVerifiedAt}, ${memories.createdAt}) < ${cutoff.toISOString()}::timestamptz OR ${memories.metadata}->>'staleSince' IS NOT NULL OR ${CITES_A_KEY})`,
     ),
   );
-  const due = (await checked(input.projectId, candidates, now)).filter(
+  const due = (await checked(input.projectId, candidates, now, reader)).filter(
     (x) => x.needsCheck.length > 0,
   );
   const [liveN, retiredN] = await Promise.all([countOf(live), countOf(retired)]);
@@ -256,7 +264,7 @@ export async function readMemoryEntries(
     const read = await ordered(input.state === 'retired' ? retired : live)
       .limit(input.limit)
       .offset(input.offset);
-    page = await checked(input.projectId, read, now);
+    page = await checked(input.projectId, read, now, reader);
   }
   return { rows: await entriesOf(page), total: counts[input.state], counts };
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import type { ProjectReader } from '../lib/authz.js';
+import { type ContextScopedMcpToolFactory, projectReaderOf, zodToMcpSchema } from '../lib/tool.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import {
   knowledgeAuthoredByEnum,
@@ -47,7 +48,10 @@ const requireOn = (
   projectId: string,
 ) => requireCan(actorFor(userId), permission, projectResource(projectId));
 
-const actions: Record<Input['action'], (userId: string, input: Input) => Promise<unknown>> = {
+const actions: Record<
+  Input['action'],
+  (userId: string, input: Input, reader: ProjectReader) => Promise<unknown>
+> = {
   list: async (userId, { projectId, kindFilter, injectionFilter }) => {
     await requireOn(userId, 'project.read', projectId);
     return listKnowledgeEntries({ projectId, kind: kindFilter, injection: injectionFilter });
@@ -85,10 +89,10 @@ const actions: Record<Input['action'], (userId: string, input: Input) => Promise
     await requireOn(userId, 'project.write', input.projectId);
     return { deleted: (await deleteKnowledgeEntry(input.projectId, slug)) > 0 };
   },
-  search: async (userId, { projectId, query, scope, topK, strategy }) => {
+  search: async (userId, { projectId, query, scope, topK, strategy }, reader) => {
     const text = required(query, 'query', 'search');
     await requireOn(userId, 'project.read', projectId);
-    return runUnifiedSearch({ projectId, query: text, scope, topK, strategy });
+    return runUnifiedSearch({ projectId, reader, query: text, scope, topK, strategy });
   },
 };
 
@@ -117,6 +121,6 @@ export const forgeKnowledgeTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
     const input = inputSchema.parse(args);
-    return actions[input.action](ctx.principal.userId, input);
+    return actions[input.action](ctx.principal.userId, input, projectReaderOf(ctx.principal));
   },
 });

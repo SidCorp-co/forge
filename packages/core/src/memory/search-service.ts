@@ -19,7 +19,7 @@ import {
   searchMemories,
   touchMemories,
 } from './search.js';
-import { resolveCitations } from './stale-refs.js';
+import { type CiteReader, resolveCitations } from './stale-refs.js';
 
 /**
  * Run a memory search. Shared between the `POST /api/memory/search` REST
@@ -34,8 +34,8 @@ import { resolveCitations } from './stale-refs.js';
  *  - `hybrid`   — both in parallel, weighted RRF fusion. Degrades to
  *    keyword-only when the embeddings service is down (`degraded: true`).
  *
- * Does NOT check authorization — callers must verify project membership
- * before invoking this function.
+ * Does NOT check authorization on `projectId` — callers must verify project membership
+ * before invoking this function. `reader` decides which other projects a hit's cites are read in.
  */
 
 const memorySearchStrategies = ['semantic', 'keyword', 'hybrid'] as const;
@@ -60,6 +60,8 @@ interface RunMemorySearchInput {
   sourceFilter?: MemorySource[] | undefined;
   strategy?: MemorySearchStrategy | undefined;
   surface: MemorySearchSurface;
+  /** Who the hits are read for: a cite in a project they may not read is never read (REQ-30 BC-10). */
+  reader: CiteReader;
   /**
    * The query already embedded by the caller. `knowledge/unified-search.ts` holds one because it
    * searches two stores from one query, and embedding it a second time here buys nothing but the
@@ -113,12 +115,17 @@ function demoteStale(hits: MemoryHit[]): { hits: MemoryHit[]; demoted: number } 
  * Each hit that names a record no longer resolving carries `staleRefs` (MJ-3). A failed resolution
  * leaves the hits as they were and says so in the log: the search still answers.
  */
-async function withStaleRefs(projectId: string, hits: MemoryHit[]): Promise<MemoryHit[]> {
+async function withStaleRefs(
+  projectId: string,
+  hits: MemoryHit[],
+  reader: CiteReader,
+): Promise<MemoryHit[]> {
   if (hits.length === 0) return hits;
   try {
     const resolved = await resolveCitations(
       projectId,
       hits.map((h) => h.text),
+      reader,
     );
     return hits.map((h, i) => {
       const c = resolved[i];
@@ -242,7 +249,7 @@ export async function runMemorySearch(input: RunMemorySearchInput): Promise<Memo
     hits = hits.slice(0, topK);
   }
 
-  hits = await withStaleRefs(input.projectId, hits);
+  hits = await withStaleRefs(input.projectId, hits, input.reader);
   const demotion = demoteStale(hits);
   hits = demotion.hits;
   if (demotion.demoted > 0) outcome.demotedStale = demotion.demoted;

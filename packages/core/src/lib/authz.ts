@@ -88,6 +88,21 @@ export function provideVisibleProjects(source: VisibleProjectsSource): void {
 }
 
 /**
+ * A person reading beyond the one project a call was checked on, with the projects the credential
+ * they came on is fenced to (null where it is not fenced). Carried by value because an in-process
+ * Assistant tool runs outside any request's token scope, where `fencedProjectIds()` reads nothing.
+ */
+export interface ProjectReader {
+  readonly userId: string;
+  readonly fence: readonly string[] | null;
+}
+
+/** The reader a REST request is: its user, fenced by the token it arrived on. */
+export function requestReader(userId: string): ProjectReader {
+  return { userId, fence: fencedProjectIds() };
+}
+
+/**
  * Non-throwing resolver — the single read behind every gate. Returns null
  * when the project does not exist.
  *
