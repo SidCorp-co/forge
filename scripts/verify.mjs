@@ -859,7 +859,7 @@ if (mode === 'entry') {
   console.log(`  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`);
 }
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const memo = new Memo({ root: ROOT, args, baseRef: BASE_REF, base });
+const memo = new Memo({ root: ROOT, args, baseRef: BASE_REF });
 const results = await runAll(checks, base, WIDTH, memo);
 
 const said = [];

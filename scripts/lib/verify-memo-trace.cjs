@@ -1,8 +1,7 @@
 // Preloaded into every Node process a memoised check starts (`node --require`), so the files a
-// check actually reads are a fact the memo can compare with the inputs it declared, rather than a
-// claim nobody re-reads. Each `node:fs` call that reads, lists or probes a path is noted, and each
-// program the process starts. At exit the process writes `<VERIFY_MEMO_TRACE>.<pid>`, one line
-// each: `R <path>` a read or probe, `L <path>` a listing, `S <json>` a program started. It reports;
+// check reads are a fact the memo can compare with what it declared. At exit the process writes
+// `<VERIFY_MEMO_TRACE>.<pid>`, one line each: `R` a path read or probed and found, `M` one found
+// missing, `Q` one an async call asked for, `L` a listing, `S <json>` a program started. It reports;
 // the verdict on it is verify-memo.mjs's.
 
 'use strict';
@@ -56,10 +55,22 @@ if (out) {
   const watch = (host, name, kind) => {
     const original = host[name];
     if (typeof original !== 'function') return;
+    const sync = name.endsWith('Sync');
     const watched = function watched(...args) {
       const at = pathOf(args[0]);
-      if (at !== null) noted.add(`${kind} ${at}`);
-      return original.apply(this, args);
+      if (at === null) return original.apply(this, args);
+      if (!sync) {
+        noted.add(`${kind === 'R' ? 'Q' : kind} ${at}`);
+        return original.apply(this, args);
+      }
+      try {
+        const result = original.apply(this, args);
+        noted.add(`${name === 'existsSync' && result === false ? 'M' : kind} ${at}`);
+        return result;
+      } catch (err) {
+        noted.add(`${err?.code === 'ENOENT' ? 'M' : kind} ${at}`);
+        throw err;
+      }
     };
     for (const key of Reflect.ownKeys(original)) {
       if (['length', 'name', 'prototype'].includes(key)) continue;
@@ -73,8 +84,11 @@ if (out) {
     for (const name of LISTINGS) watch(host, name, 'L');
   }
 
+  const optionsAt = (name, args) =>
+    name === 'exec' || name === 'execSync' ? 1 : Array.isArray(args[1]) ? 2 : 1;
+
   const arm = (name, args) => {
-    const at = name === 'exec' || name === 'execSync' ? 1 : Array.isArray(args[1]) ? 2 : 1;
+    const at = optionsAt(name, args);
     const next = [...args];
     if (typeof next[at] === 'function') next.splice(at, 0, {});
     else if (next[at] === undefined || next[at] === null) next[at] = {};
@@ -90,9 +104,13 @@ if (out) {
 
   const spawning = (name, original) => {
     const watched = function watched(...args) {
-      const argv = Array.isArray(args[1]) ? args[1] : [];
-      noted.add(`S ${JSON.stringify([String(args[0]), ...argv.map(String)])}`);
-      return original.apply(this, arm(name, args));
+      const next = arm(name, args);
+      const argv = Array.isArray(next[1]) ? next[1].map(String) : [];
+      const shell = next[optionsAt(name, next)]?.shell;
+      noted.add(
+        `S ${JSON.stringify(shell ? [[String(next[0]), ...argv].join(' ')] : [String(next[0]), ...argv])}`,
+      );
+      return original.apply(this, next);
     };
     for (const key of Reflect.ownKeys(original)) {
       if (['length', 'name', 'prototype', promisify.custom].includes(key)) continue;

@@ -372,6 +372,19 @@ describe('what a check reads outside the checkout', () => {
     rmSync(outside, { recursive: true, force: true });
   });
 
+  it('holds the content an outside link leads to, and a link that leads nowhere', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    writeFileSync(join(outside, 'real.rc'), 'one');
+    symlinkSync(join(outside, 'real.rc'), join(outside, 'link.rc'));
+    symlinkSync(join(outside, 'gone.rc'), join(outside, 'dangling.rc'));
+    const found = deps([`R ${join(outside, 'link.rc')}`, `R ${join(outside, 'dangling.rc')}`]);
+    expect(found.deps.map(([, sig]) => sig.endsWith(':dangling'))).toEqual([true, false]);
+    expect(externalHolds(found.deps)).toBe(true);
+    writeFileSync(join(outside, 'real.rc'), 'two');
+    expect(externalHolds(found.deps)).toBe(false);
+    rmSync(outside, { recursive: true, force: true });
+  });
+
   it('holds a probe that later appears, which would change what a tool resolves', () => {
     const outside = mkdtempSync(join(tmpdir(), 'outside-'));
     const found = deps([`R ${join(outside, 'package.json')}`]);
@@ -447,7 +460,7 @@ describe('the preload', () => {
     expect(r.status).toBe(0);
     expect(lines).toContain(`R ${join(root, 'src/a.txt')}`);
     expect(lines).toContain(`L ${join(root, 'docs')}`);
-    expect(lines).toContain(`R ${join(root, 'nope.txt')}`);
+    expect(lines).toContain(`M ${join(root, 'nope.txt')}`);
     expect(lines).toContain('S ["git","ls-files"]');
     expect(existsSync(traced.dir)).toBe(false);
   });
@@ -455,11 +468,16 @@ describe('the preload', () => {
 
 /** A check as verify runs one: `node check.mjs` over the files under `src`, red when one holds BAD. */
 const CHECK = `
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 const files = readdirSync('src');
 const bad = files.filter((f) => readFileSync('src/' + f, 'utf8').includes('BAD'));
 if (process.env.PEEK) readFileSync(process.env.PEEK);
 if (process.env.IMPORT) await import(process.env.IMPORT);
+if (process.env.PROBE) existsSync(process.env.PROBE);
+if (process.env.SHELLED) {
+  const { spawnSync } = await import('node:child_process');
+  spawnSync('node', [process.env.SHELLED + ' < docs/n.md'], { shell: true });
+}
 if (process.env.CHILD) {
   const { spawnSync } = await import('node:child_process');
   spawnSync(process.execPath, ['-e', 'require("fs").readFileSync(process.argv[1])', process.env.CHILD], { env: {} });
@@ -473,7 +491,7 @@ describe('a check taken through the memo', () => {
   const declarations = { c: { roots: ['check.mjs', 'src'] } };
   const env = () => ({ PATH: process.env.PATH, VERIFY_MEMO_DIR: dir });
   const memo = (args = [], more = {}) =>
-    new Memo({ root, args, env: { ...env(), ...more }, baseRef: 'main', base: 'x', declarations });
+    new Memo({ root, args, env: { ...env(), ...more }, baseRef: 'main', declarations });
 
   /** Plans the check, runs it as verify does, settles it, and returns what the row would be built on. */
   const run = (m, extra = {}) => {
@@ -563,7 +581,7 @@ describe('a check taken through the memo', () => {
     writeFileSync(peek, 'one');
     const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
     const asMemo = () =>
-      new Memo({ root, args: [], env: env(), baseRef: 'main', base: 'x', declarations, places });
+      new Memo({ root, args: [], env: env(), baseRef: 'main', declarations, places });
     expect(run(asMemo(), { PEEK: peek }).plan.kind).toBe('miss');
     expect(asMemo().plan(check).kind).toBe('hit');
     writeFileSync(peek, 'two');
@@ -581,7 +599,6 @@ describe('a check taken through the memo', () => {
       args: [],
       env: env(),
       baseRef: 'main',
-      base: 'x',
       declarations,
       places,
     });
@@ -598,6 +615,44 @@ describe('a check taken through the memo', () => {
     rmSync(outside, { recursive: true, force: true });
   });
 
+  it('does not file a verdict when a file it read outside was deleted, or one it found missing was created, while it ran', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
+    const settled = (extra, after) => {
+      const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations, places });
+      const plan = m.plan(check);
+      const r = spawnSync('node', ['check.mjs'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...plan.env, ...extra },
+      });
+      after();
+      m.settle(plan, r.status, r.stdout, { code: r.status });
+      return m.unfiled.map((u) => u.reason);
+    };
+    const read = join(outside, 'read.rc');
+    writeFileSync(read, 'passing');
+    expect(settled({ PEEK: read }, () => rmSync(read))[0]).toMatch(/outside the checkout changed/);
+    const probed = join(outside, 'probed.rc');
+    expect(settled({ PROBE: probed }, () => writeFileSync(probed, 'appeared'))[0]).toMatch(
+      /outside the checkout changed/,
+    );
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('refuses a command a shell option would redirect input into, and a git state that moved during the run', () => {
+    const shelled = run(memo(), { SHELLED: 'child.cjs' });
+    expect(shelled.verdict.code).toBe(2);
+    expect(shelled.verdict.out).toMatch(/input redirection/);
+    const asks = { c: { roots: ['check.mjs', 'src'], git: true } };
+    const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: asks });
+    const plan = m.plan(check);
+    const r = spawnSync('node', ['check.mjs'], { cwd: root, encoding: 'utf8', env: plan.env });
+    commit('moves the head');
+    m.settle(plan, r.status, r.stdout, { code: r.status });
+    expect(m.unfiled[0].reason).toMatch(/head or the base moved/);
+  });
+
   it('leaves a verdict unfiled, and says why, when the store cannot be written', () => {
     const blocked = join(root, 'a-file');
     writeFileSync(blocked, 'not a directory');
@@ -606,7 +661,6 @@ describe('a check taken through the memo', () => {
       args: [],
       env: { ...env(), VERIFY_MEMO_DIR: join(blocked, 'store') },
       baseRef: 'main',
-      base: 'x',
       declarations,
     });
     const done = run(m);
@@ -649,7 +703,6 @@ describe('a check taken through the memo', () => {
       args: [],
       env: env(),
       baseRef: 'main',
-      base: 'x',
       declarations: { c: { uncached: 'it reads remote refs' } },
     });
     expect(m.plan(check).kind).toBe('uncached');

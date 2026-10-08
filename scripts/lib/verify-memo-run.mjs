@@ -46,7 +46,7 @@ export class Memo {
     this.budget = storeBudget(env);
     this.bypass = bypassReason(args, env);
     this.tree = new Tree(root);
-    this.git = gitState(root, baseRef, base);
+    this.baseRef = baseRef;
     this.served = [];
     this.filed = [];
     this.unfiled = [];
@@ -62,8 +62,10 @@ export class Memo {
       return { kind: 'uncached' };
     }
     let keyed;
+    let git = null;
     try {
-      keyed = keyFor({ check, decl, tree: this.tree, git: this.git, env: this.env });
+      git = decl.git ? gitState(this.root, this.baseRef) : null;
+      keyed = keyFor({ check, decl, tree: this.tree, git, env: this.env });
     } catch (err) {
       this.unfiled.push({
         label: check.label,
@@ -103,7 +105,7 @@ export class Memo {
       ...this.places,
     });
     const faults = [
-      ...audit({ root: this.root, decl, tree: this.tree, lines, git: this.git }),
+      ...audit({ root: this.root, decl, tree: this.tree, lines, git: plan.git }),
       ...outside.faults,
     ];
     if (faults.length > 0) return this.refuse(check, verdict, faults);
@@ -114,14 +116,21 @@ export class Memo {
       });
       return verdict;
     }
-    if (!lines.some((l) => l[0] === 'R' || l[0] === 'L')) {
+    if (!lines.some((l) => 'RMQL'.includes(l[0]))) {
       this.unfiled.push({ label: check.label, reason: 'no process of it was traced' });
       return verdict;
     }
     this.tree.refresh();
-    const after = keyFor({ check, decl, tree: this.tree, git: this.git, env: this.env });
-    if (after.key !== plan.key) {
-      this.unfiled.push({ label: check.label, reason: 'a file it reads changed while it ran' });
+    const after = keyFor({ check, decl, tree: this.tree, git: plan.git, env: this.env });
+    const history =
+      decl.git && JSON.stringify(gitState(this.root, this.baseRef)) !== JSON.stringify(plan.git);
+    if (after.key !== plan.key || history) {
+      this.unfiled.push({
+        label: check.label,
+        reason: history
+          ? 'the head or the base moved while it ran'
+          : 'a file it reads changed while it ran',
+      });
       return verdict;
     }
     const entry = {

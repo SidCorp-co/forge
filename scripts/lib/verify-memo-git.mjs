@@ -18,9 +18,10 @@ export function listFiles(root) {
 }
 
 /** What `git: true` adds to a key: the head, its parent, the base ref and where it stands. */
-export function gitState(root, baseRef, base) {
+export function gitState(root, baseRef) {
   const rev = (name) =>
     git(root, ['rev-parse', '--verify', '--quiet', `${name}^{commit}`])?.trim() ?? null;
+  const base = git(root, ['merge-base', baseRef, 'HEAD'])?.trim() ?? null;
   return { head: rev('HEAD'), parent: rev('HEAD~1'), baseRef, base, baseTip: rev(baseRef) };
 }
 

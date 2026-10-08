@@ -2,7 +2,7 @@
 // is served again: the user's config, and the project files and probes in directories above it.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -16,6 +16,11 @@ function toolState(home, tmp) {
 
 const under = (dir, path) => path === dir || path.startsWith(`${dir}/`);
 
+function contentOf(path, size, mtimeMs) {
+  if (size > BIG) return `big:${size}:${mtimeMs}`;
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
 /** A path as it reads now: its content, its absence, or null for what is no input (a directory). */
 export function signatureOf(path) {
   let st;
@@ -24,36 +29,58 @@ export function signatureOf(path) {
   } catch {
     return '-';
   }
-  if (!st.isFile()) return null;
-  if (st.size > BIG) return `big:${st.size}:${st.mtimeMs}`;
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+  if (!st.isSymbolicLink()) return st.isFile() ? contentOf(path, st.size, st.mtimeMs) : null;
+  try {
+    const target = statSync(path);
+    return target.isFile()
+      ? `link:${readlinkSync(path)}:${contentOf(path, target.size, target.mtimeMs)}`
+      : null;
+  } catch {
+    return `link:${readlinkSync(path)}:dangling`;
+  }
 }
 
-/** Whether a file was written after `since`, so the signature taken now is not what the run read. */
-function modifiedSince(path, since) {
+/** Whether a file was written after `since`, so a signature taken now is not what the run read. */
+function writtenSince(path, since) {
   try {
-    return lstatSync(path).isFile() && lstatSync(path).mtimeMs > since;
+    return statSync(path).isFile() && statSync(path).mtimeMs > since;
   } catch {
     return false;
   }
 }
 
-/** The outside reads of a trace as `[path, signature]`, and a fault for each outside listing. */
+/**
+ * The outside reads of a trace as `[path, signature]`; a fault for each outside listing; and the
+ * paths that changed under the run: written after it began, deleted after a read found them, or
+ * created after a probe found nothing.
+ */
 export function externalDeps({ root, lines, since = Infinity, home = homedir(), tmp = tmpdir() }) {
   const skipped = toolState(home, tmp);
-  const deps = new Map();
+  const seen = new Map();
   const faults = new Set();
-  const moved = new Set();
-  for (const line of lines.filter((l) => l[0] === 'R' || l[0] === 'L')) {
+  for (const line of lines.filter((l) => 'RMQL'.includes(l[0]))) {
     const path = line.slice(2);
     const mirrored = path.toLowerCase().startsWith(`${root.toLowerCase()}/`);
     if (under(root, path) || mirrored || skipped.some((d) => under(d, path))) continue;
     if (line[0] === 'L') faults.add(`listed ${path}/, outside the checkout`);
-    else if (!deps.has(path)) deps.set(path, signatureOf(path));
-    if (line[0] === 'R' && modifiedSince(path, since)) moved.add(path);
+    else seen.set(path, `${seen.get(path) ?? ''}${line[0]}`);
   }
-  const kept = [...deps].filter(([, sig]) => sig !== null).sort();
-  return { deps: kept, faults: [...faults].sort(), moved: [...moved].sort() };
+  const deps = [];
+  const moved = [];
+  for (const [path, kinds] of seen) {
+    const sig = signatureOf(path);
+    if (sig !== null) deps.push([path, sig]);
+    const found = kinds.includes('R');
+    const missing = kinds.includes('M');
+    if (
+      (found && sig === '-') ||
+      (missing && sig !== '-' && sig !== null) ||
+      writtenSince(path, since)
+    ) {
+      moved.push(path);
+    }
+  }
+  return { deps: deps.sort(), faults: [...faults].sort(), moved: moved.sort() };
 }
 
 /** Whether every outside read an entry recorded still reads as it did. */
