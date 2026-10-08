@@ -1,1 +1,0 @@
-**The Assistant can save a template report, and states only what it read.** A figure shows in a drawn block or a read; a save claim needs a real save; honest refusals go out, and held answers say why.
