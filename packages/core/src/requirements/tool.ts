@@ -124,7 +124,7 @@ const criteriaFrom = z
       ),
   })
   .describe(
-    'Take the criteria from a document attached in this conversation, each list item verbatim, instead of writing `criteria`: a line that cannot be taken is refused by its number. Send `criteria: []` with it.',
+    'Take the criteria from a document attached in this conversation, each list item verbatim, instead of writing `criteria`: a prose line is reported as skipped with its number, and a list item that cannot be taken is refused by its number. Send `criteria: []` with it.',
   );
 const draftInput = z.strictObject({
   projectId: z.uuid(),
@@ -178,9 +178,9 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
     }
     const taken = await documentCriteria(ctx, criteriaFrom, write.criteria.length);
     if (!taken.ok) return documentRefusal(taken.detail);
-    if (preview) return { preview: previewOf(criteriaFrom, taken.criteria) };
+    if (preview) return { preview: previewOf(criteriaFrom, taken.criteria, taken.skipped) };
     const criteria = taken.criteria.map(({ body }) => ({ body }));
-    return drafted(
+    const filed = drafted(
       await createRequirement({
         projectId,
         actor: actorOf(ctx),
@@ -188,6 +188,9 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
         write: { ...write, criteria },
       }),
     );
+    return 'requirement' in filed
+      ? { ...filed, taken: takenFigures(taken.criteria, taken.skipped) }
+      : filed;
   },
 });
 
@@ -198,8 +201,9 @@ function documentRefusal(detail: string) {
   );
 }
 
+type Skipped = { line: number; text: string }[];
 type Taken =
-  | { ok: true; criteria: { body: string; line: number }[] }
+  | { ok: true; criteria: { body: string; line: number }[]; skipped: Skipped }
   | { ok: false; detail: string };
 
 /** The criteria a document attached in this turn's room gives, verbatim, or the line it could not take. */
@@ -230,7 +234,35 @@ async function documentCriteria(
 
 const PREVIEW_ENDS = 3;
 
-function previewOf(from: z.infer<typeof criteriaFrom>, criteria: { body: string; line: number }[]) {
+const SKIPPED_SHOWN = 20;
+
+/** The count as a sentence to copy, so no model recounts the list; and the lines left out, by number. */
+function takenFigures(criteria: { body: string; line: number }[], skipped: Skipped) {
+  const first = criteria[0]?.line ?? 0;
+  const last = criteria[criteria.length - 1]?.line ?? 0;
+  const left =
+    skipped.length === 0
+      ? 'no line was left out'
+      : `${skipped.length} line${skipped.length === 1 ? '' : 's'} skipped, not a list item (${skipped
+          .slice(0, SKIPPED_SHOWN)
+          .map((s) => s.line)
+          .join(', ')}${skipped.length > SKIPPED_SHOWN ? ', …' : ''})`;
+  return {
+    count: criteria.length,
+    say: `exactly ${criteria.length} criteri${criteria.length === 1 ? 'on' : 'a'}, from lines ${first}-${last}; ${left}`,
+    skipped: skipped.slice(0, SKIPPED_SHOWN).map((s) => ({
+      line: s.line,
+      text: s.text.length > 120 ? `${s.text.slice(0, 117)}…` : s.text,
+      reason: 'skipped, not a list item',
+    })),
+  };
+}
+
+function previewOf(
+  from: z.infer<typeof criteriaFrom>,
+  criteria: { body: string; line: number }[],
+  skipped: Skipped,
+) {
   const first = criteria[0]?.line ?? 0;
   const last = criteria[criteria.length - 1]?.line ?? 0;
   return {
@@ -238,6 +270,7 @@ function previewOf(from: z.infer<typeof criteriaFrom>, criteria: { body: string;
     ...(from.section ? { section: from.section } : {}),
     criteria: criteria.length,
     lines: `${first}-${last}`,
+    ...takenFigures(criteria, skipped),
     first: criteria.slice(0, PREVIEW_ENDS),
     last: criteria.length > PREVIEW_ENDS * 2 ? criteria.slice(-PREVIEW_ENDS) : [],
     written: false,

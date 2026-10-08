@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
+import { requireHeld } from '../permissions/index.js';
 import { runReport } from '../reports/index.js';
 import { listReportQueries } from './registry.js';
 
@@ -11,23 +12,34 @@ const runParam = z.strictObject({ id: z.uuid(), queryId: z.string().min(1).max(6
 const runBody = z.strictObject({ params: z.record(z.string(), z.unknown()).optional() });
 
 export const reportQueryRoutes = new Hono<{ Variables: AuthVars }>();
-reportQueryRoutes.use('/report-queries', requireAuth(), assertEmailVerified());
+reportQueryRoutes.use('/projects/:id/report-queries', requireAuth(), assertEmailVerified());
 reportQueryRoutes.use('/projects/:id/report-queries/*', requireAuth(), assertEmailVerified());
 
-/** Every registered query's descriptor, `params` carried as its JSON Schema. */
-reportQueryRoutes.get('/report-queries', (c) => {
-  const queries: ReportQueryDescriptorView[] = listReportQueries().map(({ descriptor }) => ({
-    id: descriptor.id,
-    version: descriptor.version,
-    title: descriptor.title,
-    params: z.toJSONSchema(descriptor.params.strict()) as Record<string, unknown>,
-    output: [...descriptor.output],
-    permission: descriptor.permission,
-    egress: descriptor.egress,
-    surfaces: [...descriptor.surfaces],
-  }));
-  return c.json({ queries });
-});
+const listParam = z.strictObject({ id: z.uuid() });
+
+/**
+ * Every registered query's descriptor, `params` carried as its JSON Schema. A project read, so a
+ * personal or agent token reaches it under `projects:read` like any other, and a member sees it.
+ */
+reportQueryRoutes.get(
+  '/projects/:id/report-queries',
+  zValidator('param', listParam, invalid('invalid path: /api/projects/<project>/report-queries')),
+  async (c) => {
+    const access = await loadProjectAccess(c.req.valid('param').id, c.get('userId'));
+    requireHeld(access, 'project.read', 'list the report queries');
+    const queries: ReportQueryDescriptorView[] = listReportQueries().map(({ descriptor }) => ({
+      id: descriptor.id,
+      version: descriptor.version,
+      title: descriptor.title,
+      params: z.toJSONSchema(descriptor.params.strict()) as Record<string, unknown>,
+      output: [...descriptor.output],
+      permission: descriptor.permission,
+      egress: descriptor.egress,
+      surfaces: [...descriptor.surfaces],
+    }));
+    return c.json({ queries });
+  },
+);
 
 /** Runs one query as the caller and keeps the run; refused by name unless the caller holds what the query declares. */
 reportQueryRoutes.post(

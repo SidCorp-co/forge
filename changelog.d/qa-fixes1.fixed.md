@@ -1,0 +1,1 @@
+**A spec section with intro prose now gives its bullets as criteria.** Taking criteria from an attached document skips prose lines and reports their numbers, and the result states the exact count. An empty or continued item is still refused by line.
