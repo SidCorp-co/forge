@@ -277,7 +277,7 @@ searchRoutes.get(
     for (const side of issueArchiveSide(q.includeArchived === true || term?.kind === 'key')) {
       both(side);
     }
-    if (term?.kind === 'key') both(eq(issues.issSeq, term.issSeq));
+    if (term?.kind === 'key') both(inArray(issues.issSeq, term.issSeqs));
     if (term?.kind === 'text') both(buildIssueSearchCondition(term.text));
     if (q.orWaitingOnPerson && !q.status?.length) {
       throw badRequest({

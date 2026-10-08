@@ -21,23 +21,34 @@ export interface SegmentedControlProps<T extends string> {
   options: SegmentOption<T>[];
   value: T;
   onChange?: (value: T) => void;
+  /**
+   * Seat every count in a slot of one width, so the bar is as wide for `0` as for `1399` and the
+   * controls beside it keep their rows when a filter changes the figures. A count above
+   * `STABLE_COUNT_CAP` reads `STABLE_COUNT_CAP+` and carries its full figure on the tab's title.
+   */
+  stableCountWidth?: boolean;
 }
+
+/** The largest figure the stable slot spells out: four digits, the same five characters as `9999+`. */
+export const STABLE_COUNT_CAP = 9999;
 
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  stableCountWidth = false,
 }: SegmentedControlProps<T>) {
   return (
     <div className="inline-flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5">
       {options.map((opt) => {
         const active = opt.value === value;
+        const capped = stableCountWidth && opt.count !== undefined && opt.count > STABLE_COUNT_CAP;
         return (
           <button
             key={opt.value}
             type="button"
             disabled={opt.disabled}
-            title={opt.title}
+            title={opt.title ?? (capped ? String(opt.count) : undefined)}
             onClick={() => !opt.disabled && onChange?.(opt.value)}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-13 font-semibold transition-colors duration-[120ms]",
@@ -55,6 +66,7 @@ export function SegmentedControl<T extends string>({
               <span
                 className={cn(
                   "ml-0.5 rounded-full px-1.5 py-px text-11 font-semibold tabular-nums",
+                  stableCountWidth && "box-content inline-block w-[5ch] text-center",
                   opt.count === 0
                     ? "bg-sunken text-muted"
                     : opt.countTone === "attention"
@@ -62,7 +74,7 @@ export function SegmentedControl<T extends string>({
                       : "bg-sunken text-muted",
                 )}
               >
-                {opt.count}
+                {capped ? `${STABLE_COUNT_CAP}+` : opt.count}
               </span>
             )}
           </button>

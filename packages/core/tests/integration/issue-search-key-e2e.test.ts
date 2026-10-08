@@ -8,156 +8,19 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { sql } from 'drizzle-orm';
-import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestIdVars } from '../../src/middleware/request-id.js';
+import { describe, expect, it } from 'vitest';
 import {
-  createTestProject,
-  createTestProjectMember,
-  createTestUser,
-  setupTestDatabase,
-  type TestDatabase,
-  truncateAll,
-} from '../helpers/index.js';
+  holdPrefixes,
+  mcpList,
+  member,
+  neighbourhood,
+  search,
+  seedIssue,
+  spendPrefix,
+  useIssueSearchHarness,
+} from '../helpers/issue-search-key.js';
 
-type Envelope = {
-  items: { displayId: string; issSeq: number; matchedFields?: string[] }[];
-  total: number;
-};
-type Refusal = { code: string; message: string };
-
-let harness: TestDatabase;
-let app: Hono<{ Variables: RequestIdVars }>;
-let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let forgeIssuesTool: typeof import('../../src/mcp/tools/forge-issues.js').forgeIssuesTool;
-
-beforeAll(async () => {
-  harness = await setupTestDatabase();
-  process.env.DATABASE_URL = harness.url;
-  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  process.env.SMTP_HOST ??= 'localhost';
-  process.env.SMTP_PORT ??= '1025';
-  process.env.SMTP_USER ??= 'test';
-  process.env.SMTP_PASS ??= 'test';
-  process.env.SMTP_FROM ??= 'test@example.com';
-  process.env.APP_BASE_URL ??= 'http://localhost:3000';
-  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-  process.env.NODE_ENV ??= 'test';
-  process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
-  process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
-
-  const { searchRoutes } = await import('../../src/issues/search.js');
-  const { errorHandler } = await import('../../src/middleware/error.js');
-  const { requestId } = await import('../../src/middleware/request-id.js');
-  ({ signUserToken } = await import('../../src/auth/jwt.js'));
-  ({ forgeIssuesTool } = await import('../../src/mcp/tools/forge-issues.js'));
-
-  app = new Hono<{ Variables: RequestIdVars }>();
-  app.use('*', requestId());
-  app.route('/api/projects', searchRoutes);
-  app.onError(errorHandler);
-}, 120_000);
-
-afterAll(async () => {
-  if (harness) await harness.cleanup();
-});
-
-beforeEach(async () => {
-  await truncateAll(harness.db);
-});
-
-async function member() {
-  const user = await createTestUser(harness.db);
-  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-  const project = await createTestProject(harness.db, user.id);
-  await createTestProjectMember(harness.db, {
-    userId: user.id,
-    projectId: project.id,
-    role: 'admin',
-  });
-  return { user, project };
-}
-
-async function holdPrefixes(projectId: string, active: string, retired: string[] = []) {
-  for (const prefix of [active, ...retired]) {
-    await harness.db.execute(
-      sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${projectId}, ${prefix})`,
-    );
-  }
-  await harness.db.execute(
-    sql`UPDATE projects SET issue_prefix = ${active} WHERE id = ${projectId}`,
-  );
-}
-
-async function seedIssue(args: {
-  projectId: string;
-  createdById: string;
-  issSeq: number;
-  title: string;
-  description?: string;
-  status?: string;
-  priority?: string;
-  archived?: boolean;
-}) {
-  const status = args.status ?? 'open';
-  await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, description, status, priority,
-                        created_by_id, merged_at, archived_at)
-    VALUES (${randomUUID()}, ${args.projectId}, ${args.issSeq}, ${args.title},
-            ${args.description ?? null}, ${status}, ${args.priority ?? 'medium'},
-            ${args.createdById},
-            CASE WHEN ${status} = 'closed' THEN now() END,
-            CASE WHEN ${args.archived ?? false} THEN now() END)
-  `);
-}
-
-/** ISS-1280 and the three neighbours whose bodies cite it — the shape the owner hit. */
-async function neighbourhood(projectId: string, createdById: string) {
-  await seedIssue({
-    projectId,
-    createdById,
-    issSeq: 1279,
-    title: 'before',
-    description: 'see ISS-1280',
-  });
-  await seedIssue({ projectId, createdById, issSeq: 1280, title: 'the release door' });
-  await seedIssue({
-    projectId,
-    createdById,
-    issSeq: 1281,
-    title: 'after',
-    description: 'ISS-1280 again',
-  });
-  await seedIssue({
-    projectId,
-    createdById,
-    issSeq: 1282,
-    title: 'later',
-    description: 'cf ISS-1280',
-  });
-}
-
-async function search(projectId: string, userId: string, q: string, extra = '') {
-  const res = await app.request(
-    `/api/projects/${projectId}/issues/search?q=${encodeURIComponent(q)}${extra}`,
-    { headers: { authorization: `Bearer ${await signUserToken(userId)}` } },
-  );
-  return { res, body: (await res.json()) as Envelope & Refusal };
-}
-
-function mcpList(userId: string, projectId: string, search: string) {
-  const tool = forgeIssuesTool({
-    principal: { userId, agency: 'human', tokenId: null, deviceId: null, projectIds: null },
-    projectSlug: null,
-    boundProjectId: null,
-    // biome-ignore lint/suspicious/noExplicitAny: the factory's context, narrowed to what runs here
-  } as any);
-  return tool.handler({ action: 'list', projectId, filters: { search } }) as Promise<{
-    issues: { issueId: string }[];
-  }>;
-}
+useIssueSearchHarness();
 
 describe('GET /api/projects/:id/issues/search — a key finds its issue (ISS-1334)', () => {
   it('answers ISS-1280 with ISS-1280 alone, not the issues citing it', async () => {
@@ -231,6 +94,83 @@ describe('GET /api/projects/:id/issues/search — a key finds its issue (ISS-133
 
     expect(res.status).toBe(200);
     expect(body.items.map((i) => i.displayId)).toEqual(['ISS-1280']);
+    expect(body.total).toBe(1);
+  });
+
+  it.each([
+    ['an en dash', 'ISS\u20131280'],
+    ['an em dash', 'ISS\u20141280'],
+    ['a fullwidth number sign', '\uFF031280'],
+    ['a trailing zero-width space', 'ISS-1280\u200B'],
+  ])('answers a key written with %s with ISS-1280 alone', async (_name, q) => {
+    const { user, project } = await member();
+    await neighbourhood(project.id, user.id);
+
+    const { res, body } = await search(project.id, user.id, q);
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => i.displayId)).toEqual(['ISS-1280']);
+    expect(body.total).toBe(1);
+  });
+
+  it.each(['ISS-1280 ISS-1281', '#1280, #1281', 'ISS 1280 ISS 1281'])(
+    'answers the keys pasted together as %j with exactly those rows',
+    async (q) => {
+      const { user, project } = await member();
+      await neighbourhood(project.id, user.id);
+
+      const { res, body } = await search(project.id, user.id, q);
+
+      expect(res.status).toBe(200);
+      expect(body.items.map((i) => i.issSeq).sort()).toEqual([1280, 1281]);
+      expect(body.total).toBe(2);
+    },
+  );
+
+  it('refuses a pasted list of keys whole by the one the project holds no issue at', async () => {
+    const { user, project } = await member();
+    await neighbourhood(project.id, user.id);
+
+    const { res, body } = await search(project.id, user.id, 'ISS-1280 ISS-9999');
+
+    expect(res.status).toBe(404);
+    expect(body.code).toBe('ISSUE_KEY_NOT_HELD');
+    expect(body.message).toContain('ISS-9999');
+  });
+
+  it('searches several bare numbers as text, since only one number alone reads as a key', async () => {
+    const { user, project } = await member();
+    await seedIssue({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 3,
+      title: 'save answers 500 404 in the log',
+    });
+
+    const { res, body } = await search(project.id, user.id, '500 404');
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => i.issSeq)).toEqual([3]);
+  });
+
+  it('answers a pasted link to this project’s issue page with that issue alone', async () => {
+    const { user, project } = await member();
+    await neighbourhood(project.id, user.id);
+    const id = await seedIssue({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 1290,
+      title: 'linked',
+    });
+
+    const { res, body } = await search(
+      project.id,
+      user.id,
+      `https://forge-beta.sidcorp.co/projects/forge-dev/issues/${id}`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => i.displayId)).toEqual(['ISS-1290']);
     expect(body.total).toBe(1);
   });
 
@@ -309,11 +249,47 @@ describe('GET /api/projects/:id/issues/search — a key it cannot answer is refu
     expect(body.message).toContain('`ISS`');
   });
 
+  it('refuses a pasted link to another project’s issue, naming its key and whose it is', async () => {
+    const { user, project } = await member();
+    const other = await member();
+    await holdPrefixes(other.project.id, 'OTH');
+    const id = await seedIssue({
+      projectId: other.project.id,
+      createdById: other.user.id,
+      issSeq: 5,
+      title: 'theirs',
+    });
+
+    const { res, body } = await search(
+      project.id,
+      user.id,
+      `https://forge-beta.sidcorp.co/projects/oth/issues/${id}`,
+    );
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('ISSUE_KEY_FOREIGN_PREFIX');
+    expect(body.message).toContain('`OTH-5`');
+    expect(body.message).toContain('belongs to another project');
+  });
+
+  it('refuses a pasted link whose id no project holds, naming the id', async () => {
+    const { user, project } = await member();
+    const id = randomUUID();
+
+    const { res, body } = await search(
+      project.id,
+      user.id,
+      `https://forge-beta.sidcorp.co/projects/forge-dev/issues/${id}`,
+    );
+
+    expect(res.status).toBe(404);
+    expect(body.code).toBe('ISSUE_KEY_NOT_HELD');
+    expect(body.message).toContain(id);
+  });
+
   it('refuses a prefix whose project is gone without saying another project holds it', async () => {
     const { user, project } = await member();
-    await harness.db.execute(
-      sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (NULL, 'GONE')`,
-    );
+    await spendPrefix('GONE');
 
     const { res, body } = await search(project.id, user.id, 'GONE-5');
 
@@ -410,5 +386,37 @@ describe('issue search — text, filters and the MCP list beside a key (ISS-1334
     await expect(mcpList(user.id, project.id, '0')).rejects.toThrow(
       /^BAD_REQUEST: ISSUE_KEY_OUT_OF_RANGE: /,
     );
+  });
+  it('answers the MCP list’s pasted link, key list and dashed key as the route does', async () => {
+    const { user, project } = await member();
+    await neighbourhood(project.id, user.id);
+    const id = await seedIssue({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 1290,
+      title: 'linked',
+    });
+
+    const link = await mcpList(
+      user.id,
+      project.id,
+      `https://forge-beta.sidcorp.co/projects/forge-dev/issues/${id}`,
+    );
+    const both = await mcpList(user.id, project.id, 'ISS-1280 ISS-1281');
+    const dashed = await mcpList(user.id, project.id, 'ISS\u20141280');
+
+    expect(link.issues.map((i) => i.issueId)).toEqual(['ISS-1290']);
+    expect(both.issues.map((i) => i.issueId).sort()).toEqual(['ISS-1280', 'ISS-1281']);
+    expect(dashed.issues.map((i) => i.issueId)).toEqual(['ISS-1280']);
+    await expect(mcpList(user.id, project.id, 'ISS-1280 ISS-9999')).rejects.toThrow(
+      /^NOT_FOUND: ISSUE_KEY_NOT_HELD: .*ISS-9999/,
+    );
+    await expect(
+      mcpList(
+        user.id,
+        project.id,
+        `https://forge-beta.sidcorp.co/projects/x/issues/${randomUUID()}`,
+      ),
+    ).rejects.toThrow(/^NOT_FOUND: ISSUE_KEY_NOT_HELD: /);
   });
 });

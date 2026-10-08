@@ -3155,6 +3155,8 @@
   ISS-1280; inside a project the ⌘K box searches issues; a refused key reads cleanly and keeps the
   tab counts in place.
 
+- **A pasted key finds its issue however it was copied.** An issue's address, two keys together, and keys with Unicode dashes or hidden characters find their issues or say why not; a refused key no longer moves the filters.
+
 - **The sign-up page drops "Email already registered" once you change the email**, so the
   message never describes an address that is no longer in the field.
 - **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while
