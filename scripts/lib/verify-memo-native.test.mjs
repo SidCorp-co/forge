@@ -61,6 +61,14 @@ describe('what biome makes of a place', () => {
     }
   });
 
+  it('answers alike for two places that read alike, so worktrees of one repository still share', () => {
+    const here = checkoutUnder('plain');
+    const there = checkoutUnder('.claude/worktrees/another');
+    expect(biomeView(here, FILES)).toBe(biomeView(there, FILES));
+    expect(verdictOf(here)).toBe(0);
+    expect(verdictOf(there)).toBe(0);
+  });
+
   it('stays the same for the same place asked twice', () => {
     const root = checkoutUnder('plain');
     expect(biomeView(root, FILES)).toBe(biomeView(root, FILES));
