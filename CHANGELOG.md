@@ -6346,6 +6346,7 @@
 - **Needs you says how much of its list it shows.** Where more questions, parked issues, failed jobs or reviews wait than the page lists, it reads "8 of at least 10" and links to the rest.
 - **A repeated `origin` in an Issues link names what it left out.** The Source filter takes one, so the others are listed above the list instead of dropped without a word.
 - **Needs you counts what your list never reached.** An issue waiting on you now shows as "3 of at least 4" instead of a complete 3; a response that cannot say is refused on the tile, by name.
+- **Needs you says it is reading, or that it could not read, instead of "0" and "All caught up".** The Attention badge and the Attention page wait for the whole read the same way.
 - **A release closes on a reading Forge took when asked, not a five-minute wait.** The agent
   calls `look`; a finish closes only on what was read at every live binding. A site serving the old
   build stays refused.

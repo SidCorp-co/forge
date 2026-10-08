@@ -51,3 +51,5 @@ export interface AttentionResponse {
 export interface AttentionView extends AttentionResponse {
   offlineRunners: AttentionItem[];
 }
+
+export type AttentionRead = "pending" | "failed" | "read";

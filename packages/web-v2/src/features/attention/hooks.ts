@@ -4,12 +4,21 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDevices } from "@/features/runners/hooks";
 import { attentionApi } from "./api";
-import type { AttentionItem, AttentionView } from "./types";
+import type { AttentionItem, AttentionRead, AttentionView } from "./types";
+
+/** What a query has answered: an error is `failed` even where an earlier answer is held, no data yet is `pending`. */
+export function queryRead(q: { isError: boolean; data: unknown }): AttentionRead {
+  if (q.isError) return "failed";
+  return q.data === undefined ? "pending" : "read";
+}
 
 /**
  * Cross-project attention/inbox view: the `/me/attention` buckets merged with
  * offline runners derived client-side from `/me/devices`. `total` includes the
- * offline-runner count so the rail badge and the screen agree.
+ * offline-runner count so the rail badge and the screen agree, and is undefined
+ * until both have been read: a count of what one of them has not yet said is not a count.
+ * `read` and `devicesRead` say which of the two answered, and a reader states a figure, a
+ * badge or an empty list only from `read`.
  */
 export function useAttention() {
   const attentionQ = useQuery({
@@ -49,7 +58,7 @@ export function useAttention() {
       pendingSkillUpdates,
       unseenDrafts,
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
-      // Nothing is loaded yet, or the response is the server's: a response without totals is refused where it is read.
+      // Where nothing has been read, `read` says so; the empty map here is no statement. A response the server sent without totals is refused where it is read.
       projectTotals: base ? base.projectTotals : {},
       offlineRunners,
       total:
@@ -63,14 +72,16 @@ export function useAttention() {
     };
   }, [attentionQ.data, offlineRunners]);
 
+  const read = queryRead(attentionQ);
+  const devicesRead = queryRead(devicesQ);
+
   return {
     view,
-    total: view.total,
-    // The badge/screen can render from the attention list alone; devices hydrate
-    // the offline bucket a beat later.
-    isLoading: attentionQ.isLoading,
-    isError: attentionQ.isError,
+    total: read === "read" && devicesRead === "read" ? view.total : undefined,
+    read,
+    devicesRead,
     error: attentionQ.error,
+    devicesError: devicesQ.error,
     refetch: () => {
       attentionQ.refetch();
       devicesQ.refetch();

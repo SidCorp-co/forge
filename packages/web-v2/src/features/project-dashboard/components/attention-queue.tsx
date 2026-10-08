@@ -47,6 +47,8 @@ export function AttentionQueue({
   items,
   cut,
   refusal = null,
+  pending = false,
+  onRetry,
   slug,
   now,
 }: {
@@ -55,6 +57,10 @@ export function AttentionQueue({
   cut: AttentionCut | null;
   /** Said under the list where the response cannot say how much of it is left out. */
   refusal?: string | null;
+  /** The attention answer is not in yet: the list says it is reading and neither counts nor says all caught up. */
+  pending?: boolean;
+  /** Asks for the read again; offered under a refusal where the read failed. */
+  onRetry?: () => void;
   slug: string;
   now: number;
 }) {
@@ -75,7 +81,11 @@ export function AttentionQueue({
         )}
       </div>
       <CardContent className="flex-1">
-        {items.length === 0 ? (
+        {pending ? (
+          <p role="status" className="fg-body-sm text-subtle" data-testid="attention-pending">
+            Reading what needs you…
+          </p>
+        ) : items.length === 0 ? (
           cut || refusal ? (
             <p className="fg-body-sm text-subtle">Nothing is listed to act on here.</p>
           ) : (
@@ -116,6 +126,11 @@ export function AttentionQueue({
           <p role="alert" className="fg-caption mt-3 text-subtle" data-testid="attention-refusal">
             {refusal}
           </p>
+        )}
+        {refusal && onRetry && (
+          <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry}>
+            Try again
+          </Button>
         )}
         {cut && (
           <p className="fg-caption mt-3 text-subtle">

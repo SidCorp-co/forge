@@ -12,6 +12,7 @@ import { type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
+  Button,
   EmptyState,
   ErrorState,
   Icon,
@@ -176,7 +177,7 @@ function Group({
 
 export function AttentionScreen() {
   const router = useRouter();
-  const { view, isLoading, isError, error, refetch } = useAttention();
+  const { view, read, devicesRead, error, devicesError, refetch } = useAttention();
   // ISS-477 — scope the inbox to the active org's projects. Items carrying a
   // `projectSlug` outside the active org are dropped; items without one (e.g.
   // offline runners) are kept so device-level alerts never silently vanish.
@@ -206,18 +207,26 @@ export function AttentionScreen() {
 
   const open = (link: string) => router.push(link);
 
-  if (isLoading) {
+  if (read === "failed") {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectLoader label="loading attention…" />
+        <ErrorState
+          message={
+            devicesRead === "failed"
+              ? `${formatApiError(error)} Offline runners could not be read either: ${formatApiError(devicesError)}.`
+              : formatApiError(error)
+          }
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }
 
-  if (isError) {
+  // The inbox is the attention list and the offline runners together: neither is read as empty before it has answered.
+  if (read === "pending" || devicesRead === "pending") {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+        <ProjectLoader label="loading attention…" />
       </div>
     );
   }
@@ -236,7 +245,19 @@ export function AttentionScreen() {
         </p>
       </header>
 
-      {total === 0 ? (
+      {devicesRead === "failed" && (
+        <p role="alert" className="fg-body-sm mb-4 text-muted" data-testid="attention-devices-unread">
+          Offline runners could not be read: {formatApiError(devicesError)}.{" "}
+          {total === 0
+            ? "Nothing else is listed, and that does not say nothing needs you."
+            : "The list below may leave some out."}{" "}
+          <Button size="sm" variant="secondary" onClick={() => refetch()}>
+            Try again
+          </Button>
+        </p>
+      )}
+
+      {total === 0 && devicesRead === "failed" ? null : total === 0 ? (
         <div className="grid min-h-[40vh] place-items-center">
           <EmptyState title="Inbox zero" message="Nothing needs your attention right now." />
         </div>
