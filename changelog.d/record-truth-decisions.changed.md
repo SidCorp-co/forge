@@ -1,1 +1,0 @@
-**Decisions show what a person decided.** The decisions log and a requirement's Decisions tab fold away what agents recorded, a master's pass logs among them, and count them; a record whose text dates itself ahead of its writing is flagged.
