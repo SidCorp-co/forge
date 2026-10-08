@@ -18,10 +18,11 @@
 //! bubblewrap cannot start, [`availability`] says why, so the box declares it and core refuses
 //! the turn by name instead of running it unconfined.
 
+pub mod compute;
 pub mod egress;
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
 
@@ -40,13 +41,54 @@ pub enum Mount {
 }
 
 /// What a confined process sees: everything on the box read-only, then `mounts` in order, run
-/// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy.
+/// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy; `offline`, with
+/// no egress, it has a network namespace of its own holding only loopback.
 #[derive(Debug, Clone, Default)]
 pub struct Sandbox {
     pub mounts: Vec<Mount>,
     pub env: Vec<(OsString, OsString)>,
     pub cwd: PathBuf,
     pub egress: Option<egress::Egress>,
+    pub offline: bool,
+}
+
+/// The directories a sandbox empties so nothing this box keeps for its user is in view: the
+/// home, the shared temp and runtime trees, and wherever the XDG variables `var` reads move its
+/// config, data, state or cache. Only existing absolute directories are named, and none beneath
+/// another named one.
+pub fn private_dirs(
+    home: &Path,
+    temp_dir: &Path,
+    var: impl Fn(&str) -> Option<OsString>,
+) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = vec![
+        home.to_path_buf(),
+        "/tmp".into(),
+        "/var".into(),
+        "/run".into(),
+        temp_dir.to_path_buf(),
+    ];
+    for name in [
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR",
+        "TMPDIR",
+    ] {
+        if let Some(dir) = var(name).filter(|v| !v.is_empty()) {
+            out.push(PathBuf::from(dir));
+        }
+    }
+    let mut kept: Vec<PathBuf> = Vec::new();
+    for dir in out {
+        let fresh = !kept.iter().any(|k| dir.starts_with(k));
+        if dir.is_absolute() && dir != Path::new("/") && dir.is_dir() && fresh {
+            kept.retain(|k| !k.starts_with(&dir));
+            kept.push(dir);
+        }
+    }
+    kept
 }
 
 /// Whether this box can confine a process, and if not, the reason a person can act on.
@@ -151,6 +193,9 @@ impl Sandbox {
             }
             args.push(target.as_os_str().to_os_string());
         }
+        if self.offline && self.egress.is_none() {
+            args.insert(0, "--unshare-net".into());
+        }
         if let Some(egress) = &self.egress {
             args.insert(0, "--unshare-net".into());
             let dir = egress.socket.parent().unwrap_or(&egress.socket);
@@ -225,6 +270,7 @@ mod tests {
             env: vec![],
             cwd: "/home/u/repo".into(),
             egress: None,
+            offline: false,
         };
         let args: Vec<String> = sandbox
             .bwrap_args()
@@ -256,6 +302,7 @@ mod tests {
                 socket: "/home/u/.config/forge-runner/egress/s1/proxy.sock".into(),
                 bridge: "/home/u/.local/bin/forge-runner".into(),
             }),
+            offline: false,
         };
         let args: Vec<String> = sandbox
             .bwrap_args()

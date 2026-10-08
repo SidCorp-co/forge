@@ -14,6 +14,7 @@
 mod actors;
 mod ancestry_read;
 mod checkout_frame;
+mod compute_run;
 pub mod control;
 pub mod dispatch;
 pub mod drain;

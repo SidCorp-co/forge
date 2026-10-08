@@ -1,9 +1,9 @@
 // The reports domain's ports, filled once at boot by the process entry: the query registry is a read
 // model a domain may not import (ADR 0008), the room a block is posted into is the conversations
 // context's, and a project's compute setting is its project document's, so each is handed in here
-// from its owner's face. The executors are the sandboxes this deployment enabled: the in-band one
-// where a Claude API key is set (REQ-32 C2), else none, and every computation is then refused naming
-// why.
+// from its owner's face. The one executor is the sandbox on the team's own runner (REQ-32 BC-14),
+// registered on every deployment: whether a computation runs is decided per project by the boxes
+// bound to it, and where none can run it the computation is refused naming why.
 
 import { chatDoorOfToken } from './agent-sessions/index.js';
 import { postServiceAnswer } from './assistant/index.js';
@@ -14,7 +14,6 @@ import {
   readableConversation,
   stageAgentTurnBlock,
 } from './conversations/index.js';
-import { providerExecutors } from './integrations/llm/index.js';
 import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
 import {
@@ -23,6 +22,7 @@ import {
   provideReportsPorts,
   type RestTurn,
 } from './reports/index.js';
+import { createRunnerSandboxExecutor } from './runners/index.js';
 
 /** The room turn a REST caller's token answers, as `reports/rest-stage.ts` judges it. */
 async function restTurnOf(tokenId: string | null): Promise<RestTurn> {
@@ -60,6 +60,5 @@ export function provideReportPorts(): void {
   provideExecutorPorts({
     computePolicyOf: async (projectId) => (await readProjectDocument(projectId))?.document.compute,
   });
-  const provided = providerExecutors();
-  provideExecutors(provided.executors, provided.unavailable);
+  provideExecutors([createRunnerSandboxExecutor()]);
 }

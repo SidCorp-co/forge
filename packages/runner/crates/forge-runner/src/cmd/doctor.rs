@@ -39,6 +39,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         "{}",
         confinement_row(runner_platform::confine::availability())
     );
+    println!(
+        "{}",
+        compute_row(
+            runner_platform::confine::availability(),
+            &runner_platform::confine::compute::languages()
+        )
+    );
 
     let cfg_path = Config::path()?;
     if cfg_path.exists() {
@@ -737,6 +744,24 @@ fn confinement_row(confine: &runner_platform::confine::Availability) -> String {
         }
         runner_platform::confine::Availability::Unavailable(why) => format!(
             "• chat sandbox core refuses chat sessions on this box, which cannot confine one: {why}"
+        ),
+    }
+}
+
+/// Whether this box can run a computation's script for core (REQ-32 BC-14), and in which
+/// languages. A box that cannot still runs everything else, so this row informs and does not fail.
+fn compute_row(confine: &runner_platform::confine::Availability, languages: &[&str]) -> String {
+    match confine {
+        runner_platform::confine::Availability::Available if !languages.is_empty() => format!(
+            "✔ compute      a computation runs confined, with no network, in {}",
+            languages.join(", ")
+        ),
+        runner_platform::confine::Availability::Available => format!(
+            "• compute      core refuses computations here: bash, which sets a script's caps, is not in {}",
+            runner_platform::confine::compute::SYSTEM_PATH
+        ),
+        runner_platform::confine::Availability::Unavailable(why) => format!(
+            "• compute      core refuses computations on this box, which cannot confine one: {why}"
         ),
     }
 }

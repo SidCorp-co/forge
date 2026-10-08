@@ -159,34 +159,9 @@ fn passed(name: &OsStr) -> bool {
 /// Directories emptied in the session's view: the home, the shared temp and runtime trees,
 /// and wherever this box's XDG variables move its config, data, state or cache.
 fn emptied(view: &BoxView) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = vec![
-        view.home.clone(),
-        "/tmp".into(),
-        "/var".into(),
-        "/run".into(),
-        view.temp_dir.clone(),
-    ];
-    for name in [
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "XDG_STATE_HOME",
-        "XDG_CACHE_HOME",
-        "XDG_RUNTIME_DIR",
-        "TMPDIR",
-    ] {
-        if let Some(dir) = view.var(name) {
-            out.push(PathBuf::from(dir));
-        }
-    }
-    let mut kept: Vec<PathBuf> = Vec::new();
-    for dir in out {
-        let fresh = !kept.iter().any(|k| dir.starts_with(k));
-        if dir.is_absolute() && dir != Path::new("/") && dir.is_dir() && fresh {
-            kept.retain(|k| !k.starts_with(&dir));
-            kept.push(dir);
-        }
-    }
-    kept
+    runner_platform::confine::private_dirs(&view.home, &view.temp_dir, |name| {
+        view.var(name).map(OsStr::to_os_string)
+    })
 }
 
 /// The executables on the session's `PATH` that live in an emptied directory, bound back
@@ -281,6 +256,7 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             socket: handed.egress_socket.clone(),
             bridge,
         }),
+        offline: false,
     })
 }
 

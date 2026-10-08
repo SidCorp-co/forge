@@ -155,6 +155,31 @@ rather than run it unconfined. Core requires `confinedChatNetwork`, so a runner 
 the credential alone is refused the same way, naming the update.
 A schedule fire is a run, not a chat, and runs with the box's view as before.
 
+### A computation's sandbox
+
+When the assistant answers a question no report covers by running a short script (REQ-32
+BC-14), core hands it to a box bound to the project as a `compute.run` frame: the python or bash
+script, the input frames the asker may read, and the limits. The box runs it and answers on
+`POST /api/devices/me/compute-runs/:requestId`; core chose the box and reads the output
+(`crates/runner-platform/src/confine/compute.rs`):
+
+- **Out of view:** the same bubblewrap view as a chat session, with `/home`, `/root`, `/mnt`,
+  `/media` and `/srv` emptied too. Nothing is bound back but a throwaway working directory
+  holding the script and `inputs.json`, removed after the run.
+- **Network:** none. A namespace of its own with only loopback: no DNS, no host, not the box's
+  own loopback services.
+- **Environment:** `PATH` of the system directories, a UTF-8 locale, `HOME` and `TMPDIR` the
+  working directory. Interpreters are the box's own `python3` and `bash` from those directories.
+- **Caps:** `ulimit` on address space (`memoryMb`), CPU time (`cpu` cores for the wall limit) and
+  file size; at the wall limit the process group is killed. The stop is named back to core.
+- **Output:** `frames.json` or `frames.csv`, read as text without following a link, and the first
+  64 KiB of stdout and stderr.
+
+A box that cannot confine declares `computeSandbox: false` with the reason on its heartbeat (and
+`computeSandboxLanguages` when it can); `forge-runner doctor` prints it, and core refuses a
+computation there by name before anything is sent. `forge-runner compute --request <file>`
+runs one request file in this sandbox and prints the answer, without core.
+
 ### Skill delivery
 
 Skills reach a runner without a manual step: `[skills] auto_pull` is **on by

@@ -5458,6 +5458,113 @@
         ]
       }
     },
+    "/api/devices/me/compute-runs/{requestId}": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "requestId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "durationMs": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "error": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "exit": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "output": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "file": {
+                        "enum": [
+                          "frames.json",
+                          "frames.csv"
+                        ],
+                        "type": "string"
+                      },
+                      "text": {
+                        "maxLength": 5000000,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "file",
+                      "text"
+                    ],
+                    "type": "object"
+                  },
+                  "projectId": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
+                  },
+                  "stderr": {
+                    "maxLength": 262144,
+                    "type": "string"
+                  },
+                  "stdout": {
+                    "maxLength": 262144,
+                    "type": "string"
+                  },
+                  "stopped": {
+                    "enum": [
+                      "wallMs",
+                      "cpu",
+                      "memoryMb",
+                      "outputBytes"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "projectId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireDevice"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/devices/me/git-credential": {
       "post": {
         "requestBody": {

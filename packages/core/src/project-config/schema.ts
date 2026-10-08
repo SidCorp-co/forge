@@ -216,8 +216,8 @@ export const projectDocumentSchema = z.strictObject({
   // sandbox (REQ-32 C1, `reports/compute.ts`), and which sandboxes may take it. Absent is off: a
   // project turns execution on with `enabled: true`. `zdrOnly` (a zero-retention obligation) admits
   // only a sandbox declaring itself ZDR-eligible; a sandbox whose data leaves to a third party runs
-  // only where `thirdParty: true` (unset or false admits only one whose data stays with Forge). A
-  // request no admitted sandbox can serve is refused by name, never routed on.
+  // only where `thirdParty: true` (unset or false admits only one whose data stays with Forge or on
+  // the team's runner). A request no admitted sandbox can serve is refused by name, never routed on.
   compute: z
     .strictObject({
       enabled: z.boolean(),

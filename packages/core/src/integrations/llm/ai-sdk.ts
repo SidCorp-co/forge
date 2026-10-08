@@ -212,7 +212,7 @@ export async function* bridgeStream(b: StreamBridge): AsyncGenerator<ChatStreamE
           part.providerExecuted === true
         ) {
           // a turn offers the provider none of its own tools: a sandbox runs only through the
-          // reports Executor port (`code-execution.ts`), never as a call the loop would execute
+          // reports Executor port (`reports/compute.ts`), never as a call the loop would execute
           yield {
             type: 'error',
             message: `${b.label} ran its own tool "${part.toolName}", which a chat turn never offers; a computation runs through forge_compute`,

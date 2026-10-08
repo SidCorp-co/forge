@@ -2,7 +2,8 @@
 // over a snapshot of report runs the asker made this turn. Every check is made here, before any
 // adapter sees data, in the order a refusal is most useful: an executor enabled at all, the asker's
 // `assistant.exec`, the door, the project's `compute` setting, the limits, the turn's caps, the
-// inputs, the project's data policy on `report.exec`, and only then an adapter the setting admits.
+// inputs, the project's data policy on `report.exec`, and only then an adapter the setting admits
+// and that can run it now.
 // What comes back is data (frames and capped, scrubbed logs), stored with the request, and drawn by
 // a block that is labelled computed. Both doors (the chat's forge_compute and Agent mode's REST)
 // call `computeExecution` and answer alike.
@@ -16,7 +17,7 @@ import {
   EXECUTION_MAX_LIMITS,
   EXECUTION_TURN_CAPS,
   EXECUTION_TURN_WINDOW_MS,
-  EXECUTOR_DATA_STAYS_WITH_FORGE,
+  EXECUTOR_DATA_STAYS_WITH_TEAM,
   type ExecutionLimit,
   ExecutionLimitsSchema,
   ExecutionRequestSchema,
@@ -133,39 +134,49 @@ export function turnCapRefusal(
   return null;
 }
 
-/** Why an adapter cannot take this project's computation, or null where it can. */
-async function adapterBar(
-  adapter: Executor,
-  policy: ComputePolicy,
-  projectId: string,
-): Promise<string | null> {
+/** Why the project's setting bars an adapter, or null where it admits it. */
+function policyBar(adapter: Executor, policy: ComputePolicy): string | null {
   if (policy.zdrOnly === true && !adapter.zdrEligible) {
     return `${adapter.id} is not ZDR-eligible, and the project's compute.zdrOnly admits only one that is`;
   }
-  if (policy.thirdParty !== true && adapter.dataLeavesTo !== EXECUTOR_DATA_STAYS_WITH_FORGE) {
+  if (policy.thirdParty !== true && !EXECUTOR_DATA_STAYS_WITH_TEAM.includes(adapter.dataLeavesTo)) {
     return `${adapter.id} sends the data to ${adapter.dataLeavesTo}, and the project's compute.thirdParty is ${policy.thirdParty === false ? 'false' : 'unset'}; a project admin admits a third-party sandbox with compute.thirdParty: true`;
-  }
-  if (!(await adapter.availableFor({ id: projectId, compute: policy }))) {
-    return `${adapter.id} is not available for this project`;
   }
   return null;
 }
 
-/** The first registered adapter the project's setting admits, or the refusal naming why each is barred. */
+/**
+ * The first registered adapter the project's setting admits and that can take the computation now.
+ * Where the setting admits none, `EXECUTION_NO_ADAPTER_ALLOWED`; where it admits some and none of
+ * them can run it now, `EXECUTOR_UNAVAILABLE`. Either names why each adapter is out, and nothing
+ * has been sent to any of them.
+ */
 async function admittedAdapter(
   adapters: readonly Executor[],
   policy: ComputePolicy,
-  projectId: string,
+  project: { id: string; language: ComputeRequest['language'] },
 ): Promise<Executor> {
-  const bars: string[] = [];
+  const barred: string[] = [];
+  const unavailable: string[] = [];
   for (const adapter of adapters) {
-    const bar = await adapterBar(adapter, policy, projectId);
-    if (bar === null) return adapter;
-    bars.push(bar);
+    const bar = policyBar(adapter, policy);
+    if (bar !== null) {
+      barred.push(bar);
+      continue;
+    }
+    const can = await adapter.availableFor({ ...project, compute: policy });
+    if (can === true) return adapter;
+    unavailable.push(`${adapter.id}: ${can.unavailable}`);
+  }
+  if (unavailable.length > 0) {
+    throw refuseExecution(
+      'EXECUTOR_UNAVAILABLE',
+      `no sandbox can run this computation now, so nothing was sent anywhere: ${[...unavailable, ...barred].join('; ')}. Answer from a report query (forge_report) instead`,
+    );
   }
   throw refuseExecution(
     'EXECUTION_NO_ADAPTER_ALLOWED',
-    `no executor enabled on this deployment may run this project's computation: ${bars.join('; ')}. A request is never routed to a sandbox the project's setting does not admit`,
+    `no executor enabled on this deployment may run this project's computation: ${barred.join('; ')}. A request is never routed to a sandbox the project's setting does not admit`,
   );
 }
 
@@ -302,7 +313,10 @@ export async function computeExecution(args: {
       'the input snapshot of a computation',
     );
     if (!egress.ok) throw new RefusalError([egress.refusal], egress.refusal.code);
-    const adapter = await admittedAdapter(adapters, policy, projectId);
+    const adapter = await admittedAdapter(adapters, policy, {
+      id: projectId,
+      language: request.language,
+    });
     const result = await executeOn(
       adapter,
       ExecutionRequestSchema.parse({

@@ -10,13 +10,14 @@ import {
   sweepExpiredExecutions,
   unregisterExecutorForTest,
 } from '../../src/reports/index.js';
+import { createRunnerSandboxExecutor, RUNNER_SANDBOX_ID } from '../../src/runners/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
-// The Executor port over its two doors (REQ-32 C1). With no adapter enabled every computation is
-// refused by name. With one (a fake, registered here and nowhere in production) a computation reads
+// The Executor port over its two doors (REQ-32 C1). With no sandbox able to run it every computation
+// is refused by name. With one (a fake, registered here and nowhere in production) a computation reads
 // only the asker's own runs, is refused without assistant.exec, where the project has not turned
 // computation on, past a turn's cap and where the project's data may not leave it, all before the
 // adapter is called; what it returns is kept, drawn as a computed block, read back by its asker and
@@ -95,12 +96,13 @@ beforeEach(() => {
   durationMs = 40;
 });
 
-describe('with no executor enabled', () => {
-  it('refuses every computation by name while no executor is enabled on this deployment', async () => {
+describe('with no sandbox able to run it', () => {
+  it('refuses every computation by name while no runner of the project can run one', async () => {
     const run = await runQuery();
     const res = await compute({ language: 'python', script, inputs: [run.runId] });
     expect([res.status, code(res)]).toEqual([503, 'EXECUTOR_UNAVAILABLE']);
-    expect(detail(res)).toContain('no sandbox executor is enabled on this deployment');
+    expect(detail(res)).toContain('no sandbox can run this computation now, so nothing was sent');
+    expect(detail(res)).toContain(`${RUNNER_SANDBOX_ID}: the runner box`);
   });
 });
 
@@ -289,6 +291,8 @@ describe('a computation refused before the executor sees it', () => {
     });
     const thirdParty = { ...fake, id: 'third-party-sandbox', dataLeavesTo: 'vendor.example' };
     unregisterExecutorForTest(fake.id);
+    // the team runner's sandbox is admitted by any setting; out of the way, only the barred one is left
+    unregisterExecutorForTest(RUNNER_SANDBOX_ID);
     registerExecutor(thirdParty);
     try {
       const res = await compute(
@@ -300,6 +304,7 @@ describe('a computation refused before the executor sees it', () => {
       expect(detail(res)).toContain('third-party-sandbox sends the data to vendor.example');
     } finally {
       unregisterExecutorForTest(thirdParty.id);
+      registerExecutor(createRunnerSandboxExecutor());
       registerExecutor(fake);
     }
     expect(execute).not.toHaveBeenCalled();
