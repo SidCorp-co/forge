@@ -617,6 +617,11 @@ mod tests {
                  read; and, on Linux, the test that reading is still answered outside a scratch",
             ),
             (
+                "forge-runner-core/src/daemon/daemon_env.rs",
+                [1, 1, 1],
+                "the daemon's own value for each variable it owns, which is what a pane is handed",
+            ),
+            (
                 "forge-runner-core/src/daemon/handover.rs",
                 [2, 2, 0],
                 "the environment a handover passes whole to the daemon taking over, and the \

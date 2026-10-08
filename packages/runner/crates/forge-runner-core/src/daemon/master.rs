@@ -3568,7 +3568,7 @@ async fn ensure_master(
     let transcript = transcript_path(&resolved.slug);
     let mut env = terminal::pane_env();
     match crate::daemon::pane_path::for_pane() {
-        Ok(path) => env.push(path),
+        Ok(vars) => env.extend(vars),
         Err(unresolved) => {
             say_unplaced(
                 masters,
@@ -3581,6 +3581,7 @@ async fn ensure_master(
             return PaneState::Absent;
         }
     }
+    let cli_note = crate::daemon::pane_path::cli_brief(&env);
     let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
     {
         Ok(path) => path,
@@ -3779,6 +3780,7 @@ surface it reads",
         &declared.dropped_names,
         &reach,
     );
+    let brief = format!("{brief}{cli_note}");
     let brief = match resume.as_deref() {
         Some(conv) => format!(
             "{brief}{}",
@@ -12118,6 +12120,99 @@ mod servers_refusal_walk_tests {
         }
         let _ = crate::mcp::config::clear_session("walkmint");
     }
+
+    /// ISS-1325 criterion 13 and ISS-1332 criteria 1 and 7, at a master pane:
+    /// placed through `ensure_master` on a server started before the daemon had
+    /// `TMPDIR`, the pane carries the daemon's `TMPDIR` and the `forge` its PATH
+    /// resolves, and is told in its brief which `forge` that is.
+    #[cfg(target_os = "linux")]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_master_pane_on_an_older_server_carries_the_daemons_tmpdir_and_cli() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("masterenv");
+        if !terminal::available() || !iso.took() {
+            terminal::testing::cannot_run("no tmux of this test's own here");
+            return;
+        }
+        let probe = crate::test_scratch::Scratch::new("masterenv-root");
+        let tmp = probe.path().parent().expect("a temp dir").to_path_buf();
+        let claude_home = crate::test_scratch::Scratch::new("masterenv-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("masterenv-stub");
+        let probe = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
+        terminal::testing::write_shim(
+            &stub_dir.join("claude"),
+            &format!("#!/bin/sh\n{probe}exec sleep 604\n"),
+        );
+        terminal::testing::write_shim(
+            &stub_dir.join("forge"),
+            &format!("#!/bin/sh\n{probe}exit 0\n"),
+        );
+        let _claude =
+            crate::runner::process::testing::StubClaude::installed(&stub_dir.join("claude"));
+        let _daemon = ScopedVar::set("TMPDIR", &tmp);
+        let sock = terminal::socket_path().expect("the isolated socket");
+        assert!(
+            std::process::Command::new("tmux")
+                .args(["-S", &sock.to_string_lossy()])
+                .args(["new-session", "-d", "-s", "older", "sleep", "600"])
+                .env_remove("TMPDIR")
+                .stdin(std::process::Stdio::null())
+                .status()
+                .expect("tmux runs")
+                .success(),
+            "the server starts before the daemon's value reaches it"
+        );
+        let repo = crate::test_scratch::Scratch::new("masterenv-repo");
+        let map = crate::test_scratch::Scratch::new("masterenv-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "200 OK", DECLARES),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "masterenv");
+        let placed = resolved("masterenv", &repo);
+        let deaf = DeafSink::default();
+        let (state, seen) = tokio::join!(
+            walk(core, &masters, &placed, Some(&store), &deaf),
+            terminal::testing::environ_once_running(&name, "604"),
+        );
+        let brief_typed = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            loop {
+                let screen = terminal::screen(&name).await.unwrap_or_default();
+                if screen.contains("Which `forge`") || std::time::Instant::now() > deadline {
+                    break screen;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        };
+        let _ = terminal::kill(&name).await;
+        let _ = crate::mcp::config::clear_session("masterenv");
+        assert_eq!(state, PaneState::ColdStarted);
+        assert_eq!(
+            seen.get("TMPDIR").map(String::as_str),
+            tmp.to_str(),
+            "the master pane carries the daemon's TMPDIR"
+        );
+        let forge = stub_dir.join("forge");
+        assert_eq!(
+            seen.get(crate::daemon::pane_path::CLI_ENV)
+                .map(String::as_str),
+            forge.to_str(),
+            "and the forge its PATH resolves"
+        );
+        assert!(
+            brief_typed.contains("was started with `FORGE_CLI_PATH="),
+            "and its brief says which forge it was handed: {brief_typed}"
+        );
+    }
 }
 
 /// A master an owner stood down stays down, and the box tells its two answers
@@ -13906,7 +14001,7 @@ mod pane_path_tests {
             .find("crate::daemon::pane_path::for_pane()")
             .expect("ensure_master builds the pane's PATH");
         let pushed = body
-            .find("Ok(path) => env.push(path)")
+            .find("Ok(vars) => env.extend(vars)")
             .expect("and puts it in the pane's env");
         let mint = body.find("store.mint(").expect("the mint");
         let start = body.find("terminal::ensure(").expect("the start");

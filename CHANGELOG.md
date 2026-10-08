@@ -3152,6 +3152,10 @@
 
 - **A project that releases on its own is no longer blocked for having over 50 issues waiting.** Readiness names the oldest 50 as the next part and how many wait behind; where a person cuts, the refusal stays.
 
+- **A pane the runner starts keeps the runner's temp directory, however old the tmux server is.** A long-lived server wrote panes' scratch to the RAM-backed `/tmp`; the runner now hands each pane its own and corrects a stale server.
+
+- **A pane the runner starts is told which `forge` to run.** The runner exports the path it resolved as `FORGE_CLI_PATH`, a master's brief names it, and where none resolved the brief says so.
+
 - **A viewer can no longer record a dependency through `forge_project_pm`.** It was the one door that let them; the web route and `forge_issues` already refused. Every door now needs the member role, and the refusal names the role held.
 
 - **A project's admins can see its GitHub App, wherever it was created.** The connections list, its
