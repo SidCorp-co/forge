@@ -112,6 +112,33 @@ describe("a breakdown's details, before Accept", () => {
     expect(second).toHaveTextContent("Accept would refuse ISS-9: blockedBy entry ISS-9 is dropped");
   });
 
+  // ISS-281's judge: a refused wait on another slice read "Accept would refuse 0: …" beside "After slice 1",
+  // the payload's 0-based index next to the list's 1-based numbers
+  it("words a refused wait on another slice with the slice numbers the list shows", async () => {
+    const [player, stats] = breakdown().breakdown?.slices ?? [];
+    const self = { ref: "0", code: "SUGGESTION_PAYLOAD_INVALID", refusal: "blockedBy names issue index 0, which is this issue itself." };
+    const outside = { ref: "5", code: "SUGGESTION_PAYLOAD_INVALID", refusal: "blockedBy names issue index 5, which is outside the 2 proposed issues." };
+    const loop = { ref: "0", code: "SUGGESTION_PAYLOAD_INVALID", refusal: "the blockedBy edges among the proposed issues form a cycle, so none of them could ever start." };
+    shown(
+      breakdown({
+        breakdown: {
+          revision: 2,
+          unreadable: null,
+          uncovered: [],
+          slices: [
+            { ...(player as NonNullable<typeof player>), blockedBy: [self] },
+            { ...(stats as NonNullable<typeof stats>), blockedBy: [outside, loop] },
+          ],
+        },
+      }),
+    );
+    const [first, second] = within(await details()).getAllByTestId("breakdown-slice");
+    expect(first).toHaveTextContent("Accept would refuse this: a slice cannot wait on itself.");
+    expect(second).toHaveTextContent("Accept would refuse this: it waits on slice 6, and the breakdown has 2 slices.");
+    expect(second).toHaveTextContent("Accept would refuse this: waiting on slice 1 closes a loop, so none of these slices could ever start.");
+    expect(`${first?.textContent}${second?.textContent}`).not.toMatch(/refuse \d|index \d/);
+  });
+
   it("says when a breakdown arrives without core's reading, rather than falling back to its titles", async () => {
     shown(breakdown({ breakdown: undefined }));
     const panel = await details();
@@ -141,6 +168,36 @@ describe("Accept on a waiting suggestion", () => {
     expect(posts(calls)).toEqual([]);
     fireEvent.click(within(step).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByTestId("accept-step")).toBeNull();
+    // a mutation fires after the click returns: read the calls once anything Cancel set off has had its turn
+    await new Promise((settled) => setTimeout(settled, 50));
+    expect(posts(calls)).toEqual([]);
+  });
+
+  it("says a one-slice breakdown files 1 issue", async () => {
+    const one = breakdown({ payload: { issues: [{ title: "Tour player" }] } });
+    fakeCore(() => ({ body: { suggestions: [one], open: 1 } }));
+    renderWithQuery(<RequirementSuggestions projectId="p1" reqKey="REQ-31" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    expect(screen.getByTestId("accept-step")).toHaveTextContent("Accepting files 1 issue at draft against r2.");
+  });
+
+  // ISS-281's judge: with the step open, the row's own Accept or Reject closed it and dropped the typed reason
+  it("keeps the typed reason: the row's Accept and Reject are off while a step is open, and each step has its Cancel", async () => {
+    const calls = listed();
+    const accept = await screen.findByRole("button", { name: "Accept" });
+    const reject = screen.getByRole("button", { name: "Reject" });
+    fireEvent.click(accept);
+    fireEvent.change(within(screen.getByTestId("accept-step")).getByRole("textbox"), { target: { value: "owner signed it" } });
+    expect(accept).toBeDisabled();
+    expect(reject).toBeDisabled();
+    fireEvent.click(reject);
+    fireEvent.click(accept);
+    expect(within(screen.getByTestId("accept-step")).getByRole("textbox")).toHaveValue("owner signed it");
+    fireEvent.click(within(screen.getByTestId("accept-step")).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(reject);
+    expect(accept).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
     expect(posts(calls)).toEqual([]);
   });
 

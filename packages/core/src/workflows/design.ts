@@ -24,7 +24,8 @@ export interface DesignRefusal {
 
 /**
  * The issue the latest revision to name one was drawn under, where it is no longer work: `revision`
- * is that revision and `superseded` the newest, which the write supersedes and which may name none.
+ * is that revision and `superseded` the newest, which the write supersedes and which may name none;
+ * `supersededRepin` says the newest is a re-pin, which names none by design (`design-repin-service.ts`).
  */
 export interface LapsedDesignIssue {
   issueId: string;
@@ -32,27 +33,36 @@ export interface LapsedDesignIssue {
   status: string;
   revision: number;
   superseded: number;
+  supersededRepin: boolean;
 }
 
 /**
  * A write that proposes a revision and names no issue, where the latest revision to name one was
  * drawn under an issue now closed or dropped: storing none would leave a return nothing to reopen
  * (FB-54). The detail names the revision that carries the issue, which is not the superseded one
- * where later revisions were stored with none (patient-data-flow r8).
+ * where later revisions were stored with none (patient-data-flow r8) or were re-pins. Short sentences:
+ * the one-sentence form ran to about 80 words and was read twice (ISS-261's third judge).
  */
 export function designIssueLapsedRefusal(
   flow: string,
   lapsed: LapsedDesignIssue,
 ): DesignRefusal & { code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED' } {
-  const drawn = `was drawn under ${lapsed.key}, which is ${lapsed.status}`;
+  const drawn = `was drawn under ${lapsed.key}, which is ${lapsed.status}.`;
+  const none = lapsed.supersededRepin ? 'is a re-pin, which names no issue.' : 'names no issue.';
   const history =
     lapsed.revision === lapsed.superseded
-      ? `revision ${lapsed.revision}, the one it supersedes, ${drawn}`
-      : `revision ${lapsed.superseded}, the one it supersedes, names no issue, and revision ${lapsed.revision}, the latest that named one, ${drawn}`;
+      ? `Revision ${lapsed.revision}, the one it supersedes, ${drawn}`
+      : `Revision ${lapsed.superseded}, the one it supersedes, ${none} Revision ${lapsed.revision} is the latest that named one, and it ${drawn}`;
   return {
     code: 'WORKFLOW_DESIGN_ISSUE_REQUIRED',
     path: '/issue',
-    detail: `this write proposes a new revision of workflow ${flow}'s design and names no issue; ${history}, so the new one would be drawn under no issue and a return would reopen nothing. Name the issue drawing this revision with \`issue\` (beside \`baseRevision\` on a PUT); nothing was written.`,
+    detail: [
+      `This write proposes a new revision of workflow ${flow}'s design, and it names no issue.`,
+      history,
+      'If the approver returned the new revision, there would be no issue to reopen.',
+      'Name the issue drawing this revision with `issue` (beside `baseRevision` on a PUT).',
+      'Nothing was written.',
+    ].join(' '),
   };
 }
 
@@ -136,25 +146,24 @@ export function designStatusAfterWrite(
   return { status: 'proposed', proposes: true };
 }
 
-/** The lifecycle a workflow enters when it is first written: every document is a design. */
-
-export function proposeRefusal(
-  status: DesignStatus | null,
-  workflowId: string,
-): DesignRefusal | null {
+/**
+ * Why a propose is refused past `draft`, the workflow named by its flow. On a proposed design that names
+ * an `issue`, `design-service.ts:proposeDesign` re-names the waiting revision's drawing issue instead.
+ */
+export function proposeRefusal(status: DesignStatus | null, flow: string): DesignRefusal | null {
   if (status === null || status === 'draft') return null;
   const detail: Record<Exclude<DesignStatus, 'draft'>, [DesignRefusalCode, string]> = {
     proposed: [
       'WORKFLOW_DESIGN_ALREADY_PROPOSED',
-      `workflow ${workflowId} is already awaiting its approver; a revised design is proposed by writing it (PUT), which supersedes the one waiting.`,
+      `workflow ${flow} is already awaiting its approver. A revised design is proposed by writing it (PUT), which supersedes the one waiting. To re-name the issue the waiting revision is drawn under, propose again with \`issue\`.`,
     ],
     approved: [
       'WORKFLOW_DESIGN_ALREADY_APPROVED',
-      `workflow ${workflowId}'s design is approved as it stands; a change to it is proposed by writing it (PUT), and goes back to its approver.`,
+      `workflow ${flow}'s design is approved as it stands; a change to it is proposed by writing it (PUT), and goes back to its approver.`,
     ],
     returned: [
       'WORKFLOW_DESIGN_UNCHANGED',
-      `workflow ${workflowId}'s design was returned and has not changed since; revise it by writing it (PUT), which proposes the revision.`,
+      `workflow ${flow}'s design was returned and has not changed since; revise it by writing it (PUT), which proposes the revision.`,
     ],
   };
   const [code, text] = detail[status];

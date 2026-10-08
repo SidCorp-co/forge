@@ -29,8 +29,10 @@ names the workflow it builds is not dispatched while that design is not approved
    contract its kind owes. A new v2 workflow is a **draft**.
 2. **Propose.** \`POST …/workflows/:workflow/design/propose\` with the revision you wrote and \`issue\`, the issue the design is
    drawn under. A later write that proposes again names it with \`issue\` beside \`baseRevision\`; without one it
-   inherits the issue of the latest revision that named one while that issue is still work, and once that issue is
-   closed or dropped the write is refused \`WORKFLOW_DESIGN_ISSUE_REQUIRED\` until it names one. The approver now sees it on
+   inherits the issue of the latest revision that named one while that issue is still work (a re-pin names none and
+   is passed over), and once that issue is closed or dropped the write is refused \`WORKFLOW_DESIGN_ISSUE_REQUIRED\`
+   until it names one. While a revision waits on its approver, propose again with \`issue\` to re-name the issue it is
+   drawn under; no new revision is written, and the issue it was drawn under before is told. The approver now sees it on
    \`/projects/<slug>/workflows/<flow>\` — send them that link.
 3. **Wait.** The decision wakes this project's master. \`GET …/workflows/:workflow/design\` reads the status: \`proposed\`
    waits, \`returned\` carries the approver's reason, \`approved\` names the revision. An approval may

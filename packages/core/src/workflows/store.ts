@@ -190,14 +190,16 @@ export type InheritedDesignIssue =
         status: string;
         revision: number;
         superseded: number;
+        supersededRepin: boolean;
       };
     };
 
 // A revision a write proposes again is drawn under the issue the latest revision to name one named,
 // while that issue is still work: inheriting a closed one linked hop-access-decision r6 to ISS-38
 // though it was drawn under ISS-64 (FB-54). The walk goes past revisions that name none, because
-// those were stored with null after their issue closed (patient-data-flow r8, FB-54), and reading
-// only the newest would let the next write through with none as well. Where that issue is closed or
+// those were stored with null after their issue closed (patient-data-flow r8, FB-54) or are re-pins,
+// approved in the act that wrote them with no issue (`design-repin-service.ts`), and reading only the
+// newest would let the next write through with none as well. Where that issue is closed or
 // dropped the writer names the drawing issue, and the write is refused until it does
 // (`design.ts:designIssueLapsedRefusal`); where no revision ever named one there is nothing to lose
 // and none is inherited.
@@ -216,16 +218,55 @@ export async function designIssueToInherit(
     .limit(1);
   if (!issue) return { issueId: null };
   if (!ISSUE_TERMINAL_STATUSES.includes(issue.status)) return { issueId: prior };
-  const superseded = designs[0]?.revision ?? named.revision;
+  const newest = designs[0] ?? named;
   return {
     lapsed: {
       issueId: prior,
       issSeq: issue.issSeq,
       status: issue.status,
       revision: named.revision,
-      superseded,
+      superseded: newest.revision,
+      supersededRepin:
+        newest.designIssueId === null && newest.reasonSays?.key === 'designs.reason.repinOnly',
     },
   };
+}
+
+/**
+ * Re-names the issue a revision still waiting on its approver is drawn under (`propose { issue }` on a
+ * proposed design): the revision's document and status stay as they are. Answers the issue it was
+ * drawn under before, or null where it named none.
+ */
+export async function redrawDesign(
+  tx: Tx,
+  input: { workflowId: string; revision: number; designIssueId: string },
+): Promise<{ before: string | null }> {
+  const [row] = await tx
+    .select({ designIssueId: projectWorkflowDesigns.designIssueId })
+    .from(projectWorkflowDesigns)
+    .where(
+      and(
+        eq(projectWorkflowDesigns.workflowId, input.workflowId),
+        eq(projectWorkflowDesigns.revision, input.revision),
+        sql`${projectWorkflowDesigns.decision} IS NULL`,
+      ),
+    )
+    .for('update');
+  if (!row) {
+    throw new Error(
+      `workflows: revision ${input.revision} of ${input.workflowId} is not waiting on its approver`,
+    );
+  }
+  await tx
+    .update(projectWorkflowDesigns)
+    .set({ designIssueId: input.designIssueId })
+    .where(
+      and(
+        eq(projectWorkflowDesigns.workflowId, input.workflowId),
+        eq(projectWorkflowDesigns.revision, input.revision),
+      ),
+    );
+  return { before: row.designIssueId };
 }
 
 export async function insertDesign(

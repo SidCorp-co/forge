@@ -1,1 +1,0 @@
-**A computation can run in the chat provider's code execution sandbox.** Where the deployment holds the provider key and a project sets compute.thirdParty, a script runs in a no-network container kept per conversation, and comes back as frames.

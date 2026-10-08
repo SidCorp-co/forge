@@ -82,6 +82,11 @@ outside is not, however cheap.
 **A trade-off is priced or it is not taken.** `--update-baseline`, a waiver, a skipped test: each
 is an amnesty, and it names what was traded, what it costs, and the condition that ends it.
 
+**The requirement leads, the code follows** (`VISION: requirement-leads-delivery`). Work names the
+requirement and criteria it delivers. Where the expectation is wrong or missing, revise the
+requirement or workflow first, then build to it. Done means a named criterion holds on the running
+build. Old code the work touches is cleaned inside that work.
+
 **Before you change behaviour, know what you are replacing.** Requirement, design, the old logic
 this supersedes, the cleanup that removes it — code shipping beside what it replaced leaves two
 live paths.

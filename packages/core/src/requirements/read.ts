@@ -1,4 +1,4 @@
-import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { ISSUE_ADMIT_PERMISSION, type IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
@@ -31,7 +31,13 @@ import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
+import {
+  actorFor,
+  permissionFactsOf,
+  permissionRefusal,
+  projectResource,
+  requireCan,
+} from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { questionViewsOf } from './clarity.js';
@@ -139,10 +145,15 @@ export function summaryOf(
   };
 }
 
+/** What the viewer may do here: sign off (requirements.approve), and admit a draft issue (issues.admit). */
 export async function standingViewer(viewer: RequirementActor | null, projectId: string) {
   if (!viewer) return null;
-  const refusal = await signerRefusal(viewer, projectId, 'a sign-off');
-  return { userId: viewer.userId, canSignOff: refusal === null };
+  const facts = await permissionFactsOf(viewer.userId, projectId);
+  return {
+    userId: viewer.userId,
+    canSignOff: signoffRefusal(facts, 'a sign-off') === null,
+    canAdmit: permissionRefusal(facts, ISSUE_ADMIT_PERMISSION) === null,
+  };
 }
 
 export async function listRequirementsAs(
@@ -417,6 +428,7 @@ export async function detailOf(
     issues: issueViews(row, linked, changedTraced, prefix, releaseApproval, shipped),
     releases: releasesOf(shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
+    canPromote: (viewerFacts?.canSignOff && viewerFacts.canAdmit) ?? false,
     standing,
     history,
     readiness,
