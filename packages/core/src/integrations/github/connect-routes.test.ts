@@ -20,7 +20,6 @@ import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
-const OTHER_PROJECT_ID = '44444444-4444-4444-8444-444444444444';
 const ORG_ID = '55555555-5555-4555-8555-555555555555';
 const OTHER_ORG_ID = '99999999-9999-4999-8999-999999999999';
 const CONNECTION_ID = '66666666-6666-4666-8666-666666666666';
@@ -86,6 +85,11 @@ vi.mock('../route-helpers.js', () => ({
     new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } }),
   notFound: (entity = 'integration') =>
     new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } }),
+  connectionNotReachable: (id: string) =>
+    new HTTPException(404, {
+      message: `connection ${id} is not one you can reach.`,
+      cause: { code: 'CONNECTION_NOT_REACHABLE' },
+    }),
   assertVaultConfigured: () => {},
   assertProjectMember: async () => {
     if (!helpers.projectRole)
@@ -106,11 +110,19 @@ const store = vi.hoisted(() => ({
     privateKey: 'pk',
   })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
-  listBindingsForProject: vi.fn(async (_projectId: string) => [] as unknown[]),
-  listConnectionsForPrincipalUser: vi.fn(async () => [] as unknown[]),
   updateBinding: vi.fn(async () => ({})),
 }));
 vi.mock('../store.js', () => store);
+
+/**
+ * The reach rule is `../reach.ts`'s, tested against real rows in
+ * `tests/integration/connection-reach-e2e.test.ts`. What this door owes is what it does with the
+ * answer: resolve the App, refuse by name, or refuse a provider that has no repositories.
+ */
+const reach = vi.hoisted(() => ({
+  findReachableConnection: vi.fn(async (_userId: string, _connectionId: string) => null as unknown),
+}));
+vi.mock('../reach.js', () => reach);
 
 vi.mock('./repositories.js', () => ({
   listInstallationRepositories: vi.fn(async () => [
@@ -164,22 +176,14 @@ const userOwnedConnection = {
   secretsEnc: Buffer.from('x'),
 };
 
-function bindingOnProject(projectId: string, active = true) {
-  return {
-    binding: { id: 'binding-1', projectId, provider: 'github', active, config: {} },
-    connection: userOwnedConnection,
-  };
-}
-
-/**
- * The store narrows by project itself, so the stub does too — a test whose
- * stub hands back another project's row would pass against a resolver that
- * never asked which project it was for.
- */
-function bindings(...rows: ReturnType<typeof bindingOnProject>[]) {
-  store.listBindingsForProject.mockImplementation(async (projectId: string) =>
-    rows.filter((r) => r.binding.projectId === projectId),
-  );
+/** What the reach rule answers for a connection the caller reaches. */
+function reaches(connection: Record<string, unknown> = userOwnedConnection) {
+  reach.findReachableConnection.mockResolvedValue({
+    connection,
+    reach: 'binding',
+    canManage: false,
+    viaProjectIds: [PROJECT_ID],
+  });
 }
 
 /** Every refusal on these routes answers in this shape. */
@@ -197,62 +201,48 @@ beforeEach(() => {
   helpers.projectRole = 'admin';
   projectRow.value = { slug: 'forge-dev', name: 'Forge', orgId: ORG_ID, orgIsPersonal: false };
   authz.loadOrgRole.mockResolvedValue('admin');
-  bindings();
-  store.listConnectionsForPrincipalUser.mockResolvedValue([]);
+  reach.findReachableConnection.mockResolvedValue(null);
   store.createConnection.mockResolvedValue({ id: CONNECTION_ID });
 });
 
-describe('GET /:projectId/integrations/github/repositories — who may reach the App', () => {
-  it("answers a second project admin for a connection the project's binding points at", async () => {
-    // The live reproduction: the row is owned by CLICKER_A, the caller is
-    // ADMIN_B, and the binding on this project is what ties them together.
-    bindings(bindingOnProject(PROJECT_ID));
-    store.listConnectionsForPrincipalUser.mockResolvedValue([]);
+describe('GET /:projectId/integrations/github/repositories — what the door does with the reach answer', () => {
+  it('lists the repositories of an App the caller reaches, whoever owns it', async () => {
+    // The live reproduction: the row is owned by CLICKER_A, the caller is ADMIN_B.
+    reaches();
 
     const res = await repositories();
 
     expect(res.status).toBe(200);
     expect(await res.json()).toHaveLength(1);
+    expect(reach.findReachableConnection).toHaveBeenCalledWith(ADMIN_B, CONNECTION_ID);
   });
 
-  it('reaches the App through a binding that is switched off, which is the state a repick starts from', async () => {
-    bindings(bindingOnProject(PROJECT_ID, false));
+  it('refuses a connection the caller does not reach, naming it', async () => {
+    const res = await repositories();
+    const body = await bodyOf(res);
 
-    expect((await repositories()).status).toBe(200);
+    expect(res.status).toBe(404);
+    expect(body.code).toBe('CONNECTION_NOT_REACHABLE');
+    expect(body.message).toContain(CONNECTION_ID);
   });
 
-  it('still answers for a connection the caller owns that no binding points at yet', async () => {
-    // The create path lists repositories BEFORE any binding exists.
-    bindings();
-    store.listConnectionsForPrincipalUser.mockResolvedValue([
-      { ...userOwnedConnection, ownerId: ADMIN_B },
-    ]);
-
-    expect((await repositories()).status).toBe(200);
-  });
-
-  it("refuses a connection that is neither bound to this project nor the caller's", async () => {
-    bindings();
-    store.listConnectionsForPrincipalUser.mockResolvedValue([]);
+  it('refuses a reached connection that is not a GitHub App, by naming the field', async () => {
+    reaches({ ...userOwnedConnection, provider: 'coolify' });
 
     const res = await repositories();
 
-    expect(res.status).toBe(404);
-    expect((await bodyOf(res)).code).toBe('NOT_FOUND');
-  });
-
-  it('does not lend a connection bound to some other project', async () => {
-    bindings(bindingOnProject(OTHER_PROJECT_ID));
-
-    expect((await repositories()).status).toBe(404);
+    expect(res.status).toBe(400);
+    expect((await bodyOf(res)).details).toEqual({
+      connectionId: 'is not a GitHub App, so it has no repositories to list',
+    });
   });
 
   it('refuses a caller who is a project member but not an admin, before any lookup', async () => {
     helpers.projectRole = 'member';
-    bindings(bindingOnProject(PROJECT_ID));
+    reaches();
 
     expect((await repositories()).status).toBe(403);
-    expect(store.listBindingsForProject).not.toHaveBeenCalled();
+    expect(reach.findReachableConnection).not.toHaveBeenCalled();
   });
 
   it('refuses a request with no connectionId by naming the field', async () => {
@@ -263,7 +253,7 @@ describe('GET /:projectId/integrations/github/repositories — who may reach the
   });
 
   it('refuses a bound App that was never converted, rather than calling GitHub with no key', async () => {
-    bindings(bindingOnProject(PROJECT_ID));
+    reaches();
     store.decryptConnectionSecrets.mockReturnValue({});
 
     const res = await repositories();

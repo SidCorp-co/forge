@@ -18,11 +18,13 @@ import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { findReachableConnection } from '../reach.js';
 import {
   assertAdmin,
   assertProjectMember,
   assertVaultConfigured,
   badRequest,
+  connectionNotReachable,
   notFound,
 } from '../route-helpers.js';
 import {
@@ -31,8 +33,6 @@ import {
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
-  listBindingsForProject,
-  listConnectionsForPrincipalUser,
 } from '../store.js';
 import {
   buildAppManifest,
@@ -171,32 +171,25 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
 });
 
 /**
- * The App whose repositories this project's picker may list. Two grants, read
- * after the route has proved the caller an admin of the project, and neither a
- * fallback for the other — a connection under neither is refused.
+ * The App whose repositories this project's picker may list: one the caller reaches by the rule
+ * every door reads (`../reach.ts`), asked after the route has proved the caller an admin of the
+ * project. A connection this project's binding points at is reached whoever owns it and whether or
+ * not it is switched off, since a repick starts from a disconnected row; one the caller owns is
+ * reached before any binding to this project exists, which is where the create path lists.
  *
- *  - the project's own binding points at it, whatever principal owns it, and
- *    switched off or not, since a repick starts from a disconnected row.
- *    Binding it here already took somebody who could manage the connection
- *    plus an admin of this project, and listing the App's repositories is what
- *    the binding is for. Asking the caller's own principal INSTEAD is what
- *    answered every admin but one with `connection not found`.
- *  - the caller sees it as a principal: the create path, which lists before
- *    any binding to this project exists.
+ * This was a second private copy of the reach question, found refusing once ISS-1115 widened it
+ * and the directory and the connection's own routes had not been.
  */
 async function githubConnectionForPicker(args: {
-  projectId: string;
   userId: string;
   connectionId: string;
-}): Promise<IntegrationConnectionRow | null> {
-  const bound = (await listBindingsForProject(args.projectId)).find(
-    (pair) => pair.binding.provider === 'github' && pair.connection.id === args.connectionId,
-  );
-  if (bound) return bound.connection;
-  const owned = (await listConnectionsForPrincipalUser(args.userId)).find(
-    (x) => x.id === args.connectionId && x.provider === 'github',
-  );
-  return owned ?? null;
+}): Promise<IntegrationConnectionRow> {
+  const reached = await findReachableConnection(args.userId, args.connectionId);
+  if (!reached) throw connectionNotReachable(args.connectionId);
+  if (reached.connection.provider !== 'github') {
+    throw badRequest({ connectionId: 'is not a GitHub App, so it has no repositories to list' });
+  }
+  return reached.connection;
 }
 
 githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c) => {
@@ -207,8 +200,7 @@ githubConnectRoutes.get('/:projectId/integrations/github/repositories', async (c
   const connectionId = c.req.query('connectionId');
   if (!connectionId) throw badRequest({ connectionId: 'required' });
 
-  const connection = await githubConnectionForPicker({ projectId, userId, connectionId });
-  if (!connection) throw notFound('connection');
+  const connection = await githubConnectionForPicker({ userId, connectionId });
 
   const { appId, privateKey } = decryptConnectionSecrets<{
     appId?: string;

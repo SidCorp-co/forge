@@ -31,6 +31,12 @@ import {
   connectionUpdateSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
+import {
+  bindingsVisibleTo,
+  findReachableConnection,
+  listReachableConnections,
+  type ReachedConnection,
+} from './reach.js';
 import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import {
@@ -41,6 +47,8 @@ import {
   assertVaultConfigured,
   badRequest,
   buildCreatedBindingResponse,
+  connectionNotManageable,
+  connectionNotReachable,
   defaultConnectionDisplayName,
   forbidden,
   notFound,
@@ -54,50 +62,31 @@ import {
   buildContextFromBinding,
   createBinding,
   createConnection,
-  findConnectionById,
   type IntegrationConnectionRow,
   listBindingsByConnectionIds,
   listBindingsForConnection,
-  listConnectionsForPrincipalUser,
   softDeleteConnection,
   updateConnection,
 } from './store.js';
 import type { IntegrationProvider } from './types.js';
 
+/**
+ * The connection and how the caller reaches it, or the refusal that names why not. Reach decides
+ * what a caller is shown; only `canManage` decides what they may change.
+ */
+async function loadVisibleConnection(id: string, userId: string): Promise<ReachedConnection> {
+  const reached = await findReachableConnection(userId, id);
+  if (!reached) throw connectionNotReachable(id);
+  return reached;
+}
+
 async function loadManageableConnection(
   id: string,
   userId: string,
 ): Promise<IntegrationConnectionRow> {
-  const connection = await findConnectionById(id);
-  if (!connection) throw notFound('connection');
-  if (connection.ownerType === 'user') {
-    if (connection.ownerId !== userId) throw notFound('connection');
-    return connection;
-  }
-  const orgRole = await loadOrgRole(connection.ownerId, userId);
-  if (!orgRole) throw notFound('connection');
-  if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
-  return connection;
-}
-
-/**
- * Reading a connection, as opposed to managing it. Every principal the list
- * route shows a connection to can also read it here; only WRITING is gated on
- * org admin.
- */
-async function loadVisibleConnection(
-  id: string,
-  userId: string,
-): Promise<IntegrationConnectionRow> {
-  const connection = await findConnectionById(id);
-  if (!connection) throw notFound('connection');
-  if (connection.ownerType === 'user') {
-    if (connection.ownerId !== userId) throw notFound('connection');
-    return connection;
-  }
-  const orgRole = await loadOrgRole(connection.ownerId, userId);
-  if (!orgRole) throw notFound('connection');
-  return connection;
+  const reached = await loadVisibleConnection(id, userId);
+  if (!reached.canManage) throw connectionNotManageable(reached.connection);
+  return reached.connection;
 }
 
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
@@ -105,10 +94,16 @@ integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 integrationConnectionsRoutes.get('/', async (c) => {
   const userId = c.get('userId');
-  const rows = await listConnectionsForPrincipalUser(userId);
-  const bindings = await listBindingsByConnectionIds(rows.map((r) => r.id));
+  const reached = await listReachableConnections(userId);
+  const bindings = await listBindingsByConnectionIds(reached.map((r) => r.connection.id));
   return c.json({
-    items: rows.map((r) => summarizeConnectionWithUsage(r, bindings.get(r.id) ?? [])),
+    items: reached.map((r) =>
+      summarizeConnectionWithUsage(
+        r.connection,
+        bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
+        { reach: r.reach, canManage: r.canManage },
+      ),
+    ),
   });
 });
 
@@ -269,8 +264,12 @@ integrationConnectionsRoutes.post(
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadVisibleConnection(id, userId);
-  const pairs = await listBindingsForConnection(id);
+  const reached = await loadVisibleConnection(id, userId);
+  const pairs = bindingsVisibleTo(
+    reached,
+    await listBindingsForConnection(id),
+    (pair) => pair.binding.projectId,
+  );
   const bindings = pairs.map(summarizeBinding);
   return c.json({ bindings, items: bindings });
 });

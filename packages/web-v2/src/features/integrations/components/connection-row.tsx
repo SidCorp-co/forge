@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import { Badge, Button, Icon } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { readOnlyNote } from "../connection-space";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
 import { connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
@@ -236,9 +237,7 @@ export function ConnectionRow({
             <RemoveButton connection={connection} />
           </>
         ) : (
-          <span className="fg-body-sm text-subtle">
-            Read-only — only an admin of {ownerLabel} can change this credential.
-          </span>
+          <span className="fg-body-sm text-subtle">{readOnlyNote(connection, ownerLabel)}</span>
         )}
       </span>
     </div>

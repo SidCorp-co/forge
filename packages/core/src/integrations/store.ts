@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type BindingRole,
@@ -7,7 +7,6 @@ import {
   integrationBindings,
   integrationConnections,
   type ObservedEndpoint,
-  organizationMembers,
 } from '../db/schema.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
@@ -463,40 +462,4 @@ export async function listBindingsForConnection(
     )
     .where(eq(integrationBindings.connectionId, connectionId))
     .orderBy(desc(integrationBindings.createdAt));
-}
-
-/**
- * Connections visible to a user: their own (ownerType=user) plus org-owned
- * connections of every org they belong to (any role — managing them is
- * gated separately at the route layer). Returns ALL active states — the
- * directory must show a disabled connection as Disabled (and allow
- * re-enabling it) rather than silently dropping it (ISS-429);
- * share-eligibility filtering (`active && hasSecrets`) happens client-side.
- */
-export async function listConnectionsForPrincipalUser(
-  userId: string,
-): Promise<IntegrationConnectionRow[]> {
-  const orgRows = await db
-    .select({ orgId: organizationMembers.orgId })
-    .from(organizationMembers)
-    .where(eq(organizationMembers.userId, userId));
-  const orgIds = orgRows.map((r) => r.orgId);
-  return db
-    .select()
-    .from(integrationConnections)
-    .where(
-      or(
-        and(
-          eq(integrationConnections.ownerType, 'user'),
-          eq(integrationConnections.ownerId, userId),
-        ),
-        orgIds.length > 0
-          ? and(
-              eq(integrationConnections.ownerType, 'org'),
-              inArray(integrationConnections.ownerId, orgIds),
-            )
-          : sql`false`,
-      ),
-    )
-    .orderBy(desc(integrationConnections.createdAt));
 }
