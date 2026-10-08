@@ -108,6 +108,12 @@ export const issuesApi = {
     );
   },
 
+  /** The search route at five rows and none of the list's hydration: what the ⌘K box asks per term. */
+  lookup: (projectId: string, q: string) =>
+    apiClientList<Pick<IssueRow, "id" | "displayId" | "title">>(
+      `/projects/${projectId}/issues/search?${new URLSearchParams({ q, limit: "5" })}`,
+    ),
+
   /** `PATCH /api/issues/:id` — priority/complexity/description (status is NOT
    *  patchable here; use `transition`). */
   patch: (id: string, body: PatchIssueInput) =>

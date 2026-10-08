@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { issueKeyRefusalOf } from "./key-refusal";
+import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { filterCount } from "./derive";
+import { issueKeyRefusalOf, NO_ISSUE_BUCKETS } from "./key-refusal";
 
 describe("issueKeyRefusalOf (ISS-1334)", () => {
   it.each(["ISSUE_KEY_NOT_HELD", "ISSUE_KEY_FOREIGN_PREFIX", "ISSUE_KEY_OUT_OF_RANGE"])(
@@ -17,5 +19,15 @@ describe("issueKeyRefusalOf (ISS-1334)", () => {
     expect(issueKeyRefusalOf(new ApiError(404, "gone"))).toBeNull();
     expect(issueKeyRefusalOf(new Error("network"))).toBeNull();
     expect(issueKeyRefusalOf(null)).toBeNull();
+  });
+});
+
+describe("NO_ISSUE_BUCKETS (ISS-1334)", () => {
+  it("counts 0 under every tab and outcome, so a refused key keeps every count drawn", () => {
+    for (const f of ["all", "you", "agent", "draft", "findings", "done"] as const) {
+      expect(filterCount(f, NO_ISSUE_BUCKETS), f).toBe(0);
+    }
+    for (const s of REGISTRY_ISSUE_STATUSES) expect(NO_ISSUE_BUCKETS.byStatus[s], s).toBe(0);
+    expect([NO_ISSUE_BUCKETS.detector, NO_ISSUE_BUCKETS.humanDraft]).toEqual([0, 0]);
   });
 });

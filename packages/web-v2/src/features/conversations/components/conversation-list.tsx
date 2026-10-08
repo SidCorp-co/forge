@@ -126,7 +126,7 @@ export function ConversationList({
                 ? "Archive a conversation and it waits for you here."
                 : "Ask the agent something and it'll show up here."
             }
-            {...(showArchived ? {} : { action: { label: "New conversation", onClick: onNew } })}
+            {...(showArchived ? {} : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
           />
         )}
 

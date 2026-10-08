@@ -133,7 +133,7 @@ export function ProjectsConsole() {
         <EmptyState
           title="No projects yet"
           message="Projects you own or are a member of will appear here."
-          action={{ label: 'New project', onClick: onNewProject }}
+          action={{ label: 'New project', onClick: onNewProject, icon: 'plus' }}
         />
       ) : (
         <>

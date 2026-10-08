@@ -134,7 +134,7 @@ export function ConversationSidebar({
               }
               {...(showArchived
                 ? {}
-                : { action: { label: "New conversation", onClick: onNew } })}
+                : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
             />
           )}
 

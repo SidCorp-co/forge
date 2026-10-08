@@ -64,7 +64,7 @@ export function OverviewScreen() {
               ? 'Create a project in this organization, or switch organizations from the chrome to see others.'
               : 'Create your first project to start shipping issues through the pipeline. This dashboard fills in as work flows.'
           }
-          action={{ label: 'New project', onClick: () => router.push('/projects?new=1') }}
+          action={{ label: 'New project', onClick: () => router.push('/projects?new=1'), icon: 'plus' }}
         />
       </PageContainer>
     );

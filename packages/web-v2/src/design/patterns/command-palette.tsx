@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Input } from "@/design/primitives/input";
@@ -35,10 +35,15 @@ export interface Command {
 export interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
+  /** A `search`-group command is a server's answer to the query, shown as given and never re-filtered by label. */
   commands: Command[];
+  /** Hears every change to the query, so its owner can ask a server about it. */
+  onQueryChange?: (query: string) => void;
+  /** A line about the query drawn above the results, whether or not any command matched. */
+  notice?: ReactNode;
 }
 
-export function CommandPalette({ open, onClose, commands }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, commands, onQueryChange, notice }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -51,6 +56,7 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
     const matched = commands.filter(
       (c) =>
         !q ||
+        c.group === "search" ||
         c.label.toLowerCase().includes(q) ||
         (c.keywords ? c.keywords.toLowerCase().includes(q) : false),
     );
@@ -79,8 +85,9 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
     if (!open) {
       setQuery("");
       setActive(0);
+      onQueryChange?.("");
     }
-  }, [open]);
+  }, [open, onQueryChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -133,13 +140,17 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActive(0);
+                onQueryChange?.(e.target.value);
               }}
               placeholder="Search or run a command…"
             />
             <Kbd>esc</Kbd>
           </div>
           <div className="max-h-[360px] overflow-y-auto p-1.5">
-            {flat.length === 0 && <p className="fg-body-sm px-3 py-6 text-center">No matches.</p>}
+            {notice && <p className="fg-body-sm px-3 py-2 text-muted">{notice}</p>}
+            {flat.length === 0 && !notice && (
+              <p className="fg-body-sm px-3 py-6 text-center">No matches.</p>
+            )}
             {sections.map((section, si) => (
               <div key={section.group}>
                 {si > 0 && <div className="my-1 border-t border-line-subtle" />}

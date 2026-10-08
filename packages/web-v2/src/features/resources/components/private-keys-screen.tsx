@@ -222,7 +222,7 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 						<EmptyState
 							title="No private keys yet"
 							message="Create one to connect your projects to Git."
-							action={{ label: "Create key", onClick: () => setCreateOpen(true) }}
+							action={{ label: "Create key", onClick: () => setCreateOpen(true), icon: "plus" }}
 						/>
 					) : (
 						<div className="flex flex-col gap-3">

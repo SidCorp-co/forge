@@ -483,13 +483,15 @@ async function loadTaskForAccess(taskId: string): Promise<TaskRow> {
   return row;
 }
 
-/** A key the project cannot answer reaches the caller as the tool's own refusal text, by name. */
+/** A key the project cannot answer reaches the caller as `<ISSUE_KEY_* code>: <sentence>` once the
+ *  server strips the status word, the `BAD_REQUEST: <code>: <message>` shape the other tools use. */
 async function listIssueRowsOrRefuse(...args: Parameters<typeof listIssueRows>) {
   try {
     return await listIssueRows(...args);
   } catch (err) {
     if (!(err instanceof IssueSearchKeyRefused)) throw err;
-    throw new Error(`${err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST'}: ${err.message}`);
+    const status = err.status === 404 ? 'NOT_FOUND' : 'BAD_REQUEST';
+    throw new Error(`${status}: ${err.code}: ${err.message}`);
   }
 }
 

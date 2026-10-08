@@ -214,6 +214,44 @@ describe('GET /api/projects/:id/issues/search — a key finds its issue (ISS-133
     }
   });
 
+  it.each([
+    'ISS 1280',
+    'ISS - 1280',
+    '#1280',
+    '#ISS-1280',
+    'ISS-1280,',
+    'ISS-1280.',
+    '(ISS-1280)',
+    '`ISS-1280`',
+  ])('answers the near-form %j with ISS-1280 alone, not its neighbours', async (q) => {
+    const { user, project } = await member();
+    await neighbourhood(project.id, user.id);
+
+    const { res, body } = await search(project.id, user.id, q);
+
+    expect(res.status).toBe(200);
+    expect(body.items.map((i) => i.displayId)).toEqual(['ISS-1280']);
+    expect(body.total).toBe(1);
+  });
+
+  it('searches a quoted number as text, the way round a bare number reading as a key', async () => {
+    const { user, project } = await member();
+    await seedIssue({ projectId: project.id, createdById: user.id, issSeq: 500, title: 'other' });
+    await seedIssue({
+      projectId: project.id,
+      createdById: user.id,
+      issSeq: 3,
+      title: 'save fails with HTTP 500',
+    });
+
+    const quoted = await search(project.id, user.id, '"500"');
+    const worded = await search(project.id, user.id, 'HTTP 500');
+
+    expect(quoted.res.status).toBe(200);
+    expect(quoted.body.items.map((i) => i.issSeq)).toEqual([3]);
+    expect(worded.body.items.map((i) => i.issSeq)).toEqual([3]);
+  });
+
   it('answers a key whose issue is archived, as the list route’s key does', async () => {
     const { user, project } = await member();
     await seedIssue({
@@ -269,6 +307,20 @@ describe('GET /api/projects/:id/issues/search — a key it cannot answer is refu
     expect(body.code).toBe('ISSUE_KEY_FOREIGN_PREFIX');
     expect(body.message).toContain('`OTH`');
     expect(body.message).toContain('`ISS`');
+  });
+
+  it('refuses a prefix whose project is gone without saying another project holds it', async () => {
+    const { user, project } = await member();
+    await harness.db.execute(
+      sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (NULL, 'GONE')`,
+    );
+
+    const { res, body } = await search(project.id, user.id, 'GONE-5');
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('ISSUE_KEY_FOREIGN_PREFIX');
+    expect(body.message).toContain('no longer exists');
+    expect(body.message).not.toContain('another project holds');
   });
 
   it.each(['0', 'ISS-0', '2147483648', '21474836470'])(
@@ -353,8 +405,10 @@ describe('issue search — text, filters and the MCP list beside a key (ISS-1334
 
     expect(hit.issues.map((i) => i.issueId)).toEqual(['ISS-1280']);
     await expect(mcpList(user.id, project.id, 'ISS-9999')).rejects.toThrow(
-      /^NOT_FOUND: .*ISS-9999/,
+      /^NOT_FOUND: ISSUE_KEY_NOT_HELD: .*ISS-9999/,
     );
-    await expect(mcpList(user.id, project.id, '0')).rejects.toThrow(/^BAD_REQUEST: /);
+    await expect(mcpList(user.id, project.id, '0')).rejects.toThrow(
+      /^BAD_REQUEST: ISSUE_KEY_OUT_OF_RANGE: /,
+    );
   });
 });
