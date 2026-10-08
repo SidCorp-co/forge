@@ -6,7 +6,7 @@
 // pin both, and that the list inside it still scrolls.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Command, CommandPalette } from "./command-palette";
 
@@ -62,5 +62,50 @@ describe("CommandPalette", () => {
       </>,
     );
     expect(wheel(screen.getByTestId("page"))).toBe(false);
+  });
+
+  it("shows a server-answered search result whose label does not hold the typed text (ISS-1334)", () => {
+    const commands: Command[] = [
+      ...COMMANDS,
+      { label: "ISS-1280 · the release door", icon: "list", group: "search" },
+    ];
+    render(<CommandPalette open onClose={vi.fn()} commands={commands} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Search or run a command…"), {
+      target: { value: "#1280" },
+    });
+
+    expect(screen.getByText("ISS-1280 · the release door")).toBeInTheDocument();
+    expect(screen.queryByText("Go to issues")).toBeNull();
+  });
+
+  it("reports what is typed to its owner (ISS-1334)", () => {
+    const onQueryChange = vi.fn();
+    render(
+      <CommandPalette open onClose={vi.fn()} commands={COMMANDS} onQueryChange={onQueryChange} />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Search or run a command…"), {
+      target: { value: "ISS 1280" },
+    });
+
+    expect(onQueryChange).toHaveBeenLastCalledWith("ISS 1280");
+  });
+
+  it("shows a notice beside the commands that still match, never No matches (ISS-1334)", () => {
+    const commands: Command[] = [
+      { label: "Search issues for “ISS-9999”", icon: "search", group: "search" },
+    ];
+    render(
+      <CommandPalette open onClose={vi.fn()} commands={commands} notice="ISS-9999 is not held here." />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Search or run a command…"), {
+      target: { value: "ISS-9999" },
+    });
+
+    expect(screen.getByText("ISS-9999 is not held here.")).toBeInTheDocument();
+    expect(screen.getByText("Search issues for “ISS-9999”")).toBeInTheDocument();
+    expect(screen.queryByText("No matches.")).toBeNull();
   });
 });

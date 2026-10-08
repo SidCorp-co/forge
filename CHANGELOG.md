@@ -3151,6 +3151,10 @@
   `1280` show that one issue rather than the issues mentioning it, and a key this project does not
   hold is said so by name.
 
+- **A pasted key finds its issue too, and so does ⌘K.** `ISS 1280`, `#1280` and `(ISS-1280),` find
+  ISS-1280; inside a project the ⌘K box searches issues; a refused key reads cleanly and keeps the
+  tab counts in place.
+
 - **The sign-up page drops "Email already registered" once you change the email**, so the
   message never describes an address that is no longer in the field.
 - **A waiting runner update keeps reporting and ends no chat for nothing.** It reports while

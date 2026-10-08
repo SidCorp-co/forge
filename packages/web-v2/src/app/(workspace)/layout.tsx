@@ -31,6 +31,8 @@ import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { ForgeVersion } from "@/features/version";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
+import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { useIssueSearchCommands } from "@/features/shell/issue-search-commands";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
 import {
@@ -102,6 +104,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   }, [isLoading, user, router]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
@@ -317,7 +320,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   // ⌘K command registry — built in features/shell/commands. `activeOrgId`
   // stays a dep because `scopedProjects` derives from it (ISS-477 scoping).
-  const commands: Command[] = useMemo(
+  const issueSearch = useIssueSearchCommands({
+    projectId: activeProject?.id,
+    slug,
+    query: paletteQuery,
+    router,
+  });
+  const fixedCommands: Command[] = useMemo(
     () =>
       buildWorkspaceCommands({
         router,
@@ -330,6 +339,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         toast,
       }),
     [router, slug, activeProject, scopedProjects, activeOrgId, recents, pinnedViews.views, pinnedIds, toast],
+  );
+  const commands = useMemo(
+    () => [...fixedCommands, ...issueSearch.commands],
+    [fixedCommands, issueSearch.commands],
   );
 
   return (
@@ -502,6 +515,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         commands={commands}
+        onQueryChange={setPaletteQuery}
+        notice={issueSearch.notice ? inlineCode(issueSearch.notice) : undefined}
       />
     </div>
   );
