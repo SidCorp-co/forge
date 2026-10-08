@@ -33,12 +33,10 @@ function encodings(text: string, levels = 2): string[] {
 const LINE_BREAK = '(?:\\n|\\\\+n)';
 
 /**
- * Drizzle's `Failed query: <sql>\nparams: <values>`, raw or escaped, the values running to the end:
- * no text after them, a known rendering's included, is proof of where they stop.
+ * Drizzle's `Failed query: <sql>\nparams: `, raw or escaped, up to where its values begin and
+ * run to the end of the text (`patternSpans`).
  */
-const FAILED_QUERY_PARAMS = new RegExp(
-  `(Failed query: [\\s\\S]*?${LINE_BREAK}params: )[\\s\\S]*$`,
-);
+const FAILED_QUERY_PARAMS = new RegExp(`(Failed query: [\\s\\S]*?${LINE_BREAK}params: )`);
 
 const QUOTE = '\\\\*"';
 
@@ -137,6 +135,15 @@ function readChain(err: unknown): ChainReading {
 
 type Span = [start: number, end: number];
 
+/**
+ * `v` as a sink writes it: a short one quoted, escaped inside the quotes first, then as a line is.
+ */
+function valueNeedles(v: string): string[] {
+  const inner = encodings(v);
+  const written = v.length >= BARE_VALUE_MIN ? inner : inner.flatMap((e) => [`"${e}"`, `'${e}'`]);
+  return [...new Set(written.flatMap((n) => encodings(n)))];
+}
+
 function occurrences(text: string, needle: string, from: number, to: number): Span[] {
   const spans: Span[] = [];
   for (let at = text.indexOf(needle); at !== -1; at = text.indexOf(needle, at + 1)) {
@@ -160,10 +167,7 @@ function boundSpans(text: string, chain: ChainReading): Span[] {
     for (const e of encodings(m)) spans.push(...occurrences(text, e, 0, 0));
   }
   for (const v of chain.values) {
-    const needles = v.length >= BARE_VALUE_MIN ? [v] : [`"${v}"`, `'${v}'`];
-    for (const e of needles.flatMap((n) => encodings(n))) {
-      spans.push(...occurrences(text, e, 0, 0));
-    }
+    for (const e of valueNeedles(v)) spans.push(...occurrences(text, e, 0, 0));
   }
   // A value that is part of the marker shows nothing where the marker stands.
   const markers = occurrences(text, REDACTED, 0, 0);

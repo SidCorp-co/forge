@@ -27,11 +27,15 @@ function commitRefusal(): Error {
   return pgRefusal('duplicate key value violates unique constraint "d_u"', { code: '23505' }, []);
 }
 
-const SOURCES: [string, (v: string) => string][] = [
+/** Whether a source's text holds the value where only an error naming it can say which part it is. */
+type Source = [name: string, write: (v: string) => string, needsNamingError?: true];
+
+const SOURCES: Source[] = [
   ["drizzle's message", (v) => failed(v).message],
   ['the message as pino joins its cause', (v) => `${failed(v).message}: ${refusal(v)}`],
   ["the driver's refusal", refusal],
   ['a unique detail', (v) => `Key (email)=(${v}) already exists.`],
+  ['a wrapper quoting it as JSON', (v) => `could not save ${JSON.stringify(v)} (retry 2)`, true],
 ];
 
 const ENCODINGS: [string, (text: string) => string][] = [
@@ -42,12 +46,12 @@ const ENCODINGS: [string, (text: string) => string][] = [
   ['escaped inside a template', (t) => `upstream said ${JSON.stringify({ m: t })}`],
 ];
 
-const BESIDE: [string, (v: string) => unknown][] = [
-  ['the error naming the value', (v) => failed(v)],
+const BESIDE: [name: string, errors: (v: string) => unknown, names?: true][] = [
+  ['the error naming the value', (v) => failed(v), true],
   ['no error', () => undefined],
   ['a parameterless failed query', () => [parameterless()]],
   ['a refusal at COMMIT', () => [commitRefusal()]],
-  ['both', (v) => [parameterless(), failed(v)]],
+  ['both', (v) => [parameterless(), failed(v)], true],
 ];
 
 /** mulberry32: the same values on every run, so a red names the value that made it. */
@@ -66,8 +70,14 @@ const ALPHABET = [
   ...' "\'\\,:;-_.$()[]{}<>=@#%&*+/|?!~`',
   '\n',
   '\t',
+  '\r',
+  '\b',
+  '\f',
+  '\u0002',
+  '\u001f',
   '\u00e9',
   '\u6f22',
+  '\ud800',
 ];
 
 /** Every way the value itself can be written: a leak in any of them is a leak. */
@@ -107,10 +117,11 @@ describe('a bound value of any length, however its text is carried', () => {
     const leaks: string[] = [];
     const tried = values(320);
     for (const v of tried) {
-      for (const [source, write] of SOURCES) {
+      for (const [source, write, needsNamingError] of SOURCES) {
         for (const [encoding, encode] of ENCODINGS) {
           const text = encode(write(v));
-          for (const [beside, errors] of BESIDE) {
+          for (const [beside, errors, names] of BESIDE) {
+            if (needsNamingError && !names) continue;
             const err = errors(v);
             const cause = Array.isArray(err) ? err.at(-1) : err;
             const outs = [
@@ -204,6 +215,54 @@ describe('a failed query that bound nothing, beside one that bound values', () =
       expect(out.slice(0, 12)).toBe(t.slice(0, 12));
       expect(out).toContain(REDACTED);
       expect(out).not.toMatch(/cd-other|private-tail|unrelated-secret/);
+    }
+  });
+});
+
+describe('a bound value that only the error in hand can name, in text a sink escaped', () => {
+  it('is withheld from the params it renders, raw and escaped, where no failed-query text precedes', () => {
+    const value = 'a"b';
+    const err = new DrizzleQueryError(
+      'select $1, $2',
+      [value, 'c'],
+      driverError('x', { code: '22P02' }),
+    );
+    const rendering = `${[value, 'c']}`;
+    for (const text of [
+      `params: ${rendering}`,
+      `params: ${json(rendering)}`,
+      `params: ${json(json(rendering))}`,
+    ]) {
+      const out = redactQueryParams(`${text} trailing`, err);
+      expect(forms(value).some((f) => out.includes(f))).toBe(false);
+      expect(out).toContain('trailing');
+    }
+  });
+
+  it("is withheld from the driver's message wherever the message stands escaped, though it stands bare in it", () => {
+    const message = 'connection qz refused\nretry later';
+    const err = new DrizzleQueryError('select 1', ['qz'], driverError(message, { code: '08006' }));
+    for (const text of [message, json(message), json(json(message))]) {
+      const out = redactQueryParams(`upstream said ${text}`, err);
+      expect(out).not.toContain('qz');
+      expect(out).toContain('upstream said');
+    }
+  });
+
+  it.each([
+    ['a value with a quote', 'ab"cdefgh'],
+    ['a value with a backslash and a line break', 'ab\\cd\nefgh'],
+  ])('is withheld, of six characters or more and holding no quoted anchor, as %s', (_, value) => {
+    const err = failed(value);
+    for (const text of [
+      `could not save ${JSON.stringify(value)} (retry 2)`,
+      `bare: ${json(value)}`,
+    ]) {
+      for (const t of [text, json(text), json(json(text))]) {
+        const out = redactQueryParams(t, err);
+        expect(forms(value).some((f) => out.includes(f))).toBe(false);
+        expect(out).toContain(REDACTED);
+      }
     }
   });
 });
