@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.163] - 2026-10-08
+
+Conversations accept documents; the assistant reads and cites them
+
+### Added
+
+- **A conversation takes documents, and the assistant reads them.** Attach Markdown, text, CSV, JSON, PDF or Word files; the assistant cites them by name, and drafts a requirement whose criteria are an attached list, verbatim.
+
 ## [0.4.0-dev.162] - 2026-10-08
 
 Agent chat runs sandboxed, holding only its turn credential, not the box's
