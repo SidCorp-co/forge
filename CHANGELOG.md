@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.182] - 2026-10-08
+
+Scheduled template reports now arrive with their written summary, risks and recommendations
+
+### Added
+
+- **A scheduled template report now arrives with its summary, risks and recommendations.** One model call writes them from the report's own runs, a refused answer gets one retry, and a narrative not written says why.
+
 ## [0.4.0-dev.181] - 2026-10-08
 
 Hold a held chat reply's visual blocks and refuse invented chart labels
