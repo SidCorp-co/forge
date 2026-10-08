@@ -27,7 +27,7 @@ import { ReleaseNoteCard } from "../release-note-card";
 import { SessionGroupTimeline } from "../session-group-timeline";
 import { StepArtifactCard } from "../step-artifact-card";
 
-export const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "activity"] as const;
+export const ISSUE_TABS = ["overview", "criteria", "runs", "mockups", "decisions", "memory", "activity"] as const;
 
 export type ActivityThread = "comments" | "activity";
 

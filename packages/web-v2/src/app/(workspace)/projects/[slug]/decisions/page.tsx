@@ -1,19 +1,8 @@
 "use client";
 
-import { PageContainer } from "@/design";
-import { ProjectRefGate } from "@/features/projects/components/project-gate";
-import { DecisionLog } from "@/features/requirements/components/decision-log";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { MovedRedirect } from "@/features/shell/components/moved-redirect";
 
-export default function ProjectDecisionsPage() {
-  const t = useCopy();
-  return (
-    <ProjectRefGate label={t("common.decisions.loading")}>
-      {(p) => (
-        <PageContainer className="max-w-[1100px]">
-          <DecisionLog projectId={p.ref} slug={p.slug} />
-        </PageContainer>
-      )}
-    </ProjectRefGate>
-  );
+// REQ-33: the project Decisions page was removed; an old link lands where its record is read now.
+export default function MovedDecisionsPage() {
+  return <MovedRedirect page="decisions" />;
 }

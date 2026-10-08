@@ -1,7 +1,7 @@
 "use client";
 
-// A requirement's full page: a main column for reading and acting, split into six views by tabs
-// (Overview with what is still unclear, Criteria, Revisions, Mockups, Decisions, Activity), beside a sticky rail of the at-a-glance facts. Each
+// A requirement's full page: a main column for reading and acting, split into seven views by tabs
+// (Overview with what is still unclear, Criteria, Revisions, Mockups, Decisions, Memory, Activity), beside a sticky rail of the at-a-glance facts. Each
 // fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
 // Everything derived (whose turn, coverage, history) comes from core's read model.
 
@@ -35,10 +35,11 @@ import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts, RequirementPhoneProgressOf } from "./requirement-facts";
 import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
+import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
 import { RequirementBanner } from "./standing-bits";
 
-const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "activity"] as const;
+const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "memory", "activity"] as const;
 type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
@@ -227,6 +228,7 @@ export function RequirementPage({
   const t = useCopy();
   const q = useRequirement(projectId, reqKey);
   const decisions = useRequirementDecisions(projectId, reqKey);
+  const memories = useRequirementMemoryCount(projectId, reqKey);
   const proposedAt =
     q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
     q.data?.currentRevision ??
@@ -246,6 +248,7 @@ export function RequirementPage({
           { value: "revisions" as const, label: t("requirements.tab.revisions"), count: d.revisions.length },
           { value: "mockups" as const, label: t("requirements.tab.mockups"), count: mockups.data?.returned },
           { value: "decisions" as const, label: t("requirements.tab.decisions"), count: decisions.data ? decisions.data.decisions.length + decisions.data.answers.length : undefined },
+          { value: "memory" as const, label: t("memory.title"), count: memories },
           { value: "activity" as const, label: t("requirements.tab.activity"), count: d.history.length },
         ];
         return (
@@ -272,6 +275,7 @@ export function RequirementPage({
                   <RequirementDecisions projectId={projectId} slug={slug} reqKey={d.key} />
                 </section>
               ) : null}
+              {tab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}
               {tab === "activity" ? <RequirementActivity projectId={projectId} d={d} /> : null}
             </DetailPane>
           </DetailLayout>

@@ -54,8 +54,10 @@ describe('a template run', () => {
       'recommendations',
     ]);
     for (const run of runs) expect((await readRun(String(run.runId))).status).toBe(200);
+    // progress draws five blocks: the chart, the status list, two tables of the progress run (its
+    // issues, and each lane and forecast, REQ-33 BC-3) and the coverage table
     expect(((document.blocks as Body[]) ?? []).length + (res.body.notDrawn as Body[]).length).toBe(
-      4,
+      5,
     );
   });
 

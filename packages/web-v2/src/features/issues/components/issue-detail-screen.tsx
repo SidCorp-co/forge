@@ -2,7 +2,8 @@
 
 // web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294): the shared DetailHeader in the top
 // bar (back to the list view it came from, key, title, status, one primary action), whose turn as
-// banners, then Overview / Criteria / Runs / Activity as tabs (`?tab=`) beside a sticky facts rail —
+// banners, then Overview / Criteria / Runs / Mockups / Decisions / Memory / Activity as tabs (`?tab=`)
+// beside a sticky facts rail —
 // the read model's standing over the editable properties. Live via WS on the keys `['issue',id]` /
 // `['comments',id]` / `['activities',id]` and `['issues','standing']` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
@@ -77,6 +78,7 @@ import {
   RunsTab,
   runsTabCount,
 } from "./detail/issue-tabs";
+import { IssueDecisionsTab, IssueMemoryTab } from "./detail/issue-record-tabs";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -176,6 +178,9 @@ export function IssueDetailScreen({
     { value: "criteria" as const, label: t("issues.tab.criteria"), count: criteriaQ.data?.criteria.length ?? checklist.length },
     { value: "runs" as const, label: t("issues.tab.runs"), count: runsTabCount(issue.agentSessions ?? [], stepOutcomes) },
     { value: "mockups" as const, label: t("common.mockups.title"), count: mockupsQ.data?.returned },
+    // read when opened: counting them would hold the page's first reads on the issue's key (page-waterfall.test)
+    { value: "decisions" as const, label: t("issues.tab.decisions") },
+    { value: "memory" as const, label: t("memory.title") },
     { value: "activity" as const, label: t("issues.tab.activity"), count: commentsQ.data?.totalCount },
   ];
 
@@ -347,6 +352,8 @@ function IssueTabBody({
         />
       ) : null}
       {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+      {tab === "decisions" ? <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} /> : null}
+      {tab === "memory" ? <IssueMemoryTab projectId={projectId} slug={slug} issueKey={issue.displayId} /> : null}
       {tab === "activity" ? (
         <ActivityTab
           issueId={issue.id}

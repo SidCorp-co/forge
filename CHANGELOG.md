@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.192] - 2026-10-08
+
+Decisions, roadmap lanes and memory read on the item they are about
+
+### Changed
+
+- **Decisions, roadmap lanes and memory are read on the item they are about.** The three project pages are gone; issues gain a Decisions tab, items a Memory tab, and the Requirements list a roadmap grouping.
+
 ## [0.4.0-dev.191] - 2026-10-08
 
 People verify shipped work from the web: verdicts, criterion ties, decisions, reports, compute

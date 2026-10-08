@@ -1,12 +1,11 @@
 import {
+  type CommentScope,
   CREATE_ENTITY_COMMENT_SHAPE,
   createEntityCommentRequestSchema,
   EDIT_ENTITY_COMMENT_SHAPE,
   type EntityCommentResponse,
   type EntityCommentScope,
   editEntityCommentRequestSchema,
-  LIST_DECISIONS_QUERY_SHAPE,
-  listDecisionsQuerySchema,
 } from '@forge/contracts/comments';
 import { COMMENT_INTENTS } from '@forge/contracts/record-events';
 import { type Context, Hono } from 'hono';
@@ -14,7 +13,7 @@ import { z } from 'zod';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
-import { type EntityCommentActor, listDecisionsAs, listEntityCommentsAs } from './entity-read.js';
+import { type EntityCommentActor, listEntityCommentsAs } from './entity-read.js';
 import {
   type EntityCommentOutcome,
   editEntityComment,
@@ -24,10 +23,15 @@ import {
 export const entityCommentRoutes = new Hono<{ Variables: AuthVars }>();
 
 // the three target paths sit under /:id/requirements/*, /:id/workflows/* and /:id/feedback/*,
-// which their own modules already gate; gating them again here would run the PAT admission twice
-entityCommentRoutes.use('/:id/decisions', requireAuth(), assertEmailVerified());
+// which their own modules already gate; gating them again here would run the PAT admission twice.
+// An issue's decisions path is gated here: the issue module's gate is mounted after this one
+entityCommentRoutes.use('/:id/issues/:issue/comments', requireAuth(), assertEmailVerified());
 
-type Target = { scope: EntityCommentScope; param: string; names: string };
+type Target<S extends CommentScope = EntityCommentScope> = {
+  scope: S;
+  param: string;
+  names: string;
+};
 
 const REQUIREMENT: Target = {
   scope: 'requirement',
@@ -40,6 +44,11 @@ const WORKFLOW: Target = {
   names: 'a workflow uuid or its flow name',
 };
 const FEEDBACK: Target = { scope: 'feedback', param: 'fb', names: 'a feedback uuid or key (FB-n)' };
+const ISSUE: Target<'issue'> = {
+  scope: 'issue',
+  param: 'issue',
+  names: 'an issue uuid or key (ISS-n)',
+};
 
 function actorOf(c: Context<{ Variables: AuthVars }>): EntityCommentActor {
   const agency = c.get('agency');
@@ -61,7 +70,7 @@ const intentQuery = zValidator(
 
 const ref = z.string().trim().min(1).max(200);
 
-function targetParam(t: Target) {
+function targetParam(t: Target<CommentScope>) {
   return zValidator(
     'param',
     z.object({ id: z.uuid(), [t.param]: ref }),
@@ -81,7 +90,7 @@ type Params = Record<string, string>;
 
 async function listFor(
   c: Context<{ Variables: AuthVars }>,
-  t: Target,
+  t: Target<CommentScope>,
   params: Params,
   intent: (typeof COMMENT_INTENTS)[number] | undefined,
 ) {
@@ -189,18 +198,17 @@ entityCommentRoutes.patch(
   (c) => editFor(c, FEEDBACK, c.req.valid('param') as Params, c.req.valid('json')),
 );
 
+// REQ-33 BC-2: an issue's decisions, read as a requirement's and a workflow's are. Its thread is
+// read at /api/issues/:id/comments and written there, so this path lists decisions and nothing else.
 entityCommentRoutes.get(
-  '/:id/decisions',
-  zValidator(
-    'param',
-    z.object({ id: z.uuid() }),
-    invalid('invalid path: the project id is a uuid'),
-  ),
+  '/:id/issues/:issue/comments',
+  targetParam(ISSUE),
   zValidator(
     'query',
-    listDecisionsQuerySchema,
-    invalid(`invalid query: ${LIST_DECISIONS_QUERY_SHAPE}`),
+    z.strictObject({ intent: z.literal('decision') }),
+    invalid(
+      "invalid query: intent=decision — an issue's thread is read at /api/issues/:id/comments",
+    ),
   ),
-  async (c) =>
-    c.json(await listDecisionsAs(actorOf(c), c.req.valid('param').id, c.req.valid('query'))),
+  (c) => listFor(c, ISSUE, c.req.valid('param') as Params, c.req.valid('query').intent),
 );

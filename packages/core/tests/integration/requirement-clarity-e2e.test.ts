@@ -259,7 +259,7 @@ describe('a business question raised on a build issue', () => {
 });
 
 describe('the decisions a requirement rolls up', () => {
-  it("shows a decision made on one of its issues, on its Decisions tab and in the project's log filtered to it, and not another requirement's", async () => {
+  it("shows a decision made on one of its issues on its Decisions tab and on the issue's own, never another requirement's, and on no project log", async () => {
     const req = await agreed();
     const other = await agreed();
     const mine = await issueUnder(req, 'consent screen');
@@ -280,23 +280,25 @@ describe('the decisions a requirement rolls up', () => {
     expect(onTab).toContain(mine.displayId);
     expect(onTab).not.toContain(theirs.displayId);
 
-    const log = await ok(api(owner, 'GET', at(`/decisions?requirement=${req}`)));
-    const inLog = (log.decisions as Body[]).map(
+    const said = (tab.decisions as Body[]).map(
       (d) => (d.decision as Body | null)?.decision ?? d.body,
     );
-    expect(inLog.join('\n')).toContain('Referrer feedback is its own consent purpose');
-    expect(inLog.join('\n')).not.toContain('Not this requirement');
+    expect(said.join('\n')).toContain('Referrer feedback is its own consent purpose');
+    expect(said.join('\n')).not.toContain('Not this requirement');
 
-    const byIssue = await ok(
-      api(owner, 'GET', at(`/decisions?issue=${theirs.displayId as string}`)),
+    // REQ-33 BC-2: an issue's decisions are read on the issue, through the same entity read
+    const onIssue = await ok(
+      api(owner, 'GET', at(`/issues/${theirs.displayId as string}/comments?intent=decision`)),
     );
-    expect((byIssue.decisions as Body[]).map((d) => (d.target as Body).key)).toEqual([
-      theirs.displayId,
+    expect((onIssue.comments as Body[]).map((d) => (d.decision as Body).decision)).toEqual([
+      'Not this requirement',
     ]);
-    const byWho = await ok(api(owner, 'GET', at(`/decisions?who=${ownerId}&since=2000-01-01`)));
-    expect((byWho.decisions as Body[]).length).toBeGreaterThanOrEqual(2);
-    const none = await ok(api(owner, 'GET', at('/decisions?until=2000-01-01')));
-    expect(none.decisions).toEqual([]);
+    expect((onIssue.comments as Body[])[0]?.target).toMatchObject({
+      scope: 'issue',
+      key: theirs.displayId,
+    });
+    // and on no project-wide page: the project decision log is gone (REQ-33 BC-6)
+    expect((await api(owner, 'GET', at(`/decisions?requirement=${req}`))).status).toBe(404);
   });
 });
 

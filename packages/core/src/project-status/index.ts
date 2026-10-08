@@ -1,1 +1,1 @@
-export { readProjectStatus, type StatusViewer, statusViewerOf } from './read.js';
+export { onLane, readProjectStatus, type StatusViewer, statusViewerOf } from './read.js';

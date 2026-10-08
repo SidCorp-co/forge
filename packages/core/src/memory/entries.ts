@@ -1,7 +1,8 @@
 // MJ-1: the project's memory as a person reads it — what it says, who wrote it and when, whether
 // anyone checked it, which records it names and which of those no longer resolve, why it needs a
 // check, and every correction or retirement a person made with their reason; with each list's
-// count, read by the same rule. Behind `GET /api/memory/entries`.
+// count, read by the same rule. Behind `GET /api/memory/entries`. A person reads it on the record
+// it names (REQ-33 BC-4): `cites` keeps the memories naming that one requirement, issue or workflow.
 //
 // Does NOT check authorization — callers MUST verify project membership before invoking.
 
@@ -25,20 +26,77 @@ import { memories, memorySources } from '../db/schema.js';
 import { peopleOf } from '../lib/people.js';
 import { DECAY_FLAGGED, DECAY_UNUSED } from './decay.js';
 import { memoryOfLiveIssue } from './live-issue.js';
+import { memoryIssueReads } from './ports.js';
 import { type Citations, resolveCitations } from './stale-refs.js';
 
 const NO_CITATIONS: Citations = { cites: [], staleRefs: [] };
 
+/** An issue or requirement key as a memory names one (`stale-refs.ts:KEY_RE`, whole). */
+const RECORD_KEY = /^[A-Z][A-Z0-9]{1,5}-\d{1,6}$/;
+/** A workflow's flow as the text may name it: letters, digits, `-`, `_` and `.`, nothing a pattern reads. */
+const FLOW_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
+
+export const MEMORY_CITES_SHAPE =
+  'cites is an issue or requirement key (ISS-12, REQ-4) or a workflow flow (letters, digits, `.`, `_` and `-`)';
+
+export const memoryCitesSchema = z
+  .string()
+  .trim()
+  .refine((v) => RECORD_KEY.test(v) || FLOW_NAME.test(v), MEMORY_CITES_SHAPE);
+
+/**
+ * The rows whose text names `ref` as a whole word: not inside a longer key (`REQ-1` is not
+ * `REQ-10`) nor a longer flow (`intake` is not `referral-intake`). A key reads by its case, a flow
+ * by none. Which project a key's text places it in is known only once it resolves (`onlyCiting`).
+ */
+function namingWhere(ref: string): SQL {
+  const escaped = ref.replace(/[.\\]/g, (c) => `\\${c}`);
+  const pattern = `(^|[^A-Za-z0-9_-])${escaped}($|[^A-Za-z0-9_-])`;
+  return RECORD_KEY.test(ref)
+    ? sql`${memories.textContent} ~ ${pattern}`
+    : sql`${memories.textContent} ~* ${pattern}`;
+}
+
+/** Whether a cite names a requirement, workflow or issue of the project itself. */
+const namesAnItemOf = (self: string | undefined) => (x: MemoryCite) =>
+  (x.kind === 'issue' || x.kind === 'requirement' || x.kind === 'workflow') && x.project === self;
+
+async function selfSlug(projectId: string): Promise<string | undefined> {
+  const projects = await memoryIssueReads().siblingProjects(projectId);
+  return projects.find((p) => p.id === projectId)?.slug;
+}
+
+/** The rows naming no requirement, workflow or issue of this project: what the Dashboard lists. */
+async function onlyUncited(projectId: string, rows: Checked[]): Promise<Checked[]> {
+  const named = namesAnItemOf(await selfSlug(projectId));
+  return rows.filter(({ c }) => !c.cites.some(named));
+}
+
+/** The rows that cite `ref` as this project's own record: a key placed in another project, or a word that is no workflow this project draws, is not one. */
+async function onlyCiting(projectId: string, ref: string, rows: Checked[]): Promise<Checked[]> {
+  const self = await selfSlug(projectId);
+  const key = RECORD_KEY.test(ref);
+  return rows.filter(({ c }) =>
+    c.cites.some((x) =>
+      key
+        ? x.ref === ref && (x.kind === 'issue' || x.kind === 'requirement') && x.project === self
+        : x.kind === 'workflow' && x.ref.toLowerCase() === ref.toLowerCase() && x.project === self,
+    ),
+  );
+}
+
 export const memoryEntriesInputSchema = z.object({
   projectId: z.uuid(),
-  /** Words to find in the text or the ref, any order; empty lists everything. */
-  q: z.string().trim().max(200).optional(),
   sources: z
     .array(z.enum(memorySources))
     .min(1)
     .default([...MEMORY_AUTHORED_SOURCES]),
   /** `live` and `stale` hide retired and archived rows; `retired` lists only those; `stale` is every live row needing a check. */
   state: z.enum(MEMORY_ENTRY_STATES).default('live'),
+  /** Only the memories naming this record of the project: an issue or requirement key, or a workflow's flow. */
+  cites: memoryCitesSchema.optional(),
+  /** Only the memories naming no requirement, workflow or issue of the project: the project's own (REQ-33 BC-7). */
+  uncited: z.boolean().default(false),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -61,18 +119,6 @@ function storedAct(v: unknown): StoredAct | null {
 
 function storedActs(v: unknown): StoredAct[] {
   return Array.isArray(v) ? v.map(storedAct).filter((a): a is StoredAct => a !== null) : [];
-}
-
-function likeWords(q: string | undefined): SQL[] {
-  if (!q) return [];
-  return q
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 8)
-    .map((w) => {
-      const pat = `%${w.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      return sql`(${memories.textContent} ILIKE ${pat} OR ${memories.sourceRef} ILIKE ${pat})`;
-    });
 }
 
 // A key the text may cite: rows naming one are read in full, since whether a cite is gone or
@@ -159,7 +205,7 @@ export async function readMemoryEntries(
   const scope: SQL[] = [
     eq(memories.projectId, input.projectId),
     inArray(memories.source, input.sources),
-    ...likeWords(input.q),
+    ...(input.cites ? [namingWhere(input.cites)] : []),
   ];
   const live = and(...scope, isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));
   const retired = and(...scope, isNotNull(memories.archivedAt));
@@ -169,6 +215,24 @@ export async function readMemoryEntries(
       .from(memories)
       .where(where)
       .orderBy(desc(memories.updatedAt), asc(memories.id));
+
+  if (input.cites || input.uncited) {
+    // which rows cite an item here is known only once each resolves: all are read, then counted
+    // and cut by the same rule
+    const [liveRows, retiredRows] = await Promise.all([
+      ordered(live).then((r) => checked(input.projectId, r, now)),
+      ordered(retired).then((r) => checked(input.projectId, r, now)),
+    ]);
+    const cites = input.cites;
+    const keep = (rows: Checked[]) =>
+      cites ? onlyCiting(input.projectId, cites, rows) : onlyUncited(input.projectId, rows);
+    const lists = { live: await keep(liveRows), retired: await keep(retiredRows) };
+    const due = lists.live.filter((x) => x.needsCheck.length > 0);
+    const byState = { ...lists, stale: due };
+    const counts = { live: lists.live.length, stale: due.length, retired: lists.retired.length };
+    const page = byState[input.state].slice(input.offset, input.offset + input.limit);
+    return { rows: await entriesOf(page), total: counts[input.state], counts };
+  }
 
   // the rows that may need a check: unchecked past the cutoff, flagged, or citing a key; which of
   // them do is known once their cites resolve, so the list is cut after
@@ -194,8 +258,11 @@ export async function readMemoryEntries(
       .offset(input.offset);
     page = await checked(input.projectId, read, now);
   }
-  const total = counts[input.state];
+  return { rows: await entriesOf(page), total: counts[input.state], counts };
+}
 
+/** A page of read rows as the reader reads them: every writer, checker and actor named. */
+async function entriesOf(page: Checked[]): Promise<MemoryEntry[]> {
   const md = (m: unknown) => (m ?? {}) as Record<string, unknown>;
   const actorIds = page.flatMap(({ r }) => {
     const m = md(r.metadata);
@@ -248,7 +315,7 @@ export async function readMemoryEntries(
       archivedBy: r.archivedAt && !retired ? archivedByOf(m) : null,
     };
   });
-  return { rows, total, counts };
+  return rows;
 }
 
 /**

@@ -24,6 +24,7 @@ const PROGRESS = {
     { kind: "chart", as: "progress", title: "Criteria proven per requirement", variant: "bar", x: "key", y: ["criteriaProven", "criteriaTotal"] },
     { kind: "status-list", as: "progress", title: "Requirements", ref: "key", status: "state" },
     { kind: "table", as: "progress", title: "Issues behind each requirement", columns: ["key", "title", "shipped", "awaitingRelease", "toDo"] },
+    { kind: "table", as: "progress", title: "Where each stands on the roadmap", columns: ["key", "title", "lane", "p50At", "p85At", "basis"] },
     { kind: "table", as: "coverage", title: "Criteria and their proof", columns: ["requirement", "criterion", "verdict", "issues"] },
   ],
   narrative: slots(

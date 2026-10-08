@@ -15,6 +15,7 @@ import {
   ViewHeading,
 } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
+import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
@@ -33,7 +34,7 @@ import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } fr
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
-const DESIGN_TABS = ["design", "steps", "revisions", "decisions"] as const;
+const DESIGN_TABS = ["design", "steps", "revisions", "decisions", "memory"] as const;
 type DesignTab = (typeof DESIGN_TABS)[number];
 
 export const useDesignTab = () => useUrlTab(DESIGN_TABS);
@@ -214,11 +215,13 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
   const overlay = useHealthOverlay(health, "design", slug, record.document.flow);
   const fullDiff = approved && health?.diff && health.diff.to === shownRevision ? diffOf(health.diff, approved) : null;
   const diff = changes ? fullDiff : null;
+  const memories = useItemMemoryCount(projectId, record.document.flow);
   const tabs = [
     { value: "design" as const, label: t("workflows.tab.design") },
     { value: "steps" as const, label: shown.kind === "state" ? t("workflows.tab.states") : t("workflows.tab.steps"), count: shown.steps.length },
     { value: "revisions" as const, label: t("workflows.tab.revisions"), count: d.revisions.length },
     { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount !== undefined ? { count: decisionCount } : {}) },
+    { value: "memory" as const, label: t("memory.title"), count: memories },
   ];
   const badge = d.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : undefined;
   // Squeezed, a remembered open detail stays folded (the canvas keeps its share) and one opened now floats over the canvas
@@ -287,6 +290,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
             {tab === "steps" ? <StepsPane shown={shown} template={template} diff={fullDiff} revision={shownRevision} /> : null}
             {tab === "revisions" ? <RevisionsPane d={d} /> : null}
             {tab === "decisions" ? <DecisionsPanel projectId={projectId} scope="workflow" targetRef={record.document.id} /> : null}
+            {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} /> : null}
           </DetailPane>
         </>
       )}
