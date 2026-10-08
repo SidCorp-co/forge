@@ -1,0 +1,274 @@
+import { describe, expect, it } from "vitest";
+import type { ReportFrame } from "./report-queries.js";
+import {
+  BLOCK_KINDS,
+  blockToText,
+  checkBlock,
+  checkBlocks,
+  isSensible,
+  VISUAL_BLOCK_KINDS,
+  type VisualBlock,
+  type VisualBlockKind,
+} from "./visual-blocks.js";
+
+const frame: ReportFrame = {
+  fields: [
+    { name: "key", type: "ref", label: "Requirement" },
+    { name: "title", type: "string", label: "Title" },
+    { name: "state", type: "status", label: "State" },
+    { name: "done", type: "number", label: "Proven" },
+    { name: "total", type: "number", label: "Criteria" },
+    { name: "delta", type: "number", label: "Change" },
+    { name: "eta", type: "date", label: "ETA" },
+    { name: "p50", type: "date", label: "p50" },
+    { name: "p85", type: "date", label: "p85" },
+    { name: "took", type: "duration", label: "Took" },
+    { name: "who", type: "string", label: "Waiting on" },
+  ],
+  rows: [
+    { key: "REQ-2", title: "Beta", state: "in_progress", done: 3, total: 9, delta: 2, eta: "2026-10-20T00:00:00Z", p50: "2026-10-18", p85: "2026-10-25", took: 7_500_000, who: "Ana | QA" },
+    { key: "REQ-1", title: "Alpha", state: "agreed", done: 8, total: 8, delta: -1, eta: "2026-10-12", p50: "2026-10-10", p85: "2026-10-14", took: 90_000, who: null },
+  ],
+};
+const source = { runId: "run-1" };
+const base = { v: 1 as const, source, frame };
+
+const good: Record<VisualBlockKind, unknown> = {
+  table: { ...base, kind: "table", columns: ["key", "title", "done"], sort: { field: "done", dir: "desc" }, limit: 5 },
+  chart: { ...base, kind: "chart", variant: "bar", x: "key", y: ["done", "total"] },
+  flow: { v: 1, kind: "flow", nodes: [{ id: "a", label: "Clarify" }, { id: "b", label: "Build" }, { id: "c", label: "Alone" }], edges: [{ from: "a", to: "b", label: "agreed" }] },
+  timeline: { ...base, kind: "timeline", label: "key", start: "p50", end: "p85" },
+  kpi: { ...base, kind: "kpi", figures: [{ field: "done", label: "Proven", delta: "delta" }, { field: "total", label: "All" }] },
+  "status-list": { ...base, kind: "status-list", ref: "key", status: "state", waitingOn: "who" },
+};
+
+/** One planted defect per kind: the field it breaks, and the block that breaks it. */
+const bad: Record<VisualBlockKind, { field: string; block: unknown }> = {
+  table: { field: "columns.1", block: { ...good.table as object, columns: ["key", "nope"] } },
+  chart: { field: "y.0", block: { ...good.chart as object, y: ["title"] } },
+  flow: { field: "edges.0.to", block: { ...good.flow as object, edges: [{ from: "a", to: "zzz" }] } },
+  timeline: { field: "start", block: { ...base, kind: "timeline", label: "key" } },
+  kpi: { field: "figures.0.field", block: { ...good.kpi as object, figures: [{ field: "title", label: "T" }, { field: "total", label: "All" }] } },
+  "status-list": { field: "ref", block: { ...good["status-list"] as object, ref: "title" } },
+};
+
+describe("the block table", () => {
+  it("holds one entry for each of the six kinds, each answering all three questions", () => {
+    expect([...VISUAL_BLOCK_KINDS].sort()).toEqual(["chart", "flow", "kpi", "status-list", "table", "timeline"]);
+    for (const kind of VISUAL_BLOCK_KINDS) {
+      const e = BLOCK_KINDS[kind];
+      expect(e.kind).toBe(kind);
+      expect(typeof e.isSensible).toBe("function");
+      expect(typeof e.check).toBe("function");
+      expect(typeof e.toText).toBe("function");
+    }
+  });
+});
+
+describe.each(VISUAL_BLOCK_KINDS)("%s", (kind) => {
+  it("accepts a good block", () => {
+    const r = checkBlock(good[kind]);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+  });
+
+  it("refuses its planted defect naming the kind, the field and the valid shape", () => {
+    const r = checkBlock(bad[kind].block);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const hit = r.refusals.find((x) => x.field === bad[kind].field);
+    expect(hit, JSON.stringify(r.refusals)).toBeDefined();
+    expect(hit?.kind).toBe(kind);
+    expect(hit?.message).toContain(`${kind} block: ${bad[kind].field}:`);
+    expect(hit?.message).toContain("valid shape:");
+  });
+
+  it("refuses a figure the model typed, as an unknown key", () => {
+    const r = checkBlock({ ...(good[kind] as object), values: [1, 2, 3] });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.map((x) => x.field)).toContain("values");
+    expect(r.refusals[0]?.message).toContain("a number reaches it only from the frame");
+  });
+
+  it("refuses a version it does not know", () => {
+    const r = checkBlock({ ...(good[kind] as object), v: 2 });
+    expect(r.ok).toBe(false);
+  });
+
+  it("answers isSensible false for a frame with none of what it draws", () => {
+    expect(isSensible(kind, { fields: [] })).toBe(false);
+    expect(isSensible(kind, { fields: [{ name: "n", type: "date", label: "n" }] })).toBe(kind === "table");
+  });
+
+  it("answers isSensible true for a frame that suits it", () => {
+    expect(isSensible(kind, frame)).toBe(true);
+  });
+
+  it("gives a non-empty text fallback", () => {
+    const r = checkBlock(good[kind]);
+    if (!r.ok) throw new Error("fixture invalid");
+    expect(blockToText(r.block).length).toBeGreaterThan(10);
+  });
+});
+
+describe("an unknown or missing kind", () => {
+  it("is refused by name, with the kinds that exist, and never dropped", () => {
+    const out = checkBlocks([good.table, { kind: "sparkline", v: 1 }, { v: 1 }, "text", null]);
+    expect(out).toHaveLength(5);
+    expect(out[0]?.ok).toBe(true);
+    const unknown = out[1];
+    expect(unknown?.ok).toBe(false);
+    if (unknown && !unknown.ok) {
+      expect(unknown.refusals[0]?.message).toContain('unknown block kind "sparkline"');
+      expect(unknown.refusals[0]?.message).toContain("registered kinds: table, chart, flow, timeline, kpi, status-list");
+    }
+    for (const i of [2, 3, 4]) expect(out[i]?.ok).toBe(false);
+  });
+});
+
+describe("table", () => {
+  it("refuses a column listed twice and a sort on a missing field", () => {
+    const r = checkBlock({ ...base, kind: "table", columns: ["key", "key"], sort: { field: "ghost", dir: "asc" } });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.map((x) => x.field)).toEqual(expect.arrayContaining(["columns.1", "sort.field"]));
+  });
+
+  it("refuses a limit past the cap", () => {
+    const r = checkBlock({ ...(good.table as object), limit: 501 });
+    expect(r.ok).toBe(false);
+  });
+
+  it("writes a Markdown table, sorted and limited, escaping a pipe and marking a null", () => {
+    const r = checkBlock({ ...base, kind: "table", columns: ["key", "who", "took"], sort: { field: "key", dir: "asc" }, limit: 2, title: "Waiting" });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe(
+      ["**Waiting**", "", "| Requirement | Waiting on | Took |", "| --- | --- | ---: |", "| REQ-1 | — | 1m 30s |", "| REQ-2 | Ana \\| QA | 2h 5m |"].join("\n"),
+    );
+  });
+});
+
+describe("chart", () => {
+  it("refuses a burndown over a field that is not a date, and a series equal to x", () => {
+    const r = checkBlock({ ...base, kind: "chart", variant: "burndown", x: "key", y: ["done"], series: "key" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.map((x) => x.field)).toEqual(expect.arrayContaining(["x", "series"]));
+  });
+
+  it("refuses an unknown variant and more than six series", () => {
+    expect(checkBlock({ ...(good.chart as object), variant: "pie" }).ok).toBe(false);
+    expect(checkBlock({ ...(good.chart as object), y: Array(7).fill("done") }).ok).toBe(false);
+  });
+
+  it("says what it draws, then lists the points", () => {
+    const r = checkBlock(good.chart);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    const text = blockToText(r.block);
+    expect(text.startsWith("Bar chart of Proven, Criteria by Requirement")).toBe(true);
+    expect(text).toContain("| REQ-2 | 3 | 9 |");
+  });
+});
+
+describe("flow", () => {
+  it("accepts model-authored nodes and edges with no source", () => {
+    expect(checkBlock(good.flow).ok).toBe(true);
+  });
+
+  it("refuses a source without its frame, and a frame without its source", () => {
+    const g = good.flow as { nodes: unknown; edges: unknown };
+    for (const half of [{ source }, { frame }]) {
+      const r = checkBlock({ v: 1, kind: "flow", nodes: g.nodes, edges: g.edges, ...half });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.refusals[0]?.message).toContain("given together or not at all");
+    }
+  });
+
+  it("refuses more than sixty nodes, a duplicate id and a label holding markup", () => {
+    const many = Array.from({ length: 61 }, (_, i) => ({ id: `n${i}`, label: "x" }));
+    expect(checkBlock({ v: 1, kind: "flow", nodes: many, edges: [] }).ok).toBe(false);
+    const r = checkBlock({ v: 1, kind: "flow", nodes: [{ id: "a", label: "<b>x</b>" }, { id: "a", label: "y" }], edges: [] });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.refusals.map((x) => x.field)).toEqual(expect.arrayContaining(["nodes.0.label", "nodes.1.id"]));
+  });
+
+  it("lists each edge and every node that has none", () => {
+    const r = checkBlock(good.flow);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe("- Clarify -> Build (agreed)\n- Alone");
+  });
+});
+
+describe("timeline", () => {
+  it("refuses an end without a start, half a forecast range and a non-date field", () => {
+    const r = checkBlock({ ...base, kind: "timeline", label: "key", end: "title", p50: "p50" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    const fields = r.refusals.map((x) => x.field);
+    expect(fields).toEqual(expect.arrayContaining(["end", "p85"]));
+  });
+
+  it("accepts a p50 and p85 range alone and prints it after the item's lane", () => {
+    const r = checkBlock({ ...base, kind: "timeline", label: "key", p50: "p50", p85: "p85", lane: "state" });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe("- REQ-1 [agreed]: p50 2026-10-10, p85 2026-10-14\n- REQ-2 [in_progress]: p50 2026-10-18, p85 2026-10-25");
+  });
+
+  it("prints a start and an end, earliest first", () => {
+    const r = checkBlock(good.timeline);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block).split("\n")[0]).toBe("- REQ-1: 2026-10-10 to 2026-10-14");
+  });
+});
+
+describe("kpi", () => {
+  it("refuses a single figure, seven figures, a repeated field and a row that is not there", () => {
+    const fig = (f: string) => ({ field: f, label: f });
+    expect(checkBlock({ ...base, kind: "kpi", figures: [fig("done")] }).ok).toBe(false);
+    expect(checkBlock({ ...base, kind: "kpi", figures: Array(7).fill(fig("done")) }).ok).toBe(false);
+    const dup = checkBlock({ ...base, kind: "kpi", figures: [fig("done"), fig("done")] });
+    expect(dup.ok).toBe(false);
+    const row = checkBlock({ ...(good.kpi as object), row: 9 });
+    expect(row.ok).toBe(false);
+    if (!row.ok) expect(row.refusals[0]?.message).toContain("row 9 does not exist; the frame has 2 row(s)");
+  });
+
+  it("prints each figure of one row with its signed change", () => {
+    const r = checkBlock(good.kpi);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe("- Proven: 3 (+2)\n- All: 9");
+  });
+});
+
+describe("status-list", () => {
+  it("refuses a status field that is not a status", () => {
+    const r = checkBlock({ ...(good["status-list"] as object), status: "title" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refusals[0]?.field).toBe("status");
+  });
+
+  it("prints who each item waits on, and nothing for none", () => {
+    const r = checkBlock(good["status-list"]);
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    expect(blockToText(r.block)).toBe("- REQ-2: in_progress (waiting on Ana \\| QA)\n- REQ-1: agreed");
+  });
+});
+
+describe("a block whose frame is not what it says", () => {
+  it("is refused when a row holds a cell of the wrong type", () => {
+    const broken = { ...(good.table as object), frame: { ...frame, rows: [{ ...frame.rows[0], done: "three" }] } };
+    const r = checkBlock(broken);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.refusals.some((x) => x.message.includes('cell "done" is string, but the field is number'))).toBe(true);
+  });
+
+  it("round-trips a block through JSON unchanged", () => {
+    for (const kind of VISUAL_BLOCK_KINDS) {
+      const r = checkBlock(good[kind]);
+      if (!r.ok) throw new Error(JSON.stringify(r));
+      const again = checkBlock(JSON.parse(JSON.stringify(r.block)));
+      expect(again.ok && (again.block as VisualBlock)).toEqual(r.block);
+    }
+  });
+});
