@@ -8,8 +8,9 @@ import { z } from 'zod';
 import { pipelineRunStatuses } from '../db/schema.js';
 import { principalAgency } from '../issues/index.js';
 import { buildListEnvelope, overfetch } from '../lib/list-envelope.js';
-import { principalUserId } from '../lib/tool.js';
+import { patEffectiveProjectIds, principalUserId } from '../lib/tool.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
+import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listProjectPipelineRuns } from './read.js';
 import { refusePipeline } from './refuse.js';
@@ -35,9 +36,15 @@ const pipelineRunsCancelInputSchema = z
 const runNotFound = (runId: string) =>
   refusePipeline('PIPELINE_RUN_NOT_FOUND', `pipeline run ${runId} was not found`, '/runId');
 
+// a chat turn runs this tool in process, outside the pat scope REST and /mcp enter, so the role check alone would reach a run of any project the asker belongs to: the token's own fence is read here, and a project it does not reach is not found, as at the other doors
+const outsideFence = (principal: McpPrincipal, projectId: string): boolean => {
+  const fence = patEffectiveProjectIds(principal);
+  return fence !== null && !fence.includes(projectId);
+};
+
 async function loadRunForPrincipal(principal: McpPrincipal, runId: string) {
   const row = await readPipelineRun(runId);
-  if (!row) throw runNotFound(runId);
+  if (!row || outsideFence(principal, row.projectId)) throw runNotFound(runId);
   await requireCan(actorFor(principal.userId), 'project.read', projectResource(row.projectId));
   return row;
 }
@@ -47,6 +54,7 @@ export async function pipelineRunsListHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pipelineRunsListInputSchema>,
 ) {
+  if (outsideFence(principal, input.projectId)) throw notFound();
   await requireCan(actorFor(principal.userId), 'project.read', projectResource(input.projectId));
 
   const runsLimit = input.limit ?? 50;
