@@ -4,7 +4,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { CriteriaTable } from "./requirement-proof";
+import { CriteriaChecklist } from "./requirement-proof";
 import type { RequirementDetail } from "../types";
 
 const d = {
@@ -26,7 +26,7 @@ const d = {
 
 describe("a criterion's evidence", () => {
   it("says what passed and when, with the issue key secondary", async () => {
-    render(<CriteriaTable d={d} slug="epod" />);
+    render(<CriteriaChecklist d={d} slug="epod" />);
     await userEvent.click(screen.getByText(/What the evidence says/));
     const row = screen.getByTestId("criterion-evidence-row");
     expect(row).toHaveTextContent("Pass");
@@ -38,7 +38,7 @@ describe("a criterion's evidence", () => {
   });
 
   it("leads the inline link with the issue's title, not its key", () => {
-    render(<CriteriaTable d={d} slug="epod" />);
+    render(<CriteriaChecklist d={d} slug="epod" />);
     const row = screen.getByTestId("criterion-row");
     expect(within(row).getByRole("link", { name: "Add tax to checkout" })).toBeInTheDocument();
   });
@@ -54,7 +54,7 @@ describe("a criterion's evidence", () => {
         ],
       },
     } as unknown as RequirementDetail;
-    render(<CriteriaTable d={gap} slug="epod" />);
+    render(<CriteriaChecklist d={gap} slug="epod" />);
     expect(screen.getByTestId("criterion-uncovered")).toHaveTextContent(
       "Left without an issue by the accepted breakdown: the bank's batch decides this",
     );

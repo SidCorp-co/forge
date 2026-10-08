@@ -1,23 +1,23 @@
 "use client";
 
 // What a requirement's standing (core `requirements/standing.ts`) says, put into the shared design
-// pieces: its whose-turn as the shared WaitingOn and banner, its coverage as the shared bar and marks,
-// its lifecycle as the shared step bar. Nothing here draws a colour of its own.
+// pieces: its whose-turn as the shared banner, its lifecycle as the shared step bar, its coverage as
+// one mark or dot per criterion in the verdict's own tone. Nothing here draws a colour of its own.
 
 import {
   BC_VERDICT_TONES,
   type BcVerdict,
+  criteriaCoverageOf,
   REQUIREMENT_LIFECYCLE,
-  type RequirementCoverage,
   type RequirementStanding,
   type RequirementState,
   type RequirementWaitingKind,
 } from "@forge/contracts/requirements";
-import type { ReactNode } from "react";
-import { type BannerTone, type CoverageSegment, CoverageBar, LEGEND, StepBar, WaitBanner } from "@/design";
+import { type BannerTone, LEGEND, MarkStrip, StepBar, WaitBanner } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { saidView } from "@/lib/i18n/said";
+import { cn } from "@/lib/utils/cn";
 
 /** Stale is hatched rather than a tone, so it never reads as a verdict of its own colour. */
 const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
@@ -25,29 +25,32 @@ const VERDICT_FILL: Partial<Record<BcVerdict, string>> = {
   not_judged: "var(--paper-400)",
 };
 
-const VERDICT_ORDER: BcVerdict[] = ["passing", "failing", "stale", "not_judged", "gap"];
+/** A verdict's colour: its tone's dot, or the fill it draws in place of one. */
+export const verdictFill = (v: BcVerdict) => VERDICT_FILL[v] ?? LEGEND[BC_VERDICT_TONES[v]].dot;
 
-/** Passing n of m as the shared stacked bar, a legend naming each verdict present. */
-export function CoverageSummary({ coverage }: { coverage: RequirementCoverage[] }) {
-  const t = useCopy();
+/** One criterion's verdict as a dot, named by the verdict's own word for a screen reader and on hover. */
+export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   const label = useLabel();
-  if (coverage.length === 0) return <p className="text-12-5 text-subtle">{t("requirements.coverage.none")}</p>;
-  const segments: CoverageSegment[] = VERDICT_ORDER.map((v) => ({
-    key: v,
-    label: label("bcVerdict", v),
-    count: coverage.filter((c) => c.verdict === v).length,
-    tone: BC_VERDICT_TONES[v],
-    fill: VERDICT_FILL[v],
-    hint: label("hintBcVerdict", v),
-  }));
-  return <CoverageBar segments={segments} />;
+  return (
+    <span
+      role="img"
+      aria-label={label("bcVerdict", verdict)}
+      title={`${label("bcVerdict", verdict)}: ${label("hintBcVerdict", verdict)}`}
+      className="mt-1.5 block size-2.5 flex-none rounded-full"
+      style={{ background: verdictFill(verdict) }}
+      data-testid="verdict-dot"
+      data-verdict={verdict}
+    />
+  );
 }
 
+const onLifecycle = (state: RequirementState) => REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
+
 /** Draft → Agreed → In delivery → Delivered → Accepted; a delivered one waits on a person's acceptance. */
-export function Stepper({ state }: { state: RequirementState }) {
+function Stepper({ state }: { state: RequirementState }) {
   const t = useCopy();
   const label = useLabel();
-  const at = REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
+  const at = onLifecycle(state);
   if (at < 0) return null;
   const next = REQUIREMENT_LIFECYCLE[at + 1];
   return (
@@ -71,8 +74,8 @@ const BANNER_TONE: Record<RequirementWaitingKind, BannerTone> = {
   none: "calm",
 };
 
-/** The full page's and the peek's one-line banner: whom it waits on and for what. */
-export function RequirementBanner({ standing, children, className }: { standing: RequirementStanding; children?: ReactNode; className?: string }) {
+/** The strip's first line: whom it waits on and for what, or that nothing is owed. */
+function RequirementBanner({ standing, className }: { standing: RequirementStanding; className?: string }) {
   const t = useCopy();
   const w = saidView(standing.waitingOn, useInterfaceLanguage());
   const stuck = standing.attentionGroup === "stuck" && w.kind === "none";
@@ -86,11 +89,41 @@ export function RequirementBanner({ standing, children, className }: { standing:
       )}
       body={done ? t("requirements.banner.nothingOwed") : stuck ? t("requirements.banner.noOwner") : w.act}
       rule={w.rule}
-      effect={w.effect}
+      effect={done ? undefined : w.effect}
       className={className}
-    >
-      {children}
-    </WaitBanner>
+    />
+  );
+}
+
+/**
+ * The top of a requirement on every width, its full page's and its peek's alike: whom it waits on and
+ * for what, the lifecycle step it stands at and the one after, and "k/n verified" with a mark per
+ * criterion. Every word is the lifecycle's and the verdicts' own; this draws no step or verdict of its own.
+ */
+export function RequirementProgress({ standing, inset }: { standing: RequirementStanding; inset: string }) {
+  const t = useCopy();
+  const label = useLabel();
+  const { passing: k, criteria: n } = criteriaCoverageOf(standing.coverage);
+  const line = onLifecycle(standing.state) >= 0;
+  return (
+    <section aria-label={t("requirements.progress.label")} className="border-b border-line-subtle bg-surface" data-testid="requirement-progress">
+      <RequirementBanner standing={standing} className={cn(inset, "py-2.5")} />
+      {line || n > 0 ? (
+        <div className={cn("flex flex-wrap items-start gap-x-8 gap-y-3 py-3", inset)}>
+          {line ? (
+            <div className="min-w-[min(100%,300px)] max-w-[560px] flex-1">
+              <Stepper state={standing.state} />
+            </div>
+          ) : null}
+          {n > 0 ? (
+            <div className="grid gap-1.5" data-testid="progress-verified">
+              <span className="text-13 font-semibold text-fg">{t("requirements.verified", { a: k, b: n })}</span>
+              <MarkStrip size="sm" marks={standing.coverage.map((c) => ({ key: c.code, label: `${c.code} · ${label("bcVerdict", c.verdict)}`, fill: verdictFill(c.verdict) }))} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

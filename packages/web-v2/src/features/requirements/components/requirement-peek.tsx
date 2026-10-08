@@ -1,7 +1,8 @@
 "use client";
 
 // The peek (`?peek=REQ-12`) beside the list: the shared PeekPanel holding the full page's header —
-// key, state, title, the one primary act — over the same facts its sticky rail shows.
+// key, state, title, the one primary act — and the page's progress strip, over the same facts its
+// sticky rail shows.
 
 import { PeekHead, PeekPanel, type PeekState, rememberListOrigin, StatusBadge } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -10,7 +11,7 @@ import { useRequirement } from "../hooks";
 import { REQUIREMENTS_LIST } from "@/lib/routes/requirements";
 import { PrimaryActions } from "./requirement-actions";
 import { RequirementFacts } from "./requirement-facts";
-import { RequirementBanner } from "./standing-bits";
+import { RequirementProgress } from "./standing-bits";
 
 export function RequirementPeek({
   projectId,
@@ -27,9 +28,6 @@ export function RequirementPeek({
 }) {
   const t = useCopy();
   const q = useRequirement(projectId, reqKey);
-  const d = q.data;
-  const s = d?.standing;
-  const banner = s && (s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none"));
   return (
     <PeekPanel peek={peek} listLabel={t("requirements.title")} noun={t("requirements.noun")} onOpenFull={onOpenFull} testId="requirement-peek">
       <QueryBoundary query={q} loadingLabel={t("requirements.loadingOne")}>
@@ -44,7 +42,7 @@ export function RequirementPeek({
                 title={d.title}
                 action={<PrimaryActions projectId={projectId} slug={slug} d={d} inPeek onReview={() => rememberListOrigin(REQUIREMENTS_LIST)} />}
               />
-              {banner ? <RequirementBanner standing={s} className="px-[18px]" /> : null}
+              <RequirementProgress standing={s} inset="px-[18px]" />
               <div className="px-[18px] pb-4 pt-4">
                 <RequirementFacts d={d} slug={slug} projectId={projectId} />
               </div>

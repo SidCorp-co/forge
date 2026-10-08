@@ -1,6 +1,6 @@
 "use client";
 
-// The full page's views below the facts: the criteria with their verdicts and evidence, the
+// The full page's views below the facts: the criteria as a checklist with their verdicts and evidence, the
 // revisions and the diff a proposal carries, and the history by source.
 
 import { Written } from "@/lib/i18n/written";
@@ -14,7 +14,7 @@ import { said } from "@/lib/i18n/said";
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import type { RequirementCriterion, RequirementDetail, RequirementRevision } from "../types";
 import { issueHref } from "@/lib/routes/issues";
-import { agreedTitle, diffColours } from "./standing-bits";
+import { agreedTitle, diffColours, VerdictDot } from "./standing-bits";
 
 const Ins = ({ children }: { children: ReactNode }) => (
   <ins className="rounded-[3px] px-[3px] no-underline" style={{ background: diffColours.ins.bg, color: diffColours.ins.fg }}>
@@ -120,9 +120,9 @@ function byIssue(links: CoverageIssue[]) {
   return [...seen.values()].map((ls) => ({ i: ls[0] as CoverageIssue, links: ls, stale: ls.every((l) => l.stale) }));
 }
 
-/** Each business criterion once: its wording, its verdict, the issues tracing to it inline, and the
- *  per-criterion evidence behind an expander. */
-export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string }) {
+/** Each business criterion once, as a checklist: its verdict's dot, its wording, the issues tracing to
+ *  it inline, and the per-criterion evidence behind an expander. */
+export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
   const cov = d.standing.coverage;
@@ -130,12 +130,13 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
   const shown = d.standing.shownRevision;
   const wording = new Map(d.criteria.map((c) => [c.code, c]));
   return (
-    <ul className="border-t border-line-subtle" data-testid="criteria-table">
+    <ul className="border-t border-line-subtle" data-testid="criteria-checklist">
       {cov.map((c) => {
         const crit = wording.get(c.code);
         const issues = byIssue(c.issues);
         return (
-          <li key={c.code} className="grid grid-cols-[52px_minmax(0,1fr)_auto] gap-x-3 border-b border-line-subtle py-3" data-testid="criterion-row">
+          <li key={c.code} className="grid grid-cols-[10px_52px_minmax(0,1fr)] gap-x-3 border-b border-line-subtle py-3" data-testid="criterion-row" data-verdict={c.verdict}>
+            <VerdictDot verdict={c.verdict} />
             <span className="pt-0.5 font-mono text-12 font-semibold text-muted" title={crit ? t("requirements.criteria.since", { r: crit.sinceRevision }) : undefined}>
               {c.code}
             </span>
@@ -185,9 +186,6 @@ export function CriteriaTable({ d, slug }: { d: RequirementDetail; slug: string 
                   </ul>
                 </details>
               ) : null}
-            </div>
-            <div className="pt-0.5">
-              <StatusBadge family="bcVerdict" value={c.verdict} />
             </div>
           </li>
         );

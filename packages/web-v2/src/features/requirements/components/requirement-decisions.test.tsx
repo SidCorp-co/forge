@@ -34,6 +34,7 @@ describe("a requirement's Decisions tab", () => {
     });
     const user = userEvent.setup();
     renderWithQuery(<RequirementDecisions projectId="p1" slug="hop" reqKey="REQ-25" />);
+    await user.click(await screen.findByRole("button", { name: /Decisions/ }));
     expect(await screen.findAllByTestId("decision-row")).toHaveLength(1);
     expect(screen.getByTestId("decisions-folded")).toHaveTextContent("12 records agents kept here");
     await user.click(screen.getByRole("button", { name: "Show them" }));

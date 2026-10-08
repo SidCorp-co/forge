@@ -1,14 +1,18 @@
 "use client";
 
-// A requirement's full page: a main column for reading and acting, split into seven views by tabs
-// (Overview with what is still unclear, Criteria, Revisions, Mockups, Decisions, Memory, Activity), beside a sticky rail of the at-a-glance facts. Each
-// fact and each act appears once: the facts live in the rail, Accept / Reject only beside the diff.
-// Everything derived (whose turn, coverage, history) comes from core's read model.
+// A requirement's full page: a main column for reading and acting, beside a sticky rail of the
+// at-a-glance facts. The column opens on one strip (whose turn, lifecycle step and what is next,
+// k/n verified), then seven views by tabs (Overview with what is still unclear, Criteria, Revisions,
+// Mockups, Decisions, Memory, Activity); in Revisions, Decisions and Activity the long reading stays
+// folded until opened (REQ-35 BC-5, BC-6, BC-7). Each fact and each act appears once: Accept / Reject
+// only beside the diff. Everything derived (whose turn, coverage, history) comes from core's read model.
 
 import { Written } from "@/lib/i18n/written";
+import { criteriaCoverageOf } from "@forge/contracts/requirements";
 import {
   ActorChip,
   AGENT_TINT,
+  Collapsible,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
@@ -17,10 +21,8 @@ import {
   StatusBadge,
   useUrlTab,
   FieldLabel,
-  SegmentedControl,
   ViewHeading,
 } from "@/design";
-import { useState } from "react";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
@@ -32,12 +34,12 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
-import { RequirementFacts, RequirementPhoneProgressOf } from "./requirement-facts";
-import { CriteriaTable, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
+import { RequirementFacts } from "./requirement-facts";
+import { CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
-import { RequirementBanner } from "./standing-bits";
+import { RequirementProgress } from "./standing-bits";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "memory", "activity"] as const;
 type RequirementTab = (typeof REQUIREMENT_TABS)[number];
@@ -115,14 +117,15 @@ function Overview({ d, projectId, slug }: { d: RequirementDetail; projectId: str
 function Criteria({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
   const t = useCopy();
   const sug = useWaitingSuggestions(projectId, { requirement: d.key });
-  const f = d.standing.facts;
+  // "k/n verified" is the one count core's standing, the delivery rollup and a release's bar read
+  const { passing: k, criteria: n } = criteriaCoverageOf(d.standing.coverage);
   return (
     <section data-testid="view-criteria">
       <ViewHeading>{t("requirements.criteria.heading")}</ViewHeading>
       <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-13 text-muted">
-        <span>
-          {t("requirements.criteria.passing")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: f.passing, b: f.criteria })}</b>
-        </span>
+        <b className="font-semibold text-fg" data-testid="criteria-verified">
+          {t("requirements.verified", { a: k, b: n })}
+        </b>
         <Readiness suggestions={sug.data?.suggestions ?? []} />
         {d.standing.shownRevision !== null ? (
           <>
@@ -131,7 +134,7 @@ function Criteria({ d, projectId, slug }: { d: RequirementDetail; projectId: str
           </>
         ) : null}
       </div>
-      <CriteriaTable d={d} slug={slug} />
+      <CriteriaChecklist d={d} slug={slug} />
     </section>
   );
 }
@@ -159,9 +162,10 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
       </ViewHeading>
       <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
       {open.changeSummary && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
-      <div className="mt-3">
-        <FieldLabel>{t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}</FieldLabel>
-        <RevisionDiff base={base} next={open} />
+      <div className="mt-3" data-testid="open-revision-diff">
+        <Collapsible title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
+          <RevisionDiff base={base} next={open} />
+        </Collapsible>
       </div>
       {proposed ? (
         <div className="mt-4">
@@ -178,11 +182,15 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
   return (
     <div className="grid gap-8" data-testid="view-revisions">
       {open ? <OpenRevision d={d} projectId={projectId} open={open} /> : null}
-      <section>
-        <ViewHeading right={d.standing.attentionGroup !== "done" ? <ProposeChange projectId={projectId} reqKey={d.key} /> : undefined}>
-          {t("requirements.revision.all")}
-        </ViewHeading>
-        <RevisionList d={d} />
+      <section data-testid="revision-fold">
+        {d.standing.attentionGroup !== "done" ? (
+          <div className="mb-2 flex justify-end">
+            <ProposeChange projectId={projectId} reqKey={d.key} />
+          </div>
+        ) : null}
+        <Collapsible title={t("requirements.revision.all")} count={d.revisions.length}>
+          <RevisionList d={d} />
+        </Collapsible>
       </section>
     </div>
   );
@@ -190,23 +198,20 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
 
 /**
  * The Activity view: the requirement's comments, where a person asks, notes or records a decision
- * on it, beside its history of revisions and sign-offs.
+ * on it, and its history of revisions and sign-offs, each folded until opened; the thread is read
+ * only once its fold opens.
  */
 function RequirementActivity({ projectId, d }: { projectId: string; d: RequirementDetail }) {
   const t = useCopy();
-  const [view, setView] = useState<"comments" | "history">("comments");
   return (
     <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
-      <SegmentedControl
-        value={view}
-        onChange={setView}
-        options={[
-          { value: "comments", label: t("requirements.activity.comments") },
-          { value: "history", label: t("requirements.activity.history"), count: d.history.length },
-        ]}
-      />
-      <div className="mt-4">
-        {view === "comments" ? <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} /> : <History entries={d.history} />}
+      <Collapsible title={t("requirements.activity.comments")}>
+        <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} />
+      </Collapsible>
+      <div className="-mt-px">
+        <Collapsible title={t("requirements.activity.history")} count={d.history.length}>
+          <History entries={d.history} />
+        </Collapsible>
       </div>
     </section>
   );
@@ -241,7 +246,6 @@ export function RequirementPage({
       {(data) => {
         const d = data;
         const s = d.standing;
-        const banner = s.waitingOn.kind === "you" || (s.attentionGroup === "stuck" && s.waitingOn.kind === "none");
         const tabs = [
           { value: "overview" as const, label: t("requirements.tab.overview"), count: d.unclear || undefined },
           { value: "criteria" as const, label: t("requirements.tab.criteria"), count: s.coverage.length },
@@ -262,8 +266,8 @@ export function RequirementPage({
             }
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
-            {banner ? <RequirementBanner standing={s} className="px-8 py-2.5 max-md:px-4" /> : null}
-            <RequirementPhoneProgressOf d={d} slug={slug} projectId={projectId} />
+            {/* the strip stays first; a picture (ISS-460) goes between it and the tabs */}
+            <RequirementProgress standing={s} inset="px-8 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
               {tab === "overview" ? <Overview d={d} projectId={projectId} slug={slug} /> : null}

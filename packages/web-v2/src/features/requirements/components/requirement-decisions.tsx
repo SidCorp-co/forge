@@ -2,10 +2,10 @@
 
 // A requirement's Decisions tab (JU-5): the decisions a person recorded on it and on the issues that
 // deliver it, newest first, each naming what it sits on, with what agents kept folded away and
-// counted; then the answers its questions and its issues' questions took. Core rolls both up; the
-// composer records a decision on the requirement itself.
+// counted; then the answers its questions and its issues' questions took. Both stay folded until
+// opened (REQ-35 BC-7). Core rolls both up; the composer records a decision on the requirement itself.
 
-import { ErrorState, ProjectLoader, ViewHeading } from "@/design";
+import { Collapsible, ErrorState, ProjectLoader } from "@/design";
 import { DecisionComposer, DecisionRow, FoldedDecisions } from "@/features/comments/components/decisions-panel";
 import { DecisionTarget } from "@/features/comments/components/decision-target";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -47,9 +47,9 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
   }
   const { decisions, answers } = q.data;
   return (
-    <div className="grid gap-8" data-testid="requirement-decisions">
-      <section>
-        <ViewHeading hint={t("requirements.decisions.rollupHint")}>{t("requirements.tab.decisions")}</ViewHeading>
+    <div data-testid="requirement-decisions">
+      <Collapsible title={t("requirements.tab.decisions")} count={decisions.length}>
+        <p className="mb-3 text-12-5 text-muted">{t("requirements.decisions.rollupHint")}</p>
         {decisions.length ? (
           <ul className="grid">
             {decisions.map((c) => (
@@ -62,22 +62,23 @@ export function RequirementDecisions({ projectId, slug, reqKey }: { projectId: s
         <div className="mt-2">
           <FoldedDecisions by={q.data.by} folded={q.data.folded} onBy={setBy} />
         </div>
-        <div className="mt-4">
-          <DecisionComposer projectId={projectId} scope="requirement" targetRef={reqKey} />
-        </div>
-      </section>
-      <section>
-        <ViewHeading>{t("requirements.decisions.answers")}</ViewHeading>
-        {answers.length ? (
-          <ul className="grid">
-            {answers.map((a) => (
-              <AnswerRow key={a.questionId} a={a} slug={slug} />
-            ))}
-          </ul>
-        ) : (
-          <p className="text-13 text-subtle">{t("requirements.decisions.noAnswers")}</p>
-        )}
-      </section>
+      </Collapsible>
+      <div className="-mt-px">
+        <Collapsible title={t("requirements.decisions.answers")} count={answers.length}>
+          {answers.length ? (
+            <ul className="grid">
+              {answers.map((a) => (
+                <AnswerRow key={a.questionId} a={a} slug={slug} />
+              ))}
+            </ul>
+          ) : (
+            <p className="text-13 text-subtle">{t("requirements.decisions.noAnswers")}</p>
+          )}
+        </Collapsible>
+      </div>
+      <div className="mt-4">
+        <DecisionComposer projectId={projectId} scope="requirement" targetRef={reqKey} />
+      </div>
     </div>
   );
 }

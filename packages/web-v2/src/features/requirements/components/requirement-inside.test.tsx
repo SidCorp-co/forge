@@ -86,7 +86,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("a requirement's own page", () => {
   it("lists its decisions and those on its issues, with who decided, when and why", async () => {
     core(() => []);
+    const user = userEvent.setup();
     page("decisions");
+    await user.click(await screen.findByRole("button", { name: /Decisions/ }));
     const rows = await screen.findAllByTestId("decision-row");
     expect(rows.map((r) => within(r).getByText(/Keep the clinic name|Print it on the header/).textContent)).toEqual(["Keep the clinic name", "Print it on the header"]);
     expect(rows[1]).toHaveTextContent("the clinic asked for it");

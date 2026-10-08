@@ -105,7 +105,10 @@ describe("a requirement's Decisions tab", () => {
           }
         : undefined,
     );
+    const user = userEvent.setup();
     renderWithQuery(<RequirementDecisions projectId="p1" slug="hop" reqKey="REQ-14" />);
+    await user.click(await screen.findByRole("button", { name: /Decisions/ }));
+    await user.click(screen.getByRole("button", { name: /Answers/ }));
     const row = await screen.findByTestId("decision-row");
     expect(row).toHaveTextContent("Referrer feedback is its own consent purpose");
     expect(within(row).getByTestId("decision-target")).toHaveTextContent("ISS-110");

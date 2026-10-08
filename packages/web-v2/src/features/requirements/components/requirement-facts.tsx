@@ -1,18 +1,18 @@
 "use client";
 
-// The at-a-glance facts of one requirement: status and whose turn, lifecycle, owner, revision,
-// coverage, issues, feedback, designs, needs and dates. The full page's sticky rail and the peek
+// The at-a-glance facts of one requirement: status, owner, revision, issues, feedback, designs,
+// needs and dates; whose turn, the lifecycle step and the verified count ride the strip above the
+// main column (`standing-bits.tsx:RequirementProgress`), so the rail does not repeat them. The full page's sticky rail and the peek
 // draw this one component through the shared FactsGroup/Fact rows, so the main column never repeats a
 // fact and both surfaces read the same.
 
 import Link from "next/link";
-import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip, WaitingOn } from "@/design";
+import { ActorChip, Fact, FactsEmpty, FactsGroup, LEGEND, StatusBadge, Tooltip } from "@/design";
 import { FeedbackRailItem } from "@/features/feedback/components/feedback-rail-item";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref } from "@/lib/routes/issues";
 import { workflowHref } from "@/lib/routes/workflows";
-import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
-import { said } from "@/lib/i18n/said";
+import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -22,11 +22,10 @@ import { ReleaseLine } from "@/features/forecast/components/release-line";
 import { progressText } from "@/features/forecast/progress";
 import { criteriaRestText } from "@/features/forecast/text";
 import { useEtaClock, useRequirementForecast } from "@/features/forecast/hooks";
-import type { RequirementState } from "@forge/contracts/requirements";
 import type { RequirementDetail, RequirementFeedbackItem } from "../types";
 import { LinkIssueControl } from "./link-issue";
 import { PromoteDraftRow } from "./promote-drafts";
-import { agreedTitle, CoverageSummary, Stepper } from "./standing-bits";
+import { agreedTitle } from "./standing-bits";
 
 /** "3 of 5 criteria proven · rest forecast live 14:10 – 18:50 today": the proof so far, then when the rest is in people's hands. */
 export function CriteriaRest({ passing, criteria, scope, slug, className = "pb-1.5" }: { passing: number; criteria: number; scope: ScopeForecast; slug: string; className?: string }) {
@@ -113,23 +112,6 @@ function FeedbackFacts({ items, slug }: { items: RequirementFeedbackItem[]; slug
   );
 }
 
-/** On a phone the rail falls below the whole page, so progress and the forecast ride the top of the main column too; the rail hides its own copies there. */
-export function RequirementPhoneProgress({ state, passing, criteria, scope, slug }: { state: RequirementState; passing: number; criteria: number; scope: ScopeForecast | undefined; slug: string }) {
-  return (
-    <div className="hidden border-b border-line-subtle bg-surface px-4 py-3 max-sm:block" data-testid="phone-progress">
-      <Stepper state={state} />
-      {scope?.forecast ? <CriteriaRest passing={passing} criteria={criteria} scope={scope} slug={slug} className="pt-2" /> : null}
-    </div>
-  );
-}
-
-/** The phone progress block of one requirement, reading its own forecast. */
-export function RequirementPhoneProgressOf({ d, slug, projectId }: { d: RequirementDetail; slug: string; projectId: string }) {
-  const forecast = useRequirementForecast(projectId, d.key).data;
-  const { passing, criteria } = d.standing.facts;
-  return <RequirementPhoneProgress state={d.standing.state} passing={passing} criteria={criteria} scope={d.issues.length > 0 ? forecast : undefined} slug={slug} />;
-}
-
 type Shipped = { version: string; at: string };
 
 /** The releases that shipped the requirement's issues, each a link; nothing while none has (FB-102). */
@@ -181,7 +163,6 @@ export function RequirementFacts({
 }) {
   const t = useCopy();
   const label = useLabel();
-  const lang = useInterfaceLanguage();
   const time = useTimeFormat();
   const forecast = useRequirementForecast(projectId, d.key).data;
   const s = d.standing;
@@ -195,16 +176,6 @@ export function RequirementFacts({
         <Fact label={t("requirements.facts.state")}>
           <StatusBadge family="requirement" value={s.state} />
         </Fact>
-        {s.attentionGroup !== "done" ? (
-          <Fact label={t("requirements.facts.waitingOn")}>
-            <WaitingOn w={s.waitingOn} />
-          </Fact>
-        ) : null}
-        {s.attentionGroup !== "done" && s.waitingOn.says.effect ? (
-          <p className="pb-1 pl-[96px] text-12 text-muted max-sm:pl-0" data-testid="facts-effect">
-            {said(s.waitingOn.says.effect, lang)}
-          </p>
-        ) : null}
         <Fact label={t("requirements.facts.owner")}>
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
@@ -228,17 +199,10 @@ export function RequirementFacts({
             )}
           </Fact>
         ) : null}
-        <div className="pt-2.5 max-sm:hidden">
-          <Stepper state={s.state} />
-        </div>
-      </FactsGroup>
-
-      <FactsGroup title={t("requirements.facts.coverage")} count={s.coverage.length ? t("requirements.facts.passingOf", { a: f.passing, b: f.criteria }) : undefined} testId="facts-coverage">
-        <CoverageSummary coverage={s.coverage} />
       </FactsGroup>
 
       <FactsGroup title={t("requirements.facts.issues")} count={f.issuesTotal && forecast ? progressText(forecast.progress, t) : undefined} testId="facts-issues">
-        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} className="pb-1.5 max-sm:hidden" /> : null}
+        {d.issues.length > 0 && forecast?.forecast ? <CriteriaRest passing={f.passing} criteria={f.criteria} scope={forecast} slug={slug} /> : null}
         {d.issues.length === 0 ? (
           <FactsEmpty>{t("requirements.facts.notBrokenDown")}</FactsEmpty>
         ) : (
