@@ -219,7 +219,13 @@ function statLine(abs) {
   const own = lstatOrNull(abs);
   if (!own) return null;
   const said = (st) =>
-    `${st.isDirectory() ? 'dir' : `file:${st.size}`}:${(st.mode & 0o7777).toString(8)}`;
+    [
+      st.isDirectory() ? 'dir' : `file:${st.size}`,
+      (st.mode & 0o7777).toString(8),
+      st.nlink,
+      st.uid,
+      st.gid,
+    ].join(':');
   if (!own.isSymbolicLink()) return said(own);
   let target = 'dangling';
   try {
@@ -232,8 +238,8 @@ function statLine(abs) {
 
 /**
  * What a check that only stats `paths` can learn from them: what is there, of what kind, how big a
- * file is, its permission bits and, through a link, what it leads to. Never what is inside, and
- * never when it was written, which would move on every build.
+ * file is, its permission bits, link count and owner and, through a link, what it leads to. Never
+ * what is inside, and never a time, an inode or an allocation count, which move with every build.
  */
 export function probedState(root, paths = []) {
   const state = [];
@@ -244,7 +250,7 @@ export function probedState(root, paths = []) {
   };
   for (const p of paths) {
     const line = note(p);
-    if (!/(^|:)dir:[0-7]+$/.test(line ?? '')) continue;
+    if (!/(^|:)dir:[0-7]+:\d+:\d+:\d+$/.test(line ?? '')) continue;
     for (const name of readdirSync(join(root, p), { recursive: true })) {
       note(`${p}/${String(name).split('\\').join('/')}`);
     }

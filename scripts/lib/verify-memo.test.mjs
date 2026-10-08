@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -525,6 +526,7 @@ if (process.env.PROBE) existsSync(process.env.PROBE);
 if (process.env.STAT) statSync(process.env.STAT);
 if (process.env.SIZED && statSync(process.env.SIZED).size > 10) bad.push('size');
 if (process.env.EXEC && statSync(process.env.EXEC).mode & 0o111) bad.push('exec');
+if (process.env.LINKED && statSync(process.env.LINKED).nlink > 1) bad.push('linked');
 if (process.env.STREAM) await new Promise((done) => createReadStream(process.env.STREAM).on('data', () => {}).on('close', done));
 if (process.env.ASYNC) await (await import('node:fs/promises')).readFile(process.env.ASYNC);
 if (process.env.SHELLED) {
@@ -681,6 +683,22 @@ describe('a check taken through the memo', () => {
     const changed = run(plan(), { EXEC: file });
     expect(changed.plan.kind).toBe('miss');
     expect(changed.status).toBe(1);
+  });
+
+  it('goes red when a second hard link to a probed file appears elsewhere, through a store that holds the green', () => {
+    put('.gitignore', 'solo.txt\nelsewhere.txt\n');
+    commit();
+    put('solo.txt', 'one name');
+    const probed = { c: { roots: ['check.mjs', 'src'], probed: ['solo.txt'] } };
+    const plan = () =>
+      new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    const file = join(root, 'solo.txt');
+    expect(run(plan(), { LINKED: file }).verdict.code).toBe(0);
+    expect(run(plan(), { LINKED: file }).plan.kind).toBe('hit');
+    linkSync(file, join(root, 'elsewhere.txt'));
+    const linked = run(plan(), { LINKED: file });
+    expect(linked.plan.kind).toBe('miss');
+    expect(linked.status).toBe(1);
   });
 
   it('refuses a module the check imports from outside its declaration', () => {
