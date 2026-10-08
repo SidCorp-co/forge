@@ -35,9 +35,14 @@ export interface DockRoom {
   archivedAt: string | null;
   subjectKey?: string | null;
   threadStatus?: string | null;
+  /** The thread's kind: a requirement, first-requirements or onboarding room is scoped to it. */
+  kind?: string | null;
 }
 
 const waitsOnYou = (r: DockRoom) => r.threadStatus === "waiting_on_you";
+
+/** A room whose agent reads one record or one onboarding rather than the project. */
+export const isScopedRoom = (r: Pick<DockRoom, "kind" | "subjectKey">) => Boolean(r.kind || r.subjectKey);
 
 // a room waiting on the person first, then the newest
 function first<R extends DockRoom>(rows: R[]): R | undefined {
@@ -49,10 +54,16 @@ function first<R extends DockRoom>(rows: R[]): R | undefined {
 const liveIn = <R extends DockRoom>(rows: R[], projectId: string) =>
   rows.filter((r) => r.projectId === projectId && r.archivedAt === null);
 
-/** What the dock opens on when nothing is picked: the page's own rooms first, then the project's; a draft only when it has none. */
+/**
+ * What the dock opens on when nothing is picked: the page's own rooms first, then the project's; a
+ * draft only when it has none. A room scoped to a record is reused off that record's page only when
+ * it waits on the person: a whole-project question asked there is refused by a room that reads one
+ * requirement, and nothing told the person why (FB-100).
+ */
 export function openingTarget(rows: DockRoom[], at: { projectId: string; pageKey: string | null }): ChatTarget {
   const live = liveIn(rows, at.projectId);
-  const pick = first(live.filter((r) => at.pageKey !== null && r.subjectKey === at.pageKey)) ?? first(live);
+  const own = live.filter((r) => at.pageKey !== null && r.subjectKey === at.pageKey);
+  const pick = first(own) ?? first(live.filter((r) => !isScopedRoom(r) || waitsOnYou(r)));
   return pick ? { kind: "room", projectId: at.projectId, conversationId: pick.id } : { kind: "draft", projectId: at.projectId };
 }
 

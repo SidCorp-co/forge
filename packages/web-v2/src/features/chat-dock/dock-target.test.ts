@@ -56,6 +56,27 @@ describe("openingTarget", () => {
     expect(opening(rows, "REQ-9")).toMatchObject({ conversationId: "project" });
   });
 
+  // FB-100: on the Dashboard, Ask Agent reopened the REQ-17 room, which reads only REQ-17, and a
+  // whole-project question asked there was refused
+  it("off a record's page, reuses a room scoped to a record only when it waits on the person", () => {
+    const req17 = { kind: "requirement", subjectKey: "REQ-17" };
+    const rows = [room("project"), room("req-17", req17)];
+    expect(opening(rows)).toMatchObject({ conversationId: "project" });
+    expect(opening(rows, "REQ-3")).toMatchObject({ conversationId: "project" });
+    expect(opening(rows, "REQ-17")).toMatchObject({ conversationId: "req-17" });
+    const asked = [room("project"), room("req-17", { ...req17, threadStatus: "waiting_on_you" })];
+    expect(opening(asked)).toMatchObject({ conversationId: "req-17" });
+  });
+
+  it("treats a first-requirements room and an onboarding thread as scoped too", () => {
+    const rows = [room("project"), room("first", { kind: "first_requirements" }), room("onboarding", { kind: "onboarding" })];
+    expect(opening(rows)).toMatchObject({ conversationId: "project" });
+  });
+
+  it("drafts rather than reuse a scoped room when the project has no other live room", () => {
+    expect(opening([room("req-17", { kind: "requirement", subjectKey: "REQ-17" })])).toEqual({ kind: "draft", projectId: "p1" });
+  });
+
   it("ignores another project's rooms, and drafts only when the project has no live room", () => {
     expect(opening([room("elsewhere", { projectId: "p2" })])).toEqual({ kind: "draft", projectId: "p1" });
     expect(opening([])).toEqual({ kind: "draft", projectId: "p1" });

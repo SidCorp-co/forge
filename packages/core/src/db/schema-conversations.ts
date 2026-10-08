@@ -221,6 +221,14 @@ export const conversationMessages = pgTable(
      * text it wrote: the one fact "Waiting on you" reads (ISS-277). Never inferred from the text.
      */
     awaitsReply: boolean('awaits_reply').notNull().default(false),
+    /**
+     * The person an awaiting reply waits on: the one its turn answered, recorded with it. "Waiting
+     * on you" reads this and never who wrote last before the reply (ISS-277, probe P7). Null on a
+     * reply that awaits one and names nobody, which waits on nobody.
+     */
+    awaitsReplyFrom: uuid('awaits_reply_from').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -228,6 +236,10 @@ export const conversationMessages = pgTable(
     awaitsReplyAgent: check(
       'conversation_messages_awaits_reply_agent',
       sql`NOT ${t.awaitsReply} OR (${t.role} = 'assistant' AND ${t.silenceReason} IS NULL)`,
+    ),
+    awaitsReplyFromAwaits: check(
+      'conversation_messages_awaits_reply_from_awaits',
+      sql`${t.awaitsReplyFrom} IS NULL OR ${t.awaitsReply}`,
     ),
     externalIdx: index('conversation_messages_external_idx')
       .on(t.externalId)
