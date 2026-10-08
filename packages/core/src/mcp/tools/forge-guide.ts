@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NOT_SERVED_HERE_NOTE } from '../../guides/corpus-scope.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,
@@ -57,6 +58,7 @@ export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
     "`action=upsert {provider, title, summary, body}` creates/replaces YOUR ORG's guide for that integration (requires org admin/owner; `version` auto-increments so cached readers see the change). " +
     '`action=delete {provider}` drops the org override so the provider falls back to the code default, if it has one. ' +
     'Org is resolved from the project context (X-Forge-Project-Slug header, bound PAT, or an explicit projectId); with no project context you get the code tier only, same as `GET <host>/api/guides/<slug>.md`. ' +
+    `${NOT_SERVED_HERE_NOTE} ` +
     'Look one up before guessing how a Forge feature or a connected integration works.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -73,7 +75,7 @@ export const forgeGuideTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (!guide) {
         const validSlugs = (await resolveGuideIndex(orgId)).map((g) => g.slug).join(', ');
         throw new Error(
-          `NOT_FOUND: unknown guide slug '${input.slug}'. Valid slugs: ${validSlugs}`,
+          `NOT_FOUND: unknown guide slug '${input.slug}'. Valid slugs: ${validSlugs}. ${NOT_SERVED_HERE_NOTE}`,
         );
       }
       return { guide };

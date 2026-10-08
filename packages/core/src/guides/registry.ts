@@ -18,6 +18,7 @@ import {
   ALWAYS_INJECT_GUARANTEE_NOTE,
 } from '../projects/project-facts.js';
 import { ASSISTANT_METHOD_GUIDE } from './assistant-method-guide.js';
+import { CAPABILITY_GUIDE } from './capability-guide.js';
 import { CONFORMANCE_GUIDE } from './conformance-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import type { ForgeGuide } from './types.js';
@@ -25,6 +26,7 @@ import type { ForgeGuide } from './types.js';
 export type { ForgeGuide };
 
 export const FORGE_GUIDES: readonly ForgeGuide[] = [
+  CAPABILITY_GUIDE,
   {
     slug: 'project-settings-and-test-credentials',
     audience: 'agent',
@@ -498,7 +500,7 @@ For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL patt
     title: 'Working in a Forge-managed repo',
     summary:
       'Start here: what Forge owns, the recall-first rule, draft vs open, and the red flags that waste a runner slot.',
-    version: 1,
+    version: 2,
     body: `## Working in a Forge-managed repo
 
 If a repo has a \`.forge/\` directory or an \`mcp.json\` naming a \`forge\` server, its issues, pipeline
@@ -520,6 +522,7 @@ against live code or git before you rely on it.
 | The project's own prose | \`forge_knowledge\` |
 | A decision, learning or convention worth keeping | \`forge_memory_write\` |
 | Deeper per-package detail | \`forge_knowledge\` (list/get/search) |
+| What Forge is and can do, by area | the \`what-forge-is\` guide |
 | How a Forge feature actually works | \`forge_guide\` — or fetch these same bytes at \`/api/guides/<slug>.md\` |
 
 ### draft vs open — the costly one

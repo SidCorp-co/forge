@@ -6,6 +6,7 @@ import { env } from '../config/env.js';
 import { INTEGRATION_PROVIDERS } from '../integrations/types.js';
 import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { CORPUS_SCOPE, corpusScopeSentence, NOT_SERVED_HERE_NOTE } from './corpus-scope.js';
 import {
   deleteIntegrationGuide,
   integrationGuideSlug,
@@ -121,12 +122,12 @@ function validSlugsMessage(): string {
   const slugs = listGuides()
     .map((g) => g.slug)
     .join(', ');
-  return `guide not found. Valid slugs: ${slugs}. Readable pages: ${humanGuidesUrl()}`;
+  return `guide not found. Valid slugs: ${slugs}. ${NOT_SERVED_HERE_NOTE} Readable pages: ${humanGuidesUrl()}`;
 }
 
 guideRoutes.get('/guides', (c) => {
   c.header('Cache-Control', 'public, max-age=300');
-  return c.json({ guides: listGuides() });
+  return c.json({ guides: listGuides(), corpus: CORPUS_SCOPE });
 });
 
 guideRoutes.get('/llms.txt', (c) => {
@@ -143,6 +144,8 @@ guideRoutes.get('/llms.txt', (c) => {
     '> is unauthenticated and returns raw markdown — fetch what you need, when you need it.',
     '>',
     `> A person reads the same corpus as web pages at ${humanGuidesUrl()} — also no credential.`,
+    '>',
+    `> ${corpusScopeSentence()}`,
     '',
     '## Guides',
     '',
