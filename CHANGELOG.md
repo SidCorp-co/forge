@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.190] - 2026-10-08
+
+Assistant figures must be shown or read; save claims need a real save
+
+### Fixed
+
+- **The Assistant can save a template report, and states only what it read.** A figure shows in a drawn block or a read; a save claim needs a real save; honest refusals go out, and held answers say why.
+
 ## [0.4.0-dev.189] - 2026-10-08
 
 Shared chat answers hold the whole turn; tool content stays the asker's
