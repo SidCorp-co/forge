@@ -10,13 +10,14 @@ import {
   sweepExpiredExecutions,
   unregisterExecutorForTest,
 } from '../../src/reports/index.js';
+import { sandboxExecutor } from '../../src/sandbox/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 // The Executor port over its two doors (REQ-32 C1). With no sandbox able to run it every computation
-// is refused by name. With one (a fake, registered here and nowhere in production) a computation reads
+// is refused by name. With one (a fake, swapped in here for core's own script sandbox) a computation reads
 // only the asker's own runs, is refused without assistant.exec, where the project has not turned
 // computation on, past a turn's cap and where the project's data may not leave it, all before the
 // adapter is called; what it returns is kept, drawn as a computed block, read back by its asker and
@@ -42,6 +43,7 @@ const execute = vi.fn(async (request: ExecutionRequest) => ({
     },
   ],
   logs: { stdout: 'token=ghp_abcdefghijklmnopqrstuvwxyz0123456789 done', stderr: '' },
+  reads: [],
 }));
 const fake: Executor = {
   id: 'fake-sandbox',
@@ -70,7 +72,17 @@ const runQuery = async (projectId = w.projectId, token = w.token) => {
 };
 const compute = (body: Body, token = w.token, projectId = w.projectId) =>
   api(token, 'POST', `/api/projects/${projectId}/executions`, body);
-const script = 'import json\nprint(len(json.load(open("inputs.json"))))';
+const script = 'ctx.log(ctx.inputs.length);\nreturn { frames: ctx.inputs };';
+
+// the fake runs in place of the script sandbox the boot registered, which is put back after
+const swapIn = (adapter: Executor) => {
+  unregisterExecutorForTest(sandboxExecutor.id);
+  registerExecutor(adapter);
+};
+const swapBack = (adapter: Executor) => {
+  unregisterExecutorForTest(adapter.id);
+  registerExecutor(sandboxExecutor);
+};
 
 beforeAll(async () => {
   w = await world();
@@ -96,27 +108,38 @@ beforeEach(() => {
 });
 
 describe('with no sandbox registered', () => {
-  it('refuses every computation by name: the runner sandbox is gone and nothing is sent', async () => {
+  beforeAll(() => unregisterExecutorForTest(sandboxExecutor.id));
+  afterAll(() => registerExecutor(sandboxExecutor));
+
+  it('refuses every computation by name, and nothing is sent', async () => {
     const run = await runQuery();
-    const res = await compute({ language: 'python', script, inputs: [run.runId] });
+    const res = await compute({ language: 'javascript', script, inputs: [run.runId] });
     expect([res.status, code(res)]).toEqual([503, 'EXECUTOR_UNAVAILABLE']);
     expect(detail(res)).toContain('no sandbox executor is enabled on this deployment');
-    expect(detail(res)).toContain('the runner sandbox was removed (REQ-32 r6)');
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('a computation in another language', () => {
+  it.each(['python', 'bash'])('refuses %s by name before anything runs', async (language) => {
+    const res = await compute({ language, script: 'print(1)', inputs: [] });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain(`language \\"${language}\\" is refused`);
     expect(execute).not.toHaveBeenCalled();
   });
 });
 
 describe('a computation an executor ran', () => {
-  beforeAll(() => registerExecutor(fake));
-  afterAll(() => unregisterExecutorForTest(fake.id));
+  beforeAll(() => swapIn(fake));
+  afterAll(() => swapBack(fake));
 
   it('keeps what the executor returned, scrubbed, and draws it as a computed block', async () => {
     const run = await runQuery();
-    const res = await compute({ language: 'python', script, inputs: [run.runId] });
+    const res = await compute({ language: 'javascript', script, inputs: [run.runId] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[0]).toMatchObject({
-      language: 'python',
+      language: 'javascript',
       script,
       inputs: [run.frame],
       limits: { wallMs: 30_000, outputBytes: 256_000 },
@@ -183,7 +206,7 @@ describe('a computation an executor ran', () => {
         execution: {
           executionId,
           adapter: 'fake-sandbox',
-          language: 'python',
+          language: 'javascript',
           at: kept.body.createdAt,
         },
       },
@@ -193,8 +216,8 @@ describe('a computation an executor ran', () => {
   it('stores the same fingerprint for one script however it is spaced', async () => {
     const run = await runQuery();
     const spaced = `\n${script.replace('\n', '   \r\n\n')}  \n`;
-    const a = await compute({ language: 'python', script, inputs: [run.runId] });
-    const b = await compute({ language: 'python', script: spaced, inputs: [run.runId] });
+    const a = await compute({ language: 'javascript', script, inputs: [run.runId] });
+    const b = await compute({ language: 'javascript', script: spaced, inputs: [run.runId] });
     expect([a.status, b.status]).toEqual([201, 201]);
     expect(b.body.scriptFingerprint).toBe(a.body.scriptFingerprint);
     expect(String(a.body.scriptFingerprint)).toMatch(/^[0-9a-f]{64}$/);
@@ -203,8 +226,8 @@ describe('a computation an executor ran', () => {
     `);
     expect(row).toEqual({ script_fingerprint: a.body.scriptFingerprint, script: spaced });
     const other = await compute({
-      language: 'python',
-      script: `${script}\nprint(2)`,
+      language: 'javascript',
+      script: `${script}\nctx.log(2);`,
       inputs: [run.runId],
     });
     expect(other.body.scriptFingerprint).not.toBe(a.body.scriptFingerprint);
@@ -212,7 +235,7 @@ describe('a computation an executor ran', () => {
 
   it('grounds a reply figure on the execution frame, and nothing once it is past its keep', async () => {
     const run = await runQuery();
-    const res = await compute({ language: 'python', script, inputs: [run.runId] });
+    const res = await compute({ language: 'javascript', script, inputs: [run.runId] });
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const screen = () =>
       screenReplyAtDoor('web-agent-completion', {
@@ -242,12 +265,15 @@ describe('a computation an executor ran', () => {
 });
 
 describe('a computation refused before the executor sees it', () => {
-  beforeAll(() => registerExecutor(fake));
-  afterAll(() => unregisterExecutorForTest(fake.id));
+  beforeAll(() => swapIn(fake));
+  afterAll(() => swapBack(fake));
 
   it('refuses a member without assistant.exec, and a named grant that does not name it', async () => {
     const run = await runQuery(w.projectId, member.token);
-    const res = await compute({ language: 'python', script, inputs: [run.runId] }, member.token);
+    const res = await compute(
+      { language: 'javascript', script, inputs: [run.runId] },
+      member.token,
+    );
     expect([res.status, code(res)]).toEqual([403, 'PERMISSION_FORBIDDEN']);
     expect(detail(res)).toContain('assistant.exec');
     const routesOnly = (
@@ -258,7 +284,7 @@ describe('a computation refused before the executor sees it', () => {
         projectIds: [w.projectId],
       })
     ).plaintext;
-    const byToken = await compute({ language: 'python', script, inputs: [] }, routesOnly);
+    const byToken = await compute({ language: 'javascript', script, inputs: [] }, routesOnly);
     expect([byToken.status, code(byToken)]).toEqual([403, 'PERMISSION_FORBIDDEN']);
     expect(detail(byToken)).toContain(
       'A named token grant holds assistant.exec only where it names it',
@@ -270,14 +296,14 @@ describe('a computation refused before the executor sees it', () => {
     const off = await world();
     const offRun = await runQuery(off.projectId, off.token);
     const res = await compute(
-      { language: 'python', script, inputs: [offRun.runId] },
+      { language: 'javascript', script, inputs: [offRun.runId] },
       off.token,
       off.projectId,
     );
     expect([res.status, code(res)]).toEqual([403, 'EXECUTION_DISABLED']);
     expect(detail(res)).toContain('compute.enabled is unset');
     const memberRun = await runQuery(w.projectId, member.token);
-    const notMine = await compute({ language: 'python', script, inputs: [memberRun.runId] });
+    const notMine = await compute({ language: 'javascript', script, inputs: [memberRun.runId] });
     expect([notMine.status, code(notMine)]).toEqual([403, 'REPORT_RUN_READ_FORBIDDEN']);
     expect(execute).not.toHaveBeenCalled();
   });
@@ -294,7 +320,7 @@ describe('a computation refused before the executor sees it', () => {
     registerExecutor(thirdParty);
     try {
       const res = await compute(
-        { language: 'bash', script: 'cat inputs.json', inputs: [zdrRun.runId] },
+        { language: 'javascript', script, inputs: [zdrRun.runId] },
         zdr.token,
         zdr.projectId,
       );
@@ -315,7 +341,7 @@ describe('a computation refused before the executor sees it', () => {
       extra: { compute: { enabled: true }, sensitiveData: 'no_egress' },
     });
     const res = await compute(
-      { language: 'python', script, inputs: [closedRun.runId] },
+      { language: 'javascript', script, inputs: [closedRun.runId] },
       closed.token,
       closed.projectId,
     );
@@ -326,8 +352,8 @@ describe('a computation refused before the executor sees it', () => {
 });
 
 describe('a turn’s caps', () => {
-  beforeAll(() => registerExecutor(fake));
-  afterAll(() => unregisterExecutorForTest(fake.id));
+  beforeAll(() => swapIn(fake));
+  afterAll(() => swapBack(fake));
 
   it('refuses a call past the turn’s wall-time cap, naming the cap and what is left', async () => {
     const capped = (
@@ -341,19 +367,19 @@ describe('a turn’s caps', () => {
     const run = await runQuery(w.projectId, capped);
     durationMs = 50_000;
     for (let i = 0; i < 2; i++) {
-      const ok = await compute({ language: 'python', script, inputs: [run.runId] }, capped);
+      const ok = await compute({ language: 'javascript', script, inputs: [run.runId] }, capped);
       expect(ok.status, JSON.stringify(ok.body)).toBe(201);
     }
-    const over = await compute({ language: 'python', script, inputs: [run.runId] }, capped);
+    const over = await compute({ language: 'javascript', script, inputs: [run.runId] }, capped);
     expect([over.status, code(over)]).toEqual([422, 'EXECUTION_TURN_CAP_REACHED']);
     expect(detail(over)).toContain('this turn has 20000 ms of its 120000 ms wall-time cap left');
     const within = await compute(
-      { language: 'python', script, inputs: [run.runId], limits: { wallMs: 20_000 } },
+      { language: 'javascript', script, inputs: [run.runId], limits: { wallMs: 20_000 } },
       capped,
     );
     expect(within.status, JSON.stringify(within.body)).toBe(201);
     const tooBig = await compute(
-      { language: 'python', script, inputs: [], limits: { wallMs: 60_001 } },
+      { language: 'javascript', script, inputs: [], limits: { wallMs: 60_001 } },
       capped,
     );
     expect([tooBig.status, code(tooBig)]).toEqual([400, 'EXECUTION_LIMIT_REFUSED']);

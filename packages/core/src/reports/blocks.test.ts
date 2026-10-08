@@ -212,8 +212,8 @@ describe('a block drawn from an execution', () => {
     conversationId: 'c1',
     askedBy: 'asker',
     adapter: 'fake',
-    language: 'python',
-    script: 'print(1)',
+    language: 'javascript',
+    script: 'return { frames: [] }',
     scriptFingerprint: 'a'.repeat(64),
     inputRunIds: ['run-1'],
     limits: { wallMs: 1000, cpu: 1, memoryMb: 64, outputBytes: 10_000 },
@@ -223,6 +223,7 @@ describe('a block drawn from an execution', () => {
     frames: [computedFrame],
     logs: { stdout: '', stderr: '' },
     error: null,
+    reads: [],
     createdAt: '2026-10-08T10:00:00.000Z',
     expiresAt: '2026-11-07T10:00:00.000Z',
   };
@@ -243,7 +244,7 @@ describe('a block drawn from an execution', () => {
     expect(answer.execution).toEqual({
       executionId: 'ex-1',
       adapter: 'fake',
-      language: 'python',
+      language: 'javascript',
       at: '2026-10-08T10:00:00.000Z',
     });
     expect(answer.text).toContain('Computed by execution ex-1');

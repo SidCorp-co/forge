@@ -72,6 +72,15 @@ const AGREEMENT_NAME_PREFIX = 'chat agreement ';
 export const agreementTokenNameFor = (proposalId: string) =>
   `${AGREEMENT_NAME_PREFIX}${proposalId}`;
 
+const SCRIPT_READ_NAME_PREFIX = 'script read ';
+
+/**
+ * The token one sandbox run reads Forge under, as its owner (`sandbox/forge-read.ts`): read-only,
+ * fenced to the run's project, minted on the run's first read and revoked when the run ends.
+ */
+export const scriptReadTokenName = (at: Date, nonce: string) =>
+  `${SCRIPT_READ_NAME_PREFIX}${at.toISOString()} ${nonce}`;
+
 export const isTurnTokenName = (name: string) =>
   name.startsWith(TURN_TOKEN_NAME_PREFIX) ||
   name.startsWith(TURN_DEFAULT_NAME_PREFIX) ||
@@ -104,6 +113,7 @@ const CORE_NAME_PREFIXES = [
   TURN_TOKEN_NAME_PREFIX,
   TURN_DEFAULT_NAME_PREFIX,
   AGREEMENT_NAME_PREFIX,
+  SCRIPT_READ_NAME_PREFIX,
 ];
 
 // a person's token named like a turn token would make their CLI writes read as written through the assistant

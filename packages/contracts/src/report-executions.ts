@@ -6,9 +6,17 @@
 import { z } from "zod";
 import type { RefusalStatuses } from "./refusal.js";
 import { REPORT_RUN_KEEP_DAYS, ReportFrameSchema } from "./report-queries.js";
+import { SCRIPT_LANGUAGE, ScriptReadSchema } from "./script-sandbox.js";
 
-export const EXECUTION_LANGUAGES = ["python", "bash"] as const;
+/** A computation runs in the script sandbox (REQ-37), which runs JavaScript alone. */
+export const EXECUTION_LANGUAGES = [SCRIPT_LANGUAGE] as const;
 export type ExecutionLanguage = (typeof EXECUTION_LANGUAGES)[number];
+
+/** A request in any other language is refused naming it; nothing is translated or run elsewhere. */
+const executionLanguage = z.enum(EXECUTION_LANGUAGES, {
+	error: (issue) =>
+		`language ${JSON.stringify(issue.input)} is refused: the script sandbox runs ${SCRIPT_LANGUAGE} alone (REQ-37), and python and bash are not run anywhere; write the script in ${SCRIPT_LANGUAGE}`,
+});
 /** `in-band` runs inside the model's own call; `invoked` is called by core and returns when done. */
 export const EXECUTOR_MODES = ["invoked", "in-band"] as const;
 export type ExecutorMode = (typeof EXECUTOR_MODES)[number];
@@ -31,7 +39,7 @@ export const ExecutionLimitsSchema = z
 
 export const ExecutionRequestSchema = z
 	.object({
-		language: z.enum(EXECUTION_LANGUAGES),
+		language: executionLanguage,
 		script: z.string().min(1).max(100_000),
 		/** A snapshot of runs the asker may read, scrubbed before it leaves. */
 		inputs: z.array(ReportFrameSchema).max(8),
@@ -54,6 +62,8 @@ export const ExecutionResultSchema = z
 			.object({ name: z.string(), message: z.string() })
 			.strict()
 			.optional(),
+		/** Every read the script made of Forge through ctx.forge.get, with the status it answered. */
+		reads: z.array(ScriptReadSchema),
 	})
 	.strict();
 export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;
@@ -87,6 +97,11 @@ export interface ExecutionScope {
 	projectId: string;
 	conversationId: string | null;
 	askedBy: string;
+	/**
+	 * The token the asker reached Forge with, which bounds what the script may read as them; null for
+	 * a browser session, where the asker's project role is the whole bound.
+	 */
+	viaTokenId: string | null;
 }
 
 /**
@@ -121,127 +136,30 @@ export const EXECUTOR_DATA_STAYS_WITH_TEAM: readonly string[] = [
 ];
 
 /**
- * How every adapter hands a script its inputs and takes its frames back, so one script runs alike on
- * each: files in the sandbox's working directory, never a network call.
+ * How a script takes its inputs and hands its frames back, the same on every adapter: never a file
+ * and never a network call.
  */
 export const EXECUTION_IO =
-	'the input frames are a JSON array of { fields, rows } in the file inputs.json in the working directory, in the order the inputs were named; the script writes { "frames": [{ fields, rows }, ...] } to the file frames.json, each field { name, type: string|number|date|duration|status|ref, label, unit? }, or one table to frames.csv (a header row of field names; a column whose every cell is a number is a number field, any other a string field)';
+	"ctx.inputs is the frames of the runs named in inputs, in order, each { fields, rows }; ctx.forge.get(path) GETs this project's /api/projects/<ctx.projectId>/... (issues, requirements, workflows) or /api/issues/<key> as the asker and resolves to the JSON body; the script returns { frames: [{ fields, rows }, ...] }, each field { name, type: string|number|date|duration|status|ref, label, unit? }; ctx.log(...) is kept as stdout";
 
-/** The files a script hands its frames back in, in the order an adapter looks for them. */
-export const EXECUTION_OUTPUT_FILES = ["frames.json", "frames.csv"] as const;
-export type ExecutionOutputFile = (typeof EXECUTION_OUTPUT_FILES)[number];
-
-/** CSV records, RFC 4180 quoting: a quoted cell may hold a comma, a doubled quote or a line break. */
-function csvRecords(text: string): string[][] {
-	const records: string[][] = [];
-	let record: string[] = [];
-	let cell = "";
-	let quoted = false;
-	for (let i = 0; i < text.length; i++) {
-		const c = text[i];
-		if (quoted) {
-			if (c === '"' && text[i + 1] === '"') {
-				cell += '"';
-				i++;
-			} else if (c === '"') quoted = false;
-			else cell += c;
-		} else if (c === '"' && cell === "") quoted = true;
-		else if (c === ",") {
-			record.push(cell);
-			cell = "";
-		} else if (c === "\n" || c === "\r") {
-			if (c === "\r" && text[i + 1] === "\n") i++;
-			record.push(cell);
-			records.push(record);
-			record = [];
-			cell = "";
-		} else cell += c;
-	}
-	if (cell !== "" || record.length > 0) {
-		record.push(cell);
-		records.push(record);
-	}
-	return records.filter((r) => !(r.length === 1 && r[0] === ""));
-}
-
-const NUMERIC_CELL = /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-
-/** One table from frames.csv: a column whose every non-empty cell is a number is a number field. */
-function csvFrame(
-	text: string,
-): { ok: true; frame: unknown } | { ok: false; why: string } {
-	const [header, ...rows] = csvRecords(text);
-	if (!header || header.length === 0)
-		return { ok: false, why: "frames.csv has no header row" };
-	const short = rows.findIndex((r) => r.length !== header.length);
-	if (short >= 0) {
-		return {
-			ok: false,
-			why: `frames.csv row ${short + 2} has ${rows[short]?.length ?? 0} cells, and the header names ${header.length}`,
-		};
-	}
-	const numeric = header.map((_, col) =>
-		rows.every(
-			(r) =>
-				(r[col] ?? "").trim() === "" ||
-				NUMERIC_CELL.test((r[col] ?? "").trim()),
-		),
-	);
-	return {
-		ok: true,
-		frame: {
-			fields: header.map((name, col) => ({
-				name,
-				type: numeric[col] ? "number" : "string",
-				label: name,
-			})),
-			rows: rows.map((r) =>
-				Object.fromEntries(
-					header.map((name, col) => {
-						const raw = (r[col] ?? "").trim();
-						return [
-							name,
-							raw === "" ? null : numeric[col] ? Number(raw) : (r[col] ?? ""),
-						];
-					}),
-				),
-			),
-		},
-	};
-}
-
-/**
- * The frames a script wrote to one of `EXECUTION_OUTPUT_FILES`, or why they cannot be read. Every
- * adapter reads its output through this, so one script's frames come back alike from each.
- */
-export function framesFromOutput(
-	file: ExecutionOutputFile,
-	text: string,
+/** The frames a script returned, or why they are not frames. */
+export function framesFromReturn(
+	value: unknown,
 ):
 	| { ok: true; frames: z.infer<typeof ReportFrameSchema>[] }
 	| { ok: false; why: string } {
-	let candidate: unknown;
-	if (file === "frames.json") {
-		try {
-			candidate = (JSON.parse(text) as { frames?: unknown } | null)?.frames;
-		} catch (err) {
-			return {
-				ok: false,
-				why: `frames.json is not JSON: ${err instanceof Error ? err.message : String(err)}`,
-			};
-		}
-		if (!Array.isArray(candidate))
-			return { ok: false, why: 'frames.json holds no "frames" array' };
-	} else {
-		const table = csvFrame(text);
-		if (!table.ok) return table;
-		candidate = [table.frame];
+	const candidate = (value as { frames?: unknown } | null | undefined)?.frames;
+	if (!Array.isArray(candidate)) {
+		return {
+			ok: false,
+			why: 'the script returned no "frames" array; return { frames: [{ fields, rows }, ...] }',
+		};
 	}
 	const parsed = z.array(ReportFrameSchema).safeParse(candidate);
 	if (!parsed.success) {
 		return {
 			ok: false,
-			why: `${file} is not frames of { fields, rows }: ${parsed.error.issues
+			why: `the returned frames are not frames of { fields, rows }: ${parsed.error.issues
 				.slice(0, 3)
 				.map((i) => `${i.path.join(".") || "(frames)"}: ${i.message}`)
 				.join("; ")}`,
@@ -290,7 +208,7 @@ export const EXECUTION_MAX_INPUTS = 8;
 
 /**
  * The script as its fingerprint reads it: line endings, trailing whitespace, blank lines and runs of
- * spaces or tabs inside a line do not change it; a line's leading indentation (Python's blocks) does.
+ * spaces or tabs inside a line do not change it; a line's leading indentation does.
  * Two scripts that normalize alike are one computation asked twice (REQ-32 C5 counts them).
  */
 export function normalizeScript(script: string): string {
@@ -312,7 +230,7 @@ export function normalizeScript(script: string): string {
 /** What a model or an agent asks: a script, the runs of this turn it reads, and optional limits. */
 export const ComputeRequestSchema = z
 	.object({
-		language: z.enum(EXECUTION_LANGUAGES),
+		language: executionLanguage,
 		script: z.string().min(1).max(100_000),
 		inputs: z.array(z.string().min(1).max(64)).max(EXECUTION_MAX_INPUTS),
 		limits: ExecutionLimitsSchema.partial().optional(),
@@ -320,7 +238,7 @@ export const ComputeRequestSchema = z
 	.strict();
 export type ComputeRequest = z.infer<typeof ComputeRequestSchema>;
 export const COMPUTE_REQUEST_SHAPE =
-	'{ language: "python" | "bash", script, inputs: [<runId of a report run this turn made>, ...0-8], limits?: { wallMs?, cpu?, memoryMb?, outputBytes? } }';
+	'{ language: "javascript", script, inputs: [<runId of a report run this turn made>, ...0-8], limits?: { wallMs?, cpu?, memoryMb?, outputBytes? } }';
 
 /** What a drawn block says about the execution its frame came from, copied when it was attached. */
 export const ExecutionFactsSchema = z
@@ -355,6 +273,7 @@ export const ExecutionRecordSchema = z
 			.object({ name: z.string(), message: z.string() })
 			.strict()
 			.nullable(),
+		reads: z.array(ScriptReadSchema),
 		createdAt: z.iso.datetime(),
 		expiresAt: z.iso.datetime(),
 	})

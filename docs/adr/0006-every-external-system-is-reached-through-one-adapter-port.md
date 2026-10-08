@@ -27,7 +27,7 @@ call sits now.
 | install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/github/published-releases/fetch-release.ts`, `packages/core/src/integrations/github/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/github/published-releases/public-releases.ts` | `api.github.com` releases and commits |
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/github/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` the environment-state read handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
-| schedules/script/worker-entry.ts | no port: a call of `ctx.http.fetch` is refused, naming it | whatever URL a user's sandboxed script names |
+| sandbox/worker-entry.ts | no port: a call of `ctx.http.fetch` is refused, naming it; `ctx.forge.get` reaches only core's own app, in-process (`sandbox/forge-read.ts`) | whatever URL a user's sandboxed script names |
 | lib/sentry.ts | `packages/core/src/integrations/sentry/own-errors.ts`, behind the error-tracking port `packages/core/src/lib/error-tracking.ts` | Forge's own crash reports, through `@sentry/node` |
 
 The dev and prod compose files name the same set from the deployment side: `SMTP_*`, `LITELLM_*`,
@@ -82,9 +82,10 @@ sentence that justifies it, and an exception with no reason is refused.
 
 ### The named exceptions
 
-- **`packages/core/src/schedules/script/worker-entry.ts`** — the sandboxed schedule script's `ctx.http.fetch`
-  had no system for a port to name and no egress policy to pass, so it is refused by name rather
-  than left as an open fetch of any `https:` URL.
+- **`packages/core/src/sandbox/worker-entry.ts`** — a sandboxed script's `ctx.http.fetch` (a schedule
+  script's or a chat computation's) had no system for a port to name and no egress policy to pass,
+  so it is refused by name rather than left as an open fetch of any `https:` URL. Its one read,
+  `ctx.forge.get`, is answered by core's own REST app in-process and leaves the machine for nowhere.
 - **Forge's own crash reporting** leaves through the error-tracking port,
   `packages/core/src/lib/error-tracking.ts`; the adapter installed behind it at boot,
   `packages/core/src/integrations/sentry/own-errors.ts`, is the one module importing `@sentry/node`.

@@ -315,7 +315,11 @@ const viewerWrites = (): [string, Record<string, unknown>, string][] => [
   ],
   ['forge_memory_note', { text: 'A viewer remembers this.' }, 'project.write'],
   ['forge_template_save', { templateId: 'status', runIds: [randomUUID()] }, 'project.write'],
-  ['forge_compute', { language: 'python', script: 'print(1)', inputs: [] }, 'assistant.exec'],
+  [
+    'forge_compute',
+    { language: 'javascript', script: 'return { frames: [] }', inputs: [] },
+    'assistant.exec',
+  ],
   [
     'forge_channel',
     {
