@@ -66,9 +66,6 @@ export type AnswerOutcome =
 /** An outcome as the answer resume records it on the answered round, with when. */
 export type AnswerResume = AnswerOutcome & { at: string };
 
-export const QUESTION_ABOUT_KINDS = ["requirement", "contract"] as const;
-export type QuestionAboutKind = (typeof QUESTION_ABOUT_KINDS)[number];
-
 /**
  * What a question is about, as its asker named it, stored beside the question (`agent_questions.about`).
  * It is not `requirementId`: that column is the BA clarification link and moves the question to the
@@ -92,10 +89,10 @@ export const questionAboutRequestSchema = z.union([
 		contract: z
 			.string()
 			.trim()
-			.regex(/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/, "a contract reads <project>/<contract>"),
+			.regex(
+				/^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/,
+				"a contract reads <project>/<contract>",
+			),
 	}),
 ]);
 export type QuestionAboutRequest = z.infer<typeof questionAboutRequestSchema>;
-
-export const QUESTION_ABOUT_SHAPE =
-	"about?: { requirement: 'REQ-n' | uuid | null } | { contract: '<project>/<contract>' } — what the question is about; on an issue, `requirement: null` names the requirement the issue delivers";

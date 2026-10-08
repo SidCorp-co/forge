@@ -14,6 +14,7 @@ import type {
   ReleaseVersionDecision,
 } from '@forge/contracts/releases';
 import { RELEASE_VERSION_CARRIER_KINDS } from '@forge/contracts/releases';
+import { readAbortStamp } from './abort-stamp.js';
 import {
   compareReleaseVersions,
   formatReleaseVersion,
@@ -97,7 +98,7 @@ export const UNNAMED_PUSH: ReleaseVersionCarrier = {
  * Forge; any other silence is `unknown` — a pushed tag is invisible from here.
  */
 export function carriersOf(run: Pick<LineageRun, 'metadata' | 'reachedBox'>): CarrierReading {
-  const abort = run.metadata.abort as { pushed?: unknown } | undefined;
+  const abort = readAbortStamp(run.metadata);
   const declared = run.metadata.carried as { carriers?: unknown } | undefined;
   const named = carriersIn(declared?.carriers);
   if (abort?.pushed === true && named.length === 0) named.push(UNNAMED_PUSH);

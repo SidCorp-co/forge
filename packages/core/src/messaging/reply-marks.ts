@@ -12,9 +12,15 @@ export const UNVERIFIED_MARK = {
   vi: '(chưa kiểm chứng, có thể sai)', // i18n-allow: the mark a Vietnamese asker reads beside an unchecked claim
 } as const;
 
-export type MarkLanguage = keyof typeof UNVERIFIED_MARK;
+type MarkLanguage = keyof typeof UNVERIFIED_MARK;
 
-const MARK_RE = /\((?:unverified, this may be wrong|chưa kiểm chứng, có thể sai)\)/g; // i18n-allow: the Vietnamese mark matched
+/** Either language's mark, spelled once above. */
+const MARK_RE = new RegExp(
+  Object.values(UNVERIFIED_MARK)
+    .map((m) => m.replace(/[()]/g, '\\$&'))
+    .join('|'),
+  'g',
+);
 
 /** Where a clause ends: the punctuation every rule splits on, a stop or colon only before a space. */
 const CLAUSE_END_RE = /[;!?\n]|[.:](?=\s|$)/;

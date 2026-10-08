@@ -12,6 +12,7 @@ import type {
 } from '@forge/contracts/releases';
 import { RELEASE_VERSION_DECISIONS } from '@forge/contracts/releases';
 import { peopleOf } from '../lib/people.js';
+import { readAbortStamp } from './abort-stamp.js';
 import { readFinishRecord } from './finish-record.js';
 import type { Part } from './release-read-views.js';
 import { carriersIn, carriersOf, type Lineage, type LineageRun } from './version-rule.js';
@@ -62,7 +63,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v.length > 
 
 /** The person who ended an attempt: its abort's actor, else its finish's; null where Forge did. */
 function deciderIdOf(run: LineageRun): string | null {
-  const abort = obj(run.metadata.abort);
+  const abort = readAbortStamp(run.metadata);
   if (abort) return str(abort.by);
   const finish = readFinishRecord(run.metadata);
   if (!finish || (finish.state !== 'finished' && finish.state !== 'failed')) return null;
@@ -100,7 +101,7 @@ function refusalOf(run: LineageRun): ReleaseCutView['refusal'] {
 }
 
 function endedAtOf(run: LineageRun): Date | null {
-  const abortAt = str(obj(run.metadata.abort)?.at);
+  const abortAt = str(readAbortStamp(run.metadata)?.at);
   return run.releasedAt ?? run.endedAt ?? (abortAt ? new Date(abortAt) : null);
 }
 
@@ -134,7 +135,7 @@ export function cutViewsOf(
       outcome,
       endedAt: ended ? ended.toISOString() : null,
       refusal: refusalOf(run),
-      abortReason: str(obj(run.metadata.abort)?.reason),
+      abortReason: str(readAbortStamp(run.metadata)?.reason),
       decidedBy: decider ? (people.get(decider) ?? null) : null,
       rule: ruleOf(run.metadata),
       carried: reading.kind === 'carried' ? reading.carriers : reading.kind === 'none' ? [] : null,

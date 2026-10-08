@@ -4,10 +4,19 @@
 // already draw, so a status report and the screens it summarises cannot disagree. Every section
 // carries `asOf`, the moment its own read answered, and a forecast carries its own label.
 
-import type { DeliveryForecast, ForecastLate, IssueProgress, ScopeForecast } from "./forecast.js";
+import type {
+	DeliveryForecast,
+	ForecastLate,
+	IssueProgress,
+	ScopeForecast,
+} from "./forecast.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
-import type { ReleaseContentGroup, ReleaseState, ReleaseVerified } from "./releases.js";
+import type {
+	ReleaseContentGroup,
+	ReleaseState,
+	ReleaseVerified,
+} from "./releases.js";
 import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
@@ -137,20 +146,16 @@ export interface StatusLate extends Stamped {
 export const ROADMAP_HORIZONS = ["now", "next", "later"] as const;
 export type RoadmapHorizon = (typeof ROADMAP_HORIZONS)[number];
 
-/** How each horizon is filled and ordered, stated once so a reader can check the placement. */
-export const ROADMAP_RULES: Record<RoadmapHorizon, string> = {
-	now: "in delivery: its issues are being worked; soonest forecast landing first",
-	next: "agreed and not yet in delivery, soonest forecast first, then the oldest key",
-	later:
-		"deferred, with the reason and phase it was deferred to, then drafts not agreed yet, oldest key first",
-};
-
 export interface RoadmapItem {
 	key: string;
 	title: string;
 	state: RequirementState;
 	delivery: DeliveryForecast | null;
-	deferral: { reason: string; targetPhase: string | null; deferredAt: string } | null;
+	deferral: {
+		reason: string;
+		targetPhase: string | null;
+		deferredAt: string;
+	} | null;
 }
 
 export interface StatusRoadmap extends Stamped {

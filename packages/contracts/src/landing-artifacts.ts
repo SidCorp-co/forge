@@ -171,8 +171,6 @@ export type StorefrontArtifact =
 	| { kind: "theme"; id: string; files: StorefrontThemeFile[] }
 	| { kind: "setting"; key: string; value: string };
 
-export type StorefrontArtifactKind = StorefrontArtifact["kind"];
-
 export interface StorefrontThemeFile {
 	path: string;
 	/** The file's sha-256 (or a prefix of at least 8 hex) as the landing named it, else null. */

@@ -10,9 +10,9 @@ import {
   type ConversationWindowRow,
   codeAuthored,
   getConversation,
+  languageOfTag,
   type ReplyLanguage,
   readMessages,
-  replyLanguageOfTag,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
@@ -156,7 +156,7 @@ const ATTACHMENT_NAMELESS = { en: 'the file you attached', vi: 'tệp bạn đí
 async function askerLineLanguage(args: WebTurnArgs): Promise<ReplyLanguage> {
   return (
     askerLanguageOf(args.window.question) ??
-    replyLanguageOfTag((await readContentLanguage(args.project.id)).contentLanguage)
+    languageOfTag((await readContentLanguage(args.project.id)).contentLanguage)
   );
 }
 

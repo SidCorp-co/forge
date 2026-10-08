@@ -10,8 +10,6 @@ import { DecisionTarget } from "@/features/comments/components/decision-target";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { RequirementAnswerView } from "@forge/contracts/requirements";
-import Link from "next/link";
-import { issueHref } from "@/lib/routes/issues";
 import { useRequirementDecisions } from "../hooks";
 
 function AnswerRow({ a, slug }: { a: RequirementAnswerView; slug: string }) {
@@ -28,9 +26,7 @@ function AnswerRow({ a, slug }: { a: RequirementAnswerView; slug: string }) {
         {a.place.kind === "issue" ? (
           <>
             <span aria-hidden>·</span>
-            <Link href={issueHref(slug, a.place.key)} className="font-mono text-12 font-semibold text-link hover:underline" title={a.place.title}>
-              {a.place.key}
-            </Link>
+            <DecisionTarget slug={slug} target={{ scope: "issue", key: a.place.key, title: a.place.title }} />
           </>
         ) : null}
       </span>

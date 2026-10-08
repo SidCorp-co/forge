@@ -15,13 +15,13 @@ import {
   getConversation,
   groupHearing,
   handleForProject,
+  languageOfTag,
   linkedSpeakerOf,
   messageAuthorTokenId,
   personCount,
   type RequestTrack,
   readMessagesInRange,
   replyLanguageOf,
-  replyLanguageOfTag,
   replyTargetsOf,
   reserveDelivery,
   roomHandles,
@@ -396,7 +396,7 @@ async function takeTurn(
   track.handleName = inputs.handleName;
   track.language =
     replyLanguageOf(anchor?.text ?? speaker?.content) ??
-    replyLanguageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
+    languageOfTag((await readContentLanguage(venue.projectId)).contentLanguage);
   const group = venue.shape === 'group';
   const addressee =
     anchor && group && (await personCount(window.conversationId)) > 1 ? anchor.authorLabel : null;

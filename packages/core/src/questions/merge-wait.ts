@@ -7,15 +7,12 @@
 // still owed, so a park naming one is refused rather than left waiting on what already holds.
 
 import type { OutboxActor } from '@forge/contracts/outbox-events';
-import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
-import { agentQuestions, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { transition } from '../lifecycle/index.js';
-import { emitEvent } from '../outbox/index.js';
-import { recordAnswerOnIssue } from './answer-record.js';
+import { answerWaitingQuestions } from './answer-record.js';
 
 /** The issue whose merge mark answers a question. */
 export interface AwaitedMerge {
@@ -139,45 +136,11 @@ export async function answerMergeQuestions(
     args.actor?.type === 'user'
       ? { id: args.actor.id, agency: args.actor.agency }
       : { id: String(issue.created_by), agency: 'agent' as const };
-  const now = new Date();
-  for (const row of rows) {
-    const current = row.steps[row.steps.length - 1];
-    if (!current || isChoiceStep(current)) {
-      throw new Error(
-        `questions: question ${row.id} waits on a merge mark and its round is not free text — only a park writes that link, and a park asks in free text`,
-      );
-    }
-    const answered: QuestionStep = {
-      ...current,
-      answeredAt: now.toISOString(),
-      answerText: body,
-      answeredBy: answerer.id,
-    };
-    const steps = row.steps.map((s, i) => (i === row.steps.length - 1 ? answered : s));
-    await transition(tx, QUESTION_MACHINE, {
-      to: 'answered',
-      from: 'open',
-      set: { steps, updatedAt: now },
-      where: eq(agentQuestions.id, row.id),
-      actor: { type: 'user', id: answerer.id, agency: answerer.agency },
-      source: 'issues',
-      returning: ['id'],
-    });
-    await recordAnswerOnIssue(tx, {
-      issueId: row.issueId ?? null,
-      questionId: row.id,
-      round: answered.round,
-      answer: body,
-      by: answerer.id,
-      agency: answerer.agency,
-    });
-    await emitEvent(tx, 'question.answered', {
-      questionId: row.id,
-      projectId: row.projectId,
-      issueId: row.issueId ?? null,
-      answeredBy: answerer.id,
-      body,
-    });
-  }
-  return rows.map((r) => r.id);
+  return answerWaitingQuestions(tx, rows, {
+    body,
+    by: answerer.id,
+    agency: answerer.agency,
+    source: 'issues',
+    waitsOn: 'a merge mark',
+  });
 }

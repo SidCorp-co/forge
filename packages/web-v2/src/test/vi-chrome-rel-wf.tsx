@@ -27,8 +27,8 @@ import { productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
 
 // The Releases and Workflows screens the vi walking test renders, each filled from a query cache
-// seeded with data that carries no English word of its own: core's act texts are ones standing-copy
-// reads, and everything a person or an agent wrote is placeholder words.
+// seeded with data that carries no English word of its own: core's act texts are registry keys the
+// said reader renders, and everything a person or an agent wrote is placeholder words.
 
 const P = "p1";
 const AT = "2026-10-07T10:00:00Z";

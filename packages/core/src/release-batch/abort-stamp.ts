@@ -15,7 +15,7 @@ import { writeRunMetadata } from '../pipeline/index.js';
 import { refuseRelease } from './refuse.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
-interface AbortStamp {
+export interface AbortStamp {
   id: string;
   at: string;
   reason: string;
@@ -38,7 +38,8 @@ export interface AbortBlocker {
   waitingFor: string;
 }
 
-function readAbortStamp(metadata: unknown): AbortStamp | null {
+/** The abort stamp a run's metadata carries, or null where no abort has begun: the one reader of it. */
+export function readAbortStamp(metadata: unknown): AbortStamp | null {
   const raw = (metadata as { abort?: unknown } | null)?.abort;
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
@@ -52,6 +53,7 @@ function readAbortStamp(metadata: unknown): AbortStamp | null {
     closed: Array.isArray(r.closed)
       ? r.closed.filter((id): id is string => typeof id === 'string')
       : null,
+    ...(typeof r.pushed === 'boolean' ? { pushed: r.pushed } : {}),
   };
 }
 
