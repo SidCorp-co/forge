@@ -159,6 +159,25 @@ describe('ba_suggest on a requirement whose only revision is a draft', () => {
   });
 });
 
+describe('a person editing their own draft (the same rewrite, kept at draft)', () => {
+  it('rewrites the draft in place, keeps its state and its codes', async () => {
+    const key = await newRequirement('A lane edits its draft');
+    ok(
+      await as('PUT', `/requirements/${key}/revisions/1`, {
+        reason: 'reworded',
+        criteria: [KEPT, REWORDED, ADDED],
+      }),
+    );
+    const after = await read(key);
+    expect(after.latestRevision).toEqual({ revision: 1, state: 'draft' });
+    expect(codesOf((after.revisions as Doc[])[0])).toEqual([
+      `BC-1 ${KEPT.body}`,
+      `BC-2 ${REWORDED.body}`,
+      `BC-3 ${ADDED.body}`,
+    ]);
+  });
+});
+
 describe('ba_suggest on a requirement with a current revision', () => {
   it('with no open revision: based on the head, its accept writes the next revision', async () => {
     const key = await newRequirement('A lane proves on the running build');
@@ -234,6 +253,31 @@ describe('ba_suggest on a requirement with a current revision', () => {
     // r1 is now the head and nothing is open: the base the turn read (r1) is still r1
     const made = await call(tools, 'ba_suggest', wish([KEPT, ADDED]));
     expect(made.isError, JSON.stringify(made.json)).toBe(false);
+  });
+});
+
+describe('the base is what the turn read, never re-read behind its back', () => {
+  it('a head that moved after the read refuses the suggestion as stale, naming both', async () => {
+    const key = await newRequirement('A lane does not overwrite what it never saw');
+    ok(await as('POST', `/requirements/${key}/revisions/1/propose`, {}));
+    ok(await as('POST', `/requirements/${key}/revisions/1/accept`, { reason: 'agreed' }));
+    const tools = await turn(key);
+    await call(tools, 'ba_read_requirement', {}); // head r1, nothing open
+    ok(
+      await as('POST', `/requirements/${key}/revisions`, {
+        baseRevision: 1,
+        reason: 'r2 agreed meanwhile',
+        criteria: [KEPT, { body: 'a criterion the turn never read' }],
+      }),
+    );
+    ok(await as('POST', `/requirements/${key}/revisions/2/propose`, {}));
+    ok(await as('POST', `/requirements/${key}/revisions/2/accept`, { reason: 'agreed' }));
+    const refused = await call(tools, 'ba_suggest', wish([KEPT, ADDED]));
+    expect(refused.isError).toBe(true);
+    expect(refused.json.code).toBe('SUGGESTION_BASE_STALE');
+    expect(refused.json.detail).toContain(
+      "based on revision 1, but the target's head is revision 2",
+    );
   });
 });
 
