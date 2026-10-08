@@ -22,7 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
-import { jobStatuses, jobTypes } from './job-vocabulary.js';
+import { jobEventKinds } from './job-event-vocabulary.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -31,12 +31,7 @@ import {
 } from './session-vocabulary.js';
 import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
 
-export {
-  type JobStatus,
-  type JobType,
-  jobStatuses,
-  jobTypes,
-} from './job-vocabulary.js';
+export { type JobEventKind, jobEventKinds } from './job-event-vocabulary.js';
 export {
   type AgentSessionFailureReason,
   type AgentSessionKind,
@@ -587,6 +582,37 @@ export const pairingCodes = pgTable(
   }),
 );
 
+export const jobStatuses = [
+  'queued',
+  'dispatched',
+  'running',
+  'held',
+  'done',
+  'failed',
+  'cancelled',
+] as const;
+export type JobStatus = (typeof jobStatuses)[number];
+
+export const jobTypes = [
+  'triage',
+  'clarify',
+  'plan',
+  'code',
+  'review',
+  'test',
+  'staging',
+  'release',
+  'fix',
+  'custom',
+  'pm',
+  'smoke',
+  'release_batch',
+  'reconcile',
+  'verify_skill',
+  'drive',
+] as const;
+export type JobType = (typeof jobTypes)[number];
+
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
 
@@ -748,21 +774,6 @@ export const promptBlobs = pgTable('prompt_blobs', {
   firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
   refCount: integer('ref_count').notNull().default(0),
 });
-
-export const jobEventKinds = [
-  'stdout',
-  'stderr',
-  'tool_call',
-  'tool_result',
-  'progress',
-  'result',
-  // ISS-442 C0 — audited manual intervention (e.g. single-job cancel). `kind`
-  // is a plain text column, so this is additive with no migration; the
-  // interventions metric (C6) counts rows with this kind.
-  'intervention',
-  'kill_ack',
-] as const;
-export type JobEventKind = (typeof jobEventKinds)[number];
 
 export const jobEvents = pgTable(
   'job_events',
