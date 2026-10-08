@@ -10,7 +10,7 @@ import { BC_VERDICT_LABELS, type BcVerdict } from "@forge/contracts/requirements
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { core, client, hidingOf, mixed, page, peek, railRepeats, STEP_WORDS, strayInStrip } from "@/test/requirement-progress";
+import { core, hidingOf, mixed, page, peek, railRepeats, STEP_WORDS, strayInStrip } from "@/test/requirement-progress";
 import { RULE, say, waitingOn } from "@/test/said";
 import { reqDetail } from "@/test/vi-chrome-requirements";
 import type { RequirementDetail } from "../types";

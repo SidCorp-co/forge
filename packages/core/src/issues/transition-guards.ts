@@ -31,6 +31,7 @@
  *   dropped            a reason                                                  VOID_REASON_REQUIRED
  */
 
+import { CHECKLIST_GUARD } from '@forge/contracts/checklists';
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { IssueTransitionRefusalCode } from '@forge/contracts/issue-machine';
 import {
@@ -481,12 +482,12 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
         return refusalOf(edgeFault({ from: input.row.status, to: input.to, leftStatus: left }));
       }
       for (const name of entryGuardsOf(input.to)) {
-        if (name === 'checklist') {
+        if (name === CHECKLIST_GUARD) {
           // the entry asks a checklist, which only its own edge runs: a park with no recorded left
           // status cannot enter it on the park's edge
           return refusalOf({
             code: 'ILLEGAL_TRANSITION',
-            detail: `this park recorded no status it left, and ${quote(input.to)} is entered only through its checklist, from \`draft\`. Move it to a status the park can return to, or drop it.`,
+            detail: `this park recorded no status it left, and ${quote(input.to)} is entered only through the edge that asks its checklist. Move it to a status the park can return to, or drop it.`,
             details: { from: input.row.status, to: input.to, leftStatus: null },
           });
         }

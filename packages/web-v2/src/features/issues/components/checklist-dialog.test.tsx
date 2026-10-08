@@ -21,8 +21,9 @@ const refusals = [
 describe("the checklist form", () => {
   it("has one field per question of the definition, the refusal on the field its path names", () => {
     const prompt = checklistPromptOf(refusals);
-    expect(prompt?.checklist).toBe("issue_ready");
-    const read = checklistFieldsOf(prompt!);
+    if (!prompt) throw new Error("a refusal naming a checklist opened no prompt");
+    expect(prompt.checklist).toBe("issue_ready");
+    const read = checklistFieldsOf(prompt);
     expect(read?.fields.map((f) => f.name)).toEqual(checklistFormOf(ISSUE_READY_CHECKLIST).fields.map((f) => f.name));
     expect(read?.fields.find((f) => f.name === "requirement")?.error).toBe(refusals[0]?.detail);
     expect(read?.fields.filter((f) => f.error !== null)).toHaveLength(1);

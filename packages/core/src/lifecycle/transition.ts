@@ -4,23 +4,12 @@
  * compare-and-set under the kernel's transaction-local flag (the only write the status triggers let
  * through), records the move in `kernel_transitions` with the version of the machine that judged
  * it, and writes its outbox event, all in one transaction. Every reaction to a move (the activity
- * feed, a broadcast, a dispatch) is a consumer of that event.
- *
- * An edge naming a checklist (`@forge/contracts/checklist-registry:CHECKLISTS`) is judged by the
- * kernel itself, whatever door the move came through: the mover's answers are parsed, the item's own
- * record is read under the lock, and a blocking gap refuses the move naming its question. A passed
- * move records the checklist, its version and every answer, given or assumed; a refused one is
- * recorded in `kernel_refused_moves`.
+ * feed, a broadcast, a dispatch) is a consumer of that event. An edge naming a checklist is judged
+ * by the kernel itself (`checklist-judge.ts`), and a passed move records every answer it took.
  */
 
-import { CHECKLISTS, type ChecklistId, isChecklistId } from '@forge/contracts/checklist-registry';
-import {
-  type ChecklistEvaluation,
-  checklistRefusals,
-  evaluateChecklist,
-  parseAnswers,
-  type RecordAnswers,
-} from '@forge/contracts/checklists';
+import { isChecklistId } from '@forge/contracts/checklist-registry';
+import { CHECKLIST_GUARD, type ChecklistEvaluation } from '@forge/contracts/checklists';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
 import {
   emitsTransition,
@@ -40,20 +29,22 @@ import {
 import { and, inArray, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { delegationOf } from '../credentials/pat-scope.js';
-import { db } from '../db/client.js';
 import { asKernelStatusWrite, type KernelExecutor } from '../db/kernel-marker.js';
-import {
-  type KernelTransitionActorType,
-  kernelRefusedMoves,
-  kernelTransitions,
-} from '../db/schema.js';
+import { type KernelTransitionActorType, kernelTransitions } from '../db/schema.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { emitEvents } from '../outbox/index.js';
+import {
+  answersToNoChecklist,
+  judgeChecklist,
+  type MoveChecklist,
+  type RefusedMove,
+  recordRefusedMoves,
+} from './checklist-judge.js';
 import { type MachineRow, machineTable } from './machine-tables.js';
 
-export type { KernelExecutor };
+export type { KernelExecutor, MoveChecklist };
 
-type Tx = Parameters<Parameters<KernelExecutor['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<KernelExecutor['transaction']>[0]>[0];
 
 /**
  * Who moves the rows. A user actor's credential and delegation are recorded with the move: the ones
@@ -82,8 +73,30 @@ function credentialOf(actor: KernelActor): { tokenId: string | null; onBehalfOf:
   return { tokenId, onBehalfOf };
 }
 
+/** Who made a move and through what, as `kernel_transitions` and `kernel_refused_moves` record it. */
+export interface MoverColumns {
+  actorType: KernelTransitionActorType;
+  actorAgency: ActorAgency;
+  actorId: string | null;
+  actorTokenId: string | null;
+  actorOnBehalfOf: string | null;
+  source: string;
+}
+
+function moverColumnsOf(actor: KernelActor, source: string): MoverColumns {
+  const credential = credentialOf(actor);
+  return {
+    actorType: actor.type,
+    actorAgency: agencyOf(actor),
+    actorId: actor.id ?? null,
+    actorTokenId: credential.tokenId,
+    actorOnBehalfOf: credential.onBehalfOf,
+    source,
+  };
+}
+
 /** A row as the guards and hooks see it before the write: its id and the status it is leaving. */
-interface PriorRow<E extends MachineEntity> {
+export interface PriorRow<E extends MachineEntity> {
   id: string;
   status: StateOf<E>;
 }
@@ -102,19 +115,6 @@ export interface GuardInput<E extends MachineEntity> {
  * and handed to it, never fetched over a second connection or the network while the lock is held.
  */
 export type Guard<E extends MachineEntity> = (input: GuardInput<E>) => Promise<Refusal | null>;
-
-/** The guard an edge names when it names a checklist: the kernel's own, never a caller's. */
-const CHECKLIST_GUARD = 'checklist';
-
-/**
- * What a move along an edge naming a checklist carries: the mover's answers as the door received
- * them, which the kernel parses, and the reader of what the item's own record answers, which runs
- * under the lock through the move's transaction and reads nothing else.
- */
-export interface MoveChecklist<E extends MachineEntity> {
-  answers?: unknown;
-  record: (input: { tx: Tx; row: PriorRow<E>; checklist: ChecklistId }) => Promise<RecordAnswers>;
-}
 
 export interface TransitionArgs<E extends MachineEntity, K extends keyof MachineRow<E>> {
   to: StateOf<E>;
@@ -181,83 +181,14 @@ export async function transition<
   const written = await exec.transaction((tx) =>
     writeTransition(tx, machine as unknown as MachineOf<M['entity']>, args),
   );
-  await recordRefusedMoves(machine as unknown as MachineOf<M['entity']>, args, written.refusedMoves);
+  await recordRefusedMoves(
+    machine as unknown as MachineOf<M['entity']>,
+    args.to,
+    moverColumnsOf(args.actor, args.source),
+    written.refusedMoves,
+  );
   return written.result;
 }
-
-/** A move refused along an edge naming a checklist, with every refusal it answered. */
-interface RefusedMove {
-  entityId: string;
-  from: string;
-  checklist: ChecklistId;
-  refusals: Refusal[];
-}
-
-/**
- * Written on a connection of its own, after the move's transaction: a caller that throws the
- * refusal rolls its own transaction back, and the record of the refused move must outlive that.
- * The table has no foreign key, so the row lock the caller may still hold does not wait on it.
- */
-async function recordRefusedMoves<E extends MachineEntity>(
-  machine: MachineOf<E>,
-  args: Pick<TransitionArgs<E, never>, 'to' | 'actor' | 'source'>,
-  moves: readonly RefusedMove[],
-): Promise<void> {
-  if (moves.length === 0) return;
-  const credential = credentialOf(args.actor);
-  await db.insert(kernelRefusedMoves).values(
-    moves.map((m) => ({
-      entity: machine.entity,
-      entityId: m.entityId,
-      fromStatus: m.from,
-      toStatus: args.to,
-      machineVersion: machine.version,
-      checklist: m.checklist,
-      checklistVersion: CHECKLISTS[m.checklist].version,
-      refusals: m.refusals,
-      actorType: args.actor.type,
-      actorAgency: agencyOf(args.actor),
-      actorId: args.actor.id ?? null,
-      actorTokenId: credential.tokenId,
-      actorOnBehalfOf: credential.onBehalfOf,
-      source: args.source,
-    })),
-  );
-}
-
-type ChecklistJudgement = { evaluation: ChecklistEvaluation } | { refusals: Refusal[] };
-
-async function judgeChecklist<E extends MachineEntity>(
-  tx: Tx,
-  machine: MachineOf<E>,
-  edge: MachineEdge<StateOf<E>>,
-  row: PriorRow<E>,
-  args: TransitionArgs<E, never>,
-): Promise<ChecklistJudgement> {
-  const id = edge.checklist;
-  if (id === undefined || !isChecklistId(id)) {
-    throw new Error(
-      `transition: ${machine.entity} \`${edge.from}\` → \`${edge.to}\` names the checklist guard, and no registered checklist`,
-    );
-  }
-  if (!args.checklist) {
-    throw new Error(
-      `transition: ${machine.entity} \`${edge.from}\` → \`${edge.to}\` asks checklist \`${id}\`, and ${args.source} supplied no reader of the item's record`,
-    );
-  }
-  const checklist = CHECKLISTS[id];
-  const parsed = parseAnswers(checklist, args.checklist.answers);
-  if (!parsed.ok) return { refusals: parsed.refusals };
-  const record = await args.checklist.record({ tx, row, checklist: id });
-  const evaluation = evaluateChecklist(checklist, { given: parsed.answers, record });
-  if (!evaluation.complete) return { refusals: checklistRefusals(evaluation) };
-  return { evaluation };
-}
-
-const carriesAnswers = (answers: unknown): boolean =>
-  answers !== undefined &&
-  answers !== null &&
-  (typeof answers !== 'object' || Object.keys(answers).length > 0);
 
 /** Every guard the edge names, in order, stopping at the first that refuses. */
 async function judgeRow<E extends MachineEntity>(
@@ -268,14 +199,14 @@ async function judgeRow<E extends MachineEntity>(
   args: TransitionArgs<E, never>,
   judged: Map<string, ChecklistEvaluation>,
 ): Promise<Refusal[]> {
-  if (edge.checklist === undefined && carriesAnswers(args.checklist?.answers)) {
-    return [
-      {
-        code: 'CHECKLIST_ANSWER_INVALID',
-        path: '/answers',
-        detail: `The move ${machine.entity} \`${row.status}\` → \`${args.to}\` asks no checklist, so it takes no answers. Send the move without them.`,
-      },
-    ];
+  if (edge.checklist === undefined) {
+    const refused = answersToNoChecklist(
+      machine.entity,
+      row.status,
+      args.to,
+      args.checklist?.answers,
+    );
+    if (refused.length > 0) return refused;
   }
   for (const name of edge.guards) {
     if (name === CHECKLIST_GUARD) {
@@ -351,7 +282,10 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   machine: MachineOf<E>,
   args: TransitionArgs<E, K>,
 ): Promise<Written<Pick<MachineRow<E>, K | 'id'>>> {
-  const done = (result: TransitionResult<Pick<MachineRow<E>, K | 'id'>>, refusedMoves: RefusedMove[] = []) => ({
+  const done = (
+    result: TransitionResult<Pick<MachineRow<E>, K | 'id'>>,
+    refusedMoves: RefusedMove[] = [],
+  ) => ({
     result,
     refusedMoves,
   });
@@ -398,11 +332,23 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
       throw new Error(
         `transition: ${machine.entity} \`${row.status}\` has no edge to \`${args.to}\``,
       );
-    const refused = await judgeRow(tx, machine, edge, row, args as TransitionArgs<E, never>, judged);
+    const refused = await judgeRow(
+      tx,
+      machine,
+      edge,
+      row,
+      args as TransitionArgs<E, never>,
+      judged,
+    );
     if (refused.length === 0) continue;
     refusals.push(...refused);
     if (edge.checklist !== undefined && isChecklistId(edge.checklist)) {
-      refusedMoves.push({ entityId: row.id, from: row.status, checklist: edge.checklist, refusals: refused });
+      refusedMoves.push({
+        entityId: row.id,
+        from: row.status,
+        checklist: edge.checklist,
+        refusals: refused,
+      });
     }
   }
   if (refusals.length > 0) return done({ rows: [], refusals }, refusedMoves);
@@ -427,26 +373,21 @@ async function writeTransition<E extends MachineEntity, K extends keyof MachineR
   )) as Array<Pick<MachineRow<E>, K | 'id'> & { id: string }>;
 
   const left = new Map(prior.map((r) => [r.id, r.status]));
-  const credential = credentialOf(args.actor);
+  const mover = moverColumnsOf(args.actor, args.source);
   const records = rows.map((row) => {
     const evaluation = judged.get(row.id);
     return {
-    entity: machine.entity,
-    entityId: row.id,
-    fromStatus: left.get(row.id) ?? null,
-    toStatus: args.to,
-    machineVersion: machine.version,
-    reason: args.reason ?? null,
-    actorType: args.actor.type,
-    actorAgency: agencyOf(args.actor),
-    actorId: args.actor.id ?? null,
-    actorTokenId: credential.tokenId,
-    actorOnBehalfOf: credential.onBehalfOf,
-    source: args.source,
-    checklist: evaluation?.checklist ?? null,
-    checklistVersion: evaluation?.version ?? null,
-    checklistAnswers: evaluation ? [...evaluation.answers] : null,
-  };
+      entity: machine.entity,
+      entityId: row.id,
+      fromStatus: left.get(row.id) ?? null,
+      toStatus: args.to,
+      machineVersion: machine.version,
+      reason: args.reason ?? null,
+      ...mover,
+      checklist: evaluation?.checklist ?? null,
+      checklistVersion: evaluation?.version ?? null,
+      checklistAnswers: evaluation ? [...evaluation.answers] : null,
+    };
   });
   if (records.length > 0) await tx.insert(kernelTransitions).values(records);
 

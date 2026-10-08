@@ -4,6 +4,7 @@
 // opens through the issue-ready checklist (`checklist-registry.ts:ISSUE_READY_CHECKLIST`).
 
 import { ISSUE_READY_CHECKLIST } from "./checklist-registry.js";
+import { CHECKLIST_GUARD } from "./checklists.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 import { defineMachine, type MachineEdge } from "./state-machine.js";
 
@@ -182,9 +183,6 @@ export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 export const ISSUE_ADMIT_PERMISSION = "issues.admit";
 
 const MOVE = "project.write";
-
-/** The guard the kernel runs itself, on an edge that names a checklist; no caller implements it. */
-const CHECKLIST_GUARD = "checklist";
 
 type IssueEdge = MachineEdge<IssueStatus> & {
 	readonly guards: readonly (IssueGuard | typeof CHECKLIST_GUARD)[];

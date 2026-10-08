@@ -3,6 +3,7 @@
 // writes a status only along an edge declared here; the column's CHECK holds the same `states`.
 
 import { CHECKLISTS, isChecklistId } from "./checklist-registry.js";
+import { CHECKLIST_GUARD } from "./checklists.js";
 import { fingerprint } from "./fingerprint.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
@@ -71,7 +72,7 @@ function checklistFaults(machine: MachineDeclaration<string, string>): string[] 
 	const faults: string[] = [];
 	for (const e of machine.edges) {
 		const move = `\`${e.from}\` → \`${e.to}\``;
-		const guarded = e.guards.includes("checklist");
+		const guarded = e.guards.includes(CHECKLIST_GUARD);
 		if (guarded !== (e.checklist !== undefined)) {
 			faults.push(
 				guarded

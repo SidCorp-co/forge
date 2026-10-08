@@ -16,8 +16,8 @@ import { isRefusal } from '../../src/lib/refusal.js';
 import { type ApiResponse, api, patToken, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
-  createTestDevice,
   createReadyDraftIssue,
+  createTestDevice,
   createTestProject,
   createTestUser,
   rows,
@@ -82,7 +82,13 @@ async function moveAsLane(id: string, answers?: unknown): Promise<ApiResponse['b
   }
 }
 
-type Row = { code: string; path: string; detail: string; question?: string; field?: string };
+type Row = {
+  code: string;
+  path: string;
+  detail: string;
+  question?: string | undefined;
+  field?: string | undefined;
+};
 const refusalsOf = (body: ApiResponse['body']): Row[] =>
   ((body.error as { refusals?: Row[] } | undefined)?.refusals ?? []).map(
     ({ code, path, detail, question, field }) => ({ code, path, detail, question, field }),
@@ -125,7 +131,12 @@ describe('an incomplete issue-ready checklist', () => {
     for (const door of ['web', 'api', 'agent', 'lane']) expect(seen[door], door).toEqual(expected);
     expect(await statusOf(id)).toBe('draft');
 
-    const refused = await rows<{ actor_agency: string; checklist: string; checklist_version: number; n: number }>(sql`
+    const refused = await rows<{
+      actor_agency: string;
+      checklist: string;
+      checklist_version: number;
+      n: number;
+    }>(sql`
       SELECT actor_agency, checklist, checklist_version, jsonb_array_length(refusals) AS n
         FROM kernel_refused_moves WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
@@ -156,7 +167,11 @@ describe('a complete issue-ready checklist', () => {
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     expect(await statusOf(id)).toBe('open');
 
-    const [move] = await rows<{ checklist: string; checklist_version: number; checklist_answers: unknown }>(sql`
+    const [move] = await rows<{
+      checklist: string;
+      checklist_version: number;
+      checklist_answers: unknown;
+    }>(sql`
       SELECT checklist, checklist_version, checklist_answers FROM kernel_transitions
        WHERE entity = 'issue' AND entity_id = ${id} AND to_status = 'open'
     `);
@@ -212,12 +227,19 @@ describe('a complete issue-ready checklist', () => {
 describe('a wrong answer is refused by name at every door', () => {
   it('an answer the record owns, through the API and a lane run alike', async () => {
     const id = await readyIssue();
-    const res = await moveThrough('api', id, { toStatus: 'open', answers: { requirement: 'REQ-9' } });
+    const res = await moveThrough('api', id, {
+      toStatus: 'open',
+      answers: { requirement: 'REQ-9' },
+    });
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     const lane = refusalsOf(await moveAsLane(id, { requirement: 'REQ-9' }));
     expect(refusalsOf(res.body)).toEqual(lane);
     expect(lane).toEqual([
-      expect.objectContaining({ code: 'CHECKLIST_ANSWER_INVALID', path: '/answers/requirement', field: 'requirementId' }),
+      expect.objectContaining({
+        code: 'CHECKLIST_ANSWER_INVALID',
+        path: '/answers/requirement',
+        field: 'requirementId',
+      }),
     ]);
     expect(await statusOf(id)).toBe('draft');
   });
@@ -225,7 +247,11 @@ describe('a wrong answer is refused by name at every door', () => {
   it('answers sent to a move that asks no checklist', async () => {
     const id = await readyIssue();
     await moveThrough('web', id, { toStatus: 'open' });
-    const res = await moveThrough('web', id, { toStatus: 'on_hold', reason: 'later', answers: { hotfix: 'no' } });
+    const res = await moveThrough('web', id, {
+      toStatus: 'on_hold',
+      reason: 'later',
+      answers: { hotfix: 'no' },
+    });
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(refusalsOf(res.body)).toEqual([
       expect.objectContaining({ code: 'CHECKLIST_ANSWER_INVALID', path: '/answers' }),
@@ -240,7 +266,9 @@ describe('GET /api/issues/:id/checklist', () => {
       INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_agency, actor_id, source)
       VALUES ('issue', ${id}, 'draft', 'open', 'user', 'human', ${ownerId}, 'issues')
     `);
-    await withKernelMarker(db, (tx) => tx.execute(sql`UPDATE issues SET status = 'draft' WHERE id = ${id}`));
+    await withKernelMarker(db, (tx) =>
+      tx.execute(sql`UPDATE issues SET status = 'draft' WHERE id = ${id}`),
+    );
     await moveThrough('web', id, { toStatus: 'open' });
 
     const res = await api(doors.web, 'GET', `/api/issues/${id}/checklist`);
@@ -253,7 +281,12 @@ describe('GET /api/issues/:id/checklist', () => {
       moves: Array<{ standing: string; countsAsPassed: boolean; checklist: unknown }>;
     }>;
     expect(checklist?.id).toBe('issue_ready');
-    expect(checklist?.form.fields.map((f) => f.name)).toEqual(['requirement', 'criteria', 'design', 'hotfix']);
+    expect(checklist?.form.fields.map((f) => f.name)).toEqual([
+      'requirement',
+      'criteria',
+      'design',
+      'hotfix',
+    ]);
     expect(Object.keys(checklist?.input.properties ?? {})).toEqual(['hotfix']);
     expect(checklist?.now.complete).toBe(true);
     expect(checklist?.moves.map((m) => [m.standing, m.countsAsPassed])).toEqual([

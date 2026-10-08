@@ -74,7 +74,9 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
     };
   }
   const codes = [...new Set(rows.map((r) => r.code))].join(', ');
-  return { value: `${rows.length} criteria, tracing ${codes} of ${p.key} revision ${p.plannedRevision}` };
+  return {
+    value: `${rows.length} criteria, tracing ${codes} of ${p.key} revision ${p.plannedRevision}`,
+  };
 }
 
 async function designAnswer(exec: Reader, issueId: string): Promise<RecordAnswer> {

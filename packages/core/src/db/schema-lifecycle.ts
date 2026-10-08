@@ -63,7 +63,9 @@ export const kernelRefusedMoves = pgTable(
     machineVersion: integer('machine_version').notNull(),
     checklist: text('checklist').notNull(),
     checklistVersion: integer('checklist_version').notNull(),
-    refusals: jsonb('refusals').$type<Array<ChecklistRefusal | { code: string; path: string; detail: string }>>().notNull(),
+    refusals: jsonb('refusals')
+      .$type<Array<ChecklistRefusal | { code: string; path: string; detail: string }>>()
+      .notNull(),
     actorType: text('actor_type', { enum: kernelTransitionActorTypes }).notNull(),
     actorAgency: text('actor_agency', { enum: actorAgencies }).notNull(),
     actorId: uuid('actor_id'),

@@ -10,6 +10,9 @@ import { z } from "zod";
 import { fingerprint } from "./fingerprint.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
+/** The guard an edge names when it names a checklist. The kernel runs it itself; no caller implements it. */
+export const CHECKLIST_GUARD = "checklist";
+
 export const CHECKLIST_REFUSAL_CODES = [
 	"CHECKLIST_INCOMPLETE",
 	"CHECKLIST_ANSWER_INVALID",
