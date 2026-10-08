@@ -161,8 +161,16 @@ export interface UncheckedRule {
  * why, so a failure on Forge's side reads as one and never as a held claim with "nothing failed".
  */
 const uncheckedLine = (name: string, unchecked: readonly UncheckedRule[]): string => {
-  const byRule = new Map(unchecked.map((u) => [u.rule, u.why]));
-  const which = [...byRule].map(([rule, why]) => `the ${rule} check, because ${why}`).join('; ');
+  const byWhy = new Map<string, Set<string>>();
+  for (const u of unchecked) byWhy.set(u.why, (byWhy.get(u.why) ?? new Set()).add(u.rule));
+  const which = [...byWhy]
+    .map(([why, rules]) => {
+      const names = [...rules];
+      const last = names.pop();
+      const listed = names.length ? `${names.join(', ')} and ${last} checks` : `${last} check`;
+      return `the ${listed}, because ${why}`;
+    })
+    .join('; ');
   return `${name} wrote an answer, but a reply check it needed could not run: ${which}. So the answer was not sent. This failed on Forge's side and is not about your question; asking again may get an answer once the check can run.`;
 };
 

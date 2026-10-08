@@ -100,9 +100,17 @@ describe('a status a reply gives an issue is the status the tracker holds, read 
     expect(ungroundedClaims('ISS-744 chưa đóng.', [], f)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
     expect(ungroundedClaims('Is ISS-744 closed?', [], f)).toEqual([]);
     expect(ungroundedClaims('ISS-9999 is closed.', [], f)).toEqual([]);
-    expect(
-      ungroundedClaims('ISS-744 đã đóng.', [], facts({ ...f, issueLookupFailed: true })), // i18n-allow: a production ask or reply replayed as the test case
-    ).toEqual([]);
+  });
+
+  it('holds a status it cannot check where the issue rows could not be read, naming why', () => {
+    const failed = facts({ ...rows([[744, 'open']]), issueLookupFailed: true });
+    const held = ungroundedClaims('ISS-744 đã đóng.', [], failed); // i18n-allow: a production ask or reply replayed as the test case
+    expect(held).toHaveLength(1);
+    expect(held[0]?.unchecked).toBe(
+      'the issues it names could not be read from the tracker this turn',
+    );
+    expect(ungroundedClaims('Is ISS-744 closed?', [], failed)).toEqual([]);
+    expect(ungroundedClaims('ISS-744 chưa đóng.', [], failed)).toEqual([]); // i18n-allow: a production ask or reply replayed as the test case
   });
 });
 
