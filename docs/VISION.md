@@ -40,6 +40,12 @@ make product decisions without depending on a developer for each step.
 **Requirement + Workflow → Issue → Pipeline → Skills + Memory → Agent/Human → Evidence → State →
 Outcome → Requirement proven or corrected → Memory → next issue**
 
+**Product leads, Delivery conforms.** Requirements, workflows, feedback and releases are the
+**Product**: what is wanted, how it should flow, what its users say, and what is live and proven.
+They are made exact first. **Delivery** is everything that turns them into a running build — issue,
+pipeline, review, deploy — and it ends only when a verdict holds a criterion on that build. Releases
+are where the two meet: Delivery produces them, and the Product reads them as the truth of what runs.
+
 Forge is not a pipeline engine, an agent runner, a memory store or a dashboard in isolation. **The
 lifecycle makes skills and memory part of execution rather than optional context.** Evidence makes
 state trustworthy. Outcomes feed the next run. The dashboard exists for **control** — see, audit,
@@ -154,8 +160,8 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    projects define policy.
 8. **memory-must-be-trustworthy** — memory is part of the lifecycle's learning loop, not passive
    storage. Its provenance, correctness, relevance and lifecycle are core system concerns.
-9. **requirement-leads-delivery** — the requirement and its workflow say what is expected, and they
-   are made right first; delivery conforms to them. Where what was built and what is expected
+9. **requirement-leads-delivery** — the Product (requirements, workflows, feedback, releases) says
+   what is expected, and it is made right first; Delivery conforms to it. Where what was built and what is expected
    disagree, the requirement or the workflow is corrected before more is built, never left to drift
    behind the code. Work is delivered when a criterion it names holds on the running build, not when
    it ships. Old code is cleaned as the work meets it, inside that work, not in a separate sweep.
