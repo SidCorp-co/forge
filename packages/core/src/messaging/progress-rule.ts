@@ -10,6 +10,7 @@
 
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { ProgressFacts } from './facts.js';
+import { saidBackAt } from './figure-exemptions.js';
 import { blankMarkedClauses } from './reply-marks.js';
 
 const UUID_TOKEN_RE = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
@@ -108,6 +109,8 @@ interface FigureClaim {
   readonly keyword: string;
   /** The claim as the reply wrote it, for the refusal to quote back. */
   readonly claim: string;
+  /** Where its number stands in the reply. */
+  readonly at: number;
 }
 
 /** Every figure the reply states about how many issues sit in a progress state. */
@@ -124,11 +127,12 @@ function progressContextNumbers(reply: string, scanText: string): FigureClaim[] 
     const end = (m.index ?? 0) + whole.length;
     if (/^\s*%/.test(scanText.slice(end))) continue;
     if (!countsIssues(scanText, end)) continue;
-    found.push({ n: figure(numStr), keyword, claim: spoken(m) });
+    const at = end - numStr.length;
+    found.push({ n: figure(numStr), keyword, claim: spoken(m), at });
   }
   for (const m of scanText.matchAll(NUMBER_BEFORE_KEYWORD_RE)) {
     const [, numStr, keyword] = m as unknown as [string, string, string];
-    found.push({ n: figure(numStr), keyword, claim: spoken(m) });
+    found.push({ n: figure(numStr), keyword, claim: spoken(m), at: m.index ?? 0 });
   }
   return found;
 }
@@ -137,17 +141,18 @@ function progressContextNumbers(reply: string, scanText: string): FigureClaim[] 
 function progressContextPercents(
   reply: string,
   scanText: string,
-): Array<{ pct: number; keyword: string; claim: string }> {
-  const found: Array<{ pct: number; keyword: string; claim: string }> = [];
+): Array<{ pct: number; keyword: string; claim: string; at: number }> {
+  const found: Array<{ pct: number; keyword: string; claim: string; at: number }> = [];
   const spoken = (m: RegExpMatchArray): string =>
     reply.slice(m.index ?? 0, (m.index ?? 0) + m[0].length).trim();
   for (const m of scanText.matchAll(PERCENT_AFTER_KEYWORD_RE)) {
-    const [, keyword, pctStr] = m as unknown as [string, string, string];
-    found.push({ pct: Number(pctStr), keyword, claim: spoken(m) });
+    const [whole, keyword, pctStr] = m as unknown as [string, string, string];
+    const at = (m.index ?? 0) + whole.lastIndexOf(pctStr);
+    found.push({ pct: Number(pctStr), keyword, claim: spoken(m), at });
   }
   for (const m of scanText.matchAll(PERCENT_BEFORE_KEYWORD_RE)) {
     const [, pctStr, keyword] = m as unknown as [string, string, string];
-    found.push({ pct: Number(pctStr), keyword, claim: spoken(m) });
+    found.push({ pct: Number(pctStr), keyword, claim: spoken(m), at: m.index ?? 0 });
   }
   return found;
 }
@@ -171,9 +176,10 @@ export function countsRead(texts: readonly string[]): ReadonlySet<number> {
 }
 
 /**
- * A figure the person typed is theirs, said back: "I can't say we are 87% done" states no figure
+ * A figure the person typed is theirs only said back: "I can't say we are 87% done" states no figure
  * of the reply's own (QA of ISS-420 on dev.185: that honest refusal was held as a progress claim,
  * quoting words the reply never wrote, so it could not be marked and the fallback went out instead).
+ * Stated as the project's ("The project is 87% done."), it is held like any other (REQ-32 BC-6).
  */
 function judge(
   reply: string,
@@ -182,11 +188,14 @@ function judge(
   asked: ReadonlySet<number> = new Set(),
 ): RuleBreak[] {
   const scanText = stripNonFigureTokens(reply);
+  const theirs = (n: number, at: number) => asked.has(n) && saidBackAt(reply, at);
   if (facts === null) {
     const numbers = progressContextNumbers(reply, scanText).filter(
-      ({ n }) => !read.has(n) && !asked.has(n),
+      ({ n, at }) => !read.has(n) && !theirs(n, at),
     );
-    const percents = progressContextPercents(reply, scanText).filter(({ pct }) => !asked.has(pct));
+    const percents = progressContextPercents(reply, scanText).filter(
+      ({ pct, at }) => !theirs(pct, at),
+    );
     if (numbers.length === 0 && percents.length === 0) return [];
     return [
       {
@@ -214,8 +223,8 @@ function judge(
     facts.remaining,
     facts.total,
   ]);
-  for (const { n, keyword, claim } of progressContextNumbers(reply, scanText)) {
-    if (!allowed.has(n) && !read.has(n) && !asked.has(n)) {
+  for (const { n, keyword, claim, at } of progressContextNumbers(reply, scanText)) {
+    if (!allowed.has(n) && !read.has(n) && !theirs(n, at)) {
       add(
         `the claim "${claim}" states ${n} issues ${keyword}, and no figure in this turn's progress snapshot is ${n} (${authoritativeSummary(facts)}) — restate it from these figures, or leave the figure out`,
         claim,
@@ -223,8 +232,8 @@ function judge(
     }
   }
   const expected = expectedPercents(facts);
-  for (const { pct, keyword, claim } of progressContextPercents(reply, scanText)) {
-    if (asked.has(pct)) continue;
+  for (const { pct, keyword, claim, at } of progressContextPercents(reply, scanText)) {
+    if (theirs(pct, at)) continue;
     if (!expected.some((e) => Math.abs(pct - e) <= 1)) {
       add(
         `stated "${pct}%" near "${keyword}" does not match authoritative progress (${authoritativeSummary(facts)}) — restate using these figures`,

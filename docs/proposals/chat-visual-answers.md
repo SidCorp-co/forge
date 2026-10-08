@@ -276,10 +276,15 @@ What an adapter added in C2 or C3 inherits:
 **C2, as built (2026-10-08): `anthropic-code-exec`.** Read against platform.claude.com/docs on
 2026-10-08 (`agents-and-tools/tool-use/code-execution-tool`, `build-with-claude/files`):
 
-- **Registration.** `integrations/llm/bootstrap.ts:providerExecutors` answers the adapter only where
-  `ANTHROPIC_API_KEY` is set, on the same `ANTHROPIC_API_URL` and `ANTHROPIC_MODEL` the chat turns
-  use; `report-ports.ts` hands it to `provideExecutors`. A proxy URL that does not serve the Files API
-  fails each call loudly (`EXECUTOR_FAILED` naming the HTTP status), never silently.
+- **Registration.** `integrations/llm/bootstrap.ts:providerExecutors` answers the adapter only on
+  the Claude API (`https://api.anthropic.com`), the one host that serves both the Files API and the
+  code execution tool: on its own `CODE_EXECUTION_API_KEY` (with `CODE_EXECUTION_API_URL` and
+  `CODE_EXECUTION_MODEL`) where that is set, else on the chat's `ANTHROPIC_*` settings where their
+  URL is the Claude API. A chat on an Anthropic-format gateway enables no executor, and the reason
+  stands in every computation's `EXECUTOR_UNAVAILABLE`; `report-ports.ts` hands both to
+  `provideExecutors`. QA of ISS-430 on 0.4.0-dev.193 found the adapter on dev's gateway, which
+  answered the documented multipart upload `400 Request body is not valid JSON` (it serves no
+  `/v1/files`) after the project had been told its data leaves to Anthropic.
 - **Descriptor.** `mode: 'in-band'`, `network: 'none'`, `dataLeavesTo: 'anthropic'`, `isolation` the
   provider's container (1 CPU, 5 GiB RAM, 5 GiB disk, no network, scoped to the key's workspace), and
   `zdrEligible: false`: the docs mark both the tool and the Files API `zdr: not-eligible`.

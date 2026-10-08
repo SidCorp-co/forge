@@ -77,8 +77,7 @@ const attach = (raw: unknown, projectId = 'p1', stage: BlockStage | null = null)
     stage,
   });
 const held: StagedBlock[] = [];
-const stageOf = (question = ''): BlockStage => ({
-  question,
+const stageOf = (): BlockStage => ({
   hold: async (b) => {
     held.push(b);
   },
@@ -295,11 +294,17 @@ describe("a block's title and labels hold no number of their own", () => {
     expect(held).toEqual([]);
   });
 
-  it('passes a number the run holds, and one the person typed in the question', async () => {
+  it('passes a number the run holds', async () => {
     await attach({ ...table, title: 'Proven, best of 5' });
-    await attach({ ...table, title: 'Top 7 by proven' }, 'p1', stageOf('show me the top 7'));
     expect(posted).toHaveLength(1);
-    expect(held).toHaveLength(1);
+  });
+
+  // REQ-32 BC-5: what the person typed is not a report's figure, so it grounds none in a block
+  it('refuses a number only the person typed in the question', async () => {
+    const err = await refusalOf(attach({ ...table, title: 'Top 7 by proven' }, 'p1', stageOf()));
+    expect(isRefusal(err, 'REPORT_BLOCK_FIGURE_NOT_IN_RUN')).toBe(true);
+    expect((err as Error).message).toContain('"Top 7 by proven" states the figure 7');
+    expect(held).toEqual([]);
   });
 
   it('refuses any number in a flow that names no run, and keeps dates and ids', async () => {

@@ -121,10 +121,11 @@ Reasons:
 2. **Storage and display.** The execution record (`report_executions`, REQ-32 C1) stores the
    script, its exit code, a capped stdout and stderr, and the frames it produced. The reply shows
    the script and its output (BC-11).
-3. **Offering the tool.** The adapter is registered only where the deployment holds
-   `ANTHROPIC_API_KEY`, and runs on `ANTHROPIC_API_URL`; a deployment without it answers a
-   computation `EXECUTOR_UNAVAILABLE` by name, and a URL that does not serve the Files API fails each
-   call by name. It never falls back to running the command anywhere else.
+3. **Offering the tool.** The adapter is registered only on the Claude API: on
+   `CODE_EXECUTION_API_KEY` where the deployment holds one, else on `ANTHROPIC_API_KEY` where
+   `ANTHROPIC_API_URL` is `https://api.anthropic.com`. A deployment without either, or whose chat
+   runs on a gateway, answers a computation `EXECUTOR_UNAVAILABLE` naming why. It never falls back
+   to running the command anywhere else.
 4. **Tool version.** `code_execution_20260521`, the newest current version, spoken over the wire
    directly: `@ai-sdk/anthropic` 4.0.72 stops at `20260120`.
 5. **Containers.** One container per project, conversation and asker, its `container.id` kept in

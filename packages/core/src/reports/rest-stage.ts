@@ -42,7 +42,6 @@ export async function restBlockStage(args: {
     );
   if (turn.settled) throw settled();
   return {
-    question: turn.question,
     hold: async (block) => {
       if (!(await turn.stage(block))) throw settled();
     },

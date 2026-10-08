@@ -107,7 +107,7 @@ export const UI_ACTIONS = {
     version: UI_ACTION_VERSION,
     params: boardDrawParams,
     describe:
-      'Draw a UI wireframe on the board inside the chat panel (it widens to make room), replacing the board shown. doc is a strict wireframe-v1 document: shapes from the closed set frame, text, button, input, list, image (placeholder), arrow, pen; every shape has a stable id; x, y, w, h lie inside a 0..4000 canvas; an arrow joins two shape ids ({id}) or bounded points ({x,y}). Use it when the conversation is about a screen or layout.',
+      'Draw a UI wireframe on the board inside the chat panel (it widens to make room), replacing the board shown. doc is a strict wireframe-v1 document: shapes from the closed set frame, text, button, input, list, image (placeholder), arrow, pen; every shape has a stable id; x, y, w, h lie inside a 0..4000 canvas; an arrow joins two shape ids ({id}) or bounded points ({x,y}). Use it when the conversation is about a screen or layout. The board holds no figure, not even one the person typed: a chart, table or key figure is drawn with forge_report and forge_show, and a board text stating a number is refused (UI_ACTION_BOARD_FIGURE).',
   },
   'ui.board.revise': {
     wire: 'ui_board_revise',

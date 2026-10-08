@@ -4,15 +4,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   askedValues,
+  askersOwn,
   FIGURE_EXEMPTIONS,
   figuresIn,
   readingsOf,
+  saidBackAt,
   statedFigures,
 } from './figure-exemptions.js';
 
 const unasked = (text: string, ask: string, table = FIGURE_EXEMPTIONS) => {
   const asked = askedValues(ask, table);
-  return statedFigures(text, table).filter((f) => !f.readings.some((r) => asked.has(r.value)));
+  return statedFigures(text, table).filter((f) => !askersOwn(text, f, asked));
 };
 
 describe('the figure exemption table', () => {
@@ -84,5 +86,35 @@ describe('a number as written', () => {
     expect(readingsOf('41,7')).toEqual([{ value: 41.7, decimals: 1 }]);
     expect(readingsOf('1.234,5').map((r) => r.value)).toEqual([1234.5]);
     expect(readingsOf('0.4.0')).toEqual([]);
+  });
+});
+
+// REQ-32 BC-6: the person's number is theirs only said back, never stated as the project's
+describe('a number the person typed', () => {
+  const at = (text: string, n: string) => saidBackAt(text, text.indexOf(n));
+
+  it('is said back where its clause names the person as its source', () => {
+    expect(at('Here are the 5 oldest open items you asked for.', '5')).toBe(true);
+    expect(at('Your 87% is not what the snapshot shows.', '87')).toBe(true);
+    expect(at('Đây là 5 việc cũ nhất bạn hỏi.', '5')).toBe(true); // i18n-allow: a Vietnamese reply naming the person
+  });
+
+  it('is said back where the reply declines it before saying it', () => {
+    expect(at("I can't say we are 87% done.", '87')).toBe(true);
+    expect(at('Forge does not have 4,812 open issues.', '4,812')).toBe(true);
+  });
+
+  it('is stated where its clause neither names the person nor declines it', () => {
+    expect(at('Forge has 4,812 open issues right now.', '4,812')).toBe(false);
+    expect(at('Your project has 4,812 open issues.', '4,812')).toBe(false);
+    expect(at('Not 40, Forge has 4,812 open issues.', '4,812')).toBe(false);
+    expect(at('You asked earlier. Forge has 4,812 open issues.', '4,812')).toBe(false);
+  });
+
+  it('is never theirs where the person did not type it', () => {
+    const text = 'Here are the 5 oldest open items you asked for.';
+    const [five] = statedFigures(text);
+    expect(five && askersOwn(text, five, new Set([5]))).toBe(true);
+    expect(five && askersOwn(text, five, new Set([6]))).toBe(false);
   });
 });

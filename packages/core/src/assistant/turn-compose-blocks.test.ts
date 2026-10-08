@@ -119,7 +119,7 @@ beforeEach(() => {
 describe('the blocks a chat turn draws wait on its reply', () => {
   it('releases the blocks of a reply that passes, with the reply, judging it with them', async () => {
     script = [{ draws: [first], passes: true }];
-    const stage = new TurnBlockStage('where does REQ-1 stand?');
+    const stage = new TurnBlockStage();
     const reply = await composeReply(ctx(stage));
     expect(reply).toMatchObject({ send: true, message: { text: 'answer 0' }, blocks: [first] });
     expect(judged).toEqual([[first.block.visual]]);
@@ -132,7 +132,7 @@ describe('the blocks a chat turn draws wait on its reply', () => {
       { draws: [first], passes: false },
       { draws: [], passes: true },
     ];
-    const stage = new TurnBlockStage('where does REQ-1 stand?');
+    const stage = new TurnBlockStage();
     const reply = await composeReply(ctx(stage));
     expect(reply).toMatchObject({ send: true, message: { text: 'answer 1' } });
     expect((reply as { blocks?: unknown }).blocks).toBeUndefined();
@@ -154,7 +154,7 @@ describe('the blocks a chat turn draws wait on its reply', () => {
       { draws: [first], passes: false },
       { draws: [redrawn], passes: true },
     ];
-    const stage = new TurnBlockStage('where does REQ-1 stand?');
+    const stage = new TurnBlockStage();
     const reply = await composeReply(ctx(stage));
     expect(reply).toMatchObject({ send: true, message: { text: 'answer 1' }, blocks: [redrawn] });
     stage.released([redrawn]);
@@ -168,7 +168,7 @@ describe('the blocks a chat turn draws wait on its reply', () => {
       { draws: [first], passes: false },
       { draws: [redrawn], passes: false },
     ];
-    const stage = new TurnBlockStage('where does REQ-1 stand?');
+    const stage = new TurnBlockStage();
     const reply = await composeReply(ctx(stage));
     expect(reply).toMatchObject({ send: true, message: { proof: null } });
     expect((reply as { blocks?: unknown }).blocks).toBeUndefined();
