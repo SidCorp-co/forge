@@ -1,1 +1,0 @@
-**A report template's output can be saved, scheduled and exported.** A saved report joins the report history with its narrative, exports as Markdown and can be shared. A schedule can name a template; each fire stores its report.

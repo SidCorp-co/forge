@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.178] - 2026-10-08
+
+Template reports can be saved, scheduled, exported and shared
+
+### Added
+
+- **A report template's output can be saved, scheduled and exported.** A saved report joins the report history with its narrative, exports as Markdown and can be shared. A schedule can name a template; each fire stores its report.
+
 ## [0.4.0-dev.177] - 2026-10-08
 
 QA fixes: document criteria past intro prose, project-scoped report query list
