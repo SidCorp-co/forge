@@ -4,7 +4,7 @@
 // it did not come in. A figure drawn as 0, an "idle" dot, "0 live runs" or no banner would be the
 // face of a project with no work, which is what a failed read is not.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueryRead } from "@/design/patterns/badge-read";
 import type { ProjectConsoleItem, WorkspaceTotals } from "../types";
@@ -12,9 +12,29 @@ import { AttentionBanner } from "./attention-banner";
 import { LiveCount } from "./live-count";
 import { ProjectCard } from "./project-card";
 import { ProjectList } from "./project-list";
+import { ProjectsConsole } from "./projects-console";
 import { StatsBand } from "./stats-band";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
+const consoleState: { read: QueryRead; items: ProjectConsoleItem[] } = { read: "read", items: [] };
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: () => {}, replace: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrg: null, activeOrgId: null }) }));
+vi.mock("./new-project-dialog", () => ({ NewProjectDialog: () => null }));
+vi.mock("../hooks", () => ({
+  useProjectsConsole: () => ({
+    items: consoleState.items,
+    totals: { projects: consoleState.items.length, healthRead: consoleState.read, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null },
+    isLoading: false,
+    isError: false,
+    error: null,
+    healthRead: consoleState.read,
+    projectsRead: "read",
+    refetch: () => {},
+    toggle: () => {},
+  }),
+}));
 
 afterEach(cleanup);
 
@@ -101,5 +121,23 @@ describe("a health read that came in", () => {
     cleanup();
     const { container } = render(<AttentionBanner count={0} read="read" attentionOnly={false} onToggle={() => {}} onRetry={() => {}} />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("the attention filter, where the health read then fails", () => {
+  it("leaves the projects reachable, with their failed-read marks, instead of filtering all of them out", () => {
+    const needsYou: ProjectConsoleItem = { ...read, health: "attention" };
+    consoleState.read = "read";
+    consoleState.items = [needsYou];
+    const { rerender } = render(<ProjectsConsole />);
+    fireEvent.click(screen.getByRole("button", { name: "Show only these" }));
+    expect(screen.getByText("Sable")).toBeTruthy();
+
+    consoleState.read = "failed";
+    consoleState.items = [unread("failed")];
+    rerender(<ProjectsConsole />);
+    expect(screen.getByText("Sable")).toBeTruthy();
+    expect(screen.queryByText(/No projects match your filters/)).toBeNull();
+    expect(marks(FAILED).length).toBeGreaterThan(0);
   });
 });
