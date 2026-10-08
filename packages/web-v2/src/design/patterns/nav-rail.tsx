@@ -19,6 +19,8 @@ export interface NavItem {
   badge?: number;
   /** Set where the figure is not read: it is no statement, a held `badge` included, and the row says why. */
   badgeRead?: BadgeRead;
+  /** What `badge` counts, so the row names its own figure; see `BadgeFigure`. */
+  badgeCounts?: string;
 }
 
 /** A titled group of project-tier nav items (e.g. Work / Insight / Config). */

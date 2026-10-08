@@ -3,7 +3,7 @@
 // badge: a failure drawn as nothing owed is the silence this repairs.
 
 import { describe, expect, it } from "vitest";
-import { bottomTabItems, compactWorkspaceRailItems, workspaceNavItems } from "./nav-model";
+import { bottomTabItems, compactWorkspaceRailItems, OPEN_WORK_COUNTS, projectRailItems, workspaceNavItems } from "./nav-model";
 
 const rows = (b: Parameters<typeof workspaceNavItems>[0]) => {
   const found = [
@@ -33,6 +33,25 @@ describe("the Attention badge", () => {
     for (const row of rows({ badgeRead: "failed" })) {
       expect(row.badgeRead).toBe("failed");
       expect(row.badge).toBeUndefined();
+    }
+  });
+});
+
+describe("the Issues badge", () => {
+  it("is counted as open work on the rail and the bottom bar, and never as attention", () => {
+    const rail = projectRailItems(29).find((i) => i.key === "proj-issues");
+    const bar = bottomTabItems("sable", { badge: 10, badgeCounts: "need attention" }, 29).find((i) => i.key === "proj-issues");
+    for (const row of [rail, bar]) {
+      expect(row?.badge).toBe(29);
+      expect(row?.badgeCounts).toBe(OPEN_WORK_COUNTS);
+      expect(row?.badgeCounts).toBe("in open work");
+    }
+  });
+
+  it("gives no other project row a figure to name", () => {
+    for (const row of projectRailItems(29).filter((i) => i.key !== "proj-issues")) {
+      expect(row.badge).toBeUndefined();
+      expect(row.badgeCounts).toBeUndefined();
     }
   });
 });
