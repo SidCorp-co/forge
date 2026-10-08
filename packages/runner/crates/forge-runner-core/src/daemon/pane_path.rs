@@ -185,7 +185,7 @@ another `forge`, which would run verbs from one build against a daemon from anot
         ),
         None => format!(
             "\n## Which `forge`\n\n`{CLI_ENV}` was not exported to this pane: this daemon found no \
-`forge` on the PATH it built for you, so nothing here says which copy the bare word `forge` resolves \
+`forge` at an absolute entry of the PATH it built for you, so nothing here says which copy the bare word `forge` resolves \
 to. If a `forge` command fails or answers as a different build than this daemon, report that and stop \
 rather than reaching for another copy.\n"
         ),
