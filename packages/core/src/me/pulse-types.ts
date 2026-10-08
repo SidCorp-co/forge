@@ -4,6 +4,7 @@
  * person, which way is the flow going, is the output any good.
  */
 
+import type { OpenWorkCounts } from '../issues/work-state.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 
 /** A set the response counts in full and names only the first `shown.length` of. */
@@ -94,12 +95,8 @@ export interface PulseLiveness {
   devices: { online: number; draining: number; total: number };
 }
 
-export interface PulseWorkBuckets {
-  open: number;
-  inProgress: number;
-  awaitingRelease: number;
-  humanBlocked: number;
-}
+/** Issues in each open work state, keyed as the health row's `work` and the search's `byWorkState` are. */
+export type PulseWorkBuckets = OpenWorkCounts;
 
 export interface PulseProjectRow extends PulseWorkBuckets {
   id: string;
@@ -118,7 +115,8 @@ export interface PulseWork {
   liveUnmeasured: PulseCapped<PulseLiveGap>;
   silentProjects: PulseCapped<PulseProjectIdentity>;
   neverRanProjects: PulseCapped<PulseProjectIdentity>;
-  humanBlockedAges: number[];
+  /** Seconds each issue blocked on a person has waited, oldest first, capped. */
+  blockedOnPersonAges: number[];
   perProject: PulseProjectRow[];
 }
 
@@ -161,16 +159,6 @@ export const PULSE_THRESHOLDS: PulseThresholds = {
   silenceAlarmSeconds: 259_200,
   identityCap: 50,
 };
-
-export const PULSE_OPEN_STATUSES = ['open', 'confirmed', 'clarified', 'approved'] as const;
-export const PULSE_IN_PROGRESS_STATUSES = [
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'reopen',
-] as const;
-export const PULSE_AWAITING_RELEASE_STATUSES = ['awaiting_release', 'releasing'] as const;
 
 export const PULSE_HEARTBEAT_DAYS = 30;
 export const PULSE_FLOW_WEEKS = 12;

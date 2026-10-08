@@ -23,3 +23,4 @@ export * from "./skill-facts.js";
 export * from "./ssh-keys.js";
 export * from "./status-sets.js";
 export * from "./update-packets.js";
+export * from "./work-state.js";

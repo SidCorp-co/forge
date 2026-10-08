@@ -14,22 +14,22 @@ export function StatusDonut({ data }: { data: StatusDonutData }) {
     <Card className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-line-subtle px-5 py-3.5">
         <Icon name="board" size={16} className="text-subtle" />
-        <CardTitle>Open issues by status</CardTitle>
+        <CardTitle>Open work by state</CardTitle>
       </div>
       <CardContent className="flex-1">
         {total === 0 ? (
-          <p className="fg-body-sm py-6 text-center text-muted">No open issues to chart.</p>
+          <p className="fg-body-sm py-6 text-center text-muted">No open work to chart.</p>
         ) : (
           <div className="flex items-center gap-5">
             <div
               className="relative size-[112px] flex-none rounded-full"
               style={{ background: conicGradient(segments) }}
               role="img"
-              aria-label={`Open issues by status, ${total} total`}
+              aria-label={`Open work by state, ${total} total`}
             >
               <div className="absolute inset-[18px] flex flex-col items-center justify-center rounded-full bg-surface">
                 <span className="font-mono text-xl font-bold tabular-nums text-fg">{total}</span>
-                <span className="fg-caption text-subtle">open</span>
+                <span className="fg-caption text-subtle">open work</span>
               </div>
             </div>
             <ul className="min-w-0 flex-1 space-y-1.5">

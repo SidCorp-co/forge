@@ -1,6 +1,7 @@
 
 import { parseReleaseRoster } from "@/features/releases/roster";
 import { apiClient, apiClientList } from "@/lib/api/client";
+import { type WorkState, missingWorkStateKey } from "@forge/contracts/work-state";
 import { filterToQueryParams } from "./derive";
 import type {
   CreatedIssue,
@@ -77,7 +78,7 @@ export const issuesApi = {
       body: JSON.stringify(body),
     }),
 
-  search: (projectId: string, opts: IssueSearchOpts) => {
+  search: async (projectId: string, opts: IssueSearchOpts) => {
     const pageSize = opts.pageSize ?? ISSUES_PAGE_SIZE;
     const page = opts.page ?? 1;
     const params = new URLSearchParams();
@@ -96,16 +97,20 @@ export const issuesApi = {
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
     if (opts.label) params.set("label", opts.label);
     if (opts.module) params.set("module", opts.module);
-    const { status, statusNot, origin, orWaitingOnPerson } = filterToQueryParams(
-      opts.filter ?? "all",
-    );
-    for (const s of opts.status ?? status ?? []) params.append("status", s);
-    if (orWaitingOnPerson && !opts.status) params.set("orWaitingOnPerson", "true");
-    for (const s of statusNot ?? []) params.append("statusNot", s);
-    if (origin) params.set("origin", origin);
-    return apiClientList<IssueRow, { buckets?: IssueBuckets }>(
+    const { workState } = filterToQueryParams(opts.filter ?? "all");
+    if (workState) params.set("workState", workState);
+    for (const s of opts.status ?? []) params.append("status", s);
+    if (opts.origin) params.set("origin", opts.origin);
+    const result = await apiClientList<IssueRow, { buckets?: IssueBuckets }>(
       `/projects/${projectId}/issues/search?${params}`,
     );
+    const missing = missingWorkStateKey(result.extra?.buckets?.byWorkState);
+    if (missing !== null) {
+      throw new Error(
+        `GET /projects/:id/issues/search: \`buckets.byWorkState\` has no count for the work state \`${missing}\`, so the server predates the work states and no tab count can be drawn from it. Reload once the server has been updated.`,
+      );
+    }
+    return result;
   },
 
   /** The search route at five rows and none of the list's hydration: what the ⌘K box asks per term. */
@@ -194,10 +199,8 @@ export const issuesApi = {
 
 export interface IssueBuckets {
   byStatus: Partial<Record<IssueStatus, number>>;
-  detector: number;
-  humanDraft: number;
-  /** Issues a person owes an answer, by status, once each (ISS-1257). */
-  waitingOnPersonByStatus: Partial<Record<IssueStatus, number>>;
+  /** Issues in each work state under every filter but the work state: they add up to the list's total with no state chosen. */
+  byWorkState: Record<WorkState, number>;
 }
 
 /** ISS-764 — batch release API. Separate from issuesApi since these are

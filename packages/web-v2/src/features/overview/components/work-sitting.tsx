@@ -9,9 +9,9 @@ import {
   SectionTitle,
   Waffle,
 } from "@/design";
+import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { bucketHref, formatElapsed, projectSilenceRows, waffleCells } from "../derive";
 import { BUCKET_ORDER } from "../derive";
-import { PULSE_BUCKET_LABELS } from "../types";
 import type { PulseResponse } from "../types";
 
 export interface WorkSittingProps {
@@ -23,7 +23,7 @@ export interface WorkSittingProps {
 export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   const cells = waffleCells(pulse.work.buckets);
   const rows = projectSilenceRows(pulse, nowMs);
-  const ages = pulse.work.humanBlockedAges;
+  const ages = pulse.work.blockedOnPersonAges;
 
   return (
     <Card>
@@ -51,7 +51,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
         {ages.length > 0 ? (
           <div className="flex flex-col gap-1">
             <CardTitle className="fg-body-sm text-muted">
-              Blocked on a person — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
+              {WORK_STATE_LABELS.blocked_on_person} — {ages.length} {ages.length === 1 ? "issue" : "issues"}, oldest{" "}
               {formatElapsed(Math.max(...ages))}
             </CardTitle>
             <DotStrip
@@ -77,7 +77,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
                     <th scope="col" className="py-1 text-left font-normal">Project</th>
                     {BUCKET_ORDER.map((b) => (
                       <th key={b} scope="col" className="py-1 text-right font-normal">
-                        {PULSE_BUCKET_LABELS[b]}
+                        {WORK_STATE_LABELS[b]}
                       </th>
                     ))}
                     <th scope="col" className="py-1 text-right font-normal">Last run</th>
@@ -101,7 +101,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
                           ) : (
                             <Link
                               href={bucketHref(r.slug, b)}
-                              aria-label={`${r.name}: ${r.buckets[b]} ${PULSE_BUCKET_LABELS[b]} — open the list`}
+                              aria-label={`${r.name}: ${r.buckets[b]} ${WORK_STATE_LABELS[b]} — open the list`}
                               className="rounded-sm px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
                             >
                               {r.buckets[b]}

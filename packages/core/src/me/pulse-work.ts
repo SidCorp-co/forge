@@ -1,10 +1,11 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { foldWorkStates, openWorkCountsOf, type WorkStateRow } from '../issues/work-state.js';
+import { readWorkStateRows, workStateCondition } from '../issues/work-state-read.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { ageSeconds, emptyBuckets, foldBuckets } from './pulse-folds.js';
+import { ageSeconds } from './pulse-folds.js';
 import { readPulseLive } from './pulse-live.js';
 import { idList } from './pulse-sql.js';
 import type {
@@ -144,7 +145,7 @@ async function selectReleaseWaiting(
   };
 }
 
-async function selectHumanBlockedAges(
+async function selectBlockedOnPersonAges(
   projectIds: string[],
   cap: number,
   now: Date,
@@ -152,9 +153,7 @@ async function selectHumanBlockedAges(
   const rows = await db
     .select({ updatedAt: issues.updatedAt })
     .from(issues)
-    .where(
-      and(inArray(issues.projectId, projectIds), inArray(issues.status, [...HUMAN_PARK_STATUSES])),
-    )
+    .where(and(inArray(issues.projectId, projectIds), workStateCondition('blocked_on_person')))
     .orderBy(sql`${issues.updatedAt} ASC`)
     .limit(cap * 10);
   return rows.map((r) => ageSeconds(r.updatedAt, now) ?? 0);
@@ -186,7 +185,7 @@ const asIdentity = (r: PulseProjectRow): PulseProjectIdentity => ({
   id: r.id,
   slug: r.slug,
   name: r.name,
-  backlog: r.open + r.inProgress + r.awaitingRelease + r.humanBlocked,
+  backlog: r.open + r.in_flight + r.awaiting_release + r.blocked_on_person,
   lastIssueRunAt: r.lastIssueRunAt,
 });
 
@@ -195,40 +194,36 @@ export async function readPulseWork(
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseWork> {
-  const [statusRows, abandoned, releaseWaiting, humanBlockedAges, runRows, live] =
+  const [statusRows, abandoned, releaseWaiting, blockedOnPersonAges, runRows, live] =
     await Promise.all([
-      db
-        .select({
-          projectId: issues.projectId,
-          status: issues.status,
-          n: sql<number>`count(*)::int`,
-        })
-        .from(issues)
-        .where(inArray(issues.projectId, projectIds))
-        .groupBy(issues.projectId, issues.status),
+      readWorkStateRows(inArray(issues.projectId, projectIds), false),
       selectAbandoned(projectIds, thresholds, now),
       selectReleaseWaiting(projectIds, thresholds, now),
-      selectHumanBlockedAges(projectIds, thresholds.identityCap, now),
+      selectBlockedOnPersonAges(projectIds, thresholds.identityCap, now),
       selectProjectRuns(projectIds),
       readPulseLive(projectIds, thresholds, now),
     ]);
 
-  const { total, byProject } = foldBuckets(
-    statusRows.map((r) => ({ projectId: r.projectId, status: r.status, n: Number(r.n) })),
-  );
+  const rowsByProject = new Map<string, WorkStateRow[]>();
+  for (const r of statusRows) {
+    const rows = rowsByProject.get(r.projectId) ?? [];
+    rows.push(r);
+    rowsByProject.set(r.projectId, rows);
+  }
+  const total = openWorkCountsOf(foldWorkStates(statusRows));
 
   const perProject: PulseProjectRow[] = runRows.map((r) => ({
     id: r.id,
     slug: r.slug,
     name: r.name,
-    ...(byProject.get(r.id) ?? emptyBuckets()),
+    ...openWorkCountsOf(foldWorkStates(rowsByProject.get(r.id) ?? [])),
     stuckRuns: Number(r.stuck_runs),
     abandonedIssues: abandoned.byProject.get(r.id) ?? 0,
     lastIssueRunAt: r.last_issue_run_at,
   }));
 
   const backlogged = perProject.filter(
-    (p) => p.open + p.inProgress + p.awaitingRelease + p.humanBlocked > 0,
+    (p) => p.open + p.in_flight + p.awaiting_release + p.blocked_on_person > 0,
   );
   const neverRan = backlogged.filter((p) => p.lastIssueRunAt === null);
   const silent = backlogged.filter(
@@ -251,7 +246,7 @@ export async function readPulseWork(
       total: neverRan.length,
       shown: neverRan.slice(0, thresholds.identityCap).map(asIdentity),
     },
-    humanBlockedAges,
+    blockedOnPersonAges,
     perProject,
   };
 }

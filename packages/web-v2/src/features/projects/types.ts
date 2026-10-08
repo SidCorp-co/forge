@@ -1,5 +1,6 @@
 import type { HealthKey } from '@/design';
 import type { Project, ProjectMember } from '@forge/contracts';
+import type { WorkState } from '@forge/contracts/work-state';
 
 export type { Project, ProjectMember } from '@forge/contracts';
 
@@ -43,8 +44,10 @@ export interface ProjectHealthRow {
   description: string | null;
   repoPath: string | null;
   throughput: number;
+  /** Open work: the four open states of `work` summed. */
   totalActive: number;
-  statusDistribution: Record<string, number>;
+  /** Issues in each work state, counted by core's one fold. */
+  work: Record<WorkState, number>;
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
   pendingEscalations: number;
   avgCycleTimeDays: number;

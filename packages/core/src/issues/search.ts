@@ -8,7 +8,6 @@ import {
   inArray,
   isNotNull,
   notInArray,
-  or,
   type SQL,
   sql,
 } from 'drizzle-orm';
@@ -30,7 +29,6 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
@@ -48,46 +46,21 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { IssueSearchKeyRefused, type IssueSearchTerm, readIssueSearchTerm } from './search-term.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
+import { foldWorkStates, WORK_STATES, type WorkStateCounts } from './work-state.js';
+import { readWorkStateRows, workStateCondition } from './work-state-read.js';
 
 export interface IssueBuckets {
-  /** How many issues sit at each kernel status, under every filter except status and origin. */
   readonly byStatus: Record<string, number>;
-  /** Machine-filed issues (a detectorKey), at any status. */
-  readonly detector: number;
-  /** Drafts a person filed, which is what the Draft tab means. */
-  readonly humanDraft: number;
-  /** Issues a person owes an answer (an open `human` question), by status, once each. */
-  readonly waitingOnPersonByStatus: Record<string, number>;
+  /** Both counts hold every filter but the work state and status, so the six states add up to the unfiltered total. */
+  readonly byWorkState: WorkStateCounts;
 }
 
-async function countBuckets(axisFree: SQL[]): Promise<IssueBuckets> {
+async function countBuckets(axisFree: SQL[], includeArchived: boolean): Promise<IssueBuckets> {
   const base = axisFree.length === 1 ? axisFree[0] : and(...axisFree);
-  const byStatusOf = (where: SQL | undefined) =>
-    db
-      .select({ status: issues.status, n: count() })
-      .from(issues)
-      .where(where)
-      .groupBy(issues.status);
-  const [rows, marked, [detector] = [{ n: 0 }], [humanDraft] = [{ n: 0 }]] = await Promise.all([
-    byStatusOf(base),
-    byStatusOf(and(base, holdsOpenHumanQuestion(issues.id))),
-    db
-      .select({ n: count() })
-      .from(issues)
-      .where(and(base, buildOriginCondition('detector'))),
-    db
-      .select({ n: count() })
-      .from(issues)
-      .where(and(base, eq(issues.status, 'draft'), buildOriginCondition('human'))),
-  ]);
-  const tally = (rs: Array<{ status: string; n: number }>) =>
-    Object.fromEntries(rs.map((r) => [r.status, Number(r.n)]));
-  return {
-    byStatus: tally(rows),
-    detector: Number(detector?.n ?? 0),
-    humanDraft: Number(humanDraft?.n ?? 0),
-    waitingOnPersonByStatus: tally(marked),
-  };
+  const rows = await readWorkStateRows(base, includeArchived);
+  const byStatus: Record<string, number> = {};
+  for (const r of rows) byStatus[r.status] = (byStatus[r.status] ?? 0) + r.n;
+  return { byStatus, byWorkState: foldWorkStates(rows) };
 }
 
 const coerceArray = <T>(v: T | T[] | undefined): T[] | undefined =>
@@ -122,8 +95,7 @@ const searchQuerySchema = z
     assignee: z.uuid().optional(),
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
     origin: z.enum(['detector', 'human']).optional(),
-    /** ISS-1257 — widen `status` to also match an issue a person owes an answer, whatever its status. */
-    orWaitingOnPerson: z.stringbool().optional(),
+    workState: z.enum(WORK_STATES).optional(),
     category: z.string().trim().min(1).max(100).optional(),
     sort: z.enum(issueSortValues).optional().default('createdAt:desc'),
     limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -274,22 +246,14 @@ searchRoutes.get(
     };
 
     const term = q.q ? await readSearchTermOrRefuse(projectId, q.q) : null;
-    for (const side of issueArchiveSide(q.includeArchived === true || term?.kind === 'key')) {
+    const archived = q.includeArchived === true || term?.kind === 'key';
+    for (const side of issueArchiveSide(archived)) {
       both(side);
     }
     if (term?.kind === 'key') both(inArray(issues.issSeq, term.issSeqs));
     if (term?.kind === 'text') both(buildIssueSearchCondition(term.text));
-    if (q.orWaitingOnPerson && !q.status?.length) {
-      throw badRequest({
-        orWaitingOnPerson:
-          'widens a `status` filter to also match an issue a person owes an answer, and this request names no `status`. Send it with `status`, or send neither',
-      });
-    }
     if (q.status && q.status.length > 0) {
-      const atStatus = inArray(issues.status, q.status);
-      conditions.push(
-        q.orWaitingOnPerson ? (or(atStatus, holdsOpenHumanQuestion(issues.id)) as SQL) : atStatus,
-      );
+      conditions.push(inArray(issues.status, q.status));
     }
     if (q.statusNot && q.statusNot.length > 0) {
       conditions.push(notInArray(issues.status, q.statusNot));
@@ -304,7 +268,10 @@ searchRoutes.get(
       both(buildCreatedByCondition(q.createdBy));
     }
     if (q.origin) {
-      conditions.push(buildOriginCondition(q.origin));
+      both(buildOriginCondition(q.origin));
+    }
+    if (q.workState) {
+      conditions.push(workStateCondition(q.workState));
     }
     if (q.category) {
       both(eq(issues.category, q.category));
@@ -342,7 +309,7 @@ searchRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    const buckets = q.withBuckets ? await countBuckets(axisFree) : null;
+    const buckets = q.withBuckets ? await countBuckets(axisFree, archived) : null;
 
     const rows = await issueListPageQuery({
       where,

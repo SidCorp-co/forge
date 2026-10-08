@@ -8,6 +8,11 @@ import {
 	BLOCKER_SETTLED_STATUSES,
 	REASON_REQUIRED_ISSUE_STATUSES,
 } from "@forge/contracts/status-sets";
+import {
+	LABEL_WORK_STATE,
+	WORK_STATE_LABELS,
+	WORK_STATES,
+} from "@forge/contracts/work-state";
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
@@ -371,35 +376,43 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(lane("in_progress", true)).toBe("Running");
-		expect(lane("needs_info", true)).toBe("Needs a human");
+		expect(lane("in_progress", true)).toBe("In flight");
+		expect(lane("needs_info", true)).toBe("Blocked on a person — needs an answer");
 
 		expect(statusLabel("needs_info")).toBe("Needs info");
 		expect(priorityLabel("critical")).toBe("Critical");
 		expect(complexityLabel("xs")).toBe("XS");
 		expect(complexityLabel("m")).toBe("Medium");
 	});
-	it("labels a deliberate pause as paused, never as needing a human", () => {
-		expect(lane("on_hold", false)).toBe("Paused");
-		expect(lane("on_hold", false)).not.toBe("Needs a human");
-		expect(lane("waiting", false)).toBe("Needs a human");
-		expect(lane("needs_info", false)).toBe("Needs a human");
+	it("heads a deliberate pause as on hold, in the same state as a question but never as one", () => {
+		expect(lane("on_hold", false)).toBe("Blocked on a person — on hold");
+		expect(lane("on_hold", false)).not.toBe(lane("waiting", false));
+		expect(lane("waiting", false)).toBe("Blocked on a person — needs an answer");
+		expect(lane("needs_info", false)).toBe("Blocked on a person — needs an answer");
 	});
-	it("keeps the ten lane words for the surfaces that want ten buckets", () => {
-		expect(lane("in_progress", true)).toBe("Running");
-		expect(lane("developed", true)).toBe("Running");
-		expect(lane("releasing", true)).toBe("Running");
-		expect(lane("waiting", true)).toBe("Needs a human");
-		expect(lane("needs_info", true)).toBe("Needs a human");
+	it("begins every column head with the word of the work state its label is in", () => {
+		for (const status of ISSUE_STATUSES) {
+			for (const held of [true, false]) {
+				const label = toAutonomousLabel(status, held);
+				expect(lane(status, held).startsWith(WORK_STATE_LABELS[LABEL_WORK_STATE[label]])).toBe(true);
+			}
+		}
+	});
+	it("heads a label alone in its state with that state's word and no more", () => {
+		expect(lane("open", true)).toBe("Open, not picked up");
+		expect(lane("developed", true)).toBe("In flight");
+		expect(lane("tested", true)).toBe("Awaiting release");
+		expect(lane("draft", true)).toBe("Draft");
+	});
+	it("heads a row nothing holds as in flight with no check-in, never as in flight alone", () => {
+		expect(lane("testing", false)).toBe("In flight — no check-in");
+		expect(lane("developed", false)).toBe("In flight — no check-in");
+		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Stalled");
+		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("In flight");
+	});
+	it("keeps ten column heads, one per lane label, so the lane's finer distinctions stay columns", () => {
 		const words = ISSUE_STATUSES.flatMap((s) => [lane(s, true), lane(s, false)]);
 		expect(new Set(words).size).toBe(10);
-	});
-	// ISS-1213: a row nothing holds does not read Running, whatever its status.
-	it("reads No check-in, never Running or Stalled, on a row nothing holds", () => {
-		expect(lane("testing", false)).toBe("No check-in");
-		expect(lane("developed", false)).toBe("No check-in");
-		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Stalled");
-		expect(ISSUE_STATUSES.map((s) => lane(s, false))).not.toContain("Running");
 	});
 	it("names each move target by its own status word, never by a lane word", () => {
 		expect(transitionLabels(["in_progress", "developed", "testing"])).toEqual([
@@ -409,15 +422,7 @@ describe("label helpers", () => {
 		]);
 		expect(transitionLabels([...ISSUE_STATUSES])).toEqual(ISSUE_STATUSES.map(statusLabel));
 	});
-	it("puts every status the lane reads as running or as no check-in on the agent tab", () => {
-		const agent = filterToQueryParams("agent").status ?? [];
-		for (const s of ISSUE_STATUSES) {
-			const word = lane(s, false);
-			if (word === "No check-in" || word === "Open") expect(agent, s).toContain(s);
-		}
-	});
-
-	it("keeps seventeen status words beside the ten lane words", () => {
+	it("keeps seventeen status words beside the ten column heads", () => {
 		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
 	});
 
@@ -582,61 +587,44 @@ describe("filterToQueryParams", () => {
 	it("all applies no filter — every issue incl. drafts + closed (ISS-360)", () => {
 		expect(filterToQueryParams("all")).toEqual({});
 	});
-	it("`you` holds every status a person must act on, from the label axis", () => {
-		const s = filterToQueryParams("you").status ?? [];
-		for (const parked of ["needs_info", "waiting", "on_hold"]) {
-			expect(s, parked).toContain(parked);
+	it("asks the search for the work state a segment is, and for nothing else", () => {
+		for (const state of WORK_STATES) {
+			expect(filterToQueryParams(state)).toEqual({ workState: state });
 		}
 	});
-	it("counts the release gate and a reopen as the person's, not the machine's", () => {
-		const you = filterToQueryParams("you").status ?? [];
-		const agent = filterToQueryParams("agent").status ?? [];
-		for (const mine of ["awaiting_release", "reopen"]) {
-			expect(you, mine).toContain(mine);
-			expect(agent, mine).not.toContain(mine);
-		}
+	it("gives the strip one segment per work state, in the state order, then All", () => {
+		const labels = WORK_STATES.map((s) => WORK_STATE_LABELS[s]);
+		expect(labels).toEqual([
+			"Open, not picked up",
+			"In flight",
+			"Awaiting release",
+			"Blocked on a person",
+			"Draft",
+			"Finished",
+		]);
 	});
-	it("`agent` never claims a status a person has to answer", () => {
-		const s = filterToQueryParams("agent").status ?? [];
-		for (const parked of ["waiting", "on_hold", "needs_info"]) {
-			expect(s, parked).not.toContain(parked);
-		}
-	});
-	it("`done` carries dropped as well as closed", () => {
-		const s = filterToQueryParams("done").status ?? [];
-		expect(s).toContain("closed");
-		expect(s).toContain("dropped");
-	});
-	it("every non-terminal status is reachable from exactly one of the three work tabs", () => {
-		const buckets = (["you", "agent", "done"] as const).map(
-			(f) => filterToQueryParams(f).status ?? [],
-		);
-		const drafts = ["draft"];
-		for (const s of REGISTRY_ISSUE_STATUSES) {
-			if (drafts.includes(s)) continue;
-			const hits = buckets.filter((b) => b.includes(s)).length;
-			expect(hits, `${s} appears in ${hits} tabs`).toBe(1);
+});
+
+describe("filterCount", () => {
+	const byWorkState = {
+		open: 56,
+		in_flight: 11,
+		awaiting_release: 1,
+		blocked_on_person: 4,
+		draft: 24,
+		finished: 1306,
+	};
+
+	it("reads a segment's own state's count", () => {
+		for (const state of WORK_STATES) {
+			expect(filterCount(state, { byWorkState }), state).toBe(byWorkState[state]);
 		}
 	});
 
-	it("draft targets only drafts", () => {
-		expect(filterToQueryParams("draft")).toEqual({
-			status: ["draft"],
-			origin: "human",
-		});
-	});
-
-	it("findings selects detector origin at any status", () => {
-		expect(filterToQueryParams("findings")).toEqual({ origin: "detector" });
-	});
-
-	it("all stays unfiltered so nothing is unreachable", () => {
-		expect(filterToQueryParams("all")).toEqual({});
-	});
-	it("done is terminal only — the release gate is not finished work", () => {
-		expect(filterToQueryParams("done")).toEqual({
-			status: ["closed", "dropped"],
-		});
+	it("makes All the six segments summed, so the segments add up to it", () => {
+		const segments = WORK_STATES.reduce((n, s) => n + filterCount(s, { byWorkState }), 0);
+		expect(filterCount("all", { byWorkState })).toBe(segments);
+		expect(segments).toBe(1402);
 	});
 });
 
@@ -1545,20 +1533,6 @@ describe("the marker that a person owes an issue an answer", () => {
 				park: null,
 			}),
 		).toBeNull();
-	});
-
-	it("asks Needs you to take the marker as well as its statuses", () => {
-		expect(filterToQueryParams("you").orWaitingOnPerson).toBe(true);
-		expect(filterToQueryParams("agent").orWaitingOnPerson).toBeUndefined();
-	});
-
-	it("counts a marked issue at a status Needs you does not name, once", () => {
-		const buckets = {
-			byStatus: { needs_info: 2, testing: 5 },
-			waitingOnPersonByStatus: { needs_info: 1, testing: 1 },
-		};
-		expect(filterCount("you", buckets)).toBe(3);
-		expect(filterCount("agent", buckets), "a filter that takes no marker counts only its statuses").toBe(5);
 	});
 });
 

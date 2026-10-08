@@ -17,7 +17,13 @@ import {
   toAutonomousLabel,
 } from "@forge/contracts/issue-vocabulary";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
-import { statusToTone } from "@/features/issues/derive";
+import { LABEL_VIEW, statusToTone } from "@/features/issues/derive";
+import {
+  LABEL_WORK_STATE,
+  WORK_STATE_LABELS,
+  WORK_STATES,
+  workStateOf,
+} from "@forge/contracts/work-state";
 import type { IssueStatus } from "@/features/issues/types";
 import { boardColumns, groupIssuesByLabel, labelTone } from "./derive";
 import { BOARD_EXCLUDED_STATUSES, type PipelineIssueRow } from "./types";
@@ -107,21 +113,26 @@ describe("groupIssuesByLabel", () => {
     expect(columnOf("d")).toBe("dropped");
   });
 
-  it("names each column with the same word the issue's own status chip shows", () => {
+  it("names each column with its work state's word first", () => {
     const groups = groupIssuesByLabel([issue("a", "in_progress"), issue("b", "needs_info")]);
-    expect(groups.find((g) => g.label === "running")?.title).toBe("Running");
-    expect(groups.find((g) => g.label === "needs_human")?.title).toBe("Needs a human");
+    expect(groups.find((g) => g.label === "running")?.title).toBe("In flight");
+    expect(groups.find((g) => g.label === "needs_human")?.title).toBe(
+      "Blocked on a person — needs an answer",
+    );
   });
 
   // ISS-1213: eleven rows stood at `testing` 5–12h with nothing on ten of them, all under Running.
-  it("files a row nothing holds under No check-in and a held one under Running", () => {
+  it("files a row nothing holds under In flight — no check-in and a held one under In flight", () => {
     const groups = groupIssuesByLabel([issue("idle", "testing", false), issue("busy", "testing")]);
     const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id));
-    expect([columnOf("idle")?.label, columnOf("idle")?.title]).toEqual(["unheld", "No check-in"]);
-    expect([columnOf("busy")?.label, columnOf("busy")?.title]).toEqual(["running", "Running"]);
+    expect([columnOf("idle")?.label, columnOf("idle")?.title]).toEqual([
+      "unheld",
+      "In flight — no check-in",
+    ]);
+    expect([columnOf("busy")?.label, columnOf("busy")?.title]).toEqual(["running", "In flight"]);
   });
 
-  it("draws the No check-in column beside Running, and keeps it when it is empty", () => {
+  it("draws the No check-in column beside In flight, and keeps it when it is empty", () => {
     const cols = boardColumns();
     expect(cols.indexOf("unheld")).toBe(cols.indexOf("running") + 1);
     expect(groupIssuesByLabel([]).find((g) => g.label === "unheld")?.issues).toEqual([]);
@@ -130,6 +141,20 @@ describe("groupIssuesByLabel", () => {
   it("leaves a party's column alone whether or not the row is held", () => {
     const groups = groupIssuesByLabel([issue("q", "needs_info", false)]);
     expect(groups.find((g) => g.issues.some((i) => i.id === "q"))?.label).toBe("needs_human");
+  });
+
+  it("files an issue an agent holds under Blocked on a person while a person owes it an answer", () => {
+    const asked = { ...issue("asked", "testing"), waitingOnPersonSince: "2026-09-27T10:00:00Z" } as PipelineIssueRow;
+    const groups = groupIssuesByLabel([asked, issue("working", "testing")]);
+    const columnOf = (id: string) => groups.find((g) => g.issues.some((i) => i.id === id))?.label;
+    expect(columnOf("asked")).toBe("needs_human");
+    expect(columnOf("working")).toBe("running");
+  });
+
+  it("leaves a question on the release gate alone, as workStateOf does", () => {
+    const gate = { ...issue("gate", "awaiting_release"), waitingOnPersonSince: "2026-09-27T10:00:00Z" } as PipelineIssueRow;
+    const groups = groupIssuesByLabel([gate]);
+    expect(groups.find((g) => g.issues.length > 0)?.label).toBe("awaiting_release");
   });
 
   it("never names a column after one of the seven deleted stages", () => {
@@ -149,6 +174,37 @@ describe("groupIssuesByLabel", () => {
   it("gives a status outside the column set a column instead of dropping the row", () => {
     const groups = groupIssuesByLabel([issue("x", "draft")]);
     expect(groups.find((g) => g.issues.some((i) => i.id === "x"))?.label).toBe("draft");
+  });
+});
+
+describe("a column belongs to one work state, so the columns of a state sum to its figure", () => {
+  it("heads every column with its own state's word, and puts no column in two states", () => {
+    for (const label of boardColumns()) {
+      const state = LABEL_WORK_STATE[label];
+      const head = LABEL_VIEW[label].label;
+      expect([label, head.startsWith(WORK_STATE_LABELS[state])]).toEqual([label, true]);
+    }
+  });
+
+  it("counts the same issues under a state's columns as workStateOf counts under the state", () => {
+    const rows = RETURNABLE.flatMap((s, i) => [
+      issue(`${i}a`, s),
+      issue(`${i}b`, s, false),
+      {
+        ...issue(`${i}c`, s),
+        waitingOnPersonSince: "2026-09-27T10:00:00Z",
+      } as PipelineIssueRow,
+    ]);
+    const groups = groupIssuesByLabel(rows);
+    for (const state of WORK_STATES) {
+      const inColumns = groups
+        .filter((g) => LABEL_WORK_STATE[g.label] === state)
+        .reduce((n, g) => n + g.issues.length, 0);
+      const byRule = rows.filter(
+        (r) => workStateOf(r.status as IssueStatus, r.waitingOnPersonSince != null) === state,
+      ).length;
+      expect([state, inColumns]).toEqual([state, byRule]);
+    }
   });
 });
 

@@ -1,9 +1,10 @@
 // 5-KPI band for the per-project dashboard (ISS-379, AC#1). Active runs, Needs
-// you, Open issues, Spend today, and a deferred Pass-rate slot (ISS-380 Part 2).
+// you, Open work, Spend today, and a deferred Pass-rate slot (ISS-380 Part 2).
 // Presentational only: every value arrives from a hook the page already called.
 
 import { Card, CardContent, Icon, type IconName } from "@/design";
 import { Badge } from "@/design/primitives/badge";
+import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from "@forge/contracts/work-state";
 
 interface Kpi {
   icon: IconName;
@@ -23,7 +24,8 @@ export interface KpiBandProps {
   busyRunners: number;
   onlineRunners: number;
   needsYou: number;
-  openIssues: number;
+  /** Open work: the four open states summed, the figure the donut's centre and the nav badge show. */
+  openWork: number;
   spendTodayUsd: number;
   inFlightUsd: number;
 }
@@ -50,8 +52,9 @@ export function KpiBand(props: KpiBandProps) {
     },
     {
       icon: "board",
-      label: "Open issues",
-      value: String(props.openIssues),
+      label: OPEN_WORK_LABEL,
+      value: String(props.openWork),
+      caption: OPEN_WORK_DEFINITION,
     },
     {
       icon: "dollar",

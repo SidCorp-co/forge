@@ -162,8 +162,8 @@ export function PipelineTab({
       <CardContent>
         <SectionTitle className="fg-h3 mb-1">Pipeline</SectionTitle>
         <p className="fg-body-sm mb-1 text-muted">
-          An issue is picked up at <b>Queued</b>, runs as one session, and ends either at{" "}
-          <b>Needs a human</b>, <b>Awaiting release</b> or closed. The session is driven by the{" "}
+          An issue is picked up at <b>Open</b>, runs as one session, and ends either at{" "}
+          <b>Needs info</b>, <b>Awaiting release</b> or closed. The session is driven by the{" "}
           <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
         </p>
         {libraryHref && (
@@ -189,7 +189,7 @@ export function PipelineTab({
           />
           <StageRow
             label="Start queued issues automatically"
-            hint="Off holds every issue at Queued until a human starts it. The pipeline stays on — nothing else changes."
+            hint="Off holds every issue at Open until a human starts it. The pipeline stays on — nothing else changes."
             control={
               <Toggle
                 checked={entryGateOpen(draft)}

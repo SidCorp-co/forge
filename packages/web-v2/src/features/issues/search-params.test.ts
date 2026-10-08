@@ -15,14 +15,16 @@ const { issuesApi } = await import("./api");
 
 const fetchMock = vi.fn();
 
+const ZERO_WORK = { open: 0, in_flight: 0, awaiting_release: 0, blocked_on_person: 0, draft: 0, finished: 0 };
+
 const PROJECT = "22222222-2222-4222-8222-222222222222";
 
 beforeEach(() => {
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(
-    new Response(JSON.stringify([]), {
+    new Response(JSON.stringify({ items: [], total: 0, buckets: { byStatus: {}, byWorkState: ZERO_WORK } }), {
       status: 200,
-      headers: { "content-type": "application/json", "x-total-count": "0" },
+      headers: { "content-type": "application/json" },
     }),
   );
   vi.stubGlobal("fetch", fetchMock);

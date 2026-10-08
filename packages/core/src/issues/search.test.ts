@@ -14,19 +14,9 @@ vi.mock('../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOffset = vi.fn((): Record<string, unknown>[] => []);
 const selectOrderBy = vi.fn(() => ({ limit: vi.fn(() => ({ offset: selectOffset })) }));
-const bucketGroupBy = vi.fn((): Record<string, unknown>[] => []);
-const bucketWhereArgs: unknown[] = [];
-const listWhereArgs: unknown[] = [];
-const selectWhere = vi.fn((arg?: unknown) => ({
+const selectWhere = vi.fn(() => ({
   limit: selectLimit,
-  orderBy: (...a: unknown[]) => {
-    listWhereArgs.push(arg);
-    return (selectOrderBy as (...x: unknown[]) => unknown)(...a);
-  },
-  groupBy: (...a: unknown[]) => {
-    bucketWhereArgs.push(arg);
-    return (bucketGroupBy as (...x: unknown[]) => unknown)(...a);
-  },
+  orderBy: selectOrderBy,
   then: (resolve: (v: unknown) => void) => resolve([{ n: 0 }]),
 }));
 const selectLeftJoin = vi.fn(
@@ -429,72 +419,5 @@ describe('createdBy filter + creator hydration (ISS-756)', () => {
       creatorIsAgent: true,
     });
     expect(hydrateCreatorsForIssues).toHaveBeenCalledTimes(1);
-  });
-});
-
-function namesStatusColumn(node: unknown, depth = 0): boolean {
-  if (depth > 8 || node === null || typeof node !== 'object') return false;
-  const o = node as Record<string, unknown>;
-  if (o.name === 'status' && typeof o.table === 'object') return true;
-  for (const [k, v] of Object.entries(o)) {
-    if (k === 'table') continue;
-    if (Array.isArray(v)) {
-      for (const x of v) if (namesStatusColumn(x, depth + 1)) return true;
-    } else if (v && typeof v === 'object' && namesStatusColumn(v, depth + 1)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-describe('withBuckets — the tab counts (ISS-1010)', () => {
-  function queuePage() {
-    selectOffset.mockReturnValueOnce([{ id: 'x', issSeq: 1, title: 'a' }]);
-  }
-
-  it('omitted → no buckets on the envelope and no grouped read', async () => {
-    queueAuthSelect();
-    queueProjectAccessMember();
-    queuePage();
-    const res = await req('', await token());
-    expect(res.status).toBe(200);
-    expect(await res.json()).not.toHaveProperty('buckets');
-    expect(bucketGroupBy).not.toHaveBeenCalled();
-  });
-
-  it('withBuckets=1 → per-status counts plus the two origin counts', async () => {
-    queueAuthSelect();
-    queueProjectAccessMember();
-    queuePage();
-    bucketGroupBy.mockReturnValueOnce([
-      { status: 'closed', n: 986 },
-      { status: 'dropped', n: 12 },
-    ]);
-    const res = await req('?withBuckets=1', await token());
-    expect(res.status).toBe(200);
-    const b = ((await res.json()) as { buckets: Record<string, unknown> }).buckets;
-    expect(b.byStatus).toMatchObject({ closed: 986, dropped: 12 });
-    expect(b).toHaveProperty('detector');
-    expect(b).toHaveProperty('humanDraft');
-  });
-
-  it('counts the statuses the status filter excludes, not only the ones on screen', async () => {
-    queueAuthSelect();
-    queueProjectAccessMember();
-    queuePage();
-    bucketGroupBy.mockReturnValueOnce([{ status: 'closed', n: 986 }]);
-    bucketWhereArgs.length = 0;
-    listWhereArgs.length = 0;
-    const res = await req('?status=needs_info&withBuckets=1', await token());
-    expect(res.status).toBe(200);
-    expect(bucketWhereArgs).toHaveLength(2);
-    expect(listWhereArgs).toHaveLength(1);
-    expect(namesStatusColumn(listWhereArgs[0])).toBe(true);
-    for (const where of bucketWhereArgs) {
-      expect(
-        namesStatusColumn(where),
-        'a bucket read carried the status filter — every tab but the open one would read zero',
-      ).toBe(false);
-    }
   });
 });

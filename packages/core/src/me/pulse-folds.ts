@@ -3,19 +3,14 @@
  * database.
  */
 
-import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
 import { type FailureCause, resolveFailureCause } from '../pipeline/failure-causes.js';
 import {
-  PULSE_AWAITING_RELEASE_STATUSES,
   PULSE_FLOW_WEEKS,
   PULSE_HEARTBEAT_DAYS,
-  PULSE_IN_PROGRESS_STATUSES,
-  PULSE_OPEN_STATUSES,
   type PulseFlowWeek,
   type PulseHeartbeatDay,
   type PulseLane,
   type PulseQuality,
-  type PulseWorkBuckets,
 } from './pulse-types.js';
 
 /** Whole seconds between `then` and `now`, never negative. */
@@ -30,41 +25,6 @@ export function medianSeconds(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) / 2)] ?? null;
-}
-
-const BUCKET_OF = new Map<string, keyof PulseWorkBuckets>();
-for (const s of PULSE_OPEN_STATUSES) BUCKET_OF.set(s, 'open');
-for (const s of PULSE_IN_PROGRESS_STATUSES) BUCKET_OF.set(s, 'inProgress');
-for (const s of PULSE_AWAITING_RELEASE_STATUSES) BUCKET_OF.set(s, 'awaitingRelease');
-for (const s of HUMAN_PARK_STATUSES) BUCKET_OF.set(s, 'humanBlocked');
-
-/** Which of the four buckets a status belongs to, or null where it is finished. */
-export const bucketOfStatus = (status: string): keyof PulseWorkBuckets | null =>
-  BUCKET_OF.get(status) ?? null;
-
-export const emptyBuckets = (): PulseWorkBuckets => ({
-  open: 0,
-  inProgress: 0,
-  awaitingRelease: 0,
-  humanBlocked: 0,
-});
-
-/** Fold `(projectId, status, n)` rows into per-project and workspace buckets. */
-export function foldBuckets(rows: Array<{ projectId: string; status: string; n: number }>): {
-  total: PulseWorkBuckets;
-  byProject: Map<string, PulseWorkBuckets>;
-} {
-  const total = emptyBuckets();
-  const byProject = new Map<string, PulseWorkBuckets>();
-  for (const r of rows) {
-    const bucket = bucketOfStatus(r.status);
-    if (!bucket) continue;
-    const per = byProject.get(r.projectId) ?? emptyBuckets();
-    per[bucket] += r.n;
-    total[bucket] += r.n;
-    byProject.set(r.projectId, per);
-  }
-  return { total, byProject };
 }
 
 /** Issue-run starts per UTC day, every day of the window present. */

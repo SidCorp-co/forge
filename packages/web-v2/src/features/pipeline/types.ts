@@ -151,6 +151,8 @@ export interface PipelineIssueRow {
   held: boolean;
   /** When anything last spoke for the issue, from the same hydrator; `null` where core has no time. */
   lastCheckInAt: string | null;
+  /** Since when a person has owed this issue an answer (its oldest open human question), or null. */
+  waitingOnPersonSince?: string | null;
   pipelineHealth?: PipelineHealth;
   metadata?: ({ branchConfig?: { branch?: string } | null } & Record<string, unknown>) | null;
 }

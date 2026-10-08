@@ -1,8 +1,9 @@
 import * as CONTRACT from '@forge/contracts/status-sets';
+import * as WORK from '@forge/contracts/work-state';
 import { describe, expect, it } from 'vitest';
 import { BLOCKER_SETTLED_STATUSES } from '../issues/dependency-effects.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
 import { REASON_REQUIRED_STATUSES } from '../issues/transition-reason.js';
+import * as CORE_WORK from '../issues/work-state.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { memoryReindexStates } from './schema-memory-chunks.js';
 import { terminalAgentSessionStatuses } from './session-vocabulary.js';
@@ -19,10 +20,6 @@ const MIRRORS: Record<string, { core: readonly string[]; contract: readonly stri
   BLOCKER_SETTLED_STATUSES: {
     core: BLOCKER_SETTLED_STATUSES,
     contract: CONTRACT.BLOCKER_SETTLED_STATUSES,
-  },
-  NON_OPEN_ISSUE_STATUSES: {
-    core: NON_OPEN_STATUSES,
-    contract: CONTRACT.NON_OPEN_ISSUE_STATUSES,
   },
   REASON_REQUIRED_ISSUE_STATUSES: {
     core: [...REASON_REQUIRED_STATUSES],
@@ -51,5 +48,33 @@ describe('the core and contracts copies of one status answer', () => {
       .map(([name]) => name)
       .sort();
     expect(exported).toEqual(Object.keys(MIRRORS).sort());
+  });
+});
+
+/**
+ * `@forge/contracts/work-state` owns the states and the rule that files a status in one, and core
+ * counts by its own copy. Every figure of work a screen publishes is counted here and drawn there,
+ * so a drift between the two is two screens disagreeing about one project with nothing red.
+ */
+describe('the core and contracts copies of the work-state map', () => {
+  it('lists the same states, in the same order', () => {
+    expect([...CORE_WORK.WORK_STATES]).toEqual([...WORK.WORK_STATES]);
+    expect([...CORE_WORK.OPEN_WORK_STATES]).toEqual([...WORK.OPEN_WORK_STATES]);
+  });
+
+  it('files every status in the same state, member for member', () => {
+    expect({ ...CORE_WORK.STATUS_WORK_STATE }).toEqual({ ...WORK.STATUS_WORK_STATE });
+  });
+
+  it('reads an issue the same way with and without a question owed', () => {
+    for (const status of Object.keys(WORK.STATUS_WORK_STATE)) {
+      for (const owes of [false, true]) {
+        expect([status, owes, CORE_WORK.workStateOf(status as never, owes)]).toEqual([
+          status,
+          owes,
+          WORK.workStateOf(status as never, owes),
+        ]);
+      }
+    }
   });
 });

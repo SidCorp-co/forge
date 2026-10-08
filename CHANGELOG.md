@@ -6317,6 +6317,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Every screen counts the state of work the same way, and the counts add up.** One set of six states heads the Issues tabs, the board and the Overview, and the dashboard chart names every slice it draws.
 - **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, lanes, a
   coloured verdict and change; Enter opens its detail, `s` shows sources, the legend explains each
   verdict (`l` on small screens). `--once` is unchanged.

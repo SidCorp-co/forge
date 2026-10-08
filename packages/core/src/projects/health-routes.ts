@@ -1,9 +1,13 @@
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
 import { projects } from '../db/schema.js';
-import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import {
+  foldWorkStates,
+  openWorkTotal,
+  type WorkStateCounts,
+  type WorkStateRow,
+} from '../issues/work-state.js';
 import {
   countClaimHeldIssuesByProject,
   type LoopMonitorCoverage,
@@ -25,8 +29,10 @@ interface ProjectHealthRow {
   /** Repo path/slug shown under the project name (nullable). */
   repoPath: string | null;
   throughput: number;
+  /** Open work: the four open states of `work` summed, so a screen's figure and its legend are one count. */
   totalActive: number;
-  statusDistribution: Record<string, number>;
+  /** How many issues are in each work state, by the same rule the pulse and the issues search count by. */
+  work: WorkStateCounts;
   blockers: Array<{ issueId: string; documentId: string; status: string }>;
   pendingEscalations: number;
   avgCycleTimeDays: number;
@@ -52,6 +58,11 @@ interface ProjectHealthRow {
 function emailInitials(email: string): string {
   const local = email.split('@')[0] ?? email;
   return local.slice(0, 2).toUpperCase();
+}
+
+/** Issues parked at `needs_info`, a count of that one status whatever else is asked of a person. */
+function pendingEscalationsOf(rows: readonly WorkStateRow[]): number {
+  return rows.filter((r) => r.status === 'needs_info').reduce((n, r) => n + r.n, 0);
 }
 
 const MEMBER_AVATAR_CAP = 5;
@@ -99,11 +110,11 @@ projectHealthRoutes.get('/health', async (c) => {
   const agg = await readHealthAggregates(projectIds);
   const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
 
-  const distByProject = new Map<string, Record<string, number>>();
+  const rowsByProject = new Map<string, WorkStateRow[]>();
   for (const r of agg.statusRows) {
-    const dist = distByProject.get(r.projectId) ?? {};
-    dist[r.status] = Number(r.n);
-    distByProject.set(r.projectId, dist);
+    const rows = rowsByProject.get(r.projectId) ?? [];
+    rows.push(r);
+    rowsByProject.set(r.projectId, rows);
   }
 
   const blockersByProject = groupBlockers(agg.blockerRowsAll);
@@ -146,11 +157,7 @@ projectHealthRoutes.get('/health', async (c) => {
   for (const r of agg.runActivityRows) noteActivity(r.projectId, r.lastAt);
 
   const result: ProjectHealthRow[] = visibleProjects.map((p) => {
-    const dist = distByProject.get(p.id) ?? {};
-    let totalActive = 0;
-    for (const [status, n] of Object.entries(dist)) {
-      if (!NON_OPEN_STATUSES.includes(status as IssueStatus)) totalActive += n;
-    }
+    const work = foldWorkStates(rowsByProject.get(p.id) ?? []);
     return {
       id: p.id,
       projectName: p.name,
@@ -158,10 +165,10 @@ projectHealthRoutes.get('/health', async (c) => {
       description: p.description ?? null,
       repoPath: p.repoPath ?? null,
       throughput: throughputByProject.get(p.id) ?? 0,
-      totalActive,
-      statusDistribution: dist,
+      totalActive: openWorkTotal(work),
+      work,
       blockers: blockersByProject.get(p.id) ?? [],
-      pendingEscalations: dist.needs_info ?? 0,
+      pendingEscalations: pendingEscalationsOf(rowsByProject.get(p.id) ?? []),
       avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,

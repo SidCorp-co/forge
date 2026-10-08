@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { WORK_STATES } from "@forge/contracts/work-state";
 import { filterCount } from "./derive";
 import { issueKeyRefusalOf, NO_ISSUE_BUCKETS } from "./key-refusal";
 
@@ -24,10 +25,9 @@ describe("issueKeyRefusalOf (ISS-1334)", () => {
 
 describe("NO_ISSUE_BUCKETS (ISS-1334)", () => {
   it("counts 0 under every tab and outcome, so a refused key keeps every count drawn", () => {
-    for (const f of ["all", "you", "agent", "draft", "findings", "done"] as const) {
+    for (const f of ["all", ...WORK_STATES] as const) {
       expect(filterCount(f, NO_ISSUE_BUCKETS), f).toBe(0);
     }
     for (const s of REGISTRY_ISSUE_STATUSES) expect(NO_ISSUE_BUCKETS.byStatus[s], s).toBe(0);
-    expect([NO_ISSUE_BUCKETS.detector, NO_ISSUE_BUCKETS.humanDraft]).toEqual([0, 0]);
   });
 });

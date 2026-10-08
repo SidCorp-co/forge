@@ -6,6 +6,7 @@
 // events only arrive on subscribed rooms, so we fan out a `useRoom` per project
 // (bounded list) — `pipeline_run.status_changed` then refreshes
 // `['projects','health']` + `['pipeline-runs','list']`.
+import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
 import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
@@ -197,7 +198,7 @@ function MonitorTab({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Tile label="Live runs" value={String(totalLive)} />
         <Tile label="Spend · 24h" value={formatUsd(totalSpend)} />
-        <Tile label="Active issues" value={String(totalActive)} />
+        <Tile label={OPEN_WORK_LABEL} value={String(totalActive)} />
         <Tile label="Online runners" value={String(totalRunners)} />
       </div>
 
@@ -341,7 +342,7 @@ function HealthTab({ health }: { health: ProjectHealthRow[] }) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
-              <Metric label="Active" value={String(h.totalActive)} />
+              <Metric label={OPEN_WORK_LABEL} value={String(h.totalActive)} />
               <Metric label="Live runs" value={String(h.liveRuns)} />
               <Metric label="Runners" value={String(h.runnerCount)} />
               <Metric label="Spend · 24h" value={formatUsd(h.spend24hUsd)} />

@@ -1,3 +1,4 @@
+import type { OpenWorkState } from "@forge/contracts/work-state";
 
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {
@@ -83,12 +84,8 @@ export interface PulseLiveness {
   devices: { online: number; draining: number; total: number };
 }
 
-export interface PulseWorkBuckets {
-  open: number;
-  inProgress: number;
-  awaitingRelease: number;
-  humanBlocked: number;
-}
+/** Issues in each open work state, keyed as the health row's `work` and the search's `byWorkState` are. */
+export type PulseWorkBuckets = Record<OpenWorkState, number>;
 
 export interface PulseProjectRow extends PulseWorkBuckets {
   id: string;
@@ -107,7 +104,8 @@ export interface PulseWork {
   liveUnmeasured: PulseCapped<PulseLiveGap>;
   silentProjects: PulseCapped<PulseProjectIdentity>;
   neverRanProjects: PulseCapped<PulseProjectIdentity>;
-  humanBlockedAges: number[];
+  /** Seconds each issue blocked on a person has waited. */
+  blockedOnPersonAges: number[];
   perProject: PulseProjectRow[];
 }
 
@@ -141,18 +139,3 @@ export interface PulseResponse {
   flow: PulseFlowWeek[];
   quality: PulseQuality;
 }
-
-/** The statuses each work bucket is drawn from — a bucket cell's destination. */
-export const PULSE_BUCKET_STATUSES: Record<keyof PulseWorkBuckets, readonly string[]> = {
-  open: ["open", "confirmed", "clarified", "approved"],
-  inProgress: ["in_progress", "developed", "testing", "tested", "reopen"],
-  awaitingRelease: ["awaiting_release", "releasing"],
-  humanBlocked: ["waiting", "needs_info", "on_hold"],
-};
-
-export const PULSE_BUCKET_LABELS: Record<keyof PulseWorkBuckets, string> = {
-  open: "Open, not picked up",
-  inProgress: "In flight",
-  awaitingRelease: "Awaiting release",
-  humanBlocked: "Blocked on a person",
-};

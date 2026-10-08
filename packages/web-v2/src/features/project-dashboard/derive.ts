@@ -11,33 +11,29 @@ import {
   type RunnerLimitDisplay,
   runnerLimitDisplay,
 } from "@/features/runners/types";
-import { NON_OPEN_ISSUE_STATUSES } from "@forge/contracts/status-sets";
+import {
+  OPEN_WORK_STATES,
+  type OpenWorkState,
+  openWorkTotal,
+  WORK_STATE_LABELS,
+  type WorkState,
+} from "@forge/contracts/work-state";
 import type { ScheduleRow } from "@/features/schedules/types";
 import type { QueueStats } from "@/features/sessions/types";
 
 /* ------------------------------------------------------------------ *
- * Open-issues-by-status donut (AC#4)
+ * Open work by state: the donut, drawn from the same counts as the tile (ISS-1156)
  * ------------------------------------------------------------------ */
 
-export type StatusBucketKey = "active" | "attention" | "queued" | "blocked" | "ready";
-
-const NON_OPEN_STATUSES = new Set<string>(NON_OPEN_ISSUE_STATUSES);
-
-const STATUS_BUCKETS: ReadonlyArray<{
-  key: StatusBucketKey;
-  label: string;
-  tone: SemanticTone;
-  statuses: readonly string[];
-}> = [
-  { key: "active", label: "In progress", tone: "active", statuses: ["in_progress", "reopen", "developed", "testing"] },
-  { key: "attention", label: "Awaiting input", tone: "attention", statuses: ["waiting", "needs_info"] },
-  { key: "queued", label: "Queued", tone: "neutral", statuses: ["open", "confirmed", "clarified", "approved"] },
-  { key: "blocked", label: "On hold", tone: "blocked", statuses: ["on_hold"] },
-  { key: "ready", label: "Awaiting release", tone: "success", statuses: ["tested"] },
-];
+const STATE_TONE: Record<OpenWorkState, SemanticTone> = {
+  open: "neutral",
+  in_flight: "active",
+  awaiting_release: "success",
+  blocked_on_person: "attention",
+};
 
 export interface DonutSegment {
-  key: StatusBucketKey;
+  key: OpenWorkState;
   label: string;
   color: string;
   count: number;
@@ -46,22 +42,23 @@ export interface DonutSegment {
 }
 
 export interface StatusDonutData {
-  /** Non-empty buckets only, in legend order. */
   segments: DonutSegment[];
   total: number;
 }
 
-export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
-  const d = dist ?? {};
-  let total = 0;
-  for (const [status, count] of Object.entries(d)) {
-    if (!NON_OPEN_STATUSES.has(status)) total += count;
-  }
-  const segments = STATUS_BUCKETS.map((b) => {
-    const count = b.statuses.reduce((n, s) => n + (d[s] ?? 0), 0);
-    return { key: b.key, label: b.label, color: TONE_META[b.tone].dot, count, pct: total > 0 ? (count / total) * 100 : 0 };
+/** The ring and its legend from one set of counts, so the legend adds up to the figure at the ring's centre. */
+export function statusDonut(work: Partial<Record<WorkState, number>> | undefined): StatusDonutData {
+  const total = openWorkTotal(work ?? {});
+  const segments = OPEN_WORK_STATES.map((state) => {
+    const count = work?.[state] ?? 0;
+    return {
+      key: state,
+      label: WORK_STATE_LABELS[state],
+      color: TONE_META[STATE_TONE[state]].dot,
+      count,
+      pct: total > 0 ? (count / total) * 100 : 0,
+    };
   }).filter((s) => s.count > 0);
-
   return { segments, total };
 }
 

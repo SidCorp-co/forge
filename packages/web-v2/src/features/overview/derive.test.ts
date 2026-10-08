@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { actionQueue, ageText } from "./derive";
+import { OPEN_WORK_STATES, WORK_STATE_LABELS } from "@forge/contracts/work-state";
+import { actionQueue, ageText, bucketHref, projectSilenceRows, waffleCells } from "./derive";
 import type { PulseResponse, PulseWork } from "./types";
 
 function pulse(work: Partial<PulseWork>): PulseResponse {
@@ -26,14 +27,14 @@ function pulse(work: Partial<PulseWork>): PulseResponse {
       devices: { online: 0, draining: 0, total: 0 },
     },
     work: {
-      buckets: { open: 0, inProgress: 0, awaitingRelease: 0, humanBlocked: 0 },
+      buckets: { open: 0, in_flight: 0, awaiting_release: 0, blocked_on_person: 0 },
       abandoned: empty,
       releaseWaiting: empty,
       notOnLive: empty,
       liveUnmeasured: empty,
       silentProjects: empty,
       neverRanProjects: empty,
-      humanBlockedAges: [],
+      blockedOnPersonAges: [],
       perProject: [],
       ...work,
     },
@@ -152,5 +153,48 @@ describe("the action queue's production rows (ISS-1217)", () => {
     const keys = actionQueue(pulse({}), NOW).map((r) => r.key);
     expect(keys).not.toContain("notOnLive");
     expect(keys).not.toContain("liveUnmeasured");
+  });
+});
+
+describe("the buckets are the open work states (ISS-1156)", () => {
+  it("draws one waffle cell per open state, worded and counted as the state is", () => {
+    const cells = waffleCells({ open: 56, in_flight: 11, awaiting_release: 1, blocked_on_person: 4 });
+    expect(cells.map((c) => [c.key, c.label, c.count])).toEqual([
+      ["open", "Open, not picked up", 56],
+      ["in_flight", "In flight", 11],
+      ["awaiting_release", "Awaiting release", 1],
+      ["blocked_on_person", "Blocked on a person", 4],
+    ]);
+    expect(cells.map((c) => c.label)).toEqual(OPEN_WORK_STATES.map((s) => WORK_STATE_LABELS[s]));
+  });
+
+  it("opens the issues list on the segment that counted a figure, not on a list of statuses", () => {
+    for (const state of OPEN_WORK_STATES) {
+      expect(bucketHref("forge-dev", state)).toBe(`/projects/forge-dev/issues?filter=${state}`);
+    }
+  });
+
+  it("sums a project's backlog from its four open states and no others", () => {
+    const rows = projectSilenceRows(
+      pulse({
+        perProject: [
+          {
+            id: "p",
+            slug: "alpha",
+            name: "Alpha",
+            open: 5,
+            in_flight: 7,
+            awaiting_release: 1,
+            blocked_on_person: 3,
+            stuckRuns: 0,
+            abandonedIssues: 0,
+            lastIssueRunAt: null,
+          },
+        ],
+      }),
+      NOW,
+    );
+    expect(rows[0]?.backlog).toBe(16);
+    expect(rows[0]?.buckets).toEqual({ open: 5, in_flight: 7, awaiting_release: 1, blocked_on_person: 3 });
   });
 });
