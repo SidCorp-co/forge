@@ -1,0 +1,1 @@
+**Three more report queries answer from the reads the screens already use.** Release readiness, criteria coverage and workflow status each return one typed frame, with the existing read they summarise declared beside them.
