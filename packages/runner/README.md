@@ -254,9 +254,11 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   are not holders: they live in their panes, which the new image adopts, and
   their masters bind, answer for and close them across the handover.
 - **Admission stays open while it waits.** Runs are declared, pool jobs taken,
-  masters placed and nudged. It is refused only inside the closing window — at
-  most 10s per attempt — with a reason that says the box is handing over and
-  that nothing was recorded.
+  masters placed and nudged. It is refused only inside a closing window — each
+  at most 10s, and an attempt that finds work still in flight at the end of one
+  opens another, so the time admission is closed in one attempt is not bounded
+  by 10s — with a reason that says the box is handing over and that nothing was
+  recorded.
 - **It speaks while it waits**: a line at the start and every 10 minutes naming
   each turn it waits on and how long it has run, in whichever step it is —
   between looks, while the parked sessions close, or inside a closing window,
@@ -388,12 +390,17 @@ from; a `cargo build` that nothing stamped prints Cargo's own version and
 `unknown`, which is the truth about it — it is not a published build, and core
 reports such a box as unknown rather than current rather than guessing.
 
-The stamped commit is the newest commit that **touched `packages/runner`**, not the
-head of the push that carried it: one push can hold a runner commit followed by an
-unrelated one, and core reads the branch the same way, so stamping the push head
-would leave a freshly updated box reading as behind for ever. A commit some release
-already carries is refused rather than released again — a rerun of an older release
-job would otherwise publish that code under a version higher than what followed it.
+The stamped commit is the one on `main` that **brought the newest runner change in**
+(`scripts/runner-release-commit.mjs`): the merge for a pull request merged with a
+merge commit, the commit itself for a push made straight to `main` or a rebased
+series. It is neither the head of the push, which can hold a runner commit followed
+by an unrelated one, nor the pull request's own last commit, which a build of `main`
+cannot be shown to contain the merge of — a verification `--contains <merge>` is
+answered against this commit. Core reads a release against the branch by
+containment: a release carries what landed when its commit is the newest commit that
+touched `packages/runner` or a descendant of it. A commit some release already
+carries is refused rather than released again — a rerun of an older release job
+would otherwise publish that code under a version higher than what followed it.
 
 Withdrawing a release takes two acts, not one: core's
 `packages/core/src/install/fetch-release.ts` never moves `RUNNER_RELEASE_DIR` backwards,
