@@ -27,9 +27,10 @@ export async function routeScheduleScriptFire(
   const { schedule } = input;
 
   if (!schedule.script) {
+    const error = 'this script-kind schedule has no script';
     return {
-      result: { ok: false, reason: 'session-failed', status: 'failed' },
-      settle: { status: 'failed', error: 'this script-kind schedule has no script' },
+      result: { ok: false, reason: 'run-failed', status: 'failed', error },
+      settle: { status: 'failed', error },
     };
   }
 
@@ -86,7 +87,7 @@ export async function routeScheduleScriptFire(
       ? `${outcome.error.name}: ${outcome.error.message}`
       : 'the script failed';
     return {
-      result: { ok: false, reason: 'session-failed', status: 'failed' },
+      result: { ok: false, reason: 'run-failed', status: 'failed', error },
       settle: { status: 'failed', error, output, ...record },
     };
   }

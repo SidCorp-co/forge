@@ -1,0 +1,1 @@
+**A schedule that ran and failed now says why.** Run now answers SCHEDULE_RUN_FAILED with the script's own error, not "session-failed"; ctx.notify names what it was given; a due time SQL wrote now fires on the tick.

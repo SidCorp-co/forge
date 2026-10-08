@@ -63,6 +63,14 @@ function keepLog(line: string): void {
   logLength += line.length + 1;
 }
 
+/** What a ctx.notify argument was, as its refusal names it. */
+function givenOf(v: unknown): string {
+  if (v === null || v === undefined) return 'nothing';
+  if (Array.isArray(v)) return 'an array';
+  if (typeof v === 'string') return v.trim() === '' ? 'an empty string' : 'a string';
+  return `a ${typeof v}`;
+}
+
 function notice(json: string): string | null {
   let p: unknown;
   try {
@@ -71,8 +79,11 @@ function notice(json: string): string | null {
     p = null;
   }
   const r = p as Record<string, unknown> | null;
-  if (!r || typeof r !== 'object' || typeof r.title !== 'string' || r.title.trim() === '') {
-    return 'ctx.notify requires a { title: string, body?, severity? } payload';
+  if (!r || typeof r !== 'object' || Array.isArray(r)) {
+    return `ctx.notify requires a { title: string, body?, severity? } payload, and was given ${givenOf(p)}; write ctx.notify({ title: ${typeof p === 'string' ? JSON.stringify(p.slice(0, 60)) : "'…'"} })`;
+  }
+  if (typeof r.title !== 'string' || r.title.trim() === '') {
+    return `ctx.notify requires a { title: string, body?, severity? } payload, and its title was ${givenOf(r.title)}`;
   }
   if (notifications.length >= start.notifyCap) {
     return `ctx.notify was called more than ${start.notifyCap} times in one run, its cap; the rest are not sent`;
