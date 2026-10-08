@@ -1,9 +1,9 @@
 // What the deployment reports is the identity; what the caller sends is a claim
 // under test. These suites are about the line between the two — `verify.test.ts`
-// is about whether a deploy arrived at all.
+// is about how one reading is taken.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deploymentConfirms, verifyDeployed, verifyServingNow } from './verify.js';
+import { deploymentConfirms, verifyServingNow } from './verify.js';
 
 const fetchMock = vi.fn();
 
@@ -27,7 +27,6 @@ function answers(...commits: Array<string | null>) {
 
 const CFG = {
   probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }],
-  timeoutSeconds: 60,
   stableReads: 1,
 };
 
@@ -37,11 +36,7 @@ const OLD = 'a12b34c5d6e7f8091a2b3c4d5e6f708192a3b4c5';
 /** The abbreviation a deployment may report of NEW. */
 const SHORT = 'b853f813d';
 
-const nowFake = () => 0;
-const noSleep = async () => undefined;
-
-// `deploymentConfirms` and `verifyServingNow` answer a different question from
-// `verifyDeployed`: not "did the deploy I just started arrive" but "is the
+// `deploymentConfirms` and `verifyServingNow` answer one question: "is the
 // application serving this commit right now". One read, no poll, and a
 // comparison that tolerates the abbreviation production reports without
 // tolerating an abbreviation the caller chose.
@@ -165,57 +160,5 @@ describe('verifyServingNow', () => {
     const out = await verifyServingNow({ cfg: CFG, expected: NEW });
 
     expect(out.ok === false && out.readings.length).toBe(1);
-  });
-});
-
-// The batch door closes issues too, so it reads a claim by the same rule. It
-// asked `live === expected`, which took the deployment's own abbreviation back
-// from the caller as proof and refused the whole sha the abbreviation stood for.
-describe('verifyDeployed reads a claim by the same rule (ISS-1161)', () => {
-  it('accepts a whole sha against the abbreviation the probes report', async () => {
-    answers(SHORT);
-
-    const out = await verifyDeployed({
-      cfg: CFG,
-      commitBefore: OLD,
-      expected: NEW,
-      now: nowFake,
-      sleep: noSleep,
-    });
-
-    expect(out.ok).toBe(true);
-    expect(out.ok === true && out.identity).toBe(SHORT);
-  });
-
-  it('refuses a claim that is not a whole sha after one read, without sleeping', async () => {
-    answers(SHORT);
-    const slept = vi.fn(noSleep);
-
-    const out = await verifyDeployed({
-      cfg: CFG,
-      commitBefore: OLD,
-      expected: SHORT,
-      now: nowFake,
-      sleep: slept,
-    });
-
-    expect(out.ok).toBe(false);
-    expect(out.ok === false && out.reason).toContain('is not a whole commit');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(slept).not.toHaveBeenCalled();
-  });
-
-  it('still asks only that the deploy arrived where the caller claims nothing', async () => {
-    answers(SHORT);
-
-    const out = await verifyDeployed({
-      cfg: CFG,
-      commitBefore: OLD,
-      expected: null,
-      now: nowFake,
-      sleep: noSleep,
-    });
-
-    expect(out.ok).toBe(true);
   });
 });

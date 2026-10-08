@@ -1,17 +1,14 @@
 /** What a project is serving, read when asked and never stored — a commit on a row is wrong the
  *  moment the next deploy lands (ISS-1286). Declared probes answer first; where none is declared,
- *  what Forge itself deployed through the project's bindings does (ISS-1346). This shares
- *  `readLiveState` with `serving.ts` and neither calls the other, nor is either called from
- *  `collectReleaseBlockers`, which promises no outbound request. */
+ *  what Forge itself deployed through the project's bindings does (ISS-1346). */
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import { liveProbeFrom, resolveReleaseChannels } from './channel.js';
+import { declaredProbesOf, liveProbeFrom, resolveReleaseChannels } from './channel.js';
 import { readForgeDeployments } from './deployed-reading.js';
-import type { ReleaseChannel } from './plan.js';
-import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
+import { invalidProbeUrls, readLiveState, type VerifyConfig } from './verify.js';
 
 export interface ServedAt {
   readonly commit: string;
@@ -60,32 +57,6 @@ export function servedClause(served: readonly ServedAt[]): string {
 export function servingClause(serving: Extract<ServingReading, { kind: 'serving' }>): string {
   const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
   return `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`;
-}
-
-/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
- *  — which decides anything only where `cfg` is null. */
-export interface DeclaredProbes {
-  readonly cfg: VerifyConfig | null;
-  readonly refused: number;
-}
-
-function probeKey(probe: VerifyProbe): string {
-  return `${probe.url}\u0000${probe.commitPath ?? ''}`;
-}
-
-export function declaredProbesOf(channels: readonly ReleaseChannel[]): DeclaredProbes {
-  const probes: VerifyProbe[] = [];
-  const seen = new Set<string>();
-  let refused = 0;
-  for (const channel of channels) {
-    if (channel.verifySource === 'declared-unusable') refused += 1;
-    for (const probe of channel.verify?.probes ?? []) {
-      if (seen.has(probeKey(probe))) continue;
-      seen.add(probeKey(probe));
-      probes.push(probe);
-    }
-  }
-  return { cfg: probes.length === 0 ? null : { probes }, refused };
 }
 
 /** `resolveReleaseChannels` reads no project row with no live binding, so a commit url declared

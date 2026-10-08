@@ -126,7 +126,7 @@ async function seed(over: { bindingConfig?: Record<string, unknown> } = {}): Pro
       over.bindingConfig ?? {
         releaseRunnerLabel: LABEL,
         rollback: { mode: 'coolify-image' },
-        verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
+        verify: { probes: [{ url: probeUrl }], stableReads: 1 },
       },
     )}::jsonb)
   `);

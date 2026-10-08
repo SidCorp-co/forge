@@ -88,7 +88,7 @@ ${decided.length > 0 ? `\nIssues this range carries off the roster, each with th
 function renderReach(runId: string): string {
   return `
 ### How you reach Forge
-Every call below goes through the \`${RELEASE_BATCH_TOOL}\` MCP tool with runId \`${runId}\`: \`get\` reads the batch, \`method\` announces your method, \`finish\` records the release, \`abort\` gives the batch back. It runs on the credential this session was started with, the same one a deploy through Forge uses.
+Every call below goes through the \`${RELEASE_BATCH_TOOL}\` MCP tool with runId \`${runId}\`: \`get\` reads the batch, \`method\` announces your method, \`look\` has Forge read the live deployment and keep what it saw, \`finish\` records the release, \`abort\` gives the batch back. It runs on the credential this session was started with, the same one a deploy through Forge uses.
 
 If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first call, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying which of the two happened and the refusal's text. Do not look for another credential on this machine.
 `;
@@ -125,12 +125,9 @@ function renderProcedure(plan: ReleasePlan): string {
     const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
     blocks.push(`### Deploy channel notes (${named})\n${channel.instructions}`);
   }
-  const probeUrls = plan.channels.flatMap((c) => c.verify?.probes.map((p) => p.url) ?? []);
-  if (probeUrls.length > 0) {
-    const urls = probeUrls.map((u) => `- ${u}`).join('\n');
-    blocks.push(
-      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
-    );
+  const probed = plan.channels.filter((c) => c.verify !== null);
+  if (probed.length > 0) {
+    blocks.push(renderProof(probed, plan.channels.length - probed.length));
   } else if (plan.channels.length > 0) {
     blocks.push(UNVERIFIED_PROOF);
   }
@@ -138,8 +135,27 @@ function renderProcedure(plan: ReleasePlan): string {
   return `\n${blocks.join('\n\n')}\n`;
 }
 
+/**
+ * The agent decides when Forge looks and a finish closes on what Forge kept (ISS-1282). Nothing
+ * here gives it a clock to race: it looks when it judges the deploy has landed, as often as it likes.
+ */
+function renderProof(probed: ReleasePlan['channels'], unprobed: number): string {
+  const probes = probed
+    .flatMap((c) => (c.verify?.probes ?? []).map((p) => `- ${p.url}`))
+    .join('\n');
+  const unread =
+    unprobed === 0
+      ? ''
+      : `\n\n${unprobed} more live deploy ${unprobed === 1 ? 'binding declares' : 'bindings declare'} no probe, so nothing reads ${unprobed === 1 ? 'it' : 'them'}: \`look\` names ${unprobed === 1 ? 'it' : 'them'} as \`unread\`, and every issue the release closes carries a note saying so. Check ${unprobed === 1 ? 'it' : 'them'} yourself and say how in what you record.`;
+  return `### Proof (Forge reads, you decide when)
+Once the deploy is made, call \`${RELEASE_BATCH_TOOL}\` action \`look\` with \`commit\`, the SHA you pushed. Forge reads these probes itself and keeps what each said, with the time:
+${probes}
+
+You decide when to look and how often; no clock is running. Each answer carries \`judgement\`: whether a \`finish\` naming that commit would close the roster on the readings kept so far, and if not, why (a build still unchanged, a fleet that disagrees, too few consecutive readings agreeing, a reading too old). A deploy still coming up is a reason to look again later, not a failure. Call \`finish\` with the same \`commit\` once \`judgement.closable\` is true: it answers at once with the attempt at \`accepted\` and closes the roster on the kept readings and on nothing you say, so a \`finish\` before them is refused RELEASE_NOT_VERIFIED, closes nothing, and says what is missing. A healthy site still serving the old build is a RED, and nothing you can pass to \`finish\` works around it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and \`readings\` lists what was kept. Where the deploy will not land inside this run, the next section says what to do.${unread}`;
+}
+
 const UNVERIFIED_PROOF = `### Proof (this project declares none)
-No live deploy binding on this project declares a verify probe, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
+No live deploy binding on this project declares a verify probe, so there is nothing for \`look\` to read and it is refused: \`finish\` closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

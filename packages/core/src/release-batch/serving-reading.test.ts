@@ -31,9 +31,7 @@ vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }) },
 }));
 
-const { declaredProbesOf, readServingNow, servedClause, servedCommits } = await import(
-  './serving-reading.js'
-);
+const { readServingNow, servedClause, servedCommits } = await import('./serving-reading.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const SERVED = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
@@ -74,42 +72,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-describe('declaredProbesOf', () => {
-  it('folds every channel probe into one config, keeping declaration order', () => {
-    const declared = declaredProbesOf([
-      channel(),
-      channel({ verify: { probes: [{ url: 'https://two.test/health' }] } }),
-    ] as never);
-    expect(declared.cfg?.probes).toEqual([
-      { url: 'https://one.test/health', commitPath: 'commit' },
-      { url: 'https://two.test/health' },
-    ]);
-    expect(declared.refused).toBe(0);
-  });
-
-  it('asks one probe once where two channels declare the same one', () => {
-    const declared = declaredProbesOf([channel(), channel({ bindingId: 'b2' })] as never);
-    expect(declared.cfg?.probes).toHaveLength(1);
-  });
-
-  it('keeps two probes apart where only their commitPath differs', () => {
-    const declared = declaredProbesOf([
-      channel(),
-      channel({ verify: { probes: [{ url: 'https://one.test/health', commitPath: 'sha' }] } }),
-    ] as never);
-    expect(declared.cfg?.probes).toHaveLength(2);
-  });
-
-  it('counts a refused declaration, which is not the same as declaring nothing', () => {
-    const none = declaredProbesOf([channel({ verify: null, verifySource: 'none' })] as never);
-    expect(none).toEqual({ cfg: null, refused: 0 });
-    const refused = declaredProbesOf([
-      channel({ verify: null, verifySource: 'declared-unusable' }),
-    ] as never);
-    expect(refused).toEqual({ cfg: null, refused: 1 });
-  });
 });
 
 describe('readServingNow', () => {

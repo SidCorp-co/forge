@@ -2,7 +2,12 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type BoundsReading, readBounds } from './bounds.js';
-import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
+import {
+  closeVerification,
+  probesOf,
+  type ReleaseChannel,
+  resolveReleaseChannels,
+} from './channel.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { type ReleaseStart, readReleaseStart } from './job-start.js';
@@ -15,7 +20,11 @@ import {
   type ReleaseRoster,
   type ReleaseRunIssue,
 } from './queries.js';
+import { listReadings, type ReadingView, viewOf } from './readings.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
+
+/** How many of a run's newest readings `state` carries; `readings.total` counts them all. */
+const READINGS_SHOWN = 10;
 
 export interface ReleaseRunState {
   runId: string;
@@ -27,8 +36,13 @@ export interface ReleaseRunState {
   roster: ReleaseRoster;
   runIssues: ReleaseRunIssue[];
   attempts: ReleaseAttemptRow[];
-  /** Read at request time from the probes the close reads; `null` where there are none to read. */
+  /**
+   * Read at request time from the probes the close reads; `null` where there are none to read. Not
+   * evidence: only a recorded reading closes the roster.
+   */
   live: LiveState | null;
+  /** What `look` kept, the newest `READINGS_SHOWN` oldest first; the close judges these and nothing else. */
+  readings: { total: number; latest: ReadingView[] };
   /**
    * How the close is proved, as the run recorded it: at the open, then again by the close itself,
    * so an open run's value is its opening forecast. `null` on a run that recorded none.
@@ -45,11 +59,11 @@ export interface ReleaseRunState {
   start: ReleaseStart;
 }
 
-/** The probes the close reads, or none: a refused declaration has nothing to read either. */
+/** Every probe the close reads, or none: a refused declaration has nothing to read either. */
 function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
   try {
     const verification = closeVerification(channels);
-    return verification.kind === 'probed' ? verification.cfg : null;
+    return verification.kind === 'probed' ? probesOf(verification) : null;
   } catch (err) {
     if (err instanceof ReleaseProbesUnreadableError) return null;
     throw err;
@@ -83,11 +97,8 @@ async function readRun(runId: string) {
   return run;
 }
 
-/**
- * The whole of one release run, or `null` when the run is not one. The run row is read again
- * once the probes answer, so a probe that holds the call for its whole cap cannot hand back a
- * finish record or a run status from before it.
- */
+/** The whole of one release run, or `null` when the run is not one. The run row is read again
+ *  once the probes answer, so a probe holding the call cannot hand back a stale finish record. */
 export async function readReleaseRunState(runId: string): Promise<ReleaseRunState | null> {
   const first = await readRun(runId);
   if (!first) return null;
@@ -95,10 +106,11 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
 
   const channels = await resolveReleaseChannels(first.projectId);
   const verify = liveProbes(channels);
-  const [roster, attempts, live] = await Promise.all([
+  const [roster, attempts, live, kept] = await Promise.all([
     loadReleaseRoster(first.projectId),
     listAttempts(runId),
     verify ? readLiveState(verify) : Promise.resolve(null),
+    listReadings(runId),
   ]);
   const run = (await readRun(runId)) ?? first;
   const [start, runIssues] = await Promise.all([
@@ -117,6 +129,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     runIssues,
     attempts,
     live,
+    readings: { total: kept.length, latest: kept.slice(-READINGS_SHOWN).map(viewOf) },
     verification: recordedVerification(meta, runId),
     bounds: readBounds(attempts),
     method,

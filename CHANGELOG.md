@@ -6320,6 +6320,10 @@
 ### Changed
 
 - **Every screen counts the state of work the same way, and the counts add up.** One set of six states heads the Issues tabs, the board and the Overview, and the dashboard chart names every slice it draws.
+
+- **A release closes on a reading Forge took when asked, not a five-minute wait.** The agent
+  calls `look`; a finish closes only on what was read at every live binding. A site serving the old
+  build stays refused.
 - **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, lanes, a
   coloured verdict and change; Enter opens its detail, `s` shows sources, the legend explains each
   verdict (`l` on small screens). `--once` is unchanged.

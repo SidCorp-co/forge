@@ -27,12 +27,13 @@ import {
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
+  ReleaseNothingToReadError,
   ReleaseNotVerifiedError,
   ReleaseProbesUnreadableError,
+  ReleaseRunClosedError,
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
 export const badRequest = (details: unknown) =>
@@ -53,11 +54,9 @@ export const serviceUnavailable = (code: string, message: string) =>
 /**
  * One refusal, carrying every reason that stood beside it.
  *
- * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint
- * minutes apart — a missing release note, and then a merge nobody had marked —
- * each individually correct and neither mentioning the other. The thrown code
- * and its wording are unchanged; `alsoBlocking` is what stops the second
- * refusal being a surprise.
+ * ISS-1127: releasing ISS-1103 by hand was refused twice by this endpoint minutes apart, a
+ * missing release note and then an unmarked merge, each correct and neither mentioning the
+ * other. The code and wording are unchanged; `alsoBlocking` stops the second being a surprise.
  */
 export function releaseBlockerHttp(
   err: unknown,
@@ -105,13 +104,6 @@ export function declarationRefusal(err: unknown): HTTPException | null {
       err,
       'RELEASE_RUNNER_AMBIGUOUS',
       releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: err.labels }),
-    );
-  }
-  if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return carrying(
-      err,
-      'RELEASE_MULTI_CHANNEL_UNSUPPORTED',
-      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: err.count }),
     );
   }
   return null;
@@ -227,6 +219,16 @@ export function finishRefusal(err: unknown): HTTPException | null {
       `${finishedForSentence(err)} Read what it recorded with GET /api/projects/${projectId}/release-batches/${runId}/state (\`finish\`).`,
       { requestId: err.requestId, finishedCommit: err.finishedCommit },
     );
+  }
+  return null;
+}
+
+/** A look's refusals, under the finish's names for the ones they share. */
+export function lookRefusal(err: unknown): HTTPException | null {
+  const shared = finishRefusal(err);
+  if (shared) return shared;
+  if (err instanceof ReleaseNothingToReadError || err instanceof ReleaseRunClosedError) {
+    return conflict(err.code, err.message);
   }
   return null;
 }

@@ -107,7 +107,7 @@ async function seed(tiers: {
   `);
   const bindingConfig: Record<string, unknown> = {
     rollback: { mode: 'coolify-image' },
-    verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
+    verify: { probes: [{ url: probeUrl }], stableReads: 1 },
   };
   if (tiers.binding) bindingConfig.releaseRunnerLabel = tiers.binding;
   const [row] = await harness.db.execute<{ id: string }>(sql`

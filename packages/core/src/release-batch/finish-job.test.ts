@@ -48,6 +48,18 @@ describe('readFinishRecord', () => {
     });
   });
 
+  it('reads the readings a close rested on, and none where the record names none', () => {
+    expect(readFinishRecord({ finish: record({ evidence: ['r-1', 'r-2'] }) })?.evidence).toEqual([
+      'r-1',
+      'r-2',
+    ]);
+    expect(readFinishRecord({ finish: record() })?.evidence).toBeNull();
+    expect(readFinishRecord({ finish: record({ evidence: 'r-1' }) })?.evidence).toBeNull();
+    expect(readFinishRecord({ finish: record({ evidence: ['r-1', 7, null] }) })?.evidence).toEqual([
+      'r-1',
+    ]);
+  });
+
   it('refuses to guess a state it does not know into one it does', () => {
     expect(readFinishRecord({ finish: record({ state: 'done' }) })).toBeNull();
     expect(readFinishRecord({ finish: record({ version: '1' }) })).toBeNull();

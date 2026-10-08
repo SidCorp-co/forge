@@ -71,9 +71,17 @@ export interface ReleaseChannel {
   rollback: ReleaseRollback | null;
 }
 
-/** How a release is proved: by one live channel's probes, or — where no live channel declares
- *  any — not at all, which every door records by that name rather than refusing (ISS-1321). */
-export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 'unverified' };
+/** A live deploy binding that declares a probe: the one reading of it is judged on its own. */
+export type ProbedChannel = ReleaseChannel & { verify: VerifyConfig };
+
+/**
+ * How a release is proved: by the probes of every live binding that declares any — `unread` names
+ * the live bindings that declare none, which nothing reads — or, where none declares any, not at
+ * all, which every door records by that name rather than refusing (ISS-1321, ISS-1282).
+ */
+export type CloseVerification =
+  | { kind: 'probed'; channels: readonly ProbedChannel[]; unread: readonly ReleaseChannel[] }
+  | { kind: 'unverified' };
 
 /** What a release stamps on its run, its finish and its answers: the kind, by itself. */
 export type ReleaseVerification = CloseVerification['kind'];

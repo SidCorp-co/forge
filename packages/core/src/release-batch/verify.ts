@@ -8,10 +8,12 @@ export interface VerifyProbe {
 
 export interface VerifyConfig {
   probes: VerifyProbe[];
-  /** Give up after this long. Default 300s. */
-  timeoutSeconds?: number;
-  /** Consecutive identical reads required before believing it. Default 2. */
+  /** Consecutive recorded readings that must agree before a finish believes them. Default 2. */
   stableReads?: number;
+}
+
+export function probesKeyOf(cfg: VerifyConfig): string {
+  return JSON.stringify(cfg.probes.map((p) => [p.url, p.commitPath ?? null]).sort());
 }
 
 export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
@@ -28,7 +30,6 @@ export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
   if (probes.length === 0) return null;
   return {
     probes,
-    timeoutSeconds: typeof obj.timeoutSeconds === 'number' ? obj.timeoutSeconds : 300,
     stableReads: typeof obj.stableReads === 'number' ? obj.stableReads : 2,
   };
 }
@@ -48,11 +49,8 @@ function pluck(body: unknown, path: string | undefined): string | null {
   return typeof cur === 'string' && cur.length > 0 ? cur : null;
 }
 
-/**
- * One probe's answer, kept as the shape it had: `unreachable` and `http-error`
- * are a failure to answer, `unparseable` and `no-commit` are an answer with no
- * commit. The four stay apart so a `commitPath` typo is not read as an outage.
- */
+/** One probe's answer: `unreachable` and `http-error` failed to answer, `unparseable` and `no-commit`
+ *  answered with no commit; kept apart so a `commitPath` typo is not read as an outage. */
 export type ProbeReading =
   | { kind: 'commit'; commit: string }
   | { kind: 'no-commit' }
@@ -132,15 +130,11 @@ export interface LiveState {
 }
 
 /**
- * One read of every probe, kept as two answers: health is every probe
- * answering, identity is every probe agreeing on one commit. A fleet half on
- * the new build is healthy and has no identity, so the two stay apart.
+ * One read of every probe, kept as two answers: health is every probe answering, identity is
+ * every probe agreeing on one commit. A fleet half on the new build is healthy with no identity.
  */
-export async function readLiveState(
-  cfg: VerifyConfig,
-  timeoutMs: number = PROBE_REQUEST_CAP_MS,
-): Promise<LiveState> {
-  const reads = await Promise.all(cfg.probes.map((p) => readProbe(p, timeoutMs)));
+export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
+  const reads = await Promise.all(cfg.probes.map((p) => readProbe(p)));
   const readings = reads.map((r, i) => describeProbeReading(cfg.probes[i] as VerifyProbe, r));
   const unhealthy = reads
     .map((r, i) => (probeIsHealthy(r) ? null : (readings[i] ?? null)))
@@ -179,43 +173,13 @@ export async function readLiveState(
  * else, the commit serving before anything moved, and reads it once. It throws
  * rather than reading: `readProbe` builds its `URL` above the `try`, so an
  * unparseable probe url rejects out of here instead of becoming a reading.
- * `verifyDeployed` and `verifyServingNow` throw the same way. Two doors screen
- * ahead of them — `createReleaseBatch` and `recordPerformedRelease`, both
- * through `collectReleaseBlockers` — which is why that throw is a 409 and not a
- * 500. `finishReleaseBatch` screens nothing (ISS-1127, ISS-1129 F3, F4).
+ * `verifyServingNow` and a look throw the same way. The doors screen ahead of
+ * them — `createReleaseBatch` and `recordPerformedRelease` through
+ * `collectReleaseBlockers`, a look and a finish through `finishVerification` —
+ * which is why that throw is a 409 and not a 500 (ISS-1127, ISS-1129 F3, F4).
  */
 export async function readLiveCommit(cfg: VerifyConfig): Promise<string | null> {
   return (await readLiveState(cfg)).identity;
-}
-
-export type VerifyOutcome =
-  | {
-      ok: true;
-      commit: string;
-      health: 'up';
-      identity: string;
-      /** Differs from what the batch found serving when it opened (ISS-1199). */
-      moved: boolean;
-    }
-  | {
-      ok: false;
-      reason: string;
-      live: string | null;
-      health: 'up' | 'down';
-      identity: string | null;
-      readings: string[];
-    };
-
-export interface VerifyArgs {
-  cfg: VerifyConfig;
-  /** What was serving before the release started. */
-  commitBefore: string | null;
-  /** The whole sha the release says it pushed, or `null` to ask only that the deploy arrived. */
-  expected: string | null;
-  checkpoint?: (() => Promise<void>) | undefined;
-  /** Injected so the poll loop is testable without real time. */
-  now?: () => number;
-  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Whether one reading satisfies the gate: a claim is the whole proof where one
@@ -232,67 +196,16 @@ export function readingSatisfies(
   return deploymentConfirms(claim, live);
 }
 
-export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
-  const { cfg, commitBefore, expected } = args;
-  const now = args.now ?? (() => Date.now());
-  const sleep = args.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
-  const deadline = now() + (cfg.timeoutSeconds ?? 300) * 1000;
-  const needed = cfg.stableReads ?? 2;
-
-  const claim = expected == null ? null : claimedCommit(expected);
-  let stable = 0;
-  let last: string | null = null;
-  let state: LiveState = {
-    health: 'down',
-    identity: null,
-    answeredBy: [],
-    readings: [],
-    unhealthy: [],
-    unidentified: [],
-    disagreement: null,
-  };
-
-  while (now() < deadline) {
-    await args.checkpoint?.();
-    state = await readLiveState(cfg, deadline - now());
-    // The gates no reading could satisfy, closed here, not at the deadline.
-    if (expected != null && claim === null) {
-      return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
-    }
-    if (claim === null && commitBefore === null) {
-      const { health, identity, readings } = state;
-      return { ok: false, reason: NOTHING_TO_COMPARE, live: identity, health, identity, readings };
-    }
-    const live = state.identity;
-    const acceptable = readingSatisfies(live, commitBefore, claim);
-    stable = acceptable && live === last ? stable + 1 : acceptable ? 1 : 0;
-    last = live;
-    if (stable >= needed && live != null) {
-      return {
-        ok: true,
-        commit: live,
-        health: 'up',
-        identity: live,
-        moved: live !== commitBefore,
-      };
-    }
-    if (now() >= deadline) break;
-    await sleep(5000);
-  }
-
-  return { ...failureFor(state, commitBefore, claim), readings: state.readings };
-}
-
 /**
- * Why the window closed red: health, then identity, then the claim — which is
- * only judgeable once there is a reading to judge it against.
+ * Why one reading does not satisfy the gate: health, then identity, then the claim — which is only
+ * judgeable once there is a reading to judge it against.
  */
-function failureFor(
+export function failureFor(
   state: LiveState,
   commitBefore: string | null,
   claim: string | null,
   unusableClaim: string | null = null,
-): Omit<Extract<VerifyOutcome, { ok: false }>, 'readings'> {
+): Omit<Extract<ServingNowOutcome, { ok: false }>, 'readings'> {
   const base = { ok: false as const, live: state.identity, identity: state.identity };
   if (state.health === 'down') {
     return {
@@ -315,13 +228,6 @@ function failureFor(
       reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
     };
   }
-  if (claim !== null && deploymentConfirms(claim, state.identity)) {
-    return {
-      ...base,
-      health: 'up',
-      reason: `the deployment reports ${state.identity}, which is the commit the release pushed, and the window closed before that reading held still long enough to be believed`,
-    };
-  }
   if (state.identity === commitBefore) {
     const pushed = claim === null ? '' : `, and the release pushed ${claim}`;
     return {
@@ -340,7 +246,7 @@ function failureFor(
       reason: `live is ${state.identity}, the release pushed ${claim}`,
     };
   }
-  return { ...base, health: 'up', reason: 'the live commit never held still' };
+  return { ...base, health: 'up', reason: `the live build is ${state.identity}` };
 }
 
 /** A whole git object name. The only shape a claim under test may take. */
@@ -396,14 +302,17 @@ export function notAWholeCommit(raw: string, identity: string | null): string {
   );
 }
 
-/** Whether what a batch found serving already carries a roster issue's merge —
- *  any one. Sufficient, not complete: ancestry needs ISS-1129's provider. */
+/** Whether what a batch found serving, at any live binding, already carries a roster issue's
+ *  merge — any one. Sufficient, not complete: ancestry needs ISS-1129's provider. */
 export function liveCarriesRoster(
-  commitBefore: string | null,
+  commitsBefore: ReadonlyArray<string | null>,
   mergedCommits: Array<string | null>,
 ): boolean {
-  if (commitBefore === null) return false;
-  return mergedCommits.some((sha) => sha !== null && deploymentConfirms(sha, commitBefore));
+  return commitsBefore.some(
+    (before) =>
+      before !== null &&
+      mergedCommits.some((sha) => sha !== null && deploymentConfirms(sha, before)),
+  );
 }
 
 export interface ServingNowArgs {
@@ -413,11 +322,8 @@ export interface ServingNowArgs {
 }
 
 /**
- * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN.
- *
- * `verifyDeployed` drops them on its ok arm because the deploy it watched is
- * its own evidence. A recorded release has no such act to point at: the
- * readings ARE the record, so they travel on both arms.
+ * One reading's verdict on a claimed commit. The probe readings travel on both arms: a recorded
+ * release has no deploy this server watched to point at, so the readings ARE the record.
  */
 export type ServingNowOutcome =
   | { ok: true; identity: string; health: 'up'; readings: string[] }
@@ -433,10 +339,8 @@ export type ServingNowOutcome =
 /**
  * Whether the application is serving this commit RIGHT NOW, in one read.
  *
- * {@link verifyDeployed} polls for the commit a release named and holds the
- * reading still first. A release that already happened has nothing to wait
- * for: polling here turns a false claim into a five-minute wait and the same
- * refusal.
+ * A release that already happened has nothing to wait for, so the commit it
+ * names is judged against the one reading this takes.
  */
 export async function verifyServingNow(args: ServingNowArgs): Promise<ServingNowOutcome> {
   const state = await readLiveState(args.cfg);

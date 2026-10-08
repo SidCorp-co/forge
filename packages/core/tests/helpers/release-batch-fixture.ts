@@ -60,7 +60,18 @@ export interface ReleaseBatchFixture {
    * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
    * this replaced went stale the moment ISS-1120 put `version` on the result.
    */
-  claim(ids: string[], opts?: { deploy?: boolean }): Promise<CreateReleaseBatchResult>;
+  claim(
+    ids: string[],
+    opts?: { deploy?: boolean; look?: boolean },
+  ): Promise<CreateReleaseBatchResult>;
+  /**
+   * Ask Forge to look, as the agent does once its deploy is made: `times` readings of what the
+   * probe server answers now, each judged against `commit`. `claim` takes one by default.
+   */
+  look(
+    runId: string,
+    opts?: { times?: number; commit?: string },
+  ): Promise<import('../../src/release-batch/look.js').LookResult>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
 }
 
@@ -90,7 +101,7 @@ export function releaseBatchFixture(
   async function declareProduction(config: Record<string, unknown> = {}): Promise<void> {
     const { projectId, ownerId } = ids();
     const connectionId = randomUUID();
-    const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
+    const verify = { probes: [{ url: await probeUrl() }], stableReads: 1 };
     await harness().db.execute(sql`
       UPDATE projects
          SET base_branch = 'main',
@@ -175,12 +186,30 @@ export function releaseBatchFixture(
     return Number(rows[0]?.n ?? 0);
   }
 
-  async function claim(idList: string[], opts: { deploy?: boolean } = {}) {
+  async function look(runId: string, opts: { times?: number; commit?: string } = {}) {
+    const { ownerId } = ids();
+    const { lookAtBatch } = await import('../../src/release-batch/look.js');
+    let last: Awaited<ReturnType<typeof lookAtBatch>> | null = null;
+    for (let i = 0; i < (opts.times ?? 1); i += 1) {
+      last = await lookAtBatch({ runId, takenBy: ownerId, commit: opts.commit });
+    }
+    if (last === null) throw new Error('look: times must be at least 1');
+    return last;
+  }
+
+  /**
+   * Opens a batch, simulates the deploy (unless `deploy: false`), and has the agent look once at
+   * what is then serving, so a case that goes on to finish has a reading to be judged on (a batch
+   * with no probe has nothing to read, and is not looked at). A case about a finish with no reading
+   * passes `look: false`.
+   */
+  async function claim(idList: string[], opts: { deploy?: boolean; look?: boolean } = {}) {
     const { projectId, ownerId } = ids();
     const { createReleaseBatch } = await import('../../src/release-batch/service.js');
     const result = await createReleaseBatch({ projectId, issueIds: idList, userId: ownerId });
     if (opts.deploy !== false) served = `commit-pushed-by-run-${result.runId}`;
     await announceMethodFor(result.runId);
+    if (opts.look !== false && result.verification === 'probed') await look(result.runId);
     return result;
   }
 
@@ -280,6 +309,7 @@ export function releaseBatchFixture(
     holdOf,
     holdComments,
     claim,
+    look,
     waitFor,
   };
 }

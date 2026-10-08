@@ -42,6 +42,9 @@ export interface ReleaseFinishRecord {
   /** How the close was proved (ISS-1321); a resume re-reads an `unverified` one. `null` before
    *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
   verification: ReleaseVerification | null;
+  /** The ids of the recorded readings the close rested on; `null` until a finish has judged them,
+   *  and on a close that read nothing (`unverified`) or one recorded before readings were kept. */
+  evidence: string[] | null;
   finishedAt: string | null;
 }
 
@@ -102,6 +105,9 @@ export function readFinishRecord(metadata: unknown): ReleaseFinishRecord | null 
         : null,
     verification: VERIFICATIONS.has(str(r.verification) ?? '')
       ? (r.verification as ReleaseVerification)
+      : null,
+    evidence: Array.isArray(r.evidence)
+      ? r.evidence.filter((id): id is string => typeof id === 'string')
       : null,
     finishedAt: str(r.finishedAt),
   };

@@ -72,7 +72,7 @@ beforeEach(async () => {
   await harness.db.execute(sql`
     UPDATE integration_bindings
     SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 12, stableReads: 1 },
+      verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     })}::jsonb
     WHERE project_id = ${projectId} AND provider = 'coolify'
   `);
@@ -85,6 +85,12 @@ async function batchOf(n: number) {
   for (let i = 0; i < n; i += 1) ids.push(await fx.insertIssue());
   const { runId } = await fx.claim(ids);
   return { runId, ids };
+}
+
+/** The deploy lands and the agent looks at it: the reading a finish is judged on. */
+async function landed(runId: string): Promise<void> {
+  serving = PUSHED;
+  await fx.look(runId);
 }
 
 async function accept(runId: string) {
@@ -208,7 +214,7 @@ async function abortInsideSecondClose(
   runId: string,
   options: Parameters<typeof service.abortReleaseBatch>[3] = {},
 ) {
-  serving = PUSHED;
+  await landed(runId);
   await accept(runId);
   return finishAbortedAtFence(runId, 2, () => abort(runId, options));
 }
@@ -299,7 +305,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
 
   it('names the closed issues when the abort lands after the finish released every claim', async () => {
     const { runId, ids } = await batchOf(2);
-    serving = PUSHED;
+    await landed(runId);
     await accept(runId);
     // Two closes, then the finish's own claim release: the abort waits on that write's run row,
     // and the release stamp that follows it refuses the stamped run.
@@ -381,6 +387,7 @@ describe('a held promoted roster across a sweeper pass', () => {
 describe('a finish on a run that announced no method', () => {
   it('is accepted rather than refused', async () => {
     const { runId } = await batchOf(1);
+    await landed(runId);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${runId}
     `);
@@ -396,6 +403,7 @@ describe('a finish on a run that announced no method', () => {
 describe('state read behind a probe that never answers', () => {
   it('answers the finish record and run status as they stand when the probe read ends', async () => {
     const { runId } = await batchOf(1);
+    await landed(runId);
     await accept(runId);
     hang = true;
     const { readReleaseRunState } = await import('../../src/release-batch/state.js');
@@ -471,15 +479,18 @@ describe('the route a held promoted roster is told to take, followed in its orde
 
 describe('a finish naming no commit on a batch that recorded nothing serving when it opened', () => {
   async function blindBatch() {
-    // A probe answering with no commit leaves the batch's `commitBefore` null.
+    // A probe answering with no commit leaves the build the batch recorded for the binding null.
     serving = '';
     const { runId, ids } = await batchOf(1);
     const rows = await harness.db.execute(sql`
-      SELECT metadata -> 'commitBefore' AS before FROM pipeline_runs WHERE id = ${runId}
+      SELECT jsonb_typeof(e.value) AS kind
+      FROM pipeline_runs r, jsonb_each(r.metadata -> 'commitBeforeBy') e
+      WHERE r.id = ${runId}
     `);
-    expect(rows[0]?.before ?? null).toBeNull();
-    // Production still serves the build it served before anything moved.
+    expect(rows.map((r) => r.kind)).toEqual(['null']);
+    // Production still serves the build it served before anything moved, and the agent looks.
     serving = BEFORE;
+    await fx.look(runId);
     return { runId, ids };
   }
 

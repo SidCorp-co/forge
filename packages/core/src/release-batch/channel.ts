@@ -8,15 +8,22 @@ import { normalizeEnvironments } from '../projects/environments.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import {
   type CloseVerification,
+  type ProbedChannel,
   RELEASE_PROCEDURE_FACT,
   type ReleaseChannel,
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import { invalidProbeUrls, parseVerifyConfig, type VerifyConfig } from './verify.js';
+import {
+  invalidProbeUrls,
+  parseVerifyConfig,
+  type VerifyConfig,
+  type VerifyProbe,
+} from './verify.js';
 
 export type {
   CloseVerification,
+  ProbedChannel,
   ReleaseChannel,
   ReleasePlan,
   ReleaseRollback,
@@ -96,6 +103,32 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
   });
 }
 
+/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
+ *  — which decides anything only where `cfg` is null. */
+export interface DeclaredProbes {
+  readonly cfg: VerifyConfig | null;
+  readonly refused: number;
+}
+
+function probeKey(probe: VerifyProbe): string {
+  return `${probe.url}\u0000${probe.commitPath ?? ''}`;
+}
+
+export function declaredProbesOf(channels: readonly ReleaseChannel[]): DeclaredProbes {
+  const probes: VerifyProbe[] = [];
+  const seen = new Set<string>();
+  let refused = 0;
+  for (const channel of channels) {
+    if (channel.verifySource === 'declared-unusable') refused += 1;
+    for (const probe of channel.verify?.probes ?? []) {
+      if (seen.has(probeKey(probe))) continue;
+      seen.add(probeKey(probe));
+      probes.push(probe);
+    }
+  }
+  return { cfg: probes.length === 0 ? null : { probes }, refused };
+}
+
 /** How the binding is named where a person has to find it: provider, store slug, id. */
 export function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
@@ -110,14 +143,30 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
 /**
  * How this release is proved, the one reading every door takes. THROWS where a binding's `verify`
  * was refused: that is a declaration to correct, and reading it as `unverified` would release past
- * the probes somebody meant to declare. Otherwise the first channel with probes proves it, whichever
- * binding sorts first; with none, the release is `unverified` and recorded as such.
+ * the probes somebody meant to declare. Otherwise every live binding that declares probes is read
+ * and judged, and the ones that declare none are named as `unread`; with no probe anywhere, the
+ * release is `unverified` and recorded as such.
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
   if (refused.length > 0) throw new ReleaseProbesUnreadableError([], refused);
-  const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
-  return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
+  const probed = channels.filter((c): c is ProbedChannel => c.verify !== null);
+  if (probed.length === 0) return { kind: 'unverified' };
+  return {
+    kind: 'probed',
+    channels: probed,
+    unread: channels.filter((c) => c.verify === null),
+  };
+}
+
+/** The probes of every binding a probed close reads, each one once — for the readers that answer
+ *  with one state rather than one per binding. */
+export function probesOf(
+  verification: Extract<CloseVerification, { kind: 'probed' }>,
+): VerifyConfig {
+  const { cfg } = declaredProbesOf(verification.channels);
+  if (cfg === null) throw new Error('a probed verification holds no probe');
+  return cfg;
 }
 
 /** `closeVerification` for a finish, where a probe url no request can be made to is named rather

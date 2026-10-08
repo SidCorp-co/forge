@@ -45,3 +45,29 @@ export const releaseAttempts = pgTable(
 );
 
 export type ReleaseAttemptRow = InferSelectModel<typeof releaseAttempts>;
+
+/**
+ * What Forge read at a release's live deploy bindings when an agent asked it to look (ISS-1282).
+ * A finish closes a probed roster on these rows and on nothing the agent says: `bindings` is one
+ * `LiveState` per binding that declares a probe, and `unread` names the bindings that declare none.
+ * Append-only; a row is never rewritten, because a reading is what was serving at `taken_at`.
+ */
+export const releaseReadings = pgTable(
+  'release_readings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
+    takenAt: timestamp('taken_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Who asked for the look. The reading itself is Forge's, whoever asked. */
+    takenBy: uuid('taken_by').notNull(),
+    bindings: jsonb('bindings').notNull(),
+    unread: jsonb('unread').notNull().default([]),
+  },
+  (t) => ({
+    runIdx: index('release_readings_run_idx').on(t.runId, t.takenAt),
+  }),
+);
+
+export type ReleaseReadingRow = InferSelectModel<typeof releaseReadings>;
