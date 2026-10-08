@@ -1,3 +1,4 @@
+export { languageOfTag } from '../lib/language-tag.js';
 export {
   mayChangeMembership,
   readableConversation,

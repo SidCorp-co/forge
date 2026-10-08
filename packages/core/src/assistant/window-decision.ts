@@ -15,6 +15,7 @@ import {
   getConversation,
   groupHearing,
   handleForProject,
+  languageOfTag,
   linkedSpeakerOf,
   messageAuthorTokenId,
   personCount,
@@ -32,7 +33,6 @@ import {
   withTerminalStatus,
 } from '../conversations/index.js';
 import type { TurnAuthority } from '../credentials/turn-credential.js';
-import { languageOfTag } from '../lib/language-tag.js';
 import {
   firstRequirementsOnboardingOf,
   firstRequirementsStarterOf,

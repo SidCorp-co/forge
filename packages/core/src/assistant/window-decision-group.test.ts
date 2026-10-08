@@ -75,6 +75,7 @@ vi.mock('../conversations/index.js', async () => {
     effectiveConversationMode: () => 'assistant',
     explicitAnchor: () => null,
     replyLanguageOf: () => 'vi',
+    languageOfTag: () => 'vi',
     personCount: async () => 3,
     acknowledgeRequest: () => null,
     reserveDelivery: async () => undefined,

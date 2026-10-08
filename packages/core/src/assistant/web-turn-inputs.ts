@@ -10,6 +10,7 @@ import {
   type ConversationWindowRow,
   codeAuthored,
   getConversation,
+  languageOfTag,
   type ReplyLanguage,
   readMessages,
 } from '../conversations/index.js';
@@ -17,7 +18,6 @@ import type { TurnAuthority } from '../credentials/turn-credential.js';
 import { db } from '../db/client.js';
 import type { ConversationMode } from '../db/schema-conversations.js';
 import { requirements } from '../db/schema-requirements.js';
-import { languageOfTag } from '../lib/language-tag.js';
 import { firstRequirementsOnboardingOf } from '../onboarding/index.js';
 import { readContentLanguage } from '../project-config/index.js';
 import { makeConversationImageResolver } from './conversation-images.js';
