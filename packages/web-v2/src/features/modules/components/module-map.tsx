@@ -8,7 +8,7 @@ import "@xyflow/react/dist/base.css";
 import "@/features/workflows/canvas/canvas.css";
 import { BaseEdge, type Edge, type EdgeProps, EdgeLabelRenderer, Handle, type Node, type NodeProps, Position, ReactFlow } from "@xyflow/react";
 import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
-import { layoutGraph, type Placed, rounded } from "@/features/workflows/canvas/layout";
+import { layoutGraph, type Placed, rounded } from "@/lib/graph/layout";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { ModuleLevelCoupling, ModuleRollupRow } from "../types";
