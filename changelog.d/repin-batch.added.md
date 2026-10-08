@@ -1,1 +1,0 @@
-**One act approves a moved base's pin-only dependents.** A proposal changing only its basedOn pins reads "Pin-only change" with proof; the base's page re-pins and approves them together, one decision each, refusing other changes. Needs you shows one row.
