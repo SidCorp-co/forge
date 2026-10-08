@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.166] - 2026-10-08
+
+A person can say a memory is still true, one at a time or many
+
+### Added
+
+- **You can mark a memory as still true.** Each memory that needs checking has Still true and Not true anymore, the list can mark several checked at once, and each row shows who checked it and when.
+
 ## [0.4.0-dev.165] - 2026-10-08
 
 Records a BA or customer reads are trustworthy: decisions, customer notes, home, memory
