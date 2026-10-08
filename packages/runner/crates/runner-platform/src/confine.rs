@@ -18,7 +18,6 @@
 //! bubblewrap cannot start, [`availability`] says why, so the box declares it and core refuses
 //! the turn by name instead of running it unconfined.
 
-pub mod compute;
 pub mod egress;
 
 use std::ffi::OsString;
@@ -41,15 +40,13 @@ pub enum Mount {
 }
 
 /// What a confined process sees: everything on the box read-only, then `mounts` in order, run
-/// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy; `offline`, with
-/// no egress, it has a network namespace of its own holding only loopback.
+/// in `cwd` with exactly `env`. With `egress`, it has no network but its proxy.
 #[derive(Debug, Clone, Default)]
 pub struct Sandbox {
     pub mounts: Vec<Mount>,
     pub env: Vec<(OsString, OsString)>,
     pub cwd: PathBuf,
     pub egress: Option<egress::Egress>,
-    pub offline: bool,
 }
 
 /// The directories a sandbox empties so nothing this box keeps for its user is in view: the
@@ -193,9 +190,6 @@ impl Sandbox {
             }
             args.push(target.as_os_str().to_os_string());
         }
-        if self.offline && self.egress.is_none() {
-            args.insert(0, "--unshare-net".into());
-        }
         if let Some(egress) = &self.egress {
             args.insert(0, "--unshare-net".into());
             let dir = egress.socket.parent().unwrap_or(&egress.socket);
@@ -270,7 +264,6 @@ mod tests {
             env: vec![],
             cwd: "/home/u/repo".into(),
             egress: None,
-            offline: false,
         };
         let args: Vec<String> = sandbox
             .bwrap_args()
@@ -302,7 +295,6 @@ mod tests {
                 socket: "/home/u/.config/forge-runner/egress/s1/proxy.sock".into(),
                 bridge: "/home/u/.local/bin/forge-runner".into(),
             }),
-            offline: false,
         };
         let args: Vec<String> = sandbox
             .bwrap_args()

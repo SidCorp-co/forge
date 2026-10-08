@@ -1,7 +1,6 @@
 //! The frames core addresses to this box about one project: reading or setting up its checkout
-//! (`skill.sync`, `checkout.head.read`, `checkout.ancestry.read`, `provision.request`) and running
-//! a computation for it (`compute.run`). `actors::on_frame` routes them here; each is handled off
-//! the frame loop.
+//! (`skill.sync`, `checkout.head.read`, `checkout.ancestry.read`, `provision.request`).
+//! `actors::on_frame` routes them here; each is handled off the frame loop.
 
 use crate::*;
 
@@ -11,30 +10,16 @@ pub(crate) fn takes(event: &str) -> bool {
 }
 
 /// The frames [`on_frame`] takes.
-const BOX_FRAMES: [&str; 5] = [
+const BOX_FRAMES: [&str; 4] = [
     "skill.sync",
     "checkout.head.read",
     "checkout.ancestry.read",
     "provision.request",
-    "compute.run",
 ];
 
-/// The frames that read or set up a project's checkout on this box, or run a computation on it.
-pub(crate) fn on_frame(
-    frame: Frame,
-    client: &Arc<CoreClient>,
-    cfg: &Arc<Config>,
-    inflight: &Arc<AtomicUsize>,
-) {
+/// The frames that read or set up a project's checkout on this box.
+pub(crate) fn on_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>) {
     match frame.event.as_str() {
-        "compute.run" => {
-            let client = client.clone();
-            let guard = InflightGuard::enter(inflight);
-            tokio::spawn(async move {
-                let _guard = guard; // a drain waits for the script to finish and be answered
-                crate::compute_run::handle(&client, frame.data).await;
-            });
-        }
         "skill.sync" => {
             let (client, cfg) = (client.clone(), cfg.clone());
             tokio::spawn(async move {

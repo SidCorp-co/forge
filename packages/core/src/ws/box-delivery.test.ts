@@ -32,7 +32,7 @@ describe('the WebSocket door answers presence for a box', () => {
   it('keeps no frame it handed a box for a socket that subscribes later', () => {
     const early = socket(1);
     roomManager.subscribe(early as never, deviceRoom('d-nokeep'));
-    expect(sendToBoxNow('d-nokeep', { event: 'compute.run', data: { script: 'x' } })).toBe(1);
+    expect(sendToBoxNow('d-nokeep', { event: 'agent:send', data: { turnToken: 'x' } })).toBe(1);
     const late = socket(1);
     expect(roomManager.replay(late as never, deviceRoom('d-nokeep'), 60_000).frames).toBe(0);
     expect(late.frames).toHaveLength(0);

@@ -147,10 +147,7 @@ pub(crate) fn heartbeat_body(
 ) -> serde_json::Value {
     let mut body = serde_json::json!({
         "agentVersion": version,
-        "capabilities": capabilities(
-            runner_platform::confine::availability(),
-            &runner_platform::confine::compute::languages(),
-        ),
+        "capabilities": capabilities(runner_platform::confine::availability()),
     });
     if let Some(commit) = commit {
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
@@ -176,27 +173,17 @@ pub(crate) fn heartbeat_body(
 /// core marks `confined` runs holding that token alone, `confinedChatNetwork` whether it also
 /// reaches only the hosts its egress proxy allows — a runner that predates it says nothing — and
 /// where it cannot, why not, which core names when it refuses a chat door's turn here.
-/// `computeSandbox` is whether it runs a computation's script confined (REQ-32 BC-14), with the
-/// languages it has an interpreter for, or why not; core hands a computation only to a box that
-/// says so, and names the reason when none can.
-pub(crate) fn capabilities(
-    confine: &runner_platform::confine::Availability,
-    languages: &[&str],
-) -> serde_json::Value {
+pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
     let mut out = serde_json::json!({ "turnCredential": true, "followUpCredential": true });
     match confine {
         runner_platform::confine::Availability::Available => {
             out["confinedChat"] = true.into();
             out["confinedChatNetwork"] = true.into();
-            out["computeSandbox"] = true.into();
-            out["computeSandboxLanguages"] = serde_json::json!(languages);
         }
         runner_platform::confine::Availability::Unavailable(why) => {
             out["confinedChat"] = false.into();
             out["confinedChatNetwork"] = false.into();
             out["confinedChatUnavailable"] = why.clone().into();
-            out["computeSandbox"] = false.into();
-            out["computeSandboxUnavailable"] = why.clone().into();
         }
     }
     out
@@ -214,20 +201,13 @@ mod tests {
     #[test]
     fn a_box_that_cannot_confine_a_chat_says_so_and_why() {
         use runner_platform::confine::Availability;
-        let caps = capabilities(&Availability::Unavailable("no bwrap".into()), &["bash"]);
+        let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
         assert_eq!(caps["confinedChat"], false, "{caps}");
         assert_eq!(caps["confinedChatNetwork"], false, "{caps}");
         assert_eq!(caps["confinedChatUnavailable"], "no bwrap", "{caps}");
-        assert_eq!(caps["computeSandbox"], false, "{caps}");
-        assert_eq!(caps["computeSandboxUnavailable"], "no bwrap", "{caps}");
-        assert!(caps.get("computeSandboxLanguages").is_none(), "{caps}");
-        let caps = capabilities(&Availability::Available, &["bash", "python"]);
-        assert_eq!(caps["computeSandbox"], true, "{caps}");
-        assert_eq!(
-            caps["computeSandboxLanguages"],
-            serde_json::json!(["bash", "python"])
-        );
-        assert!(caps.get("computeSandboxUnavailable").is_none(), "{caps}");
+        assert!(caps.get("computeSandbox").is_none(), "{caps}");
+        let caps = capabilities(&Availability::Available);
+        assert!(caps.get("computeSandbox").is_none(), "{caps}");
         assert_eq!(caps["confinedChat"], true, "{caps}");
         assert_eq!(caps["confinedChatNetwork"], true, "{caps}");
         assert!(caps.get("confinedChatUnavailable").is_none(), "{caps}");

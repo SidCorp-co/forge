@@ -586,7 +586,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
             }
         }
-        event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg, inflight),
+        event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
                 if wake_tx.try_send(wake).is_err() {

@@ -995,7 +995,7 @@
       "kind": "kernel",
       "context": "execution",
       "owns": ["runnerEvents", "runners"],
-      "serves": ["REQ-15", "REQ-32", "issue-delivery#rule-dispatch", "core-kernel#k-runners"]
+      "serves": ["REQ-15", "issue-delivery#rule-dispatch", "core-kernel#k-runners"]
     },
     "runs": {
       "kind": "read-model",
@@ -1347,7 +1347,7 @@
       "serves": ["personal-data-flow#ds-box-creds"]
     },
     "crates/runner-platform": {
-      "serves": ["personal-data-flow#ds-box-creds", "REQ-32"]
+      "serves": ["personal-data-flow#ds-box-creds"]
     },
     "crates/runner-proto": {
       "serves": ["REQ-15"]
@@ -1361,8 +1361,7 @@
         "issue-delivery#rule-dispatch",
         "issue-delivery#box",
         "agent-run-standing#claimed",
-        "agent-run-standing#master",
-        "REQ-32"
+        "agent-run-standing#master"
       ]
     },
     "crates/runner-core": {
@@ -1379,8 +1378,7 @@
         "REQ-15",
         "agent-run-standing#master",
         "issue-delivery#rule-dispatch",
-        "requirement-to-delivery#stalled",
-        "REQ-32"
+        "requirement-to-delivery#stalled"
       ]
     }
   }

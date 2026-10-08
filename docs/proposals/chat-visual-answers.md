@@ -44,7 +44,6 @@ into ports and adapters.
 | Reply checks | `packages/core/src/messaging/status-claims-rule.ts`, `packages/core/src/messaging/grounding-rule.ts`, `packages/core/src/messaging/creation-claims-rule.ts`, `no-empty-promise` in `packages/core/src/messaging/text-rules.ts` | claims must rest on a read this turn made; a record claimed must have been written; no promise of later work |
 | Renderers in web | `packages/web-v2/src/components/ui/chart.tsx` (recharts), `packages/web-v2/src/features/workflows/canvas/` (`@xyflow/react` + `elkjs`), `packages/web-v2/src/design/patterns/mermaid.tsx` (`securityLevel: "strict"`), `packages/web-v2/src/design/patterns/markdown.tsx` (react-markdown + remark-gfm) | every block below is drawn with a library already in `packages/web-v2/package.json` |
 | Markdown export of a report | `packages/web-v2/src/features/project-status/report-markdown.ts:statusMarkdown` | the precedent for a block's text fallback |
-| Sandbox options | `docs/proposals/assistant-sandbox.md` | options (a) Anthropic code execution, (b) E2B, (d) runner `exec` job; mapped onto the Executor port below |
 | Expiring tickets, hashed tokens | `download_tickets` (`packages/core/src/db/schema-uploads.ts`), `token_hash` columns in `packages/core/src/db/schema-projects.ts` | the share link reuses both shapes; **no share link exists today** (searched core and contracts for `share link`, `shareLink`, `share_token` on 2026-10-08: the only hits are web's copy-a-deep-link helper, which shares a URL a member must sign in to open) |
 
 ### How others structure this
@@ -215,30 +214,26 @@ template can do nothing a built-in cannot.
 declares `id`, `mode: 'invoked' | 'in-band'`, `isolation`, `network: 'none'`, `dataLeavesTo`,
 `zdrEligible`, and `availableFor(project)`.
 
-**Adapters, mapped onto `docs/proposals/assistant-sandbox.md`:**
-
-| Adapter | Option there | Mode | Where it lives |
-|---|---|---|---|
-| `runner-sandbox` | (d), on the team's own runner | invoked; core picks the box and sets the limits, the box runs the script under bubblewrap and answers (built in C2, below) | `packages/core/src/runners/compute-sandbox.ts`, handed in by `report-ports.ts`; the box half is `packages/runner/crates/runner-platform/src/confine/compute.rs` |
-
-Options (a), the provider's code execution tool, and (b), a hosted sandbox, are ruled out by the
-owner (2026-10-09): no Claude code-execution API and no direct provider key, models only through
-the configured gateway, and execution on the team's runners.
+**Adapters:** none is registered, so every computation is refused `EXECUTOR_UNAVAILABLE` by name
+and nothing is sent anywhere. The provider's code execution tool and a hosted sandbox are ruled out
+by the owner (2026-10-09): no Claude code-execution API and no direct provider key, models only
+through the configured gateway. A question no report covers is asked in Agent mode, where the agent
+runs on the team's runner.
 
 `schedules/script` (`packages/core/src/schedules/script/executor.ts`, a `node:vm` context in a
 worker thread) is **not** an adapter of this port: `node:vm` is not a security boundary, so it
 cannot run model-written code over project data.
 
 **Who may add one:** an adapter is a module providing one at boot through `report-ports.ts`; the
-sandbox ADR's requirement additions (inputs, retention, network, permission `assistant.exec`,
-budget, record, opt-out) bind every adapter.
+port's checks below (inputs, retention, network, permission `assistant.exec`, budget, record,
+opt-out) bind every adapter.
 
 **C1, as built (2026-10-08).** The port, its record and its two doors. A deployment with no adapter
 answers every computation `EXECUTOR_UNAVAILABLE` (503), naming that no executor is enabled on it.
 What an adapter added since inherits:
 
 - **Registry.** `packages/core/src/reports/executors.ts:provideExecutors` takes the deployment's
-  adapters at boot (`report-ports.ts` passes the runner sandbox, on every deployment); a duplicate
+  adapters at boot (`report-ports.ts` passes none); a duplicate
   id, or a descriptor off
   `ExecutorDescriptorSchema` (a network other than `none` among them), is refused at registration.
   A test registers its own fake through `registerExecutor`.
@@ -275,40 +270,7 @@ What an adapter added since inherits:
 - **Not in C1.** The monthly project cap of the threat table below; a room's inputs limited to what
   every member may read (runs, too, are read as the asker alone today); sharing an answer that holds a
   computed block, which the message share source refuses by name; and the session-page view of the
-  record (sandbox draft addition 7).
-
-**C2, as built (2026-10-09): `runner-sandbox`** (REQ-32 BC-14). It replaces the in-band
-`anthropic-code-exec` built first on 2026-10-08, removed with its `CODE_EXECUTION_*` settings: QA of
-ISS-430 found dev's gateway serves no Files API, and the owner then ruled the provider's execution
-out.
-
-- **Registration.** `report-ports.ts` hands `runners/compute-sandbox.ts:createRunnerSandboxExecutor`
-  to `provideExecutors` on every deployment. Whether a computation runs is the project's boxes'.
-- **Descriptor.** `mode: 'invoked'`, `network: 'none'`, `dataLeavesTo: 'team-runner'`
-  (`EXECUTOR_DATA_STAYS_ON_TEAM_RUNNER`, admitted without `compute.thirdParty`), `zdrEligible: true`,
-  `isolation` the bubblewrap sandbox below.
-- **Which box.** `availableFor` reads the boxes bound to the project (runner rows and their devices)
-  and takes the first that is not turned off, draining or disabled, whose socket is connected, and
-  whose heartbeat declares `computeSandbox` with the script's language in
-  `computeSandboxLanguages`. Where none can, the refusal names each box's reason: none paired, not
-  connected, cannot confine and the box's own reason (`computeSandboxUnavailable`, e.g. not Linux or
-  no `bwrap`), a forge-runner too old to declare it, or no interpreter. No frame is sent.
-- **Channel.** The ask-a-box exchange (`runners/box-ask.ts`): a `compute.run` frame carrying the
-  script, the scrubbed input frames and the limits, handed to the box's socket and never kept for a
-  replay (`ws/box-delivery.ts:sendToBoxNow`); the answer on `POST /api/devices/me/compute-runs/:id`,
-  settled only for the box and project it was asked of. Core waits `wallMs` + 30 s; a box that does
-  not answer, or answers that it could not run the script, is `EXECUTOR_FAILED` with nothing kept.
-- **The box.** `runner-platform/src/confine/compute.rs:run`: a throwaway working directory holding
-  the script and `inputs.json`; bubblewrap with the system read-only, the user's home, `/home`,
-  `/root`, temp, runtime and XDG trees emptied, the directory bound back writable, a network
-  namespace with only loopback, an environment from a list; `ulimit` caps on address space
-  (`memoryMb`), CPU time (`cpu` x the wall limit, stopped by `SIGXCPU`) and file size; the wall limit
-  kills the process group. `frames.json` or `frames.csv` comes back as text, read without following
-  a link; the directory is removed.
-- **Named stops.** The box names `stopped: 'wallMs' | 'cpu' | 'outputBytes'`; core keeps them with
-  `error.name` `WallLimit`, `CpuLimit` or `OutputLimit`, and a script that wrote no frames file, or
-  one that is not frames, with `NoFrames` or `FramesUnreadable`. A memory cap shows as the script's
-  own failure (Python's `MemoryError`), not as a stop.
+  record.
 
 ### Port 5 — Share: a Forge share link
 
@@ -508,7 +470,7 @@ ruling and is not registered.
 | `report-queries` (new) | read-model | operations | nothing; `reads` declared per query | project-status, forecast, workflows, requirements, feedback read files; contracts |
 | `reports` (new) | domain | operations | `report_runs`; Phase B `report_templates` | contracts, kernels, platform; queries and executors **only through its ports** |
 | `shares` (new) | domain | operations | `share_links` | `reports`' face; permissions; `lib/data-egress.ts` |
-| `runners` | kernel | execution | unchanged | gains the `runner-sandbox` executor, handed to `reports` by the process entry |
+| `runners` | kernel | execution | unchanged | unchanged |
 | `assistant` | domain | conversations | unchanged | unchanged: tools arrive by `provideChatTools` |
 | `mcp` | door | platform | — | registers the new tools (the only importer of `tool.ts`) |
 | web `visual-blocks` (new) | web feature | — | — | contracts; recharts, xyflow, elkjs through the existing design wrappers |
@@ -567,8 +529,6 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 | Lane | Delivers | Migration |
 |---|---|---|
 | C1 executor port and record (built; no adapter yet) | registry in `reports`, `forge_compute`, `assistant.exec`, per-turn caps, the execution record | **yes: `report_executions` (0465)** |
-| C2 `runner-sandbox` (built) | the sandbox draft's Phase 1 on the team's runner: box choice, the `compute.run` exchange, the bubblewrap sandbox | none |
-| C4 repository commands | the sandbox draft's Phase 2 on the runner, only after REQ-30 BC-2 is revised | none in core beyond C1 |
 | C5 promotion | a script whose fingerprint ran three times in 30 days is offered to an admin for promotion: as a Feedback or Requirement draft carrying the script and a sample frame, never as an automatic query | none (reads `report_executions`) |
 
 ## Threat model
@@ -588,8 +548,7 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 
 ### Executors
 
-The adapter-level model is `docs/proposals/assistant-sandbox.md`'s threat table, which every
-adapter inherits. The port adds:
+An adapter brings its own threat model for where it runs. The port adds:
 
 | Threat | Control at the port |
 |---|---|

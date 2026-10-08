@@ -20,13 +20,6 @@ export {
   type CheckoutHeadRead,
   readCheckoutHead,
 } from './checkout-head.js';
-export {
-  answerComputeRun,
-  COMPUTE_SANDBOX_CAPABILITY,
-  ComputeRunAnswerSchema,
-  createRunnerSandboxExecutor,
-  RUNNER_SANDBOX_ID,
-} from './compute-sandbox.js';
 export { atLeastVersion, CLAIM_MIN_RUNNER, claimCapableSql } from './device-cap.js';
 export { reapGhostRunners } from './ghost-reaper.js';
 export { mirrorHeartbeatToRunners } from './heartbeat-mirror.js';

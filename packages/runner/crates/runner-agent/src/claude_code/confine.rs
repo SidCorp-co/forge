@@ -256,7 +256,6 @@ pub(crate) fn chat_sandbox(view: &BoxView, handed: &Handed<'_>) -> Result<Sandbo
             socket: handed.egress_socket.clone(),
             bridge,
         }),
-        offline: false,
     })
 }
 

@@ -64,9 +64,6 @@ enum Command {
     Sync(cmd::sync::Args),
     /// Check for a newer release and self-update.
     Update(cmd::update::Args),
-    /// Run one computation request file in this box's sandbox, as core's `compute.run` would.
-    #[command(hide = true)]
-    Compute(cmd::compute::Args),
     /// Inside a confined chat session's sandbox: carry its proxy port to the runner's egress.
     #[command(name = "egress-bridge", hide = true)]
     EgressBridge(cmd::egress_bridge::Args),
@@ -125,7 +122,6 @@ async fn main() -> anyhow::Result<()> {
         Command::Question(a) => cmd::question::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,
         Command::Update(a) => cmd::update::run(ctx, a).await,
-        Command::Compute(a) => cmd::compute::run(a).await,
         Command::EgressBridge(a) => cmd::egress_bridge::run(a).await,
     }
 }
