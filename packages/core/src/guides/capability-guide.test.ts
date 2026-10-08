@@ -113,8 +113,6 @@ describe('those rules, against planted faults', () => {
     ]);
   });
 
-  // The spellings a page carries a flag in: beside a command in backticks, in a bracket, in a
-  // quote, after punctuation, at the start of a line, with a value, and as a one-letter flag.
   const SPELLINGS: ReadonlyArray<readonly [string, string, string]> = [
     ['after a space', 'Run it with --force to skip.', '--force'],
     ['in backticks', 'Run it with `--force` to skip.', '--force'],

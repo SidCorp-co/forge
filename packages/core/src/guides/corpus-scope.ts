@@ -1,5 +1,4 @@
-// What the public corpus says of its own extent. The names are a pointer the CLI overrides, and
-// carry no flag and no tool name.
+// What the public corpus says of its own extent: a pointer the CLI overrides, with no flag or tool name.
 
 export interface CliServedGuide {
   slug: string;
@@ -30,15 +29,12 @@ export const CORPUS_SCOPE = {
   cliServed: CLI_SERVED_GUIDES,
 } as const;
 
-/** What the list is and where the rest is, as one paragraph, for a surface that carries prose and not a field. */
+/** What the list is and where the rest is, as one paragraph, for a surface that carries prose. */
 export function corpusScopeSentence(): string {
   return `${CORPUS_SCOPE.elsewhere} ${CORPUS_SCOPE.reach}`;
 }
 
-/**
- * The CLI-served names as bullet lines, for a surface that carries prose. The authority sentence
- * says "the names below", so a surface places it directly above these and nothing between.
- */
+/** The CLI-served names as bullet lines, which a surface places directly under the authority sentence. */
 export function cliServedBullets(): string[] {
   return CORPUS_SCOPE.cliServed.map((g) => `- ${g.slug}: ${g.covers}`);
 }

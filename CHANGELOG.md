@@ -124,7 +124,7 @@
 
 - **The public guide list says it is not the whole set.** Method guides are served by the `forge` CLI; the list, `llms.txt` and a refused slug now say so. A new guide, `what-forge-is`, maps what Forge can do.
 
-- **The guides page says its count is not the whole set.** The public `/guides` page now states, beside the agent door's page count, that the method guides are served by the `forge` CLI, in the same words the API index uses; and `llms.txt` and the capability guide put "the names below are a pointer" directly above the names it means.
+- **The guides page says its count is not the whole set.** `/guides` now states beside the agent page count that the method guides are served by the `forge` CLI, in the API index's own words.
 
 - **`forge-runner top` shows what each project spent.** Tokens and estimated cost over 24 hours and 7 days, the master's share apart, priced by `[rates]` in `config.toml`; a model without a rate is named, never priced as zero.
 
