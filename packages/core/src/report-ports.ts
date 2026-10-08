@@ -15,7 +15,6 @@ import {
   stageAgentTurnBlock,
 } from './conversations/index.js';
 import { providerExecutors } from './integrations/llm/index.js';
-import { logger } from './lib/logger.js';
 import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
 import {
@@ -61,7 +60,5 @@ export function provideReportPorts(): void {
     computePolicyOf: async (projectId) => (await readProjectDocument(projectId))?.document.compute,
   });
   const provided = providerExecutors();
-  for (const why of provided.unavailable)
-    logger.info({ executor: why }, 'reports: executor absent');
   provideExecutors(provided.executors, provided.unavailable);
 }

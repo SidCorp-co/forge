@@ -97,11 +97,6 @@ export function providerExecutors(settings: ExecutorSettings = env): ProviderExe
     };
   }
   if (!isClaudeApi(settings.ANTHROPIC_API_URL)) {
-    // the host stays in the operator's log: the reason is read by every asker a computation refuses
-    logger.info(
-      { executor: CODE_EXECUTOR_ID, chatHost: new URL(settings.ANTHROPIC_API_URL).host },
-      'code execution: off, the chat runs on a gateway',
-    );
     return {
       executors: [],
       unavailable: [
