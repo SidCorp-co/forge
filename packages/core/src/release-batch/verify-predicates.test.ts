@@ -1,7 +1,6 @@
-// The two pure rules the verify window's termination rests on: what one reading
-// has to show, and what a batch can tell about its own lateness when it opens.
-// Apart from `verify.test.ts` because neither needs a probe, a clock or a
-// deadline — nothing here stubs `fetch` at all (ISS-1199).
+// The two pure rules a release is judged by: what one reading has to show, and what a batch can
+// tell about its own lateness when it opens. Apart from `verify.test.ts` because neither needs a
+// probe or a clock — nothing here stubs `fetch` at all (ISS-1199).
 
 import { describe, expect, it } from 'vitest';
 import { liveCarriesRoster, readingSatisfies } from './verify.js';
@@ -18,8 +17,7 @@ describe('readingSatisfies', () => {
     expect(readingSatisfies(ELSEWHERE, OLD, NEW)).toBe(false);
   });
 
-  // What makes the window terminate: the claim is the one reading that could
-  // satisfy a claimed gate, and it always does.
+  // The claim is the one reading that could satisfy a claimed gate, and it always does.
   it('is satisfied by the claim itself, which is why a claimed gate is never unsatisfiable', () => {
     for (const before of [null, OLD, NEW, SAME]) {
       expect(readingSatisfies(NEW, before, NEW)).toBe(true);
@@ -39,22 +37,28 @@ describe('readingSatisfies', () => {
 
 describe('liveCarriesRoster', () => {
   it('answers true where any one roster merge is what live reports', () => {
-    expect(liveCarriesRoster(SAME, [OLD, SAME])).toBe(true);
-    expect(liveCarriesRoster(SAME, [OLD, NEW])).toBe(false);
+    expect(liveCarriesRoster([SAME], [OLD, SAME])).toBe(true);
+    expect(liveCarriesRoster([SAME], [OLD, NEW])).toBe(false);
   });
 
   it('passes over a roster issue carrying no merge commit', () => {
-    expect(liveCarriesRoster(SAME, [null, SAME])).toBe(true);
-    expect(liveCarriesRoster(SAME, [null, null])).toBe(false);
-    expect(liveCarriesRoster(SAME, [])).toBe(false);
+    expect(liveCarriesRoster([SAME], [null, SAME])).toBe(true);
+    expect(liveCarriesRoster([SAME], [null, null])).toBe(false);
+    expect(liveCarriesRoster([SAME], [])).toBe(false);
   });
 
   it('answers false where nothing was serving to compare against', () => {
-    expect(liveCarriesRoster(null, [SAME])).toBe(false);
+    expect(liveCarriesRoster([null], [SAME])).toBe(false);
+    expect(liveCarriesRoster([], [SAME])).toBe(false);
   });
 
   it('reads a whole roster sha against the abbreviation a deployment reports', () => {
-    expect(liveCarriesRoster(SAME.slice(0, 8), [SAME])).toBe(true);
-    expect(liveCarriesRoster(SAME, [SAME.slice(0, 8)])).toBe(false);
+    expect(liveCarriesRoster([SAME.slice(0, 8)], [SAME])).toBe(true);
+    expect(liveCarriesRoster([SAME], [SAME.slice(0, 8)])).toBe(false);
+  });
+
+  it('answers true where any one binding already carries a roster merge', () => {
+    expect(liveCarriesRoster([OLD, SAME], [SAME])).toBe(true);
+    expect(liveCarriesRoster([OLD, null], [SAME])).toBe(false);
   });
 });

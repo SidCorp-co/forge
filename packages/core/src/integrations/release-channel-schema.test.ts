@@ -8,6 +8,39 @@ import { releaseChannelFields, withdrawNulls } from './release-channel-schema.js
 
 const schema = z.object(releaseChannelFields);
 
+describe('a verify block (ISS-1282)', () => {
+  const probes = [{ url: 'https://api.example.test/version' }];
+
+  it('accepts stableReads, the consecutive recorded readings a finish believes', () => {
+    expect(schema.safeParse({ verify: { probes, stableReads: 3 } }).success).toBe(true);
+  });
+
+  it('refuses stableReads outside one to ten', () => {
+    expect(schema.safeParse({ verify: { probes, stableReads: 0 } }).success).toBe(false);
+    expect(schema.safeParse({ verify: { probes, stableReads: 11 } }).success).toBe(false);
+  });
+
+  it('refuses a timeoutSeconds by name rather than stripping it, saying no deadline exists', () => {
+    const parsed = schema.safeParse({ verify: { probes, timeoutSeconds: 300 } });
+
+    expect(parsed.success).toBe(false);
+    const message = parsed.success ? '' : parsed.error.issues.map((i) => i.message).join(' ');
+    expect(message).toContain('`timeoutSeconds` is no longer a setting');
+    expect(message).toContain('`look`');
+  });
+
+  it('refuses a timeoutSeconds whatever its value, a once-valid one included', () => {
+    for (const timeoutSeconds of [10, 300, 3600, 0, null]) {
+      expect(schema.safeParse({ verify: { probes, timeoutSeconds } }).success).toBe(false);
+    }
+  });
+
+  it('still takes a verify block that names no deadline', () => {
+    expect(schema.safeParse({ verify: { probes } }).success).toBe(true);
+    expect(schema.safeParse({ verify: null }).success).toBe(true);
+  });
+});
+
 describe('a declared release-channel key', () => {
   it('accepts the value that means not declared', () => {
     const parsed = schema.safeParse({ releaseRunnerLabel: null });

@@ -21,7 +21,6 @@ import {
   reportedRefusal,
   unreadableProbes,
 } from './refusals.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 
 function body(err: HTTPException): string {
   return JSON.stringify(err.cause) + err.message;
@@ -63,17 +62,7 @@ describe('declarationRefusal — one sentence, whichever door', () => {
     );
   });
 
-  it("answers RELEASE_MULTI_CHANNEL_UNSUPPORTED with releaseBlockerSentence's own text", () => {
-    const err = new ReleaseMultiChannelUnsupportedError(2);
-
-    const refusal = declarationRefusal(err);
-
-    expect(refusal?.message).toBe(
-      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: 2 }),
-    );
-  });
-
-  it('answers null for an error none of the three codes names', () => {
+  it('answers null for an error neither of the two codes names', () => {
     expect(declarationRefusal(new Error('unrelated'))).toBeNull();
   });
 });

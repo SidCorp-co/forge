@@ -253,36 +253,16 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
       buildReleaseBatchPrompt({ ...BASE, plan: probed }),
       releaseBatchStatePrompt,
     ]) {
-      expect(text).toMatch(/`finish`[^\n]*answers at once with the attempt at\s+`accepted`/);
+      expect(text).toMatch(
+        /`finish`[\s\S]{0,200}?answers at once with the attempt at\s+`accepted`/,
+      );
       expect(text).toMatch(new RegExp(`${RELEASE_BATCH_TOOL}\\\` action \\\`state\\\``));
       expect(text).toMatch(/`finish\.state`[^\n]*`finished`/);
     }
   });
 
-  // Since ISS-1199 a claim is the whole proof; the paragraph still asked for a change as well.
-  it('says a finish naming a commit goes green on that commit alone', () => {
-    const text = buildReleaseBatchPrompt({ ...BASE, plan: probed });
-    expect(text).toMatch(/goes green when the live build matches your `commit`/);
-    expect(text).not.toMatch(/CHANGED from what was serving before this batch started AND/);
-  });
-
-  // Criterion 9 made a new finish after a failed one the route back; the paragraph forbade it.
-  it('sends a failed attempt back through a new finish once the deploy has landed', () => {
-    for (const text of [
-      buildReleaseBatchPrompt({ ...BASE, plan: probed }),
-      releaseBatchStatePrompt,
-    ]) {
-      // A repair forward pushes a new commit, so the retry names the last one, not the first.
-      expect(text).toMatch(/call\s+`finish`\s+again\s+with\s+the\s+commit\s+you\s+last\s+pushed/);
-      expect(text).not.toMatch(/`finish`\s+again\s+with\s+the\s+same\s+`commit`/);
-      expect(text).toMatch(/starts\s+a\s+new\s+attempt/);
-      expect(text).not.toMatch(/not something to retry/i);
-      expect(text).not.toMatch(/means\s+the\s+deploy\s+did\s+not\s+land/);
-    }
-  });
-
-  it('asks the state block for a match with the commit, not a change as well', () => {
-    expect(releaseBatchStatePrompt).toMatch(/unless the live build matches your `commit`/);
+  it('asks the state block for readings that show the live build matching the commit', () => {
+    expect(releaseBatchStatePrompt).toMatch(/show the live build matching your\s+`commit`/);
     expect(releaseBatchStatePrompt).not.toMatch(/both changed and matches/);
   });
 
@@ -425,36 +405,5 @@ describe('the branches a release prompt carries (ISS-1276)', () => {
     });
 
     expect(out).not.toContain('liveBranch:');
-  });
-});
-
-describe('the proof a release run is told about (ISS-1321)', () => {
-  const probed = channel({
-    verify: { probes: [{ url: 'https://api.example.test/version' }] },
-    verifySource: 'binding',
-  });
-
-  it('says a project with no probe is read by nothing and closed unverified', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [channel()] }) });
-
-    expect(out).toContain('### Proof (this project declares none)');
-    expect(out).toContain('the server reads nothing when you call `finish`');
-    expect(out).toContain('this release was NOT verified');
-    expect(out).toContain('`finish.verification` reads `unverified`');
-    expect(out).not.toContain('### Proof (the server checks this, you do not)');
-  });
-
-  it('keeps the probed proof, and only it, where a probe is declared', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [probed] }) });
-
-    expect(out).toContain('### Proof (the server checks this, you do not)');
-    expect(out).toContain('- https://api.example.test/version');
-    expect(out).not.toContain('### Proof (this project declares none)');
-  });
-
-  it('prints no proof at all where nothing deploys', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
-
-    expect(out).not.toContain('### Proof');
   });
 });

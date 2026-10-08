@@ -2,11 +2,11 @@
  * ISS-1190 — a release batch's finish is taken at the door and done by a job,
  * over HTTP, against real Postgres and a running pg-boss.
  *
- * The reproduction is a batch whose verification cannot settle inside its
- * window: a finish that awaits its own work holds its response for the whole
- * window, which behind the edge is a 524 and a batch that never learns its
- * verdict. The door must answer inside a bound that has nothing to do with the
- * window or the roster, and the verdict must be readable off the batch.
+ * The reproduction was a batch whose verification could not settle inside its window: a finish that
+ * awaited its own work held its response for the whole window, which behind the edge is a 524 and a
+ * batch that never learns its verdict. Since ISS-1282 the finish judges readings the agent asked
+ * Forge to keep and waits on no clock, so the door answers inside a bound that has nothing to do
+ * with the roster, refuses a deploy no reading shows live, and the verdict is readable off the batch.
  */
 
 import { createServer, type Server } from 'node:http';
@@ -28,7 +28,7 @@ import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
 const OTHER = '3333333333333333333333333333333333333333';
-/** The door's bound. The verify windows below are four and more times it. */
+/** The door's bound. */
 const DOOR_MS = 2_000;
 
 let harness: TestDatabase;
@@ -82,23 +82,36 @@ beforeEach(async () => {
   await fx.seedReleaseRunner();
 });
 
-async function window(timeoutSeconds: number): Promise<void> {
+async function declareProbe(): Promise<void> {
   await harness.db.execute(sql`
     UPDATE integration_bindings
     SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds, stableReads: 1 },
+      verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     })}::jsonb
     WHERE project_id = ${projectId} AND provider = 'coolify'
   `);
 }
 
-/** A batch of `n` issues, opened while the probe serves `BEFORE`. */
-async function batch(n: number, seconds: number) {
-  await window(seconds);
+/** A batch of `n` issues, opened while the probe serves `BEFORE`, with nobody having looked yet. */
+async function batch(n: number) {
+  await declareProbe();
   const ids: string[] = [];
   for (let i = 0; i < n; i += 1) ids.push(await fx.insertIssue());
-  const { runId } = await fx.claim(ids);
+  const { runId } = await fx.claim(ids, { look: false });
   return { runId, ids };
+}
+
+/** The deploy lands, and the agent looks: what the finish is judged on. */
+async function landed(runId: string, commit = PUSHED): Promise<void> {
+  serving = commit;
+  await fx.look(runId);
+}
+
+/** A batch whose deploy landed and was looked at, so a finish has a reading to close on. */
+async function readyBatch(n: number) {
+  const opened = await batch(n);
+  await landed(opened.runId);
+  return opened;
 }
 
 interface FinishBody {
@@ -163,27 +176,36 @@ async function closesOf(issueId: string): Promise<number> {
 }
 
 describe('the door answers inside its own bound (the reproduction)', () => {
-  it('answers 202 at `accepted` while a verify window that cannot settle is still open', async () => {
-    const { runId } = await batch(1, 8);
+  it('refuses a deploy no reading shows live at once, writing no attempt and closing nothing', async () => {
+    const { runId, ids } = await batch(1);
+    await fx.look(runId);
+
+    const res = await finish(runId, { commit: PUSHED });
+
+    expect(res.status).toBe(409);
+    expect(res.ms).toBeLessThan(DOOR_MS);
+    expect(res.body.code).toBe('RELEASE_NOT_VERIFIED');
+    expect(res.body.message).toBe(
+      `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}`,
+    );
+    expect(await rawFinish(runId)).toBeNull();
+    expect((await state(runId)).runStatus).toBe('running');
+    expect((await fx.stored(ids[0] as string)).status).toBe('releasing');
+  });
+
+  it('answers 202 at `accepted` inside the bound once a reading shows the deploy live', async () => {
+    const { runId } = await readyBatch(1);
 
     const res = await finish(runId, { commit: PUSHED });
 
     expect(res.status).toBe(202);
     expect(res.ms).toBeLessThan(DOOR_MS);
     expect(res.body.finish?.state).toBe('accepted');
-
-    const after = await until(() => state(runId), settled, 20_000);
-    expect(after.finish?.state).toBe('failed');
-    expect(after.finish?.refusal).toEqual({
-      code: 'RELEASE_NOT_VERIFIED',
-      reason: `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}`,
-      live: BEFORE,
-    });
-    expect(after.runStatus).toBe('running');
+    await until(() => state(runId), settled, 20_000);
   }, 40_000);
 
   it('answers a roster of twenty inside the same bound as a roster of one', async () => {
-    const { runId } = await batch(20, 8);
+    const { runId } = await readyBatch(20);
 
     const res = await finish(runId, { commit: PUSHED });
 
@@ -194,10 +216,8 @@ describe('the door answers inside its own bound (the reproduction)', () => {
 });
 
 describe('the job reaches terminal without the caller', () => {
-  it('closes every claimed issue and completes the run once the probes confirm the commit', async () => {
-    const { runId, ids } = await batch(2, 20);
-    serving = PUSHED;
-
+  it('closes every claimed issue and completes the run once the readings confirm the commit', async () => {
+    const { runId, ids } = await readyBatch(2);
     const res = await finish(runId, { commit: PUSHED });
     expect(res.status).toBe(202);
 
@@ -211,40 +231,69 @@ describe('the job reaches terminal without the caller', () => {
     for (const id of ids) expect((await fx.stored(id)).status).toBe('closed');
   }, 40_000);
 
+  // Nobody works the attempt: the door is given an enqueue that wakes no one, so the record stays
+  // `accepted` for as long as the case needs it to, which no verify window can be asked to hold.
   it('answers the attempt in flight, refuses a second commit, then answers the finished record', async () => {
-    const { runId, ids } = await batch(1, 20);
+    const { runId, ids } = await readyBatch(1);
+    const { acceptReleaseBatchFinish, runReleaseBatchFinish } = await import(
+      '../../src/release-batch/finish-job.js'
+    );
+    const taken = await acceptReleaseBatchFinish(
+      runId,
+      { type: 'user', id: ownerId },
+      { commit: PUSHED },
+      async () => undefined,
+    );
 
-    const first = await finish(runId, { commit: PUSHED });
     const again = await finish(runId, { commit: PUSHED });
     const other = await finish(runId, { commit: OTHER });
 
     expect(again.status).toBe(202);
-    expect(again.body.finish?.requestId).toBe(first.body.finish?.requestId);
+    expect(again.body.finish?.requestId).toBe(taken.finish.requestId);
     expect(other.status).toBe(409);
     expect(other.body.code).toBe('RELEASE_FINISH_IN_FLIGHT');
     expect(other.body.message).toContain(PUSHED);
 
-    serving = PUSHED;
-    await until(() => state(runId), settled, 25_000);
+    await runReleaseBatchFinish(runId);
     const done = await finish(runId, { commit: PUSHED });
 
     expect(done.status).toBe(200);
-    expect(done.body.finish?.requestId).toBe(first.body.finish?.requestId);
+    expect(done.body.finish?.requestId).toBe(taken.finish.requestId);
     expect(done.body.finish?.closed).toEqual(ids);
     expect(await closesOf(ids[0] as string)).toBe(1);
   }, 60_000);
 
+  // The latest reading wins: the readings a finish was accepted on are not a licence once the site
+  // has since been read serving the old build again, so the attempt ends red and says why.
   it('takes a new attempt after a failed one, and that one can finish the batch', async () => {
-    const { runId, ids } = await batch(1, 2);
-    const first = await finish(runId, { commit: PUSHED });
-    const failed = await until(() => state(runId), settled, 15_000);
-    expect(failed.finish?.state).toBe('failed');
+    const { runId, ids } = await readyBatch(1);
+    const { acceptReleaseBatchFinish, runReleaseBatchFinish } = await import(
+      '../../src/release-batch/finish-job.js'
+    );
+    const first = await acceptReleaseBatchFinish(
+      runId,
+      { type: 'user', id: ownerId },
+      { commit: PUSHED },
+      async () => undefined,
+    );
+    serving = BEFORE;
+    await fx.look(runId);
+    await runReleaseBatchFinish(runId);
 
-    serving = PUSHED;
+    const failed = await state(runId);
+    expect(failed.finish?.state).toBe('failed');
+    expect(failed.finish?.refusal).toEqual({
+      code: 'RELEASE_NOT_VERIFIED',
+      reason: `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}`,
+      live: BEFORE,
+    });
+    expect((await fx.stored(ids[0] as string)).status).toBe('releasing');
+
+    await landed(runId);
     const second = await finish(runId, { commit: PUSHED });
 
     expect(second.status).toBe(202);
-    expect(second.body.finish?.requestId).not.toBe(first.body.finish?.requestId);
+    expect(second.body.finish?.requestId).not.toBe(first.finish.requestId);
     const after = await until(() => state(runId), settled, 20_000);
     expect(after.finish?.state).toBe('finished');
     expect((await fx.stored(ids[0] as string)).status).toBe('closed');
@@ -253,8 +302,7 @@ describe('the job reaches terminal without the caller', () => {
 
 describe('a finished batch is not asked about another commit in silence', () => {
   it('refuses a finish naming another commit than the one the batch finished for', async () => {
-    const { runId, ids } = await batch(1, 20);
-    serving = PUSHED;
+    const { runId, ids } = await readyBatch(1);
     await finish(runId, { commit: PUSHED });
     const done = await until(() => state(runId), settled, 20_000);
     expect(done.finish?.state).toBe('finished');
@@ -275,8 +323,7 @@ describe('a finished batch is not asked about another commit in silence', () => 
   }, 45_000);
 
   it('refuses a finish naming a commit on a batch that finished with none named', async () => {
-    const { runId } = await batch(1, 20);
-    serving = PUSHED;
+    const { runId } = await readyBatch(1);
     await finish(runId);
     const done = await until(() => state(runId), settled, 20_000);
     expect(done.finish?.state).toBe('finished');
@@ -292,7 +339,7 @@ describe('a finished batch is not asked about another commit in silence', () => 
 
 describe('the door refuses what the database can refuse, and records nothing', () => {
   it('refuses a commit that is not a whole sha with the whole-commit sentence', async () => {
-    const { runId } = await batch(1, 20);
+    const { runId } = await batch(1);
 
     const res = await finish(runId, { commit: 'abc1234' });
 
@@ -306,7 +353,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   // because an accepted finish opens an attempt that answers the next call, and a second batch on
   // one project is BATCH_IN_FLIGHT.
   it('accepts a run that announced no method', async () => {
-    const unannounced = await batch(1, 20);
+    const unannounced = await readyBatch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${unannounced.runId}
     `);
@@ -315,7 +362,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   });
 
   it('refuses a run with no version, recording nothing', async () => {
-    const versionless = await batch(1, 20);
+    const versionless = await batch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET release_version = NULL WHERE id = ${versionless.runId}
     `);
@@ -325,7 +372,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   });
 
   it('refuses an aborted run, recording nothing', async () => {
-    const aborted = await batch(1, 20);
+    const aborted = await batch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${aborted.runId}
     `);
@@ -335,7 +382,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   });
 
   it('refuses a project whose verify became one Forge cannot parse, recording nothing', async () => {
-    const { runId } = await batch(1, 20);
+    const { runId } = await batch(1);
     await harness.db.execute(sql`
       UPDATE integration_bindings SET config = config || '{"verify": {"probes": []}}'::jsonb
       WHERE project_id = ${projectId}

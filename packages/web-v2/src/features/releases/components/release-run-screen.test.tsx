@@ -33,6 +33,7 @@ function state(over: Partial<ReleaseRunState>) {
 			},
 			attempts: [],
 			live: null,
+			readings: { total: 0, latest: [] },
 			verification: null,
 			bounds: { holding: true, crossedNames: [], bounds: [] },
 			method: null,

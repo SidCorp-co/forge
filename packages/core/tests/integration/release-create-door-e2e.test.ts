@@ -102,7 +102,7 @@ async function seed(binding: Record<string, unknown> = {}): Promise<World> {
   `);
   const config = {
     releaseRunnerLabel: LABEL,
-    verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
+    verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     ...binding,
   };
   await harness.db.execute(sql`

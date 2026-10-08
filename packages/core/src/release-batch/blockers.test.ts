@@ -377,7 +377,9 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
     const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
 
     expect(codes).not.toContain('RELEASE_BRANCHES_UNDECLARED');
-    expect(codes).toContain('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
+    // Two live bindings are read on each, and are no reason to refuse (ISS-1282).
+    expect(codes).not.toContain('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
+    expect(codes).toEqual([]);
   });
 
   it('says the channels were not read, rather than answering as though none were declared', async () => {

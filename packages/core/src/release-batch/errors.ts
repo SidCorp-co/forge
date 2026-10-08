@@ -34,13 +34,44 @@ export class ReleasePoolEmptyError extends Error {
   }
 }
 
-export class ReleaseMultiChannelUnsupportedError extends Error {
-  readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
-  constructor(readonly count: number) {
+/**
+ * A look on a project whose live bindings declare no probe: there is nothing Forge could read, and
+ * what the release then closes on is the agent's account alone, which `finish` records as
+ * `unverified` (ISS-1321).
+ */
+export class ReleaseNothingToReadError extends Error {
+  readonly code = 'RELEASE_NOTHING_TO_READ';
+  constructor() {
     super(
-      `RELEASE_MULTI_CHANNEL_UNSUPPORTED: this project declares ${count} live deploy bindings, and a release run records ONE reading — one \`commitBefore\`, one set of probes, one verdict — which would be taken at one of them and used to close the whole roster. Core will not claim a release it verified at one endpoint of two. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`,
+      'No live deploy binding of this project declares a verify probe, so there is nothing for Forge to read. Do not look: finish records this release as unverified, on your account alone.',
     );
-    this.name = 'ReleaseMultiChannelUnsupportedError';
+    this.name = 'ReleaseNothingToReadError';
+  }
+}
+
+/** A look on a batch whose run is over. A reading says what was serving when it was taken, and a
+ *  closed batch has no roster left for one to close. */
+export class ReleaseRunClosedError extends Error {
+  readonly code = 'RELEASE_RUN_CLOSED';
+  constructor(readonly runStatus: string) {
+    super(
+      `This batch's run is ${runStatus}, so it takes no further reading. Read what it recorded with the state action.`,
+    );
+    this.name = 'ReleaseRunClosedError';
+  }
+}
+
+/** A stored reading this code cannot read. It is refused by name, never guessed into a shape. */
+export class ReleaseReadingUnreadableError extends Error {
+  readonly code = 'RELEASE_READING_UNREADABLE';
+  constructor(
+    readonly readingId: string,
+    detail: string,
+  ) {
+    super(
+      `RELEASE_READING_UNREADABLE: the stored reading ${readingId} is not one this code can read (${detail}).`,
+    );
+    this.name = 'ReleaseReadingUnreadableError';
   }
 }
 
@@ -69,8 +100,8 @@ export class NoRunnerOnlineError extends Error {
 }
 
 /**
- * The probes did not agree that the release is live. `finish` refuses, so the
- * agent's only remaining move is `abort` — which is the point.
+ * The recorded readings do not show the release live. `finish` refuses, so the agent's
+ * only moves are to look again once the deploy has landed, or `abort` — which is the point.
  */
 export class ReleaseNotVerifiedError extends Error {
   constructor(

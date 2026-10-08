@@ -29,7 +29,6 @@ export type ReleaseBlockerCode =
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
-  | 'RELEASE_MULTI_CHANNEL_UNSUPPORTED'
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
   | 'RELEASE_RUNTIME_UNROUTED'
@@ -145,8 +144,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.',
   NO_RUNNER_ONLINE:
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
-  RELEASE_MULTI_CHANNEL_UNSUPPORTED:
-    'This project declares more than one live deploy binding, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the `live` stage active, or release them as separate projects.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
   RELEASE_CRITERIA_UNEARNED:
@@ -189,7 +186,6 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
-  RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_RUNTIME_UNROUTED: [],
@@ -370,9 +366,6 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
     const labels = details.labels as string[];
     return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
-  }
-  if (code === 'RELEASE_MULTI_CHANNEL_UNSUPPORTED' && typeof details?.count === 'number') {
-    return `This project declares ${details.count} live deploy bindings, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`;
   }
   const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
   if (standings) {

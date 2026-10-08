@@ -13,7 +13,6 @@ import {
   NoReleaseGateError,
   NoRunnerOnlineError,
   ReleaseIssuesUnclosableError,
-  ReleaseMultiChannelUnsupportedError,
   ReleasePoolEmptyError,
   ReleaseProbesUnreadableError,
   ReleaseRecordMissingError,
@@ -126,8 +125,6 @@ function errorFor(
       return new ReleasePoolEmptyError();
     case 'NO_RUNNER_ONLINE':
       return new NoRunnerOnlineError();
-    case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
-      return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
     case 'BATCH_IN_FLIGHT':
       return new BatchInFlightError(null);
     case 'RELEASE_CRITERIA_UNEARNED':

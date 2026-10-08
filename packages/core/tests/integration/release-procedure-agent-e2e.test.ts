@@ -115,7 +115,7 @@ async function seed(shape: Shape = {}): Promise<World> {
     INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
     VALUES (${connection}, ${project.id}, ${provider}, 'deploy', ARRAY['live'], true,
             ${JSON.stringify({
-              verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
+              verify: { probes: [{ url: probeUrl }], stableReads: 1 },
             })}::jsonb)
   `);
   if (shape.procedure) {

@@ -176,7 +176,6 @@ describe('a finish already run answers from the record', () => {
       SET config = config || ${JSON.stringify({
         verify: {
           probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 20,
           stableReads: 1,
         },
       })}::jsonb
@@ -185,6 +184,7 @@ describe('a finish already run answers from the record', () => {
     const a = await insertIssue();
     const { runId, jobId } = await claim([a]);
     serving = PUSHED;
+    await fx.look(runId);
 
     const first = await finishReleaseBatch(runId, actor(), { commit: serving });
     expect(first.closed).toEqual([a]);
@@ -259,45 +259,27 @@ describe('a finish racing an abort', () => {
     const { abortReleaseBatch, finishReleaseBatch } = await import(
       '../../src/release-batch/service.js'
     );
-    let releaseProbe: () => void = () => {};
-    let probeArrived: () => void = () => {};
-    const arrived = new Promise<void>((done) => {
-      probeArrived = done;
-    });
-    const held = new Promise<void>((done) => {
-      releaseProbe = done;
-    });
-    let holding = false;
-    const probe: Server = createServer((_req, res) => {
-      if (!holding) {
-        res.end(BEFORE);
-        return;
-      }
-      probeArrived();
-      void held.then(() => res.end(PUSHED));
-    });
+    const probe: Server = createServer((_req, res) => res.end(PUSHED));
     await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
     const { port } = probe.address() as AddressInfo;
     await harness.db.execute(sql`
       UPDATE integration_bindings
       SET config = config || ${JSON.stringify({
-        verify: {
-          probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 20,
-          stableReads: 1,
-        },
+        verify: { probes: [{ url: `http://127.0.0.1:${port}/version` }], stableReads: 1 },
       })}::jsonb
       WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
     const a = await insertIssue();
-    const { runId } = await claim([a]);
+    const { runId } = await claim([a], { deploy: false });
+    await fx.look(runId, { commit: PUSHED });
 
-    holding = true;
-    const finishing = finishReleaseBatch(runId, actor(), { commit: PUSHED });
-    await arrived;
-    await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
-    releaseProbe();
-    const result = await finishing;
+    // The readings are green; the abort lands after they are judged and before the first close.
+    const result = await finishReleaseBatch(runId, actor(), {
+      commit: PUSHED,
+      onVerified: async () => {
+        await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
+      },
+    });
     await new Promise<void>((done) => probe.close(() => done()));
 
     expect(result.closed).toEqual([]);
@@ -323,7 +305,6 @@ describe('a finish after an abort of a reaped run', () => {
       SET config = config || ${JSON.stringify({
         verify: {
           probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 5,
           stableReads: 1,
         },
       })}::jsonb

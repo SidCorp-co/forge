@@ -1,8 +1,8 @@
 // A release batch's finish, accepted at the door and done by a job.
 //
 // The door checks what the database can answer and writes a finish record onto
-// the run (`pipeline_runs.metadata.finish`); the job verifies the probes and
-// closes the roster. Nothing the caller does after the door answers — hanging
+// the run (`pipeline_runs.metadata.finish`); the job judges the recorded readings
+// again and closes the roster. Nothing the caller does after the door answers — hanging
 // up included — changes what happens to the batch, and the verdict is read off
 // the record rather than off a response that may never arrive.
 //
@@ -35,9 +35,10 @@ import {
   readFinishRecord,
   stamp,
 } from './finish-record.js';
+import { judgeRecordedReadings } from './readings.js';
 import { finishRefusal } from './refusals.js';
 import { finishReleaseBatch } from './service.js';
-import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
+import { claimedCommit, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
 export const FINISH_LEASE_MS = 120_000;
@@ -72,9 +73,9 @@ export interface AcceptFinishResult {
 type Enqueue = (runId: string) => Promise<void>;
 
 /**
- * Take a finish: refuse what the database can refuse, write the attempt, wake
- * the job, and answer. Its cost is a handful of reads and one write whatever
- * the roster holds and however long the probes take to agree.
+ * Take a finish: refuse what the database can refuse — the recorded readings
+ * included — write the attempt, wake the job, and answer. Its cost is a handful
+ * of reads and one write whatever the roster holds.
  */
 export async function acceptReleaseBatchFinish(
   runId: string,
@@ -124,9 +125,14 @@ export async function acceptReleaseBatchFinish(
       .where(eq(issues.releaseBatchRunId, runId));
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
       const verification = await assertFinishable(runId, run);
-      const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
-      if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {
-        throw new ReleaseNotVerifiedError(NOTHING_TO_COMPARE, null);
+      if (verification.kind === 'probed') {
+        const judged = await judgeRecordedReadings({
+          runId,
+          metadata: run.metadata,
+          verification,
+          claim: commit,
+        });
+        if (!judged.ok) throw new ReleaseNotVerifiedError(judged.reason, judged.live);
       }
     }
 
@@ -147,6 +153,7 @@ export async function acceptReleaseBatchFinish(
       failed: current?.failed ?? null,
       refusal: null,
       verification: null,
+      evidence: null,
       finishedAt: null,
     };
     // Conditioned on the run too: an abort landing after the read above refuses on the next round.
@@ -258,6 +265,8 @@ function refusalOf(err: unknown): FinishRefusal {
  * Always ends with the record terminal, unless its lease was taken over.
  */
 export interface FinishWorkerHooks {
+  /** Test seam: runs once this worker holds the attempt, before it judges the recorded readings. */
+  afterTaken?: () => Promise<void>;
   /** Test seam: runs after the green verdict is committed and before the first close. */
   afterVerified?: () => Promise<void>;
   /** Test seam: runs as a fence starts, before it locks and reads the run row. */
@@ -325,13 +334,17 @@ export async function runReleaseBatchFinish(
   heartbeat.unref?.();
 
   try {
+    await hooks.afterTaken?.();
     await finishReleaseBatch(runId, record.requestedBy, {
       commit: record.commit ?? undefined,
       alreadyVerified: record.state === 'closing' && record.verification !== 'unverified',
-      whileVerifying: () => refuseIfAborted(runId),
-      onVerified: async (verification) => {
+      onVerified: async (verification, evidence) => {
         await refuseIfAborted(runId);
-        await hold.commit(() => ({ state: 'closing', verification }));
+        await hold.commit((r) => ({
+          state: 'closing',
+          verification,
+          evidence: evidence.length > 0 ? evidence : r.evidence,
+        }));
         await hooks.afterVerified?.();
       },
       fence: hold.fence,

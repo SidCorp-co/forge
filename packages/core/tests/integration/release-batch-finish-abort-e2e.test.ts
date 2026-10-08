@@ -68,7 +68,7 @@ beforeEach(async () => {
   await harness.db.execute(sql`
     UPDATE integration_bindings
     SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 12, stableReads: 1 },
+      verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     })}::jsonb
     WHERE project_id = ${projectId} AND provider = 'coolify'
   `);
@@ -81,6 +81,12 @@ async function twoIssueBatch() {
   const second = await fx.insertIssue();
   const { runId } = await fx.claim([first, second]);
   return { runId, issueIds: [first, second] };
+}
+
+/** The deploy lands and the agent looks at it: the reading a finish is judged on. */
+async function landed(runId: string): Promise<void> {
+  serving = PUSHED;
+  await fx.look(runId);
 }
 
 async function accept(runId: string, commit?: string) {
@@ -139,14 +145,6 @@ async function storedReason(runId: string): Promise<string | undefined> {
   return ((await stored(runId))?.refusal as { reason?: string } | undefined)?.reason;
 }
 
-async function untilState(runId: string, state: string): Promise<void> {
-  for (let i = 0; i < 100; i += 1) {
-    if ((await stored(runId))?.state === state) return;
-    await new Promise((d) => setTimeout(d, 50));
-  }
-  throw new Error(`the attempt never reached ${state}`);
-}
-
 /** Wait until a write to `pipeline_runs` in this database is blocked on a lock. */
 async function untilAWriteWaits(): Promise<void> {
   for (let i = 0; i < 100; i += 1) {
@@ -161,21 +159,27 @@ async function untilAWriteWaits(): Promise<void> {
   throw new Error('no write to pipeline_runs ever waited on the held row');
 }
 
-/** Abort the batch while its attempt is verifying, then let the probe go green or stay red. */
-async function abortMidVerify(runId: string, goesGreen = true): Promise<void> {
+/**
+ * Abort the batch after its finish was accepted and before a worker has judged it, then let the
+ * worker run. The readings it finds are green, or, where the deploy was since read serving the old
+ * build again, red: the abort is what the attempt must answer with either way.
+ */
+async function abortAfterAccept(runId: string, goesGreen = true): Promise<void> {
+  await landed(runId);
   await accept(runId, PUSHED);
-  const working = job.runReleaseBatchFinish(runId);
-  await untilState(runId, 'verifying');
+  if (!goesGreen) {
+    serving = BEFORE;
+    await fx.look(runId);
+  }
   await abort(runId);
-  if (goesGreen) serving = PUSHED;
-  await working;
+  await job.runReleaseBatchFinish(runId);
 }
 
-describe('a batch aborted while its finish attempt is verifying', () => {
+describe('a batch aborted after its finish was accepted, before a worker judged it', () => {
   it('ends the attempt failed as aborted, stamps no release and closes nothing', async () => {
     const { runId, issueIds } = await twoIssueBatch();
 
-    await abortMidVerify(runId);
+    await abortAfterAccept(runId);
 
     expect(await stored(runId)).toMatchObject({
       state: 'failed',
@@ -192,10 +196,10 @@ describe('a batch aborted while its finish attempt is verifying', () => {
     }
   }, 30_000);
 
-  it('ends the attempt as aborted, not unverified, when the probes never go green', async () => {
+  it('ends the attempt as aborted, not unverified, when the latest reading no longer shows the deploy', async () => {
     const { runId } = await twoIssueBatch();
 
-    await abortMidVerify(runId, false);
+    await abortAfterAccept(runId, false);
 
     expect(await stored(runId)).toMatchObject({
       state: 'failed',
@@ -206,7 +210,7 @@ describe('a batch aborted while its finish attempt is verifying', () => {
 
   it('answers a later finish on it with RELEASE_BATCH_ABORTED, with or without a commit', async () => {
     const { runId } = await twoIssueBatch();
-    await abortMidVerify(runId);
+    await abortAfterAccept(runId);
     const before = await stored(runId);
 
     expect(await refusalCode(() => accept(runId, PUSHED))).toBe('RELEASE_BATCH_ABORTED');
@@ -216,7 +220,7 @@ describe('a batch aborted while its finish attempt is verifying', () => {
 
   it('stores the account a later finish is refused with: the claims were released', async () => {
     const { runId } = await twoIssueBatch();
-    await abortMidVerify(runId);
+    await abortAfterAccept(runId);
 
     const reason = await storedReason(runId);
     expect(reason).toMatch(/its claims were released/);
@@ -225,15 +229,13 @@ describe('a batch aborted while its finish attempt is verifying', () => {
 
   it('stores the account the abort settles on when the finish records its refusal between the two abort writes', async () => {
     const { runId } = await twoIssueBatch();
+    await landed(runId);
     await accept(runId, PUSHED);
-    const working = job.runReleaseBatchFinish(runId);
-    await untilState(runId, 'verifying');
     let between: string | undefined;
     // The finish sees the stamp and records its refusal while the roster is still `returning`.
     await abort(runId, {
       afterRosterRecovered: async () => {
-        serving = PUSHED;
-        await working;
+        await job.runReleaseBatchFinish(runId);
         between = await storedReason(runId);
       },
     });
@@ -243,28 +245,6 @@ describe('a batch aborted while its finish attempt is verifying', () => {
     expect(reason).toMatch(/its claims were released/);
     expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
   }, 30_000);
-
-  it('ends the attempt within one poll of the abort, not at the end of its verify window', async () => {
-    await harness.db.execute(sql`
-      UPDATE integration_bindings
-      SET config = jsonb_set(config, '{verify,timeoutSeconds}', '120'::jsonb)
-      WHERE project_id = ${projectId} AND provider = 'coolify'
-    `);
-    const { runId } = await twoIssueBatch();
-    await accept(runId, PUSHED);
-    const working = job.runReleaseBatchFinish(runId);
-    await untilState(runId, 'verifying');
-
-    await abort(runId);
-    const abortedAt = Date.now();
-    await working;
-
-    expect(Date.now() - abortedAt).toBeLessThan(20_000);
-    expect(await stored(runId)).toMatchObject({
-      state: 'failed',
-      refusal: { code: 'RELEASE_BATCH_ABORTED' },
-    });
-  }, 60_000);
 });
 
 describe('two aborts overlapping on one promoted batch', () => {
@@ -306,17 +286,15 @@ describe('a batch whose abort has begun and not yet cancelled its run', () => {
 
   it('stamps no release and ends the attempt aborted when verification goes green in that gap', async () => {
     const { runId, issueIds } = await twoIssueBatch();
+    await landed(runId);
     await accept(runId, PUSHED);
-    const working = job.runReleaseBatchFinish(runId);
-    await untilState(runId, 'verifying');
 
-    // The roster is recovered and the run is still running: the worker goes green here and is
-    // let finish before the abort cancels.
+    // The roster is recovered and the run is still running: the worker judges the readings green
+    // here and is let finish before the abort cancels.
     await abort(runId, {
       afterRosterRecovered: async () => {
         expect(await fx.runStatus(runId)).toBe('running');
-        serving = PUSHED;
-        await working;
+        await job.runReleaseBatchFinish(runId);
       },
     });
 
@@ -341,7 +319,7 @@ describe('a batch whose abort has begun and not yet cancelled its run', () => {
         const { openAttempt } = await import('../../src/release-batch/ledger.js');
         await openAttempt({ runId, stage: 'promote', idempotencyKey: 'promote-1', commit: PUSHED });
       }
-      serving = PUSHED;
+      await landed(runId);
       await accept(runId, PUSHED);
       let aborting: Promise<unknown> | null = null;
       let working: Promise<void> | null = null;
@@ -386,7 +364,7 @@ describe('a batch aborted after its verification went green', () => {
     const { openAttempt } = await import('../../src/release-batch/ledger.js');
     const { runId, issueIds } = await twoIssueBatch();
     await openAttempt({ runId, stage: 'promote', idempotencyKey: 'promote-1', commit: PUSHED });
-    serving = PUSHED;
+    await landed(runId);
     await accept(runId, PUSHED);
     const notesAfterAbort: number[] = [];
 
@@ -424,7 +402,7 @@ describe('a batch aborted after its verification went green', () => {
 
   it('records no per-issue failure for a roster the abort moved back', async () => {
     const { runId, issueIds } = await twoIssueBatch();
-    serving = PUSHED;
+    await landed(runId);
     await accept(runId, PUSHED);
 
     await job.runReleaseBatchFinish(runId, { afterVerified: () => abort(runId).then(() => {}) });
@@ -443,7 +421,7 @@ describe('a batch aborted after its verification went green', () => {
 describe('a batch aborted just before its attempt writes its refusal', () => {
   it('ends the attempt as aborted rather than with the refusal it was about to write', async () => {
     const { runId } = await twoIssueBatch();
-    serving = PUSHED;
+    await landed(runId);
     await accept(runId, PUSHED);
     let cancelling: Promise<void> | null = null;
 
@@ -478,7 +456,7 @@ describe('a batch aborted just before its attempt writes its refusal', () => {
 describe('a batch aborted while the door is taking its finish', () => {
   it('refuses the finish and writes no record when the abort lands between the read and the write', async () => {
     const { runId } = await twoIssueBatch();
-    serving = PUSHED;
+    await landed(runId);
     let answer: Promise<string | null> | null = null;
 
     // An abort landing between the door's read of the run and its write of the attempt.
@@ -501,7 +479,7 @@ describe('a batch aborted while the door is taking its finish', () => {
 describe('a batch that finished and was aborted afterwards', () => {
   it('keeps its finished record and answers a later finish as aborted', async () => {
     const { runId, issueIds } = await twoIssueBatch();
-    serving = PUSHED;
+    await landed(runId);
     await accept(runId, PUSHED);
     await job.runReleaseBatchFinish(runId);
     const finished = await stored(runId);

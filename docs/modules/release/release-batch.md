@@ -134,6 +134,46 @@ The job reports through `forge_release_batch` `finish` (or the REST `finish` rou
 on the roster. `packages/core/src/release-batch/finish-precondition.ts:assertFinishable` decides whether a run can be finished at
 all.
 
+### The agent says when to look; Forge takes the reading (ISS-1282)
+
+A finish does not read the site and does not wait. The agent calls `look` (`forge_release_batch`
+`look`, or `POST /api/projects/:projectId/release-batches/:runId/readings`) once its deploy is made.
+`packages/core/src/release-batch/look.ts:lookAtBatch` has Forge read every live deploy binding that
+declares a probe (`packages/core/src/release-batch/verify.ts:readLiveState`) and keeps one row in
+`release_readings` (`packages/core/src/release-batch/readings.ts:takeReading`): what each binding's
+probes said, who asked, and the bindings that declare none, named `unread`. The row is
+append-only and goes with its run. The answer carries what a finish would make of the readings so
+far, so the agent decides whether to look again.
+
+`finish` closes a probed roster on those rows and on nothing the agent says.
+`packages/core/src/release-batch/reading-judge.ts:judgeReadings` judges each probed binding on its
+newest `stableReads` readings (two where the binding declares none): every one healthy, all of them
+agreeing on one identity, and that identity the claimed commit or, with none claimed, a build other
+than the one the binding served when the batch opened
+(`packages/core/src/release-batch/verify.ts:readingSatisfies`; the build before is
+`metadata.commitBeforeBy`, by binding id). The newest reading must be younger than
+`packages/core/src/release-batch/reading-judge.ts:RELEASE_READING_MAX_AGE_MS`, a bound on the age of
+evidence and not on a wait. Each reading carries the probes it was taken with
+(`packages/core/src/release-batch/verify.ts:probesKeyOf`), and a reading taken with probes the
+binding no longer declares ends the run of readings a close may rest on. Every binding must pass; the refusal names each one that does not. A
+healthy site still serving the old build stays red. The door
+(`packages/core/src/release-batch/finish-job.ts:acceptReleaseBatchFinish`) judges the stored readings
+inline, which makes no request, and answers `RELEASE_NOT_VERIFIED` at once where they do not
+confirm; the worker judges them again and stamps the reading ids it rested on, `evidence`, on the
+finish record. A readings set that has gone red between the two ends the attempt `failed`.
+
+What bounds an agent that never looks: nothing closes. Its finish is refused saying no reading is
+recorded, the roster stays `releasing`, and the run's `state` lists the readings it holds
+(`readings.total`, and the newest ten). The release job's own `timeoutSeconds: 3600` ends the run,
+and `packages/core/src/release-batch/claim-subscriber.ts` hands an unworked roster back. A project
+whose live bindings declare no probe has nothing to read: `look` is refused with
+`RELEASE_NOTHING_TO_READ`, and its finish records the release unverified, with a note on each issue.
+Where only some bindings declare a probe, the rest are `unread` and each closed issue is noted as
+verified at only some of its deploy bindings. `verify.timeoutSeconds` is refused by name on a
+binding. The single-moment read of `POST /release-records`
+(`packages/core/src/release-batch/verify.ts:verifyServingNow`) is unchanged, now run once per
+binding.
+
 ### A close that is refused (ISS-1381)
 
 One issue's refused close does not stop the others from closing. The refused issue goes back to

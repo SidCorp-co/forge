@@ -18,10 +18,11 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import { closeVerification, type ReleaseVerification } from './channel.js';
+import { bindingName, closeVerification, type ReleaseVerification } from './channel.js';
 import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { NoReleaseGateError, ReleaseNotVerifiedError } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
+import type { ProbedChannel } from './plan.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
 /** The one ledger key a recorded release writes under. */
@@ -54,6 +55,8 @@ export interface RecordPerformedReleaseResult {
   identity: string | null;
   readings: string[];
   verification: ReleaseVerification;
+  /** The live bindings that declare no probe, which nothing read. */
+  unread: string[];
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];
@@ -79,12 +82,17 @@ function issueNote(args: {
   identity: string | null;
   account: string;
   providerRef: string | null;
+  unread: readonly string[];
 }): string {
   const handle = args.providerRef ? ` The provider's handle on it: \`${args.providerRef}\`.` : '';
+  const unread =
+    args.unread.length === 0
+      ? ''
+      : `- **not read**: no verify probe is declared for ${args.unread.join(', ')}, so nothing read what ${args.unread.length === 1 ? 'it serves' : 'they serve'}\n`;
   const read =
     args.identity === null
       ? '- **not verified**: this project declares no live verify probe, so nothing read the deployment and only the account below says this commit is serving\n\n'
-      : `- deployment identity read back from the live probes: \`${args.identity}\`\n\n`;
+      : `- deployment identity read back from the live probes: \`${args.identity}\`\n${unread}\n`;
   const how =
     args.identity === null
       ? 'Released outside a release batch, and recorded on the account of whoever released it.'
@@ -122,11 +130,12 @@ export async function recordPerformedRelease(
 
   let outcome: Extract<ServingNowOutcome, { ok: true }> | null = null;
   if (verification.kind === 'probed') {
-    const read = await verifyServingNow({ cfg: verification.cfg, expected: commit });
+    const read = await readEveryBinding(verification.channels, commit);
     if (!read.ok) throw new ReleaseNotVerifiedError(read.reason, read.live);
     outcome = read;
   }
   const identity = outcome?.identity ?? null;
+  const unread = verification.kind === 'probed' ? verification.unread.map(bindingName) : [];
 
   const run = await openOneShotRun({
     projectId,
@@ -138,6 +147,7 @@ export async function recordPerformedRelease(
       commit,
       identity,
       verification: verification.kind,
+      unread,
       providerRef,
       recordedBy: userId,
       issues: roster,
@@ -164,7 +174,7 @@ export async function recordPerformedRelease(
 
   await writeLedger(run.id, { commit, outcome, account, providerRef });
 
-  const note = issueNote({ commit, identity, account, providerRef });
+  const note = issueNote({ commit, identity, account, providerRef, unread });
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
 
@@ -218,9 +228,44 @@ export async function recordPerformedRelease(
     identity,
     readings: outcome?.readings ?? [],
     verification: verification.kind,
+    unread,
     closed,
     failed,
     issues: roster,
+  };
+}
+
+/**
+ * One reading of every live binding that declares a probe, taken now. The release is earned only
+ * where each of them confirms the commit claimed, and a refusal names the binding that does not.
+ */
+async function readEveryBinding(
+  channels: readonly ProbedChannel[],
+  commit: string,
+): Promise<ServingNowOutcome> {
+  const reads = await Promise.all(
+    channels.map(async (c) => ({
+      name: bindingName(c),
+      read: await verifyServingNow({ cfg: c.verify, expected: commit }),
+    })),
+  );
+  const readings = reads.flatMap(({ read }) => read.readings);
+  const confirmed = reads.flatMap(({ read }) => (read.ok ? [read] : []));
+  const refused = reads.flatMap(({ name, read }) => (read.ok ? [] : [{ name, read }]));
+  const [head] = refused;
+  if (head === undefined) {
+    const [first] = confirmed;
+    if (first === undefined) throw new Error('a probed release named no binding to read');
+    return { ok: true, health: 'up', identity: first.identity, readings };
+  }
+  const prefix = (name: string) => (channels.length > 1 ? `${name}: ` : '');
+  return {
+    ok: false,
+    reason: refused.map(({ name, read }) => `${prefix(name)}${read.reason}`).join('; '),
+    live: head.read.live,
+    health: refused.some(({ read }) => read.health === 'down') ? 'down' : 'up',
+    identity: head.read.identity,
+    readings,
   };
 }
 

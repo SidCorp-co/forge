@@ -2080,6 +2080,13 @@
       "when": 1810771200000,
       "tag": "0321_a_mark_may_carry_an_unverified_commit",
       "breakpoints": true
+    },
+    {
+      "idx": 322,
+      "version": "7",
+      "when": 1810857600000,
+      "tag": "0322_the_agent_says_when_forge_reads",
+      "breakpoints": true
     }
   ]
 }

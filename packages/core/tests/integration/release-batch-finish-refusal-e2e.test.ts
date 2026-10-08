@@ -266,6 +266,7 @@ describe('the person’s way out of the release gate (ISS-1381 r3)', () => {
     const second = released.body.runId;
     fx.serve(`commit-pushed-by-run-${second}`);
     await fx.announceMethod(second);
+    await fx.look(second);
     const result = await finishReleaseBatch(second, { type: 'user', id: ownerId });
 
     expect(result.closed).toEqual([held]);
