@@ -11,6 +11,7 @@ import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisi
 import { checksFor, entryEligibility, MODES, unlayered } from './lib/verify-layers.mjs';
 import { Memo, memoListing } from './lib/verify-memo-run.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
+import { verdictOf } from './lib/verify-verdict.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
@@ -434,42 +435,7 @@ function assertEveryCheckDeclaresItsInputs() {
   process.exit(2);
 }
 
-function verdict(check, status, out) {
-  if (status === 2) {
-    return {
-      ...check,
-      code: 2,
-      condition: 'blocked',
-      out,
-      why: 'could not run — the checker says so; its reason is below',
-    };
-  }
-
-  if (check.skipIf?.test(out)) {
-    return {
-      ...check,
-      code: status ?? 0,
-      condition: 'skipped',
-      out,
-      note: `skipped — not reproducible here; \`${check.coveredBy}\` covers it in CI`,
-    };
-  }
-  if (check.scanned) {
-    const m = out.match(check.scanned);
-    if (!m) return { ...check, code: 2, out, why: 'no file count in output — cannot prove it ran' };
-    const n = Number(m[1]);
-    if (n === 0 && !check.scopeMayBeEmpty) {
-      return { ...check, code: 2, out, why: 'scanned 0 files — a scope nobody could compute' };
-    }
-    // What a PASSING check still has to say. `out` is printed only for a non-zero exit,
-    // so a checker whose job is partly to report — a worklist, a scope it could not
-    // measure — is silent on exactly the runs that are meant to carry it onward.
-    const carried = check.carries ? out.match(check.carries)?.[1] : undefined;
-    const note = n === 0 ? `no diff against ${BASE_REF} — nothing to scope` : carried;
-    return { ...check, code: status ?? 1, out, files: n, note };
-  }
-  return { ...check, code: status ?? 1, out };
-}
+const verdict = (check, status, out) => verdictOf(check, status, out, BASE_REF);
 
 function runCheck(check, base, memo) {
   const missing = absentPrerequisites(ROOT, check.needs);
