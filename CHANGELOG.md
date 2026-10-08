@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.208] - 2026-10-08
+
+Assistant prose dates read like the Requirements list; Computation copy names server sandbox
+
+### Fixed
+
+- **Chat dates and Computation copy.** An assistant's prose now reads an ISO instant as the drawn blocks do, leaving code spans and fences as written; Settings > Advanced > Computation names the server-side JavaScript sandbox, not a runner.
+
 ## [0.4.0-dev.207] - 2026-10-08
 
 Exported reports state dates in UTC; requirement standing names whom work waits on

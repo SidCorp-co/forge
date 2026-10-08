@@ -1,1 +1,0 @@
-**Chat dates and Computation copy.** An assistant's prose now reads an ISO instant as the drawn blocks do, leaving code spans and fences as written; Settings > Advanced > Computation names the server-side JavaScript sandbox, not a runner.
