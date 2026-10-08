@@ -184,6 +184,19 @@ The roster answer's `closeFailure` is the latest such record where it failed sho
 the same issue with the same kind and reason rewrites that comment, naming every release that met
 it, rather than posting another.
 
+A record is the issue's word only until its status next moves into or out of `closed`
+(ISS-1381 r5): `lastCloseFailures` leaves out a record that `kernel_transitions` shows such a move
+after, and the record's `at` is stamped on the database's clock, the one those rows carry. An issue
+that left `closed`, by whatever move `packages/core/src/pipeline/state-machine.ts:canTransitionFree`
+admits, has a row recording that exit, and retention deletes an issue's transitions only while it
+is closed or dropped, so an issue at the gate or at `releasing` keeps the row that ends a record
+from before its close. An issue a release closed and that came back to the
+gate therefore names no old failure, and a failure after that close posts a comment of its own
+rather than rewriting the one from before it. A move off the gate and back that never passes
+through `closed` leaves the record standing. On the release gate panel such a row is not counted
+ready and select-all leaves it out; picked by hand, the batch dialog names it as one this release
+fails to close the same way and says only the others close.
+
 ## 4. Which route reads the repository (ISS-1398)
 
 Every repository read a release takes — the carried range above, and the weighing the automatic

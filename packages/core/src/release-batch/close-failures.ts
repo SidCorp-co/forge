@@ -35,7 +35,10 @@ function recordOf(raw: unknown): CloseFailureRecord | null {
   };
 }
 
-/** The latest close failure each issue carries on any release run of the project, and that run. */
+/**
+ * The latest close failure each issue carries on any release run of the project, and that run,
+ * unless the issue moved into or out of `closed` after it (ISS-1381 r5).
+ */
 export async function lastCloseFailures(
   projectId: string,
   issueIds: readonly string[],
@@ -43,16 +46,23 @@ export async function lastCloseFailures(
   const out = new Map<string, CloseFailureRecord & { runId: string }>();
   if (issueIds.length === 0) return out;
   const rows = await db.execute<{ issue_id: string; record: unknown; run_id: string }>(sql`
+    WITH asked(id) AS (VALUES ${sql.join(
+      issueIds.map((id) => sql`(${id}::uuid)`),
+      sql`, `,
+    )})
     SELECT DISTINCT ON (f.key) f.key AS issue_id, f.value AS record, r.id AS run_id
       FROM pipeline_runs r
       CROSS JOIN LATERAL jsonb_each(r.metadata -> 'closeFailures') AS f(key, value)
+      JOIN asked a ON a.id::text = f.key
      WHERE r.project_id = ${projectId}
        AND jsonb_typeof(r.metadata -> 'closeFailures') = 'object'
-       AND f.key IN (${sql.join(
-         issueIds.map((id) => sql`${id}`),
-         sql`, `,
-       )})
-     ORDER BY f.key, f.value ->> 'at' DESC, r.created_at DESC
+       AND NOT EXISTS (
+             SELECT 1 FROM kernel_transitions k
+              WHERE k.entity = 'issue'
+                AND k.entity_id = a.id
+                AND (k.to_status = 'closed' OR k.from_status = 'closed')
+                AND k.created_at > (f.value ->> 'at')::timestamptz)
+     ORDER BY f.key, (f.value ->> 'at')::timestamptz DESC, r.created_at DESC
   `);
   for (const row of rows) {
     const record = recordOf(row.record);
@@ -63,8 +73,9 @@ export async function lastCloseFailures(
 
 /**
  * Say on the issue why this finish could not close it, and keep that on the run. Where the latest
- * earlier finish failed it the same way and its comment is still there, that comment is rewritten
- * naming this release too, so one cause reads as one comment however many releases meet it.
+ * earlier finish since the issue last closed failed it the same way and its comment is still there,
+ * that comment is rewritten naming this release too, so one cause reads as one comment however
+ * many releases meet it.
  */
 export async function sayCloseFailure(args: {
   runId: string;
@@ -102,13 +113,12 @@ export async function sayCloseFailure(args: {
       .returning({ id: comments.id });
     commentId = row?.id ?? null;
   }
-  const record: CloseFailureRecord = {
+  const record: Omit<CloseFailureRecord, 'at'> = {
     kind: args.kind,
     reason: args.reason,
     version: args.version,
     commentId,
     repeats,
-    at: new Date().toISOString(),
   };
   await db.execute(sql`
     UPDATE pipeline_runs
@@ -116,7 +126,8 @@ export async function sayCloseFailure(args: {
              coalesce(metadata, '{}'::jsonb),
              '{closeFailures}',
              coalesce(metadata -> 'closeFailures', '{}'::jsonb)
-               || jsonb_build_object(${args.issueId}::text, ${JSON.stringify(record)}::jsonb)),
+               || jsonb_build_object(${args.issueId}::text,
+                    ${JSON.stringify(record)}::jsonb || jsonb_build_object('at', clock_timestamp()))),
            updated_at = now()
      WHERE id = ${args.runId}
   `);

@@ -3,17 +3,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner, Button, MonoTag, Radio, RadioGroup, SlideOver, Textarea } from "@/design";
 import { inlineCode } from "@/features/project-settings/components/inline-code";
+import { type CloseFailure, failedCloseLead } from "@/features/releases/roster";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import type { CarriedDecisionBody } from "../api";
 import { STATUS_LABELS } from "../derive";
-import { useBatchRelease } from "../hooks";
+import { useBatchRelease, useReleaseRoster } from "../hooks";
 
 /** Minimal issue shape required by the dialog — avoids coupling to the full IssueRow. */
 export interface BatchReleaseIssue {
   id: string;
   displayId: string;
   title: string;
+}
+
+/** A listed issue with where the last release failed its close, read off the roster. */
+type ListedIssue = BatchReleaseIssue & { closeFailure: CloseFailure | null };
+
+function following(count: number): string {
+  return `The following ${count === 1 ? "issue" : `${count} issues`} will be released together`;
+}
+
+/** What the press does to the issues listed, naming any a release fails to close the same way (ISS-1381 r5). */
+function leadSentence(issues: ListedIssue[]): string {
+  const failing = issues.filter((i) => i.closeFailure);
+  if (failing.length === 0) {
+    return `${following(issues.length)} and closed in one batch. This cannot be undone.`;
+  }
+  const named = (list: ListedIssue[]) => list.map((i) => i.displayId).join(", ");
+  const closing = issues.filter((i) => !i.closeFailure);
+  const rest =
+    closing.length === 0
+      ? ""
+      : `; only ${named(closing)} ${closing.length === 1 ? "is" : "are"} closed`;
+  return `${following(issues.length)}. This release fails to close ${named(failing)} the same way the last one did, until whoever operates Forge fixes it${rest}. This cannot be undone.`;
 }
 
 /** An issue the release's range carries that the roster does not name (ISS-1386). */
@@ -131,6 +154,14 @@ export function BatchReleaseDialog({
   openRef.current = open;
   const showsRefusal = useCallback(() => openRef.current, []);
   const batch = useBatchRelease(projectId, { showsRefusal });
+  // Read here rather than handed in, so every caller's dialog says which issues fail the same way.
+  const rosterRead = useReleaseRoster(open ? projectId : undefined);
+  const roster = rosterRead.data;
+  const failures = new Map(roster?.issues.map((i) => [i.id, i.closeFailure]) ?? []);
+  const listed: ListedIssue[] = selectedIssues.map((i) => ({
+    ...i,
+    closeFailure: failures.get(i.id) ?? null,
+  }));
   const { reset, isPending } = batch;
   const [refusal, setRefusal] = useState<{ message: string; tries: number } | null>(null);
   const [carried, setCarried] = useState<CarriedIssue[]>([]);
@@ -196,16 +227,39 @@ export function BatchReleaseDialog({
       width={400}
     >
       <div className="flex flex-col gap-4">
-        <p className="fg-body-sm text-fg">
-          The following {selectedIssues.length === 1 ? "issue" : `${selectedIssues.length} issues`} will
-          be released together and closed in one batch. This cannot be undone.
-        </p>
+        {roster ? (
+          <p className="fg-body-sm text-fg">{leadSentence(listed)}</p>
+        ) : rosterRead.isError ? (
+          <div role="alert">
+            <Banner
+              tone="danger"
+              action={
+                <Button size="sm" variant="ghost" onClick={() => void rosterRead.refetch()}>
+                  Retry
+                </Button>
+              }
+            >
+              {`${following(listed.length)}, but whether the last release failed to close any of them could not be read: ${formatApiError(rosterRead.error)}`}
+            </Banner>
+          </div>
+        ) : (
+          <p className="fg-body-sm text-fg">
+            {`${following(listed.length)}. Reading whether the last release failed to close any of them…`}
+          </p>
+        )}
 
         <ul className="flex flex-col divide-y divide-line border-y border-line">
-          {selectedIssues.map((issue) => (
-            <li key={issue.id} className="fg-body-sm flex min-w-0 items-baseline gap-2 py-1.5">
-              <span className="font-mono text-xs font-semibold text-fg shrink-0">{issue.displayId}</span>
-              <span className="min-w-0 truncate text-muted">{issue.title}</span>
+          {listed.map((issue) => (
+            <li key={issue.id} className="fg-body-sm flex min-w-0 flex-col gap-0.5 py-1.5">
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="font-mono text-xs font-semibold text-fg shrink-0">{issue.displayId}</span>
+                <span className="min-w-0 truncate text-muted">{issue.title}</span>
+              </span>
+              {issue.closeFailure ? (
+                <span className="fg-caption text-amber" data-testid={`fails-the-same-way-${issue.displayId}`}>
+                  {failedCloseLead(issue.closeFailure, "this")}
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -293,11 +347,13 @@ export function BatchReleaseDialog({
             size="sm"
             className="ml-auto"
             loading={batch.isPending}
-            disabled={undecided > 0}
+            disabled={undecided > 0 || !roster}
             title={
-              undecided > 0
-                ? `Decide ${undecided} carried issue${undecided === 1 ? "" : "s"} first — a Ship unverified decision needs its reason`
-                : undefined
+              !roster
+                ? "Waits until it is known which of these the last release failed to close"
+                : undecided > 0
+                  ? `Decide ${undecided} carried issue${undecided === 1 ? "" : "s"} first — a Ship unverified decision needs its reason`
+                  : undefined
             }
             onClick={handleConfirm}
           >

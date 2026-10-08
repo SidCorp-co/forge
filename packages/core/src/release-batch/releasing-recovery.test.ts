@@ -371,6 +371,33 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     expect(text).not.toContain('x_releasing_rule');
   });
 
+  it('names beside the message, never in it, a cut name that is not a constraint (ISS-1381 r5)', () => {
+    const failed = sealedClose('null value violates constraint "x_closed_col"', {
+      code: '23502',
+      column_name: 'x_closed_col',
+    });
+
+    const text = closeFailureText(closeRefusalOf(failed));
+    const [inMessage, beside] = text.split(' (the database names ');
+
+    expect(inMessage).toContain('constraint "x_(a value of this write, withheld)_col"');
+    expect(beside).toBe('column "x_closed_col")');
+  });
+
+  it('names beside the message a constraint the integrity message quotes without `constraint ` (ISS-1381 r5)', () => {
+    const failed = sealedClose('new row for relation "issues" refused by "x_closed_rule"', {
+      code: '23514',
+      constraint_name: 'x_closed_rule',
+      table_name: 'issues',
+    });
+
+    const text = closeFailureText(closeRefusalOf(failed));
+    const [inMessage, beside] = text.split(' (the database names ');
+
+    expect(inMessage).toContain('refused by "x_(a value of this write, withheld)_rule"');
+    expect(beside).toBe('constraint "x_closed_rule")');
+  });
+
   it('says in words, never as a marker, where a reason repeats a value of the write', () => {
     const failed = sealedClose('refund hook is still releasing funds', { code: 'P0001' });
 
