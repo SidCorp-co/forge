@@ -1,16 +1,33 @@
+import {
+  ComputeRequestSchema,
+  EXECUTION_IO,
+  EXECUTION_TURN_CAPS,
+} from '@forge/contracts/report-executions';
 import { VISUAL_BLOCK_KINDS } from '@forge/contracts/visual-blocks';
 import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
+import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
 import { attachVisualBlock } from './blocks.js';
+import { computeExecution } from './compute.js';
+import { refuseExecution } from './executors.js';
 import { reportsPorts } from './ports.js';
 import { refuse, runReport } from './runs.js';
 import { checkTemplateNarrative, listReportTemplates, runTemplate } from './templates.js';
 
-// The chat's two report tools, composed into the assistant's allowlist by the process entry
+// The chat's report tools, composed into the assistant's allowlist by the process entry
 // (`mcp/chat-report-tools.ts`), so no assistant file names them: forge_report reads, forge_show
-// draws. Data by code, look by blocks: a figure the model types never reaches a block.
+// draws, forge_template runs a template and forge_compute runs a script over this turn's runs. Data
+// by code, look by blocks: a figure the model types never reaches a block.
+
+// the runs this turn made, which forge_compute may read: one turn builds its toolset once over one
+// context, so the context is the turn
+const turnRuns = new WeakMap<McpContext, Set<string>>();
+const runsOf = (ctx: McpContext): Set<string> => {
+  const held = turnRuns.get(ctx) ?? new Set<string>();
+  turnRuns.set(ctx, held);
+  return held;
+};
 
 const reportInput = z.strictObject({
   projectId: z.uuid(),
@@ -30,7 +47,7 @@ const showInput = z.strictObject({
   block: z
     .record(z.string(), z.unknown())
     .describe(
-      "{ kind, ...the kind's fields, source: { runId } }; no frame: the run's is copied in",
+      "{ kind, ...the kind's fields, source: { runId } | { executionId, frame? } }; no frame: the source's is copied in",
     ),
 });
 
@@ -52,13 +69,15 @@ export const forgeReportTool: ContextScopedMcpToolFactory = (ctx) => ({
     const { projectId, queryId, params } = reportInput.parse(args);
     const userId = ctx.principal.userId;
     const access = await loadProjectAccess(projectId, userId);
-    return runReport({
+    const run = await runReport({
       projectId,
       queryId,
       params,
       asker: { userId, agency: principalAgency(ctx.principal), access },
       surface: 'chat',
     });
+    runsOf(ctx).add(run.runId);
+    return run;
   },
 });
 
@@ -67,7 +86,7 @@ export const forgeShowTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/conversations',
   grant: 'assistant:write',
-  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId }, ...fields } where fields name the run's frame fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a frame that differs from it is refused naming each figure, and so is a title or label stating a number the run does not hold. The block is held with your reply and shown above it only once the reply passes the reply check; if the reply has to be rewritten, only the blocks the rewrite draws again are shown. Answers the block's text, which your reply need not repeat.`,
+  description: `Draws one block of a forge_report run in this room, above your reply: ${VISUAL_BLOCK_KINDS.join(', ')}. block is { kind, source: { runId } or forge_compute's { executionId, frame? }, ...fields } where fields name the frame's fields: table { columns, sort?: { field, dir }, limit? }; kpi { figures: [{ field, label, delta? }] 2-6, row? }; status-list { ref, status, waitingOn? }; chart { variant: bar|line|burndown, x, y: [field] }; timeline { label, start? end? | p50, p85, lane? }; flow { nodes: [{ id, label }], edges: [{ from, to, label? }] } with no source. A block holds no figure of its own: the run's frame is copied in, a frame that differs from it is refused naming each figure, and so is a title or label stating a number the run does not hold. The block is held with your reply and shown above it only once the reply passes the reply check; if the reply has to be rewritten, only the blocks the rewrite draws again are shown. Answers the block's text, which your reply need not repeat.`,
   inputSchema: zodToMcpSchema(showInput),
   handler: async (args) => {
     const { projectId, block } = showInput.parse(args);
@@ -155,12 +174,55 @@ export const forgeTemplateTool: ContextScopedMcpToolFactory = (ctx) => ({
         agency,
       });
     }
-    return runTemplate({
+    const output = await runTemplate({
       projectId: input.projectId,
       templateId: input.templateId,
       params: input.params,
       asker: { userId, agency, access: await loadProjectAccess(input.projectId, userId) },
       surface: 'chat',
+    });
+    for (const run of output.document.runs) runsOf(ctx).add(run.runId);
+    return output;
+  },
+});
+
+const computeInput = z.strictObject({
+  projectId: z.uuid(),
+  ...ComputeRequestSchema.shape,
+});
+
+export const forgeComputeTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'forge_compute',
+  reach: 'project',
+  route: '/api/projects',
+  grant: 'projects:write',
+  description: `Runs a short python or bash script in an isolated sandbox with no network, over the frames of report runs THIS turn made (inputs: their runIds), only where no report query answers. ${EXECUTION_IO}. A turn may run ${EXECUTION_TURN_CAPS.calls} executions and ${EXECUTION_TURN_CAPS.wallMs} ms in all. Answers { executionId, exit, stopped?, frames, logs, error? }; draw a frame with forge_show source { executionId, frame? }, labelled computed; show the script and its result, and act on it only once the person confirms.`,
+  inputSchema: zodToMcpSchema(computeInput),
+  handler: async (args) => {
+    const { projectId, ...request } = computeInput.parse(args);
+    const conversationId = ctx.turn?.conversationId;
+    if (!conversationId) {
+      throw refuseExecution(
+        'EXECUTION_DOOR_FORBIDDEN',
+        'forge_compute runs for the room a chat turn answers, and this call has none; an agent session runs a computation over POST /api/projects/:id/executions',
+        '/conversationId',
+      );
+    }
+    const userId = ctx.principal.userId;
+    return computeExecution({
+      projectId,
+      request,
+      asker: {
+        userId,
+        agency: principalAgency(ctx.principal),
+        access: await loadProjectAccess(projectId, userId),
+      },
+      door: {
+        kind: 'chat',
+        conversationId,
+        turnKey: `token:${ctx.principal.tokenId}`,
+        turnRuns: runsOf(ctx),
+      },
     });
   },
 });

@@ -3,7 +3,7 @@ import type { McpContext } from '../lib/tool.js';
 import { registerReportQueries } from '../report-queries/register.js';
 import { getReportQuery, listReportQueries } from '../report-queries/registry.js';
 import { provideReportsPorts } from './ports.js';
-import { forgeReportTool, forgeShowTool, forgeTemplateTool } from './tool.js';
+import { forgeComputeTool, forgeReportTool, forgeShowTool, forgeTemplateTool } from './tool.js';
 
 // The chat offers each tool a description of at most 1024 characters (assistant/tools/mcp-adapter.ts);
 // a longer one is cut, and the model would never read the queries or block kinds past the cut.
@@ -38,6 +38,13 @@ describe('the report tools as the model reads them', () => {
     const { description } = forgeTemplateTool(ctx);
     for (const id of ['progress', 'release', 'roadmap']) expect(description).toContain(id);
     expect(description).toContain('runIds and narrative');
+    expect(description.length).toBeLessThanOrEqual(1024);
+  });
+
+  it('tells forge_compute how a script reads its inputs and hands frames back, within the cap', () => {
+    const { description } = forgeComputeTool(ctx);
+    for (const word of ['inputs.json', 'frames.json', 'forge_show', 'computed', 'confirms'])
+      expect(description).toContain(word);
     expect(description.length).toBeLessThanOrEqual(1024);
   });
 });

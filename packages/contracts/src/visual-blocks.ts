@@ -40,10 +40,14 @@ const TITLE = z.string().min(1).max(120);
 const FLOW_ID = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/);
 const FLOW_LABEL = z.string().min(1).max(80);
 
-/** Where a block's frame came from: a stored run, or an execution whose frame is labelled computed. */
+/**
+ * Where a block's frame came from: a stored run, or an execution whose frame is labelled computed.
+ * An execution may answer several frames; `frame` is the index of the one drawn, and may be left
+ * out only where the execution answered one.
+ */
 export const BlockSourceSchema = z.union([
   z.object({ runId: z.string().min(1) }).strict(),
-  z.object({ executionId: z.string().min(1) }).strict(),
+  z.object({ executionId: z.string().min(1), frame: z.number().int().min(0).optional() }).strict(),
 ]);
 export type BlockSource = z.infer<typeof BlockSourceSchema>;
 
@@ -164,15 +168,15 @@ export type BlockCheck =
 /** The valid shape of each kind, quoted in every refusal of it. */
 export const BLOCK_SHAPES: Record<VisualBlockKind, string> = {
   table:
-    '{ v: 1, kind: "table", columns: [field, ...], sort?: { field, dir: "asc" | "desc" }, limit?: 1-500, title?, source: { runId }, frame }',
+    '{ v: 1, kind: "table", columns: [field, ...], sort?: { field, dir: "asc" | "desc" }, limit?: 1-500, title?, source: { runId } | { executionId, frame? }, frame }',
   chart:
-    '{ v: 1, kind: "chart", variant: "bar" | "line" | "burndown", x: field, y: [numeric field, ...1-6], series?: field, title?, source: { runId }, frame }',
-  flow: '{ v: 1, kind: "flow", nodes: [{ id, label }, ...1-60], edges: [{ from, to, label? }, ...], title?, source?: { runId }, frame? } with source and frame given together or not at all',
+    '{ v: 1, kind: "chart", variant: "bar" | "line" | "burndown", x: field, y: [numeric field, ...1-6], series?: field, title?, source: { runId } | { executionId, frame? }, frame }',
+  flow: '{ v: 1, kind: "flow", nodes: [{ id, label }, ...1-60], edges: [{ from, to, label? }, ...], title?, source?: { runId } | { executionId, frame? }, frame? } with source and frame given together or not at all',
   timeline:
-    '{ v: 1, kind: "timeline", label: field, start?: date field, end?: date field, p50?: date field, p85?: date field, lane?: field, title?, source: { runId }, frame } with a start, or a p50 and a p85',
-  kpi: '{ v: 1, kind: "kpi", row?: index, figures: [{ field: numeric field, label, delta?: numeric field }, ...2-6], title?, source: { runId }, frame }',
+    '{ v: 1, kind: "timeline", label: field, start?: date field, end?: date field, p50?: date field, p85?: date field, lane?: field, title?, source: { runId } | { executionId, frame? }, frame } with a start, or a p50 and a p85',
+  kpi: '{ v: 1, kind: "kpi", row?: index, figures: [{ field: numeric field, label, delta?: numeric field }, ...2-6], title?, source: { runId } | { executionId, frame? }, frame }',
   "status-list":
-    '{ v: 1, kind: "status-list", ref: ref field, status: status field, waitingOn?: field, title?, source: { runId }, frame }',
+    '{ v: 1, kind: "status-list", ref: ref field, status: status field, waitingOn?: field, title?, source: { runId } | { executionId, frame? }, frame }',
 };
 
 /** A label is plain text: an angle bracket is refused so no label can carry markup. */

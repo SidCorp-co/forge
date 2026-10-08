@@ -76,6 +76,13 @@ const DEPLOY = ["deploys.run"] as const;
  */
 const PUBLIC_SHARE = ["shares.public"] as const;
 
+/**
+ * Have the assistant run a short computation over the project's data in an isolated sandbox
+ * (REQ-32 C1). Admin's by default; a member or a token holds it only where its grant names it, so an
+ * external chat door's credential never does.
+ */
+const EXEC = ["assistant.exec"] as const;
+
 export const PROJECT_PERMISSIONS = [
 	...READ,
 	...WRITE,
@@ -83,6 +90,7 @@ export const PROJECT_PERMISSIONS = [
 	...APPROVE,
 	...DEPLOY,
 	...PUBLIC_SHARE,
+	...EXEC,
 	...ADMIN,
 ] as const;
 export type ProjectPermission = (typeof PROJECT_PERMISSIONS)[number];
@@ -107,7 +115,7 @@ type ProjectRole = (typeof PROJECT_ROLES)[number];
 export const ROLE_PERMISSIONS: Readonly<Record<ProjectRole, readonly ProjectPermission[]>> = {
 	viewer: [...READ],
 	member: [...READ, ...WRITE, ...PERSONAL],
-	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...PUBLIC_SHARE, ...ADMIN],
+	admin: [...READ, ...WRITE, ...PERSONAL, ...APPROVE, ...DEPLOY, ...PUBLIC_SHARE, ...EXEC, ...ADMIN],
 };
 
 const ORG_ROLES = ["member", "admin", "owner"] as const;
@@ -133,6 +141,7 @@ export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"feedback.redact",
 	"comments.moderate",
 	"shares.public",
+	"assistant.exec",
 	...APPROVE,
 ];
 

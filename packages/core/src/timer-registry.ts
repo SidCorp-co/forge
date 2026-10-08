@@ -29,7 +29,7 @@ import { pruneOutbox } from './outbox/index.js';
 import { backfillPhaseJournal, runReconcilerOnce, runRetentionSweep } from './pipeline/index.js';
 import { runPipelineSweep } from './pipeline-sweep.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
-import { sweepExpiredReportRuns } from './reports/index.js';
+import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
@@ -58,7 +58,7 @@ async function embeddingBackfillTick(): Promise<void> {
   }
 }
 
-/** The nightly retention pass, the suggestions it stales and purges, declined feedback past 180 days, and report runs past their 30-day keep. */
+/** The nightly retention pass, the suggestions it stales and purges, declined feedback past 180 days, and report runs and executions past their 30-day keep. */
 async function retentionTick(): Promise<object> {
   const retention = await runRetentionSweep();
   const suggestions = await sweepSuggestions();
@@ -75,7 +75,10 @@ async function retentionTick(): Promise<object> {
   const reportRuns = await sweepExpiredReportRuns();
   if (reportRuns.reportRuns > 0)
     logger.info(reportRuns, 'retention: report runs past their keep deleted');
-  return { ...retention, suggestions, declinedFeedback, ...reportRuns };
+  const executions = await sweepExpiredExecutions();
+  if (executions.reportExecutions > 0)
+    logger.info(executions, 'retention: executions past their keep deleted');
+  return { ...retention, suggestions, declinedFeedback, ...reportRuns, ...executions };
 }
 
 const logged =

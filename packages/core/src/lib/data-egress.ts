@@ -73,6 +73,12 @@ const EGRESS_SURFACES = {
     class: 'operational',
     holds: 'a frozen report answer opened through a share link by anyone holding its token',
   },
+  // an execution hands its input frames to a sandbox the deployment enabled, which may be a third
+  // party's, so it is operational whatever the frames hold: never sent at no_egress, scrubbed at redact
+  'report.exec': {
+    class: 'operational',
+    holds: 'report frames handed to a sandbox executor as the input snapshot of a computation',
+  },
 } as const satisfies Record<string, { class: EgressClass; holds: string }>;
 
 export type EgressSurface = keyof typeof EGRESS_SURFACES;

@@ -212,6 +212,18 @@ export const projectDocumentSchema = z.strictObject({
   // owner ruling 2026-10-03): `redact` scrubs on write and lets only redacted text out, `no_egress`
   // scrubs on write and lets nothing out. One guard reads it (`lib/data-egress.ts`). Absent is `off`.
   sensitiveData: z.enum(SENSITIVE_DATA_LEVELS).optional(),
+  // whether the assistant may run a short computation over this project's data in an isolated
+  // sandbox (REQ-32 C1, `reports/compute.ts`), and which sandboxes may take it. Absent is off: a
+  // project turns execution on with `enabled: true`. `zdrOnly` (a zero-retention obligation) admits
+  // only a sandbox declaring itself ZDR-eligible; `thirdParty: false` admits only one whose data
+  // stays with Forge. A request no admitted sandbox can serve is refused by name, never routed on.
+  compute: z
+    .strictObject({
+      enabled: z.boolean(),
+      zdrOnly: z.boolean().optional(),
+      thirdParty: z.boolean().optional(),
+    })
+    .optional(),
   // what a requirement's agree reads of its readiness result (decision on ISS-58,
   // 2026-10-04): `warn` records it on the baseline, `block` refuses an agree that is not ready
   // (`requirements/rules.ts:readinessRefusal`, REQUIREMENT_NOT_READY). Absent is `off`.

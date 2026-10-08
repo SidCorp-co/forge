@@ -131,6 +131,7 @@ import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
 import {
   checkTemplateNarrative,
+  keptExecutionFrames,
   keptRunFrames,
   messageShareSource,
   runTemplate,
@@ -251,7 +252,11 @@ provideMessageReads({
   workflowDesign,
   contractHolding,
   readsTechnical,
-  reportRunFrames: keptRunFrames,
+  // an execution's frames ground a figure as a run's do; the ids a turn names are read in both
+  reportRunFrames: async (projectId, ids, tx) => [
+    ...(await keptRunFrames(projectId, ids, tx)),
+    ...(await keptExecutionFrames(projectId, ids, tx)),
+  ],
 });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,

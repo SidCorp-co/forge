@@ -2,7 +2,8 @@
  * A figure a chat reply states — in its prose, or typed into a visual block's title or labels,
  * flow labels included — has to be one a report run of this turn holds (REQ-32 criteria 5 and 6):
  * a run this turn made through `forge_report` or `forge_template`, or in Agent mode through the
- * REST runs routes, or the run a block this turn drew names. Otherwise the reply is held, quoting the
+ * REST runs routes, or the run a block this turn drew names; an execution's frames (`forge_compute`,
+ * `POST /api/projects/:id/executions`) count as a run's do. Otherwise the reply is held, quoting the
  * figure. What a number is when it is not a figure is `figure-exemptions.ts`'s table.
  *
  * A turn that could run no report (a door without the report tools, a synthesis turn) has nothing
@@ -15,8 +16,8 @@ import type { FigureFacts, MessageFacts } from './facts.js';
 import { askedValues, figuresIn, type StatedFigure, statedFigures } from './figure-exemptions.js';
 import { blankMarkedClauses } from './reply-marks.js';
 
-/** The chat tools that run a report; a turn offered neither cannot ground a figure in one. */
-export const REPORT_TOOLS: readonly string[] = ['forge_report', 'forge_template'];
+/** The chat tools that read a frame; a turn offered none cannot ground a figure in one. */
+export const REPORT_TOOLS: readonly string[] = ['forge_report', 'forge_template', 'forge_compute'];
 
 /** Whether `name` is one of the report tools, as a chat turn or an MCP client names it. */
 export const isReportTool = (name: string): boolean =>

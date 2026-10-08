@@ -14,6 +14,11 @@ vi.mock('./runs.js', async (original) => ({
   ...(await original<typeof import('./runs.js')>()),
   readReportRun: (...args: unknown[]) => readReportRun(...args),
 }));
+const readExecution = vi.fn();
+vi.mock('./executions.js', async (original) => ({
+  ...(await original<typeof import('./executions.js')>()),
+  readExecution: (...args: unknown[]) => readExecution(...args),
+}));
 
 const { attachVisualBlock } = await import('./blocks.js');
 const { provideReportsPorts } = await import('./ports.js');
@@ -179,15 +184,9 @@ describe('attaching a visual block', () => {
     expect((err as Error).message).toContain('valid shape');
   });
 
-  it('refuses a block naming no run unless it is a flow, and one sourced from an execution', async () => {
+  it('refuses a block naming no source unless it is a flow', async () => {
     const { source: _s, ...unsourced } = table;
     expect(((await refusalOf(attach(unsourced))) as Error).message).toContain('source');
-    expect(
-      isRefusal(
-        await refusalOf(attach({ ...table, source: { executionId: 'x' } })),
-        'REPORT_BLOCK_SOURCE_UNSUPPORTED',
-      ),
-    ).toBe(true);
     const flow = {
       kind: 'flow',
       nodes: [
@@ -197,6 +196,85 @@ describe('attaching a visual block', () => {
       edges: [{ from: 'a', to: 'b' }],
     };
     expect(await attach(flow)).toMatchObject({ kind: 'flow', run: null });
+  });
+});
+
+describe('a block drawn from an execution', () => {
+  const computedFrame = {
+    fields: [
+      { name: 'key', type: 'ref' as const, label: 'Requirement' },
+      { name: 'ratio', type: 'number' as const, label: 'Ratio' },
+    ],
+    rows: [{ key: 'REQ-1', ratio: 0.375 }],
+  };
+  const execution = {
+    executionId: 'ex-1',
+    projectId: 'p1',
+    conversationId: 'c1',
+    askedBy: 'asker',
+    adapter: 'fake',
+    language: 'python',
+    script: 'print(1)',
+    scriptFingerprint: 'a'.repeat(64),
+    inputRunIds: ['run-1'],
+    limits: { wallMs: 1000, cpu: 1, memoryMb: 64, outputBytes: 10_000 },
+    exit: 0,
+    stopped: null,
+    durationMs: 12,
+    frames: [computedFrame],
+    logs: { stdout: '', stderr: '' },
+    error: null,
+    createdAt: '2026-10-08T10:00:00.000Z',
+    expiresAt: '2026-11-07T10:00:00.000Z',
+  };
+  beforeEach(() => {
+    readExecution.mockReset();
+    readExecution.mockResolvedValue(execution);
+  });
+
+  it('copies the execution frame in, keeps the execution beside it and says it was computed', async () => {
+    const answer = await attach({
+      kind: 'table',
+      columns: ['key', 'ratio'],
+      source: { executionId: 'ex-1' },
+    });
+    expect(readExecution).toHaveBeenCalledWith(
+      expect.objectContaining({ executionId: 'ex-1', userId: 'asker', projectId: 'p1' }),
+    );
+    expect(answer.execution).toEqual({
+      executionId: 'ex-1',
+      adapter: 'fake',
+      language: 'python',
+      at: '2026-10-08T10:00:00.000Z',
+    });
+    expect(answer.text).toContain('Computed by execution ex-1');
+    const [post] = posted as { blocks: Record<string, unknown>[] }[];
+    expect(post?.blocks[0]).toMatchObject({
+      type: 'visual',
+      visual: { source: { executionId: 'ex-1' }, frame: computedFrame },
+      execution: { executionId: 'ex-1' },
+    });
+    expect(post?.blocks[0]).not.toHaveProperty('run');
+  });
+
+  it('refuses a figure the execution never returned, and names the frame to draw among several', async () => {
+    const forged = { ...computedFrame, rows: [{ key: 'REQ-1', ratio: 0.9 }] };
+    const err = await refusalOf(
+      attach({ kind: 'table', columns: ['key'], source: { executionId: 'ex-1' }, frame: forged }),
+    );
+    expect(isRefusal(err, 'REPORT_BLOCK_FIGURE_NOT_IN_RUN')).toBe(true);
+    readExecution.mockResolvedValue({ ...execution, frames: [computedFrame, computedFrame] });
+    const many = await refusalOf(
+      attach({ kind: 'table', columns: ['key'], source: { executionId: 'ex-1' } }),
+    );
+    expect((many as Error).message).toContain('name the one drawn as source.frame, 0 to 1');
+    const second = await attach({
+      kind: 'table',
+      columns: ['key'],
+      source: { executionId: 'ex-1', frame: 1 },
+    });
+    expect(second.execution?.executionId).toBe('ex-1');
+    expect(posted).toHaveLength(1);
   });
 });
 

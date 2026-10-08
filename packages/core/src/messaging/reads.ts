@@ -56,7 +56,7 @@ export interface MessageReads {
   ): Promise<ContractHolding>;
   /** Whether a human reading this project's records reads code. */
   readsTechnical(projectId: string, tx: Tx): Promise<boolean>;
-  /** The frames of this project's kept report runs among these ids; an id naming none is passed over. */
+  /** The frames of this project's kept report runs and executions among these ids; an id naming none is passed over. */
   reportRunFrames(
     projectId: string,
     runIds: readonly string[],
