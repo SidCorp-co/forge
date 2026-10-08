@@ -400,6 +400,8 @@ mod tests {
             "`awaitsMerge: {issueId}`",
             "`QUESTION_MERGE_ALREADY_MARKED`",
             "`about`",
+            "`{requirement: \"REQ-n\"}`",
+            "`QUESTION_ABOUT_SHAPE`",
             "`QUESTION_ABOUT_ON_MERGE_WAIT`",
             "`carriedBy`",
             "`ARTIFACT_CARRIER_SHIPPED`",

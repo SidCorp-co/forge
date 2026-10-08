@@ -347,6 +347,11 @@ export interface ReleaseVerified {
 	total: number;
 	/** How the run recorded the deploy proved; null on the draft and on a run that recorded none. */
 	check: RecordedReleaseVerification | null;
+	/**
+	 * Where `check` is `provider`, the production binding's provider as a person reads it
+	 * (`Autoflow`), so the sentence names who served it; null on any other check or where none is bound.
+	 */
+	provider: string | null;
 }
 
 /** The one rule for `ReleaseVerified.level`, so every surface states the same level. */

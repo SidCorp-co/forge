@@ -151,11 +151,12 @@ that writes that issue's mark answers it, and the row comes back by itself. A ma
 stands is refused `QUESTION_MERGE_ALREADY_MARKED`: the condition holds, so take the row. A business
 question raised on a build issue (a rule, who may do what, a contract's shape) names what it is
 about, so its answer lands on the requirement as a decision: ask it with `about` on
-`forge-runner api questions` (POST; `{requirement: null}` for the requirement the issue delivers,
-`{requirement: "REQ-n"}`, or `{contract: "<project>/<contract>"}`), then park the row without
-`needs` and the park waits on that question. An `about` naming nothing is refused
-`QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait on a merge mark is never also
-`about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`).
+`forge-runner api questions` (POST; `about` is always one of three objects: `{requirement: null}`
+for the requirement the issue delivers, `{requirement: "REQ-n"}` for another by its key or id, or
+`{contract: "<project>/<contract>"}`; a bare `"REQ-n"` or any other shape is refused
+`QUESTION_ABOUT_SHAPE`), then park the row without `needs` and the park waits on that question. An
+`about` naming nothing is refused `QUESTION_ABOUT_UNKNOWN` or `QUESTION_ABOUT_NO_REQUIREMENT`; a wait
+on a merge mark is never also `about` anything (`QUESTION_ABOUT_ON_MERGE_WAIT`).
 
 **A person's comment is answered on the issue.** When the nudge says a person is owed a reply on
 an issue, that is work at whatever status the issue stands, `in_progress` and `awaiting_release`

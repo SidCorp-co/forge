@@ -39,7 +39,7 @@ const RELEASE = {
   key: "0.1.0",
   version: "0.1.0",
   state: "draft",
-  verified: { level: "none", proven: 0, total: 0, check: null },
+  verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
   issues: [],
   gates: [],
   requirementsCompleted: [],

@@ -8,7 +8,10 @@
 
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
 import { masterLimitRecordSchema } from '@forge/contracts/master-verdict';
-import { questionAboutRequestSchema } from '@forge/contracts/questions';
+import {
+  QUESTION_ABOUT_SHAPE_SENTENCE,
+  questionAboutRequestSchema,
+} from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -22,7 +25,7 @@ import {
 } from '../db/schema-questions.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { fieldShape, zValidator } from '../middleware/zod-validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { refuseDevice } from './refusals.js';
 import { notFound, sessionParamsSchema } from './route-errors.js';
@@ -278,7 +281,11 @@ function askAnswerOf(body: AskBody) {
 devicePoolRoutes.post(
   '/me/questions',
   requireDevice(),
-  zValidator('json', askBodySchema),
+  zValidator(
+    'json',
+    askBodySchema,
+    fieldShape('about', 'QUESTION_ABOUT_SHAPE', QUESTION_ABOUT_SHAPE_SENTENCE),
+  ),
   async (c) => {
     const body = c.req.valid('json');
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
