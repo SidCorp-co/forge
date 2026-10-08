@@ -23,17 +23,23 @@ async function answerAll() {
   });
 }
 const roster = vi.fn();
+const search = vi.fn();
 vi.mock("./api", async () => {
   const actual = await vi.importActual<typeof import("./api")>("./api");
-  return { ...actual, releaseBatchApi: { ...actual.releaseBatchApi, create, roster } };
+  return {
+    ...actual,
+    issuesApi: { ...actual.issuesApi, search },
+    releaseBatchApi: { ...actual.releaseBatchApi, create, roster },
+  };
 });
 
-const { useBatchRelease, useReleaseRoster } = await import("./hooks");
+const { useBatchRelease, useIssues, useReleaseRoster } = await import("./hooks");
 
 afterEach(() => {
   cleanup();
   create.mockClear();
   roster.mockReset();
+  search.mockReset();
   toast.mockClear();
   answers.length = 0;
 });
@@ -110,5 +116,25 @@ describe("useBatchRelease — Release now refused", () => {
     await waitFor(() =>
       expect(result.current.roster.data?.issues[0]?.claimedByRunId).toBe("run-9"),
     );
+  });
+
+  // The issues list and the roster are two reads of the same claim: a list left from before the
+  // refusal still shows the issue as ready beside a banner that says a release holds it.
+  it("reads the issues list again, so its rows no longer show the issue as ready", async () => {
+    roster.mockResolvedValue(rosterWith("run-9"));
+    search.mockResolvedValueOnce({ items: [{ id: "iss-1", claimedByRunId: null }] });
+    search.mockResolvedValue({ items: [{ id: "iss-1", claimedByRunId: "run-9" }] });
+    create.mockImplementationOnce(() => Promise.reject(new Error("already claimed by a release")));
+    const { result } = renderHook(
+      () => ({ list: useIssues("proj-1", {} as never), batch: useBatchRelease("proj-1") }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.list.data).toBeDefined());
+    expect(search).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.batch.mutate({ issueIds: ["iss-1"] }));
+
+    await waitFor(() => expect(result.current.batch.isError).toBe(true));
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
   });
 });
