@@ -26,7 +26,7 @@ describe('the report-queries door', () => {
   }, 120_000);
 
   it('lists the registered queries with their params as JSON Schema and the fields they return', async () => {
-    const res = await api(w.token, 'GET', '/api/report-queries');
+    const res = await api(w.token, 'GET', `/api/projects/${w.projectId}/report-queries`);
     expect(res.status).toBe(200);
     const queries = res.body.queries as Body[];
     expect(queries.map((q) => q.id).sort()).toEqual([
@@ -42,8 +42,10 @@ describe('the report-queries door', () => {
     expect((progress.output as Body[]).map((f) => f.name)).toContain('criteriaProven');
   });
 
-  it('refuses the list to a caller who is not signed in', async () => {
-    expect((await api(null, 'GET', '/api/report-queries')).status).toBe(401);
+  it('refuses the list to a caller who is not signed in, and to one who is not a member', async () => {
+    const path = `/api/projects/${w.projectId}/report-queries`;
+    expect((await api(null, 'GET', path)).status).toBe(401);
+    expect((await api(strangerToken, 'GET', path)).status).toBe(403);
   });
 
   it('runs a query as the caller and answers a run that carries its provenance', async () => {

@@ -37,11 +37,40 @@ describe('criteria taken from a document', () => {
     expect(taken.ok && taken.criteria.map((c) => c.body)).toEqual(STATED);
   });
 
-  it('refuses the whole file by the number of its first line that is not a list item', () => {
+  it('takes the whole file as its list items and reports every other line as skipped, by number', () => {
     const taken = criteriaFromDocument(SPEC, { file: 'criteria-120.md' });
-    expect(taken).toMatchObject({ ok: false, line: 3 });
-    expect(!taken.ok && taken.detail).toContain('line 3 of criteria-120.md');
-    expect(!taken.ok && taken.detail).toContain('is not a list item');
+    expect(taken.ok, JSON.stringify(taken)).toBe(true);
+    if (!taken.ok) return;
+    // every list item of the file, so the Out of scope item after the 120 is one too
+    expect(taken.criteria.map((c) => c.body)).toEqual([
+      ...STATED,
+      'Mobile layouts are not part of this round.',
+    ]);
+    expect(taken.skipped[0]).toMatchObject({ line: 3 });
+  });
+
+  it('takes the 11 bullets of the real HOP spec section PK-01 and reports its prose lines as skipped', () => {
+    const real = readFileSync(
+      new URL('../../tests/fixtures/documents/hop-pk-01.md', import.meta.url),
+      'utf8',
+    );
+    const bullets = real.split('\n').filter((l) => l.startsWith('- '));
+    expect(bullets).toHaveLength(11);
+    const taken = criteriaFromDocument(real, {
+      file: 'hop-parity-crmhp-spec.md',
+      section: 'PK-01 (S): Màn đăng nhập cho tài khoản TEST nhân viên', // i18n-allow: the client's own spec heading, verbatim
+    });
+    expect(taken.ok, JSON.stringify(taken)).toBe(true);
+    if (!taken.ok) return;
+    expect(taken.criteria.map((c) => c.body)).toEqual(bullets.map((l) => l.slice(2)));
+    expect(taken.skipped.map((s) => s.line)).toEqual([2, 3, 4, 5, 6]);
+    expect(taken.skipped[4]?.text).toBe('Tiêu chí nghiệm thu:'); // i18n-allow: the client's own spec line, verbatim
+  });
+
+  it('still refuses an empty list item, by its line', () => {
+    const taken = criteriaFromDocument('- one\n-\n- three\n', { file: 'e.md' });
+    expect(taken).toMatchObject({ ok: false, line: 2 });
+    expect(!taken.ok && taken.detail).toContain('empty list item');
   });
 
   it('refuses a criterion that runs onto a second line, naming that line', () => {
@@ -50,6 +79,7 @@ describe('criteria taken from a document', () => {
     const taken = criteriaFromDocument(lines.join('\n'), { file: 'spec.md' });
     expect(taken).toMatchObject({ ok: false, line: 57 });
     expect(!taken.ok && taken.detail).toContain('line 57 of spec.md ("which the owner added');
+    expect(!taken.ok && taken.detail).toContain('continues the list item above it');
   });
 
   it('refuses a nested item rather than flattening it into a criterion of its own', () => {

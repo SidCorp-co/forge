@@ -299,6 +299,7 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
     expect(previewed).toContain('\\"criteria\\":120');
     expect(previewed).toContain('\\"lines\\":\\"7-126\\"');
     expect(previewed).toContain('\\"written\\":false');
+    expect(previewed).toContain('exactly 120 criteria, from lines 7-126; no line was left out');
 
     const wrote = script.seen[2]?.filter((m) => m.role === 'tool').at(-1);
     expect(JSON.stringify(wrote?.content)).toContain('\\"state\\":\\"draft\\"');

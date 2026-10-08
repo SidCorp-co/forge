@@ -115,7 +115,7 @@ read; it never computes the same fact a second way.
 Phase B adds `feedback-trends` (over `packages/core/src/feedback/list-read.ts:listFeedbackAs`,
 operational egress) and `risk` (late items, waits and failing criteria, over the reads above).
 
-**Door:** REST first — `GET /api/report-queries` lists descriptors; `POST
+**Door:** REST first — `GET /api/projects/:id/report-queries` lists descriptors; `POST
 /api/projects/:id/report-queries/:queryId/runs` runs one as the caller and returns the
 `ReportRun`. The chat tool `forge_report` and the CLI call the same service and answer
 identically.

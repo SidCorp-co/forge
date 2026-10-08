@@ -1,8 +1,10 @@
 /**
  * A requirement's criteria taken from a document's own lines, never retyped by a model: each list
- * item is one criterion, its text exactly as the document has it. A line that cannot be a criterion
+ * item is one criterion, its text exactly as the document has it. A list item that cannot be taken
  * as it stands is refused by its line number rather than dropped, merged or reworded — a draft that
- * silently lost line 57 of a 120-line list reads as complete and is not.
+ * silently lost line 57 of a 120-line list reads as complete and is not. A prose line between the
+ * heading and the bullets is the normal shape of a spec section, so it is not refused: it is
+ * returned as skipped, with its number, so the person sees what was left out.
  */
 
 import { FILTERED } from '@forge/observability';
@@ -15,12 +17,16 @@ export type DocumentCriteria =
   | {
       ok: true;
       criteria: { body: string; line: number }[];
+      /** Lines inside the region that are not list items, so were not taken. */
+      skipped: { line: number; text: string }[];
     }
   | { ok: false; line: number | null; detail: string };
 
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
 const RULE = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 const ITEM = /^(\s*)(?:[-*+•▪◦‣]|\d{1,9}[.)])\s+(?:\[[ xX]\]\s+)?(.*?)\s*$/;
+
+const EMPTY_ITEM = /^\s*(?:[-*+•▪◦‣]|\d{1,9}[.)])\s*(?:\[[ xX]\])?\s*$/;
 
 const excerpt = (line: string) => (line.length > 80 ? `${line.trim().slice(0, 77)}…` : line.trim());
 
@@ -53,8 +59,9 @@ function sectionRegion(lines: readonly string[], file: string, section: string):
 /**
  * The criteria `text` holds: every list item of the named section (every list item of the file
  * where none is named), in order. Blank lines, headings and rules are the document's structure and
- * are skipped; any other line is refused by number, as is a nested item, an item longer than a
- * criterion may be, an item the scrubber redacted, and the item past the most a revision holds.
+ * are passed over; any other line that is not a list item is reported in `skipped`. Refused by
+ * number: an empty item, a nested item, a line that continues the item above it, an item longer than
+ * a criterion may be, an item the scrubber redacted, and the item past the most a revision holds.
  */
 export function criteriaFromDocument(
   text: string,
@@ -66,19 +73,33 @@ export function criteriaFromDocument(
     : { first: 0, last: lines.length - 1 };
   if (typeof region === 'string') return { ok: false, line: null, detail: region };
   const criteria: { body: string; line: number }[] = [];
+  const skipped: { line: number; text: string }[] = [];
+  let previous: 'item' | 'other' = 'other';
   for (let at = region.first; at <= region.last; at++) {
     const raw = lines[at] ?? '';
     const n = at + 1;
-    if (raw.trim() === '' || HEADING.test(raw) || RULE.test(raw)) continue;
-    const item = ITEM.exec(raw);
-    const where = `line ${n} of ${opts.file} ("${excerpt(raw)}")`;
-    if (!item) {
-      return {
-        ok: false,
-        line: n,
-        detail: `${where} is not a list item, and each criterion is one list line — make it one, join it to the item it continues, or name the section that holds only the criteria`,
-      };
+    if (raw.trim() === '' || HEADING.test(raw) || RULE.test(raw)) {
+      previous = 'other';
+      continue;
     }
+    const where = `line ${n} of ${opts.file} ("${excerpt(raw)}")`;
+    if (EMPTY_ITEM.test(raw)) {
+      return { ok: false, line: n, detail: `${where} is an empty list item` };
+    }
+    const item = ITEM.exec(raw);
+    if (!item) {
+      if (previous === 'item' && /^\s/.test(raw)) {
+        return {
+          ok: false,
+          line: n,
+          detail: `${where} continues the list item above it, and a criterion is one line — join it to that item in the document, or make it an item of its own`,
+        };
+      }
+      skipped.push({ line: n, text: raw.trim() });
+      previous = 'other';
+      continue;
+    }
+    previous = 'item';
     if ((item[1] ?? '').replace(/\t/g, '    ').length >= 2) {
       return {
         ok: false,
@@ -120,5 +141,5 @@ export function criteriaFromDocument(
       detail: `${opts.file}${opts.section ? `, section "${opts.section}",` : ''} holds no list item to take as a criterion`,
     };
   }
-  return { ok: true, criteria };
+  return { ok: true, criteria, skipped };
 }
