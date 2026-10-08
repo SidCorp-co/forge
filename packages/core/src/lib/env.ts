@@ -91,10 +91,6 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-sonnet-5'),
   ANTHROPIC_MAX_TOKENS: z.coerce.number().int().positive().default(8192),
-  /** The sandbox executor's own Claude API settings, for a deployment whose chat runs on a gateway. */
-  CODE_EXECUTION_API_URL: z.url().default('https://api.anthropic.com'),
-  CODE_EXECUTION_API_KEY: z.string().min(1).optional(),
-  CODE_EXECUTION_MODEL: z.string().min(1).default('claude-sonnet-5'),
   OAUTH_REDIRECT_BASE: z.url().optional(),
 
   GITHUB_OAUTH_CLIENT_ID: z.string().min(1).optional(),

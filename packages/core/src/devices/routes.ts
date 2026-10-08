@@ -13,6 +13,8 @@ import {
   ANCESTRY_PAIRS_MAX,
   answerCheckoutAncestry,
   answerCheckoutHead,
+  answerComputeRun,
+  ComputeRunAnswerSchema,
   patchDeviceRunnerCheckout,
 } from '../runners/index.js';
 import { heartbeatBinaries, withDeviceBinaries } from './binary-report.js';
@@ -435,6 +437,30 @@ deviceAuthRoutes.post(
     throw refuseDevice(
       outcome.code,
       `the ancestry read ${requestId} was answered with what is no ancestry reading: ${outcome.detail}`,
+    );
+  },
+);
+
+// Device → server: what a box's sandbox made of a script, answering `compute.run` (REQ-32 BC-14).
+// Settled only for the box it was asked of; read as frames in `runners/compute-sandbox.ts`.
+deviceAuthRoutes.post(
+  '/me/compute-runs/:requestId',
+  requireDevice(),
+  zValidator('param', z.object({ requestId: z.uuid() })),
+  zValidator('json', ComputeRunAnswerSchema),
+  async (c) => {
+    const { requestId } = c.req.valid('param');
+    const outcome = answerComputeRun(c.get('device').id, requestId, c.req.valid('json'));
+    if (outcome.ok) return c.json({ settled: true });
+    if (outcome.code === 'COMPUTE_RUN_NOT_ASKED') {
+      throw refuseDevice(
+        outcome.code,
+        `no computation ${requestId} is waiting on this box: it was never asked, it was asked of another box or project, or the wait ended`,
+      );
+    }
+    throw refuseDevice(
+      outcome.code,
+      `the computation ${requestId} was answered outside the compute.run contract: ${outcome.detail}`,
     );
   },
 );

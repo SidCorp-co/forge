@@ -101,6 +101,7 @@ async fn a_confined_shell_reaches_only_the_allowed_host_and_curl_elsewhere_is_re
             socket: socket.clone(),
             bridge: PathBuf::from(env!("CARGO_BIN_EXE_forge-runner")),
         }),
+        offline: false,
     };
     let out = sandbox
         .command(std::ffi::OsStr::new("/bin/sh"), &["-c".into(), script])

@@ -4,7 +4,7 @@
 before the sandbox is built. The change that accepts it copies the decision into `docs/adr/` as
 the next free number, which is `0012` on `dev` at `a14c3ab1c`, and deletes this file.
 
-**Status:** proposed · **Date:** 2026-10-08 · **Requirement:** forge REQ-30 BC-11 (agreed, r1)
+**Status:** proposed; decided by owner ruling 2026-10-09 · **Date:** 2026-10-08 · **Requirement:** forge REQ-30 BC-11 (agreed, r1), built as REQ-32 BC-14
 
 ## Context
 
@@ -85,131 +85,92 @@ statement about how far a shared kernel is trusted.
 private code (README, read 2026-10-08). The AGPL-3.0 licence and the prices quoted for it come
 from secondary sources only.
 
-## Decision (proposed)
+## Decision
 
-**Use (a), Anthropic's server-side code execution tool, for Assistant mode now. Add (d), a
-sandboxed `exec` job on the runner, only when commands need the repository. Do not build (c).
-Keep (b) as the named fallback** for a project that refuses (a), either because it needs ZDR or
-because it runs on the LiteLLM wire.
+**Owner ruling, 2026-10-09: use (d), a sandbox on the team's own runner, for computation now. (a)
+is ruled out, and so is any Claude code-execution API or direct provider key: models are reached
+only through the configured gateway (`ANTHROPIC_API_URL` / `LITELLM_API_URL`), and execution
+stays on the team's runners. (b) and (c) are not built.**
 
 Reasons:
 
-- (a) meets every clause of BC-11 without new infrastructure:
-  - **no host access:** the container is not on any Forge host;
-  - **no project secrets:** core's environment never enters it;
-  - **bounded time, CPU and memory:** fixed by Anthropic, and capped further per turn by core;
-  - **network:** off;
-  - **cost:** at Forge's volume, about zero. 1,550 hours is 18,600 five-minute minimums a month,
-    and the tool is free outright when web search or web fetch is offered in the same request.
-- (d) is the only option that reaches the repository without copying it off the box. It fits
-  ADR 0009: core decides whether the command runs and with what limits, and the box runs it and
-  reports. Its isolation is the weakest of the four, and it runs on the owner's machines. So it
-  waits until the computation-only phase shows that repository commands are actually asked for.
-- (c) would need core to hold the Docker socket, which is root on the host, or a second fleet.
-  Both cost more than the risk they remove, given that (a) exists.
+- (d) meets BC-11 with nothing new to operate: the runner is already paired, already confines a
+  chat session with bubblewrap, and already takes asks from core over its socket.
+- The data stays with the team: it goes to a box the team paired with the project, never to a
+  third party, so a project that forbids third-party processing or requires ZDR can still turn it
+  on.
+- It fits ADR 0009: core picks the box, sets the limits and reads the output; the box runs it.
 
 ## Phased plan
 
-**Phase 1: computation in Assistant mode, with option (a).** Built as REQ-32 C2, the
-`anthropic-code-exec` adapter of the reports Executor port; `docs/proposals/chat-visual-answers.md`,
-"C2, as built", says where it departs from the items below.
+**Phase 1: computation in Assistant mode, with option (d), built (REQ-32 BC-14).** The
+`runner-sandbox` adapter of the reports Executor port
+(`packages/core/src/runners/compute-sandbox.ts`), registered on every deployment:
 
-1. **Provider events.** The provider-executed call and its result are read in the adapter's own
-   execute-only call (`integrations/llm/code-execution.ts`), never in a turn's stream; a turn offers
-   no provider tool, and `ai-sdk.ts:bridgeStream` refuses a provider-executed part by name rather
-   than mapping it to a client `tool_call` that `run-turn-core.ts` would try to execute.
-2. **Storage and display.** The execution record (`report_executions`, REQ-32 C1) stores the
-   script, its exit code, a capped stdout and stderr, and the frames it produced. The reply shows
-   the script and its output (BC-11).
-3. **Offering the tool.** The adapter is registered only on the Claude API: on
-   `CODE_EXECUTION_API_KEY` where the deployment holds one, else on `ANTHROPIC_API_KEY` where
-   `ANTHROPIC_API_URL` is `https://api.anthropic.com`. A deployment without either, or whose chat
-   runs on a gateway, answers a computation `EXECUTOR_UNAVAILABLE` naming why. It never falls back
-   to running the command anywhere else.
-4. **Tool version.** `code_execution_20260521`, the newest current version, spoken over the wire
-   directly: `@ai-sdk/anthropic` 4.0.72 stops at `20260120`.
-5. **Containers.** One container per project, conversation and asker, its `container.id` kept in
-   core's process. Never reused across conversations, projects or people; dropped when the
-   provider refuses it as expired, 29 days after it was first seen, or on a restart.
-6. **Inputs.** The only inputs are files the turn's own tools have already read under the asker's
-   permissions (BC-10), passed through `@forge/observability`'s `scrubSecretsDeep` before
-   `container_upload`. Uploaded and generated files are deleted through the Files API as soon as
-   each execution is read back, and each upload expires on its own after an hour.
-7. **Limits per turn.** Core enforces at most 8 executions per turn and 120 s of execution wall
+1. **Box.** Core hands a computation to a box bound to the project that is connected, not turned
+   off or draining, and whose heartbeat declares `computeSandbox` with the language's interpreter
+   (`computeSandboxLanguages`). Where none can, the computation is refused
+   `EXECUTOR_UNAVAILABLE` naming each box's reason (none paired, not connected, cannot confine
+   and why, a runner too old, no interpreter), and no frame is sent.
+2. **Channel.** The ask-a-box exchange the checkout reads use: a `compute.run` frame on the box's
+   socket, never kept for a replay, and the answer on `POST /api/devices/me/compute-runs/:id`.
+3. **Sandbox** (`packages/runner/crates/runner-platform/src/confine/compute.rs`): bubblewrap with
+   the system read-only, the user's home, `/home`, `/root`, `/tmp`, `/var`, `/run` and the XDG
+   trees emptied, a throwaway working directory holding only the script and `inputs.json`, a
+   network namespace with only loopback, and an environment built from a list. Caps through
+   `ulimit`: address space (`memoryMb`), CPU time (`cpu` cores for the wall limit), file size;
+   the wall limit kills the process group. The output file is read without following a link and
+   the directory is removed.
+4. **Output.** The box returns `frames.json` or `frames.csv` as text and its capped logs; core
+   reads the frames (`framesFromOutput`), keeps the execution record and shows the script and its
+   result (BC-11).
+5. **Limits per turn.** Core enforces at most 8 executions per turn and 120 s of execution wall
    time per turn. Hitting either is reported as a stop, with which limit was hit (BC-9).
-8. **Permission.** Running a command is a permission, `assistant.exec`, per ADR 0007. External
+6. **Permission.** Running a command is a permission, `assistant.exec`, per ADR 0007. External
    chat doors do not hold it.
 
-**Phase 2: repository commands, with option (d), if Phase 1 shows they are asked for.**
+**Phase 2: repository commands, also on the runner, if Phase 1 shows they are asked for.**
 
-1. **Job kind.** Add an `exec` job kind. Core admits it, picks the device and sets the limits: a
-   wall clock, CPU quota, memory, task count and output cap. The runner wraps the command and
-   reports its exit code and output. It decides nothing.
-2. **Linux wrapper.** Run under `systemd-run --scope` with `MemoryMax`, `MemorySwapMax=0`,
-   `CPUQuota`, `TasksMax` and `RuntimeMaxSec`, around
-   `bwrap --unshare-all --clearenv --die-with-parent`. Bind read-only only `/usr` and a
-   `git archive` export of the pinned sha. **Never bind `.git`**: its config can carry a token in a
-   remote URL. Never bind `$HOME`, the runner's sockets, `~/.claude` or an ssh-agent socket. Leave
-   out network.
-3. **macOS.** Use Seatbelt with an equivalent deny-by-default profile.
-4. **Windows.** Refuse by name until there is a wrapper.
-5. **Reuse.** Prefer `@anthropic-ai/sandbox-runtime`'s profile shapes to a profile we write
-   ourselves. The runner is Rust, so it reuses the profiles rather than the npm library.
-6. **Mode boundary.** This changes BC-2: Assistant mode reaching the repository. That boundary
+1. **Checkout.** Bind a `git archive` export of a pinned sha read-only. **Never bind `.git`**: its
+   config can carry a token in a remote URL.
+2. **macOS.** Seatbelt with an equivalent deny-by-default profile; Windows refuses by name.
+3. **cgroups.** Move the caps from `ulimit` to a `systemd-run --scope` with `MemoryMax`,
+   `CPUQuota` and `TasksMax` where the box allows it.
+4. **Mode boundary.** This changes BC-2: Assistant mode reaching the repository. That boundary
    needs a revision of REQ-30 before it is built.
-
-**Fallback: option (b), E2B.** It has the same shape as (a), with network off and files uploaded.
-It is for a project that sets "no ZDR-ineligible processing" or runs on the LiteLLM wire.
-Self-hosting E2B on KVM is the exit if the vendor becomes the problem.
 
 ## Threat model
 
-| Threat | Path | Phase 1, (a) | Phase 2, (d) |
-|---|---|---|---|
-| **Prompt injection runs a command** | an issue body, feedback from an external person, an attachment or a repository file tells the model to run something | The sandbox holds only what the asker could already read and reaches nothing, so an injected command can compute but cannot act. The command is shown in the reply. Sandbox output returns as untrusted tool output: it passes the reply check (BC-8), and it cannot write to Forge without the person's confirmation (BC-4) | Same, plus: the command runs on the owner's device. Every bind is read-only, nothing is mounted beyond `/usr` and the exported tree, and there is no network |
-| **Data exfiltration** | a command sends data somewhere other than the reply | No network, so the reply is the only channel, and it goes to people who may read the data. In a room with several people, uploads are limited to what **every** member may read | `--unshare-net`; no sockets bound in |
-| **Secrets** | the command reads a key, token or credential | The container never receives core's environment. Uploads are scrubbed. The turn credential (`packages/core/src/credentials/turn-credential.ts`) is never uploaded | `--clearenv`; no `$HOME`, `.git`, `~/.claude`, runner `control.sock` or `tmux.sock`, Docker socket or ssh-agent |
-| **Network egress** | downloading a payload, calling an API, using DNS to tunnel data out | Disabled by Anthropic and cannot be enabled | Off. An allowlist would need a proxy and a new criterion |
-| **Resource exhaustion and cost** | a fork bomb, a memory spike, an endless loop, many executions | Fixed at 1 CPU and 5 GiB per container, plus per-turn caps in core | cgroup scope. Measured: a 400 MB allocation under `MemoryMax=128M` was killed in 0.59 s |
-| **Sandbox escape** | a kernel or runtime bug | Anthropic's boundary | A user-namespace kernel bug on the owner's box. This is the residual risk that keeps (d) out of Phase 1. This box restricts unprivileged user namespaces through AppArmor (`kernel.apparmor_restrict_unprivileged_userns=1`), and bwrap runs under its `bwrap-userns-restrict` profile |
-| **Cross-tenant leakage** | a container reused by another conversation or person | One container per conversation, never shared | A fresh namespace per command, with nothing persisted |
-| **Retention** | uploaded data outlives the conversation | Files are deleted after the turn and containers expire. **Not ZDR-eligible**, which is stated to the owner and not hidden | Nothing persists |
+| Threat | Path | Phase 1, (d) as built |
+|---|---|---|
+| **Prompt injection runs a command** | an issue body, feedback from an external person, an attachment or a repository file tells the model to run something | The sandbox holds only what the asker could already read and reaches nothing, so an injected command can compute but cannot act. The command is shown in the reply. Its output returns as untrusted tool output: it passes the reply check (BC-8), and it cannot write to Forge without the person's confirmation (BC-4) |
+| **Data exfiltration** | a command sends data somewhere other than the reply | A network namespace with only loopback: no DNS, no route, not even the box's own loopback services. The reply is the only channel |
+| **Secrets** | the command reads a key, token or credential | The environment is built from a list; the home, `/home`, `/root`, temp and runtime trees are empty, so the runner's credentials, checkouts, `.git`, `~/.claude`, sockets and ssh-agent are not in view. Inputs are scrubbed before they leave core |
+| **Network egress** | downloading a payload, calling an API, using DNS to tunnel data out | Off |
+| **Resource exhaustion** | a memory spike, an endless loop, a huge file, many executions | `ulimit` caps on address space, CPU time and file size, the wall limit killing the process group, and per-turn caps in core. No task cap yet: a fork bomb is bounded only by the wall limit |
+| **Sandbox escape** | a kernel or runtime bug | A user-namespace kernel bug on the team's box. This box restricts unprivileged user namespaces through AppArmor (`kernel.apparmor_restrict_unprivileged_userns=1`), and bwrap runs under its `bwrap-userns-restrict` profile |
+| **Cross-tenant leakage** | state reused by another conversation or person | A fresh namespace and working directory per execution, removed after it |
+| **Retention** | data outlives the execution | The working directory is removed; only core's execution record is kept, for the record's keep |
 
 ## Limits
 
-- **Phase 1:**
-  - no repository;
-  - no network, so no `pip install`; the preinstalled Python 3.11 libraries and CLI tools only;
-  - 1 CPU;
-  - nothing that needs Forge's own API from inside the sandbox, by design;
-  - unavailable on the LiteLLM wire, on Bedrock and Vertex, and for a project that requires ZDR.
-- **Phase 2:**
-  - only while one of the project's devices is online;
-  - Linux and macOS only;
-  - the device's toolchain, not a pinned image.
-- **Both phases** are for answering a question. They are not Agent mode: no writes to the
-  repository, no commits and no long-running processes.
+- no repository;
+- no network, so no `pip install`; the box's own `python3` and `bash` only;
+- only while a paired Linux box with bubblewrap is connected;
+- nothing that needs Forge's own API from inside the sandbox, by design;
+- for answering a question: no writes to the repository, no commits and no long-running
+  processes.
 
 ## Honest costs
 
-- **Provider lock-in for the capability:** running commands works only on the Anthropic wire.
-  A project on LiteLLM gets a refusal by name until the E2B fallback is built, which is a second
-  implementation of the same tool.
-- **Not ZDR-eligible:** files uploaded to the container are kept by Anthropic until core deletes
-  them, and the container until it expires. A project with a zero-retention obligation cannot turn
-  this on.
-- **Core changes before anything is visible:** Phase 1 has to change the provider bridge
-  (`bridgeStream`), the transcript shape, the reply view and the per-turn caps. The tool itself
-  is free, but this is not a one-line change.
-- **A second wire beside the SDK:** `@ai-sdk/anthropic` 4.0.72 stops at `code_execution_20260120`,
-  so the adapter speaks the Messages and Files APIs over `fetch` itself, and a change in their
-  shapes is Forge's to follow.
-- **Phase 2 trusts a shared kernel on the owner's machines:** a user-namespace escape there
-  reaches a box that holds device credentials. Waiting until demand is shown is part of the price.
-- **Phase 2 changes a mode boundary:** Assistant mode reaching the repository blurs BC-2's line
-  between the two modes, and a requirement revision has to be agreed first.
-- **Rejecting (c) gives up the strongest self-owned isolation:** Forge will not own a microVM
-  fleet. If both Anthropic and E2B became unacceptable, the work for (c) starts from nothing.
+- **Availability follows the team's boxes:** with no Linux box with bubblewrap connected, every
+  computation is refused by name.
+- **The box's interpreter, not a pinned image:** a script sees whatever `python3` and libraries
+  the box has.
+- **A shared kernel on the team's machine:** a user-namespace escape reaches a box that holds
+  device credentials.
+- **No task cap:** `ulimit -u` counts every process of the box's user, so it is not set; the wall
+  limit is the bound on a fork bomb until Phase 2's cgroups.
 
 ## What REQ-30 does not yet say that this needs
 
@@ -223,8 +184,8 @@ in REQ-30 r1:
    across conversations, people or projects.
 3. **Network:** BC-11 says "bounded network". This proposal means none. Whether an egress
    allowlist, such as package registries, is ever allowed is an owner decision.
-4. **Provider dependency:** when the configured provider cannot run the sandbox, the reply says
-   so by name. BC-9 lists other failures, not this one.
+4. **Runner dependency:** when no box of the team can run the sandbox, the reply says so by
+   name. BC-9 lists other failures, not this one.
 5. **Per-turn and per-project budget:** a cap on executions and wall time per turn, and a monthly
    cap per project, each reported as a stop when hit.
 6. **Permission:** who may make the assistant run a command (`assistant.exec`), and that external

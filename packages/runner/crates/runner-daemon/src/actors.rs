@@ -586,9 +586,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
             }
         }
-        "skill.sync" | "checkout.head.read" | "checkout.ancestry.read" | "provision.request" => {
-            on_workspace_frame(frame, client, cfg);
-        }
+        event if BOX_FRAMES.contains(&event) => on_box_frame(frame, client, cfg, inflight),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
                 if wake_tx.try_send(wake).is_err() {
@@ -616,9 +614,31 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
     }
 }
 
-/// The frames that read or set up a project's checkout on this box.
-fn on_workspace_frame(frame: Frame, client: &Arc<CoreClient>, cfg: &Arc<Config>) {
+/// The frames [`on_box_frame`] takes.
+const BOX_FRAMES: [&str; 5] = [
+    "skill.sync",
+    "checkout.head.read",
+    "checkout.ancestry.read",
+    "provision.request",
+    "compute.run",
+];
+
+/// The frames that read or set up a project's checkout on this box, or run a computation on it.
+fn on_box_frame(
+    frame: Frame,
+    client: &Arc<CoreClient>,
+    cfg: &Arc<Config>,
+    inflight: &Arc<AtomicUsize>,
+) {
     match frame.event.as_str() {
+        "compute.run" => {
+            let client = client.clone();
+            let guard = InflightGuard::enter(inflight);
+            tokio::spawn(async move {
+                let _guard = guard; // a drain waits for the script to finish and be answered
+                crate::compute_run::handle(&client, frame.data).await;
+            });
+        }
         "skill.sync" => {
             let (client, cfg) = (client.clone(), cfg.clone());
             tokio::spawn(async move {

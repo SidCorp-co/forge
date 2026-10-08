@@ -1,5 +1,6 @@
 pub mod api;
 pub mod bind;
+pub mod compute;
 pub mod config;
 pub mod doctor;
 pub mod egress_bridge;

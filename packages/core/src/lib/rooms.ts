@@ -89,14 +89,19 @@ export class RoomManager {
     this.memberships.delete(sub);
   }
 
-  publish(room: string, envelope: PublishEnvelope): number {
+  /**
+   * Sends the frame to the room's open sockets, answering how many took it. It is kept for a late
+   * subscriber's replay unless `keep` is false: a frame carrying a live credential or a person's
+   * data for one box is handed over now and never replayed to anyone.
+   */
+  publish(room: string, envelope: PublishEnvelope, opts: { keep?: boolean } = {}): number {
     const at = this.now();
     const payload = JSON.stringify({
       event: envelope.event,
       data: envelope.data,
       timestamp: new Date(at).toISOString(),
     });
-    this.keep(room, at, payload);
+    if (opts.keep !== false) this.keep(room, at, payload);
     const set = this.rooms.get(room);
     if (!set || set.size === 0) return 0;
     let delivered = 0;

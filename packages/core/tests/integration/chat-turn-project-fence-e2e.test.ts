@@ -190,24 +190,23 @@ beforeAll(async () => {
   ok(await say('masterForge', 'POST', `${forgeChannel}/documents/${made.id}/submit`));
 
   // an executor is enabled, so forge_compute reaches the asker's permission; it must never be called
-  const { CODE_EXECUTOR_ID, createCodeExecutor } = await import(
-    '../../src/integrations/llm/code-execution.js'
-  );
   const { registerExecutor, unregisterExecutorForTest } = await import(
     '../../src/reports/index.js'
   );
-  unregisterExecutorForTest(CODE_EXECUTOR_ID);
-  registerExecutor(
-    createCodeExecutor({
-      baseUrl: 'https://provider.test',
-      apiKey: 'test-key',
-      model: 'test-model',
-      fetchImpl: async () => {
-        throw new Error("a viewer's computation reached the provider");
-      },
-    }),
-  );
-  dropExecutor = () => unregisterExecutorForTest(CODE_EXECUTOR_ID);
+  const FENCE_EXECUTOR_ID = 'fence-sandbox';
+  registerExecutor({
+    id: FENCE_EXECUTOR_ID,
+    mode: 'invoked',
+    isolation: 'a test double that refuses every call',
+    network: 'none',
+    dataLeavesTo: 'forge',
+    zdrEligible: true,
+    availableFor: () => true,
+    execute: async () => {
+      throw new Error("a viewer's computation reached a sandbox");
+    },
+  });
+  dropExecutor = () => unregisterExecutorForTest(FENCE_EXECUTOR_ID);
 }, 180_000);
 
 let dropExecutor = () => {};
