@@ -6,6 +6,7 @@ import { StatusHistory } from "@/features/project-status/components/status-histo
 import { STATUS_WINDOWS, StatusReport } from "@/features/project-status/components/status-report";
 import { useProjectStatus, useSaveStatusReport } from "@/features/project-status/hooks";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
+import { canManageProject } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -60,7 +61,7 @@ function Live({ projectId, slug }: { projectId: string; slug: string }) {
   );
 }
 
-function Report({ projectId, slug }: { projectId: string; slug: string }) {
+function Report({ projectId, slug, isAdmin }: { projectId: string; slug: string; isAdmin: boolean }) {
   const t = useCopy();
   const clock = useEtaClock();
   const [tab, setTab] = useUrlChoice("tab", STATUS_TABS, "report");
@@ -77,12 +78,12 @@ function Report({ projectId, slug }: { projectId: string; slug: string }) {
           onChange={(v) => setTab(v as (typeof STATUS_TABS)[number])}
         />
       </div>
-      {tab === "history" ? <StatusHistory projectId={projectId} slug={slug} clock={clock} /> : <Live projectId={projectId} slug={slug} />}
+      {tab === "history" ? <StatusHistory projectId={projectId} slug={slug} clock={clock} isAdmin={isAdmin} /> : <Live projectId={projectId} slug={slug} />}
     </PageContainer>
   );
 }
 
 export default function ProjectStatusPage() {
   const t = useCopy();
-  return <ProjectRefGate label={t("status.loading")}>{(p) => <Report projectId={p.ref} slug={p.slug} />}</ProjectRefGate>;
+  return <ProjectRefGate label={t("status.loading")}>{(p) => <Report projectId={p.ref} slug={p.slug} isAdmin={p.row ? canManageProject(p.row.role) : false} />}</ProjectRefGate>;
 }

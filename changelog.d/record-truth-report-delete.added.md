@@ -1,0 +1,1 @@
+**A kept status report can be removed.** Its saver or a project admin removes it from History after a confirmation; a sent report is an admin's; anyone else is refused STATUS_REPORT_DELETE_FORBIDDEN. Deleting a report schedule now asks first.

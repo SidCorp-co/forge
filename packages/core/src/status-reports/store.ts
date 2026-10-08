@@ -1,5 +1,6 @@
 // The one writer of `status_reports`: a report is the project status read (`project-status/read.ts`)
-// stored as it answered, never computed a second way and never changed after. What changed since the
+// stored as it answered, never computed a second way and never changed after; it is only ever
+// removed whole, by `deleteStatusReport`. What changed since the
 // previous report is read from the two stored rows (`@forge/contracts/status-reports:statusReportDiff`).
 
 import type { ActorAgency } from '@forge/contracts/permissions';
@@ -133,6 +134,14 @@ export async function reportRow(projectId: string, reportId: string): Promise<Ro
     .where(and(eq(statusReports.id, reportId), eq(statusReports.projectId, projectId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Remove one kept report, whole: its notices go with it (`notifications.status_report_id` cascades),
+ * and the report after it then reads what changed against the one before.
+ */
+export async function deleteStatusReport(row: Row): Promise<void> {
+  await db.delete(statusReports).where(eq(statusReports.id, row.id));
 }
 
 /** One stored report with the one before it and what changed between the two. */

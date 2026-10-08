@@ -44,3 +44,12 @@ export function useSaveStatusReport(projectId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: [...STATUS_REPORTS_ROOT, projectId] }),
   });
 }
+
+/** Remove one kept report: core lets its saver or a project admin, and refuses anyone else by name. */
+export function useDeleteStatusReport(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reportId: string) => projectStatusApi.remove(projectId, reportId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...STATUS_REPORTS_ROOT, projectId] }),
+  });
+}
