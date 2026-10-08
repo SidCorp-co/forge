@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.159] - 2026-10-08
+
+Chat records Feedback or a Requirement after confirming, never an issue
+
+### Changed
+
+- **A chat records Feedback or a Requirement, never an issue.** The assistant and Agent-mode sessions restate the request and confirm before writing; core refuses an issue from any chat credential, CHAT_FILES_FEEDBACK_NOT_ISSUES.
+
 ## [0.4.0-dev.158] - 2026-10-08
 
 Agent chat says when the reply check held a reply
