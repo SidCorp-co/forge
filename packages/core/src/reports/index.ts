@@ -13,7 +13,13 @@ export {
   registerExecutor,
   unregisterExecutorForTest,
 } from './executors.js';
-export { provideReportsPorts, type ReportAsker, type RestTurn } from './ports.js';
+export {
+  type ChatTurn,
+  type ChatTurnMessage,
+  provideReportsPorts,
+  type ReportAsker,
+  type RestTurn,
+} from './ports.js';
 export { keptRunFrames, readReportRun, runReport } from './runs.js';
 export { messageShareSource } from './share-source.js';
 export { sweepExpiredExecutions, sweepExpiredReportRuns } from './sweep.js';

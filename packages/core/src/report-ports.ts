@@ -4,17 +4,15 @@
 // from its owner's face. The executors are the sandboxes this deployment enabled: none yet (REQ-32
 // C2 adds Anthropic code execution, C3 E2B), so every computation is refused by name until one is.
 
-import { eq } from 'drizzle-orm';
 import { chatDoorOfToken } from './agent-sessions/index.js';
 import { postServiceAnswer } from './assistant/index.js';
 import {
   agentTurnOfSession,
   derivedScope,
+  readAnswerTurn,
   readableConversation,
   stageAgentTurnBlock,
 } from './conversations/index.js';
-import { db } from './db/client.js';
-import { conversationMessages } from './db/schema-conversations.js';
 import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
 import {
@@ -53,17 +51,7 @@ export function provideReportPorts(): void {
       const room = await readableConversation(conversationId, userId);
       return { adapter: room.adapter, projectIds: await derivedScope(conversationId) };
     },
-    messageOf: async (messageId) => {
-      const [row] = await db
-        .select({
-          conversationId: conversationMessages.conversationId,
-          blocks: conversationMessages.blocks,
-        })
-        .from(conversationMessages)
-        .where(eq(conversationMessages.id, messageId))
-        .limit(1);
-      return row ?? null;
-    },
+    turnOf: readAnswerTurn,
     postAnswer: postServiceAnswer,
     restTurnOf,
   });

@@ -9,7 +9,11 @@ import { ReportDocumentSchema } from "./report-templates.js";
 
 export const SHARE_AUDIENCES = ["members", "link"] as const;
 export type ShareAudience = (typeof SHARE_AUDIENCES)[number];
-/** A message's blocks, a template's output, or a stored status report; never a live query or a conversation. */
+/**
+ * A chat answer (`message`: any message of one assistant turn, frozen as the whole turn — its
+ * question, its reply and every block it drew), a template's output, or a stored status report;
+ * never a live query or a conversation.
+ */
 export const SHARE_SUBJECT_KINDS = ["message", "template-output", "status-report"] as const;
 export type ShareSubjectKind = (typeof SHARE_SUBJECT_KINDS)[number];
 
@@ -95,7 +99,7 @@ export const ShareLinkViewSchema = z
     projectId: z.string().min(1),
     audience: z.enum(SHARE_AUDIENCES),
     subjectKind: z.enum(SHARE_SUBJECT_KINDS),
-    /** The first block title the frozen, scrubbed snapshot holds, so two links of one kind read apart; null when no block has one. */
+    /** The frozen, scrubbed snapshot's own title (a shared answer's question), else its first block title, so two links of one kind read apart; null when it has neither. */
     title: z.string().nullable(),
     createdBy: z.string().min(1),
     createdAt: z.iso.datetime(),

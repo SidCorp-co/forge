@@ -14,7 +14,7 @@ provideReportsPorts({
   describeQuery: (id) => getReportQuery(id).descriptor,
   listQueries: () => listReportQueries().map((q) => q.descriptor),
   roomOf: () => Promise.reject(new Error('not read here')),
-  messageOf: () => Promise.reject(new Error('not read here')),
+  turnOf: () => Promise.reject(new Error('not read here')),
   postAnswer: () => Promise.reject(new Error('not posted here')),
   restTurnOf: () => Promise.reject(new Error('not read here')),
 });

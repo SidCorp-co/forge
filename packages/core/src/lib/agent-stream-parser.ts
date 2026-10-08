@@ -16,6 +16,11 @@ export interface ToolCall {
   /** tool_use event → tool_result event, in ms. Not in the stream: derived by
    *  `buildSessionFromEvents` from the two job_events' own timestamps. */
   durationMs?: number | undefined;
+  /**
+   * Set on a stored reply's call as a reader who did not ask is shown it: its input and output were
+   * taken out, being the asker's (`conversations/tool-content.ts:toolContentFor`).
+   */
+  withheld?: true | undefined;
 }
 
 export interface AgentTodo {

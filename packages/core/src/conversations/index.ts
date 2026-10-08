@@ -6,6 +6,7 @@ export {
   writableConversation,
 } from './access.js';
 export { acknowledgeRequest } from './acknowledgement.js';
+export { type AnswerTurn, readAnswerTurn } from './answer-turn.js';
 export {
   attachmentIdFromRef,
   type ConversationAttachmentRef,
@@ -125,6 +126,7 @@ export {
   setRoomQuiet,
   settleConversationMode,
 } from './store.js';
+export { askerOfReply, toolContentFor } from './tool-content.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';
 export { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';

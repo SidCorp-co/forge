@@ -11,6 +11,8 @@ export interface ToolCallData {
   result?: unknown;
   durationMs?: number;
   isError?: boolean;
+  /** Its input and output were the asker's and were not sent to this reader. */
+  withheld?: true;
 }
 
 export interface AgentTodo {
@@ -32,6 +34,11 @@ export interface CanonicalToolCall {
   result?: unknown;
   durationMs?: number;
   isError?: boolean;
+  /**
+   * Core took its input and output out: the reply's turn ran as another member, whose calls are
+   * theirs (`packages/core/src/conversations/tool-content.ts`).
+   */
+  withheld?: true;
 }
 
 /**
@@ -265,6 +272,7 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     result: tc.result !== undefined ? tc.result : decodeToolOutput(tc.output),
     durationMs: tc.durationMs,
     isError: tc.isError,
+    ...(tc.withheld ? { withheld: true as const } : {}),
   };
 }
 

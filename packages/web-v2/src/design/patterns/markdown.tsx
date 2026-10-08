@@ -154,7 +154,17 @@ export interface MarkdownProps {
   docBasePath?: string;
   /** Where those links navigate: `/docs` in the workspace, `/guides` on the public pages. */
   docRoute?: string;
+  /**
+   * Draw a link as its text and an image as its alt text, fetching and linking nothing: for a page
+   * a reader outside the project opens, such as a share link.
+   */
+  inert?: boolean;
 }
+
+const inertComponents: Components = {
+  a: ({ children }) => <span>{children}</span>,
+  img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+};
 
 /** Render trusted-ish markdown (issue descriptions, comments, plans, docs). */
 export function Markdown({
@@ -163,11 +173,13 @@ export function Markdown({
   variant = "compact",
   docBasePath,
   docRoute = "/docs",
+  inert = false,
 }: MarkdownProps): ReactNode {
   const components = useMemo<Components>(() => {
     const base = variant === "prose" ? proseComponents : compactComponents;
+    if (inert) return { ...base, ...inertComponents };
     return docBasePath ? { ...base, a: makeDocLinkRenderer(docBasePath, docRoute) } : base;
-  }, [variant, docBasePath, docRoute]);
+  }, [variant, docBasePath, docRoute, inert]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={sameUrl}>

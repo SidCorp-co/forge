@@ -59,7 +59,7 @@ beforeEach(() => {
     },
     listQueries: () => [],
     roomOf: async () => ({ adapter, projectIds: ['p1'] }),
-    messageOf: async () => null,
+    turnOf: async () => null,
     postAnswer: async (answer) => {
       posted.push(answer);
       return { messageId: 'm1' };

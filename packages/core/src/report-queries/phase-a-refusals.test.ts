@@ -48,7 +48,7 @@ describe('workflow-status run', () => {
 });
 
 describe('release-readiness run', () => {
-  it('reads the status as the asker and answers its nextRelease', async () => {
+  it('reads the status as the asker over its window, and answers its nextRelease first', async () => {
     const { readProjectStatus } = await import('../project-status/index.js');
     vi.mocked(readProjectStatus).mockResolvedValue({
       nextRelease: {
@@ -59,10 +59,31 @@ describe('release-readiness run', () => {
         turn: null,
         behind: null,
       },
+      shipped: { releaseCount: 0, issueCount: 0, releases: [] },
     } as never);
     const { releaseReadiness } = await import('./release-readiness.js');
-    const frame = await releaseReadiness.run(ctx, {});
-    expect(readProjectStatus).toHaveBeenCalledWith('p1', viewer, 1);
-    expect(frame.rows[0]).toMatchObject({ release: '0.4.0', state: 'draft', toDo: 1 });
+    const { parseReportParams } = await import('@forge/contracts/report-queries');
+    const params = parseReportParams(releaseReadiness.descriptor, {});
+    expect(params).toEqual({ days: 14 });
+    const now = new Date('2026-10-08T12:00:00.000Z');
+    const frame = await releaseReadiness.run({ ...(ctx as object), now } as never, params);
+    expect(readProjectStatus).toHaveBeenCalledWith('p1', viewer, 14, now);
+    expect(frame.rows[0]).toMatchObject({
+      stage: 'in_flight',
+      release: '0.4.0',
+      state: 'draft',
+      toDo: 1,
+    });
+  });
+
+  it('refuses a window outside 1..90 days at the params', async () => {
+    const { releaseReadiness } = await import('./release-readiness.js');
+    const { parseReportParams } = await import('@forge/contracts/report-queries');
+    expect(() => parseReportParams(releaseReadiness.descriptor, { days: 0 })).toThrow(
+      /params refused: days/,
+    );
+    expect(() => parseReportParams(releaseReadiness.descriptor, { days: 91 })).toThrow(
+      /params refused: days/,
+    );
   });
 });

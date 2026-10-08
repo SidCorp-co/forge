@@ -241,7 +241,8 @@ const PARTIAL: Record<
   {
     head: (name: string, seconds: number) => string;
     did: string;
-    read: (n: number) => string;
+    /** Leads the one sentence that says, by tool in plain words, what the turn read. */
+    read: string;
     nothingYet: string;
   }
 > = {
@@ -249,14 +250,14 @@ const PARTIAL: Record<
     head: (name, seconds) =>
       `${name} has not finished this after ${seconds} seconds, so here is what it has so far — still working… the rest will be posted in this conversation.`,
     did: 'Done so far:',
-    read: (n) => `Read so far (${n}):`,
+    read: 'Read so far:',
     nothingYet: 'Nothing is finished yet; it is still reading the project.',
   },
   vi: {
     head: (name, seconds) =>
       `${name} chưa xong yêu cầu này sau ${seconds} giây nên gửi trước phần đã có — đang làm tiếp… phần còn lại sẽ được gửi ngay trong cuộc trò chuyện này.`, // i18n-allow: user-facing channel reply
     did: 'Đã làm:', // i18n-allow: user-facing channel reply
-    read: (n) => `Đã đọc (${n}):`, // i18n-allow: user-facing channel reply
+    read: 'Đã đọc:', // i18n-allow: user-facing channel reply
     nothingYet: 'Chưa có việc nào xong; đang đọc dữ liệu dự án.', // i18n-allow: user-facing channel reply
   },
 };

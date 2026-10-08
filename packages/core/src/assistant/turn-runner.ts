@@ -401,6 +401,7 @@ async function continueInThread(
       text: receipt.deliveredText ?? message.text,
       receipt,
       ...(req.deliveryKey ? { deliveryKey: `${req.deliveryKey}:continued` } : {}),
+      askedBy: req.authority.userId,
       awaitsReply: rest.send && rest.awaitsReply === true,
       ...(row ? { messageId: row.id, blocks: row.blocks } : {}),
     });
@@ -468,6 +469,7 @@ async function deliverReply(
       receipt,
       deliveryKey: req.deliveryKey,
       awaitsReply: reply.awaitsReply === true,
+      askedBy: req.authority.userId,
       ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
     });
   } catch (err) {
