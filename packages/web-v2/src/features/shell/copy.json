@@ -193,7 +193,7 @@
     "shell.mode.unavailable": "Agent is unavailable",
     "shell.moved.decisions": "The Decisions page is gone: a decision is read on the requirement, workflow or issue it decides, and a requirement's Decisions tab gathers those on its issues.",
     "shell.moved.dismiss": "Dismiss",
-    "shell.moved.memory": "The Memory page is gone: a memory is read on the requirement, workflow or issue it names, under that page's Memory tab.",
+    "shell.moved.memory": "The Memory page is gone: a memory is read on the requirement, workflow or issue it names, under its Memory tab, and one naming none in this Dashboard's Memory section.",
     "shell.moved.roadmap": "The Roadmap page is gone: Now, Next and Later are a grouping of the Requirements list, and the progress report carries them too.",
     "shell.needsHint.act": "act",
     "shell.needsHint.none": "{label} · nothing waits on you",

@@ -3,7 +3,8 @@
  *
  * The model brings the text; core stamps everything that says where it came
  * from — the project, the room, the person who spoke and the handle that
- * listened — so a note is always attributable, and the record it names shows who wrote it.
+ * listened — so a note is always attributable, and where it is read (the record it names, else the
+ * project Dashboard) shows who wrote it.
  * It is written with that person's own authority: the turn's principal IS the
  * speaker (ISS-17), and the role checked is the one `POST /api/memory` takes.
  */
@@ -33,7 +34,7 @@ const DESCRIPTION = [
   'person stated — when they ask you to remember it or it is plainly worth keeping.',
   'Give the text and, if useful, a title; where it came from and who said it is stamped for you.',
   "Name another project's issue key with that project's slug, `<slug> ISS-n`: a bare key is read as this project's.",
-  "A note naming a requirement, workflow or issue is listed on that record's page, where a person with write access corrects or retires it with a reason.",
+  "A note naming a requirement, workflow or issue is listed on that record's page, and one naming none on the project's Dashboard, where a person with write access corrects or retires it with a reason.",
 ].join(' ');
 
 export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({

@@ -29,7 +29,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(movedTarget("hop", "decisions", new URLSearchParams("workflow=intake"))).toBe("/projects/hop/workflows/intake?tab=decisions&moved=decisions");
     expect(movedTarget("hop", "decisions", new URLSearchParams("issue=ISS-110"))).toBe("/projects/hop/issues/ISS-110?tab=activity&moved=decisions");
     expect(movedTarget("hop", "roadmap", none)).toBe("/projects/hop/requirements?group=roadmap&moved=roadmap");
-    expect(movedTarget("hop", "memory", none)).toBe("/projects/hop/requirements?moved=memory");
+    expect(movedTarget("hop", "memory", none)).toBe("/projects/hop?moved=memory#project-memory");
   });
 
   it("replaces the old page with the place that holds its record", () => {
@@ -41,7 +41,7 @@ describe("an old Decisions, Roadmap or Memory link", () => {
     expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?group=roadmap&moved=roadmap");
     at("/projects/hop/memory");
     render(<MemoryPage />);
-    expect(replace).toHaveBeenLastCalledWith("/projects/hop/requirements?moved=memory");
+    expect(replace).toHaveBeenLastCalledWith("/projects/hop?moved=memory#project-memory");
   });
 
   it("says on the page it lands on where the record went, once, and goes when dismissed", async () => {

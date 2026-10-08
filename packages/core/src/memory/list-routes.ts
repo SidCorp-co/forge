@@ -63,26 +63,36 @@ memoryListRoutes.get('/revisions', zValidator('query', revisionsQuerySchema), as
   return c.json(listResponse(c, rows, total, { limit, offset }));
 });
 
-const entriesQuerySchema = paginationSchema.extend({
-  projectId: z.uuid(),
-  /** Comma-separated sources; absent lists what agents and people wrote down. */
-  sources: z
-    .string()
-    .trim()
-    .min(1)
-    .transform((v) => v.split(',').map((s) => s.trim()))
-    .pipe(z.array(z.enum(memorySources)).min(1))
-    .optional(),
-  state: z.enum(MEMORY_ENTRY_STATES).optional(),
-  cites: memoryCitesSchema.optional(),
-});
+const entriesQuerySchema = paginationSchema
+  .extend({
+    projectId: z.uuid(),
+    /** Comma-separated sources; absent lists what agents and people wrote down. */
+    sources: z
+      .string()
+      .trim()
+      .min(1)
+      .transform((v) => v.split(',').map((s) => s.trim()))
+      .pipe(z.array(z.enum(memorySources)).min(1))
+      .optional(),
+    state: z.enum(MEMORY_ENTRY_STATES).optional(),
+    cites: memoryCitesSchema.optional(),
+    /** `true` lists the memories naming no item of the project: the Dashboard's (REQ-33 BC-7). */
+    uncited: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => v === 'true'),
+  })
+  .refine((q) => !(q.cites && q.uncited), {
+    message: 'cites and uncited ask for one item and for none: send one of them',
+    path: ['uncited'],
+  });
 
 // MJ-1: memory as a person reads it — who wrote each row and when, whether it was checked, what it
 // cites and which of those no longer resolve, why it needs a check, and every person's correction
 // or retirement; `counts` sizes each list by the same rule. `cites` keeps the rows naming one
 // requirement, issue or workflow: the read its own page shows (REQ-33 BC-4).
 memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
-  const { projectId, sources, state, cites, limit, offset } = c.req.valid('query');
+  const { projectId, sources, state, cites, uncited, limit, offset } = c.req.valid('query');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
@@ -92,6 +102,7 @@ memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async 
       ...(sources ? { sources } : {}),
       ...(state ? { state } : {}),
       ...(cites ? { cites } : {}),
+      uncited,
       limit,
       offset,
     }),

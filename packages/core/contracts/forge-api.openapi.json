@@ -14338,6 +14338,18 @@
                 "cites is an issue or requirement key (ISS-12, REQ-4) or a workflow flow (letters, digits, `.`, `_` and `-`)"
               ]
             }
+          },
+          {
+            "in": "query",
+            "name": "uncited",
+            "required": false,
+            "schema": {
+              "enum": [
+                "true",
+                "false"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {

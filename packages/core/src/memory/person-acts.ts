@@ -1,5 +1,5 @@
-// MJ-1: the acts a person takes on a memory from the record it names (REQ-33 BC-5), each correction
-// and retirement with a reason.
+// MJ-1: the acts a person takes on a memory from the record it names, or from the project Dashboard
+// when it names none (REQ-33 BC-5, BC-7), each correction and retirement with a reason.
 //  - Correct: the body is replaced by the person's text. The old body stays readable (the
 //    `memories_record_replacement` trigger writes it to memory_revisions), the correction is kept on
 //    the row with who and why, and the row counts as verified now: a person just read it against

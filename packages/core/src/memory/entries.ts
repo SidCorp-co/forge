@@ -57,10 +57,24 @@ function namingWhere(ref: string): SQL {
     : sql`${memories.textContent} ~* ${pattern}`;
 }
 
+/** Whether a cite names a requirement, workflow or issue of the project itself. */
+const namesAnItemOf = (self: string | undefined) => (x: MemoryCite) =>
+  (x.kind === 'issue' || x.kind === 'requirement' || x.kind === 'workflow') && x.project === self;
+
+async function selfSlug(projectId: string): Promise<string | undefined> {
+  const projects = await memoryIssueReads().siblingProjects(projectId);
+  return projects.find((p) => p.id === projectId)?.slug;
+}
+
+/** The rows naming no requirement, workflow or issue of this project: what the Dashboard lists. */
+async function onlyUncited(projectId: string, rows: Checked[]): Promise<Checked[]> {
+  const named = namesAnItemOf(await selfSlug(projectId));
+  return rows.filter(({ c }) => !c.cites.some(named));
+}
+
 /** The rows that cite `ref` as this project's own record: a key placed in another project, or a word that is no workflow this project draws, is not one. */
 async function onlyCiting(projectId: string, ref: string, rows: Checked[]): Promise<Checked[]> {
-  const projects = await memoryIssueReads().siblingProjects(projectId);
-  const self = projects.find((p) => p.id === projectId)?.slug;
+  const self = await selfSlug(projectId);
   const key = RECORD_KEY.test(ref);
   return rows.filter(({ c }) =>
     c.cites.some((x) =>
@@ -81,6 +95,8 @@ export const memoryEntriesInputSchema = z.object({
   state: z.enum(MEMORY_ENTRY_STATES).default('live'),
   /** Only the memories naming this record of the project: an issue or requirement key, or a workflow's flow. */
   cites: memoryCitesSchema.optional(),
+  /** Only the memories naming no requirement, workflow or issue of the project: the project's own (REQ-33 BC-7). */
+  uncited: z.boolean().default(false),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
 });
@@ -200,17 +216,17 @@ export async function readMemoryEntries(
       .where(where)
       .orderBy(desc(memories.updatedAt), asc(memories.id));
 
-  if (input.cites) {
-    // the rows naming one record are few, and which of them cite it here is known only once each
-    // resolves: all are read, then counted and cut by the same rule
+  if (input.cites || input.uncited) {
+    // which rows cite an item here is known only once each resolves: all are read, then counted
+    // and cut by the same rule
     const [liveRows, retiredRows] = await Promise.all([
       ordered(live).then((r) => checked(input.projectId, r, now)),
       ordered(retired).then((r) => checked(input.projectId, r, now)),
     ]);
-    const lists = {
-      live: await onlyCiting(input.projectId, input.cites, liveRows),
-      retired: await onlyCiting(input.projectId, input.cites, retiredRows),
-    };
+    const cites = input.cites;
+    const keep = (rows: Checked[]) =>
+      cites ? onlyCiting(input.projectId, cites, rows) : onlyUncited(input.projectId, rows);
+    const lists = { live: await keep(liveRows), retired: await keep(retiredRows) };
     const due = lists.live.filter((x) => x.needsCheck.length > 0);
     const byState = { ...lists, stale: due };
     const counts = { live: lists.live.length, stale: due.length, retired: lists.retired.length };

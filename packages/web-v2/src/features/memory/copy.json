@@ -30,6 +30,8 @@
     "memory.mirror": "A copy of this project's {source}: change the {source} itself.",
     "memory.neverVerified": "Never checked",
     "memory.notTrue": "Not true anymore",
+    "memory.projectHint": "What agents and people wrote down about the project that names no requirement, workflow or issue: who wrote each, when, and whether it still holds.",
+    "memory.projectNone": "No memory is about the project alone.",
     "memory.retire": "Retire",
     "memory.retireConfirm": "Retire this memory",
     "memory.retiredBy": "Retired by {name} on {date}: {reason}",

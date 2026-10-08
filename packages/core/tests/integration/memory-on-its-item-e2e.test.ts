@@ -162,3 +162,65 @@ describe('a memory read on the record it names', () => {
     expect(retired.counts).toMatchObject({ live: 1, retired: 1 });
   });
 });
+
+// REQ-33 BC-7 (r2): a memory naming no requirement, workflow or issue of the project is about the
+// project itself and is read on its Dashboard; `uncited` lists exactly those, and a person who
+// retires one there takes it out of what the assistant recalls.
+describe('a memory about the project itself', () => {
+  let w: World;
+
+  beforeAll(async () => {
+    w = await world();
+    await requirement(w, 'Referral reports'); // REQ-1
+    await note(w, 'gotcha/cadence', 'The team ships to the clinic every Tuesday morning.');
+    await note(w, 'gotcha/req1', 'Referral reports keep the clinic name (REQ-1).');
+    await note(w, 'gotcha/elsewhere', 'The sibling tracker decided plugin REQ-1 differently.');
+  });
+
+  it('lists the memories that name no item of the project, never one that names one', async () => {
+    const res = await api(
+      w.token,
+      'GET',
+      `/api/memory/entries?projectId=${w.projectId}&uncited=true`,
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(refs(res.body)).toEqual(['gotcha/cadence', 'gotcha/elsewhere']);
+    expect(res.body.counts).toMatchObject({ live: 2, retired: 0 });
+  });
+
+  it('refuses a read that asks for one item and for none at once, by name', async () => {
+    const res = await api(
+      w.token,
+      'GET',
+      `/api/memory/entries?projectId=${w.projectId}&uncited=true&cites=REQ-1`,
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('cites and uncited');
+  });
+
+  it('retired from the Dashboard with a reason, it leaves the list and the assistant’s recall', async () => {
+    expect(await recall(w, 'Tuesday morning')).toContain('gotcha/cadence');
+    const list = await api(
+      w.token,
+      'GET',
+      `/api/memory/entries?projectId=${w.projectId}&uncited=true`,
+    );
+    const row = (list.body.items as Entry[]).find((r) => r.sourceRef === 'gotcha/cadence') as Entry;
+    const res = await api(
+      w.token,
+      'POST',
+      `/api/memory/${row.id}/retire?projectId=${w.projectId}`,
+      {
+        reason: 'Releases moved to Thursdays',
+      },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const after = await api(
+      w.token,
+      'GET',
+      `/api/memory/entries?projectId=${w.projectId}&uncited=true`,
+    );
+    expect(refs(after.body)).toEqual(['gotcha/elsewhere']);
+    expect(await recall(w, 'Tuesday morning')).not.toContain('gotcha/cadence');
+  });
+});

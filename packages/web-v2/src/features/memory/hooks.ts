@@ -6,12 +6,12 @@ import { type ItemMemoryQuery, memoryApi } from "./api";
 
 const MEMORY_ROOT = ["memory-entries"] as const;
 
-/** The memories naming one item; the memory read addresses a project by its uuid only, so it waits for it. */
+/** The memories naming one item, or none; the memory read addresses a project by its uuid only, so it waits for it. */
 export function useItemMemory(projectId: string, q: ItemMemoryQuery) {
   return useQuery({
-    queryKey: [...MEMORY_ROOT, projectId, q.cites, q.state],
+    queryKey: [...MEMORY_ROOT, projectId, q.cites ?? "uncited", q.state],
     queryFn: () => memoryApi.entries(projectId, q),
-    enabled: isUuid(projectId) && q.cites.length > 0,
+    enabled: isUuid(projectId) && q.cites !== "",
     staleTime: 15_000,
   });
 }

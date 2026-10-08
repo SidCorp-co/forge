@@ -1,9 +1,12 @@
 import type { MemoryEntriesResponse, MemoryEntryState } from "@forge/contracts/memory";
 import { apiClient } from "@/lib/api/client";
 
-/** One item's memory: those naming `cites` (a requirement or issue key, or a workflow's flow), in one list. */
+/**
+ * One list of memories: those naming `cites` (a requirement or issue key, or a workflow's flow), or,
+ * with `cites` null, the project's own, naming no item of it (REQ-33 BC-7).
+ */
 export interface ItemMemoryQuery {
-  cites: string;
+  cites: string | null;
   state: MemoryEntryState;
 }
 
@@ -20,9 +23,9 @@ export const memoryApi = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
-  /** `GET /api/memory/entries?cites=` — the memories naming one item, as a person reads them on it (REQ-33 BC-4). */
+  /** `GET /api/memory/entries?cites=` (or `uncited=true`) — the memories naming one item, or none, as a person reads them where they belong (REQ-33 BC-4, BC-7). */
   entries: (projectId: string, q: ItemMemoryQuery) => {
-    const params = new URLSearchParams({ projectId, state: q.state, limit: "100", cites: q.cites });
+    const params = new URLSearchParams({ projectId, state: q.state, limit: "100", ...(q.cites === null ? { uncited: "true" } : { cites: q.cites }) });
     return apiClient<MemoryEntriesResponse>(`/memory/entries?${params.toString()}`);
   },
   /** `POST /api/memory/:id/correct` — new text and the reason; the old body is kept as a revision. */
