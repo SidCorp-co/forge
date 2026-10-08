@@ -167,8 +167,22 @@ pub async fn reconcile_server() -> Vec<Reconciled> {
     reconcile(wanted(&daemon_reads)).await
 }
 
+/// Variables a pane is handed one by one, per placement, and the server must
+/// never carry: one the server inherited from wherever it was started would
+/// reach a pane that was handed none, naming a copy this placement did not
+/// resolve (ISS-1332).
+const NEVER_ON_THE_SERVER: [&str; 1] = [super::pane_path::CLI_ENV];
+
 fn wanted(read: &dyn Fn(&str) -> Option<OsString>) -> Vec<(&'static str, Said)> {
-    OWNED.iter().map(|name| (*name, said(name, read))).collect()
+    OWNED
+        .iter()
+        .map(|name| (*name, said(name, read)))
+        .chain(
+            NEVER_ON_THE_SERVER
+                .iter()
+                .map(|name| (*name, Said::Nothing)),
+        )
+        .collect()
 }
 
 async fn reconcile(wants: Vec<(&'static str, Said)>) -> Vec<Reconciled> {
@@ -415,11 +429,14 @@ mod tests {
         let now = w.daemon_tmp();
         assert_eq!(
             found,
-            vec![Reconciled::Set {
-                name: "TMPDIR",
-                was: held.map(str::to_string),
-                now: now.clone()
-            }]
+            vec![
+                Reconciled::Set {
+                    name: "TMPDIR",
+                    was: held.map(str::to_string),
+                    now: now.clone()
+                },
+                Reconciled::Agreed
+            ]
         );
         let said = found[0].to_string();
         assert!(
@@ -429,7 +446,7 @@ mod tests {
         assert_eq!(server_says(), format!("TMPDIR={now}"));
         assert_eq!(
             reconcile_server().await,
-            vec![Reconciled::Agreed],
+            vec![Reconciled::Agreed, Reconciled::Agreed],
             "and a server that agrees is left alone"
         );
     }
@@ -506,7 +523,7 @@ mod tests {
         assert!(
             matches!(
                 found.as_slice(),
-                [Reconciled::RemoveRefused { name: "TMPDIR", still, .. }] if still == "/an/old/tmp"
+                [Reconciled::RemoveRefused { name: "TMPDIR", still, .. }, _] if still == "/an/old/tmp"
             ),
             "{found:?}"
         );
@@ -516,6 +533,33 @@ mod tests {
             "{said}"
         );
         assert_eq!(server_says(), "TMPDIR=/an/old/tmp");
+    }
+
+    /// ISS-1332 criterion 3: a server that inherited a `forge` path this
+    /// placement did not resolve does not hand it to the pane.
+    #[tokio::test]
+    async fn a_server_that_inherited_a_forge_path_does_not_hand_it_to_a_pane_with_none() {
+        let Some(_w) = World::new("denvcli", true).await else {
+            return;
+        };
+        let sock = terminal::socket_path().expect("the isolated socket");
+        assert!(std::process::Command::new("tmux")
+            .args(["-S", &sock.to_string_lossy()])
+            .args(["new-session", "-d", "-s", "older", "sleep", "600"])
+            .env("FORGE_CLI_PATH", "/old/copy/forge")
+            .stdin(std::process::Stdio::null())
+            .status()
+            .expect("tmux runs")
+            .success());
+        let (log, guard) = crate::log_capture::capturing();
+        let seen = place("forge-job-denv-cli", &[]).await;
+        drop(guard);
+        assert_eq!(seen.get("FORGE_CLI_PATH"), None);
+        let said = log.said();
+        assert!(
+            said.contains("FORGE_CLI_PATH") && said.contains("`/old/copy/forge`"),
+            "{said}"
+        );
     }
 
     /// A value tmux cannot be handed leaves the server as it was.
@@ -529,7 +573,10 @@ mod tests {
         let read = |_: &str| Some(OsString::from_vec(vec![b'/', 0xff]));
         assert_eq!(
             reconcile(wanted(&read)).await,
-            vec![Reconciled::NotUnicode { name: "TMPDIR" }]
+            vec![
+                Reconciled::NotUnicode { name: "TMPDIR" },
+                Reconciled::Agreed
+            ]
         );
         assert_eq!(server_says(), "TMPDIR=/an/old/tmp");
     }
