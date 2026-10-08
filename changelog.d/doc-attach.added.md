@@ -1,1 +1,0 @@
-**A conversation takes documents, and the assistant reads them.** Attach Markdown, text, CSV, JSON, PDF or Word files; the assistant cites them by name, and drafts a requirement whose criteria are an attached list, verbatim.
