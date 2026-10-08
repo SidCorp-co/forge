@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.174] - 2026-10-08
+
+Chat runs Forge reports and shows sourced visual blocks, shareable by link
+
+### Added
+
+- **The assistant can show a report as a table, key figures or a status list, each naming its query and read time, and the answer can be shared with members.** A figure its run never read is refused.
+
 ## [0.4.0-dev.173] - 2026-10-08
 
 Shared answers on public links draw their tables and charts
