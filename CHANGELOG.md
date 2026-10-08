@@ -122,7 +122,7 @@
 
 ### Added
 
-- **The public guide list says it is not the whole set, and one guide says what Forge can do.** The list at `/api/guides` now states that the method guides (running a wave, taking an issue to landed code, judging, releasing) are served by the `forge` CLI, names them as a pointer the CLI's own list overrides, and says how to reach them; a request for one of them is answered with that, and `llms.txt` and the `forge_guide` tool say it too. A new guide, `what-forge-is`, is the capability map by area, each area naming the guide that covers it.
+- **The public guide list says it is not the whole set.** Method guides are served by the `forge` CLI; the list, `llms.txt` and a refused slug now say so. A new guide, `what-forge-is`, maps what Forge can do.
 
 - **`forge-runner top` shows what each project spent.** Tokens and estimated cost over 24 hours and 7 days, the master's share apart, priced by `[rates]` in `config.toml`; a model without a rate is named, never priced as zero.
 

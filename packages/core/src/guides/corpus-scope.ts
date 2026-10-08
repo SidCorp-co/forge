@@ -1,21 +1,11 @@
-// What the public guide corpus says about its own extent. Core serves the guides defined in its
-// registry; the forge CLI serves a second set, the methods that drive work, on the plugin's own
-// release clock, and core neither holds nor can read them. So every public surface that lists
-// guides says so here, in one place, and names the CLI-served ones as a pointer the CLI overrides.
-//
-// No flags and no tool names: the CLI describes itself, and a flag copied here would go stale on
-// some release with nothing saying so.
+// What the public corpus says of its own extent. The names are a pointer the CLI overrides, and
+// carry no flag and no tool name.
 
 export interface CliServedGuide {
   slug: string;
   covers: string;
 }
 
-/**
- * Pointer, not a list to rely on. The plugin owns these guides and adds or retires one on its own
- * clock; `forge guide` on a box is the answer, and `CORPUS_SCOPE.authority` says so wherever this
- * list is shown.
- */
 export const CLI_SERVED_GUIDES: readonly CliServedGuide[] = [
   { slug: 'dispatch', covers: 'running one wave of delegated issue work' },
   { slug: 'issue-flow', covers: 'taking one issue from its title to deployed code' },

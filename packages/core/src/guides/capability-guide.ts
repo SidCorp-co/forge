@@ -1,11 +1,5 @@
-// The capability map: what Forge is and what it can do, by area, each area routing to the guide
-// that owns it. A router and not a manual — it restates no method another guide owns, and it
-// carries no flag and no tool name, because both belong to surfaces that describe themselves.
-//
-// Every slug an area routes to is checked against the registry by capability-guide.test.ts, so a
-// guide renamed or retired fails there by name instead of leaving a dead pointer here. The methods
-// the forge CLI serves are not routed by slug: core cannot read that list, and corpus-scope.ts says
-// where it is.
+// The capability map: what Forge is and can do, by area, each area routing to the guide that owns
+// it. A router, not a manual; capability-guide.test.ts checks every slug against the registry.
 
 import { RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
 import { ASSISTANT_METHOD_SLUG } from './assistant-method-guide.js';

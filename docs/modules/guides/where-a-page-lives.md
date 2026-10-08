@@ -35,12 +35,12 @@ without a release. How the code works is not shipped at all.
 The methods that drive work — running a wave, taking an issue to landed code, judging, releasing —
 are served by the `forge` CLI, from the plugin's own repository and on its own release clock. Core
 holds none of them and cannot read their list, so no page here may be taken for the complete set.
-`corpus-scope.ts` in `packages/core/src/guides/` is the one statement of that: the public index
+`packages/core/src/guides/corpus-scope.ts` is the one statement of that: the public index
 carries it as its `corpus` field, `/api/llms.txt` and a refused slug repeat it, and the `forge_guide`
 tool description says it. The names it gives are a pointer, and the CLI's own list overrides them.
 
-`capability-guide.ts` is the page a cold reader starts from: the capability map by area, each area
-routing to the registry guide that owns it, checked slug by slug in `capability-guide.test.ts`. It
+`packages/core/src/guides/capability-guide.ts` is the page a cold reader starts from: the capability map by area, each area
+routing to the registry guide that owns it, checked slug by slug in `packages/core/src/guides/capability-guide.test.ts`. It
 carries no flag and no tool name, which that test also refuses.
 
 ## The `audience` field
