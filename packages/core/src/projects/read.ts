@@ -62,6 +62,20 @@ export async function projectName(projectId: string): Promise<string | null> {
   return row?.name ?? null;
 }
 
+/** Id, slug, name and active issue prefix of every project in this project's organization, itself included. */
+export async function orgSiblingProjects(projectId: string) {
+  const org = db.select({ orgId: projects.orgId }).from(projects).where(eq(projects.id, projectId));
+  return db
+    .select({
+      id: projects.id,
+      slug: projects.slug,
+      name: projects.name,
+      issuePrefix: projects.issuePrefix,
+    })
+    .from(projects)
+    .where(inArray(projects.orgId, org));
+}
+
 /** Id, slug and name of each of these projects. */
 export async function listProjectHeads(projectIds: readonly string[]) {
   return db

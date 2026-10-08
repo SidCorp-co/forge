@@ -14024,7 +14024,8 @@
                 "note",
                 "knowledge",
                 "decision",
-                "policy"
+                "policy",
+                "bookkeeping"
               ],
               "type": "string"
             }
@@ -14337,7 +14338,8 @@
                 "note",
                 "knowledge",
                 "decision",
-                "policy"
+                "policy",
+                "bookkeeping"
               ],
               "type": "string"
             }
@@ -14422,7 +14424,8 @@
                         "note",
                         "knowledge",
                         "decision",
-                        "policy"
+                        "policy",
+                        "bookkeeping"
                       ],
                       "type": "string"
                     },

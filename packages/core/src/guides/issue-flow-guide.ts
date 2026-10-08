@@ -167,6 +167,9 @@ naming its own rule before the green counts.
 - A lesson a different issue would reuse: \`POST /api/memory\`. Another project's issue key is
   written \`<its slug> ISS-n\`, never bare, since a bare key is read as this project's. What a sweep, a
   reconcile or a consolidation did is bookkeeping, not a lesson, and is never written as a \`decision\`.
+  A hit carrying \`staleReason\` was flagged possibly stale by a release for the reason it gives, so
+  check that claim before relying on it; a \`bookkeeping\` row is the upkeep record core keeps of
+  memory itself, never written by a run, and returned only when \`sourceFilter\` names it.
 
 ### 8. Clean up and report
 Remove what this run made and no longer needs: scratch files, servers it started. A workspace

@@ -13,17 +13,24 @@ const BASE: MemoryEntry = {
   id: "m1",
   source: "note",
   sourceRef: "gotcha/flat-board",
-  text: "Owner chose the flat board (ISS-1, REQ-9).",
+  text: "Owner chose the flat board (ISS-1, REQ-9; epod ISS-4, core ISS-96, 779e4736a, 0.2.0).",
   writtenAt: "2026-10-04T09:00:00.000Z",
   updatedAt: "2026-10-05T09:00:00.000Z",
   writtenBy: { id: "u1", name: "runner", agent: true },
   verifiedAt: null,
-  cites: ["ISS-1", "REQ-9"],
+  cites: [
+    { ref: "ISS-1", kind: "issue", project: "hop", state: "gone", why: "dropped" },
+    { ref: "REQ-9", kind: "requirement", project: "hop", state: "gone", why: "missing" },
+    { ref: "ISS-4", kind: "issue", project: "epod", state: "resolved" },
+    { ref: "ISS-96", kind: "issue", project: null, state: "unchecked" },
+    { ref: "779e4736a", kind: "commit", project: "hop", state: "unchecked", url: "https://github.com/acme/hop/commit/779e4736a" },
+    { ref: "0.2.0", kind: "release", project: "hop", state: "resolved" },
+  ],
   staleRefs: [
     { ref: "ISS-1", kind: "issue", why: "dropped" },
     { ref: "REQ-9", kind: "requirement", why: "missing" },
   ],
-  flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126" },
+  flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: "ISS-126 replaced the theme this note names" },
   corrections: [],
   retired: null,
   archivedAt: null,
@@ -52,6 +59,24 @@ describe("a memory on the Memory page", () => {
     row(BASE);
     expect(screen.getByTestId("memory-stale-refs").textContent).toBe("Names what no longer exists: ISS-1 (dropped), REQ-9 (no such requirement)");
     expect(screen.getByTestId("memory-flagged").textContent).toContain("ISS-126");
+    expect(screen.getByTestId("memory-flagged").textContent).toContain("ISS-126 replaced the theme this note names");
+  });
+
+  it("links each source it cites where it lives, and says when a key belongs to a project it does not name", () => {
+    row(BASE);
+    const href = (name: string) => screen.getByRole("link", { name }).getAttribute("href");
+    expect(href("ISS-1")).toBe("/projects/hop/issues/ISS-1");
+    expect(href("REQ-9")).toBe("/projects/hop/requirements/REQ-9");
+    expect(href("epod ISS-4")).toBe("/projects/epod/issues/ISS-4");
+    expect(href("779e4736a")).toBe("https://github.com/acme/hop/commit/779e4736a");
+    expect(href("0.2.0")).toBe("/projects/hop/releases/0.2.0");
+    expect(screen.queryByRole("link", { name: "ISS-96" })).toBeNull();
+    expect(screen.getByTestId("memory-cites").textContent).toContain("ISS-96 (another project, not checked)");
+  });
+
+  it("names a gone record of another project with its project", () => {
+    row({ ...BASE, staleRefs: [{ ref: "ISS-4", kind: "issue", why: "dropped", project: "epod" }] });
+    expect(screen.getByTestId("memory-stale-refs").textContent).toBe("Names what no longer exists: epod ISS-4 (dropped)");
   });
 
   it("does not save a correction until a reason is given, then sends the text and the reason", () => {
@@ -82,9 +107,24 @@ describe("a memory on the Memory page", () => {
     expect(screen.queryByRole("button", { name: "Correct" })).toBeNull();
   });
 
-  it("says why decay archived a row no person retired", () => {
-    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: "decay: unused" });
-    expect(screen.getByTestId("memory-retired").textContent).toContain("decay: unused");
+  it("says why decay archived a row no person retired, in the reader's words", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "flagged", by: "ISS-126" } });
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Archived on 07/10/2026: flagged possibly stale by ISS-126 and not confirmed within 14 days");
+  });
+
+  it("reads a decay archive in Vietnamese, with no English sentence of core's", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "unused" } }, undefined, "vi");
+    expect(screen.getByTestId("memory-retired").textContent).toBe("Lưu trữ ngày 07/10/2026: hiếm khi được đọc và chưa ai xác nhận"); // i18n-allow: the vi copy under test
+  });
+
+  it("shows an outdated verdict's evidence as written", () => {
+    row({ ...BASE, archivedAt: "2026-10-07T00:00:00.000Z", archivedBy: { rule: "outdated", evidence: "ISS-9 removed the board" } }, undefined, "vi");
+    expect(screen.getByTestId("memory-retired").textContent).toContain("ISS-9 removed the board");
+  });
+
+  it("says a flag gave no reason rather than passing silence as one", () => {
+    row({ ...BASE, flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: null } });
+    expect(screen.getByTestId("memory-flagged").textContent).toContain("gave no reason");
   });
 
   it("offers no act on the mirror of an issue", () => {

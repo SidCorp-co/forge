@@ -121,8 +121,13 @@ async function withStaleRefs(projectId: string, hits: MemoryHit[]): Promise<Memo
       hits.map((h) => h.text),
     );
     return hits.map((h, i) => {
-      const refs = resolved[i]?.staleRefs ?? [];
-      return refs.length > 0 ? { ...h, staleRefs: refs } : h;
+      const c = resolved[i];
+      if (!c) return h;
+      return {
+        ...h,
+        ...(c.cites.length > 0 ? { cites: c.cites } : {}),
+        ...(c.staleRefs.length > 0 ? { staleRefs: c.staleRefs } : {}),
+      };
     });
   } catch (err) {
     logger.warn(

@@ -16,12 +16,19 @@ const BASE: MemoryEntry = {
   updatedAt: AT,
   writtenBy: { id: "a1", name: "runner", agent: true },
   verifiedAt: null,
-  cites: ["ISS-1", "REQ-9"],
+  cites: [
+    { ref: "ISS-1", kind: "issue", project: "hop", state: "gone", why: "dropped" },
+    { ref: "REQ-9", kind: "requirement", project: "hop", state: "gone", why: "missing" },
+    { ref: "ISS-4", kind: "issue", project: "epod", state: "resolved" },
+    { ref: "ISS-96", kind: "issue", project: null, state: "unchecked" },
+    { ref: "779e4736a", kind: "commit", project: "hop", state: "unchecked", url: "https://github.com/acme/hop/commit/779e4736a" },
+  ],
   staleRefs: [
     { ref: "ISS-1", kind: "issue", why: "dropped" },
     { ref: "REQ-9", kind: "requirement", why: "missing" },
+    { ref: "ISS-4", kind: "issue", why: "dropped", project: "epod" },
   ],
-  flagged: { since: AT, by: "ISS-126" },
+  flagged: { since: AT, by: "ISS-126", reason: "ISS-126 thay giao dien" },
   corrections: [{ by: LAN, at: AT, reason: "da doi chieu" }],
   retired: null,
   archivedAt: null,
@@ -37,7 +44,8 @@ export const MEMORY_SCREENS: ChromeScreen[] = [
     render: () => (
       <ul>
         {row({ ...BASE, archivedAt: AT, retired: { by: LAN, at: AT, reason: "khong con dung" } })}
-        {row({ ...BASE, id: "m2", archivedAt: AT, archivedBy: null, verifiedAt: AT, staleRefs: [], flagged: null })}
+        {row({ ...BASE, id: "m2", archivedAt: AT, archivedBy: { rule: "flagged", by: "ISS-126" }, verifiedAt: AT, staleRefs: [], flagged: null })}
+        {row({ ...BASE, id: "m4", archivedAt: AT, archivedBy: { rule: "unused" }, flagged: { since: AT, by: "ISS-126", reason: null } })}
         {row({ ...BASE, id: "m3", source: "issue" })}
       </ul>
     ),

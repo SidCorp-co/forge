@@ -70,6 +70,14 @@ interface MemoryIssueReads {
   ): Promise<Map<number, { status: string; archived: boolean }>>;
   /** The status of the project's requirements among these sequences; absent = no such requirement. */
   requirementStatuses(projectId: string, seqs: readonly number[]): Promise<Map<number, string>>;
+  /** The projects of this project's organization, itself included: where a memory's keys may point. */
+  siblingProjects(
+    projectId: string,
+  ): Promise<{ id: string; slug: string; name: string; issuePrefix: string | null }[]>;
+  /** The project's repository page on its host (`https://github.com/o/r`); null when none is declared. */
+  repositoryWebUrl(projectId: string): Promise<string | null>;
+  /** Which of these versions the project has released or is releasing. */
+  releaseVersions(projectId: string, versions: readonly string[]): Promise<Set<string>>;
 }
 
 const slot = portSlot<MemoryIssueReads>('memory', 'provideMemoryIssueReads');

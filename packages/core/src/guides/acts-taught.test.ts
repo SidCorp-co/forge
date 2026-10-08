@@ -6,6 +6,7 @@ import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
 import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { DESIGN_REFUSAL_CODES } from '@forge/contracts/workflows';
 import { describe, expect, it } from 'vitest';
+import { memorySources, memoryWritableSources } from '../db/schema-vocabulary.js';
 import { getGuide } from './registry.js';
 
 const CODES = new Set<string>([...QUESTION_REFUSAL_CODES, ...MERGE_REFUSAL_CODES]);
@@ -53,6 +54,14 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
     ],
   ] as const)('%s', (_act, words) => {
     for (const word of words) expect(flow, `issue-flow no longer names ${word}`).toContain(word);
+  });
+
+  it('a memory hit says why it was flagged, and bookkeeping is read only when asked for', () => {
+    expect(flow.replace(/\s+/g, ' ')).toContain(
+      'A hit carrying `staleReason` was flagged possibly stale by a release for the reason it gives, so check that claim before relying on it; a `bookkeeping` row is the upkeep record core keeps of memory itself, never written by a run, and returned only when `sourceFilter` names it.',
+    );
+    expect(memorySources).toContain('bookkeeping');
+    expect(memoryWritableSources).not.toContain('bookkeeping');
   });
 
   it.each(['issue-flow', 'pipeline-and-issue-lifecycle'])(
