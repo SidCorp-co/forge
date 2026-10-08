@@ -97,6 +97,7 @@ interface BannerEntry {
   id: string;
   claimedByRunId: string | null;
   closeRefusals: Array<{ code: string }>;
+  closeFailure: { reason: string; version: string | null } | null;
 }
 
 /** The issue's entry on the roster the release banner reads; it offers Release now only with no
@@ -297,6 +298,128 @@ describe('the person’s way out of the release gate (ISS-1381 r3)', () => {
     } finally {
       await harness.db.execute(
         sql.raw('ALTER TABLE issues DROP CONSTRAINT IF EXISTS gj_closed_needs_ledger'),
+      );
+    }
+  });
+});
+
+describe('a close that fails the same way in two releases (ISS-1381 r4)', () => {
+  async function failureComments(issueId: string): Promise<string[]> {
+    const rows = await harness.db.execute(sql`
+      SELECT body FROM comments
+       WHERE issue_id = ${issueId} AND body LIKE '%could not be closed%'
+       ORDER BY created_at
+    `);
+    return rows.map((r) => String(r.body));
+  }
+
+  it('keeps one comment naming both releases, and the roster says what Release now meets', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const broken = await fx.insertIssue();
+    await harness.db.execute(
+      sql.raw(`ALTER TABLE issues ADD CONSTRAINT gj_closed_needs_ledger
+        CHECK (status <> 'closed' OR id <> '${broken}') NOT VALID`),
+    );
+    try {
+      const first = await fx.claim([broken]);
+      const one = await finishReleaseBatch(first.runId, { type: 'user', id: ownerId });
+      expect((await fx.stored(broken)).status).toBe('awaiting_release');
+
+      const entry = await bannerEntry(broken);
+      expect(entry?.closeRefusals).toEqual([]);
+      expect(entry?.closeFailure?.reason).toBe(one.failed[0]?.reason);
+      expect(entry?.closeFailure?.reason).toContain('"gj_closed_needs_ledger"');
+      expect(entry?.closeFailure?.version).toBe(first.version);
+
+      const second = await fx.claim([broken]);
+      const two = await finishReleaseBatch(second.runId, { type: 'user', id: ownerId });
+      expect(two.failed[0]?.reason).toBe(one.failed[0]?.reason);
+
+      const said = await failureComments(broken);
+      expect(said).toHaveLength(1);
+      expect(said[0]).toContain(`shipped as version ${second.version}`);
+      expect(said[0]).toContain(`version ${first.version}`);
+      expect(said[0]).toContain('for the same reason');
+      expect(said[0]?.match(/gj_closed_needs_ledger/g)).toHaveLength(1);
+      expect(said[0]).toContain('fails the same way until that failure is fixed');
+      expect((await bannerEntry(broken))?.closeFailure?.version).toBe(second.version);
+    } finally {
+      await harness.db.execute(
+        sql.raw('ALTER TABLE issues DROP CONSTRAINT IF EXISTS gj_closed_needs_ledger'),
+      );
+    }
+  });
+
+  it('says a recovery its own run already wrote again, never as an earlier release', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const { sayCloseFailure } = await import('../../src/release-batch/close-failures.js');
+    const broken = await fx.insertIssue();
+    await harness.db.execute(
+      sql.raw(`ALTER TABLE issues ADD CONSTRAINT gj_closed_needs_ledger
+        CHECK (status <> 'closed' OR id <> '${broken}') NOT VALID`),
+    );
+    try {
+      const { runId, version } = await fx.claim([broken]);
+      const result = await finishReleaseBatch(runId, { type: 'user', id: ownerId });
+      const seen: Array<ReadonlyArray<string | null>> = [];
+      await sayCloseFailure({
+        runId,
+        projectId,
+        issueId: broken,
+        authorId: ownerId,
+        kind: 'failed',
+        reason: result.failed[0]?.reason ?? '',
+        version,
+        body: (repeats) => {
+          seen.push(repeats);
+          return 'said again';
+        },
+      });
+
+      expect(seen).toEqual([[]]);
+      expect(await failureComments(broken)).toHaveLength(0);
+      expect(await lastComment(broken)).toBe('said again');
+    } finally {
+      await harness.db.execute(
+        sql.raw('ALTER TABLE issues DROP CONSTRAINT IF EXISTS gj_closed_needs_ledger'),
+      );
+    }
+  });
+
+  it('posts a second comment where the second release fails it for another reason', async () => {
+    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
+    const broken = await fx.insertIssue();
+    await harness.db.execute(
+      sql.raw(`ALTER TABLE issues ADD CONSTRAINT gj_closed_needs_ledger
+        CHECK (status <> 'closed' OR id <> '${broken}') NOT VALID`),
+    );
+    try {
+      await finishReleaseBatch((await fx.claim([broken])).runId, { type: 'user', id: ownerId });
+      await harness.db.execute(
+        sql.raw(`
+        ALTER TABLE issues DROP CONSTRAINT gj_closed_needs_ledger;
+        CREATE OR REPLACE FUNCTION planted_close_failure() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.status = 'closed' AND NEW.id = '${broken}' THEN
+            RAISE EXCEPTION 'planted failure: storage refused this row';
+          END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql;
+        CREATE TRIGGER planted_close_failure BEFORE UPDATE ON issues
+          FOR EACH ROW EXECUTE FUNCTION planted_close_failure();
+      `),
+      );
+      await finishReleaseBatch((await fx.claim([broken])).runId, { type: 'user', id: ownerId });
+
+      const said = await failureComments(broken);
+      expect(said).toHaveLength(2);
+      expect(said[1]).toContain('planted failure: storage refused this row');
+      expect(said[1]).not.toContain('for the same reason');
+      expect((await bannerEntry(broken))?.closeFailure?.reason).toContain('planted failure');
+    } finally {
+      await harness.db.execute(
+        sql.raw(`DROP TRIGGER IF EXISTS planted_close_failure ON issues;
+          ALTER TABLE issues DROP CONSTRAINT IF EXISTS gj_closed_needs_ledger`),
       );
     }
   });

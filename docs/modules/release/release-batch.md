@@ -164,13 +164,25 @@ the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pg
 passed through `@forge/observability`'s redaction, and says that reason is for whoever operates
 Forge, not an act on the issue. A schema object's name the driver error carries
 (`packages/core/src/lib/db-errors.ts:pgObjectNames`) that the query-error seal cut a bound value
-out of is named whole beside the reason (`the database names constraint "…"`), never put back
-into the message, where it could land on a quote that was cut alike; a name that is a bound value
-stays out. Any cut in the message reads "(a value of this write, withheld)". Where a bound value
+out of is named whole once. It goes back into the message only in Postgres's own integrity message
+(SQLSTATE class 23), which quotes its constraint once after `constraint `, and only where that cut
+stands there once; anywhere else the cut may be a different quote sealed alike, so the name is
+named beside the reason (`the database names constraint "…"`). A name that is a bound value stays
+out. Any other cut in the message reads "(a value of this write, withheld)". Where a bound value
 would survive outside those names, the SQLSTATE's class description stands in (`packages/core/src/lib/db-errors.ts:pgErrorClassDescription`).
 The SQL statement and its bound values reach neither the comment nor the finish answer's
 `failed[].reason` (ISS-1381 r2). The comment is written as the finishing person or, for a finish a box reported, as
 that box's owner.
+
+Nothing here reads when such a fault is fixed, so Release now stays on offer, and the comment, the
+issue's awaiting-release banner and its row on the release gate panel each say a release started
+there fails the same way until it is (ISS-1381 r4). The finish keeps each close it could not make on
+its own run, `pipeline_runs.metadata.closeFailures[issueId]` — kind, reason, version, the comment,
+and the earlier releases it repeats (`packages/core/src/release-batch/close-failures.ts:sayCloseFailure`).
+The roster answer's `closeFailure` is the latest such record where it failed short of a decision
+(`packages/core/src/release-batch/close-failures.ts:lastCloseFailures`). A later finish that fails
+the same issue with the same kind and reason rewrites that comment, naming every release that met
+it, rather than posting another.
 
 ## 4. Which route reads the repository (ISS-1398)
 

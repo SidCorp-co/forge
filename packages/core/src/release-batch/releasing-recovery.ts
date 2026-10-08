@@ -13,6 +13,7 @@ import {
   pgObjectNames,
 } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
+import { sayCloseFailure } from './close-failures.js';
 import { ReleaseFinishFenceLostError } from './errors.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 
@@ -111,10 +112,11 @@ const WITHHELD_VALUE = '(a value of this write, withheld)';
 /**
  * The database's own reason, read with no bound value in it. A schema object's name is the schema's
  * text, so one the query-error seal cut a bound value out of (`gj_[Redacted]_needs_ledger`) is
- * named beside the reason, off the driver's own field: put back into the message, it could land on
- * a quote that was cut alike and was never that name. A name that is a bound value stays out. A
- * bound value left outside those names, or a reason withheld whole, falls back to what the
- * SQLSTATE's class means (ISS-1381 r3).
+ * named whole. It goes back in place only in Postgres's own integrity message (class 23), which
+ * quotes its constraint once, after `constraint `, and only where that cut stands once: anywhere
+ * else the cut may be a different quote sealed alike, so the name is named beside the reason. A
+ * name that is a bound value stays out. A bound value left outside those names, or a reason
+ * withheld whole, falls back to what the SQLSTATE's class means (ISS-1381 r3, r4).
  */
 function databaseReason(err: unknown, driver: { code: string; message: string }): string {
   const values = pgBoundValues(err);
@@ -123,11 +125,24 @@ function databaseReason(err: unknown, driver: { code: string; message: string })
   const outsideNames = objects.reduce((text, { name }) => text.split(`"${name}"`).join(''), reason);
   const leaks = values.some((v) => outsideNames.includes(v));
   if (leaks || outsideNames.trim() === REDACTED) return pgErrorClassDescription(driver.code);
-  const readable = reason.split(REDACTED).join(WITHHELD_VALUE);
-  const cut = objects
-    .filter(({ name }) => redactQueryParams(`"${name}"`, err) !== `"${name}"`)
+  const sealed = (name: string) => redactQueryParams(`"${name}"`, err);
+  const cut = objects.filter(({ name }) => sealed(name) !== `"${name}"`);
+  const inPlace = cut.filter(
+    ({ kind, name }) =>
+      driver.code.startsWith('23') &&
+      kind === 'constraint' &&
+      reason.split(sealed(name)).length === 2 &&
+      reason.includes(`constraint ${sealed(name)}`),
+  );
+  const restored = inPlace.reduce(
+    (text, { name }) => text.split(sealed(name)).join(`"${name}"`),
+    reason,
+  );
+  const readable = restored.split(REDACTED).join(WITHHELD_VALUE);
+  const beside = cut
+    .filter((o) => !inPlace.includes(o))
     .map(({ kind, name }) => `${kind} "${name}"`);
-  return cut.length > 0 ? `${readable} (the database names ${cut.join(', ')})` : readable;
+  return beside.length > 0 ? `${readable} (the database names ${beside.join(', ')})` : readable;
 }
 
 /** What a finish reports for one issue it could not close, on its answer and its record. */
@@ -153,16 +168,30 @@ function personClears(refusal: Extract<CloseRefusal, { kind: 'refused' }>): stri
 }
 
 /** Where a returned issue stands and how it closes, in the words its page uses. */
-function howItCloses(destination: IssueStatus, once: string): string {
+function howItCloses(destination: IssueStatus, refusal: CloseRefusal): string {
   const label = ISSUE_STATUS_LABELS[destination];
   if (destination !== RELEASE_GATE_STATUS) {
     return `The issue is at ${label}, and a person decides whether it goes back to work or into another release.`;
   }
+  const back = `The issue is back at ${label} and its code is live with that release.`;
+  // No reading here says a database fault cleared, so Release now stays on offer and says what it
+  // meets until then (ISS-1381 r4).
+  if (refusal.kind === 'failed') {
+    return (
+      `${back} The release banner on this page offers Release now, and a release started there ` +
+      'fails the same way until that failure is fixed. Once it is, Release now starts a release ' +
+      'that closes it; or leave it there and the next release closes it.'
+    );
+  }
   return (
-    `The issue is back at ${label} and its code is live with that release. ${once}, the release ` +
-    'banner on this page offers Release now, which starts a release that closes it; or leave it ' +
-    'there and the next release closes it.'
+    `${back} Once the reason above is cleared, the release banner on this page offers Release now, ` +
+    'which starts a release that closes it; or leave it there and the next release closes it.'
   );
+}
+
+/** "version 1.4.0, one with no version": the releases a repeated failure came from. */
+function releasesNamed(versions: ReadonlyArray<string | null>): string {
+  return versions.map((v) => (v ? `version ${v}` : 'one with no version')).join(', ');
 }
 
 /** What a finish that shipped tells an issue it could not close, and how that issue closes later. */
@@ -173,8 +202,10 @@ export function refusedCloseComment(args: {
   destination: IssueStatus;
   /** How a roster its run promoted is settled; such an issue stays claimed rather than moving. */
   held?: string | undefined;
+  /** Earlier releases whose finish failed this close for the same reason, oldest first. */
+  repeats?: ReadonlyArray<string | null> | undefined;
 }): string {
-  const { refusal, version, destination, held } = args;
+  const { refusal, version, destination, held, repeats = [] } = args;
   const shipped = version ? `as version ${version}` : 'with this batch';
   const why =
     refusal.kind === 'refused'
@@ -184,14 +215,16 @@ export function refusedCloseComment(args: {
             : 'The refusal named no blocking object.'
         } What clears it: ${personClears(refusal)}`
       : `The close failed before it reached a decision: ${refusal.message}. Nothing on this issue refused it, so nothing here is yours to clear: that reason is for whoever operates this Forge to fix.`;
-  const opening = `The release finished and shipped ${shipped}, but this issue could not be closed. ${why}\n\n`;
+  const before =
+    repeats.length > 0
+      ? ` The release${repeats.length === 1 ? '' : 's'} before it (${releasesNamed(repeats)}) could not close it for the same reason either.`
+      : '';
+  const opening = `The release finished and shipped ${shipped}, but this issue could not be closed.${before} ${why}\n\n`;
   if (held) {
     const again = refusal.kind === 'refused' ? 'refused' : 'failed';
     return `${opening}${held} Clear the reason above first, or that close is ${again} again.`;
   }
-  const once =
-    refusal.kind === 'refused' ? 'Once the reason above is cleared' : 'Once that is fixed';
-  return opening + howItCloses(destination, once);
+  return opening + howItCloses(destination, refusal);
 }
 
 export interface RecoverStrandedReleasingOptions {
@@ -244,7 +277,7 @@ export async function recoverStrandedReleasing(
       { runId, claimed: claimed.length, reason: options.reason },
       'release-batch: this run promoted, so its roster stays at `releasing` for a person to settle',
     );
-    await noteOnRoster(claimed, options, promotedNote(runId));
+    await noteOnRoster(runId, claimed, options, promotedNote(runId));
     return {
       claimsCleared: [],
       alreadyClosed,
@@ -266,20 +299,25 @@ export async function recoverStrandedReleasing(
     if (options.comment && author) {
       const refusal = options.refusals?.get(issue.id);
       try {
-        await db.insert(comments).values({
-          issueId: issue.id,
-          authorId: author,
-          body: refusal
-            ? refusedCloseComment({
-                refusal,
-                projectId: issue.projectId,
-                version: options.version ?? null,
-                destination,
-              })
-            : promoted
+        if (refusal) {
+          await sayRefusedClose(runId, issue, author, refusal, options, (repeats) =>
+            refusedCloseComment({
+              refusal,
+              projectId: issue.projectId,
+              version: options.version ?? null,
+              destination,
+              repeats,
+            }),
+          );
+        } else {
+          await db.insert(comments).values({
+            issueId: issue.id,
+            authorId: author,
+            body: promoted
               ? `${options.reason}. ${settledNote(issue.projectId, destination)}`
               : `${options.reason}. The issue is at \`${destination}\` — a person decides whether it goes back to work or into another batch.`,
-        });
+          });
+        }
       } catch (err) {
         logger.warn({ err, issueId: issue.id, runId }, 'release-batch: recovery comment failed');
       }
@@ -384,10 +422,31 @@ function promotedNote(runId: string): (projectId: string) => string {
     `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. No screen settles a promoted roster yet, so settling it is an operator's act. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
+function sayRefusedClose(
+  runId: string,
+  issue: { id: string; projectId: string },
+  authorId: string,
+  refusal: CloseRefusal,
+  options: RecoverStrandedReleasingOptions,
+  body: (repeats: ReadonlyArray<string | null>) => string,
+): Promise<void> {
+  return sayCloseFailure({
+    runId,
+    projectId: issue.projectId,
+    issueId: issue.id,
+    authorId,
+    kind: refusal.kind,
+    reason: closeFailureText(refusal),
+    version: options.version ?? null,
+    body,
+  });
+}
+
 /**
  * Say on each issue what happened, without moving it.
  */
 async function noteOnRoster(
+  runId: string,
   claimed: Array<{ id: string; status: string; projectId: string }>,
   options: RecoverStrandedReleasingOptions,
   note: (projectId: string) => string,
@@ -398,19 +457,24 @@ async function noteOnRoster(
     if (issue.status !== 'releasing') continue;
     const refusal = options.refusals?.get(issue.id);
     try {
-      await db.insert(comments).values({
-        issueId: issue.id,
-        authorId: author,
-        body: refusal
-          ? refusedCloseComment({
-              refusal,
-              projectId: issue.projectId,
-              version: options.version ?? null,
-              destination: 'releasing',
-              held: note(issue.projectId),
-            })
-          : `${options.reason}. ${note(issue.projectId)}`,
-      });
+      if (refusal) {
+        await sayRefusedClose(runId, issue, author, refusal, options, (repeats) =>
+          refusedCloseComment({
+            refusal,
+            projectId: issue.projectId,
+            version: options.version ?? null,
+            destination: 'releasing',
+            held: note(issue.projectId),
+            repeats,
+          }),
+        );
+      } else {
+        await db.insert(comments).values({
+          issueId: issue.id,
+          authorId: author,
+          body: `${options.reason}. ${note(issue.projectId)}`,
+        });
+      }
     } catch (err) {
       logger.warn({ err, issueId: issue.id }, 'release-batch: promotion note failed');
     }

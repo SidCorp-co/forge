@@ -25,6 +25,7 @@ function state(
   over: Partial<ReleaseRoster>,
   claimed: string | null = null,
   closeRefusals: ReleaseRoster["issues"][number]["closeRefusals"] = [],
+  closeFailure: ReleaseRoster["issues"][number]["closeFailure"] = null,
 ) {
   roster.mockReturnValue({
     data: {
@@ -42,6 +43,7 @@ function state(
           waitingDays: 0,
           claimedByRunId: claimed,
           closeRefusals,
+          closeFailure,
         },
       ],
       ...over,
@@ -129,5 +131,32 @@ describe("AwaitingReleaseBanner — an issue a release could not close", () => {
     state({}, null, []);
     renderBanner();
     expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
+  });
+});
+
+// ISS-1381 r4: the last release failed this close on a fault nothing on the issue can clear, and
+// nothing here can read when it is fixed, so Release now stays and says what it will meet.
+describe("AwaitingReleaseBanner — an issue whose last release failed its close", () => {
+  const FAILURE = {
+    reason: 'the database refused the write (23514): violates check constraint "gj_closed_needs_ledger"',
+    version: "0.6.0",
+  };
+
+  it("names the failure and says Release now fails the same way until whoever operates Forge fixes it", () => {
+    state({}, null, [], FAILURE);
+    renderBanner();
+    expect(screen.getByText(/The last release \(version 0\.6\.0\) could not close this issue/)).toBeInTheDocument();
+    expect(screen.getByText(/gj_closed_needs_ledger/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Release now fails the same way until whoever operates Forge fixes it/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
+    expect(screen.queryByText(/not shipped yet/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing of a failure on an issue whose last release met none", () => {
+    state({}, null, [], null);
+    renderBanner();
+    expect(screen.queryByText(/fails the same way/)).not.toBeInTheDocument();
   });
 });

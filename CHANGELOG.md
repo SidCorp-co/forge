@@ -3169,6 +3169,10 @@
   names the database's reason, never the query or values, and only acts the issue's page
   offers: answer the question, then Release now (ISS-1381).
 
+- **Release now says when it would fail again, and is safe to double-click.** A repeat failure
+  updates one comment, the page clears its waiting notice once answered, and a refused press names
+  no internal address (ISS-1381).
+
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
 - **A release held on an unreadable repository says how to fix that first, once.** Commit marks, held releases and Test connection ask for the same write access for the deploy key, and name an unreachable host by its hostname (ISS-1398).

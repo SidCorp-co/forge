@@ -11,6 +11,7 @@ const ENTRY = {
   waitingDays: 2,
   claimedByRunId: null,
   closeRefusals: [],
+  closeFailure: null,
 };
 
 function body(over: Record<string, unknown> = {}) {
@@ -127,6 +128,20 @@ describe("parseReleaseRoster — what a release could not close a row for", () =
   it("reads each refusal a row carries", () => {
     const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, closeRefusals: [REFUSAL] }] }), ENDPOINT);
     expect(parsed.issues[0]?.closeRefusals).toEqual([REFUSAL]);
+  });
+
+  // ISS-1381 r4: a close the last release failed short of a decision, which Release now meets again.
+  it("reads the failure the last release met closing a row", () => {
+    const closeFailure = { reason: "the database refused the write (23514)", version: "1.4.0" };
+    const parsed = parseReleaseRoster(body({ issues: [{ ...ENTRY, closeFailure }] }), ENDPOINT);
+    expect(parsed.issues[0]?.closeFailure).toEqual(closeFailure);
+  });
+
+  it("refuses a row with no closeFailure rather than reading it as one Release now can close", () => {
+    const { closeFailure: _dropped, ...entry } = ENTRY;
+    expect(() => parseReleaseRoster(body({ issues: [entry] }), ENDPOINT)).toThrow(
+      /issues\[0\]\.closeFailure should be an object or null/,
+    );
   });
 
   it("refuses a row with no closeRefusals rather than reading it as closable", () => {

@@ -19,6 +19,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
+import { type CloseFailureRecord, lastCloseFailures } from './close-failures.js';
 import { type CloseShortfall, rosterCloseShortfalls } from './close-shortfall.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
@@ -39,6 +40,12 @@ export interface ReleaseRosterEntry {
    * for no press.
    */
   closeRefusals: Array<Pick<CloseShortfall, 'code' | 'reason' | 'clears'>>;
+  /**
+   * Where the last release to try closing this row failed short of a decision (a database fault):
+   * its reason and that release's version. Release now meets the same failure until whoever
+   * operates Forge fixes it, and nothing here can read when that happens (ISS-1381 r4).
+   */
+  closeFailure: { reason: string; version: string | null } | null;
 }
 
 export interface ReleaseRoster {
@@ -119,10 +126,9 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
 
   const now = Date.now();
   const prefix = await activeIssuePrefix(projectId);
-  const shortfalls = await rosterCloseShortfalls(
-    projectId,
-    rows.filter((r) => r.releaseBatchRunId === null).map((r) => r.id),
-  );
+  const unclaimed = rows.filter((r) => r.releaseBatchRunId === null).map((r) => r.id);
+  const shortfalls = await rosterCloseShortfalls(projectId, unclaimed);
+  const failures = await lastCloseFailures(projectId, unclaimed);
   return {
     gateStatus,
     channels: channels.map((c) => c.provider),
@@ -144,8 +150,16 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
         reason,
         clears,
       })),
+      closeFailure: closeFailureOf(failures.get(r.id)),
     })),
   };
+}
+
+/** Only a failure short of a decision: a refusal is read live, as `closeRefusals`. */
+function closeFailureOf(
+  record: CloseFailureRecord | undefined,
+): ReleaseRosterEntry['closeFailure'] {
+  return record?.kind === 'failed' ? { reason: record.reason, version: record.version } : null;
 }
 
 /** One issue a release run was opened with, as it stands now. */

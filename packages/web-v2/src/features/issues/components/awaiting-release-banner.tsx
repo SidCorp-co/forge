@@ -2,6 +2,7 @@
 
 import { Banner, Button } from "@/design";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
+import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
 
 /**
@@ -42,21 +43,24 @@ export function AwaitingReleaseBanner({
 		);
 	}
 
+	const action = canWrite ? (
+		<Button size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
+			Release now
+		</Button>
+	) : undefined;
+
+	// Nothing here reads when that fault is fixed, so Release now stays and says what it meets (ISS-1381 r4).
+	if (entry.closeFailure) {
+		return (
+			<Banner tone="attention" action={action}>
+				<span className="font-medium">{failedCloseLead(entry.closeFailure, "this issue")}</span>{" "}
+				Release now fails the same way until whoever operates Forge fixes it.
+			</Banner>
+		);
+	}
+
 	return (
-		<Banner
-			tone="info"
-			action={
-				canWrite ? (
-					<Button
-						size="sm"
-						disabled={batch.isPending}
-						onClick={() => batch.mutate({ issueIds: [issueId] })}
-					>
-						Release now
-					</Button>
-				) : undefined
-			}
-		>
+		<Banner tone="info" action={action}>
 			<span className="font-medium">{merged} — not shipped yet.</span>{" "}
 			{data.nextCutAt
 				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`

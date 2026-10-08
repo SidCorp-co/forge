@@ -71,9 +71,38 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('failed before it reached a decision: connection reset');
     expect(said).toContain('nothing here is yours to clear');
     expect(said).toContain('whoever operates this Forge');
-    expect(said).toContain('Once that is fixed');
     expect(said).toContain('shipped with this batch');
     expect(said).not.toMatch(/Closed|the close can be made again/);
+  });
+
+  it('says Release now fails the same way until a failed close is fixed (ISS-1381 r4)', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new Error('connection reset')),
+      projectId: PROJECT,
+      version: '1.4.0',
+      destination: 'awaiting_release',
+    });
+
+    expect(said).toContain('Release now');
+    expect(said).toContain('fails the same way until that failure is fixed');
+    expect(said).not.toContain(
+      'Once that is fixed, the release banner on this page offers Release now',
+    );
+  });
+
+  it('names every earlier release a repeated failure came from, beside the one that shipped (ISS-1381 r4)', () => {
+    const said = refusedCloseComment({
+      refusal: closeRefusalOf(new Error('connection reset')),
+      projectId: PROJECT,
+      version: '1.6.0',
+      destination: 'awaiting_release',
+      repeats: ['1.4.0', null],
+    });
+
+    expect(said).toContain('shipped as version 1.6.0');
+    expect(said).toContain('version 1.4.0');
+    expect(said).toContain('one with no version');
+    expect(said).toContain('for the same reason');
   });
 
   it('says so where a refusal names no blocking object', () => {
@@ -271,7 +300,7 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     );
   }
 
-  it('names a rule whole beside the reason where the seal cut a bound value out of its name', () => {
+  it('names a rule once, whole, in the integrity message where the seal cut a bound value out of it (ISS-1381 r4)', () => {
     const failed = sealedClose(
       'new row for relation "issues" violates check constraint "gj_closed_needs_ledger"',
       { code: '23514', constraint_name: 'gj_closed_needs_ledger', table_name: 'issues' },
@@ -285,12 +314,29 @@ describe('a database reason a person reads, with the seal’s cuts put back wher
     });
 
     for (const text of [said, closeFailureText(refusal)]) {
-      expect(text).toContain('(the database names constraint "gj_closed_needs_ledger")');
+      expect(text).toContain('violates check constraint "gj_closed_needs_ledger"');
+      expect(text.match(/gj_/g)).toHaveLength(1);
+      expect(text).not.toContain('the database names');
+      expect(text).not.toContain('withheld');
       expect(text).toContain('23514');
       for (const leaked of ['[Redacted]', ISSUE, 'releasing', 'update "issues"', 'Failed query']) {
         expect(text).not.toContain(leaked);
       }
     }
+  });
+
+  it('names the rule beside the message where the cut stands twice in an integrity message', () => {
+    const failed = sealedClose(
+      'constraint "x_closed_rule" and constraint "x_releasing_rule" both refused the row',
+      { code: '23514', constraint_name: 'x_closed_rule' },
+    );
+
+    const text = closeFailureText(closeRefusalOf(failed));
+    const [inMessage, beside] = text.split(' (the database names ');
+
+    expect(inMessage?.match(/"x_\(a value of this write, withheld\)_rule"/g)).toHaveLength(2);
+    expect(beside).toBe('constraint "x_closed_rule")');
+    expect(text).not.toContain('x_releasing_rule');
   });
 
   it('keeps a rule withheld whose whole name is a bound value', () => {

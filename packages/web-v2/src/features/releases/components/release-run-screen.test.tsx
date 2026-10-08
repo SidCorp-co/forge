@@ -355,7 +355,7 @@ describe("the run screen, read by the person who pressed (ISS-1323 r2)", () => {
 				releaseRunnerLabel: null,
 				baseBranch: "main",
 				nextCutAt: null,
-				issues: [{ id: "g-5", displayId: "ISS-5", title: "At the gate now", mergedAt: null, waitingDays: null, claimedByRunId: null, closeRefusals: [] }],
+				issues: [{ id: "g-5", displayId: "ISS-5", title: "At the gate now", mergedAt: null, waitingDays: null, claimedByRunId: null, closeRefusals: [], closeFailure: null }],
 			} as ReleaseRunState["roster"],
 			runIssues: [{ id: "r-1", displayId: "ISS-1", title: "Opened with the run", status: "releasing" }],
 		});
