@@ -1038,6 +1038,7 @@
     "shares": {
       "kind": "domain",
       "context": "operations",
+      "owns": ["shareLinks"],
       "serves": ["REQ-32"]
     },
     "skills": {
@@ -1300,6 +1301,9 @@
     },
     "settings": {
       "serves": ["REQ-27"]
+    },
+    "shares": {
+      "serves": ["REQ-32"]
     },
     "shell": {
       "serves": ["REQ-12"]

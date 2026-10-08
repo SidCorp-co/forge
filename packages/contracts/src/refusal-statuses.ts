@@ -22,6 +22,7 @@ import type { RefusalStatus } from "./refusal.js";
 import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
 import { REPORT_REFUSAL_STATUSES } from "./report-queries.js";
 import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
+import { SHARE_REFUSAL_STATUSES } from "./shares.js";
 import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
 import { STATUS_REPORT_REFUSAL_STATUSES } from "./status-reports.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
@@ -55,6 +56,7 @@ const DECLARED: ReadonlyArray<
 	RELEASE_REFUSAL_STATUSES,
 	REPORT_REFUSAL_STATUSES,
 	REQUIREMENT_REFUSAL_STATUSES,
+	SHARE_REFUSAL_STATUSES,
 	STATE_MACHINE_REFUSAL_STATUSES,
 	STATUS_REPORT_REFUSAL_STATUSES,
 	SUGGESTION_REFUSAL_STATUSES,

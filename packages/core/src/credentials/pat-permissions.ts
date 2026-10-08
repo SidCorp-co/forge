@@ -164,6 +164,8 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/integrations/github':
     'a browser redirect GitHub sends back after an install, carrying the session that started it',
   '/api/uploads': 'ticket-authenticated: the single-use ticket in the path is the credential',
+  '/api/shares':
+    "a share is opened by the token in the request body, by anyone for a link share and by a signed-in member's session for a members share; a personal or agent token never opens one",
   '/api/webhooks': 'signed by the sender: the HMAC over the body is the credential',
   '/api/devices/me': DEVICE,
   '/api/devices/heartbeat': DEVICE,
