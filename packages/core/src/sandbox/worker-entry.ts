@@ -15,6 +15,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import variant from '@jitl/quickjs-wasmfile-release-sync';
 import {
+  type CustomizeVariantOptions,
   newQuickJSWASMModuleFromVariant,
   newVariant,
   type QuickJSContext,
@@ -23,10 +24,15 @@ import {
 } from 'quickjs-emscripten-core';
 import type { ReadAnswer, ScriptNotice, ScriptStop, WorkerDone, WorkerStart } from './protocol.js';
 
-// core's TypeScript libs declare WebAssembly's types but not its runtime value, which Node has
+// core's TypeScript libs do not declare WebAssembly.Memory, which Node has; its type is the engine's option
 const WasmMemory = (
   globalThis as unknown as {
-    WebAssembly: { Memory: new (d: { initial: number; maximum: number }) => WebAssembly.Memory };
+    WebAssembly: {
+      Memory: new (d: {
+        initial: number;
+        maximum: number;
+      }) => NonNullable<CustomizeVariantOptions['wasmMemory']>;
+    };
   }
 ).WebAssembly.Memory;
 
