@@ -118,13 +118,23 @@ describe("the Issues strip", () => {
     expect(capturedOpts?.filter).toBe("all");
   });
 
-  it("drops a Finished outcome cut when another segment is chosen, so it cannot empty that list", () => {
+  // The counts are narrowed by the status in the link, so a segment that kept reading its count
+  // after choosing it would have to keep the status too: the figure is the list it opens.
+  it("keeps a status filter when another segment is chosen, so the count the segment printed is the list it opens", () => {
     mountAt("?filter=finished&status=closed");
     expect(capturedOpts?.status).toEqual(["closed"]);
     fireEvent.click(segment(WORK_STATE_LABELS.in_flight).button);
     const params = new URLSearchParams(window.location.search);
     expect(params.get("filter")).toBe("in_flight");
-    expect(params.has("status")).toBe(false);
+    expect(params.get("status")).toBe("closed");
+  });
+
+  it("keeps a status filter when All is chosen", () => {
+    mountAt("?filter=in_flight&status=in_progress");
+    fireEvent.click(segment("All").button);
+    const params = new URLSearchParams(window.location.search);
+    expect(params.has("filter")).toBe(false);
+    expect(params.get("status")).toBe("in_progress");
   });
 
   it("moves the list to a state when its segment is chosen", () => {

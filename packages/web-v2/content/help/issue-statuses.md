@@ -31,7 +31,7 @@ and the dashboard chart draws a row for every state that has an issue in it.
 The **Source** filter beside the tabs narrows the list, and every count on the
 tabs, to issues a person filed or issues a detector filed. A link that names a
 status narrows them the same way, and the Issues list says so above the list with
-a way to clear it.
+a way to clear it; choosing another tab keeps it, so a tab's count is the list it opens.
 
 The **Board** tab draws the four open states, one group of columns for each, in
 the order of the table above. It leaves out Draft and Finished, and says so above

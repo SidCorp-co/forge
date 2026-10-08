@@ -33,6 +33,34 @@ const STATE_THEN_STATUSES = new RegExp(
   'gu',
 );
 
+// A layout none of the patterns above reads still has to name the statuses it files and the words of
+// the states it files them under, so a file holding most of the first and the states no status shares
+// a spelling with is a second map however it is arranged: grouped `case` labels, a list walked by a
+// loop, a table built from two arrays.
+const STATE_WORDS_NO_STATUS_SHARES = WORK_STATES.filter(
+  (w) => !(issueStatuses as readonly string[]).includes(w),
+);
+const STATUS_NAMED = new RegExp(
+  `${QUOTED(STATUS_ALTERNATION)}|\\b(${STATUS_ALTERNATION})\\s*:`,
+  'gu',
+);
+
+function statusesNamed(text: string): Set<string> {
+  const seen = new Set<string>();
+  for (const m of text.matchAll(STATUS_NAMED)) {
+    const status = m[1] ?? m[2];
+    if (status) seen.add(status);
+  }
+  return seen;
+}
+
+function namesTheStateWords(text: string): boolean {
+  const named = STATE_WORDS_NO_STATUS_SHARES.filter((w) =>
+    new RegExp(`(?:['"\`]${w}['"\`]|\\b${w}\\b\\s*:)`, 'u').test(text),
+  );
+  return named.length >= 2;
+}
+
 /** How many distinct statuses `text` files under a work state, in whatever layout the map is written. */
 function statusesFiledUnderStates(text: string): number {
   const seen = new Set<string>();
@@ -42,6 +70,10 @@ function statusesFiledUnderStates(text: string): number {
   }
   for (const m of text.matchAll(STATE_THEN_STATUSES)) {
     for (const s of (m[1] ?? '').matchAll(STATUS_LITERAL)) if (s[1]) seen.add(s[1]);
+  }
+  const named = statusesNamed(text);
+  if (named.size >= MAJORITY && namesTheStateWords(text)) {
+    for (const status of named) seen.add(status);
   }
   return seen.size;
 }
@@ -81,6 +113,16 @@ describe('the scanner', () => {
     'a Map of tuples': `new Map([${pairs.map(([s, w]) => `['${s}', '${w}']`).join(', ')}])`,
     'a switch': pairs.map(([s, w]) => `case '${s}': return '${w}';`).join('\n'),
     'an entry split across lines': pairs.map(([s, w]) => `  '${s}':\n    '${w}',`).join('\n'),
+    'grouped switch cases': WORK_STATES.map(
+      (w) =>
+        `${pairs
+          .filter(([, x]) => x === w)
+          .map(([s]) => `case '${s}':`)
+          .join(' ')} return '${w}';`,
+    ).join('\n'),
+    'a table built from two arrays walked by a loop': `const FROM = [${pairs
+      .map(([s]) => `'${s}'`)
+      .join(', ')}];\nconst TO = [${pairs.map(([, w]) => `'${w}'`).join(', ')}];`,
     'a map written state first': WORK_STATES.map(
       (w) =>
         `  ${w}: [${pairs

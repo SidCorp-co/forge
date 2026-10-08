@@ -413,9 +413,7 @@ export function IssuesListView({
             stableCountWidth
             options={tabs}
             value={filter}
-            onChange={(v) =>
-              setParams({ filter: v !== "all" ? v : "", status: "", page: "" })
-            }
+            onChange={(v) => setParams({ filter: v !== "all" ? v : "", page: "" })}
           />
         </div>
         <Button

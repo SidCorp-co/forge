@@ -262,6 +262,22 @@ describe('the same project, counted by every endpoint that counts it', () => {
     );
   });
 
+  it('lists under each state exactly as many issues as its count said, under a status filter too', async () => {
+    await seedEveryStatus();
+    for (const filter of [
+      '',
+      '&status=in_progress',
+      '&status=closed&status=dropped',
+      '&statusNot=open',
+    ]) {
+      const counted = (await search(`withBuckets=1&limit=1${filter}`)).buckets?.byWorkState;
+      for (const state of WORK_STATES) {
+        const listed = await search(`limit=1&workState=${state}${filter}`);
+        expect([filter, state, listed.total]).toEqual([filter, state, counted?.[state]]);
+      }
+    }
+  });
+
   it('counts every state as zero under a module that does not exist, and still sends the counts', async () => {
     await seedEveryStatus();
     const body = await search('withBuckets=1&limit=1&module=no-such-module');
