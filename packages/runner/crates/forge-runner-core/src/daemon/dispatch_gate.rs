@@ -13,7 +13,7 @@
 //!
 //! The subject is a dispatch to a role this box's plugin copy actually ships,
 //! and that is a definition rather than an approximation:
-//! `assets/forge-master-skill.md` says a run IS "a subagent dispatched through
+//! `assets/skills/forge-master/SKILL.md` says a run IS "a subagent dispatched through
 //! a shipped role". A master that hands real work through some other
 //! `subagent_type` is outside this gate's reach, which is said out loud here
 //! rather than absorbed.

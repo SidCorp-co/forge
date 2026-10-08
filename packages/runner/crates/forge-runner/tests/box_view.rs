@@ -292,6 +292,22 @@ fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("SKILL.md"), body).unwrap();
     }
+    // The skill is a directory: every other file it ships is part of "the asset of the binary".
+    // Beta holds each as a run of the daemon's own bytes, alpha holds none, and its entry file
+    // already differs.
+    for (i, shipped) in forge_runner_core::daemon::master_skill::FILES
+        .iter()
+        .filter(|f| f.path != "SKILL.md")
+        .enumerate()
+    {
+        let at = shipped
+            .path
+            .split('/')
+            .fold(repo_b.join(".claude/skills/forge-master"), |p, c| p.join(c));
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        let from = 5120 + i * 600;
+        std::fs::write(at, &exe[from..from + 500]).unwrap();
+    }
 
     // The forge CLI's records: alpha's names another project, beta has none.
     let cli = root.join("c/forge/projects/alpha");

@@ -1,7 +1,7 @@
 # The master skill names no verb map, because the guide it would point at does not exist yet
 
 ISS-1274 asked for two things in
-`packages/runner/crates/forge-runner-core/assets/forge-master-skill.md`, the default skill every
+`packages/runner/crates/forge-runner-core/assets/skills/forge-master/SKILL.md`, the default skill every
 master reads when its project has set no `master-policy`. One of them landed: the paragraph saying
 an idle pane while admissible work stands is a deviation the master owes a reason for. This page is
 about the other one, which did not land, and about the cleanup the issue gave to whoever lands the
