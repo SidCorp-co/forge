@@ -201,6 +201,17 @@ function assertToolDeclaresReach(tool: GrantedTool): void {
   }
 }
 
+/**
+ * The grant one call of `tool` declares: the entry for the action it names, or undefined where the
+ * tool declares none for that action. A chat's write rule reads it to tell a read from a write.
+ */
+export function toolGrantFor(
+  tool: GrantedTool,
+  args: Record<string, unknown>,
+): ToolGrantEntry | undefined {
+  return pick(tool.grant, calledAction(tool, args));
+}
+
 /** The work a call does beyond any one project, or null where it stays inside one. */
 export function toolAccountWork(tool: GrantedTool, args: Record<string, unknown>): string | null {
   const entry = pick(tool.reach, calledAction(tool, args));

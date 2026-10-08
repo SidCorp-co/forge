@@ -41,7 +41,10 @@ vi.mock('./store.js', () => ({
   },
 }));
 
-const { holdChatRestWrite } = await import('./rest-hold.js');
+const { admitChatRestWrite, holdChatRestWrite, refuseChatToolWrite } = await import(
+  './rest-hold.js'
+);
+const SESSION = '5e55a0a0-0000-4000-8000-000000000001';
 
 const app = new Hono();
 app.post('/api/projects/:id/feedback', async (c) => {
@@ -75,7 +78,7 @@ beforeEach(() => {
 
 describe("an Agent-mode session's record write waits for the person", () => {
   it('is held with its method, path and bytes, and the session is told only the press writes it', async () => {
-    door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
       turn: {
@@ -108,20 +111,20 @@ describe("an Agent-mode session's record write waits for the person", () => {
   });
 
   it('is refused when its session is gone, since nobody is left to agree', async () => {
-    door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = { found: false };
     expect((await codeOf(await post()))?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(held).toEqual([]);
   });
 
   it('passes a session that answers no room: the Agents screen and an escalation show no card', async () => {
-    door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = { found: true, turn: null, marked: false };
     expect(await (await post()).text()).toBe('written');
   });
 
   it('refuses a session marked as answering a room it cannot name, rather than passing it', async () => {
-    door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = { found: true, turn: null, marked: true };
     const refusal = await codeOf(await post());
     expect(refusal?.code).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
@@ -133,7 +136,7 @@ describe("an Agent-mode session's record write waits for the person", () => {
 describe("a write the person's role could not make is refused for that, not held", () => {
   it("refuses a viewer's session by the permission it lacks, and holds nothing", async () => {
     role = 'viewer';
-    door = { door: 'box-session', tokenId: 't', sessionId: 's-1' };
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
     session = {
       found: true,
       turn: {
@@ -178,5 +181,73 @@ describe('the other credentials', () => {
     scope = { tokenId: 't' };
     door = null;
     expect(await (await post()).text()).toBe('written');
+  });
+});
+
+describe('a write no route hold names meets the default: refused by name, unless a list passes it', () => {
+  const admit = new Hono();
+  admit.post('/api/projects/:id/:what', async (c) => {
+    try {
+      await admitChatRestWrite(c, {
+        method: 'POST',
+        route: `/api/projects/:id/${c.req.param('what')}`,
+        heldAs: null,
+      });
+    } catch (err) {
+      if (err instanceof RefusalError) return c.json({ refusals: err.refusals }, 403);
+      throw err;
+    }
+    return c.text('written');
+  });
+  const send = (what: string) => admit.request(`/api/projects/p/${what}`, { method: 'POST' });
+
+  it('refuses a room session a write route nobody named, by name', async () => {
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
+    session = {
+      found: true,
+      turn: { projectId: 'p', conversationId: 'c', asker: { userId: 'u' } },
+    };
+    const r = await send('labels');
+    expect(r.status).toBe(403);
+    const refusal = await codeOf(r);
+    expect(refusal?.code).toBe('CHAT_WRITE_REFUSED');
+    expect(refusal?.detail).toContain('nothing was written');
+  });
+
+  it('refuses the assistant turn token too, and passes a search sent as a POST', async () => {
+    door = { door: 'assistant-turn', tokenId: 't' };
+    expect((await send('labels')).status).toBe(403);
+    expect(await (await send('contract-context')).text()).toBe('written');
+  });
+
+  it('passes a session answering no room, as ruled, and any credential that is no chat', async () => {
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
+    session = { found: true, turn: null, marked: false };
+    expect(await (await send('labels')).text()).toBe('written');
+    door = null;
+    expect(await (await send('labels')).text()).toBe('written');
+  });
+
+  it('lets an agreement token write only while its proposal is being written', async () => {
+    door = { door: 'agreement', tokenId: 't', proposalId: 'p-1' };
+    expect(await (await send('labels')).text()).toBe('written');
+    proposalStatus = 'recorded';
+    expect((await codeOf(await send('labels')))?.code).toBe('CHAT_AGREEMENT_SPENT');
+  });
+
+  it('refuses a chat credential a write tool over /mcp, and lets a read through', async () => {
+    door = { door: 'box-session', tokenId: 't', sessionId: SESSION };
+    session = {
+      found: true,
+      turn: { projectId: 'p', conversationId: 'c', asker: { userId: 'u' } },
+    };
+    expect(
+      await refuseChatToolWrite('forge_channel', { action: 'draft' }, 'projects:write'),
+    ).toContain('CHAT_WRITE_REFUSED');
+    expect(await refuseChatToolWrite('forge_uploads', {}, 'issues:read')).toBeNull();
+    door = null;
+    expect(
+      await refuseChatToolWrite('forge_channel', { action: 'draft' }, 'projects:write'),
+    ).toBeNull();
   });
 });

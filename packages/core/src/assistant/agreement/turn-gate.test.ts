@@ -4,6 +4,7 @@
 // write itself (`tests/integration/chat-agreement-e2e.test.ts`).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ToolGrantEntry } from '../../lib/tool.js';
 
 const held: { id: string; kind: string; call: { name: string; arguments: string } }[] = [];
 const restated: { id: string; args: string }[] = [];
@@ -61,6 +62,17 @@ const inner = {
     writes.push(name);
     return { content: [{ type: 'text' as const, text: `{"ran":"${name}"}` }] };
   },
+  // the grant each tool declares, as `mcp-adapter.ts:buildToolset` reports it; a name absent here is
+  // a tool that declares none, as a hand-built toolset's are
+  grantOf: (name: string) => GRANTS[name] ?? null,
+};
+const GRANTS: Record<string, ToolGrantEntry> = {
+  forge_requirements: 'projects:read',
+  forge_requirement_draft: 'projects:write',
+  forge_feedback: 'projects:write',
+  forge_channel: 'projects:write',
+  forge_show: 'assistant:write',
+  forge: { none: 'it runs the forge CLI under the turn token' },
 };
 
 const turn = {
@@ -222,5 +234,48 @@ describe("a write the person's role could not make is refused for that, not held
     );
     expect(text(r)).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
     expect(held.map((h) => h.kind)).toEqual(['preferences']);
+  });
+});
+
+describe('every write is held or refused by default: one rule, not a list of held tools (ISS-439 round 3)', () => {
+  it("refuses a write no card carries by name, before the tool runs (the judge's forge_channel draft)", async () => {
+    const gate = await agreementGate(inner, turn);
+    const r = await gate.tools.execute(
+      'forge_channel',
+      JSON.stringify({ action: 'draft', type: 'change-notice', subject: 'x' }),
+    );
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('CHAT_WRITE_REFUSED');
+    expect(text(r)).toContain('channel document');
+    expect(writes).toEqual([]);
+    expect(held).toEqual([]);
+  });
+
+  it('refuses a tool added later that declares no grant and no list names, never letting it write', async () => {
+    const gate = await agreementGate(inner, turn);
+    const r = await gate.tools.execute('forge_new_writer', JSON.stringify({ title: 'x' }));
+    expect(text(r)).toContain('CHAT_WRITE_REFUSED');
+    expect(text(r)).toContain('write no list names');
+    expect(writes).toEqual([]);
+  });
+
+  it('refuses a tool whose declared grant is a write that no hold and no list names', async () => {
+    GRANTS.forge_brand_new = 'projects:write';
+    try {
+      const gate = await agreementGate(inner, turn);
+      const r = await gate.tools.execute('forge_brand_new', '{}');
+      expect(text(r)).toContain('CHAT_WRITE_REFUSED');
+      expect(writes).toEqual([]);
+    } finally {
+      delete GRANTS.forge_brand_new;
+    }
+  });
+
+  it('lets through a call the one list names as not a business write: a block drawn into the room, a UI move', async () => {
+    const gate = await agreementGate(inner, turn);
+    await gate.tools.execute('forge_show', JSON.stringify({ block: { kind: 'kpi' } }));
+    await gate.tools.execute('ui_navigate', JSON.stringify({ to: '/projects/forge' }));
+    expect(writes).toEqual(['forge_show', 'ui_navigate']);
+    expect(held).toEqual([]);
   });
 });

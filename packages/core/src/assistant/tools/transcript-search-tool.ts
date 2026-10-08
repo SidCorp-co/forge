@@ -12,7 +12,7 @@ import { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from '../../conve
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { type ChatToolset, toolError } from './mcp-adapter.js';
 
-const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
+export const TRANSCRIPT_SEARCH_TOOL_NAME = 'conversation_transcript_search';
 /** Calls one turn may spend on it. */
 const SEARCH_MAX_CALLS_PER_TURN = 3;
 /** Characters of a query this reads; a longer one is refused rather than silently cut. */

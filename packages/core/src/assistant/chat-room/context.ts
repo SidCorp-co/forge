@@ -17,6 +17,7 @@ import {
 import type { CallToolResult } from '../../lib/tool-result.js';
 import { type ChatToolset, toolError } from '../tools/mcp-adapter.js';
 
+export const HISTORY_TOOL_NAME = 'rocketchat_history';
 const SEED_MESSAGE_COUNT = 20;
 const HISTORY_MAX_PER_CALL = 50;
 const HISTORY_MAX_CALLS_PER_TURN = 3;
@@ -143,7 +144,7 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
   const tool: ChatTool = {
     type: 'function',
     function: {
-      name: 'rocketchat_history',
+      name: HISTORY_TOOL_NAME,
       description: `Page back through older messages in THIS Rocket.Chat room (the recent messages are already in your context). Use when the discussion references older matter before concluding. Returns up to ${HISTORY_MAX_PER_CALL} messages oldest-first; pass "before" (an ISO timestamp, e.g. the oldest you have seen) to go further back. Max ${HISTORY_MAX_CALLS_PER_TURN} calls per turn.`,
       parameters: {
         type: 'object',
@@ -163,7 +164,7 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
 
   let calls = 0;
   async function execute(name: string, argsJson: string): Promise<CallToolResult> {
-    if (name !== 'rocketchat_history') return toolError(`unknown tool "${name}"`);
+    if (name !== HISTORY_TOOL_NAME) return toolError(`unknown tool "${name}"`);
     calls += 1;
     if (calls > HISTORY_MAX_CALLS_PER_TURN) {
       return toolError(
@@ -208,7 +209,7 @@ function readToolArgs<T extends object>(argsJson: string): { args: T } | { error
 }
 
 /** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
-const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
+export const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
 const QUOTE_TARGETS_PER_TURN = 2;
 const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
 const QUOTE_MESSAGES_PER_TURN = 10;

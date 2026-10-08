@@ -6,12 +6,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import {
+  admitChatRestWrite,
   agreedRecordsIn,
   composeLayers,
   holdChatRestWrite,
   METHOD_LAYERS,
   provideAgreementReplay,
   provideChatTools,
+  refuseChatToolWrite,
   registerRoomBridges,
   registerRoomChat,
   registerWebConversationAdapter,
@@ -289,7 +291,11 @@ export const app = new Hono<{ Variables: RequestIdVars }>();
 
 // a chat write to a record route waits for the person to agree, and the agreed write is replayed
 // through this app as them (REQ-30 BC-4)
-provideChatWriteHold(holdChatRestWrite);
+provideChatWriteHold({
+  hold: holdChatRestWrite,
+  admit: admitChatRestWrite,
+  tool: refuseChatToolWrite,
+});
 provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 
 let corsOrigins: string[] | undefined;

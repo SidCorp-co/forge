@@ -3,7 +3,13 @@
 // design the record relates to).
 
 import { describe, expect, it } from 'vitest';
-import { kindOfToolCall, recordRefOf, summaryOfRest, summaryOfToolCall } from './summary.js';
+import {
+  imagesLine,
+  kindOfToolCall,
+  recordRefOf,
+  summaryOfRest,
+  summaryOfToolCall,
+} from './summary.js';
 
 const card = (name: string, args: unknown) => {
   const json = JSON.stringify(args);
@@ -196,5 +202,58 @@ describe('the key a write answered with', () => {
         revisions: [{ revision: 1 }, { revision: 2 }],
       }),
     ).toBe('REQ-4 r2');
+  });
+});
+
+describe('the card shows everything the press writes (ISS-439 round 3, criterion 13)', () => {
+  it("a forge comment's heading, above its body (the judge's --title probe)", () => {
+    const shown = card('forge', {
+      argv: ['comment', 'ISS-1', '-', '--title', 'Approved by the owner'],
+      body: 'Looks fine.',
+    });
+    expect(shown).toEqual({
+      title: 'Comment on ISS-1',
+      lines: ['--title Approved by the owner', 'Looks fine.'],
+      relates: ['ISS-1'],
+    });
+  });
+
+  it('a comment typed as a word, and an attachment with its flags', () => {
+    expect(card('forge', { argv: ['comment', 'ISS-1', 'Seen again'] }).lines).toEqual([
+      'Seen again',
+    ]);
+    expect(
+      card('forge', { argv: ['attach', 'issue', 'ISS-1', '/tmp/a.png', '--name', 'shot'] }).lines,
+    ).toEqual(['a.png', '--name shot']);
+  });
+
+  it('the images a Feedback item attaches on the press, by name', () => {
+    const args = JSON.stringify({ kind: 'bug', title: 'x' });
+    expect(imagesLine('feedback', 'forge_feedback', args, ['a.png', 'b.png'])).toBe(
+      'Attaches the 2 images sent with this message: a.png, b.png',
+    );
+    expect(imagesLine('feedback', 'forge_feedback', args, [])).toBeNull();
+  });
+
+  it('the images a comment attaches after it lands, and none for a comment with no body file', () => {
+    const withBody = JSON.stringify({ argv: ['comment', 'ISS-1', '-'], body: 'Seen.' });
+    expect(imagesLine('comment', 'forge', withBody, ['a.png'])).toBe(
+      'Then attaches to ISS-1 the 1 image sent with this message: a.png',
+    );
+    const typed = JSON.stringify({ argv: ['comment', 'ISS-1', 'Seen'] });
+    expect(imagesLine('comment', 'forge', typed, ['a.png'])).toBeNull();
+    expect(imagesLine('memory_note', 'forge_memory_note', '{}', ['a.png'])).toBeNull();
+  });
+
+  it("an Agent session's status move: the status it moves to", () => {
+    const shown = summaryOfRest({
+      kind: 'issue_change',
+      method: 'POST',
+      path: '/api/issues/ISS-4/transition',
+      body: { toStatus: 'open', reason: 'asked in chat' },
+      attachmentName: null,
+    });
+    expect(shown.title).toBe('Move ISS-4 to open');
+    expect(shown.lines).toEqual(['reason: asked in chat']);
   });
 });

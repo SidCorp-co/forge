@@ -10,6 +10,10 @@ vi.mock('../requirements/index.js', () => ({
     return null;
   },
   rowIn: async () => ({ id: 'r1', reqSeq: 1 }),
+  // an agreed requirement with no open revision: the accept proposes a new one (a draft's open
+  // revision is rewritten in place instead, REQ-30 BC-3)
+  openRevisionOf: async () => null,
+  rewriteRevisionIn: vi.fn(),
 }));
 vi.mock('../lifecycle/index.js', () => ({ transition: async () => [] }));
 

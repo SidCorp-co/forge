@@ -158,13 +158,20 @@ function cliSummary(kind: ChatProposalKind, args: Args): ChatProposalSummary {
   const bodyLines = body ? [oneLine(body)] : [];
   if (kind === 'comment') {
     const target = argv[1] ?? 'an issue';
-    return { title: `Comment on ${target}`, lines: bodyLines, relates: [target] };
+    // every word after the target is shown but the `-` the body is substituted at: a heading
+    // (`--title`), a reply's thread, an intent, or a body typed as a positional word
+    const flags = flagLines(argv.slice(2).filter((a) => a !== '-'));
+    return { title: `Comment on ${target}`, lines: [...flags, ...bodyLines], relates: [target] };
   }
   if (kind === 'attachment') {
     const rest = argv.slice(1);
     const target = rest[0] === 'issue' ? (rest[1] ?? 'an issue') : (rest[0] ?? 'an issue');
-    const files = rest.slice(rest[0] === 'issue' ? 2 : 1).map((p) => p.split('/').pop() ?? p);
-    return { title: `Attach to ${target}`, lines: files, relates: [target] };
+    const words = rest.slice(rest[0] === 'issue' ? 2 : 1);
+    const firstFlag = words.findIndex((w) => w.startsWith('--'));
+    const paths = firstFlag < 0 ? words : words.slice(0, firstFlag);
+    const files = paths.map((p) => p.split('/').pop() ?? p);
+    const flags = firstFlag < 0 ? [] : flagLines(words.slice(firstFlag));
+    return { title: `Attach to ${target}`, lines: [...files, ...flags], relates: [target] };
   }
   if (kind === 'project_change') {
     if (argv[1] === 'new') {
@@ -187,6 +194,28 @@ function cliSummary(kind: ChatProposalKind, args: Args): ChatProposalSummary {
     lines: [...flagLines(argv.slice(2)), ...bodyLines],
     relates: [target],
   };
+}
+
+/**
+ * The line a card adds for the images the person sent with this message, where the held call
+ * attaches them on the press: a Feedback item carries every one (`feedback/tool.ts`), and a
+ * `forge comment … -` is followed by an attach of those within its caps (`tools/turn-images.ts`).
+ * `attached` is what the press will attach, in order; null where the call attaches none.
+ */
+export function imagesLine(
+  kind: ChatProposalKind,
+  name: string,
+  argsJson: string,
+  attached: readonly string[],
+): string | null {
+  if (attached.length === 0) return null;
+  const files = `${attached.length} image${attached.length === 1 ? '' : 's'} sent with this message: ${attached.join(', ')}`;
+  if (kind === 'feedback') return `Attaches the ${files}`;
+  const argv = argvOf(parsed(argsJson));
+  if (kind === 'comment' && name === 'forge' && argv.includes('-')) {
+    return `Then attaches to ${argv[1] ?? 'the issue'} the ${files}`;
+  }
+  return null;
 }
 
 /** What an Assistant write tool call would record. */
@@ -274,6 +303,13 @@ function issueChangeSummary(method: string, path: string, body: Args): ChatPropo
           : `Change the links of ${target}`,
       lines: restLines(body, []),
       relates: [target, ...(str(body.dependsOnId) ? [str(body.dependsOnId) as string] : [])],
+    };
+  }
+  if (/\/transition(?:\?|$)/.test(path)) {
+    return {
+      title: `Move ${target} to ${str(body.toStatus) ?? 'another status'}`,
+      lines: restLines(body, ['toStatus']),
+      relates: [target],
     };
   }
   return {

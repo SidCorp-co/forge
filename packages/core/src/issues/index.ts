@@ -67,7 +67,7 @@ export {
   dispatchOrderSql,
   dispatchPriorityRank,
 } from './dispatch-order.js';
-export { issueDisplayIds } from './display-ids.js';
+export { issueDisplayIds, issueKeysAndTitles } from './display-ids.js';
 export { registerIssueMoveReactions } from './drop-unblock.js';
 export {
   fileDetectedIssue,

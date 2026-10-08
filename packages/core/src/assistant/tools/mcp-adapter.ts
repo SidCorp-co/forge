@@ -15,9 +15,10 @@ import {
   type McpTool,
   patEffectiveProjectIds,
   refusedAnswer,
+  type ToolGrantEntry,
 } from '../../lib/tool.js';
 import { toolCallRefusal } from '../../lib/tool-call-guard.js';
-import { assertToolDeclaresAccess } from '../../lib/tool-grant.js';
+import { assertToolDeclaresAccess, toolGrantFor } from '../../lib/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../lib/tool-result.js';
 
 /** One entry in the chat tool allowlist. */
@@ -40,6 +41,21 @@ export interface ChatToolset {
   execute(name: string, argsJson: string): Promise<CallToolResult>;
   /** The user a call to this tool runs as, recorded on its audit row; null for a tool that acts as nobody. */
   ranAs(name: string): string | null;
+  /**
+   * The grant one call declares (its tool's permission for the action it names), which tells a read
+   * from a write for the chat's write rule (`agreement/write-rule.ts`). A toolset that declares none
+   * leaves it out, and each of its calls is then a write unless the rule names it.
+   */
+  grantOf?(name: string, argsJson: string): ToolGrantEntry | null;
+}
+
+function parsedArgs(argsJson: string): Record<string, unknown> {
+  try {
+    const v = argsJson.trim() ? (JSON.parse(argsJson) as unknown) : {};
+    return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 /** OpenAI function names: `[A-Za-z0-9_-]{1,64}`. MCP names may contain dots. */
@@ -154,7 +170,11 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     if (!entry) return Promise.resolve(toolError(`unknown tool "${name}"`));
     return callTool(ctx, entry, argsJson);
   };
-  return { tools, execute, ranAs: () => ctx.principal.userId };
+  const grantOf = (name: string, argsJson: string): ToolGrantEntry | null => {
+    const entry = bySanitized.get(name);
+    return entry ? (toolGrantFor(entry.tool, parsedArgs(argsJson)) ?? null) : null;
+  };
+  return { tools, execute, ranAs: () => ctx.principal.userId, grantOf };
 }
 
 /** One call, through the token's grant, the chat's action allow-list and the spec's own guard. */
@@ -226,5 +246,6 @@ export function mergeToolsets(...sets: ChatToolset[]): ChatToolset {
       return set ? set.execute(name, argsJson) : toolError(`unknown tool "${name}"`);
     },
     ranAs: (name) => owner.get(name)?.ranAs(name) ?? null,
+    grantOf: (name, argsJson) => owner.get(name)?.grantOf?.(name, argsJson) ?? null,
   };
 }

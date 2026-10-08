@@ -346,12 +346,6 @@ describe("every write a turn makes is held to the asker's own role", () => {
     ],
     ['a comment', 'POST', `/api/issues/${ids.homeIssue}/comments`, { body: 'A viewer comments.' }],
     ['an issue field', 'PATCH', `/api/issues/${ids.homeIssue}`, { priority: 'high' }],
-    [
-      'a knowledge entry',
-      'PUT',
-      `/api/projects/${ids.home}/knowledge/viewer-note`,
-      { title: 'Viewer note', body: 'A viewer writes.' },
-    ],
   ];
 
   for (const mode of MODES) {
@@ -373,6 +367,21 @@ describe("every write a turn makes is held to the asker's own role", () => {
       expect(issue.comments ?? []).toHaveLength(0);
     });
   }
+
+  // a knowledge entry reaches every prompt, so no card carries it: a chat is refused it by name
+  // whatever the asker's role (REQ-30 BC-4, ISS-439 round 3), and nothing is written
+  it('refuses a knowledge entry from every chat token, viewer and owner alike', async () => {
+    const before = await count('knowledge_entries', ids.home);
+    for (const who of MODES.flatMap((mode) => [`viewer:${mode}`, `asker:${mode}`])) {
+      const r = await say(who, 'PUT', `/api/projects/${ids.home}/knowledge/viewer-note`, {
+        title: 'Viewer note',
+        body: 'A viewer writes.',
+      });
+      expect(r.status, `${who}: ${JSON.stringify(r.json)}`).toBe(403);
+      expect(JSON.stringify(r.json), who).toContain('CHAT_WRITE_REFUSED');
+    }
+    expect(await count('knowledge_entries', ids.home)).toBe(before);
+  });
 
   // an owner's chat write passes the role check and meets the hold that waits for the person to
   // agree (ISS-439, REQ-30 BC-4): not the viewer's permission refusal, so the role is what refused it
@@ -418,12 +427,15 @@ describe("every write a turn makes is held to the asker's own role", () => {
     expect(after).toEqual(before);
   });
 
+  // a channel document speaks to another project's team, which no card in this room answers for:
+  // an Agent session is refused it over /mcp by name, whatever its role (ISS-439 round 3)
   it("refuses a viewer's Agent session the channel write it makes over /mcp", async () => {
     const draft = viewerWrites().find(([name]) => name === 'forge_channel');
     if (!draft) throw new Error('the channel draft is not planted');
     const r = await callMcp('viewer:agent', 'forge_channel', draft[1]);
     expect(r.result?.isError, JSON.stringify(r)).toBe(true);
-    expect(JSON.stringify(r)).toContain('needs project.write');
+    expect(JSON.stringify(r)).toContain('CHAT_WRITE_REFUSED');
+    expect(JSON.stringify(r)).toContain('channel document');
   });
 });
 

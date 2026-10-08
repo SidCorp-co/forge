@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { expect } from 'vitest';
-import type { AgreementGate } from '../../src/assistant/agreement/turn-gate.js';
+import type { AgreementGate, GatedTurn } from '../../src/assistant/agreement/turn-gate.js';
 import { type Reply, requester, startQueue, testEnv } from './ecosystem-world.js';
 import {
   addProjectMember,
@@ -33,8 +33,10 @@ export interface AgreementWorld {
   tokens: Record<string, string>;
   /** The owner's Assistant turn token, which every Assistant tool call of the turn runs under. */
   turnToken: string;
-  /** The owner's Assistant toolset for a turn, behind the agreement gate. */
-  gate: () => AgreementGate;
+  /** The owner's Assistant toolset for a turn, behind the agreement gate, with the images the turn carries. */
+  gate: (recordImages?: GatedTurn['recordImages']) => AgreementGate;
+  /** The token of a chat session on the owner's box that answers no room (the Agents screen). */
+  noRoomSession: () => Promise<string>;
   /** A new room turn answered in Agent mode: its session token becomes the `agent` speaker. */
   agentTurn: (question: string) => Promise<void>;
 }
@@ -93,7 +95,7 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
   ).json.key as string;
 
   const credential = await mintTurnCredential({ authority, menu: CHAT_TURN_MENU, ttlMs: 600_000 });
-  const gate = () =>
+  const gate = (recordImages?: GatedTurn['recordImages']) =>
     agreementGate(
       buildProjectToolset(
         buildChatToolContext({
@@ -102,7 +104,7 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
           turn: { conversationId: roomId, speakerUserId: owner, handleUserId: null },
         }),
       ),
-      { projectId, conversationId: roomId, personId: owner, handleUserId: null },
+      { projectId, conversationId: roomId, personId: owner, handleUserId: null, recordImages },
     );
 
   // each room turn an Agent-mode box answers is its own session, started when the turn was
@@ -131,6 +133,21 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
   };
   await agentTurn(firstQuestion);
 
+  // a session the Agents screen opens answers no room, so it carries no conversation marker
+  const noRoomSession = async () => {
+    const session = await createChatSessionRow({
+      projectId,
+      userId: owner,
+      title: 'Agents screen',
+      runKind: 'system',
+    });
+    return mintSessionCredential({
+      sessionId: session.id,
+      deviceId,
+      value: { authority, menu: AGENT_TURN_MENU },
+    });
+  };
+
   return {
     projectId,
     projectSlug: project.slug,
@@ -144,5 +161,6 @@ export async function openAgreementWorld(firstQuestion: string): Promise<Agreeme
     turnToken: credential.token,
     gate,
     agentTurn,
+    noRoomSession,
   };
 }

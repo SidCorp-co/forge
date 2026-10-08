@@ -9,6 +9,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
@@ -180,6 +181,8 @@ transitionRoutes.post(
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
     }
   }),
+  // a chat's status move (draft to open dispatches) waits for the person's press (REQ-30 BC-4)
+  holdChatWrite('issue_change'),
   async (c) => {
     const { id } = c.req.valid('param');
     const {

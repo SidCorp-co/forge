@@ -10,6 +10,7 @@ import { runWithPatScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { readPresentedCredential } from './bearer.js';
+import { admitChatWrite } from './chat-write-hold.js';
 import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
@@ -105,7 +106,11 @@ async function admitPat(
   c.set('patTokenId', principal.tokenId);
   if (principal.deviceId) c.set('patDeviceId', principal.deviceId);
   if (principal.onBehalfOf) c.set('onBehalfOf', principal.onBehalfOf);
-  return runWithPatScope(scope, () => next());
+  return runWithPatScope(scope, async () => {
+    // a chat credential's write is held, passed or refused here, before any route sees it (REQ-30 BC-4)
+    await admitChatWrite(c);
+    await next();
+  });
 }
 
 const USER_TOKEN_VAR = 'userTokenResolution';

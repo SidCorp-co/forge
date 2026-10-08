@@ -102,6 +102,12 @@ function trackerTools(t: Tracker, readLatencyMs = 0) {
       function: { name, description: name, parameters: { type: 'object' } },
     })),
     ranAs: () => owner,
+    // the grants the real tools declare for these reads (`knowledge/tool.ts`, `memory/tool.ts`), which
+    // the turn's agreement gate reads to let a read through (REQ-30 BC-4, ISS-439 round 3)
+    grantOf: (name: string) =>
+      name === 'forge'
+        ? { none: 'it runs the forge CLI under the turn token' }
+        : ('knowledge:read' as const),
     async execute(name: string, argsJson: string) {
       const args = JSON.parse(argsJson) as { argv?: string[]; action?: string };
       const started = Date.now();
@@ -214,6 +220,7 @@ beforeAll(async () => {
 });
 
 describe('a turn past its first ceiling posts what it did, and the rest in the same thread', () => {
+  const FINISHED = 'ISS-61 spec: press Record on its card.';
   const SPEC_ASK =
     'Viết spec chi tiết cho ISS-61: cần cụ thể thêm rule, field, situation do vẫn còn general';
 
@@ -230,7 +237,9 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
       async (signal) => {
         await sleep(900, signal);
         return {
-          text: 'The rules, fields and situations for ISS-61 are proposed as a comment. Press Record it on the card to add it.',
+          // read in neither language (`fallback-replies.ts:confidentLanguageOf`), so the reply-language
+          // check passes it as written to a person who asked in Vietnamese, and no record verb in it
+          text: FINISHED,
         };
       },
     ];
@@ -259,7 +268,12 @@ describe('a turn past its first ceiling posts what it did, and the rest in the s
     expect(await continuation).toMatchObject({ kind: 'delivered' });
     const both = await said(room.id);
     expect(both).toHaveLength(2);
-    expect(both[1]?.content, 'the finished answer follows as a second message').toBeTruthy();
+    // the second message is the turn's own finished answer, pointing the person at the card's press,
+    // and never a claim that the held comment was written (ISS-439 round 3: the judge found only
+    // non-empty asserted here)
+    expect(both[1]?.content, 'the finished answer follows as a second message').toBe(FINISHED);
+    expect(both[1]?.content).not.toContain('đang làm tiếp');
+    expect(both[1]?.content).not.toMatch(/\b(recorded|posted|added) (it|the comment)\b/i);
     expect(t.comments, 'the held comment is not written by the turn').toBe(0);
     const { chatProposals } = await import('../../src/db/schema-chat-proposals.js');
     const waiting = await db

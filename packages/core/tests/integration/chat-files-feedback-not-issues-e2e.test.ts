@@ -106,9 +106,11 @@ beforeAll(async () => {
   };
   // a chat token never holds feedback.approve today (its grant is named, a named grant holds it
   // only where it names it, and no turn menu does), so the triage path is planted with one that
-  // does: the insert, not the permission, is what must refuse it
+  // does: the insert, not the permission, is what must refuse it. It is a session answering no room
+  // (the Agents screen), which the chat write rule lets through as ruled on 2026-10-09, so the
+  // request reaches the insert; a room's session is refused at the door before it (ISS-439 round 3)
   const approvingChat = async () => {
-    const token = await boxToken({ conversationAgent: { conversationId: randomUUID() } }, 'system');
+    const token = await boxToken(null, 'system');
     await db.execute(sql`
       UPDATE personal_access_tokens SET permissions = permissions || ARRAY['feedback.approve']
       WHERE token_prefix = ${token.slice(0, 18)} AND revoked_at IS NULL`);

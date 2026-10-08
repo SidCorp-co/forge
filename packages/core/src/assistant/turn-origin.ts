@@ -55,5 +55,6 @@ export function fenceToolsetToOrigin(set: ChatToolset, origin: TurnOrigin): Chat
             `TURN_ORIGIN_REFUSED: "${name}" is not an act of an onboarding hand-off turn, which may only call ${ONBOARDING_HANDOFF_ACTS.join(', ')}. A person asks for anything else in the room.`,
           ),
     ranAs: (name) => (HANDOFF_ACTS.has(name) ? set.ranAs(name) : null),
+    grantOf: (name, argsJson) => set.grantOf?.(name, argsJson) ?? null,
   };
 }

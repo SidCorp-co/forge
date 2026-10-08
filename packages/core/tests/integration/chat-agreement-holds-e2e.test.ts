@@ -108,9 +108,10 @@ describe('a design link, an issue change, a project change and a report save wai
       );
     expect(await linked()).not.toContain(workflowId);
     const [card] = await pendingOf('requirement_link');
+    // the design is named by its flow, never by the uuid the request carried
     expect(card?.summary).toMatchObject({
-      title: `Link ${other} to design ${workflowId}`,
-      relates: [other, `design ${workflowId}`],
+      title: `Link ${other} to design “chat-turn”`,
+      relates: [other, 'design “chat-turn”'],
     });
     expect((await press(String(card?.id))).json.proposal?.status).toBe('recorded');
     expect(await linked()).toContain(workflowId);
@@ -192,14 +193,17 @@ describe('a design link, an issue change, a project change and a report save wai
     const r = await say('agent', 'PATCH', `/api/issues/${doomedId}`, { priority: 'high' });
     expect(codeOf(r)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
     const card = (await pendingOf('issue_change')).find((p) =>
-      (p.summary.relates as string[]).includes(doomedId),
+      String(p.summary.title).endsWith('“Soon gone”'),
     );
     const gone = await say('owner', 'DELETE', `/api/issues/${doomedId}`);
     expect(gone.status, JSON.stringify(gone.json)).toBeLessThan(300);
     const done = await press(String(card?.id));
     expect(done.json.proposal?.status, JSON.stringify(done.json)).toBe('failed');
-    const told = (await thread()).find((m) => m.startsWith(`Not recorded: Change ${doomedId}.`));
-    expect(told).toMatch(/^Not recorded: Change \S+\. It was refused: .+\. Nothing was written\.$/);
+    const told = (await thread()).find((m) => m.startsWith('Not recorded: Change '));
+    expect(told).toMatch(
+      /^Not recorded: Change [A-Z]+-\d+ “Soon gone”\. It was refused: .+\. Nothing was written\.$/,
+    );
+    expect(told).not.toContain(doomedId);
     expect(told).not.toMatch(/[{}"]|urn:forge/);
   });
 });

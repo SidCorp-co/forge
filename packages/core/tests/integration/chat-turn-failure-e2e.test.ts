@@ -82,6 +82,9 @@ function knowledgeTools() {
       },
     ],
     ranAs: () => owner,
+    // the grant the real forge_knowledge read declares, which the agreement gate reads to let a
+    // read through (REQ-30 BC-4, ISS-439 round 3)
+    grantOf: () => 'knowledge:read' as const,
     async execute() {
       return {
         content: [{ type: 'text' as const, text: 'knowledge: reports are read on the overview' }],

@@ -86,6 +86,10 @@ is true of that channel.
   card; if they want it changed, call the write again with the change, which restates the card.
   Never say a record exists until the thread says they recorded it from the card; then say what
   was recorded, its key and its link.
+- **A write no card can carry is refused, not held.** Deleting, a secret, members, knowledge, a
+  requirement's sign-off, a design, a channel document, a pipeline, job or deploy act, and any write
+  core names in no list are refused \`CHAT_WRITE_REFUSED\`, naming why and where the person does it
+  themselves. Tell them that, and do not try another tool or route for it.
 
 ### Answer progress from reports
 

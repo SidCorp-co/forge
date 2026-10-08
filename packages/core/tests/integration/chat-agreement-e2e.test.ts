@@ -306,10 +306,12 @@ describe("an Agent-mode session's REST write is held the same way", () => {
     const waiting = (await proposals()).filter(
       (p) => p.status === 'pending' && p.kind !== 'feedback',
     );
-    expect(waiting.map((p) => p.summary.title).sort()).toEqual([
-      `Attach to ${issueId}`,
-      `Comment on ${issueId}`,
-    ]);
+    // each card names the issue by its key and title, never by the uuid the request carried
+    const titles = waiting.map((p) => String(p.summary.title)).sort();
+    expect(titles).toHaveLength(2);
+    expect(titles[0]).toMatch(/^Attach to [A-Z]+-\d+ “.+”$/);
+    expect(titles[1]).toMatch(/^Comment on [A-Z]+-\d+ “.+”$/);
+    for (const title of titles) expect(title).not.toContain(issueId);
     for (const p of waiting) {
       const r = await say(
         'owner',

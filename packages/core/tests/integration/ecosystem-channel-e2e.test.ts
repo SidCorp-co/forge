@@ -294,10 +294,18 @@ describe('every document records who wrote it, and through what', () => {
   it.each([
     ['platform', 'web'],
     ['platformCli', 'cli'],
-    ['platformTurn', 'assistant'],
   ] as const)('%s writes via %s', async (who, via) => {
     const made = ok(await say(who, 'POST', `${forge()}/drafts`, rfi(w)));
     expect(made.document.authoredBy).toEqual({ kind: 'person', id: w.user.platform, via });
+  });
+
+  // REQ-30 BC-4 (ISS-439 round 3): a chat writes nothing the person did not agree to on its card,
+  // and no card in one room answers for another project's team, so the assistant's turn token is
+  // refused a channel document by name rather than writing one
+  it("refuses the assistant's turn token a channel draft by name, writing nothing", async () => {
+    const refused = await say('platformTurn', 'POST', `${forge()}/drafts`, rfi(w));
+    expect([refused.status, refused.json.error.code]).toEqual([403, 'CHAT_WRITE_REFUSED']);
+    expect(refused.json.detail).toContain('channel document');
   });
 
   it('refuses a viewer, and a master writing for a project it is fenced from, each by name', async () => {

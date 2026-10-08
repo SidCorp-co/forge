@@ -19,8 +19,9 @@ import {
   refusedAnswer,
 } from '../lib/tool.js';
 import { toolCallRefusal } from '../lib/tool-call-guard.js';
-import { assertToolDeclaresAccess } from '../lib/tool-grant.js';
+import { assertToolDeclaresAccess, toolGrantFor } from '../lib/tool-grant.js';
 import { toToolCallContent } from '../lib/tool-result.js';
+import { chatToolWriteRefusal } from '../middleware/chat-write-hold.js';
 import { resolveProjectIdFromSlug } from '../projects/index.js';
 import { resolveManagedMetaPrompts } from '../skills/index.js';
 import { MCP_TOOLS } from './registry.js';
@@ -152,6 +153,12 @@ export function createMcpServer(ctx: McpContext): Server {
       if (refusal) {
         writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
         return errorAnswer(`Error: ${refusal}`);
+      }
+      // a chat credential's write meets the chat write rule here as it does on REST (REQ-30 BC-4)
+      const chatRefusal = await chatToolWriteRefusal(name, args, toolGrantFor(tool, args) ?? null);
+      if (chatRefusal) {
+        writeMcpAudit({ ...auditBase, resultCode: 'forbidden' });
+        return errorAnswer(`Error: ${chatRefusal}`);
       }
 
       try {

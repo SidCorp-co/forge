@@ -103,6 +103,11 @@ function isPreview(argsJson: string): boolean {
   }
 }
 
+/** A write tool asked only to show what it would write: a read, which the agreement gate lets through. */
+export function isRecordPreview(name: string, argsJson: string): boolean {
+  return WRITE_TOOLS.has(name) && isPreview(argsJson);
+}
+
 /** The title a record tool files a new item under, or null for any other call and for a preview. */
 export function filingTitle(name: string, argsJson: string): string | null {
   if (!RECORD_TOOLS.has(name) || isPreview(argsJson)) return null;

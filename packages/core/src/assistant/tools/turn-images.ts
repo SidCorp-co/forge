@@ -22,7 +22,11 @@ interface CliRun {
  * Trim the set to what the ticket service will take, newest-first; what is
  * cut is named in the block the model reads, never dropped in silence.
  */
-function withinPersistLimits(images: readonly TurnImage[]): { kept: TurnImage[]; cut: string[] } {
+/** The images a comment's attach keeps, and the names it leaves out for its count or size caps. */
+export function withinPersistLimits(images: readonly TurnImage[]): {
+  kept: TurnImage[];
+  cut: string[];
+} {
   const kept: TurnImage[] = [];
   const cut: string[] = [];
   for (const image of images) {
@@ -134,5 +138,6 @@ export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[])
       return { ...result, content: [...result.content, block] };
     },
     ranAs: (name) => inner.ranAs(name),
+    grantOf: (name, argsJson) => inner.grantOf?.(name, argsJson) ?? null,
   };
 }
