@@ -192,6 +192,7 @@ function judge(
       {
         quote: null,
         why: 'reply states a progress figure but the authoritative snapshot could not be computed this turn — do not state any completion count or percentage; say the figures are temporarily unavailable instead',
+        unchecked: "the project's progress snapshot could not be computed this turn",
       },
     ];
   }

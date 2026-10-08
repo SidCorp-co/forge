@@ -64,6 +64,7 @@ export interface MessageFacts {
    * reply takes from memory is cited with one of them (MJ-5, `status-claims-rule.ts`).
    */
   readonly memoryDates: ReadonlySet<string>;
+  /** The read of the issues the message names threw: a rule needing those rows holds it, naming itself (`claim-rules.ts:ISSUES_UNREAD`). */
   readonly issueLookupFailed: boolean;
   /**
    * Every value the person's question holds, where the caller gave it: a figure equal to one is

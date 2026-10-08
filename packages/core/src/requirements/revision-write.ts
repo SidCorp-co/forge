@@ -25,6 +25,7 @@ import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
   type LiveCriterion,
+  liveAt,
   openRevisionRefusal,
   planCriteria,
   type RequirementRefusal,
@@ -92,6 +93,31 @@ export async function writeCriteria(
       .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })));
   }
   return null;
+}
+
+/**
+ * What `writeCriteria` would refuse in a criteria list proposed on `baseRevision`, said where the
+ * list is proposed rather than at the accept: a revision_diff suggestion naming a code that is not
+ * live on its base is refused at its creation, so the turn that wrote it can correct it in the same
+ * turn (REQ-30 BC-3; forge-dev 2026-10-08, REQ-32 and REQ-33, refused only at a person's Accept).
+ * Nothing is written.
+ */
+export async function criteriaRefusalsAt(
+  tx: Tx,
+  requirementId: string,
+  baseRevision: number | null,
+  input: readonly CriterionInput[],
+): Promise<RequirementRefusal[]> {
+  const all = await tx
+    .select()
+    .from(requirementCriteria)
+    .where(eq(requirementCriteria.requirementId, requirementId));
+  const live: LiveCriterion[] = (baseRevision === null ? [] : liveAt(all, baseRevision)).map(
+    (c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }),
+  );
+  const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
+  const planned = planCriteria(input, live, highest);
+  return planned.ok ? [] : planned.refusals;
 }
 
 /** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies
