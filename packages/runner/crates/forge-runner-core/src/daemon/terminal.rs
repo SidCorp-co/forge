@@ -930,6 +930,13 @@ pub(crate) mod testing {
 
     /// What systemd answers in a test's place. Only the unix tests stand one in,
     /// since no other box runs a tmux server for them.
+    ///
+    /// A test is answered [`NoUnit`](SystemdSays::NoUnit) unless it says
+    /// otherwise, so the box's own user manager is reached only by a test that
+    /// holds the unit it places and stops it: a unit a test places and nobody
+    /// stops outlives the test process for as long as the box is up, and 29 of
+    /// them did, one per `IsolatedServer` test run that was killed or timed out
+    /// before its server was (ISS-1223).
     #[derive(Clone, Copy)]
     #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) enum SystemdSays {
@@ -937,40 +944,44 @@ pub(crate) mod testing {
         NoUnit,
         /// A unit is taken and its server never answers.
         UnitNeverAnswers,
+        /// This box's user manager answers, as in production: the test places a
+        /// real unit and owes its stopping, through `PlacedUnit`.
+        Itself,
     }
 
     thread_local! {
-        static STAND_IN: Cell<Option<SystemdSays>> = const { Cell::new(None) };
+        static STAND_IN: Cell<SystemdSays> = const { Cell::new(SystemdSays::NoUnit) };
     }
 
     /// systemd answers `says` on this thread until dropped. A thread's, not the
     /// process's environment: a current-thread `#[tokio::test]` asks systemd
     /// from the thread that took it.
-    #[cfg(unix)]
-    pub(crate) struct StandIn;
+    pub(crate) struct StandIn {
+        before: SystemdSays,
+    }
 
-    #[cfg(unix)]
     impl StandIn {
         pub(crate) fn here(says: SystemdSays) -> Self {
-            STAND_IN.with(|s| s.set(Some(says)));
-            Self
+            Self {
+                before: STAND_IN.with(|s| s.replace(says)),
+            }
         }
     }
 
-    #[cfg(unix)]
     impl Drop for StandIn {
         fn drop(&mut self) {
-            STAND_IN.with(|s| s.set(None));
+            STAND_IN.with(|s| s.set(self.before));
         }
     }
 
     pub(super) fn systemd_stand_in() -> Option<Placement> {
-        STAND_IN.with(Cell::get).map(|says| match says {
-            SystemdSays::NoUnit => {
-                Placement::Unavailable("a test said this box has no user manager".into())
-            }
-            SystemdSays::UnitNeverAnswers => Placement::Accepted,
-        })
+        match STAND_IN.with(Cell::get) {
+            SystemdSays::NoUnit => Some(Placement::Unavailable(
+                "a test said this box has no user manager".into(),
+            )),
+            SystemdSays::UnitNeverAnswers => Some(Placement::Accepted),
+            SystemdSays::Itself => None,
+        }
     }
 
     /// A tmux a test put in place of the real one: the program spawned, and
@@ -1518,6 +1529,7 @@ mod tests {
 
     struct Sandbox {
         _placed: Option<PlacedUnit>,
+        _stand_in: testing::StandIn,
         _xdg: ScopedVar,
         _home: ConfigHome,
     }
@@ -1535,6 +1547,7 @@ mod tests {
             let placed = Some(PlacedUnit::guarding(session_unit(), sock));
             Some(Self {
                 _placed: placed,
+                _stand_in: testing::StandIn::here(testing::SystemdSays::Itself),
                 _xdg: xdg,
                 _home: home,
             })
@@ -1550,6 +1563,57 @@ mod tests {
                 .output()
                 .await
                 .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+    }
+
+    /// ISS-1223 criterion 42, as a property of the test build: a test is
+    /// answered "no user manager" until it asks for this box's own, which only
+    /// a test that holds the unit it places does.
+    #[test]
+    fn a_test_is_answered_no_unit_until_it_asks_for_the_boxs_own_manager() {
+        assert!(
+            matches!(systemd_stand_in(), Some(Placement::Unavailable(_))),
+            "a test that said nothing about systemd must not reach it"
+        );
+        #[cfg(unix)]
+        {
+            let _own = testing::StandIn::here(testing::SystemdSays::Itself);
+            assert!(
+                systemd_stand_in().is_none(),
+                "a test that holds its unit is answered by the box's manager"
+            );
+        }
+        assert!(
+            matches!(systemd_stand_in(), Some(Placement::Unavailable(_))),
+            "and the answer goes back when it is done"
+        );
+    }
+
+    /// ISS-1223 criterion 42, where it bit: an `IsolatedServer` test starts its
+    /// server through `ensure`, and that must place no unit on this box. The
+    /// unit it would place is stopped here either way, so a red run leaves
+    /// nothing behind.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_isolated_test_server_is_placed_without_a_unit() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("nounitdefault");
+        if !available() {
+            testing::cannot_run("tmux is not installed here");
+            return;
+        }
+        if !iso.took() {
+            testing::cannot_run("this box does not resolve its tmux socket from the config dir");
+            return;
+        }
+        let sock = socket_path().expect("the isolated socket");
+        let unit = session_unit();
+        let _stops_it = PlacedUnit::guarding(unit.clone(), sock);
+        ensure_server().await;
+        assert!(
+            !unit_is_running(&unit).await,
+            "{unit}.service was placed on this box's user manager by a test that asked for none"
+        );
     }
 
     /// A run that promised tmux turns a skip into a failure naming both the
@@ -2975,6 +3039,7 @@ done
             sock.display()
         );
         let _placed = PlacedUnit::cold(unit, sock.clone());
+        let _stand_in = testing::StandIn::here(testing::SystemdSays::Itself);
         let _ = std::fs::remove_file(&sock);
         assert!(!server_answers().await, "the server must start out cold");
 

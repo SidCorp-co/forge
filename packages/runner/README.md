@@ -247,7 +247,10 @@ not unix            ─▶ exit 0 for the service manager to start the new build
   pane, and parked chat sessions, which are checkpointed and closed once per
   attempt (bounded by their 120s checkpoint budget). Only a session parked when
   that close began is closed: one started after it began, or sent a message
-  after it began, is left open and not counted. Runs in the ledger, bound or not,
+  after it began, is left open and not counted. A message sent to a session
+  whose turn is in flight, a save request's included, waits for that turn to
+  end and is answered by its own reply; the runner logs that it waited, and
+  refuses it by name if the session ends first. Runs in the ledger, bound or not,
   are not holders: they live in their panes, which the new image adopts, and
   their masters bind, answer for and close them across the handover.
 - **Admission stays open while it waits.** Runs are declared, pool jobs taken,
