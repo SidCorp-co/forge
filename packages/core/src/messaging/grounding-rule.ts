@@ -11,12 +11,13 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { ISSUES_UNREAD } from './claim-rules.js';
 import type { MessageRefusal, MessageVerdict, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
+import { passagesAround } from './figure-sources.js';
 import { issueTokenRe } from './issue-tokens.js';
 
 export const GROUNDING_RULE = {
   id: 'tracker-facts-grounded',
   shape:
-    'state a date or a status about the tracker only as a tool returned it this turn; look it up first, or ask instead of stating it',
+    'state a date or a status about the tracker only as a tool returned it this turn, and name what the date is of (its key, a release by version) or the read; look it up first, or ask instead of stating it',
   example: 'ISS-59 was closed on 2026-07-15, as the tracker read this turn shows.',
 } as const;
 
@@ -96,13 +97,31 @@ function grounded(stated: Day, results: readonly Day[]): boolean {
   return results.some((r) => Math.abs(r.ms - stated.ms) <= DAY_MS);
 }
 
+/**
+ * What names the read a tracker date came from (REQ-30 BC-1): the item it is a date of, by its key
+ * (ISS-59, REQ-30, FB-12) or a release by its version, or the read itself by name. An event word is
+ * not a source: "released on 2026-10-01" names when, not where it was read.
+ */
+const DATE_SOURCE_RE =
+  /\b[A-Z][A-Z0-9]{1,5}-\d{1,6}\b|\bv?\d+\.\d+(?:\.\d+)?\b|\b(?:project\s+status|status\s+read|tracker|releases?\s+(?:list|page|read)|release\s+v?\d|reports?|decisions?|memory|history|timeline)\b|trạng\s+thái\s+dự\s+án|báo\s+cáo|quyết\s+định/iu; // i18n-allow: the Vietnamese names of the project status, a report and a decision
+
 function dateBreaks(text: string, results: readonly string[]): RuleBreak[] {
   const seen = datesIn(results.join('\n'));
   const breaks: RuleBreak[] = [];
   for (const clause of clausesOf(text)) {
     if (clause.asked || ABSTAIN_RE.test(clause.text) || !EVENT_RE.test(clause.text)) continue;
     for (const stated of datesIn(clause.text)) {
-      if (grounded(stated, seen)) continue;
+      if (grounded(stated, seen)) {
+        const at = text.indexOf(stated.quote);
+        const named = passagesAround(text, at < 0 ? 0 : at).some((p) => DATE_SOURCE_RE.test(p));
+        if (!named) {
+          breaks.push({
+            quote: clause.text,
+            why: `the reply states the date ${stated.quote} about the tracker and names no read it came from — name the item it is a date of (its key, or the release by version) or the read, in its paragraph, the line that introduces it, or a "Sources:" line`,
+          });
+        }
+        continue;
+      }
       breaks.push({
         quote: clause.text,
         why:
