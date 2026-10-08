@@ -607,6 +607,8 @@ describe('a check taken through the memo', () => {
     const outside = mkdtempSync(join(tmpdir(), 'outside-'));
     const peek = join(outside, 'user.rc');
     writeFileSync(peek, 'one');
+    const minuteAgo = new Date(Date.now() - 60_000);
+    utimesSync(peek, minuteAgo, minuteAgo);
     const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
     const asMemo = () =>
       new Memo({ root, args: [], env: env(), baseRef: 'main', declarations, places });
@@ -614,6 +616,20 @@ describe('a check taken through the memo', () => {
     expect(asMemo().plan(check).kind).toBe('hit');
     writeFileSync(peek, 'two');
     expect(asMemo().plan(check).kind).toBe('miss');
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('does not file a verdict whose outside file was written as the run began, so a fast runner cannot make that a hit', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const peek = join(outside, 'user.rc');
+    writeFileSync(peek, 'one');
+    const soon = new Date(Date.now() + 50);
+    utimesSync(peek, soon, soon);
+    const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
+    const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations, places });
+    expect(run(m, { PEEK: peek }).plan.kind).toBe('miss');
+    expect(m.unfiled[0].reason).toMatch(/outside the checkout changed while it ran/);
+    expect(listEntries(dir)).toEqual([]);
     rmSync(outside, { recursive: true, force: true });
   });
 
