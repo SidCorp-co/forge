@@ -5,6 +5,7 @@
  * test; `standing-read.ts` gathers the facts.
  */
 
+import type { ReleaseLeg } from '@forge/contracts/forecast';
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
@@ -21,15 +22,17 @@ import {
   type RequirementStanding,
   type RequirementState,
   type RequirementWaitingKind,
+  type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
-import { type WaitingOn, type WaitingSays, waitingOn } from '@forge/contracts/standing';
+import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { liveAt } from './rules.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
+import { type ParkedWait, workTurn } from './standing-work.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -55,6 +58,8 @@ export interface StandingIssue {
   closedAt: Date | null;
   /** Its plan was written against another revision than the current one. */
   changedSincePlan: boolean;
+  /** Where it is parked (`PARK_STATUSES`), what it waits on by its own standing; null otherwise. */
+  parkedOn: ParkedWait | null;
 }
 
 export interface StandingIssueCriterion {
@@ -92,15 +97,23 @@ export interface StandingInput {
   judge: PolicyQaMode | null;
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
+  /**
+   * What follows a landing on the project (`forecast/release.ts:releaseLegFor`), read where every live
+   * issue not yet shipped awaits release (`standing-work.ts:awaitsReleaseOnly`); null elsewhere.
+   */
+  release: ReleaseLeg | null;
   updatedAt: Date;
   now: Date;
 }
 
+/** An issue as the delivery phase and coverage read it: its wait is the turn's, not the proof's. */
+export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
+
 /** What the delivery phase and coverage read, and nothing else. */
-type ProofInput = Pick<
+type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
-  'status' | 'criteria' | 'issues' | 'issueCriteria' | 'uncovered'
->;
+  'status' | 'criteria' | 'issueCriteria' | 'uncovered'
+> & { issues: readonly I[] };
 
 /** The input with its delivery phase read (`deliveryOf`). */
 export type Phased = StandingInput & { phase: DeliveryPhase | null };
@@ -161,8 +174,6 @@ function verdictOf(links: readonly CoverageIssue[]): BcVerdict {
   return 'not_judged';
 }
 
-type RequirementWaitingOn = WaitingOn<RequirementWaitingKind>;
-
 const wait = (
   kind: RequirementWaitingKind,
   who: Said,
@@ -211,7 +222,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
 // re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a signer who can
 // admit promotes them (only they are asked: question 3b8292dc);
-// 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
+// 11. else whom the work waits on (`standing-work.ts:workTurn`): a parked issue's own wait, the release
+// cut once every issue has landed, the issues while one runs, else the master. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: Phased,
   live: readonly StandingIssue[],
@@ -357,19 +369,7 @@ function turnOf(
       ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) }
       : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule) };
   }
-  const running = live.filter((i) => i.status === 'in_progress').length;
-  const shipped = live.filter((i) => i.status === 'closed').length;
-  return {
-    group: 'moving',
-    waitingOn: wait(
-      'issue',
-      say('standing.who.issues'),
-      running > 0
-        ? say('standing.act.running', { a: running, b: live.length })
-        : say('standing.act.shippedOf', { a: shipped, b: live.length }),
-      say('requirements.rule.moving'),
-    ),
-  };
+  return workTurn(live, input.release);
 }
 
 function touchedAt(input: StandingInput): Date {
@@ -387,7 +387,7 @@ function touchedAt(input: StandingInput): Date {
 // a live issue past draft and open → in_delivery; else agreed
 function deliveryOf(
   status: RequirementStatus,
-  live: readonly StandingIssue[],
+  live: readonly ProofIssue[],
   coverage: readonly RequirementCoverage[],
 ): RequirementDelivery {
   const started = live.filter((i) => i.status !== 'draft' && i.status !== 'open').length;
@@ -409,15 +409,17 @@ function deliveryOf(
 }
 
 /** The delivery phase and BC coverage at `revision`: the one computation the standing and the accept read. */
-export function deliveryAt(input: ProofInput, revision: number | null) {
+export function deliveryAt<I extends ProofIssue>(input: ProofInput<I>, revision: number | null) {
   const live = input.issues.filter((i) => i.status !== 'dropped');
   const coverage = coverageOf(input, revision);
   return { live, coverage, delivery: deliveryOf(input.status, live, coverage) };
 }
 
-/** The same wait under another rule. */
-const waitingOn_ = (w: RequirementWaitingOn, rule: Said): RequirementWaitingOn =>
-  waitingOn(w.kind, { ...w.says, rule }, { ref: w.ref, dueAt: w.dueAt });
+/** The same wait under another rule, still about what it was about. */
+const waitingOn_ = (w: RequirementWaitingOn, rule: Said): RequirementWaitingOn => ({
+  ...waitingOn(w.kind, { ...w.says, rule }, { ref: w.ref, dueAt: w.dueAt }),
+  ...(w.refers ? { refers: w.refers } : {}),
+});
 
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;

@@ -187,15 +187,30 @@ export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttent
 	};
 
 /** Whom a requirement waits on: the viewer, another person, an agent (the master, a draft's agent
- *  author), its issues, or nobody (done, or no owner to act). */
+ *  author), its issues, the release that ships them on its own, or nobody (done, or no owner to act). */
 export const REQUIREMENT_WAITING_KINDS = [
 	"you",
 	"person",
 	"agent",
 	"issue",
+	"release",
 	"none",
 ] as const satisfies readonly WaitingKind[];
 export type RequirementWaitingKind = (typeof REQUIREMENT_WAITING_KINDS)[number];
+
+/** What a requirement's wait is about, where it is one thing a page can link: a parked issue, or the release that ships its landed issues. */
+export const REQUIREMENT_WAIT_REFERS = ["issue", "release"] as const;
+export type RequirementWaitRefers = (typeof REQUIREMENT_WAIT_REFERS)[number];
+
+/**
+ * Whom a requirement waits on. Where the wait is about one issue or one release, `refers` says which
+ * and `ref` names it: the parked issue's key, or the version the next cut takes (null where the
+ * release has no number yet), so a reader links the issue or the release instead of guessing from
+ * the words.
+ */
+export interface RequirementWaitingOn extends WaitingOn<RequirementWaitingKind> {
+	refers?: RequirementWaitRefers;
+}
 
 /** The tasks of workflow requirement-to-delivery a requirement holds open, derived on read. */
 const REQUIREMENT_TASK_KINDS = ["breakdown", "check", "re-plan"] as const;
@@ -390,6 +405,7 @@ export interface RequirementDelivery {
 
 export interface RequirementStanding
 	extends Standing<RequirementAttentionGroup, RequirementWaitingKind> {
+	waitingOn: RequirementWaitingOn;
 	state: RequirementState;
 	delivery: RequirementDelivery;
 	facts: RequirementFacts;
@@ -565,7 +581,7 @@ export interface RequirementSummaryView {
 	currentRevision: number | null;
 	latestRevision: { revision: number; state: string } | null;
 	counts: RequirementFacts;
-	waitingOn: WaitingOn<RequirementWaitingKind>;
+	waitingOn: RequirementWaitingOn;
 	updatedAt: string;
 }
 

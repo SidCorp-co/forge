@@ -435,6 +435,30 @@ export async function listIssueStanding(
   };
 }
 
+/**
+ * Each of `ids`' own standing wait, keyed by id, for a read model that names what one of its issues
+ * holds it on (a requirement whose issue is parked) rather than saying it again in words of its own.
+ */
+export async function issueWaitsOf(
+  projectId: string,
+  ids: readonly string[],
+  viewer: StandingViewer | null,
+  now: Date = new Date(),
+): Promise<Map<string, Pick<IssueStandingRow, 'key' | 'standing'>>> {
+  if (ids.length === 0) return new Map();
+  const where = sql`AND i.id IN (${sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  )})`;
+  const rows = await standingRows(
+    projectId,
+    await issueRows(projectId, where, ids.length),
+    viewer,
+    now,
+  );
+  return new Map(rows.map((r) => [r.id, { key: r.key, standing: r.standing }]));
+}
+
 /** One issue's standing with its step log, for the peek and the full page; null when absent. */
 export async function readIssueStanding(
   projectId: string,

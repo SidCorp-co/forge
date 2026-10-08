@@ -21,6 +21,7 @@ const issue = (n: number, status: string, changedSincePlan: boolean): StandingIs
   updatedAt: at('2026-09-20T00:00:00Z'),
   closedAt: status === 'closed' ? at('2026-09-21T00:00:00Z') : null,
   changedSincePlan,
+  parkedOn: null,
 });
 
 const input = (issues: StandingIssue[]) => ({
@@ -51,6 +52,7 @@ const input = (issues: StandingIssue[]) => ({
   feedback: { open: 0, untriaged: [] },
   judge: 'self' as 'self' | 'independent' | null,
   agreedAt: at('2026-09-01T00:00:00Z'),
+  release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
   now: at('2026-09-28T00:00:00Z'),
 });

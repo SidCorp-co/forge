@@ -169,7 +169,7 @@ export {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
-export { listIssueStanding } from './standing-read.js';
+export { issueWaitsOf, listIssueStanding } from './standing-read.js';
 export {
   heldReleaseWait,
   landedWait,

@@ -3,7 +3,7 @@
  * requirement's page reads is `history-read.ts`.
  */
 
-import type { IssueStatus } from '@forge/contracts/issue-machine';
+import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import type { RequirementStanding, RequirementState } from '@forge/contracts/requirements';
@@ -21,11 +21,12 @@ import {
   requirements,
 } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
-import { activeIssuePrefix } from '../issues/index.js';
+import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
+import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
@@ -37,6 +38,7 @@ import {
   latestPinsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
+import { awaitsReleaseOnly } from './standing-work.js';
 
 interface StandingRow {
   id: string;
@@ -120,6 +122,37 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
     out.set(row.requirementId, reasons);
   }
   return out;
+}
+
+const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
+  list.filter((x) => x.requirementId === id);
+
+/**
+ * What the turn of a requirement whose issues are worked reads beyond their statuses
+ * (`standing-work.ts:workTurn`): each parked issue's own standing wait, and what follows a landing,
+ * read once for the page and only where a requirement's every unshipped issue has landed.
+ */
+async function workFactsOf(
+  projectId: string,
+  rows: readonly StandingRow[],
+  linked: readonly { requirementId: string | null; id: string; status: string }[],
+  viewer: StandingViewer | null,
+  now: Date,
+) {
+  const parked = linked.filter((i) => PARK_STATUSES.includes(i.status as IssueStatus));
+  const releaseOwed = rows.some((r) =>
+    awaitsReleaseOnly(by(linked, r.id).filter((i) => i.status !== 'dropped')),
+  );
+  const [parkedWaits, release] = await Promise.all([
+    issueWaitsOf(
+      projectId,
+      parked.map((i) => i.id),
+      viewer ? { userId: viewer.userId } : null,
+      now,
+    ),
+    releaseOwed ? requirementDependents().releaseLeg(projectId, viewer?.userId ?? null) : null,
+  ]);
+  return { parkedWaits, release };
 }
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
@@ -212,7 +245,7 @@ export async function standingsOf(
     readEffectivePolicy(projectId),
   ]);
   const uncovered = await uncoveredOf(ids);
-  const [people, issueCriteria, feedbackLinks, closedAt, changedTraced] = await Promise.all([
+  const [people, issueCriteria, feedbackLinks, closedAt, changedTraced, work] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
     issueCriteriaOf(linked.map((i) => i.id)),
     feedbackLinksOf(projectId, ids),
@@ -221,10 +254,10 @@ export async function standingsOf(
       db,
       linked.map((i) => i.id),
     ),
+    workFactsOf(projectId, rows, linked, viewer, now),
   ]);
+  const { parkedWaits, release } = work;
   const feedbackBy = feedbackCountsOf(feedbackLinks);
-  const by = <T extends { requirementId: string | null }>(list: readonly T[], id: string) =>
-    list.filter((x) => x.requirementId === id);
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
     const mine = by(linked, row.id).map((i) => ({
@@ -240,6 +273,7 @@ export async function standingsOf(
         currentRevision: row.currentRevision,
         changedTraced: changedTraced.get(i.id) ?? [],
       }),
+      parkedOn: parkedWaits.get(i.id)?.standing.waitingOn ?? null,
     }));
     const issueIds = new Set(mine.map((i) => i.id));
     out.set(
@@ -282,6 +316,7 @@ export async function standingsOf(
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         judge: policy?.document.qa ?? null,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
+        release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,
         now,
       }),

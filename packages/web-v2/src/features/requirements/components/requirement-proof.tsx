@@ -165,7 +165,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                       <Link href={issueHref(slug, i.displayId)} className="max-w-[36ch] truncate text-link hover:underline" title={`${i.displayId} · ${i.title}`}>
                         {i.title}
                       </Link>
-                      <span className="font-mono text-12 text-subtle">{i.displayId}</span>
+                      <span className="shrink-0 whitespace-nowrap font-mono text-12 text-subtle" data-testid="criterion-issue-key">{i.displayId}</span>
                       <StatusBadge family="issue" value={i.status} tone={i.tone} />
                       {stale ? <span className="text-subtle">{t("requirements.criteria.earlierWording")}</span> : null}
                     </span>
@@ -182,7 +182,7 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                           <span className="font-medium text-fg">{t(l.verdict ? VERDICT_WORD[l.verdict] : "requirements.criteria.notJudged")}</span>
                           {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null} · {i.title}
                           {l.stale ? t("requirements.criteria.tracesEarlier") : ""}{" "}
-                          <Link href={issueHref(slug, i.displayId)} className="font-mono text-12 text-subtle hover:underline">
+                          <Link href={issueHref(slug, i.displayId)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
                             {i.displayId}
                           </Link>
                         </li>

@@ -37,6 +37,7 @@ import {
   provideFeedbackDependents,
   requirementFeedbackAs,
 } from './feedback/index.js';
+import { releaseLegFor } from './forecast/index.js';
 import { provideAssistantMethod } from './guides/index.js';
 import { registerAllIntegrations } from './integration-registry.js';
 import { refreshMainRunnerHead, servesRunnerReleases } from './integrations/github/index.js';
@@ -282,6 +283,7 @@ provideRequirementDependents({
   feedbackOf: requirementFeedbackAs,
   revised: staleOnTargetRevised,
   proposeDuplicate: proposeRequirementDuplicate,
+  releaseLeg: releaseLegFor,
 });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,

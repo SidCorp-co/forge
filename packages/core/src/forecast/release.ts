@@ -8,16 +8,18 @@
 import {
   FORECAST_WINDOW_DAYS,
   RELEASE_ACT_PERMISSION,
+  type ReleaseLeg,
   type ReleaseMode,
 } from '@forge/contracts/forecast';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
-import { namedHolders } from '../permissions/index.js';
+import { effectiveProjectRole } from '../lib/authz.js';
+import { holds, namedHolders } from '../permissions/index.js';
 import { shippedReleasesOf } from '../pipeline/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { nextDraftVersion } from '../release-batch/index.js';
-import type { ReleaseFacts, Shipped } from './delivery.js';
+import { type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 
 /** Who reads a forecast, with the grants that decide whether a person's act it names is theirs. */
 export interface ForecastViewer {
@@ -47,6 +49,29 @@ export async function readReleaseFacts(
     mode === 'automatic' ? [] : namedHolders(RELEASE_ACT_PERMISSION[mode], projectId),
   ]);
   return { mode, nextVersion, lags, holders, viewerOwes: viewerOwesRelease(mode, viewer) };
+}
+
+/**
+ * What follows a landing on this project, as `userId` reads it: the release on its own, or the act a
+ * person owes (theirs where they hold its grant, else its holders by name), for a read model outside
+ * the forecast that names who a landed change waits on. A reader with no grant on the project owes nothing.
+ */
+export async function releaseLegFor(
+  projectId: string,
+  userId: string | null,
+  now: Date = new Date(),
+): Promise<ReleaseLeg> {
+  const access = userId ? await effectiveProjectRole(userId, projectId) : null;
+  const viewer =
+    userId && access
+      ? {
+          userId,
+          isAdmin: holds(access, 'project.admin'),
+          mayApprove: holds(access, 'releases.approve'),
+          canWrite: holds(access, 'project.write'),
+        }
+      : null;
+  return releaseLegOf(await readReleaseFacts(projectId, now, viewer));
 }
 
 async function readReleaseLags(projectId: string, now: Date): Promise<number[]> {

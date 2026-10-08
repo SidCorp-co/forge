@@ -30,7 +30,7 @@ import {
 } from './acceptance-rules.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
 import type { RequirementRefusal } from './rules.js';
-import { deliveryAt, type StandingIssue } from './standing.js';
+import { deliveryAt, type ProofIssue } from './standing.js';
 import { issueCriteriaOf } from './standing-facts.js';
 import {
   answer,
@@ -74,7 +74,7 @@ export async function deliveryIn(
     linked.map((i) => i.id),
     ex,
   );
-  const standingIssues: StandingIssue[] = linked.map((i) => ({
+  const standingIssues: ProofIssue[] = linked.map((i) => ({
     id: i.id,
     displayId: formatIssueRef(prefix, i.issSeq),
     title: i.title,

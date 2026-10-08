@@ -42,7 +42,7 @@ export function RequirementPeek({
                 title={d.title}
                 action={<PrimaryActions projectId={projectId} slug={slug} d={d} inPeek onReview={() => rememberListOrigin(REQUIREMENTS_LIST)} />}
               />
-              <RequirementProgress standing={s} inset="px-[18px]" />
+              <RequirementProgress standing={s} slug={slug} inset="px-[18px]" />
               <div className="px-[18px] pb-4 pt-4">
                 <RequirementFacts d={d} slug={slug} projectId={projectId} />
               </div>

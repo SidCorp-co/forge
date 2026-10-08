@@ -1,10 +1,12 @@
 "use client";
 
 // What a requirement's standing (core `requirements/standing.ts`) says, put into the shared design
-// pieces: its whose-turn as the shared banner, its lifecycle as the shared step bar, its coverage as
-// a dot per verdict carrying the verdict's own glyph beside its own word, so a verdict is never told by
-// colour alone. Nothing here draws a colour, a step or a verdict word of its own.
+// pieces: its whose-turn as the shared banner, the issue or release the wait is about linked inside its
+// act, its lifecycle as the shared step bar, its coverage as a dot per verdict carrying the verdict's
+// own glyph beside its own word, so a verdict is never told by colour alone. Nothing here draws a
+// colour, a step or a verdict word of its own.
 
+import Link from "next/link";
 import {
   BC_VERDICTS,
   type BcVerdict,
@@ -13,11 +15,14 @@ import {
   type RequirementStanding,
   type RequirementState,
   type RequirementWaitingKind,
+  type RequirementWaitingOn,
 } from "@forge/contracts/requirements";
 import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { saidView } from "@/lib/i18n/said";
+import { issueHref } from "@/lib/routes/issues";
+import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 
 /** One verdict as a dot carrying the verdict's glyph (✓ × ↻ ○ !), so its shape tells it apart where its colour does not. */
@@ -74,11 +79,33 @@ const BANNER_TONE: Record<RequirementWaitingKind, BannerTone> = {
   person: "calm",
   agent: "agent",
   issue: "run",
+  release: "run",
   none: "calm",
 };
 
+/** Where what a wait is about lives: the parked issue's page, or the release's. */
+const REFERS_HREF = {
+  issue: issueHref,
+  release: releaseHref,
+} as const satisfies Record<NonNullable<RequirementWaitingOn["refers"]>, (slug: string, ref: string) => string>;
+
+/** The act, with the issue or release it names linked where the wait says what it is about ("cut 0.1.0, then approve it"). */
+function WaitAct({ act, w, slug }: { act: string; w: RequirementWaitingOn; slug: string }) {
+  const at = w.refers && w.ref ? act.indexOf(w.ref) : -1;
+  if (!w.refers || !w.ref || at < 0) return <>{act}</>;
+  return (
+    <>
+      {act.slice(0, at)}
+      <Link href={REFERS_HREF[w.refers](slug, w.ref)} className="whitespace-nowrap font-mono text-link hover:underline" data-testid="wait-ref" data-refers={w.refers}>
+        {w.ref}
+      </Link>
+      {act.slice(at + w.ref.length)}
+    </>
+  );
+}
+
 /** The strip's first line: whom it waits on and for what, or that nothing is owed. */
-function RequirementBanner({ standing, className }: { standing: RequirementStanding; className?: string }) {
+function RequirementBanner({ standing, slug, className }: { standing: RequirementStanding; slug: string; className?: string }) {
   const t = useCopy();
   const w = saidView(standing.waitingOn, useInterfaceLanguage());
   const stuck = standing.attentionGroup === "stuck" && w.kind === "none";
@@ -90,7 +117,7 @@ function RequirementBanner({ standing, className }: { standing: RequirementStand
         done ? (standing.state === "accepted" ? "requirements.banner.accepted" : "requirements.banner.dropped") : stuck ? "requirements.banner.stuck" : w.kind === "you" ? "requirements.banner.waitingOnYou" : "requirements.banner.waitingOn",
         { who: w.who },
       )}
-      body={done ? t("requirements.banner.nothingOwed") : stuck ? t("requirements.banner.noOwner") : w.act}
+      body={done ? t("requirements.banner.nothingOwed") : stuck ? t("requirements.banner.noOwner") : <WaitAct act={w.act} w={standing.waitingOn} slug={slug} />}
       rule={w.rule}
       effect={done ? undefined : w.effect}
       className={className}
@@ -108,13 +135,13 @@ const verdictCounts = (coverage: RequirementStanding["coverage"]) =>
  * verdict, each a glyph dot, a number and the verdict's word. Every word is the lifecycle's and the
  * verdicts' own; this draws no step or verdict of its own.
  */
-export function RequirementProgress({ standing, inset }: { standing: RequirementStanding; inset: string }) {
+export function RequirementProgress({ standing, slug, inset }: { standing: RequirementStanding; slug: string; inset: string }) {
   const t = useCopy();
   const { passing: k, criteria: n } = criteriaCoverageOf(standing.coverage);
   const line = onLifecycle(standing.state) >= 0;
   return (
     <section aria-label={t("requirements.progress.label")} className="border-b border-line-subtle bg-surface" data-testid="requirement-progress">
-      <RequirementBanner standing={standing} className={cn(inset, "py-2.5")} />
+      <RequirementBanner standing={standing} slug={slug} className={cn(inset, "py-2.5")} />
       {line || n > 0 ? (
         <div className={cn("flex flex-wrap items-start gap-x-8 gap-y-3 py-3", inset)}>
           {line ? (

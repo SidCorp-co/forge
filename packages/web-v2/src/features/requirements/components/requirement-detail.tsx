@@ -267,7 +267,7 @@ export function RequirementPage({
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
             {/* the strip stays first; a picture (ISS-460) goes between it and the tabs */}
-            <RequirementProgress standing={s} inset="px-8 max-md:px-4" />
+            <RequirementProgress standing={s} slug={slug} inset="px-8 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
               {tab === "overview" ? <Overview d={d} projectId={projectId} slug={slug} /> : null}
