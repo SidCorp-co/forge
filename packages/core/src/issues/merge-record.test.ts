@@ -101,6 +101,7 @@ describe('recordIssueMerge — an assertion', () => {
       mergedAt: held.mergedAt,
       commitSha: 'abc1234',
       landing: null,
+      claimedCommit: null,
     });
   });
 });
@@ -138,11 +139,68 @@ describe('recordIssueMerge — evidence', () => {
       mergedAt: held.mergedAt,
       commitSha: 'deadbee',
       landing: null,
+      claimedCommit: null,
     });
   });
 });
 
+describe('recordIssueMerge — an unverified claim (ISS-1409)', () => {
+  const CLAIM = 'ABCDEF1234567';
+
+  it('writes the claim lowercased, beside the stamp and never as a commit', async () => {
+    const { executor, setCall } = buildExecutor();
+    await recordIssueMerge(executor, {
+      issueId: 'iss-1',
+      evidence: { kind: 'asserted', via: 'mark', unverifiedCommit: CLAIM },
+    });
+    const payload = setCall.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(payload.mergedClaimedCommit).toBe(CLAIM.toLowerCase());
+    expect(payload).not.toHaveProperty('mergedCommitSha');
+  });
+
+  it('may attach to a bare asserted mark, but never over a landing, a commit or another claim', async () => {
+    const { executor, whereCall, setCall } = buildExecutor();
+    await recordIssueMerge(executor, {
+      issueId: 'iss-1',
+      evidence: { kind: 'asserted', via: 'mark', unverifiedCommit: CLAIM },
+    });
+    const gated = renderedSql(whereCall.mock.calls[0]?.[0]);
+    for (const column of [
+      'merged_at',
+      'merged_commit_sha',
+      'merged_landing',
+      'merged_claimed_commit',
+    ]) {
+      expect(gated).toContain(`"${column}" is null`);
+    }
+    expect(renderedSql(setCall.mock.calls[0]?.[0].mergedAt)).toContain('coalesce');
+  });
+
+  it('keeps the plain assertion gated on merged_at alone, so a claim-less mark attaches nothing', async () => {
+    const { executor, whereCall } = buildExecutor();
+    await recordIssueMerge(executor, {
+      issueId: 'iss-1',
+      evidence: { kind: 'asserted', via: 'mark' },
+    });
+    const gated = renderedSql(whereCall.mock.calls[0]?.[0]);
+    expect(gated).toContain('"merged_at" is null');
+    expect(gated).not.toContain('merged_claimed_commit');
+  });
+
+  it('clears the claim in the statement that stamps an observed merge', async () => {
+    const { executor, setCall } = buildExecutor();
+    await recordIssueMerge(executor, { issueId: 'iss-1', evidence: OBSERVED });
+    expect(setCall.mock.calls[0]?.[0]).toMatchObject({ mergedClaimedCommit: null });
+  });
+});
+
 describe('clearIssueMerge', () => {
+  it('clears the claim with the mark', async () => {
+    const { executor, setCall } = buildExecutor();
+    await clearIssueMerge(executor, 'iss-1');
+    expect(setCall.mock.calls[0]?.[0]).toMatchObject({ mergedClaimedCommit: null });
+  });
+
   it('clears the commit together with the timestamp', async () => {
     const { executor, setCall } = buildExecutor();
     await clearIssueMerge(executor, 'iss-1');

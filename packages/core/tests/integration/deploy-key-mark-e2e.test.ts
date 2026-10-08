@@ -217,22 +217,38 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
   }, 60_000);
 
-  it('names the SSH URL and deploy key to attach, never GitHub, where the project has neither (criteria 13, 16)', async () => {
+  it('records the commit as an unverified claim, naming the SSH URL and deploy key to attach and never GitHub, where the project has neither (criteria 13, 16; ISS-1409)', async () => {
     const { db, projectId } = current();
     await db.execute(sql`DELETE FROM project_git_credentials WHERE project_id = ${projectId}`);
+    const issue = await seed();
+
+    const res = await mark(issue, own());
+
+    expect(res.mark).toBe('asserted');
+    expect(res.markDetail).toContain('NOT verified');
+    expect(res.markDetail).toContain(
+      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
+    );
+    expect(res.markDetail).toContain(
+      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+    );
+    expect(res.markDetail).not.toMatch(
+      /bind (a|the) repository|Integrations|through a GitHub binding/,
+    );
+    expect((await row(issue.id)).merged_commit_sha).toBeNull();
+  }, 60_000);
+
+  it('still refuses COMMIT_UNVERIFIED where a deploy key is attached but the repository URL is no SSH remote (criterion 6; ISS-1409)', async () => {
+    const { db, projectId } = current();
+    await db.execute(
+      sql`UPDATE projects SET repo_url = 'https://gitlab.com/org/repo.git' WHERE id = ${projectId}`,
+    );
     const issue = await seed();
 
     const refused = await refusal(() => mark(issue, own()));
 
     expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
-    );
-    expect(refused.message).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
-    );
-    expect(refused.message).not.toMatch(
-      /bind (a|the) repository|Integrations|through a GitHub binding/,
-    );
+    expect(refused.message).toContain('is not an SSH remote');
+    expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
   }, 60_000);
 });

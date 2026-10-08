@@ -58,6 +58,7 @@ describe('collectWorkEvidence', () => {
       branch: 'ISS-1-foo',
       mergedCommitSha: null,
       mergedLanding: null,
+      claimedCommit: null,
       lane: { shape: 'git', declared: false },
     });
   });
@@ -130,6 +131,7 @@ describe('collectWorkEvidence', () => {
       branch: null,
       mergedCommitSha: null,
       mergedLanding: null,
+      claimedCommit: null,
       lane: null,
     });
   });
@@ -183,6 +185,7 @@ describe('hasCodeEvidence', () => {
         branch: 'ISS-1-foo',
         mergedCommitSha: null,
         mergedLanding: null,
+        claimedCommit: null,
         lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
@@ -197,6 +200,7 @@ describe('hasCodeEvidence', () => {
         branch: null,
         mergedCommitSha: null,
         mergedLanding: null,
+        claimedCommit: null,
         lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
@@ -211,6 +215,7 @@ describe('hasCodeEvidence', () => {
         branch: null,
         mergedCommitSha: null,
         mergedLanding: null,
+        claimedCommit: null,
         lane: { shape: 'git', declared: false },
       }),
     ).toBe(true);
@@ -225,9 +230,34 @@ describe('hasCodeEvidence', () => {
         branch: null,
         mergedCommitSha: null,
         mergedLanding: null,
+        claimedCommit: null,
         lane: { shape: 'git', declared: false },
       }),
     ).toBe(false);
+  });
+});
+
+describe('a commit a mark claims and Forge could not check (ISS-1409)', () => {
+  const SHA = '3f1c2b4a5d6e7f8091a2b3c4d5e6f708192a3b4c';
+  const base = { sessionContext: {}, baseBranch: 'main', releaseChain: [] };
+
+  it('counts as evidence while a mark stands, and the claim is not a merged commit', async () => {
+    setup(
+      [],
+      [],
+      [{ ...base, mergedAt: new Date('2026-10-08T07:00:00Z'), mergedClaimedCommit: SHA }],
+    );
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.claimedCommit).toBe(SHA);
+    expect(evidence.mergedCommitSha).toBeNull();
+    expect(hasCodeEvidence(evidence)).toBe(true);
+  });
+
+  it('is no evidence where merged_at is empty', async () => {
+    setup([], [], [{ ...base, mergedClaimedCommit: SHA }]);
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.claimedCommit).toBeNull();
+    expect(hasCodeEvidence(evidence)).toBe(false);
   });
 });
 

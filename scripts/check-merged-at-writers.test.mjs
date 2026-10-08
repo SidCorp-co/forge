@@ -19,6 +19,11 @@ describe('check-merged-at-writers — the mark columns have one writer', () => {
       'merged_landing',
       'await db.update(issues).set({ mergedLanding: url }).where(eq(issues.id, id));\n',
     ],
+    // ISS-1409: the claim an unverified mark carries is held beside the mark, so it shares the writer.
+    [
+      'merged_claimed_commit',
+      'await db.update(issues).set({ mergedClaimedCommit: sha }).where(eq(issues.id, id));\n',
+    ],
   ])('refuses a drizzle write of %s outside merge-record.ts', (_column, source) => {
     const found = faults(source);
     expect(found).toHaveLength(1);
@@ -29,6 +34,14 @@ describe('check-merged-at-writers — the mark columns have one writer', () => {
     const found = faults(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
       'await db.execute(sql`UPDATE issues SET merged_landing = ${url} WHERE id = ${id}`);\n',
+    );
+    expect(found.map((f) => f.how)).toEqual(['raw SQL updates issues.merged_*']);
+  });
+
+  it('refuses a raw SQL write of merged_claimed_commit', () => {
+    const found = faults(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
+      'await db.execute(sql`UPDATE issues SET merged_claimed_commit = ${sha} WHERE id = ${id}`);\n',
     );
     expect(found.map((f) => f.how)).toEqual(['raw SQL updates issues.merged_*']);
   });

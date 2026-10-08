@@ -94,13 +94,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     },
   );
 
-  // With no binding the project falls to its deploy key, and this one names no repository (ISS-1398).
+  // A reader that is configured and fails is refused; a project that declares none is ISS-1409's, in
+  // `unverified-claim-e2e.test.ts`.
   it.each([
-    [
-      'no_binding',
-      'names no repository URL, so there is no repository to read',
-      " with the deploy key attached under the project's Settings → Runners → Git access, over the SSH clone URL set there",
-    ],
     ['read', 'HTTP 502', ', through a GitHub binding whose installation can read it'],
     [
       'mint',
@@ -251,7 +247,7 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
   });
 
   it("clears the agent's gate once a person marks it merged and moves it, as COMMIT_UNVERIFIED says", async () => {
-    repo.down = 'no_binding';
+    repo.down = 'read';
     const issue = await seed();
     expect((await refusal(() => mark(issue, OWN))).code).toBe('COMMIT_UNVERIFIED');
     await mark(issue, undefined, 'human');

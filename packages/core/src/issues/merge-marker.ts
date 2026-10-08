@@ -3,7 +3,11 @@ import { db } from '../db/client.js';
 import { comments, projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
+import {
+  collectWorkEvidence,
+  findMissingWorkEvidence,
+  readStandingClaim,
+} from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
 import {
@@ -172,22 +176,43 @@ async function refuseMovedLane(issue: {
   );
 }
 
+/** What an agent's mark rests on where nothing but its commit stands behind it. */
+type AgentEvidence =
+  | { kind: 'read'; landing: Extract<CommitLanding, { ok: true }> }
+  /** The project declares no way to read its repository: the commit is kept as an unverified claim. */
+  | { kind: 'unverified'; commit: string; why: string };
+
 /**
  * An agent with nothing else behind it may still have landed: on a git lane on the base branch
  * itself, where the commit is the only trace and counts once the repository says it is this
- * issue's landing (returned); outside git where the landing it names is, that lane's evidence.
+ * issue's landing (`read`); outside git where the landing it names is, that lane's evidence.
+ *
+ * Where the project declares no way to read its repository at all, the commit is recorded as a
+ * claim Forge did not check (`unverified`, ISS-1409). That is the one cause softened: a repository
+ * that can be read and says no, and a reader that is configured and fails, are refused by name.
+ *
+ * A mark standing on such a claim is verified here, ahead of the work-evidence shortcut that the
+ * claim itself would otherwise satisfy: a repeat mark reads the repository for the commit it
+ * names, or for the claim, and upgrades through the observed write where it holds.
  */
 async function agentEvidence(
   issueId: string,
   shape: LandingShape,
   sent: { commit?: string | undefined; landing?: string | undefined },
-): Promise<Extract<CommitLanding, { ok: true }> | null> {
+): Promise<AgentEvidence | null> {
+  const standing = shape === 'git' ? await readStandingClaim(issueId) : null;
+  if (standing) return agentCommit(issueId, sent.commit ?? standing);
   const missing = await findMissingWorkEvidence(issueId, db, 'mark');
   if (!missing || (shape === 'outside_git' && sent.landing)) return null;
   if (!sent.commit || shape !== 'git') throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
-  const read = await readCommitLanding({ issueId, commit: sent.commit });
-  if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
-  return read;
+  return agentCommit(issueId, sent.commit);
+}
+
+async function agentCommit(issueId: string, commit: string): Promise<AgentEvidence> {
+  const read = await readCommitLanding({ issueId, commit });
+  if (read.ok) return { kind: 'read', landing: read };
+  if (read.unreadable) return { kind: 'unverified', commit, why: read.unreadable.why };
+  throw new MergeMarkerError(read.code, read.detail, read.details);
 }
 
 export type MergeMarkerActor = {
@@ -233,10 +258,18 @@ export async function applyMergeMarker(args: {
 }> {
   const before = args.issue;
 
-  let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null, landing: null };
+  let stampResult: MergeRecord = {
+    wrote: true,
+    mergedAt: null,
+    commitSha: null,
+    landing: null,
+    claimedCommit: null,
+  };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
+  /** Where no reader is declared, the commit the agent named and the cause with its remedy. */
+  let unverified: { commit: string; why: string } | null = null;
   /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
@@ -250,14 +283,18 @@ export async function applyMergeMarker(args: {
     if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
-    if (args.actor.agency === 'agent') fromRepository = await agentEvidence(before.id, shape, args);
+    if (args.actor.agency === 'agent') {
+      const evidence = await agentEvidence(before.id, shape, args);
+      if (evidence?.kind === 'read') fromRepository = evidence.landing;
+      if (evidence?.kind === 'unverified') unverified = evidence;
+    }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
     const refused = landingMarkRefusal({ lane, landing, observed: observed !== null });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =
-      shape === 'git' && !fromRepository
+      shape === 'git' && !fromRepository && !unverified
         ? await recordedClaim({
             projectId: before.projectId,
             issueId: before.id,
@@ -304,10 +341,15 @@ export async function applyMergeMarker(args: {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
-        evidence: { kind: 'asserted', at: args.mergedAt ?? null, via: 'mark' },
+        evidence: {
+          kind: 'asserted',
+          at: args.mergedAt ?? null,
+          via: 'mark',
+          unverifiedCommit: unverified?.commit ?? null,
+        },
       });
       // Only a `git` lane reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
-      claimedCommit = recorded?.claim ?? null;
+      claimedCommit = unverified ? null : (recorded?.claim ?? null);
       claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
       leftOut = recorded?.leftOut ?? null;
     }
@@ -341,11 +383,8 @@ export async function applyMergeMarker(args: {
     }
   }
 
-  const commitLabel = stampResult.commitSha
-    ? ` commit=${stampResult.commitSha}`
-    : claimedCommit
-      ? ` commit=${claimedCommit}`
-      : '';
+  const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;
+  const commitLabel = labelled ? ` commit=${labelled}` : '';
   const label =
     args.op === 'mark'
       ? `mark_merged${args.target ? ` target=${args.target}` : ''}${commitLabel}`
@@ -368,6 +407,9 @@ export async function applyMergeMarker(args: {
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
+    ...(unverified && stampResult.claimedCommit
+      ? { unverified: { commit: stampResult.claimedCommit, why: unverified.why } }
+      : {}),
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
     leftOut,

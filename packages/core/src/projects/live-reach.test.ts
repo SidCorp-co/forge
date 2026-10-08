@@ -208,6 +208,31 @@ describe('liveReachOf', () => {
   });
 });
 
+describe('liveReachOf for a mark carrying an unverified claim (ISS-1409)', () => {
+  // The row's claimed commit is never the issue's merged commit: `LiveReachIssue` has no field for it.
+  const claimed = { ...issue(), mergedClaimedCommit: OWN };
+
+  it('does not place the issue on a waiting commit merely because the claim names it', () => {
+    const r = liveReachOf(claimed, measured(), pattern);
+    expect(r).toMatchObject({ state: 'none_waiting' });
+    expect(JSON.stringify(r)).not.toContain('merged_commit');
+  });
+
+  it("answers unmeasured, with the reading's reason, where the project gives no way to read its repository", () => {
+    const refused: LiveReading = {
+      kind: 'refused',
+      baseBranch: 'staging',
+      liveBranch: 'master',
+      reason: 'Forge holds no GitHub binding and no deploy key for this project',
+      startedAt: STARTED,
+    };
+    expect(liveReachOf(claimed, refused, pattern)).toMatchObject({
+      state: 'unmeasured',
+      reason: 'Forge holds no GitHub binding and no deploy key for this project',
+    });
+  });
+});
+
 describe('liveReachOf over the recorded work heads', () => {
   it('places an issue on its recorded work head where no subject or merge gives that commit to anyone', () => {
     const record = {

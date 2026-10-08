@@ -1046,6 +1046,9 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    // ISS-1409 — the commit an agent's mark named where Forge had no way to read the repository:
+    // a claim, never a merge. Beside `merged_at` and never beside `merged_commit_sha`.
+    mergedClaimedCommit: text('merged_claimed_commit'),
     // ISS-1384 — where THIS issue's work lands, declared on it; NULL answers the project's kind.
     declaredLandingShape: text('declared_landing_shape', { enum: landingShapes }),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
@@ -1092,6 +1095,10 @@ export const issues = pgTable(
     mergedLandingChk: check(
       'issues_merged_landing_chk',
       sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
+    ),
+    mergedClaimedCommitChk: check(
+      'issues_merged_claimed_commit_chk',
+      sql`${t.mergedClaimedCommit} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedCommitSha} IS NULL AND ${t.mergedClaimedCommit} ~ '^[0-9a-f]{7,64}$')`,
     ),
     declaredLandingShapeChk: check(
       'issues_declared_landing_shape_chk',

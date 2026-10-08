@@ -3199,6 +3199,7 @@
   stops counting issues a release would fail again as ready, the dialog names them, and a refused
   Release now shows the holding release (ISS-1381).
 
+- **A project that gives Forge no way to read its repository can finish an issue whose work landed on the base branch.** An agent's mark naming the commit is accepted and recorded as a claim Forge did not verify, instead of being refused, so the issue reaches developed. The mark, the issue and its audit comment say the commit is not verified and which setting would let Forge check it; marking again once the repository can be read verifies it, or refuses it by name if it is not this issue's. A repository that can be read and says no, or a reader that fails, is refused as before (ISS-1409).
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
 - **A release held on an unreadable repository says how to fix that first, once.** Commit marks, held releases and Test connection ask for the same write access for the deploy key, and name an unreachable host by its hostname (ISS-1398).

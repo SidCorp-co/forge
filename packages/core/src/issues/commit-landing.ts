@@ -29,6 +29,13 @@ export type CommitLanding =
       code: CommitLandingRefusalCode;
       detail: string;
       details: Record<string, unknown>;
+      /**
+       * Present only where the project declares no way to read its repository at all (no GitHub
+       * binding, no deploy key beside a repository URL) — never where a reader is configured and
+       * fails, and never where the repository was read and says no. `why` is that cause and the
+       * setting that clears it, as the mark's own words carry it.
+       */
+      unreadable?: { why: string };
     };
 
 export type CommitLandingDeps = Partial<RepositoryAccessDeps>;
@@ -37,8 +44,11 @@ function refuse(
   code: CommitLandingRefusalCode,
   detail: string,
   details: Record<string, unknown>,
+  unreadable?: { why: string },
 ): CommitLanding {
-  return { ok: false, code, detail, details };
+  return unreadable
+    ? { ok: false, code, detail, details, unreadable }
+    : { ok: false, code, detail, details };
 }
 
 /**
@@ -46,7 +56,12 @@ function refuse(
  * the refusal names what reopens it, never the branch the work was done on, which on the
  * base-branch lane is the base branch `collectWorkEvidence` discards.
  */
-function unreadable(commit: string, why: string, clears: string): CommitLanding {
+function unreadable(
+  commit: string,
+  why: string,
+  clears: string,
+  declaredNone = false,
+): CommitLanding {
   return refuse(
     'COMMIT_UNVERIFIED',
     `commit ${commit} could not be checked against this project's repository, so it is not ` +
@@ -57,6 +72,7 @@ function unreadable(commit: string, why: string, clears: string): CommitLanding 
       "`testing`, which hold an agent to this evidence and not a person; a person's mark naming " +
       'a commit is checked against the same repository',
     { commit },
+    declaredNone ? { why } : undefined,
   );
 }
 
@@ -98,7 +114,7 @@ export async function readCommitLanding(
     projectId,
     async (access) => {
       if (access.kind === 'refused') {
-        return unreadable(commit, saying(access), readableThrough(access.route));
+        return unreadable(commit, saying(access), readableThrough(access.route), access.unbound);
       }
       return landingIn(access.reader, { projectId, issSeq, commit, baseBranch, branches });
     },

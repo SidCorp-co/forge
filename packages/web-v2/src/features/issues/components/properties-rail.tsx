@@ -77,11 +77,13 @@ function MergeMarkBadge({
   mark,
   commitSha,
   landing,
+  claimedCommit,
   landingShape,
 }: {
   mark?: MergeMarkKind;
   commitSha?: string | null;
   landing?: string | null;
+  claimedCommit?: string | null;
   landingShape?: LandingShape;
 }) {
   if (mark === "landed") {
@@ -103,6 +105,22 @@ function MergeMarkBadge({
       <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
         <Badge tone="green">observed</Badge>
       </span>
+    );
+  }
+  if (mark === "asserted" && claimedCommit) {
+    // ISS-1409 — a commit an agent named where Forge had no way to read the repository: shown as
+    // text, with what is owed it, because it is a claim and not a merge.
+    return (
+      <>
+        <Badge tone="amber">claimed</Badge>
+        <span
+          className="fg-body-sm min-w-0 break-all font-mono text-muted"
+          data-testid="merged-claim"
+          title="Forge has no way to read this project's repository, so it did not check that this commit exists or landed. Once the repository can be read, marking the issue merged again checks it."
+        >
+          {claimedCommit.slice(0, 10)} — not verified
+        </span>
+      </>
     );
   }
   if (mark === "asserted") {
@@ -308,6 +326,7 @@ export function PropertiesRail({
               mark={issue.mergeMark}
               commitSha={issue.mergedCommitSha}
               landing={issue.mergedLanding}
+              claimedCommit={issue.mergedClaimedCommit}
               landingShape={issue.landingShape}
             />
             {canMarkMerged && (

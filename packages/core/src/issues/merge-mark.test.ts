@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { describeMergeMark, mergeMarkKindOf } from './merge-record.js';
+import { describeMergeMark, mergeMarkFields, mergeMarkKindOf } from './merge-record.js';
 
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
@@ -62,6 +62,28 @@ describe('the sentence a caller is given', () => {
     expect(observed).not.toBe(asserted);
     expect(observed).not.toContain('CLAIM Forge did not observe');
     expect(observed).toContain(SHA);
+  });
+
+  it('says an unverified claim is NOT verified, why, and what verifies it, naming the commit once (ISS-1409)', () => {
+    const unverified = describeMergeMark({
+      kind: 'asserted',
+      unverified: { commit: 'abc1234', why: 'attach a deploy key under Git access' },
+    });
+    expect(unverified).toContain('CLAIM Forge did not observe');
+    expect(unverified).toContain('commit abc1234');
+    expect(unverified).toContain('NOT verified');
+    expect(unverified).toContain('no way to read this project');
+    expect(unverified).toContain('attach a deploy key under Git access');
+    expect(unverified).toContain('`merged_claimed_commit`');
+    expect(unverified).not.toContain('observed.');
+    expect(unverified.match(/abc1234/g)).toHaveLength(1);
+  });
+
+  it('carries the claim beside the kind, and never lets it make a mark observed (ISS-1409)', () => {
+    const row = { ...ASSERTED, mergedClaimedCommit: SHA };
+    expect(mergeMarkKindOf(row)).toBe('asserted');
+    expect(mergeMarkFields(row)).toMatchObject({ mergeMark: 'asserted', mergedClaimedCommit: SHA });
+    expect(mergeMarkFields(ASSERTED).mergedClaimedCommit).toBeNull();
   });
 
   it('names the landing on a landed mark, and never calls it a merge Forge observed', () => {

@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import {
   issueDependencies,
@@ -35,6 +35,9 @@ export interface WorkEvidence {
   /** `issues.merged_landing` where a mark stands on an `outside_git` lane: where the work now is,
    *  that lane's own record of having landed. Null on a `git` lane, which records a commit. */
   mergedLanding: string | null;
+  /** `issues.merged_claimed_commit` where a mark stands: the commit an agent named that Forge had no
+   *  way to check (ISS-1409). A claim, counted as evidence the way a recorded branch is. */
+  claimedCommit: string | null;
   /** Where this issue's work lands, which decides the routes a refusal may offer; null where the
    *  issue declares nothing and the project's kind is none Forge knows. */
   lane: Lane | null;
@@ -67,6 +70,7 @@ export async function collectWorkEvidence(
         mergedAt: issues.mergedAt,
         mergedCommitSha: issues.mergedCommitSha,
         mergedLanding: issues.mergedLanding,
+        mergedClaimedCommit: issues.mergedClaimedCommit,
         declaredLandingShape: issues.declaredLandingShape,
         baseBranch: projects.baseBranch,
         releaseChain: projects.releaseChain,
@@ -115,20 +119,40 @@ export async function collectWorkEvidence(
     mergedCommitSha: marked ? projectRow?.mergedCommitSha?.trim() || null : null,
     mergedLanding:
       marked && lane?.shape === 'outside_git' ? projectRow?.mergedLanding?.trim() || null : null,
+    claimedCommit: marked ? projectRow?.mergedClaimedCommit?.trim() || null : null,
     lane,
   };
 }
 
-/** Whether anything shows work happened: a branch, a handoff, a merge Forge read, or — on an
- *  `outside_git` lane — the landing its mark names. */
+/** Whether anything shows work happened: a branch, a handoff, a merge Forge read, the commit a mark
+ *  claims where Forge could not read the repository, or — on an `outside_git` lane — the landing its
+ *  mark names. */
 export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.handoffCommitSha) ||
     evidence.handoffFilesModified > 0 ||
     Boolean(evidence.branch) ||
     Boolean(evidence.mergedCommitSha) ||
+    Boolean(evidence.claimedCommit) ||
     Boolean(evidence.mergedLanding)
   );
+}
+
+/**
+ * The commit a standing mark claims and Forge could not check (ISS-1409), or null where no mark
+ * stands or it claims none. Read apart from `collectWorkEvidence`, which fails open for a gate:
+ * what a mark does with a claim is decided on this answer, so a read that raised is raised.
+ */
+export async function readStandingClaim(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<string | null> {
+  const [row] = await executor
+    .select({ claimed: issues.mergedClaimedCommit })
+    .from(issues)
+    .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt)))
+    .limit(1);
+  return row?.claimed?.trim() || null;
 }
 
 export async function hasChildIssues(
@@ -176,6 +200,10 @@ const DECLARED =
   "`statusEntryCriteria`; where this project's work leaves none of these, that declaration is " +
   'what to change.';
 
+/** Where the project gives Forge no way to read its repository the agent's commit still counts. */
+const UNREADABLE_REPOSITORY =
+  'Where the project gives Forge no way to read its repository (no GitHub binding and no deploy key beside a repository URL), that mark is accepted and the commit is recorded as a claim Forge has not verified, which counts as the evidence; a repository Forge can read, or a reader that fails, still refuses it.';
+
 const WHERE_IT_NOW_IS =
   'where the work now is (the live URL, the deployment, the CMS entry or storefront resource)';
 
@@ -211,7 +239,7 @@ function gitDetail(door: EvidenceDoor): string {
       `nothing was marked — ${BRANCH_OR_HANDOFF}, then mark it again; or, where the work landed ` +
       'on the base branch itself, mark it again with `mark_merged` carrying `data.commit`, the ' +
       "commit it landed at, which Forge checks against the project's repository. " +
-      `${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
+      `${UNREADABLE_REPOSITORY} ${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
     );
   }
   if (door === 'advance') {
@@ -221,16 +249,17 @@ function gitDetail(door: EvidenceDoor): string {
       'handoff with commitSha/filesModified, or, where the work landed on the base branch ' +
       'itself, mark it merged with `mark_merged` carrying `data.commit`, the commit it landed ' +
       `at, which Forge checks against the project's repository, before advancing. ` +
-      `${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
+      `${UNREADABLE_REPOSITORY} ${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
     );
   }
   return (
     `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
-    'before this status. A merge mark counts only where Forge read its commit itself: a mark ' +
+    'before this status. A merge mark counts only where Forge read its commit itself, or held it as a claim it could not check: a mark ' +
     "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
     "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
-    "landing; a person's mark naming a commit is checked only for the repository holding it, " +
-    `not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
+    'landing, or, where the project gives Forge no way to read its repository, as the unverified ' +
+    "claim that mark records; a person's mark naming a commit is checked only for the repository " +
+    `holding it, not read as this issue's landing, so it does not clear this. ${DECLARE_OUTSIDE_GIT} ` +
     `${DECLARED} ${NOT_A_BRANCH}`
   );
 }
