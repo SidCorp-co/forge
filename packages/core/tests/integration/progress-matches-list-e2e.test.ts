@@ -1,8 +1,10 @@
+import { UTC_READING } from '@forge/contracts/visual-blocks';
 import { ROADMAP_HORIZON_OF } from '@forge/contracts/project-status';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
+import { app } from '../../src/index.js';
 import { api, type Body } from '../helpers/api.js';
 import {
   ago,
@@ -196,5 +198,46 @@ describe('the progress report and the Requirements list at one moment', () => {
     expect(((res.body.frame as Body).rows as Body[]).map((r) => r.key).sort()).toEqual(
       drafts.sort(),
     );
+  });
+
+  // REQ-32 BC-17: an exported or stored text states its dates in UTC and says so; raw ISO never reaches a person.
+  it('exports a saved progress report with its forecast dates and basis in UTC, never as raw ISO', async () => {
+    const ISO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+    const base = `/api/projects/${auto.projectId}`;
+    const run = await api(auto.token, 'POST', `${base}/report-templates/progress/runs`, {});
+    expect(run.status, JSON.stringify(run.body)).toBe(200);
+    expect(String(run.body.text)).not.toMatch(ISO);
+    const runIds = ((run.body.document as Body).runs as Body[]).map((r) => String(r.runId));
+    const saved = await api(auto.token, 'POST', `${base}/status/reports`, {
+      templateId: 'progress',
+      runIds,
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    const id = String(saved.body.id);
+    const document = (await get(auto, `/status/reports/${id}`)).document as Body;
+    const blocks = document.blocks as Body[];
+    const index = blocks.findIndex(
+      (b) => b.kind === 'table' && (b.columns as string[]).includes('p50At'),
+    );
+    expect(index, 'the progress report holds a table with a date column').toBeGreaterThanOrEqual(0);
+    const rows = ((blocks[index] as Body).frame as Body).rows as Body[];
+    const dated = rows.find((r) => typeof r.p50At === 'string') as Body;
+    const reading = UTC_READING.instant(String(dated.p50At));
+    expect(reading).toMatch(/^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2} UTC$/);
+
+    const md = await api(auto.token, 'GET', `${base}/status/reports/${id}/export`);
+    const text = String(md.body.text ?? md.body);
+    expect(text).not.toMatch(ISO);
+    expect(text).toContain(reading);
+
+    const csv = await app.fetch(
+      new Request(`http://forge.test${base}/status/reports/${id}/export?format=csv&block=${index}`, {
+        headers: { authorization: `Bearer ${auto.token}` },
+      }),
+    );
+    expect(csv.status).toBe(200);
+    const csvText = await csv.text();
+    expect(csvText).not.toMatch(ISO);
+    expect(csvText).toContain(reading);
   });
 });

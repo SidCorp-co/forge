@@ -87,10 +87,22 @@ describe('saving a template run', () => {
     );
     const doc = (await api(w.token, 'GET', `${base()}/status/reports/${reportId}`)).body
       .document as Body;
-    const { blockToText } = await import('@forge/contracts/visual-blocks');
+    const { blockToText, UTC_READING } = await import('@forge/contracts/visual-blocks');
     for (const block of doc.blocks as Body[]) {
-      expect(text).toContain(blockToText(block as never));
+      expect(text).toContain(blockToText(block as never, UTC_READING));
     }
+  });
+
+  it('states every date of the Markdown export, and of the run text, in UTC and never as raw ISO (REQ-32 BC-17)', async () => {
+    const ISO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+    const res = await api(w.token, 'GET', `${base()}/status/reports/${reportId}/export`);
+    const text = String(res.body.text ?? res.body);
+    expect(text).not.toMatch(ISO);
+    expect(text).toMatch(/_As of [A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2} UTC_/);
+    expect(text).toMatch(/[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2} UTC/);
+    const run = await api(author.token, 'POST', `${base()}/report-templates/progress/runs`, {});
+    const runText = String((run.body as Body).text ?? '');
+    expect(runText).not.toMatch(ISO);
   });
 
   it('exports one table block as CSV: the BOM, a heading row of its labels, CRLF records', async () => {
@@ -119,6 +131,7 @@ describe('saving a template run', () => {
     );
     expect(text.split('\r\n')[0]).toBe(labels.join(','));
     expect(text.endsWith('\r\n')).toBe(true);
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
   });
 
   it('refuses a CSV export of no table, of a block that is not one, and of a block that is not there, by name', async () => {

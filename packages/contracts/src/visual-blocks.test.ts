@@ -12,6 +12,7 @@ import {
   shownFrame,
   tableCsv,
   tableRows,
+  UTC_READING,
   VISUAL_BLOCK_KINDS,
   type VisualBlock,
   type VisualBlockKind,
@@ -421,5 +422,51 @@ describe("a table block as CSV", () => {
     const csv = tableCsv({ ...table(), sort: { field: "key", dir: "desc" }, limit: 1 }).slice(1).trimEnd().split("\r\n");
     expect(csv).toHaveLength(2);
     expect(csv[1]?.startsWith("REQ-3,")).toBe(true);
+  });
+});
+
+describe("a text no viewer is behind reads its instants in UTC (REQ-32 BC-17)", () => {
+  const dated: ReportFrame = {
+    fields: [
+      { name: "key", type: "ref", label: "Requirement" },
+      { name: "basis", type: "string", label: "Forecast basis" },
+      { name: "eta", type: "date", label: "ETA" },
+    ],
+    rows: [
+      { key: "REQ-1", basis: "shipped in 0.4.0-dev.6 (2026-10-04T18:19:08.744Z)", eta: "2026-10-06T07:05:00.000Z" },
+      { key: "REQ-2", basis: "lands by then", eta: "2026-03-02" },
+    ],
+  };
+  const table = () => {
+    const r = checkBlock({ v: 1, kind: "table", source, columns: ["key", "basis", "eta"], frame: dated });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+    return r.block as VisualBlock & { kind: "table" };
+  };
+
+  it("reads an instant with its time and the word UTC, and a calendar day as the day", () => {
+    expect(UTC_READING.instant("2026-10-04T18:19:08.744Z")).toBe("Oct 4, 18:19 UTC");
+    expect(UTC_READING.instant("2026-10-04T18:19:08+07:00")).toBe("Oct 4, 11:19 UTC");
+    expect(UTC_READING.instant("2026-03-02")).toBe("Mar 2");
+    expect(UTC_READING.instant("2026-03-02T00:00:00.000Z")).toBe("Mar 2");
+  });
+
+  it("leaves a thing that only looks like an instant as it was written", () => {
+    expect(UTC_READING.instant("2026-13-45")).toBe("2026-13-45");
+    expect(UTC_READING.instant("2026-13-45T10:00:00Z")).toBe("2026-13-45T10:00:00Z");
+  });
+
+  it("puts the same reading in the text fallback and the CSV, with no ISO left", () => {
+    const text = blockToText(table(), UTC_READING);
+    expect(text).toContain("shipped in 0.4.0-dev.6 (Oct 4, 18:19 UTC)");
+    expect(text).toContain("Oct 6, 07:05 UTC");
+    expect(text).toContain("| Mar 2 |");
+    expect(text).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    const csv = tableCsv(table(), UTC_READING);
+    expect(csv).toContain('REQ-1,"shipped in 0.4.0-dev.6 (Oct 4, 18:19 UTC)","Oct 6, 07:05 UTC"\r\n');
+    expect(csv).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+  });
+
+  it("keeps ISO when no reading is handed in", () => {
+    expect(tableCsv(table())).toContain("2026-10-06T07:05:00.000Z");
   });
 });

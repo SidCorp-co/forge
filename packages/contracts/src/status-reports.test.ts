@@ -251,7 +251,7 @@ describe("a kept template report as Markdown", () => {
 		});
 		expect(
 			text.startsWith(
-				"# Progress\n\n_As of 2026-10-08T09:00:00.000Z_\n\n## Summary\n\nOne requirement moved.",
+				"# Progress\n\n_As of Oct 8, 09:00 UTC_\n\n## Summary\n\nOne requirement moved.",
 			),
 		).toBe(true);
 		expect(text).toContain(blockToText(document.blocks[0] as never));

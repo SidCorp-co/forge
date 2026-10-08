@@ -20,6 +20,7 @@ import {
 } from '@forge/contracts/report-templates';
 import {
   blockToText,
+  UTC_READING,
   checkBlock,
   shownFrame,
   VISUAL_BLOCK_VERSION,
@@ -246,7 +247,7 @@ export async function runTemplate(args: {
     document,
     slots: slotsOf(t),
     notDrawn,
-    text: document.blocks.map((b) => blockToText(b)).join('\n\n'),
+    text: document.blocks.map((b) => blockToText(b, UTC_READING)).join('\n\n'),
   };
 }
 

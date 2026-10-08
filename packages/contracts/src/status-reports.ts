@@ -16,7 +16,7 @@ import {
 	type ReportDocument,
 	TEMPLATE_NARRATIVE_SLOTS,
 } from "./report-templates.js";
-import { blockToText } from "./visual-blocks.js";
+import { blockToText, readInstantsIn, UTC_READING } from "./visual-blocks.js";
 
 export const STATUS_REPORT_PRODUCERS = ["person", "schedule"] as const;
 export type StatusReportProducerKind = (typeof STATUS_REPORT_PRODUCERS)[number];
@@ -317,20 +317,20 @@ const SLOT_HEADINGS = {
 /**
  * A stored template report as Markdown: how its summary came to be, the narrative a person or a
  * model wrote, then every block as its plain text (`blockToText`), and the slots nobody wrote named
- * with why at the end rather than left out. Core's export route is the one caller that serves it.
+ * with why at the end rather than left out, every instant in UTC and saying so. Core's export route is the one caller that serves it.
  */
 export function reportDocumentMarkdown(
 	document: ReportDocument,
 	meta: { title: string; asOf: string; narrative: StatusReportNarrative | null },
 ): string {
-	const parts = [`# ${meta.title}`, `_As of ${meta.asOf}_`];
+	const parts = [`# ${meta.title}`, `_As of ${readInstantsIn(meta.asOf, UTC_READING)}_`];
 	const outcome = narrativeOutcomeLine(meta.narrative);
 	if (outcome) parts.push(`_${outcome}_`);
 	for (const slot of TEMPLATE_NARRATIVE_SLOTS) {
 		const text = document.narrative[slot]?.trim();
 		if (text) parts.push(`## ${SLOT_HEADINGS[slot]}\n\n${text}`);
 	}
-	for (const block of document.blocks) parts.push(blockToText(block));
+	for (const block of document.blocks) parts.push(blockToText(block, UTC_READING));
 	const unwritten = unwrittenNarrativeLine(document, meta.narrative);
 	if (unwritten) parts.push(`_${unwritten}_`);
 	return `${parts.join("\n\n")}\n`;
