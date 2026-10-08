@@ -35,10 +35,11 @@ interface DeliveredReply {
    */
   decision?: string | undefined;
   /**
-   * The turn that wrote `text` called `await_reply`: the reply waits on the person's answer.
-   * Only the model's own screened text carries it, never a code-authored line (ISS-277).
+   * The person the reply waits on: the turn that wrote `text` called `await_reply`, and this is
+   * the person that turn answered. Only the model's own screened text carries it, never a
+   * code-authored line (ISS-277).
    */
-  awaitsReply?: boolean | undefined;
+  awaitsReplyFrom?: string | null | undefined;
   /**
    * The person whose authority the turn that wrote this reply ran under. Its tool inputs and
    * outputs ran with their permissions, so only they are shown them (`toolContentFor`).
@@ -57,7 +58,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       content: reply.text,
       ...(reply.messageId ? { id: reply.messageId } : {}),
       ...(reply.blocks && reply.blocks.length > 0 ? { blocks: reply.blocks } : {}),
-      awaitsReply: reply.awaitsReply === true,
+      awaitsReplyFrom: reply.awaitsReplyFrom ?? null,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       externalId: reply.receipt.messageId,
       deliveryProof: {

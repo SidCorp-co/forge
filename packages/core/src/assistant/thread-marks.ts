@@ -1,18 +1,14 @@
 import type { OnboardingStatus } from '@forge/contracts/onboarding';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
   turnState,
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
-import { agentSessions, users } from '../db/schema.js';
-import {
-  conversationMessages,
-  conversationParticipants,
-  conversationWindows,
-} from '../db/schema-conversations.js';
+import { agentSessions } from '../db/schema.js';
+import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { requirements } from '../db/schema-requirements.js';
 import { firstRequirementsOnboardingOf, onboardingStatusesOf } from '../onboarding/index.js';
@@ -32,7 +28,7 @@ export interface ThreadFacts {
   batchOpen: boolean;
   /** A message in this room waits for its reply: a window not yet settled, or a runner turn still out. */
   replyPending: boolean;
-  /** The room's newest said message is an agent reply recorded as awaiting an answer, put to the viewer. */
+  /** The room's newest said message is an agent reply recorded as awaiting the viewer's answer. */
   agentAsked: boolean;
 }
 
@@ -52,23 +48,23 @@ export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
 /**
  * The rooms among these in which the viewer owes the agent an answer: the room's newest said
  * message (no system line, no silence) is an agent reply recorded as awaiting an answer
- * (`awaits_reply`, written when its turn called `await_reply`), and it was put to the viewer. The
- * reply's text is never read: no rule over prose can tell a question that waits from one the agent
- * answered, echoed or listed reasons under (ISS-277). A question is put to the person whose message
- * the agent answered, the newest a person (not another agent) said; where no person has spoken
- * yet, to every person in the room.
+ * (`awaits_reply`, written when its turn called `await_reply`), recorded as waiting on the viewer
+ * (`awaits_reply_from`, the person its turn answered). Neither the reply's text nor who wrote
+ * before it is read: no rule over prose can tell a question that waits from one the agent answered
+ * or echoed, and the newest person to write before the reply may have written while the turn was
+ * out (ISS-277, probe P7). A reply that awaits an answer and names nobody waits on nobody.
  */
 async function roomsWhereAgentAsked(
   conversationIds: readonly string[],
   viewerId: string,
 ): Promise<Set<string>> {
-  const asked = new Set<string>();
-  if (conversationIds.length === 0) return asked;
+  if (conversationIds.length === 0) return new Set();
   const newest = await db
     .selectDistinctOn([conversationMessages.conversationId], {
       conversationId: conversationMessages.conversationId,
       role: conversationMessages.role,
       awaitsReply: conversationMessages.awaitsReply,
+      awaitsReplyFrom: conversationMessages.awaitsReplyFrom,
     })
     .from(conversationMessages)
     .where(
@@ -79,45 +75,11 @@ async function roomsWhereAgentAsked(
       ),
     )
     .orderBy(conversationMessages.conversationId, desc(conversationMessages.seq));
-  const asking = newest
-    .filter((m) => m.role === 'assistant' && m.awaitsReply)
-    .map((m) => m.conversationId);
-  if (asking.length === 0) return asked;
-  const [answered, members] = await Promise.all([
-    db
-      .selectDistinctOn([conversationMessages.conversationId], {
-        conversationId: conversationMessages.conversationId,
-        authorUserId: conversationMessages.authorUserId,
-      })
-      .from(conversationMessages)
-      .leftJoin(users, eq(users.id, conversationMessages.authorUserId))
-      .where(
-        and(
-          inArray(conversationMessages.conversationId, asking),
-          eq(conversationMessages.role, 'user'),
-          isNull(conversationMessages.silenceReason),
-          or(isNull(users.kind), ne(users.kind, 'agent')),
-        ),
-      )
-      .orderBy(conversationMessages.conversationId, desc(conversationMessages.seq)),
-    db
-      .select({ conversationId: conversationParticipants.conversationId })
-      .from(conversationParticipants)
-      .where(
-        and(
-          inArray(conversationParticipants.conversationId, asking),
-          eq(conversationParticipants.kind, 'person'),
-          eq(conversationParticipants.userId, viewerId),
-          isNull(conversationParticipants.removedAt),
-        ),
-      ),
-  ]);
-  const putTo = new Map(answered.map((m) => [m.conversationId, m.authorUserId]));
-  const inRoom = new Set(members.map((m) => m.conversationId));
-  for (const id of asking) {
-    if (putTo.has(id) ? putTo.get(id) === viewerId : inRoom.has(id)) asked.add(id);
-  }
-  return asked;
+  return new Set(
+    newest
+      .filter((m) => m.role === 'assistant' && m.awaitsReply && m.awaitsReplyFrom === viewerId)
+      .map((m) => m.conversationId),
+  );
 }
 
 /**

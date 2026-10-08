@@ -1,4 +1,4 @@
-export { bootstrapChatProviders } from './bootstrap.js';
+export { bootstrapChatProviders, providerExecutors } from './bootstrap.js';
 export {
   type CompletionAnswer,
   type CompletionMiss,

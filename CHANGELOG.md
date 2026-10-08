@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.186] - 2026-10-08
+
+Chat can run a short computation in an isolated sandbox when no report answers
+
+### Added
+
+- **A computation can run in the chat provider's code execution sandbox.** Where the deployment holds the provider key and a project sets compute.thirdParty, a script runs in a no-network container kept per conversation, and comes back as frames.
+
+### Fixed
+
+- **Waiting on you reaches only the person the agent asked.** Someone writing meanwhile is not shown it, and requirement rooms flag questions. Ask Agent no longer reopens a requirement's room elsewhere, and says what such a room cannot read.
+
 ## [0.4.0-dev.185] - 2026-10-08
 
 Reports download as CSV or Markdown and print cleanly (REQ-32 B4)

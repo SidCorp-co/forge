@@ -65,8 +65,11 @@ type Said = {
   content: string;
   silence?: string;
   by?: string | null;
-  /** The turn that wrote this agent reply called `await_reply`. */
-  asks?: boolean;
+  /**
+   * The turn that wrote this agent reply called `await_reply`, and answered this person: the owner
+   * where `true`, nobody recorded where `null` (a row written before the person was recorded).
+   */
+  asks?: true | string | null;
 };
 
 interface Room {
@@ -87,9 +90,10 @@ async function room(title: string, said: Said[], people: string[] = []): Promise
     const author = m.role === 'user' ? (m.by === undefined ? owner : m.by) : null;
     await db.execute(sql`
       INSERT INTO conversation_messages
-        (conversation_id, seq, role, content, silence_reason, author_user_id, awaits_reply)
+        (conversation_id, seq, role, content, silence_reason, author_user_id, awaits_reply,
+         awaits_reply_from)
       VALUES (${id}, ${i + 1}, ${m.role}, ${m.content}, ${m.silence ?? null}, ${author},
-        ${m.asks === true})
+        ${m.asks !== undefined}, ${m.asks === true ? owner : (m.asks ?? null)})
     `);
   }
   return id;
@@ -243,13 +247,13 @@ describe('an agent reply not recorded as awaiting an answer reads done, whatever
 });
 
 describe('a question the agent put to one person in a group room', () => {
-  it('waits on the person it answered, and not on the other person or a reader outside', async () => {
+  it('waits on the person its turn answered, and not on the other person or a reader outside', async () => {
     const id = await room(
       'asked the colleague',
       [
         { role: 'user', content: 'Draft REQ-4 for the export screen' },
         { role: 'user', content: 'Make it CSV only', by: colleague },
-        { role: 'assistant', content: 'Shall I drop XLSX from REQ-4, then?', asks: true },
+        { role: 'assistant', content: 'Shall I drop XLSX from REQ-4, then?', asks: colleague },
       ],
       [colleague],
     );
@@ -260,7 +264,25 @@ describe('a question the agent put to one person in a group room', () => {
     expect((await listed(outsiderToken)).get(id)).toBe('done');
   });
 
-  it('reads past another agent to the person it answered', async () => {
+  // probe P7 as rows: the colleague wrote while the turn answering the owner was out, so the newest
+  // person before the reply is the colleague; the reply records the owner, and only the owner waits
+  it('waits on the person it recorded, never the newest person who wrote before the reply', async () => {
+    const id = await room(
+      'asked the owner while the colleague wrote',
+      [
+        { role: 'user', content: 'Draft REQ-9 for the export screen' },
+        { role: 'user', content: 'I am off to lunch, back at two', by: colleague },
+        { role: 'assistant', content: 'Should REQ-9 cover archived rows?', asks: true },
+      ],
+      [colleague],
+    );
+    expect((await listed()).get(id)).toBe('waiting_on_you');
+    expect(await detailed(id)).toBe('waiting_on_you');
+    expect((await listed(colleagueToken)).get(id)).toBe('done');
+    expect(await detailed(id, colleagueToken)).toBe('done');
+  });
+
+  it('waits on the person it recorded past another agent that wrote after them', async () => {
     const id = await room(
       'asked the owner past an agent',
       [
@@ -274,16 +296,31 @@ describe('a question the agent put to one person in a group room', () => {
     expect((await listed(colleagueToken)).get(id)).toBe('done');
   });
 
-  it('waits on every person in the room when no person has spoken yet, and on nobody outside it', async () => {
+  it('waits on nobody when the reply awaits an answer and names no person', async () => {
     const id = await room(
-      'asked the room',
-      [{ role: 'assistant', content: 'Who owns REQ-6?', asks: true }],
+      'recorded before the person was',
+      [
+        { role: 'user', content: 'Who owns REQ-6?' },
+        { role: 'assistant', content: 'Is it you or the release owner?', asks: null },
+      ],
       [colleague],
     );
-    expect((await listed()).get(id)).toBe('waiting_on_you');
-    expect((await listed(colleagueToken)).get(id)).toBe('waiting_on_you');
-    expect((await listed(outsiderToken)).get(id)).toBe('done');
-    expect(await detailed(id, outsiderToken)).toBe('done');
+    for (const reader of [token, colleagueToken, outsiderToken]) {
+      expect((await listed(reader)).get(id)).toBe('done');
+      expect(await detailed(id, reader)).toBe('done');
+    }
+  });
+
+  it('refuses a person recorded on a reply that awaits nothing', async () => {
+    const id = await room('a person on a reply that awaits nothing', []);
+    await refusedByDb(
+      db.execute(sql`
+        INSERT INTO conversation_messages
+          (conversation_id, seq, role, content, awaits_reply, awaits_reply_from)
+        VALUES (${id}, 1, 'assistant', 'REQ-6 is filed.', false, ${owner})
+      `),
+      /conversation_messages_awaits_reply_from_awaits/,
+    );
   });
 });
 
@@ -358,9 +395,12 @@ describe('a web turn records whether its reply awaits an answer', () => {
     return r.id;
   }
 
-  async function newestAwaits(id: string): Promise<boolean | undefined> {
+  async function newestAwaits(id: string): Promise<string | false | undefined> {
     const [newest] = await db
-      .select({ awaitsReply: conversationMessages.awaitsReply })
+      .select({
+        awaitsReply: conversationMessages.awaitsReply,
+        awaitsReplyFrom: conversationMessages.awaitsReplyFrom,
+      })
       .from(conversationMessages)
       .where(
         and(
@@ -370,7 +410,8 @@ describe('a web turn records whether its reply awaits an answer', () => {
       )
       .orderBy(desc(conversationMessages.seq))
       .limit(1);
-    return newest?.awaitsReply;
+    if (!newest) return undefined;
+    return newest.awaitsReply ? (newest.awaitsReplyFrom ?? '') : false;
   }
 
   it('a turn whose model called await_reply writes a reply that waits on the person', async () => {
@@ -378,7 +419,7 @@ describe('a web turn records whether its reply awaits an answer', () => {
       reply: 'Here is the text I would draft as REQ-8. Shall I file it as written?',
       ask: true,
     });
-    expect(await newestAwaits(id)).toBe(true);
+    expect(await newestAwaits(id)).toBe(owner);
     expect((await listed()).get(id)).toBe('waiting_on_you');
   });
 

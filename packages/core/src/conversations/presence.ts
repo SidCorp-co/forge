@@ -142,8 +142,17 @@ export function heartbeatOf(self: PresenceConfig): { enabled: boolean; intervalM
  */
 export function namesHandle(content: string, handle: string | null): boolean {
   if (!handle) return false;
-  const escaped = handle.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
-  return new RegExp(`(^|[^\\w-])@?${escaped}(?![\\w-])`, 'i').test(content);
+  return handleWord(handle, 'i').test(content);
+}
+
+/**
+ * `@handle` or the bare handle as a word. The handle stands outside a character class, where a
+ * hyphen is literal: escaping one is an invalid escape under the `u` flag, and a handle such as
+ * `forge-dev` then threw on every group-room window it was read for.
+ */
+function handleWord(handle: string, flags: string): RegExp {
+  const escaped = handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^\\w-])@?${escaped}(?![\\w-])`, flags);
 }
 
 /** Whether any message in the window names any of the room's handles. */
@@ -211,8 +220,7 @@ export function asksToStop(content: string, handles: readonly (string | null)[])
   let rest = content;
   for (const h of handles) {
     if (!h) continue;
-    const escaped = h.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
-    rest = rest.replace(new RegExp(`(^|[^\\w-])@?${escaped}(?![\\w-])`, 'giu'), '$1 ');
+    rest = rest.replace(handleWord(h, 'giu'), '$1 ');
   }
   rest = rest
     .replace(/[\p{P}\p{S}\p{Extended_Pictographic}]+/gu, ' ')

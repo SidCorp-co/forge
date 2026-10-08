@@ -8,7 +8,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import type { ChatDockApi } from "@/features/chat-dock/dock";
-import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH, clampDockWidth, targetConversationId } from "@/features/chat-dock/dock-target";
+import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH, clampDockWidth, isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
 import { useBoard } from "@/features/board/board-store";
 import { useUiSnapshot } from "../ui-actions/use-ui-actions";
@@ -19,6 +19,7 @@ import { DockOpening, WaitingOffer } from "./dock-opening";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { StartConversation } from "./start-conversation";
+import { SubjectScopeNotice } from "./subject-scope-notice";
 
 /** What a person sees the dock called — the top-bar button, the dock title and its labels — in the interface language. */
 export const dockTitle = (t: Copy) => t("nav.chat");
@@ -213,6 +214,13 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
         </header>
         {!listing && (target?.kind === "room" || target?.kind === "draft") && (
           <WaitingOffer projectId={target.projectId} openId={conversationId} onOpen={pick} />
+        )}
+        {!listing && target?.kind === "room" && roomQ.data && isScopedRoom(roomQ.data) && (
+          <SubjectScopeNotice
+            kind={roomQ.data.kind ?? null}
+            subjectKey={roomQ.data.subjectKey ?? null}
+            onAskProject={() => pick({ kind: "draft", projectId: target.projectId })}
+          />
         )}
         <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
       </div>
