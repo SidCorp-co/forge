@@ -3,6 +3,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
 import { Conversation } from "./components/conversation";
 import { type MessageEntry, parseMessages } from "./types";
 
@@ -15,6 +16,8 @@ const table = {
   source: { runId: "run-1" },
   frame: { fields: [{ name: "key", type: "ref", label: "Item" }], rows: [{ key: "ISS-5" }] },
 };
+
+const run = { runId: "run-1", queryId: "progress-by-requirement", version: 1, asOf: "2026-10-08T09:30:00.000Z" };
 
 const turn = (blocks: unknown[]): MessageEntry =>
   ({ id: "m1", type: "assistant", blocks }) as unknown as MessageEntry;
@@ -47,10 +50,13 @@ describe("a turn's blocks, parsed", () => {
 
 describe("a turn's blocks, drawn", () => {
   it("draws a visual block as its table and an unknown block by name, both in the turn", () => {
-    const items = parseMessages([
-      turn([{ type: "visual", visual: table }, { type: "hologram" }, { type: "visual", visual: { v: 1, kind: "timeline" } }]),
-    ]);
-    render(<Conversation items={items} readOnly />);
+    const blocks = [{ type: "visual", visual: table, run }, { type: "hologram" }, { type: "visual", visual: { v: 1, kind: "timeline" } }];
+    const items = parseMessages([turn(blocks)]);
+    render(
+      <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: runFactsIn([{ blocks }]) }}>
+        <Conversation items={items} readOnly />
+      </VisualBlockProvider>,
+    );
     expect(screen.getByRole("table")).toBeTruthy();
     const named = screen.getAllByTestId("visual-block-unsupported").map((n) => n.textContent);
     expect(named).toEqual(["This answer has a hologram block this screen cannot show."]);

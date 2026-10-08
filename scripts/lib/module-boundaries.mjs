@@ -35,6 +35,7 @@ export const REGISTRIES = {
     'mcp/registry.ts',
     'mcp/chat-read-tools.ts',
     'mcp/chat-record-tools.ts',
+    'mcp/chat-report-tools.ts',
     'assistant/tools/registry.ts',
   ],
 };

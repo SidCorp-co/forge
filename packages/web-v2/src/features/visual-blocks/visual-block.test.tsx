@@ -132,11 +132,13 @@ describe("each block shows its source", () => {
     expect(note.querySelector("time")?.getAttribute("datetime")).toBe("2026-10-08T09:30:00.000Z");
   });
 
-  it("says plainly when this screen cannot read the query and time, never inventing them", () => {
+  it("refuses a block whose run's query and read time it was not given, by name, never drawing it untraced", () => {
     show({ ...base, kind: "table", columns: ["key"] }, "forge-dev", false);
-    expect(screen.getByTestId("visual-block-source").textContent).toBe(
-      "Report run run-7 · query and read time are not loaded on this screen",
-    );
+    const refused = screen.getByTestId("visual-block-refused");
+    expect(refused.textContent).toContain("This answer has a table block that names no read its figures came from, so it is not drawn.");
+    expect(refused.textContent).toContain("report run run-7: its query and read time were not stored with this block");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByTestId("visual-block-source")).toBeNull();
   });
 
   it("labels a frame from an execution as computed", () => {
