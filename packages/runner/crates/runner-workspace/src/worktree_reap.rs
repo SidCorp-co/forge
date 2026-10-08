@@ -154,7 +154,8 @@ impl HeldTrees {
         Ok(Self(held))
     }
 
-    #[cfg(test)]
+    // Its one caller is scratch_reap's Linux-only test module; on other targets it is dead code.
+    #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn for_test(held: std::collections::HashMap<PathBuf, String>) -> Self {
         Self(held)
     }
