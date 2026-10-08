@@ -4128,7 +4128,8 @@ mod own_exe_reporting_tests {
             terminal::testing::cannot_run("no tmux of this test's own here");
             return;
         }
-        let tmp = crate::test_scratch::Scratch::new("jobenv-tmp");
+        let probe = crate::test_scratch::Scratch::new("jobenv-root");
+        let tmp = probe.path().parent().expect("a temp dir").to_path_buf();
         let home = crate::test_scratch::Scratch::new("jobenv-home");
         let stub_dir = crate::test_scratch::Scratch::new("jobenv-stub");
         let probe = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
@@ -4143,7 +4144,7 @@ mod own_exe_reporting_tests {
         let _claude =
             crate::runner::process::testing::StubClaude::installed(&stub_dir.join("claude"));
         let _home = ScopedVar::set("HOME", home.path());
-        let _daemon = ScopedVar::set("TMPDIR", tmp.path());
+        let _daemon = ScopedVar::set("TMPDIR", &tmp);
         let sock = terminal::socket_path().expect("the isolated socket");
         assert!(
             std::process::Command::new("tmux")
@@ -4167,7 +4168,7 @@ mod own_exe_reporting_tests {
         let _ = opened;
         assert_eq!(
             seen.get("TMPDIR").map(String::as_str),
-            tmp.path().to_str(),
+            tmp.to_str(),
             "the job pane carries the daemon's TMPDIR"
         );
         assert_eq!(

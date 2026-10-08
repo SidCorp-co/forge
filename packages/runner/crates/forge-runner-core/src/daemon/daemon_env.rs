@@ -306,14 +306,16 @@ mod tests {
         .to_string()
     }
 
-    /// A tmux server of this test's own, and the daemon's `TMPDIR` standing at a
-    /// real directory (the test scratch resolves through it).
+    /// A tmux server of this test's own, and the daemon's `TMPDIR` standing at
+    /// the directory this process already uses: a test that moved it to a
+    /// scratch would leave every test running beside it creating its own under
+    /// one that is deleted when this one ends.
     struct World {
         // Fields drop in this order, and the two locks have to outlive everything
         // they guard: the isolation puts the config dir back when it drops, and
         // the next test must not have set its own by then.
         _daemon: ScopedVar,
-        tmp: crate::test_scratch::Scratch,
+        tmp: String,
         _iso: terminal::testing::IsolatedServer,
         _env: std::sync::MutexGuard<'static, ()>,
         _serial: tokio::sync::MutexGuard<'static, ()>,
@@ -328,9 +330,15 @@ mod tests {
                 terminal::testing::cannot_run("no tmux of this test's own here");
                 return None;
             }
-            let tmp = crate::test_scratch::Scratch::new("daemon-env-tmp");
+            let probe = crate::test_scratch::Scratch::new("daemon-env-root");
+            let tmp = probe
+                .path()
+                .parent()
+                .and_then(std::path::Path::to_str)
+                .expect("a utf-8 temp dir")
+                .to_string();
             let daemon = if daemon_has_it {
-                ScopedVar::set("TMPDIR", tmp.path())
+                ScopedVar::set("TMPDIR", &tmp)
             } else {
                 ScopedVar::unset("TMPDIR")
             };
@@ -344,7 +352,7 @@ mod tests {
         }
 
         fn daemon_tmp(&self) -> String {
-            self.tmp.path().to_str().expect("utf-8 scratch").to_string()
+            self.tmp.clone()
         }
     }
 

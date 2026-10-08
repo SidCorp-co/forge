@@ -12138,7 +12138,8 @@ mod servers_refusal_walk_tests {
             terminal::testing::cannot_run("no tmux of this test's own here");
             return;
         }
-        let tmp = crate::test_scratch::Scratch::new("masterenv-tmp");
+        let probe = crate::test_scratch::Scratch::new("masterenv-root");
+        let tmp = probe.path().parent().expect("a temp dir").to_path_buf();
         let claude_home = crate::test_scratch::Scratch::new("masterenv-claude");
         let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
         let stub_dir = crate::test_scratch::Scratch::new("masterenv-stub");
@@ -12153,7 +12154,7 @@ mod servers_refusal_walk_tests {
         );
         let _claude =
             crate::runner::process::testing::StubClaude::installed(&stub_dir.join("claude"));
-        let _daemon = ScopedVar::set("TMPDIR", tmp.path());
+        let _daemon = ScopedVar::set("TMPDIR", &tmp);
         let sock = terminal::socket_path().expect("the isolated socket");
         assert!(
             std::process::Command::new("tmux")
@@ -12197,7 +12198,7 @@ mod servers_refusal_walk_tests {
         assert_eq!(state, PaneState::ColdStarted);
         assert_eq!(
             seen.get("TMPDIR").map(String::as_str),
-            tmp.path().to_str(),
+            tmp.to_str(),
             "the master pane carries the daemon's TMPDIR"
         );
         let forge = stub_dir.join("forge");
