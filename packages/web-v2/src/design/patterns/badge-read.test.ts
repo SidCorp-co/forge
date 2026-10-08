@@ -2,7 +2,7 @@
 // absent only for a read zero. Each of the four reads a person meets must give a different face.
 
 import { describe, expect, it } from "vitest";
-import { ATTENTION_COUNTS, badgeFace, badgeFigure } from "./badge-read";
+import { ATTENTION_COUNTS, badgeFace, badgeFigure, queryRead } from "./badge-read";
 
 function face(figure: Parameters<typeof badgeFace>[0]) {
   const f = badgeFace(figure);
@@ -23,6 +23,23 @@ describe("badgeFigure", () => {
   it("says failed when any read failed, before a read that is still on its way", () => {
     expect(badgeFigure(["read", "failed"], 3)).toEqual({ badgeRead: "failed", badgeCounts: ATTENTION_COUNTS });
     expect(badgeFigure(["pending", "failed"], 3)).toEqual({ badgeRead: "failed", badgeCounts: ATTENTION_COUNTS });
+  });
+});
+
+describe("badgeFigure naming what it counts", () => {
+  it("names the figure it was given, in each of its three states, and never the attention words by default for another figure", () => {
+    expect(badgeFigure(["read"], 29, "in open work")).toEqual({ badge: 29, badgeCounts: "in open work" });
+    expect(badgeFigure(["pending"], 29, "in open work")).toEqual({ badgeRead: "pending", badgeCounts: "in open work" });
+    expect(badgeFigure(["failed"], 29, "in open work")).toEqual({ badgeRead: "failed", badgeCounts: "in open work" });
+  });
+});
+
+describe("queryRead", () => {
+  it("tells a read, a read on its way and a read that failed apart, and a failed refetch over held data as failed", () => {
+    expect(queryRead({ isError: false, data: undefined })).toBe("pending");
+    expect(queryRead({ isError: true, data: undefined })).toBe("failed");
+    expect(queryRead({ isError: true, data: { held: true } })).toBe("failed");
+    expect(queryRead({ isError: false, data: {} })).toBe("read");
   });
 });
 

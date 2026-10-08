@@ -22,7 +22,7 @@ vi.mock("@/features/runners/hooks", async () => {
   };
 });
 
-const { queryRead, useAttention } = await import("./hooks");
+const { useAttention } = await import("./hooks");
 
 const response = {
   needsReview: [],
@@ -48,15 +48,6 @@ beforeEach(() => {
   server.devices = async () => [];
 });
 afterEach(cleanup);
-
-describe("queryRead", () => {
-  it("is pending with no data and no error, failed on an error even where data is held, read otherwise", () => {
-    expect(queryRead({ isError: false, data: undefined })).toBe("pending");
-    expect(queryRead({ isError: true, data: undefined })).toBe("failed");
-    expect(queryRead({ isError: true, data: { held: true } })).toBe("failed");
-    expect(queryRead({ isError: false, data: {} })).toBe("read");
-  });
-});
 
 describe("useAttention", () => {
   it("states no total while the attention answer is on its way, and one once both reads are in", async () => {

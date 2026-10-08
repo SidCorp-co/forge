@@ -22,11 +22,19 @@ export interface BadgeFace {
 
 const ALARM = { color: "var(--flame-700)", background: "var(--flame-50)" };
 
-/** A count only where every read came in, else the read that did not. */
-export function badgeFigure(reads: ReadonlyArray<"pending" | "failed" | "read">, count: number): BadgeFigure {
-  if (reads.includes("failed")) return { badgeRead: "failed", badgeCounts: ATTENTION_COUNTS };
-  if (reads.includes("pending")) return { badgeRead: "pending", badgeCounts: ATTENTION_COUNTS };
-  return { badge: count, badgeCounts: ATTENTION_COUNTS };
+/** What a query has answered: an error is `failed` even where an earlier answer is held, no data yet is `pending`. */
+export type QueryRead = "pending" | "failed" | "read";
+
+export function queryRead(q: { isError: boolean; data: unknown }): QueryRead {
+  if (q.isError) return "failed";
+  return q.data === undefined ? "pending" : "read";
+}
+
+/** A count only where every read came in, else the read that did not. `counts` names what the figure counts. */
+export function badgeFigure(reads: ReadonlyArray<QueryRead>, count: number, counts: string = ATTENTION_COUNTS): BadgeFigure {
+  if (reads.includes("failed")) return { badgeRead: "failed", badgeCounts: counts };
+  if (reads.includes("pending")) return { badgeRead: "pending", badgeCounts: counts };
+  return { badge: count, badgeCounts: counts };
 }
 
 export function badgeFace(item: BadgeFigure): BadgeFace | null {

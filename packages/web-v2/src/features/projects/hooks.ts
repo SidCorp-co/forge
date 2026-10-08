@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs/active-org';
+import { queryRead, type QueryRead } from '@/design/patterns/badge-read';
 import { projectApi } from './api';
 import { mergeProjects, workspaceTotals } from './derive';
 import { usePinnedProjects } from './pins';
@@ -74,6 +75,9 @@ export interface ProjectsConsole {
   isLoading: boolean;
   isError: boolean;
   error: unknown;
+  /** What the projects list and the health rollup each answered. A count drawn from `items` is a statement only where both are `read`: before that, or after either failed, its zeros are defaults. */
+  projectsRead: QueryRead;
+  healthRead: QueryRead;
   refetch: () => void;
   toggle: (id: string) => void;
 }
@@ -101,6 +105,8 @@ export function useProjectsConsole(): ProjectsConsole {
     isLoading: projects.isLoading,
     isError: projects.isError,
     error: projects.error,
+    projectsRead: queryRead(projects),
+    healthRead: queryRead(health),
     refetch: () => {
       projects.refetch();
       health.refetch();
