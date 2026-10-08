@@ -3,6 +3,7 @@
 import type { VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { share, type TimelineItem, timelineModel } from "./timeline-model";
 import { useStateLabel } from "./cells";
+import { useBlockInstants } from "./instants";
 import { TextAlternative } from "./text-alternative";
 
 const PLAN = "var(--chart-2)";
@@ -53,7 +54,8 @@ function Marks({ item, axis }: { item: TimelineItem; axis: { min: number; max: n
 
 /** A timeline block: each item a row on one linear time axis that runs exactly from the earliest date the frame holds to the latest. */
 export function TimelineBlockView({ block }: { block: VisualBlockOf<"timeline"> }) {
-  const m = timelineModel(block);
+  const instants = useBlockInstants();
+  const m = timelineModel(block, instants);
   const laneField = block.frame.fields.find((f) => f.name === block.lane);
   const words = useStateLabel();
   return (

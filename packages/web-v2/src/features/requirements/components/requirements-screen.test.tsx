@@ -13,8 +13,10 @@ vi.mock("next/navigation", () => ({
 }));
 // the grouped list is not what is judged here, and it reads standing facts this fixture leaves out
 vi.mock("@/design", async (orig) => ({ ...(await orig<typeof import("@/design")>()), GroupedList: () => null }));
-vi.mock("@/features/forecast/hooks", () => ({
+vi.mock("@/lib/i18n/eta-clock", () => ({
   useEtaClock: () => ({ lang: "en", now: Date.now() }),
+}));
+vi.mock("@/features/forecast/hooks", () => ({
   useEtaSort: () => [false, () => {}],
   useRequirementForecasts: () => ({ data: undefined }),
 }));

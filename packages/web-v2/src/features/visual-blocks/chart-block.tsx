@@ -4,6 +4,7 @@ import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, Tooltip, XAxis, YAxis } from "recharts";
 import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { type ChartModel, chartModel } from "./chart-model";
+import { useBlockInstants } from "./instants";
 import { TextAlternative } from "./text-alternative";
 import { UnsupportedBlock } from "./unsupported";
 
@@ -38,7 +39,8 @@ function Legend({ model }: { model: ChartModel }) {
 
 /** A bar, line or burndown chart: each row of the frame is a point, each value an unscaled number from its cell. */
 export function ChartBlockView({ block }: { block: VisualBlockOf<"chart"> }) {
-  const model = chartModel(block);
+  const instants = useBlockInstants();
+  const model = chartModel(block, instants);
   if ("unsupported" in model) {
     return (
       <>
@@ -66,7 +68,7 @@ export function ChartBlockView({ block }: { block: VisualBlockOf<"chart"> }) {
         scale={model.scale === "time" ? "time" : "linear"}
         domain={[model.xTicks?.[0] ?? "dataMin", model.xTicks?.[model.xTicks.length - 1] ?? "dataMax"]}
         ticks={model.xTicks ?? undefined}
-        tickFormatter={(v: number) => (model.scale === "time" ? new Date(v).toISOString().slice(0, 10) : String(v))}
+        tickFormatter={(v: number) => (model.scale === "time" ? instants.day(new Date(v).toISOString()) : String(v))}
         tickLine={false}
         axisLine={AXIS} tick={TICK}
         label={{ value: model.xLabel, position: "insideBottom", offset: -14, ...AXIS_NAME }}

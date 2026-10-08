@@ -1,4 +1,4 @@
-import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
+import { cellText, type InstantReading, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 
 /** One roadmap item: where it sits on the shared time axis, as fractions of the axis's span. */
 export interface TimelineItem {
@@ -32,12 +32,12 @@ const at = (cell: unknown): number | null => {
 };
 
 /** What a timeline block draws: each row's dates read from its frame and placed on one linear time axis. */
-export function timelineModel(b: VisualBlockOf<"timeline">): TimelineModel {
+export function timelineModel(b: VisualBlockOf<"timeline">, reading?: InstantReading & { day?(iso: string): string }): TimelineModel {
   const field = (n: string | undefined) => (n === undefined ? undefined : b.frame.fields.find((f) => f.name === n));
   const labelF = field(b.label);
   const text = (name: string | undefined, row: Record<string, unknown>) => {
     const f = field(name);
-    return f ? cellText(f, row[f.name] as never) : "—";
+    return f ? cellText(f, row[f.name] as never, reading) : "—";
   };
   const laneOf = (row: Record<string, unknown>) => {
     const f = field(b.lane);
@@ -48,7 +48,7 @@ export function timelineModel(b: VisualBlockOf<"timeline">): TimelineModel {
   const undated: string[] = [];
   const values: number[] = [];
   for (const row of b.frame.rows) {
-    const label = labelF ? cellText(labelF, row[labelF.name]) : "—";
+    const label = labelF ? cellText(labelF, row[labelF.name], reading) : "—";
     const start = b.start === undefined ? null : at(row[b.start]);
     const end = b.end === undefined ? null : at(row[b.end]);
     const p50 = b.p50 === undefined ? null : at(row[b.p50]);
@@ -85,7 +85,7 @@ export function timelineModel(b: VisualBlockOf<"timeline">): TimelineModel {
   items.sort((a, c) => lanes.indexOf(a.lane ?? "") - lanes.indexOf(c.lane ?? "") || a.key - c.key);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 0;
-  const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+  const day = (t: number) => (reading?.day ?? ((iso: string) => iso.slice(0, 10)))(new Date(t).toISOString());
   return {
     min,
     max,

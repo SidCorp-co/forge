@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { cn } from "@/lib/utils/cn";
 import { Cell } from "./cells";
+import { useBlockInstants } from "./instants";
 
 const NUMERIC = new Set(["number", "duration"]);
 
@@ -76,6 +77,7 @@ const STICKY = "sticky left-0 z-[1] bg-app";
  */
 export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
   const [all, setAll] = useState(false);
+  const instants = useBlockInstants();
   // a printed table holds every row it shows: paper has no "Show all"
   const printing = usePrinting();
   const fields = block.columns.flatMap((c) => block.frame.fields.filter((f) => f.name === c));
@@ -112,7 +114,7 @@ export function TableBlockView({ block }: { block: VisualBlockOf<"table"> }) {
                 {fields.map((f, c) => (
                   <td key={f.name} className={cn("py-1.5 pr-4 align-top", cellClass(f), c === 0 && STICKY)} data-type={f.type}>
                     {f.type === "string" ? (
-                      <ClampedText text={cellText(f, row[f.name])}>
+                      <ClampedText text={cellText(f, row[f.name], instants)}>
                         <Cell field={f} cell={row[f.name]} />
                       </ClampedText>
                     ) : (

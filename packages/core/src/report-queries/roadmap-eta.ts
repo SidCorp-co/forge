@@ -74,7 +74,7 @@ export function etaOf(delivery: DeliveryForecast | null): {
   if (!delivery) return none('nothing is linked to it yet');
   const { landing, release, shipped } = delivery;
   if (shipped) {
-    const at = shipped.at ? ` at ${shipped.at}` : '';
+    const at = shipped.at ? ` (${shipped.at})` : '';
     return {
       p50At: null,
       p85At: null,

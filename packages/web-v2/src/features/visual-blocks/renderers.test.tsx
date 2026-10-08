@@ -157,7 +157,7 @@ describe("chart block", () => {
     const dup = { ...bar, variant: "line", x: "day", frame: { ...frame, rows: [frame.rows[0], { ...frame.rows[0] }] } };
     show(dup);
     expect(screen.getByTestId("visual-block-unsupported").textContent).toBe(
-      "This answer has a chart block this screen cannot show: Day 2026-10-01 appears twice.",
+      "This answer has a chart block this screen cannot show: Day Oct 1 appears twice.",
     );
     expect(alt()).toContain("Line chart");
   });
@@ -190,7 +190,7 @@ describe("timeline block", () => {
     // 5 Oct with no end is a point: starts at 4/19 and has no width of its own
     expect(Number.parseFloat(spans[1]?.style.left ?? "")).toBeCloseTo((4 / 19) * 100, 2);
     expect(Number.parseFloat(spans[1]?.style.width ?? "")).toBe(0);
-    expect(screen.getByTestId("timeline-axis").textContent).toBe("2026-10-012026-10-20");
+    expect(screen.getByTestId("timeline-axis").textContent).toBe("Oct 1Oct 20");
   });
 
   it("draws the forecast from p50 to p85 and says so in the legend", () => {
@@ -209,7 +209,8 @@ describe("timeline block", () => {
   it("groups by lane and carries the text alternative", () => {
     show({ ...tl, lane: "team" });
     expect(screen.getAllByText("A")).toHaveLength(1);
-    expect(alt()).toBe(blockToText({ ...tl, lane: "team" } as unknown as VisualBlock));
+    // read as the screen reads dates, never the ISO the contract's own text keeps
+    expect(alt()).toBe(blockToText({ ...tl, lane: "team" } as unknown as VisualBlock).replace(/2026-10-(\d\d)/g, (_, d) => `Oct ${Number(d)}`));
   });
 
   it("refuses a timeline whose end has no start, by name", () => {

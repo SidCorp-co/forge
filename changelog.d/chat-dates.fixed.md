@@ -1,0 +1,1 @@
+**A date in a chat answer reads like the same date in the Requirements list.** Every visual block, the forecast basis included, now draws an instant as the list does ("Oct 5") in the viewer's timezone, not as raw ISO.

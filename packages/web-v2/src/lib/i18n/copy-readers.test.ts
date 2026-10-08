@@ -1,6 +1,6 @@
 import { SAID_ENTRIES } from "@forge/contracts/said";
 import { describe, expect, it } from "vitest";
-import { ETA_COPY, etaLangOf } from "@/features/forecast/eta-copy";
+import { ETA_COPY, etaLangOf } from "@/lib/i18n/eta-copy";
 import { copyLocale, PRODUCT_STRINGS as product, productCopy } from "./product-copy";
 
 // One product copy, read by both readers: every key exists in en, and a vi key is one of them (what

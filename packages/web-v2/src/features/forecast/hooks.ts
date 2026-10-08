@@ -1,9 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { useNow, useUrlChoice } from "@/design";
-import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { useUrlChoice } from "@/design";
 import { forecastApi } from "./api";
-import type { EtaClock } from "./eta";
 
 // keyed under ['issues','standing'] so the event router, which invalidates that prefix on every issue
 // event, recomputes the forecast on each transition with no timer of its own
@@ -73,13 +70,6 @@ export function useComingNext(projectId: string | undefined) {
     enabled: Boolean(projectId),
     staleTime: 10_000,
   });
-}
-
-/** The ETA column's language and clock: the interface language, the viewer's timezone, now. */
-export function useEtaClock(): EtaClock {
-  const lang = useInterfaceLanguage();
-  const now = useNow(60_000);
-  return useMemo(() => ({ lang, now }), [lang, now]);
 }
 
 const ETA_SORTS = ["default", "eta"] as const;

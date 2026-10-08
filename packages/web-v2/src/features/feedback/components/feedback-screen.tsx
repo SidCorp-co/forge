@@ -43,8 +43,9 @@ import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i1
 import type { Copy } from "@/lib/i18n/product-copy";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import { type Eta, type EtaClock, etaOfFeedback, etaSortValue } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/features/forecast/eta-copy";
-import { useEtaClock, useEtaSort, useFeedbackForecasts } from "@/features/forecast/hooks";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
+import { useEtaSort, useFeedbackForecasts } from "@/features/forecast/hooks";
 import { useFeedbackList } from "../hooks";
 import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";

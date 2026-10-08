@@ -6,7 +6,7 @@
 import type { DeliveryForecast, ForecastMove } from "@forge/contracts/forecast";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said } from "@/lib/i18n/said";
-import type { EtaClock } from "./clock";
+import type { EtaClock } from "@/lib/i18n/eta-clock-words";
 import { spanText } from "./text";
 
 type Lang = EtaClock["lang"];

@@ -8,7 +8,7 @@ import type { FeedbackSummary } from "@forge/contracts/feedback";
 import { FEEDBACK_UNTRIAGED_PHASES } from "@forge/contracts/feedback";
 import { REQUIREMENT_LIFECYCLE, type RequirementState } from "@forge/contracts/requirements";
 import type { Said } from "@forge/contracts/said";
-import { partsOf, type EtaClock } from "@/features/forecast/clock";
+import { partsOf, type EtaClock } from "@/lib/i18n/eta-clock-words";
 import { type Eta, etaOfFeedback, etaOfScope } from "@/features/forecast/eta";
 import type { RequirementSummary } from "@/features/requirements/types";
 import type { ReleaseSummary } from "@/features/releases/types";

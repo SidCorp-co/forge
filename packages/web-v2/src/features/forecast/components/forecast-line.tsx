@@ -5,7 +5,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { formatDateTime } from "@/lib/i18n/format";
 import { honestyLine } from "../honesty";
-import { useEtaClock } from "../hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { scopeText } from "../text";
 
 export function ScopeForecastLine({ scope }: { scope: ScopeForecast }) {

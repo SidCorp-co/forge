@@ -246,7 +246,7 @@ export async function runTemplate(args: {
     document,
     slots: slotsOf(t),
     notDrawn,
-    text: document.blocks.map(blockToText).join('\n\n'),
+    text: document.blocks.map((b) => blockToText(b)).join('\n\n'),
   };
 }
 

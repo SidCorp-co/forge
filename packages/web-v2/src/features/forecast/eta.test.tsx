@@ -4,7 +4,7 @@ import { describe, expect, it, vi as mock } from "vitest";
 import { GroupedList, type ListGroup, sortGroupsBy } from "@/design";
 import { EtaCell, EtaInline } from "./components/eta-cell";
 import { type EtaClock, etaInline, etaLines, etaOfDelivery, etaOfFeedback, etaOfForecast, etaSortValue } from "./eta";
-import { ETA_COPY, etaLangOf } from "./eta-copy";
+import { ETA_COPY, etaLangOf } from "@/lib/i18n/eta-copy";
 import { forecastWait, RULE, say } from "@/test/said";
 
 // The ETA column reads a forecast as the clock and the day in the viewer's timezone. These read it in

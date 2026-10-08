@@ -24,9 +24,10 @@ import { requirementAffected, useProjectWaitingSuggestions, useSuggestionDecisio
 import type { SuggestionView as Suggestion } from "@/features/suggestions/types";
 import { EtaCell } from "@/features/forecast/components/eta-cell";
 import { type Eta, type EtaClock, etaOfScope, etaSortValue } from "@/features/forecast/eta";
-import { ETA_COPY } from "@/features/forecast/eta-copy";
+import { ETA_COPY } from "@/lib/i18n/eta-copy";
 import { progressText } from "@/features/forecast/progress";
-import { useEtaClock, useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
+import { useEtaClock } from "@/lib/i18n/eta-clock";
+import { useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
