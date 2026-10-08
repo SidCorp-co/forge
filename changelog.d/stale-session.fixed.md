@@ -1,1 +1,0 @@
-**A stale session cookie no longer blocks sign-in.** Core tries every session cookie the browser sends, answers a dead one SESSION_EXPIRED and clears it; the web signs out quietly instead of showing "invalid token".
