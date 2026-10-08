@@ -57,8 +57,11 @@ export function acceptConsequence(s: Suggestion, language: string): string {
       return t("requirements.suggestion.acceptDraft");
     case "readiness":
       return r !== null ? t("requirements.suggestion.acceptReadinessOf", { r }) : t("requirements.suggestion.acceptReadiness");
-    case "breakdown":
-      return t(r !== null ? "requirements.suggestion.acceptBreakdownOn" : "requirements.suggestion.acceptBreakdown", { n: list(p.issues).length, r: r ?? "" });
+    case "breakdown": {
+      const n = list(p.issues).length;
+      if (n === 1) return r !== null ? t("requirements.suggestion.acceptBreakdownOnOne", { r }) : t("requirements.suggestion.acceptBreakdownOne");
+      return r !== null ? t("requirements.suggestion.acceptBreakdownOn", { n, r }) : t("requirements.suggestion.acceptBreakdown", { n });
+    }
     case "duplicate":
       return t("requirements.suggestion.acceptDuplicate", { key: str(p.duplicateOf) ?? t("requirements.suggestion.theOneItNames") });
     case "triage":
@@ -151,10 +154,11 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
         </details>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 pt-0.5">
-        <Button type="button" size="sm" disabled={busy} onClick={() => setStep((v) => (v === "accept" ? null : "accept"))} aria-expanded={step === "accept"}>
+        {/* while a step is open its openers are off: a second press would close it and drop the typed reason */}
+        <Button type="button" size="sm" disabled={busy || step !== null} onClick={() => setStep("accept")} aria-expanded={step === "accept"}>
           {t("requirements.act.accept")}
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep((v) => (v === "reject" ? null : "reject"))} aria-expanded={step === "reject"}>
+        <Button type="button" size="sm" variant="ghost" disabled={busy || step !== null} onClick={() => setStep("reject")} aria-expanded={step === "reject"}>
           {t("requirements.act.reject")}
         </Button>
       </div>
@@ -185,6 +189,9 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
           />
           <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
             {t("requirements.act.reject")}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep(null)}>
+            {t("common.cancel")}
           </Button>
         </form>
       ) : null}

@@ -83,15 +83,17 @@ describe("Agree on a draft requirement", () => {
 // act (ISS-84). Each now opens a confirm step that sends what the signer typed.
 describe("a sign-off opens a confirm step that sends the signer's reason", () => {
   const step = () => screen.getByTestId("accept-step");
-  const typeReason = (user: ReturnType<typeof userEvent.setup>, text: string) =>
-    user.type(within(step()).getByRole("textbox", { name: "Why it is accepted, and on whose authority" }), text);
+  const ACCEPT_WHY = "Why it is accepted, and on whose authority";
+  // the field is named for the act it takes a reason for, not "accepted" on every sign-off
+  const typeReason = (user: ReturnType<typeof userEvent.setup>, text: string, name = ACCEPT_WHY) =>
+    user.type(within(step()).getByRole("textbox", { name }), text);
 
   it("agrees the head with the typed reason", async () => {
     const calls = fakeCore(() => ({ body: detail([]) }));
     const user = userEvent.setup();
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
     await user.click(agree());
-    await typeReason(user, "BA review 6 Oct");
+    await typeReason(user, "BA review 6 Oct", "Why it is agreed, and on whose authority");
     await user.click(within(step()).getByRole("button", { name: "Agree r1" }));
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/agree", body: { revision: 1, reason: "BA review 6 Oct" } }]),
@@ -126,11 +128,46 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={delivered} />);
     await user.click(screen.getByRole("button", { name: "Accept r1" }));
     expect(calls).toEqual([]);
-    await typeReason(user, "UAT passed");
+    await typeReason(user, "UAT passed", "Why the delivery is accepted, and on whose authority");
     await user.click(within(step()).getByRole("button", { name: "Accept r1" }));
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/accept", body: { revision: 1, reason: "UAT passed" } }]),
     );
+  });
+
+  it("keeps the typed reason while the step is open: the button that opened it is off until Cancel", async () => {
+    const calls = fakeCore(() => ({ body: detail([]) }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={detail([])} />);
+    await user.click(agree());
+    await typeReason(user, "BA review 6 Oct", "Why it is agreed, and on whose authority");
+    const opener = screen.getAllByRole("button", { name: "Agree r1" }).find((x) => x.hasAttribute("aria-expanded")) as HTMLElement;
+    expect(opener).toBeDisabled();
+    await user.click(opener);
+    expect(within(step()).getByRole("textbox")).toHaveValue("BA review 6 Oct");
+    await user.click(within(step()).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByTestId("accept-step")).toBeNull();
+    expect(agree()).toBeEnabled();
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps a proposed revision's typed reason: Accept and Reject are off while a step is open, and Return has its own Cancel", async () => {
+    const calls = fakeCore(() => ({ body: detail([]) }));
+    const user = userEvent.setup();
+    renderWithQuery(<ProposalDecision projectId="p1" d={detail([])} revision={2} />);
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+    await typeReason(user, "Owner asked for it");
+    expect(screen.getByRole("button", { name: "Accept" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(within(step()).getByRole("textbox")).toHaveValue("Owner asked for it");
+    await user.click(within(step()).getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    await user.type(screen.getByRole("textbox"), "not yet");
+    expect(screen.getByRole("button", { name: "Accept" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(calls).toEqual([]);
   });
 
   it("updates to the approved design with the typed reason", async () => {
@@ -148,7 +185,7 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={stale} />);
     await user.click(screen.getByRole("button", { name: "Update to the approved design" }));
     expect(calls).toEqual([]);
-    await typeReason(user, "checkout r3 approved");
+    await typeReason(user, "checkout r3 approved", "Why it now follows the approved design, and on whose authority");
     await user.click(within(step()).getByRole("button", { name: "Update to the approved design" }));
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/repin", body: { revision: 1, reason: "checkout r3 approved" } }]),
@@ -194,6 +231,7 @@ describe("a requirement's acts in Vietnamese", () => {
     expect(step).toHaveTextContent(vi("requirements.act.acceptConsequence", { r: 2 }));
     expect(within(step).getByRole("textbox", { name: vi("common.acceptWhyLabel") })).toBeInTheDocument();
     expect(within(step).getByRole("button", { name: vi("requirements.act.acceptR", { r: 2 }) })).toBeInTheDocument();
+    await user.click(within(step).getByRole("button", { name: vi("common.cancel") }));
     await user.click(screen.getByRole("button", { name: vi("requirements.act.reject") }));
     expect(screen.getByRole("button", { name: vi("requirements.act.returnR", { r: 2 }) })).toBeInTheDocument();
   });
