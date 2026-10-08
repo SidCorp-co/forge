@@ -164,7 +164,7 @@ function ungroundedRecords(text: string, calls: readonly Call[]): RuleBreak[] {
       const what = c.kind === 'feedback' ? 'Feedback' : 'a Requirement draft or revision';
       breaks.push({
         quote: body,
-        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this turn made no ${c.kind === 'feedback' ? '`forge_feedback` call or POST to the feedback route' : 'requirement write (`forge_requirement_draft`, `forge_requirement_revise`, at a requirement\'s BA door `ba_suggest` or `ba_suggest_requirement`, or a POST to the requirements route) that succeeded'}`,
+        why: `reply claims ${what} was recorded${c.ref ? ` (${c.ref})` : ''} but this turn made no ${c.kind === 'feedback' ? '`forge_feedback` call or POST to the feedback route' : "requirement write (`forge_requirement_draft`, `forge_requirement_revise`, at a requirement's BA door `ba_suggest` or `ba_suggest_requirement`, or a POST to the requirements route) that succeeded"}`,
       });
     }
   }

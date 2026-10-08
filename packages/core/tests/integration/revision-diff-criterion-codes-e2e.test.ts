@@ -90,12 +90,15 @@ describe('a revision_diff suggestion that adds a criterion', () => {
   it('is created with no code on the new criterion, and its accept gives it the next one', async () => {
     const made = ok(await as('POST', '/suggestions', revision([KEPT, REWORDED, ADDED])), 201);
     ok(
-      await as('POST', `/suggestions/${made.suggestion.id}/accept`, { reason: 'as the owner asked' }),
+      await as('POST', `/suggestions/${made.suggestion.id}/accept`, {
+        reason: 'as the owner asked',
+      }),
     );
     const read = ok(await as('GET', `/requirements/${req}`));
     expect(read.latestRevision).toEqual({ revision: 2, state: 'proposed' });
     const r2 = (read.revisions as Doc[]).find((r) => r.revision === 2);
-    expect((r2?.criteria as Doc[]).map((c) => `${c.code} ${c.body}`)).toEqual([
+    if (!r2) throw new Error('the accept wrote no revision 2');
+    expect((r2.criteria as Doc[]).map((c) => `${c.code} ${c.body}`)).toEqual([
       `BC-1 ${KEPT.body}`,
       `BC-2 ${REWORDED.body}`,
       `BC-3 ${ADDED.body}`,

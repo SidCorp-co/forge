@@ -41,7 +41,6 @@ export {
   findingsWords,
   type HeldClaim,
   heldFallbackReply,
-  type UncheckedRule,
   isTurnFailureCode,
   nothingMoreReply,
   partialReplyWords,
@@ -50,6 +49,7 @@ export {
   type TurnFailureCause,
   type TurnFailureCode,
   turnFailureReason,
+  type UncheckedRule,
 } from './fallback-replies.js';
 export { existingProjectHandle, type ProjectHandle, resolveProjectHandle } from './handles.js';
 export { runHeartbeatTick } from './heartbeat.js';

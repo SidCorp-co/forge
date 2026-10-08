@@ -13,7 +13,6 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { nearestFeedbackOf } from '../feedback/index.js';
-import { criteriaRefusalsAt, type RevisionWrite } from '../requirements/index.js';
 import type { Refusal } from '../lib/refusal.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import {
@@ -37,6 +36,7 @@ import {
   suggestionKernelActor,
   targetOfRow,
 } from './read.js';
+import { revisionDiffRefusalsIn } from './revision-diff.js';
 import {
   baseStaleRefusal,
   breakdownOpenRefusal,
@@ -103,9 +103,8 @@ async function proposeIn(
     if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'revision_diff' && p.target.type === 'requirement') {
-    const { criteria } = SUGGESTION_PAYLOADS.revision_diff.schema.parse(p.payload) as RevisionWrite;
-    const wrong = await criteriaRefusalsAt(tx, p.target.id, p.baseRevision, criteria);
-    if (wrong.length) return { refusals: wrong.map((r) => ({ ...r, path: `/payload${r.path}` })) };
+    const wrong = await revisionDiffRefusalsIn(tx, p.target.id, p.baseRevision, p.payload);
+    if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'requirement_draft') {
     const wrong = await firstRequirementRefusalsIn(
