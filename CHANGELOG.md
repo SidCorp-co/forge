@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.154] - 2026-10-08
+
+Onboarding runs remove their temporary worktree before closing the session
+
+### Fixed
+
+- **An onboarding job removes its landed-tree worktree before its last act.** The prompt said "when you stop", but post_questionnaire or mark_done ends the job and closes the session first, so the worktree was left behind.
+
 ## [0.4.0-dev.153] - 2026-10-08
 
 Status page tells only the truth: real asks, one count, proven delivery, anchored forecasts
