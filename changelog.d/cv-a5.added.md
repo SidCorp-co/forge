@@ -1,0 +1,1 @@
+**A chat answer can now show a table, key figures or a status list.** Each shows its query and read time, status items link to what they name, and an answer block this screen cannot draw is named, not dropped.
