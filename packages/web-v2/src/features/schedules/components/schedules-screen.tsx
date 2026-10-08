@@ -1,20 +1,18 @@
 "use client";
 
 // Project-tier Schedules (rendered inside the Automation tab). Full-width table
-// on desktop, stacked cards on mobile. Real `/api/schedules` data with an enable
-// Toggle, manual run, and an expandable run-history panel (ISS-299 + history).
+// on desktop, a flush hairline-divided list on mobile. Real `/api/schedules` data with an enable
+// Toggle, manual run, and an expandable run-history panel (ISS-299 + history). The row's state
+// cell speaks for the present (paused, or the next run); the last run is a dated fact (ISS-1163).
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
 import {
   Badge,
   Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   IconButton,
-  MonoTag,
   PageContainer,
   PageTitle,
   Skeleton,
@@ -31,6 +29,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useRunSchedule, useScheduleRuns, useSchedules, useSetScheduleEnabled } from "../hooks";
+import { describeCadence, lastRunView, listSum, STALE_RULE } from "../present-state";
 import {
   lastStatusToChip,
   sessionStatusToChip,
@@ -77,35 +76,66 @@ function fmtDuration(seconds: number | null): string {
 }
 
 /**
- * Condensed last-result: status chip + the time it ran, inline. When the last
- * run has a session, the whole thing links to that session's detail. Renders a
- * muted "Never run" when a schedule has no run yet.
+ * The schedule's present state, in words: paused, or when it runs next. The only element of a
+ * row that speaks for the present, and never coloured by the last run.
  */
-function LastResult({
-  status,
-  at,
-  sessionId,
+function ScheduleState({ row }: { row: ScheduleRow }) {
+  if (!row.enabled) {
+    return (
+      <>
+        <p className="fg-body-sm text-fg font-medium">Paused</p>
+        <p className="fg-caption text-subtle">Won&apos;t run until it is switched on</p>
+      </>
+    );
+  }
+  return (
+    <>
+      <p className="fg-body-sm text-fg font-medium">Next run</p>
+      <p className="fg-caption font-mono text-muted">{fmtTime(row.nextRunAt)}</p>
+    </>
+  );
+}
+
+/** Cadence in words with the cron expression kept beneath; an unreadable one shows the expression alone. */
+function ScheduleCadence({ cron }: { cron: string }) {
+  const { words, expression } = describeCadence(cron);
+  return (
+    <>
+      {words && <p className="fg-body-sm text-fg">{words}</p>}
+      <p className="fg-caption font-mono text-subtle" title="Cron expression">
+        {expression}
+      </p>
+    </>
+  );
+}
+
+/**
+ * The last run as a dated fact: neutral caption text with its age, marked stale once it no
+ * longer speaks for the schedule. When the run has a session the text links to it.
+ */
+function LastRun({
+  row,
+  now,
   slug,
 }: {
-  status: ScheduleRow["lastStatus"];
-  at: string | null;
-  sessionId: string | null;
+  row: ScheduleRow;
+  now: Date;
   slug: string | undefined;
 }) {
-  const chip = lastStatusToChip(status);
-  if (!chip) {
+  const view = lastRunView(row, now);
+  if (view.kind === "never") {
     return <span className="fg-caption text-subtle">Never run</span>;
   }
   const inner = (
-    <span className="inline-flex items-center gap-2">
-      <StatusChip status={chip} size="sm" domain="session" />
-      {at && <span className="fg-caption text-subtle">{fmtTime(at)}</span>}
+    <span className="fg-caption text-subtle" title={fmtTime(row.lastRunAt)}>
+      {view.text}
+      {view.stale && <span> · stale</span>}
     </span>
   );
-  if (slug && sessionId) {
+  if (slug && row.lastSessionId) {
     return (
       <Link
-        href={`/projects/${slug}/agents/${sessionId}`}
+        href={`/projects/${slug}/agents/${row.lastSessionId}`}
         className="rounded-md hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
         {inner}
@@ -261,6 +291,8 @@ function ScheduleHistory({ row, slug }: { row: ScheduleRow; slug: string | undef
 }
 
 interface RowActions {
+  /** One clock for the whole render, so every age on screen is measured against the same instant. */
+  now: Date;
   setEnabled: (id: string, enabled: boolean) => void;
   /** Returns a promise so the row can reveal history once the run is queued. */
   run: (id: string) => Promise<unknown>;
@@ -279,6 +311,7 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
 
   const rows = schedulesQ.data ?? [];
   const actions: RowActions = {
+    now: new Date(),
     setEnabled: (id, enabled) => setEnabled.mutate({ id, enabled }),
     run: (id) => runMut.mutateAsync(id),
     pending: setEnabled.isPending || runMut.isPending,
@@ -320,6 +353,11 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
 
       {!schedulesQ.isLoading && !schedulesQ.isError && rows.length > 0 && (
         <>
+          <div className="mb-3">
+            <p className="fg-body-sm text-fg font-medium">{listSum(rows)}</p>
+            <p className="fg-caption text-subtle">{STALE_RULE}</p>
+          </div>
+
           {/* Desktop / tablet: full-width table. */}
           <div className="hidden md:block">
             <Table>
@@ -329,8 +367,8 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
                   <TH className="w-12">On</TH>
                   <TH>Name · target</TH>
                   <TH>Cadence</TH>
-                  <TH>Next run</TH>
-                  <TH>Last result</TH>
+                  <TH>State</TH>
+                  <TH>Last run</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
               </THead>
@@ -342,10 +380,10 @@ export function SchedulesScreen({ scope }: SchedulesScreenProps) {
             </Table>
           </div>
 
-          {/* Mobile: stacked cards — no horizontal page scroll. */}
-          <div className="space-y-2.5 md:hidden">
+          {/* Mobile: a flush list divided by hairlines — no card per row, no horizontal page scroll. */}
+          <div className="border-t border-line-subtle md:hidden">
             {rows.map((row) => (
-              <ScheduleMobileCard key={row.id} row={row} actions={actions} />
+              <ScheduleMobileItem key={row.id} row={row} actions={actions} />
             ))}
           </div>
         </>
@@ -397,22 +435,13 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
           )}
         </TD>
         <TD>
-          <MonoTag>{row.cron}</MonoTag>
-        </TD>
-        <TD className="font-mono text-muted">
-          {row.enabled ? (
-            fmtTime(row.nextRunAt)
-          ) : (
-            <span className="fg-caption font-sans text-subtle">Off</span>
-          )}
+          <ScheduleCadence cron={row.cron} />
         </TD>
         <TD>
-          <LastResult
-            status={row.lastStatus}
-            at={row.lastRunAt}
-            sessionId={row.lastSessionId}
-            slug={actions.slug}
-          />
+          <ScheduleState row={row} />
+        </TD>
+        <TD>
+          <LastRun row={row} now={actions.now} slug={actions.slug} />
         </TD>
         <TD className="text-right">
           <Button
@@ -438,7 +467,7 @@ function ScheduleTableRow({ row, actions }: { row: ScheduleRow; actions: RowActi
   );
 }
 
-function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowActions }) {
+function ScheduleMobileItem({ row, actions }: { row: ScheduleRow; actions: RowActions }) {
   const [open, setOpen] = useState(false);
 
   async function handleRun() {
@@ -446,69 +475,63 @@ function ScheduleMobileCard({ row, actions }: { row: ScheduleRow; actions: RowAc
       await actions.run(row.id);
       setOpen(true);
     } catch {
+      // error is surfaced by the mutation's onError toast
     }
   }
 
   return (
-    <Card>
-      <CardContent>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <p className="fg-body-sm truncate text-fg">{row.name}</p>
-              <ScheduleKindBadge kind={row.kind} />
-            </div>
-            {row.targetProjectSlug && (
-              <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
-            )}
+    <div className="border-b border-line-subtle py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <p className="fg-body-sm truncate text-fg">{row.name}</p>
+            <ScheduleKindBadge kind={row.kind} />
           </div>
-          <Toggle
-            checked={row.enabled}
-            disabled={!actions.canManage || actions.pending}
-            aria-label={`${row.enabled ? "Disable" : "Enable"} ${row.name}`}
-            onChange={(next) => actions.setEnabled(row.id, next)}
-          />
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <MonoTag>{row.cron}</MonoTag>
-          <LastResult
-            status={row.lastStatus}
-            at={row.lastRunAt}
-            sessionId={row.lastSessionId}
-            slug={actions.slug}
-          />
-        </div>
-        <div className="mt-3 flex items-center justify-between gap-3">
-          {row.enabled ? (
-            <span className="fg-caption font-mono text-subtle">Next: {fmtTime(row.nextRunAt)}</span>
-          ) : (
-            <span className="fg-caption text-subtle">Off</span>
+          {row.targetProjectSlug && (
+            <span className="fg-caption font-mono">→ {row.targetProjectSlug}</span>
           )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="play"
-            disabled={!actions.canManage || actions.pending}
-            onClick={handleRun}
-            className="min-h-11"
-          >
-            Run
-          </Button>
         </div>
+        <Toggle
+          checked={row.enabled}
+          disabled={!actions.canManage || actions.pending}
+          aria-label={`${row.enabled ? "Disable" : "Enable"} ${row.name}`}
+          onChange={(next) => actions.setEnabled(row.id, next)}
+        />
+      </div>
+      <div className="mt-3">
+        <ScheduleState row={row} />
+      </div>
+      <div className="mt-2">
+        <ScheduleCadence cron={row.cron} />
+      </div>
+      <div className="mt-2">
+        <LastRun row={row} now={actions.now} slug={actions.slug} />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="mt-3 inline-flex items-center gap-1 fg-caption text-accent focus-visible:outline-none"
+          className="inline-flex min-h-11 items-center gap-1 fg-caption text-accent focus-visible:outline-none"
         >
           {open ? "Hide history" : "Show history"}
         </button>
-        {open && (
-          <div className="mt-3 border-t border-line-subtle pt-3">
-            <ScheduleHistory row={row} slug={actions.slug} />
-          </div>
-        )}
-      </CardContent>
-    </Card>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="play"
+          disabled={!actions.canManage || actions.pending}
+          onClick={handleRun}
+          className="min-h-11"
+        >
+          Run
+        </Button>
+      </div>
+      {open && (
+        <div className="mt-3 border-t border-line-subtle pt-3">
+          <ScheduleHistory row={row} slug={actions.slug} />
+        </div>
+      )}
+    </div>
   );
 }
