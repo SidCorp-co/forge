@@ -586,7 +586,7 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
                 tokio::spawn(async move { chat::handle_abort(runner, &sid).await });
             }
         }
-        event if BOX_FRAMES.contains(&event) => on_box_frame(frame, client, cfg, inflight),
+        event if box_frames::takes(event) => box_frames::on_frame(frame, client, cfg, inflight),
         "master.wake" => match master::Wake::of_frame(&frame.data) {
             Ok(wake) => {
                 if wake_tx.try_send(wake).is_err() {
@@ -611,61 +611,6 @@ pub(crate) fn on_frame(frame: Frame, ctx: &FrameCtx) {
             frame.data
         ),
         other => tracing::debug!("[ws] ignored event {other}"),
-    }
-}
-
-/// The frames [`on_box_frame`] takes.
-const BOX_FRAMES: [&str; 5] = [
-    "skill.sync",
-    "checkout.head.read",
-    "checkout.ancestry.read",
-    "provision.request",
-    "compute.run",
-];
-
-/// The frames that read or set up a project's checkout on this box, or run a computation on it.
-fn on_box_frame(
-    frame: Frame,
-    client: &Arc<CoreClient>,
-    cfg: &Arc<Config>,
-    inflight: &Arc<AtomicUsize>,
-) {
-    match frame.event.as_str() {
-        "compute.run" => {
-            let client = client.clone();
-            let guard = InflightGuard::enter(inflight);
-            tokio::spawn(async move {
-                let _guard = guard; // a drain waits for the script to finish and be answered
-                crate::compute_run::handle(&client, frame.data).await;
-            });
-        }
-        "skill.sync" => {
-            let (client, cfg) = (client.clone(), cfg.clone());
-            tokio::spawn(async move {
-                if let Err(e) = dispatch::handle_skill_sync(&client, &cfg, frame.data).await {
-                    tracing::warn!("[skill.sync] {e}");
-                }
-            });
-        }
-        "checkout.head.read" => {
-            let client = client.clone();
-            tokio::spawn(async move { crate::head_read::handle(&client, frame.data).await });
-        }
-        "checkout.ancestry.read" => {
-            let client = client.clone();
-            tokio::spawn(async move { crate::ancestry_read::handle(&client, frame.data).await });
-        }
-        "provision.request" => {
-            // Wake → run the pending-provision sweep (server returns
-            // only `queued` rows, so this provisions the requested one).
-            let (client, cfg) = (client.clone(), cfg.clone());
-            tokio::spawn(async move {
-                if let Err(e) = runner_workspace::provision::handle_request(&client, &cfg).await {
-                    tracing::warn!("[provision] {e}");
-                }
-            });
-        }
-        _ => {}
     }
 }
 
