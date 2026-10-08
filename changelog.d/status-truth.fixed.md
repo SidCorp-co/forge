@@ -1,1 +1,0 @@
-**Project status now says only what is true.** Waiting on people lists member asks by person; one Needs you count; full delivery needs every criterion proven; forecasts hold until an event and say why they moved; cancelled releases explain themselves.
