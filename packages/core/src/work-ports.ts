@@ -119,7 +119,7 @@ import {
   settleOpenQuestions,
   voidCancelledRunQuestions,
 } from './questions/index.js';
-import { approvalRequired } from './release-batch/index.js';
+import { approvalRequired, judgedBuildOf } from './release-batch/index.js';
 import {
   changedTracedOf,
   contractAboutRefusal,
@@ -223,6 +223,7 @@ export function provideWorkPorts(): void {
     declaredIssueSeqs,
     subjectOf,
     liveReachForIssue,
+    judgedBuildOf,
     getLoopThresholds,
     extractStageStatus,
     freshRunnerAvailability,
