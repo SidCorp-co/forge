@@ -88,6 +88,15 @@ function scalar(f) {
 /** A plain scalar, which a YAML parser folds across its lines into one run of text. */
 function plain(parts, line) {
   const text = parts.filter((t) => t !== '').join(' ');
+  // A value that opens with `#` is a comment, and YAML reads the key as empty.
+  if (text.startsWith('#')) return { line, value: '' };
+  const implicit = nonString(text);
+  if (implicit) {
+    return {
+      line,
+      error: `a plain \`${text}\` is read by YAML as ${implicit}, not as a string: quote it`,
+    };
+  }
   if (PLAIN_INDICATORS.test(text) || /^[-?:](\s|$)/.test(text)) {
     return {
       line,
@@ -102,6 +111,16 @@ function plain(parts, line) {
     };
   }
   return { line, value: text };
+}
+
+/** What YAML's core schema makes of an unquoted scalar that is not text, or nothing. */
+function nonString(text) {
+  if (/^(~|null|Null|NULL)$/.test(text)) return 'null';
+  if (/^(true|True|TRUE|false|False|FALSE)$/.test(text)) return 'a boolean';
+  if (/^[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?$/.test(text)) return 'a number';
+  if (/^(0x[0-9a-fA-F]+|0o[0-7]+)$/.test(text)) return 'a number';
+  if (/^([-+]?\.(inf|Inf|INF)|\.(nan|NaN|NAN))$/.test(text)) return 'a number';
+  return null;
 }
 
 function quoted(rest, continuation, mark, line) {

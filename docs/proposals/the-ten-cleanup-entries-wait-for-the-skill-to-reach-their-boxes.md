@@ -18,10 +18,13 @@ let a box fill with debris for days.
 ## The deletion is owed once
 
 The entry `master-cleans-what-its-runs-leave` is deleted from each of the ten projects that carry it
-once the daemon on that project's box reports a build whose commit contains the merge of ISS-1392.
-`forge-runner status` prints the build a daemon runs and `git merge-base --is-ancestor` against that
-merge says whether it carries the skill. A project whose daemon has not taken the release keeps its
-entry until it does.
+once the skill is installed in that project's master checkout by a build whose commit contains the
+merge of ISS-1392. A daemon on that build is not enough: the install can be refused for a checkout
+whose git tracks the skill or un-ignores `.claude/`, and such a checkout keeps the older skill
+without the rule. `forge-runner status` prints, per project, what the last install did there; the
+line reads `written by` or `already the asset of` the build that carries the merge, and
+`git merge-base --is-ancestor` against that merge says whether it does. A project whose line reads
+`NOT WRITTEN`, or names an older build, keeps its entry until it does not.
 
 ## Honest costs
 

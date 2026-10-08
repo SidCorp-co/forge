@@ -145,6 +145,30 @@ describe('a skill an installer drops whole is refused by name', () => {
     expect(skillFaults(skill('a', '"Use when: a pass is nudged"'), 'a')).toEqual([]);
   });
 
+  it('a description YAML reads as empty, null, a boolean or a number is refused as such', () => {
+    const comment = skillFaults('---\nname: a\ndescription: # explained later\n---\n', 'a');
+    expect(comment.map((f) => f.rule)).toEqual(['is empty']);
+    for (const implicit of [
+      'null',
+      '~',
+      'true',
+      'False',
+      '2024',
+      '-1.5e3',
+      '0x1F',
+      '.inf',
+      '.NaN',
+    ]) {
+      const faults = skillFaults(skill('a', implicit), 'a');
+      expect(faults, implicit).toHaveLength(1);
+      expect(faults[0].rule, implicit).toMatch(/not as a string: quote it/);
+    }
+    // Quoted, the same words are text; and a name that is a number is refused the same way.
+    expect(skillFaults(skill('a', '"null"'), 'a')).toEqual([]);
+    expect(skillFaults(skill('a', 'nullable values are fine'), 'a')).toEqual([]);
+    expect(skillFaults(skill('123', 'd'), '123')[0].rule).toMatch(/a number/);
+  });
+
   it('a description written as a list or mapping is not a string', () => {
     const [f] = skillFaults('---\nname: a\ndescription:\n  - one\n---\n', 'a');
     expect(f).toMatchObject({ field: 'description' });
