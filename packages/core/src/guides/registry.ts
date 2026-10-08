@@ -184,7 +184,7 @@ against live code or git before you rely on it.
 ### What Forge owns, and the tool for each
 | You need | Call |
 |---|---|
-| Issues, status, tasks | \`forge issue\`, \`forge new\`, \`forge comment\`; REST \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\` |
+| Issues, status, tasks | \`forge issue\`, \`forge new\`, \`forge comment\`; REST \`/api/issues/:id\`, \`/api/issues/:id/comments\`, \`/api/projects/:id/issues\`. A chat session files no issue: it records Feedback or a Requirement draft or revision, and \`forge new\` is refused for it with CHAT_FILES_FEEDBACK_NOT_ISSUES |
 | Ordering between issues | \`relations\` on the create (\`POST /api/projects/:id/issues\`), or \`POST /api/issues/:id/dependencies\` once both exist |
 | Repo path, branches, preview URLs, test credentials | \`GET /api/projects/:id\` and \`GET /api/projects/:id/config\` |
 | Pipeline gates | \`GET /api/projects/:id/policy\` |
