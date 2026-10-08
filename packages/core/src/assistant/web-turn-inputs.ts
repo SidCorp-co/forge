@@ -4,7 +4,9 @@
 import { eq } from 'drizzle-orm';
 import { agentRefusalText } from '../agent-sessions/index.js';
 import {
+  AGENT_TURN_NEXT_STEP,
   askerLanguageOf,
+  type ConversationAgentTurnResult,
   type ConversationImage,
   type ConversationVenue,
   type ConversationWindowRow,
@@ -118,28 +120,25 @@ async function requirementKeyOf(requirementId: string): Promise<string> {
 }
 
 /**
- * What the thread is shown when an Agent turn has no answer to give it, in the asker's language.
+ * What the thread is shown when an Agent turn has no answer to give it. English only (owner ruling,
+ * ISS-403). A crash, a timeout and a box that cannot confine are read from the session's own cause
+ * by the bridge (`conversations/conversation-agent-failure.ts`); `failed` is kept for an ending none
+ * of those names.
  */
 const WEB_AGENT_REPLIES = {
-  en: {
-    dedup:
-      'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
-    noDevice:
-      'No paired device is free to take this turn right now. Try again in a few minutes, or open a new conversation in Assistant mode for anything that does not need the repository.',
-    failed:
-      'The Agent session ended without an answer. Ask again — a new turn starts a fresh session — or open a conversation in Assistant mode if the question does not need the repository.',
-    ack: null,
-  },
-  vi: {
-    dedup:
-      'Cuộc trò chuyện này đang có một lượt Agent chạy. Bạn chờ nó trả lời, hoặc mở cuộc trò chuyện khác để hỏi song song việc khác.', // i18n-allow: user-facing channel reply
-    noDevice:
-      'Hiện không có máy đã ghép nào rảnh để nhận lượt này. Bạn thử lại sau ít phút, hoặc mở cuộc trò chuyện mới ở chế độ Assistant cho những gì không cần đến mã nguồn.', // i18n-allow: user-facing channel reply
-    failed:
-      'Phiên Agent đã kết thúc mà chưa có câu trả lời. Bạn hỏi lại — lượt mới sẽ mở phiên mới — hoặc mở cuộc trò chuyện ở chế độ Assistant nếu câu hỏi không cần đến mã nguồn.', // i18n-allow: user-facing channel reply
-    ack: null,
-  },
+  dedup:
+    'This conversation already has an Agent turn running. Wait for it to answer, or open another conversation to ask something else in parallel.',
+  noDevice:
+    'No paired device is free to take this turn right now. Try again in a few minutes, or open a new conversation in Assistant mode for anything that does not need the repository.',
+  failed:
+    'The Agent session ended without an answer. Ask again — a new turn starts a fresh session — or open a conversation in Assistant mode if the question does not need the repository.',
+  ack: null,
 } as const;
+
+/** A turn refused because its box cannot confine a chat: the refusal names the box and why. */
+function cannotConfineReply(refusal: string): string {
+  return `Agent mode did not run this turn. ${refusal} ${AGENT_TURN_NEXT_STEP['box-cannot-confine']}`;
+}
 
 const ATTACHMENT_UNREADABLE = {
   en: (file: string) =>
@@ -171,7 +170,6 @@ async function divertToAgent(
   if (args.window.mode !== 'agent' || authority.origin === 'onboarding_handoff') return null;
   setPhase('agent-turn');
   const language = await askerLineLanguage(args);
-  const replies = WEB_AGENT_REPLIES[language];
   if (!(await args.window.reserve()))
     return { send: false, reason: 'superseded-before-agent-turn', ended: 'superseded' };
   const { startConversationAgentTurn } = await import('../conversations/index.js');
@@ -189,23 +187,44 @@ async function divertToAgent(
     ...(args.window.images.length ? { images: args.window.images } : {}),
     persona: webAgentConversationPersona(args.project, args.askedBy),
     door: 'web-agent-completion',
-    replies,
+    replies: WEB_AGENT_REPLIES,
     ackAfterMs: null,
   });
   if (started.started) return { send: false, reason: 'agent-turn-dispatched' };
-  const text =
-    started.reason === 'deduped'
-      ? replies.dedup
-      : started.reason === 'no-device'
-        ? replies.noDevice
-        : started.reason === 'runner-outdated' || started.reason === 'authority-refused'
-          ? agentRefusalText(started, language)
-          : started.reason === 'attachment-unreadable'
-            ? ATTACHMENT_UNREADABLE[language](started.file ?? ATTACHMENT_NAMELESS[language])
-            : null;
+  const text = notStartedText(started, language);
   if (text === null)
     return { send: false, reason: 'agent-turn-dispatch-failed', ended: 'not-dispatched' };
   return { send: true, message: codeAuthored(text), screenReplaced: false };
+}
+
+/**
+ * What the thread is told about a turn that never reached a box, or null for a hand-over that threw:
+ * that session's bridge reads its cause to the room.
+ */
+function notStartedText(
+  started: Extract<ConversationAgentTurnResult, { started: false }>,
+  language: ReplyLanguage,
+): string | null {
+  switch (started.reason) {
+    case 'deduped':
+      return WEB_AGENT_REPLIES.dedup;
+    case 'no-device':
+      return WEB_AGENT_REPLIES.noDevice;
+    case 'runner-outdated':
+    case 'authority-refused':
+      return agentRefusalText(started, language);
+    case 'attachment-unreadable':
+      return ATTACHMENT_UNREADABLE[language](started.file ?? ATTACHMENT_NAMELESS[language]);
+    case 'box-cannot-confine':
+      if (!started.message) {
+        throw new Error(
+          'web-turn-inputs: a turn refused BOX_CANNOT_CONFINE_CHAT carried no sentence naming the box',
+        );
+      }
+      return cannotConfineReply(started.message);
+    case 'dispatch-failed':
+      return null;
+  }
 }
 
 /** Assistant mode: the persona and toolset the room's subject calls for. */

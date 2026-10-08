@@ -552,8 +552,8 @@ function AgentTurnEntry({ turn, projectSlug }: { turn: AgentTurn; projectSlug?: 
       </p>
       {failed && turn.reason && <p className="fg-body-sm mt-1 text-fg">{turn.reason}</p>}
       {failed && (
-        <p className="fg-caption mt-1 text-subtle">
-          {t("conversations.agentTurn.askAgain")}
+        <p className="fg-caption mt-1 text-subtle" data-testid="thread-agent-turn-next">
+          {turn.nextStep ?? t("conversations.agentTurn.askAgain")}
         </p>
       )}
       {held && (

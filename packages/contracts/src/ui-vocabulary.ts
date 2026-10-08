@@ -389,6 +389,7 @@ export const ENUM_LABELS = {
 		checkout_unbound: "No checkout bound",
 		credential_mint_failed: "Credential not minted",
 		attachment_unreadable: "Attachment unreadable",
+		box_cannot_confine_chat: "Box cannot confine a chat",
 		dispatch_failed: "Not dispatched",
 		forge_budget_exhausted: "Project budget exhausted",
 		runner_unsupported_type: "Runner cannot run this job type",

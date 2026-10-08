@@ -8,6 +8,8 @@ interface HeldRefusal {
   rule: string;
   why: string;
   quote: string | null;
+  /** The check could not run, and why: a failure on Forge's side, not a rule the reply broke. */
+  unchecked?: string;
 }
 
 /** The rules the reply check held this session's conversation reply on, as core stamped them on its marker. */
@@ -33,7 +35,9 @@ export function HeldReplyForRun({ metadata }: { metadata: SessionMetadata | null
         {refusals.map((r) => (
           <li key={`${r.rule}:${r.why}`} className="flex flex-col gap-0.5">
             <MonoTag hue="flame">{r.rule}</MonoTag>
-            <span className="fg-caption">{r.why}</span>
+            <span className="fg-caption">
+              {typeof r.unchecked === "string" ? t("sessions.held.couldNotRun", { why: r.unchecked }) : r.why}
+            </span>
             {r.quote && <span className="fg-caption text-subtle">“{r.quote}”</span>}
           </li>
         ))}

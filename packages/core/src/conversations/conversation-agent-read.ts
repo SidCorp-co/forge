@@ -3,6 +3,7 @@ import { noTurnCredentialDeviceReason, pickTurnCredentialDevice } from '../agent
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
+import { agentTurnFailure, type EndedSession } from './conversation-agent-failure.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
@@ -61,6 +62,11 @@ export interface ConversationAgentTurnRow {
   /** On `failed` only: which failure it was, in the sentence the venue was shown. */
   reason: string | null;
   /**
+   * On `failed` only: what to do next, where the turn's own cause calls for a step of its own — a
+   * box that cannot confine is not answered by asking again. Null keeps the door's generic step.
+   */
+  nextStep: string | null;
+  /**
    * The reply the screen held, where it held one: why, for every reader of the room, and the text
    * as the session wrote it, with the blocks it drew for it, for the person it answered — the session
    * acted as them — and nobody else.
@@ -82,6 +88,9 @@ export async function readConversationAgentTurns(
       runtimeState: agentSessions.runtimeState,
       metadata: agentSessions.metadata,
       createdAt: agentSessions.createdAt,
+      failureReason: agentSessions.failureReason,
+      dispatchedAt: agentSessions.dispatchedAt,
+      updatedAt: agentSessions.updatedAt,
     })
     .from(agentSessions)
     .where(
@@ -97,15 +106,17 @@ export async function readConversationAgentTurns(
 
 /** One turn as `viewerId` reads it; null reads as nobody in particular. */
 export function agentTurnRow(
-  row: { id: string; status: string; runtimeState: string | null },
+  row: { id: string; runtimeState: string | null } & EndedSession,
   meta: ConversationAgentMeta,
   viewerId: string | null,
 ): ConversationAgentTurnRow {
+  const state = turnState(row, meta);
   return {
     windowId: meta.windowId,
     sessionId: row.id,
-    state: turnState(row, meta),
+    state,
     reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
+    nextStep: state === 'failed' ? (agentTurnFailure(row)?.next ?? null) : null,
     held: meta.held ? heldFor(meta.held, meta, viewerId) : null,
   };
 }

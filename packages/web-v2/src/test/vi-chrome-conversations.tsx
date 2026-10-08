@@ -103,9 +103,9 @@ const WINDOWS = [
   win("w20", 20, null),
 ];
 const TURNS = [
-  { windowId: "w18", sessionId: "s1", state: "dispatched", reason: null },
-  { windowId: "w19", sessionId: "s2", state: "failed", reason: "r" },
-  { windowId: "w17", sessionId: "s3", state: "running", reason: null },
+  { windowId: "w18", sessionId: "s1", state: "dispatched", reason: null, nextStep: null },
+  { windowId: "w19", sessionId: "s2", state: "failed", reason: "r", nextStep: null },
+  { windowId: "w17", sessionId: "s3", state: "running", reason: null, nextStep: null },
 ];
 
 const detail = (id: string, over: Record<string, unknown> = {}) => ({ ...base(id, over), messages: MESSAGES, windows: WINDOWS, agentTurns: TURNS, agentMode: { available: true, reason: null }, questionnaires: [] });

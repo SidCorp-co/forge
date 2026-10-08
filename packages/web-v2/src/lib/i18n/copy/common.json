@@ -69,6 +69,7 @@
     "common.failureCause.agent_startup_failed": "Agent failed to start",
     "common.failureCause.attachment_unreadable": "Attachment unreadable",
     "common.failureCause.audit_ran_blind": "Ran without evidence",
+    "common.failureCause.box_cannot_confine_chat": "Box cannot confine a chat",
     "common.failureCause.box_session_saturated": "Box at its session limit",
     "common.failureCause.checkout_unbound": "No checkout bound",
     "common.failureCause.credential_mint_failed": "Credential not minted",

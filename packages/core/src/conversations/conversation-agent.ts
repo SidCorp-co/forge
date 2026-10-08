@@ -39,7 +39,11 @@ export const TITLE_MAX = 80;
 /** Why a turn never reached its box, as its session's failure reason records it. */
 type NotDispatched = Extract<
   FailureCause,
-  'checkout_unbound' | 'credential_mint_failed' | 'attachment_unreadable' | 'dispatch_failed'
+  | 'checkout_unbound'
+  | 'credential_mint_failed'
+  | 'attachment_unreadable'
+  | 'box_cannot_confine_chat'
+  | 'dispatch_failed'
 >;
 
 const NOT_DISPATCHED = Symbol('notDispatched');
@@ -54,11 +58,22 @@ function notDispatched(failureCause: NotDispatched, cause: unknown): Error {
   );
 }
 
-/** The real cause of a dispatch that threw: the binding, the credential, or the hand-over itself. */
+/**
+ * The real cause of a dispatch that threw: the binding, the credential, a box that cannot confine a
+ * chat, or the hand-over itself.
+ */
 export function notDispatchedCause(err: unknown): NotDispatched {
   const carried = (err as { [NOT_DISPATCHED]?: NotDispatched } | null)?.[NOT_DISPATCHED];
   if (carried) return carried;
-  return isRefusal(err, 'CHECKOUT_UNBOUND') ? 'checkout_unbound' : 'dispatch_failed';
+  if (isRefusal(err, 'CHECKOUT_UNBOUND')) return 'checkout_unbound';
+  if (isRefusal(err, 'BOX_CANNOT_CONFINE_CHAT')) return 'box_cannot_confine_chat';
+  return 'dispatch_failed';
+}
+
+/** The refusal's own sentence where the box cannot confine a chat: it names the box and why. */
+export function cannotConfineSentence(err: unknown): string | null {
+  if (!isRefusal(err, 'BOX_CANNOT_CONFINE_CHAT')) return null;
+  return err.refusals.find((r) => r.code === 'BOX_CANNOT_CONFINE_CHAT')?.detail ?? null;
 }
 
 /** The session row a runner-hosted conversation turn runs in, carrying its marker. */
@@ -223,6 +238,19 @@ export async function startConversationAgentTurn(
       ...(args.forceLenses ? { forceLenses: args.forceLenses } : {}),
     });
   } catch (err) {
+    const cannotConfine = cannotConfineSentence(err);
+    if (cannotConfine) {
+      // refused by name before anything ran: the caller tells the room, and the stamped marker keeps
+      // the bridge from failing it over or posting a second reply under the same delivery key
+      const at = new Date().toISOString();
+      await markSessionFailed(session, 'conversation-agent', 'box_cannot_confine_chat', {
+        ...marker,
+        claimedAt: at,
+        deliveredAt: at,
+        failure: cannotConfine,
+      });
+      return { started: false, reason: 'box-cannot-confine', message: cannotConfine };
+    }
     logger.error(
       { err, sessionId: session.id, conversationId: args.conversationId },
       'conversation-agent: chat-turn dispatch failed',

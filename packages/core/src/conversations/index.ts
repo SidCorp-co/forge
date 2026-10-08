@@ -21,7 +21,12 @@ export {
   startConversationAgentTurn,
 } from './conversation-agent.js';
 export { registerConversationAgentBridge } from './conversation-agent-bridge.js';
-export { CONVERSATION_AGENT_MARKER, readConversationAgentMeta } from './conversation-agent-meta.js';
+export { AGENT_TURN_NEXT_STEP } from './conversation-agent-failure.js';
+export {
+  CONVERSATION_AGENT_MARKER,
+  type ConversationAgentTurnResult,
+  readConversationAgentMeta,
+} from './conversation-agent-meta.js';
 export {
   conversationAgentTurnForWindow,
   conversationAgentUnavailableReason,

@@ -34,6 +34,7 @@ const turn = (reply: string | null, blocks?: NonNullable<AgentTurn["held"]>["blo
   sessionId: "s1",
   state: "held",
   reason: null,
+  nextStep: null,
   held: { reason: REASON, reply, ...(blocks !== undefined ? { blocks } : {}) },
 });
 

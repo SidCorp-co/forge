@@ -14,6 +14,7 @@ import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import {
+  cannotConfineSentence,
   createAgentSession,
   dispatchAgentTurn,
   markSessionFailed,
@@ -137,7 +138,7 @@ export async function redispatchConversationAgentTurn(
     ? await carryImagesToSession(meta.conversationId, retry.id, meta.images)
     : { ok: true as const, ids: [] };
   if (!carried.ok) {
-    await failRetry(retry, next, meta, 'attachment_unreadable');
+    await failRetry(retry, next, 'attachment_unreadable', null);
     return { ok: false, status: 'attachment-unreadable' };
   }
 
@@ -171,23 +172,36 @@ export async function redispatchConversationAgentTurn(
       { err, failedSessionId: session.id, retrySessionId: retry.id, attempt },
       'conversation-agent failover: re-dispatch failed',
     );
-    await failRetry(retry, next, meta, notDispatchedCause(err));
+    await failRetry(retry, next, notDispatchedCause(err), cannotConfineSentence(err));
     return { ok: false, status: 'error' };
   }
 }
 
-/** A retry that never reached its box is failed with its marker stamped, so no bridge answers it. */
+type NotDispatched = Parameters<typeof markSessionFailed>[2];
+
+/** What a retry's record says when it never reached its box: the box's own refusal, else its cause. */
+function notDispatchedReason(cause: NotDispatched, refusal: string | null): string {
+  if (refusal) return refusal;
+  return cause === 'attachment_unreadable'
+    ? 'a file the turn carries could not be copied onto the retry session'
+    : `the retry was not handed to its box (${cause})`;
+}
+
+/**
+ * A retry that never reached its box is failed with its marker stamped, so no bridge answers it; the
+ * room is told about the turn it retried, by that turn's own reading.
+ */
 async function failRetry(
   retry: SessionRow,
   next: ConversationAgentMeta,
-  meta: ConversationAgentMeta,
-  cause: Parameters<typeof markSessionFailed>[2],
+  cause: NotDispatched,
+  refusal: string | null,
 ): Promise<void> {
   const at = new Date().toISOString();
   await markSessionFailed(retry, 'conversation-agent-failover', cause, {
     ...next,
     claimedAt: at,
     deliveredAt: at,
-    failure: meta.replies.failed,
+    failure: notDispatchedReason(cause, refusal),
   });
 }

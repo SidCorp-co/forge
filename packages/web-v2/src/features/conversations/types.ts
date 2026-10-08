@@ -19,6 +19,11 @@ export interface AgentTurn {
   state: AgentTurnState;
   reason: string | null;
   /**
+   * On a failed turn: the next step its own cause calls for (a box that cannot confine a chat is not
+   * answered by asking again). Null keeps the generic step.
+   */
+  nextStep: string | null;
+  /**
    * The reply the reply check held: why, and — for the person it answered, null for anyone else —
    * the text itself and the visual blocks the session drew for it, held with it.
    */

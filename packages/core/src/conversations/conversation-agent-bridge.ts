@@ -27,6 +27,7 @@ import type { ProgressFacts, ToolResultEntry } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
+import { agentTurnFailure, agentTurnFailureText } from './conversation-agent-failure.js';
 import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
@@ -43,7 +44,8 @@ type SessionRow = typeof agentSessions.$inferSelect;
 /**
  * What the venue is told: the screened reply with the blocks it releases, a notice that the screen
  * held the reply the session wrote (its blocks held with it), or — only where the session left no
- * reply at all — the door's failure sentence.
+ * reply at all — what its failure was: a crash, a timeout naming its limit, a box that cannot confine
+ * a chat, and the door's own failure sentence only where its cause names none of them.
  */
 type Outcome =
   | { kind: 'answered'; message: ScreenedMessage; blocks: readonly StagedBlock[] }
@@ -177,6 +179,14 @@ async function composeOutcome(
   const messages = session.status === 'completed' ? await readTranscript(session.id) : [];
   const text = session.status === 'completed' ? finalAssistantText(messages) : null;
   if (!text) {
+    const named = agentTurnFailure(session);
+    if (named) {
+      return {
+        kind: 'failed',
+        message: codeAuthored(agentTurnFailureText(named)),
+        failure: named.reason,
+      };
+    }
     return {
       kind: 'failed',
       message: codeAuthored(meta.replies.failed),
@@ -219,6 +229,7 @@ async function composeOutcome(
       why: r.why,
       quote: r.quote,
       shape: r.shape,
+      ...(r.unchecked ? { unchecked: r.unchecked } : {}),
     })),
     blocks: [...staged],
   };

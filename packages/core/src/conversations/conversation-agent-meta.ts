@@ -67,10 +67,14 @@ export type ConversationAgentTurnResult =
         | 'runner-outdated'
         | 'dispatch-failed'
         | 'attachment-unreadable'
-        | 'authority-refused';
+        | 'authority-refused'
+        | 'box-cannot-confine';
       /** The file the turn could not carry, for a refusal that names it. */
       file?: string;
-      /** On `authority-refused`: why, in the words the room is shown. */
+      /**
+       * On `authority-refused` and `box-cannot-confine`: why, in the words the room is shown — the
+       * latter names the box and what it lacks.
+       */
       message?: string;
     };
 
@@ -81,6 +85,8 @@ export interface HeldRefusal {
   quote: string | null;
   /** The rule, as one plain sentence. */
   shape: string;
+  /** The rule could not run, and why (`RuleBreak.unchecked`): the reply broke nothing it checked. */
+  unchecked?: string;
 }
 
 /**
@@ -95,11 +101,21 @@ export interface HeldReply {
   blocks: StagedBlock[];
 }
 
-/** Why the screen held a reply, as one plain sentence per rule it broke. */
+/**
+ * Why the screen held a reply, as one plain sentence per rule it broke, and one per check that could
+ * not run: a check that never ran is a failure on Forge's side, never read as a rule the reply broke
+ * (REQ-30 BC-9, as `fallback-replies.ts:uncheckedLine` words it in Assistant mode).
+ */
 export function heldBecause(refusals: readonly HeldRefusal[]): string {
   const rules = [...new Map(refusals.map((r) => [r.rule, r])).values()];
   if (rules.length === 0) return 'The reply check held it without naming a rule.';
-  return rules.map((r) => `It broke the rule "${r.shape}" (${r.rule}).`).join(' ');
+  return rules
+    .map((r) =>
+      r.unchecked
+        ? `The ${r.rule} check could not run, because ${r.unchecked}; this failed on Forge's side and is not about the reply.`
+        : `It broke the rule "${r.shape}" (${r.rule}).`,
+    )
+    .join(' ');
 }
 
 /** What a session carries about the conversation turn it is answering. */
@@ -152,7 +168,12 @@ function heldOf(raw: unknown): HeldReply | undefined {
   if (!h || !str(h.at) || !str(h.text) || !Array.isArray(h.refusals)) return undefined;
   const refusals = h.refusals.filter(
     (r): r is HeldRefusal =>
-      !!r && str(r.rule) && str(r.why) && str(r.shape) && (r.quote === null || str(r.quote)),
+      !!r &&
+      str(r.rule) &&
+      str(r.why) &&
+      str(r.shape) &&
+      (r.quote === null || str(r.quote)) &&
+      (r.unchecked === undefined || str(r.unchecked)),
   );
   return { at: h.at, text: h.text, refusals, blocks: stagedBlocksOf(h.blocks) };
 }

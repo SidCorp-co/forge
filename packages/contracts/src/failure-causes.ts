@@ -59,6 +59,9 @@ export const FAILURE_CAUSES = [
 	/** a file the turn carries could not be copied onto its session, so it was not dispatched
 	 *  rather than answered without it. */
 	"attachment_unreadable",
+	/** a chat door's turn was refused `BOX_CANNOT_CONFINE_CHAT` because the box that would take it
+	 *  cannot run it confined, so nothing ran. Writer: conversations/conversation-agent.ts. */
+	"box_cannot_confine_chat",
 	/** handing the turn to its box threw for any other reason. */
 	"dispatch_failed",
 	/** project monthly budget. Writer: jobs/dispatcher.ts. */
@@ -142,6 +145,7 @@ export const FAILURE_CAUSE_PRESENTATION: Record<
 	checkout_unbound: "failure",
 	credential_mint_failed: "failure",
 	attachment_unreadable: "failure",
+	box_cannot_confine_chat: "failure",
 	dispatch_failed: "failure",
 	forge_budget_exhausted: "swept",
 	runner_unsupported_type: "failure",
