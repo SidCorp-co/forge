@@ -61,7 +61,10 @@ describe('a re-cut of the same roster', () => {
   });
 
   it('bumps on a push the abort reported without naming it, and says so', () => {
-    const first = run({ version: '0.3.0', metadata: { abort: { pushed: true, reason: 'x' } } });
+    const first = run({
+      version: '0.3.0',
+      metadata: { abort: { pushed: true, reason: 'x', roster: 'released' } },
+    });
     expect(decideVersion([first], ROSTER, null)).toMatchObject({
       kind: 'bumped',
       carriers: [UNNAMED_PUSH],
@@ -82,7 +85,7 @@ describe('a re-cut of the same roster', () => {
     expect(decideVersion([declared], ROSTER, null)).toMatchObject({ kind: 'reused' });
     const tagged = run({
       version: '0.3.0',
-      metadata: { ...SILENT, abort: { pushed: true }, ...said([]) },
+      metadata: { ...SILENT, abort: { pushed: true, roster: 'released' }, ...said([]) },
     });
     expect(carriersOf(tagged)).toEqual({ kind: 'carried', carriers: [UNNAMED_PUSH] });
   });
