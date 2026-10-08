@@ -1,12 +1,13 @@
 import { cmpVersion } from '../install/fetch-release.js';
-import { mainRunnerHead } from '../install/main-runner-head.js';
+import { mainRunnerHead, releaseContainsRunnerHead } from '../install/main-runner-head.js';
 import { getPublishedRunnerBuild } from '../install/routes.js';
 
 /**
  * Whether a box is running the runner `main` holds. Two questions, each between
  * like things, because conflating them is how one of them lies:
  * - is this box on the PUBLISHED release? version and commit, both release stamps.
- * - is the published release the runner that LANDED? two runner-head commits.
+ * - is the published release the runner that LANDED? it carries it when its commit is the
+ *   newest runner change or a descendant.
  *
  * Only the second catches a release that was never cut, which is the shape that
  * left seven runner commits on no box while everything read healthy (ISS-1165).
@@ -35,6 +36,18 @@ export interface ReferenceBuild {
   published: { version: string; commit: string | null } | null;
   /** The newest commit under the runner package on the default branch, or null. */
   mainRunnerHead: string | null;
+  /** Whether the release's commit is that commit or a descendant; null where not asked or unanswered. */
+  releaseContainsHead: boolean | null;
+}
+
+/** Asks only where equality does not already answer and both commits are known. */
+export async function releaseContainsHeadFor(
+  published: ReferenceBuild['published'],
+  head: string | null,
+): Promise<boolean | null> {
+  if (published === null || published.commit === null || head === null) return null;
+  if (published.commit === head) return null;
+  return releaseContainsRunnerHead(published.commit, head);
 }
 
 function short(sha: string): string {
@@ -52,13 +65,25 @@ function judgeRelease(reference: ReferenceBuild): { state: RunnerBuildState; det
   if (head === null) {
     return { state: 'unknown', detail: 'the runner on the default branch could not be read' };
   }
-  if (published.commit !== head) {
+  if (published.commit === head) {
+    return { state: 'current', detail: `release ${published.version} is what landed` };
+  }
+  if (reference.releaseContainsHead === true) {
+    return {
+      state: 'current',
+      detail: `release ${published.version} (${short(published.commit)}) carries what landed, the runner at ${short(head)}`,
+    };
+  }
+  if (reference.releaseContainsHead === false) {
     return {
       state: 'behind',
       detail: `release ${published.version} carries ${short(published.commit)}, and the default branch holds ${short(head)} — no release carries what landed`,
     };
   }
-  return { state: 'current', detail: `release ${published.version} is what landed` };
+  return {
+    state: 'unknown',
+    detail: `release ${published.version} carries ${short(published.commit)} and the default branch holds ${short(head)}, which GitHub could not be asked to compare`,
+  };
 }
 
 /** This box against the published release. */
@@ -136,10 +161,11 @@ interface DeviceRowBuild {
 export async function annotateDeviceBuilds<T extends DeviceRowBuild>(rows: T[]) {
   const published = await getPublishedRunnerBuild();
   const head = mainRunnerHead();
+  const releaseContainsHead = await releaseContainsHeadFor(published, head);
   return rows.map((r) => {
     const build = compareRunnerBuild(
       { version: r.agentVersion, commit: r.agentCommit },
-      { published, mainRunnerHead: head },
+      { published, mainRunnerHead: head, releaseContainsHead },
     );
     return {
       ...r,

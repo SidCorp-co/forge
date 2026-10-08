@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mainRunnerHead, refreshMainRunnerHead, setMainRunnerHead } from './main-runner-head.js';
+import {
+  forgetReleaseContainment,
+  mainRunnerHead,
+  refreshMainRunnerHead,
+  releaseContainsRunnerHead,
+  setMainRunnerHead,
+} from './main-runner-head.js';
 
 const HEAD = 'fbe6468ddf0a1b2c3d4e5f60718293a4b5c6d7e8';
 
@@ -8,6 +14,7 @@ const ok = (body: unknown) =>
 
 beforeEach(() => {
   setMainRunnerHead(null);
+  forgetReleaseContainment();
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
@@ -74,5 +81,138 @@ describe('refreshMainRunnerHead', () => {
 
   it('has no head before anything has been read', () => {
     expect(mainRunnerHead()).toBeNull();
+  });
+});
+
+describe('releaseContainsRunnerHead', () => {
+  // The release is stamped at the merge that brought the newest runner commit in, so it
+  // is a descendant of that commit and not equal to it. GitHub's compare answers
+  // `ahead` for exactly that, with the runner head as the base.
+  const RELEASE = '54a2e89e229d68d34086bc77ae8705acc9842c44';
+  const compare = (status: string) => ok({ status });
+
+  it('asks GitHub to compare the runner head, as base, with the release commit', async () => {
+    const fetchMock = compare('ahead');
+    vi.stubGlobal('fetch', fetchMock);
+    await releaseContainsRunnerHead(RELEASE, HEAD);
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toContain(`/compare/${HEAD}...${RELEASE}`);
+  });
+
+  it('holds a release that is a descendant of the runner head', async () => {
+    vi.stubGlobal('fetch', compare('ahead'));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
+  });
+
+  it('holds a release that is the runner head itself', async () => {
+    vi.stubGlobal('fetch', compare('identical'));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
+  });
+
+  it('does not hold a release older than the runner head', async () => {
+    vi.stubGlobal('fetch', compare('behind'));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(false);
+  });
+
+  it('does not hold a release on a line that has diverged from the runner head', async () => {
+    vi.stubGlobal('fetch', compare('diverged'));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(false);
+  });
+
+  it('cannot say where GitHub refuses, and where it names a status it has no meaning for', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('nope', { status: 404 })),
+    );
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
+    vi.stubGlobal('fetch', compare('sideways'));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
+    vi.stubGlobal('fetch', ok({}));
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
+  });
+
+  it('cannot say where the request itself fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNRESET');
+      }),
+    );
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
+  });
+
+  // The deadline is five seconds, over the request and over reading its body: a stall
+  // in either must settle as unanswered at five seconds, and keep nothing.
+  async function settlesAtTheDeadline(stall: (signal?: AbortSignal) => Promise<Response>) {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: unknown, init?: { signal?: AbortSignal }) => stall(init?.signal)),
+      );
+      let settled = false;
+      const asked = releaseContainsRunnerHead(RELEASE, HEAD).then((v) => {
+        settled = true;
+        return v;
+      });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(asked).resolves.toBeNull();
+      const fetchMock = compare('ahead');
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  const untilAborted = (signal?: AbortSignal) =>
+    new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    });
+
+  it('cannot say where GitHub stalls before answering, at five seconds, and keeps nothing', async () => {
+    await settlesAtTheDeadline((signal) => untilAborted(signal));
+  });
+
+  it('cannot say where GitHub answers and then stalls the body, at five seconds, and keeps nothing', async () => {
+    await settlesAtTheDeadline(async (signal) => {
+      const body = new ReadableStream({
+        start(controller) {
+          signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+        },
+      });
+      return new Response(body, { status: 200 });
+    });
+  });
+
+  it('asks once for a pair, because the ancestry of two commits cannot change', async () => {
+    const fetchMock = compare('ahead');
+    vi.stubGlobal('fetch', fetchMock);
+    await releaseContainsRunnerHead(RELEASE, HEAD);
+    await releaseContainsRunnerHead(RELEASE, HEAD);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again after an answer it could not read, which says nothing about the commits', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('nope', { status: 500 })),
+    );
+    await releaseContainsRunnerHead(RELEASE, HEAD);
+    const fetchMock = compare('ahead');
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps one answer per pair', async () => {
+    vi.stubGlobal('fetch', compare('ahead'));
+    await releaseContainsRunnerHead(RELEASE, HEAD);
+    vi.stubGlobal('fetch', compare('behind'));
+    await expect(releaseContainsRunnerHead(RELEASE, 'a'.repeat(40))).resolves.toBe(false);
+    await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
   });
 });
