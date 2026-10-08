@@ -3150,6 +3150,8 @@
 
 ### Fixed
 
+- **A provision that stopped advancing is now read as stalled, with its age.** It no longer holds release or dispatch on a box running the project's master, and binding over a running master is refused by name.
+
 - **A project that releases on its own is no longer blocked for having over 50 issues waiting.** Readiness names the oldest 50 as the next part and how many wait behind; where a person cuts, the refusal stays.
 
 - **A pane the runner starts keeps the runner's temp directory, however old the tmux server is.** A long-lived server wrote panes' scratch to the RAM-backed `/tmp`; the runner now hands each pane its own and corrects a stale server.

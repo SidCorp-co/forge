@@ -5,12 +5,14 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
+import { liveMasterOf } from '../devices/master-owner.js';
 import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
+import { provisionStalledSeconds } from '../runners/provision-stall.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
 
@@ -90,6 +92,7 @@ projectRunnerRoutes.get(
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
+        provisionStatusAt: runners.provisionStatusAt,
         poolRead: runners.poolRead,
         // ISS-1118 — the most expensive thing a bound box runs is a resident
         // master for this project, and no screen said whether one existed.
@@ -100,7 +103,20 @@ projectRunnerRoutes.get(
       .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')))
       .orderBy(runners.createdAt);
 
-    return c.json(rows.map((r) => ({ ...r, poolRead: readRunnerPoolRead(r.poolRead) })));
+    const now = new Date();
+    return c.json(
+      rows.map((r) => ({
+        ...r,
+        poolRead: readRunnerPoolRead(r.poolRead),
+        // Seconds a provision has stood in flight with nothing written, or null: the
+        // status alone reads `cloning` the same for a clone running now and one that died.
+        provisionStalledSeconds: provisionStalledSeconds(
+          r.provisionStatus,
+          r.provisionStatusAt,
+          now,
+        ),
+      })),
+    );
   },
 );
 
@@ -140,6 +156,18 @@ projectRunnerRoutes.post(
     const status: 'online' | 'offline' =
       device.status === 'online' && device.lastSeenAt ? 'online' : 'offline';
 
+    // A provision writes into the checkout, and a resident master is running in it. Refused
+    // by name rather than performed: the operator ends the master first (ISS-1359).
+    const master = await liveMasterOf({ deviceId, projectId: id });
+    if (master) {
+      throw new HTTPException(409, {
+        message: `${device.name} holds a live resident master for this project${
+          master.terminalName ? ` (terminal ${master.terminalName})` : ''
+        }, and provisioning writes into the checkout it is running in. Stop that master, then provision again.`,
+        cause: { code: 'PROVISION_WORKSPACE_IN_USE', masterSessionId: master.id },
+      });
+    }
+
     const now = new Date();
     const [runner] = await db
       .insert(runners)
@@ -155,6 +183,7 @@ projectRunnerRoutes.post(
         // Queue workspace provisioning — the device picks this up on its next
         // GET /api/devices/me/provisions (online or whenever it reconnects).
         provisionStatus: 'queued',
+        provisionStatusAt: now,
         provisionRequestedAt: now,
       })
       .onConflictDoUpdate({
@@ -168,6 +197,7 @@ projectRunnerRoutes.post(
           ...(branch !== undefined ? { branch } : {}),
           // Re-bind re-queues provisioning (path/url may have changed).
           provisionStatus: 'queued',
+          provisionStatusAt: now,
           provisionDetail: null,
           provisionRequestedAt: now,
         },

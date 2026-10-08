@@ -139,7 +139,8 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'online', lastSeenAt }]);
+      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'online', lastSeenAt }])
+      .mockResolvedValueOnce([]); // no live resident master on this device
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'online' },
     ]);
@@ -169,7 +170,8 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'offline', lastSeenAt: null }]);
+      .mockResolvedValueOnce([{ id: DID, name: 'laptop', status: 'offline', lastSeenAt: null }])
+      .mockResolvedValueOnce([]); // no live resident master on this device
     insertReturning.mockResolvedValueOnce([
       { id: RID, projectId: PID, deviceId: DID, status: 'offline' },
     ]);
@@ -183,6 +185,29 @@ describe('POST /api/projects/:id/runners (ISS-172)', () => {
     const body = (await res.json()) as { status: string };
     expect(body.status).toBe('offline');
     expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'offline' }));
+  });
+
+  it('409 PROVISION_WORKSPACE_IN_USE, naming the terminal, when the device holds the project\u2019s live master (ISS-1359)', async () => {
+    const token = await signUserToken('uuid-owner');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([
+        { id: DID, name: 'laptop', status: 'online', lastSeenAt: new Date() },
+      ])
+      .mockResolvedValueOnce([{ id: 'sess-1', metadata: { terminalName: 'forge-master-anhome' } }]);
+
+    const res = await req(`/${PID}/runners`, {
+      method: 'POST',
+      body: JSON.stringify({ deviceId: DID }),
+      token,
+    });
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('PROVISION_WORKSPACE_IN_USE');
+    expect(body.message).toContain('forge-master-anhome');
+    expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('400 BAD_REQUEST when deviceId is not a uuid', async () => {
@@ -235,7 +260,8 @@ describe('POST /api/projects/:id/runners — repoPath/branch (ISS-271)', () => {
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([
         { id: DID, name: 'laptop', status: 'online', lastSeenAt: new Date() },
-      ]);
+      ])
+      .mockResolvedValueOnce([]); // no live resident master on this device
     insertReturning.mockResolvedValueOnce([
       {
         id: RID,

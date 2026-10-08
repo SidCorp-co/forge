@@ -25,6 +25,8 @@ function row(over: Partial<RunnerLivenessRow> = {}): RunnerLivenessRow {
     rateLimitedUntil: null,
     quarantinedUntil: null,
     provisionStatus: null,
+    provisionStatusAt: ago(5),
+    workspaceInUse: false,
     deviceDisabledAt: null,
     deviceAgentVersion: '0.17.8',
     ...over,
@@ -138,6 +140,7 @@ describe('classifyRunnerHold', () => {
         'device-disabled',
         'disconnected',
         'never-connected',
+        'provision-stalled',
         'provisioning',
         'quarantined',
         'rate-limited',
@@ -145,5 +148,105 @@ describe('classifyRunnerHold', () => {
         'stale',
       ].sort(),
     );
+  });
+});
+
+describe('a provision that has stopped advancing (ISS-1359)', () => {
+  const STALL = 30 * 60;
+
+  it.each(['queued', 'cloning', 'syncing_skills', 'writing_mcp'] as const)(
+    'reads %s older than the window as stalled, with its age, never as in progress',
+    (provisionStatus) => {
+      const hold = classifyRunnerHold(
+        row({ provisionStatus, provisionStatusAt: ago(STALL + 90) }),
+        NOW,
+        WINDOW,
+      );
+
+      expect(hold?.reason).toBe('provision-stalled');
+      expect(hold?.detail).toBe(provisionStatus);
+      expect(hold?.stalledSeconds).toBe(STALL + 90);
+    },
+  );
+
+  it('reads the edge of the window the way the SQL does: stalled from exactly one window', () => {
+    const at = (seconds: number) =>
+      classifyRunnerHold(
+        row({ provisionStatus: 'cloning', provisionStatusAt: ago(seconds) }),
+        NOW,
+        WINDOW,
+      )?.reason;
+
+    expect(at(STALL)).toBe('provision-stalled');
+    expect(at(STALL - 1)).toBe('provisioning');
+  });
+
+  it('keeps a provision inside the window in progress, with no age claimed', () => {
+    const hold = classifyRunnerHold(
+      row({ provisionStatus: 'cloning', provisionStatusAt: ago(STALL - 60) }),
+      NOW,
+      WINDOW,
+    );
+
+    expect(hold?.reason).toBe('provisioning');
+    expect(hold?.stalledSeconds).toBeUndefined();
+  });
+
+  // The box said so itself; no age turns its own report into a stall.
+  it.each(['needs_manual_setup', 'failed'] as const)(
+    'never reads %s as stalled, however old',
+    (provisionStatus) => {
+      const hold = classifyRunnerHold(
+        row({ provisionStatus, provisionStatusAt: ago(90 * 86400) }),
+        NOW,
+        WINDOW,
+      );
+
+      expect(hold?.reason).toBe('provisioning');
+      expect(hold?.detail).toBe(provisionStatus);
+    },
+  );
+
+  it('holds nothing against a stalled provision on a box serving the project from it', () => {
+    expect(
+      classifyRunnerHold(
+        row({
+          provisionStatus: 'cloning',
+          provisionStatusAt: ago(STALL * 100),
+          workspaceInUse: true,
+        }),
+        NOW,
+        WINDOW,
+      ),
+    ).toBeNull();
+  });
+
+  it('does not let a live master excuse a provision that is still inside its window', () => {
+    expect(
+      classifyRunnerHold(
+        row({
+          provisionStatus: 'cloning',
+          provisionStatusAt: ago(60),
+          workspaceInUse: true,
+        }),
+        NOW,
+        WINDOW,
+      )?.reason,
+    ).toBe('provisioning');
+  });
+
+  it('lets the next reading speak where the stalled one is excused', () => {
+    expect(
+      classifyRunnerHold(
+        row({
+          provisionStatus: 'cloning',
+          provisionStatusAt: ago(STALL * 2),
+          workspaceInUse: true,
+          deviceAgentVersion: '0.9.0',
+        }),
+        NOW,
+        WINDOW,
+      )?.reason,
+    ).toBe('below-floor');
   });
 });

@@ -42,6 +42,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
 import { PoolReadBanner } from "./pool-read";
+import { ProvisionStalledBanner } from "./provision-stalled";
 import { ResidentMaster } from "./resident-master";
 import { RunnerLabels } from "./runner-labels";
 import {
@@ -389,6 +390,7 @@ function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 		{status === "ready" && runner.provisionDetail && (
 			<Banner tone="info">{runner.provisionDetail}</Banner>
 		)}
+		<ProvisionStalledBanner runner={runner} />
 		</div>
 	);
 }

@@ -31,12 +31,14 @@ export async function recordProvisionReports(
       .slice(0, DETAIL_MAX);
     const terminal = group.some((r) => r.terminal);
     try {
+      const now = new Date();
       await db
         .update(runners)
         .set({
           provisionDetail: detail,
-          updatedAt: new Date(),
-          ...(terminal ? { provisionStatus: 'failed' as const } : {}),
+          updatedAt: now,
+          // Stamped only where the status is: a detail alone leaves the provision's age as it was.
+          ...(terminal ? { provisionStatus: 'failed' as const, provisionStatusAt: now } : {}),
         })
         .where(eq(runners.id, runnerId));
       out.push(...group);

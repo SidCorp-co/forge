@@ -141,6 +141,11 @@ export interface ProjectRunner {
 	provisionStatus: ProvisionStatus | null;
 	provisionDetail: string | null;
 	provisionedAt: string | null;
+	/**
+	 * Seconds a provision has stood in flight with no write, once that is past core's stall
+	 * window; `null` for a settled or recent one, `undefined` on a core that does not serve it.
+	 */
+	provisionStalledSeconds?: number | null;
 	/** `undefined` on a core that does not serve the field; `null` is "none". */
 	residentMaster?: ResidentMaster | null;
 	/** This runner's failed reads of the project's job pool (ISS-1234). */

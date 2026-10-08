@@ -7,13 +7,13 @@ import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 
-/** How core issues the owner edge: the box does not say who its parent is. */
-export async function liveMasterSessionId(args: {
+/** The live master of a (device, project): its id, and the terminal a human attaches to. */
+export async function liveMasterOf(args: {
   deviceId: string;
   projectId: string;
-}): Promise<string | null> {
+}): Promise<{ id: string; terminalName: string | null } | null> {
   const [row] = await db
-    .select({ id: agentSessions.id })
+    .select({ id: agentSessions.id, metadata: agentSessions.metadata })
     .from(agentSessions)
     .where(
       and(
@@ -24,7 +24,17 @@ export async function liveMasterSessionId(args: {
       ),
     )
     .limit(1);
-  return row?.id ?? null;
+  if (!row) return null;
+  const name = (row.metadata as { terminalName?: unknown } | null)?.terminalName;
+  return { id: row.id, terminalName: typeof name === 'string' && name !== '' ? name : null };
+}
+
+/** How core issues the owner edge: the box does not say who its parent is. */
+export async function liveMasterSessionId(args: {
+  deviceId: string;
+  projectId: string;
+}): Promise<string | null> {
+  return (await liveMasterOf(args))?.id ?? null;
 }
 
 /**
