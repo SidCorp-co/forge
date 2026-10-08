@@ -100,6 +100,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   admins: ['Ada'],
   facts: facts(n),
   contentLanguage: 'en',
+  provider: null,
 });
 
 describe('splitting an oversize draft', () => {
@@ -186,7 +187,16 @@ describe('what a release says it verified', () => {
       proven: 0,
       total: 0,
       check: 'probed',
+      provider: null,
     });
+  });
+
+  it('names the production provider on a deploy it served, and on no other check', () => {
+    const autoflow = { ...shared(1), provider: 'Autoflow' };
+    expect(summaryOf(shippedPart(1, 'provider'), autoflow).verified.provider).toBe('Autoflow');
+    expect(summaryOf(shippedPart(1, 'provider'), shared(1)).verified.provider).toBeNull();
+    expect(summaryOf(shippedPart(1, 'probed'), autoflow).verified.provider).toBeNull();
+    expect(summaryOf(part(1, []), autoflow).verified.provider).toBeNull();
   });
 
   it('says nothing was verified with no criterion and no recorded check, or an unverified close', () => {

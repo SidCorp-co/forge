@@ -31,10 +31,12 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_ABOUT_UNKNOWN",
 	"QUESTION_ABOUT_NO_REQUIREMENT",
 	"QUESTION_ABOUT_ON_MERGE_WAIT",
+	"QUESTION_ABOUT_SHAPE",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
 	QUESTION_ROUND_STALE: 409,
+	QUESTION_ABOUT_SHAPE: 400,
 } as const satisfies RefusalStatuses<QuestionRefusalCode>;
 
 /**
@@ -96,3 +98,10 @@ export const questionAboutRequestSchema = z.union([
 	}),
 ]);
 export type QuestionAboutRequest = z.infer<typeof questionAboutRequestSchema>;
+
+/**
+ * The one shape `about` takes, in the words both ask doors refuse any other with
+ * (`QUESTION_ABOUT_SHAPE`): a bare `"REQ-n"` names nothing until it sits under `requirement`.
+ */
+export const QUESTION_ABOUT_SHAPE_SENTENCE =
+	'`about` is an object naming one thing: {"requirement":"REQ-n"} (a requirement key or uuid), {"requirement":null} (the requirement the asking issue delivers), or {"contract":"<project>/<contract>"}; never a bare string';

@@ -17,7 +17,7 @@ const release = {
   key: "0.1.0",
   version: "0.1.0",
   state: "draft",
-  verified: { level: "none", proven: 0, total: 0, check: null },
+  verified: { level: "none", proven: 0, total: 0, check: null, provider: null },
   issues: [],
   gates: [],
   requirementsCompleted: [],
@@ -102,7 +102,7 @@ describe("the release tour on the overview with Technical detail closed", () => 
 // words; hop 0.2.0 listed design reviews among what users get
 describe("a release says what it verified and keeps approved designs apart", () => {
   it("says the deploy check only, in words, where no criterion is recorded", () => {
-    const r = { ...release, state: "shipped", verified: { level: "deploy_only", proven: 0, total: 0, check: "probed" } } as unknown as ReleaseDetail;
+    const r = { ...release, state: "shipped", verified: { level: "deploy_only", proven: 0, total: 0, check: "probed", provider: null } } as unknown as ReleaseDetail;
     renderWithQuery(<OverviewPane r={r} slug="forge" all={[]} />);
     const line = screen.getByTestId("release-verified");
     expect(line.getAttribute("data-level")).toBe("deploy_only");
@@ -110,7 +110,7 @@ describe("a release says what it verified and keeps approved designs apart", () 
   });
 
   it("counts proven criteria and names how the deploy was checked", () => {
-    const r = { ...release, state: "shipped", verified: { level: "criteria", proven: 4, total: 4, check: "probed" } } as unknown as ReleaseDetail;
+    const r = { ...release, state: "shipped", verified: { level: "criteria", proven: 4, total: 4, check: "probed", provider: null } } as unknown as ReleaseDetail;
     renderWithQuery(<OverviewPane r={r} slug="forge" all={[]} />);
     expect(screen.getByTestId("release-verified").textContent).toBe("Verified: 4 criteria proven, and the deploy checked by the production probes");
   });

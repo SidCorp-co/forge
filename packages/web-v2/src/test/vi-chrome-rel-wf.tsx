@@ -50,7 +50,7 @@ const summary = (over: Record<string, unknown>) => ({
   issueCount: 2,
   requirements: [],
   criteria: { total: 2, proven: 1, failing: 0, open: 1 },
-  verified: { level: "some_criteria", proven: 1, total: 2, check: null },
+  verified: { level: "some_criteria", proven: 1, total: 2, check: null, provider: null },
   contents,
   owner: null,
   ownerAct: null,

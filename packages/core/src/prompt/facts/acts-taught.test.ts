@@ -4,7 +4,7 @@
 
 import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
 import { MEMORY_REFUSAL_CODES } from '@forge/contracts/memory';
-import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
+import { QUESTION_REFUSAL_CODES, questionAboutRequestSchema } from '@forge/contracts/questions';
 import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { memorySources, memoryWritableSources } from '../../db/schema-vocabulary.js';
@@ -26,6 +26,10 @@ const unknown = (text: string) =>
     .map((m) => m[0])
     .filter((code) => !CODES.has(code));
 
+// a key quoted on its own, not under `requirement`, is the bare string the ask route refuses
+const bareRequirementKeys = (text: string) =>
+  text.split('"REQ-n"').length - text.split('{"requirement":"REQ-n"}').length;
+
 const DOORS = [
   ['a drive run', DRIVE_TOOL_REFERENCE_TEXT],
   ['a pipeline step', STEP_TOOL_REFERENCE_TEXT],
@@ -45,9 +49,27 @@ describe("a run's tracker door teaches the acts that name what they wait on", ()
       'QUESTION_ABOUT_UNKNOWN',
       'QUESTION_ABOUT_NO_REQUIREMENT',
       'QUESTION_ABOUT_ON_MERGE_WAIT',
+      '{"requirement":"REQ-n"}',
+      'QUESTION_ABOUT_SHAPE',
     ]) {
       expect(text).toContain(word);
     }
+  });
+
+  it.each(DOORS)('%s teaches `about` only in the shape the ask route takes', (_who, text) => {
+    const taught = [...text.matchAll(/\{"(?:requirement|contract)":(?:null|"[^"]*")\}/g)].map(
+      (m) => m[0],
+    );
+    expect(taught.length).toBeGreaterThanOrEqual(3);
+    for (const about of taught) {
+      const sent = JSON.parse(about.replace('<project>/<contract>', 'billing/invoices'));
+      expect(questionAboutRequestSchema.safeParse(sent).success, about).toBe(true);
+    }
+    expect(bareRequirementKeys(text)).toBe(0);
+  });
+
+  it('catches a requirement key offered bare as `about`', () => {
+    expect(bareRequirementKeys('`{"requirement":null}`; or `"REQ-n"`')).toBe(1);
   });
 
   it.each(DOORS)('%s marks an artifact another issue carries', (_who, text) => {

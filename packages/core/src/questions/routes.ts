@@ -3,7 +3,10 @@
 // A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { questionAboutRequestSchema } from '@forge/contracts/questions';
+import {
+  QUESTION_ABOUT_SHAPE_SENTENCE,
+  questionAboutRequestSchema,
+} from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -18,7 +21,7 @@ import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { forbidden } from '../middleware/route-errors.js';
-import { strictBody, zValidator } from '../middleware/zod-validator.js';
+import { fieldShape, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { doorOfRequest } from './ports.js';
 import {
   answerAs,
@@ -247,23 +250,31 @@ async function issueQuestions(issueId: string, userId: string, agency: AuthVars[
   return { questions: await Promise.all(seen.map((q) => shown(agency, q))) };
 }
 
-questionRoutes.post('/', zValidator('json', askSchema), async (c) => {
-  const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } =
-    c.req.valid('json');
-  const asked = await askAs({
-    ...rest,
-    answer: {
-      shape: 'choice',
-      options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
-      recommendedOptionId,
-    },
-    blockerKind: blockerKind ?? 'human',
-    parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
-    userId: c.get('userId'),
-  });
-  if (!asked) throw notFound('issue');
-  return c.json(asked, 201);
-});
+questionRoutes.post(
+  '/',
+  zValidator(
+    'json',
+    askSchema,
+    fieldShape('about', 'QUESTION_ABOUT_SHAPE', QUESTION_ABOUT_SHAPE_SENTENCE),
+  ),
+  async (c) => {
+    const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } =
+      c.req.valid('json');
+    const asked = await askAs({
+      ...rest,
+      answer: {
+        shape: 'choice',
+        options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+        recommendedOptionId,
+      },
+      blockerKind: blockerKind ?? 'human',
+      parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
+      userId: c.get('userId'),
+    });
+    if (!asked) throw notFound('issue');
+    return c.json(asked, 201);
+  },
+);
 
 questionRoutes.get('/:id', async (c) => {
   const seen = await readQuestionFor(questionId(c), c.get('userId'));

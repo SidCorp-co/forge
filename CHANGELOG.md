@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.150] - 2026-10-08
+
+Malformed question subjects are refused by name; verified releases name their provider
+
+### Fixed
+
+- **A question's `about` sent in any other shape is refused `QUESTION_ABOUT_SHAPE`, and a provider-checked release names its provider.** The refusal names what was sent and the one object shape; the status line now says "what Autoflow serves".
+
+## [0.4.0-dev.149] - 2026-10-08
+
+Memory separates core upkeep from decisions and says why a row is stale
+
+### Fixed
+
+- **Memory upkeep records are no longer decisions.** Reconcile and consolidation records become bookkeeping (0458), a possibly-stale flag carries its reason or is not made, another project's key is never checked here, and cited sources link.
+
 ## [0.4.0-dev.148] - 2026-10-08
 
 Vietnamese pages read Forge's own sentences in Vietnamese and mark people's words
