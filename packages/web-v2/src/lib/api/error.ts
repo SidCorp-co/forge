@@ -74,6 +74,9 @@ export function formatApiError(err: unknown): string {
     const mergeMark = mergeMarkSentence(err);
     if (mergeMark) return mergeMark;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
+    // A 401 under a code with no sentence above is core's own words for a session it refused
+    // ("invalid token", "user not found"); a person is told to sign in, never shown those.
+    if (err.status === 401) return FRIENDLY_CODES.UNAUTHENTICATED;
     if (err.message) return err.message;
     return `Request failed (${err.status})`;
   }

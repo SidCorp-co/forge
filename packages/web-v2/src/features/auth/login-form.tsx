@@ -11,8 +11,16 @@ import { validateLogin, type LoginFieldErrors, type LoginFieldKey } from './vali
 
 const FIELD_KEYS: readonly LoginFieldKey[] = ['email', 'password'];
 
-export function LoginForm({ presetEmail = '' }: { presetEmail?: string }) {
-  const { login, sessionEnded } = useAuth();
+export function LoginForm({
+  presetEmail = '',
+  sessionEnded: sentHere = false,
+}: {
+  presetEmail?: string;
+  /** A server-side gate (the /admin one) met a session core refused and sent the person here. */
+  sessionEnded?: boolean;
+}) {
+  const { login, sessionEnded: ended } = useAuth();
+  const sessionEnded = ended || sentHere;
   const router = useRouter();
 
   const [email, setEmail] = useState(presetEmail);
