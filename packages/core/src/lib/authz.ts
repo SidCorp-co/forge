@@ -129,6 +129,15 @@ export async function loadProjectAccess(
   return access;
 }
 
+/**
+ * What a refused write says: the role the write needs and the role the caller holds. One wording
+ * for every transport, so a viewer turned away at REST and at an MCP tool reads the same sentence
+ * and the same fix.
+ */
+export function projectWriteRefusal(held: ProjectMemberRole | null): string {
+  return `requires the project member role or above to write; the role held is ${held ?? 'none'}`;
+}
+
 /** 403 unless the effective role is at least `min`. */
 export function assertProjectRole(
   access: ProjectAccess,

@@ -1,3 +1,4 @@
+import type { ProjectMemberRole } from '../../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_ACTIONS } from './pm-actions.js';
@@ -5,10 +6,16 @@ import { PM_ACTIONS } from './pm-actions.js';
 export async function loadUserProjectRoleFlags(
   userId: string,
   projectId: string,
-): Promise<{ isMember: boolean; isWriter: boolean; isAdmin: boolean } | null> {
+): Promise<{
+  role: ProjectMemberRole | null;
+  isMember: boolean;
+  isWriter: boolean;
+  isAdmin: boolean;
+} | null> {
   const access = await effectiveProjectRole(userId, projectId);
   if (!access) return null;
   return {
+    role: access.role,
     isMember: access.role !== null,
     isWriter: projectRoleAtLeast(access.role, 'member'),
     isAdmin: projectRoleAtLeast(access.role, 'admin'),

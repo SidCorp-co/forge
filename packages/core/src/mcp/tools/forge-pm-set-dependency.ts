@@ -5,7 +5,7 @@ import { IssueDependencyError, setIssueDependency } from '../../issues/dependenc
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { deprecationFor } from '../deprecation.js';
 import {
-  assertPrincipalIsMember,
+  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   type McpContext,
   principalHookActor,
@@ -29,7 +29,7 @@ export async function pmSetDependencyHandler(
   input: z.infer<typeof pmSetDependencyInputSchema>,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  await assertPrincipalIsMember(principal, input.projectId);
+  await assertPrincipalIsWriter(principal, input.projectId);
 
   try {
     return await setIssueDependency(
@@ -73,7 +73,7 @@ export const forgePmSetDependencyTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     '[DEPRECATED — use forge_project_pm (action=set_dependency)] Record a dependency edge (blocks/relates/duplicates/parent/decomposes) between two issues in the same project. Only `blocks` gates dispatch. ' +
     WORK_EVIDENCE_WAIVER_NOTE +
-    " The result's `effects` names what the edge you just wrote actually does. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason`/`holdsUntil` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only retraction this tool offers (removing the row is the REST DELETE, not an MCP action). Omitted fields are left alone. Caller must be a member of the project. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch. " +
+    " The result's `effects` names what the edge you just wrote actually does. Idempotent on (projectId, fromIssueId, toIssueId, kind) — a duplicate call returns created:false and applies whichever of `validUntil`/`reason`/`holdsUntil` you passed, reporting `updated:true` when it changed something. Expire an edge by setting `validUntil` in the past; that is the only retraction this tool offers (removing the row is the REST DELETE, not an MCP action). Omitted fields are left alone. Caller must hold the project member role or above — a viewer is refused here, at REST and at `forge_issues` `data.relations` alike, naming the role it holds. Dispatcher convention (ISS-40 PR-E): only `kind='blocks'` rows gate dispatch. " +
     GATES_DISPATCH_NOTE +
     ' For `blocks` edges, cycles are rejected with a CYCLE_DETECTED error.',
   inputSchema: zodToMcpSchema(pmSetDependencyInputSchema),
