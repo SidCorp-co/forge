@@ -63,24 +63,25 @@ export function useAttention() {
       // Where nothing has been read, `read` says so; the empty map here is no statement. A response the server sent without totals is refused where it is read.
       projectTotals: base ? base.projectTotals : {},
       offlineRunners,
-      total:
-        needsReview.length +
-        awaitingInput.length +
-        mentions.length +
-        failedJobs.length +
-        pendingSkillUpdates.length +
-        unseenDrafts.length +
-        offlineRunners.length,
     };
   }, [attentionQ.data, offlineRunners]);
 
+  const held =
+    view.needsReview.length +
+    view.awaitingInput.length +
+    view.mentions.length +
+    view.failedJobs.length +
+    view.pendingSkillUpdates.length +
+    view.unseenDrafts.length +
+    view.offlineRunners.length;
+
   const read = queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
-  const badge = useMemo(() => badgeFigure([read, devicesRead], view.total), [read, devicesRead, view.total]);
+  const badge = useMemo(() => badgeFigure([read, devicesRead], held), [read, devicesRead, held]);
 
   return {
     view,
-    total: read === "read" && devicesRead === "read" ? view.total : undefined,
+    total: read === "read" && devicesRead === "read" ? held : undefined,
     read,
     devicesRead,
     badge,

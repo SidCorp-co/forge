@@ -48,7 +48,7 @@ export interface AttentionResponse {
   total: number;
 }
 
-export interface AttentionView extends AttentionResponse {
+export interface AttentionView extends Omit<AttentionResponse, "total"> {
   offlineRunners: AttentionItem[];
 }
 

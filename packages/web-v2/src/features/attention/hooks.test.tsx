@@ -121,5 +121,7 @@ describe("useAttention", () => {
     await held.result.current.refetch();
     await waitFor(() => expect(held.result.current.read).toBe("failed"));
     expect(held.result.current.badge).toEqual({ badgeRead: "failed" });
+    expect(held.result.current.total).toBeUndefined();
+    expect("total" in held.result.current.view).toBe(false);
   });
 });
