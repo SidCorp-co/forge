@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.176] - 2026-10-08
+
+Chat figures must come from a report run; share and save claims must be real
+
+### Added
+
+- **Chat figures are held to report runs.** A count, percentage or total in a reply, or any number typed into a block, must come from a report run this turn; an unbacked share, save or hedged record claim is held.
+
 ## [0.4.0-dev.175] - 2026-10-08
 
 Standard progress, release and roadmap report templates the assistant answers from
