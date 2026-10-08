@@ -247,6 +247,13 @@ export const ExecutionFactsSchema = z
 		adapter: z.string().min(1),
 		language: z.enum(EXECUTION_LANGUAGES),
 		at: z.iso.datetime(),
+		/** Who asked it, named; absent on a block attached before the execution's asker and reads were copied (REQ-37 BC-9). */
+		askedBy: z
+			.object({ id: z.string().min(1), name: z.string().nullable() })
+			.strict()
+			.optional(),
+		/** Every read the script made of Forge, refused ones included; absent where `askedBy` is. */
+		reads: z.array(ScriptReadSchema).optional(),
 	})
 	.strict();
 export type ExecutionFacts = z.infer<typeof ExecutionFactsSchema>;

@@ -138,6 +138,11 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
           </Link>
           <StatusBadge family="scheduleStanding" value={d.schedule.state} />
         </Fact>
+        {f.runAs ? (
+          <Fact label={t("schedules.fire.ranAs")} testId="fire-ran-as">
+            {f.runAs.name ?? shortId(f.runAs.id)}
+          </Fact>
+        ) : null}
         {f.sessionId ? (
           <Fact label={t("schedules.fire.session")}>
             <Link href={sessionHref(slug, f.sessionId)} className="font-mono text-12-5 text-link hover:underline">
@@ -146,7 +151,37 @@ export function FireFacts({ d, slug }: { d: Pick<FireDetailResponse, "fire" | "s
           </Fact>
         ) : null}
       </FactsGroup>
+      {f.reads ? (
+        <FactsGroup title={t("schedules.fire.reads")}>
+          <FireReads reads={f.reads} />
+        </FactsGroup>
+      ) : null}
     </>
+  );
+}
+
+/** Each read a script fire made, in order, as hairline rows: method, path and the status it answered, or the refusal that stopped it. */
+function FireReads({ reads }: { reads: NonNullable<FireStanding["reads"]> }) {
+  const t = useCopy();
+  if (reads.length === 0) return <span className="text-13 text-subtle">{t("schedules.fire.readNothing")}</span>;
+  return (
+    <ul className="border-t border-line-subtle" data-testid="fire-reads">
+      {reads.map((r, i) => (
+        // the same path can be read twice in one run, so the position is part of what a read is
+        // biome-ignore lint/suspicious/noArrayIndexKey: a run's reads are fixed once recorded
+        <li key={`${i}:${r.method}:${r.path}`} className="flex flex-wrap items-baseline gap-x-2 border-b border-line-subtle py-1.5 text-12-5">
+          <span className="font-mono font-semibold">{r.method}</span>
+          <span className="min-w-0 break-all font-mono text-muted">{r.path}</span>
+          {r.refused ? (
+            <span className="ml-auto text-danger" data-testid="fire-read-refused">
+              {t("schedules.fire.readRefused", { code: r.refused })}
+            </span>
+          ) : (
+            <span className="ml-auto font-mono text-subtle">{r.status}</span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

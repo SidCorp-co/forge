@@ -1,0 +1,1 @@
+**A fire shows who ran it and what it read.** The fire page and a chat computation name the person and list each read, refused ones included; a Run now whose script failed appears on the Fires tab at once.

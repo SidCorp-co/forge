@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { VisualBlockProvider, VisualBlockView } from ".";
+import { executionFactsIn, VisualBlockProvider, VisualBlockView } from ".";
 import { refHref } from "./ref-link";
 
 afterEach(cleanup);
@@ -185,5 +185,38 @@ describe("refHref", () => {
     expect(refHref("p", "FB-9")).toBe("/projects/p/feedback/FB-9");
     expect(refHref("p", "v0.4.0-dev.5")).toBe("/projects/p/releases/v0.4.0-dev.5");
     expect(refHref("a b", "ISS-1")).toBe("/projects/a%20b/issues/ISS-1");
+  });
+
+  it("says who ran a computation and each read it made, a refused one named, behind the line", () => {
+    const own = "/api/projects/p1/requirements";
+    const facts = {
+      executionId: "ex-2",
+      adapter: "forge-sandbox",
+      language: "javascript",
+      at: "2026-10-09T08:00:00.000Z",
+      askedBy: { id: "u1", name: "Orchestrator" },
+      reads: [
+        { method: "GET", path: own, status: 200 },
+        { method: "POST", path: own, status: null, refused: "SCRIPT_READ_REFUSED" },
+      ],
+    };
+    render(
+      <VisualBlockProvider value={{ projectSlug: "forge-dev", executionFacts: executionFactsIn([{ blocks: [{ type: "visual", execution: facts }] }]) }}>
+        <VisualBlockView block={{ ...base, source: { executionId: "ex-2" }, kind: "table", columns: ["key"] }} />
+      </VisualBlockProvider>,
+    );
+    expect(screen.queryByTestId("visual-block-source-detail")).toBeNull();
+    fireEvent.click(screen.getByTestId("visual-block-source-toggle"));
+    const detail = screen.getByTestId("visual-block-source-detail");
+    expect(detail.textContent).toContain("Ran as Orchestrator");
+    expect(within(detail).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+      `GET ${own} 200`,
+      `POST ${own} refused: SCRIPT_READ_REFUSED`,
+    ]);
+  });
+
+  it("ignores an execution record that carries no asker, so a block stored before they were copied claims nothing", () => {
+    const old = { executionId: "ex-3", adapter: "forge-sandbox", language: "javascript", at: "2026-10-08T08:00:00.000Z" };
+    expect(executionFactsIn([{ blocks: [{ type: "visual", execution: old }] }])({ executionId: "ex-3" })?.askedBy).toBeUndefined();
   });
 });

@@ -14,6 +14,9 @@ vi.mock('./runs.js', async (original) => ({
   ...(await original<typeof import('./runs.js')>()),
   readReportRun: (...args: unknown[]) => readReportRun(...args),
 }));
+vi.mock('../lib/people.js', () => ({
+  userNames: async (ids: readonly string[]) => new Map(ids.map((id) => [id, `Person ${id}`])),
+}));
 const readExecution = vi.fn();
 vi.mock('./executions.js', async (original) => ({
   ...(await original<typeof import('./executions.js')>()),
@@ -223,7 +226,7 @@ describe('a block drawn from an execution', () => {
     frames: [computedFrame],
     logs: { stdout: '', stderr: '' },
     error: null,
-    reads: [],
+    reads: [{ method: 'GET', path: '/api/projects/p1/requirements', status: 200 }],
     createdAt: '2026-10-08T10:00:00.000Z',
     expiresAt: '2026-11-07T10:00:00.000Z',
   };
@@ -246,6 +249,8 @@ describe('a block drawn from an execution', () => {
       adapter: 'fake',
       language: 'javascript',
       at: '2026-10-08T10:00:00.000Z',
+      askedBy: { id: 'asker', name: 'Person asker' },
+      reads: [{ method: 'GET', path: '/api/projects/p1/requirements', status: 200 }],
     });
     expect(answer.text).toContain('Computed by execution ex-1');
     const [post] = posted as { blocks: Record<string, unknown>[] }[];

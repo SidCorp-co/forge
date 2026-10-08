@@ -1,7 +1,7 @@
 "use client";
 
 // web-v2 feature module: schedules — React Query hooks. Keyed
-// `['schedules', projectId]`; mutations invalidate the subtree on success.
+// `['schedules', projectId]`; mutations invalidate the subtree on success, and a run also on refusal.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
@@ -23,18 +23,23 @@ function useScheduleMutation<TArgs>(
   fn: (args: TArgs) => Promise<unknown>,
   projectId: string | undefined,
   successMessage: ProductCopyKey,
+  { refreshOnRefusal = false }: { refreshOnRefusal?: boolean } = {},
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const t = useCopy();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["schedules", projectId] });
+    qc.invalidateQueries({ queryKey: automationKey(projectId) });
+  };
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["schedules", projectId] });
-      qc.invalidateQueries({ queryKey: automationKey(projectId) });
+      refresh();
       toast({ title: t(successMessage), tone: "success" });
     },
     onError: (err) => {
+      if (refreshOnRefusal) refresh();
       toast({ title: t("schedules.toast.refused"), description: formatRefusal(err), tone: "error" });
     },
   });
@@ -66,5 +71,7 @@ export function useRunSchedule(projectId: string | undefined) {
     (id: string) => schedulesApi.run(id),
     projectId,
     "schedules.toast.triggered",
+    // a run the script failed (422) still opened a fire, so the Fires tab must read again, never keep its old list
+    { refreshOnRefusal: true },
   );
 }

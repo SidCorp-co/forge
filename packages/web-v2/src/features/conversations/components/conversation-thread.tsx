@@ -22,7 +22,7 @@ import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { settingsHref } from "@/features/project-settings/sections";
 import { SaveTemplateReport, ShareAction, shareSubjectOf, templateSaveOf } from "@/features/shares";
-import { runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
+import { executionFactsIn, runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
@@ -375,7 +375,7 @@ export function ConversationThread({
   }, undefined);
   return (
     <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
-    <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn(messages) }}>
+    <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn(messages), executionFacts: executionFactsIn(messages) }}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said")
@@ -573,7 +573,7 @@ function AgentTurnEntry({ turn, projectSlug }: { turn: AgentTurn; projectSlug?: 
           <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{held.reply}</p>
           {held.blocks && held.blocks.length > 0 && (
             // the blocks the session drew for this reply, held with it: nobody else in the room sees them
-            <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn([{ blocks: held.blocks }]) }}>
+            <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn([{ blocks: held.blocks }]), executionFacts: executionFactsIn([{ blocks: held.blocks }]) }}>
               <div className="mt-2 flex flex-col gap-3" data-testid="thread-held-blocks">
                 {held.blocks.map((b, i) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: the held reply's block order is fixed

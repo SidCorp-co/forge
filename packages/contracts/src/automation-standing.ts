@@ -2,13 +2,14 @@
 // needs_you and wait_triage; ISS-114): core derives every value below from the rows that own it, and
 // the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
 
-import type { Said } from "./said.js";
 import type { AgentReportTriage, AgentReportView } from "./agent-reports.js";
+import type { Said } from "./said.js";
 import type {
 	ScheduleRunSkipReason,
 	ScheduleRunStatus,
 	ScheduleRunTrigger,
 } from "./schedules.js";
+import type { ScriptRead } from "./script-sandbox.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -218,6 +219,10 @@ export interface FireStanding
 	disposition: string | null;
 	sessionId: string | null;
 	pipelineRunId: string | null;
+	/** Who a script fire read Forge as, named; null where it ran no script or had nobody to read as. */
+	runAs: AutomationPerson | null;
+	/** Every read a script fire made through ctx.forge.get, refused ones included; null for a fire that ran no script. */
+	reads: ScriptRead[] | null;
 	startedAt: string;
 	finishedAt: string | null;
 	durationSeconds: number | null;
