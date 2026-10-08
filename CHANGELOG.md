@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.175] - 2026-10-08
+
+Standard progress, release and roadmap report templates the assistant answers from
+
+### Added
+
+- **The assistant runs a progress, release or roadmap report template.** It shows the template's blocks and writes a summary, risks and recommendations; a figure no run of the template returned is refused. A template's output can be shared.
+
 ## [0.4.0-dev.174] - 2026-10-08
 
 Chat runs Forge reports and shows sourced visual blocks, shareable by link
