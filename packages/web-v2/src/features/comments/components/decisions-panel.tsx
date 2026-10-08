@@ -7,7 +7,7 @@ import { ActorChip, BodyView, Button, ErrorState, Input, ProjectLoader, Textarea
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useEntityDecisions, usePostEntityComment } from "../hooks";
-import type { EntityCommentScope, EntityCommentView } from "../types";
+import type { DecisionReadScope, EntityCommentScope, EntityCommentView } from "../types";
 
 function Line({ label, children }: { label: string; children: string }) {
   return (
@@ -130,7 +130,11 @@ export function DecisionComposer({ projectId, scope, targetRef }: { projectId: s
   );
 }
 
-export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: string; scope: EntityCommentScope; targetRef: string }) {
+/**
+ * The decisions recorded on one item, oldest first, through the one entity decisions read. A
+ * requirement, workflow or feedback item records one here; an issue records one in its thread.
+ */
+export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: string; scope: DecisionReadScope; targetRef: string }) {
   const q = useEntityDecisions(projectId, scope, targetRef);
   const t = useCopy();
   if (q.isLoading) return <ProjectLoader label={t("common.decisions.loading")} />;
@@ -149,7 +153,7 @@ export function DecisionsPanel({ projectId, scope, targetRef }: { projectId: str
       ) : (
         <p className="text-13 text-subtle">{t("common.decisions.none")}</p>
       )}
-      <DecisionComposer projectId={projectId} scope={scope} targetRef={targetRef} />
+      {scope === "issue" ? null : <DecisionComposer projectId={projectId} scope={scope} targetRef={targetRef} />}
     </div>
   );
 }

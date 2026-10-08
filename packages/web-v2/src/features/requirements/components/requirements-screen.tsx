@@ -1,11 +1,14 @@
 "use client";
 
 // The Requirements list (`forge-prototype.html` #/requirements): the grouping in the top header, a
-// search, the BA assistant's open suggestions, then the shared GroupedList by whose turn it is. Each
-// row reads core's standing (`requirements/standing.ts`); nothing here derives whose turn it is.
+// search, the BA assistant's open suggestions, then the shared GroupedList by whose turn it is, by
+// state, or by roadmap lane (REQ-33 BC-3: Now, Next and Later by `ROADMAP_HORIZON_OF`, the rule the
+// status report's roadmap reads). Each row reads core's standing (`requirements/standing.ts`);
+// nothing here derives whose turn it is.
 // The URL carries the view (`?group=…&q=…&peek=REQ-n`), so back from the full page restores it.
 
 import type { IssueProgress } from "@forge/contracts/forecast";
+import { ROADMAP_HORIZON_OF, ROADMAP_HORIZONS } from "@forge/contracts/project-status";
 import { REQUIREMENT_ATTENTION_GROUPS, REQUIREMENT_ATTENTION_LABELS, REQUIREMENT_STATE_TONES, REQUIREMENT_STATES } from "@forge/contracts/requirements";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -80,12 +83,20 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
 const modesIn = (t: Copy) => [
   { value: "attention" as const, label: t("requirements.mode.attention"), title: t("requirements.mode.attentionTitle") },
   { value: "status" as const, label: t("requirements.mode.status"), title: t("requirements.mode.statusTitle") },
+  { value: "roadmap" as const, label: t("requirements.mode.roadmap"), title: t("requirements.mode.roadmapTitle") },
 ];
 type GroupMode = ReturnType<typeof modesIn>[number]["value"];
 
 type Label = ReturnType<typeof useLabel>;
 
-function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label): ListGroup<RequirementSummary>[] {
+export function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label, t: Copy): ListGroup<RequirementSummary>[] {
+  if (mode === "roadmap") {
+    const lane = (r: RequirementSummary) => ROADMAP_HORIZON_OF[r.standing.state];
+    return [
+      ...ROADMAP_HORIZONS.map((h) => ({ id: `roadmap:${h}`, label: t(`status.horizon.${h}`), hint: t(`roadmap.rule.${h}`), rows: rows.filter((r) => lane(r) === h) })),
+      { id: "roadmap:off", label: t("requirements.roadmap.off"), hint: t("requirements.roadmap.offHint"), collapsed: true, rows: rows.filter((r) => lane(r) === null) },
+    ];
+  }
   if (mode === "status") {
     return REQUIREMENT_STATES.map((s) => ({
       id: `status:${s}`,
@@ -110,7 +121,9 @@ function groupsOf(rows: RequirementSummary[], mode: GroupMode, label: Label): Li
 /** The secondary line: revision, coverage, and its issues' progress, core's one count of it (JU-2). */
 function factsLine(t: Copy, r: RequirementSummary, progress: IssueProgress | undefined): string[] {
   const f = r.standing.facts;
+  const lane = ROADMAP_HORIZON_OF[r.standing.state];
   const parts = [revisionText(t, r.currentRevision, r.standing)];
+  if (lane) parts.push(t("requirements.row.lane", { lane: t(`status.horizon.${lane}`) }));
   if (f.issuesTotal === 0 && f.judged === 0) parts.push(f.criteria ? t("requirements.row.criteria", { n: f.criteria }) : t("requirements.row.noCriteria"));
   else parts.push(t("requirements.row.passing", { a: f.passing, b: f.criteria }));
   if (f.issuesTotal === 0) parts.push(t("requirements.row.notBrokenDown"));
@@ -237,9 +250,10 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const [etaSorted, toggleEtaSort] = useEtaSort();
   const etaOf = useCallback((k: string) => etaOfScope(forecasts.get(k), clock), [forecasts, clock]);
   const groups = useMemo(() => {
-    const plain = groupsOf(rows, mode, label);
-    return etaSorted ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
-  }, [rows, mode, etaSorted, etaOf, label]);
+    const plain = groupsOf(rows, mode, label, t);
+    // a lane reads soonest forecast first, as the status report's roadmap does
+    return etaSorted || mode === "roadmap" ? sortGroupsBy(plain, (r) => etaSortValue(etaOf(r.key))) : plain;
+  }, [rows, mode, etaSorted, etaOf, label, t]);
   const visible = useMemo(() => visibleRows(groups, fold).map((r) => r.key), [groups, fold]);
   const allKeys = useMemo(() => all.map((r) => r.key), [all]);
   const peek = usePeek(visible, allKeys);

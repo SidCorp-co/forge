@@ -1,6 +1,6 @@
 "use client";
 
-// One memory on the Memory page (MJ-1, MJ-3): what it says, who wrote it and when, whether anyone
+// One memory on the record it names (MJ-1, MJ-3, REQ-33 BC-4): what it says, who wrote it and when, whether anyone
 // checked it, why it needs a check (core's reasons: unchecked too long, a cited record changed since),
 // which records it names that no longer exist, a release's "may be outdated" flag read
 // as the guess it is, and every correction or retirement with its reason. "Still true" stamps the row checked
@@ -17,6 +17,7 @@ import { Written } from "@/lib/i18n/written";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
+import { workflowHref } from "@/lib/routes/workflows";
 
 /** A reason short enough to be a word is not one; core holds the same floor. */
 const REASON_MIN = 3;
@@ -30,9 +31,6 @@ export interface MemoryEntryRowProps {
   busy: boolean;
   /** "Still true": this memory was checked and holds. */
   onVerify: (id: string) => void;
-  /** Set on the needs-a-check list, where rows are picked for a bulk "Mark checked". */
-  selected?: boolean;
-  onSelect?: (id: string, on: boolean) => void;
   onCorrect: (id: string, body: { text: string; reason: string }) => void;
   onRetire: (id: string, body: { reason: string }) => void;
 }
@@ -43,7 +41,7 @@ function actorName(t: Copy, a: MemoryActor | null): string {
 }
 
 function staleWhy(t: Copy, r: MemoryStaleRef): string {
-  if (r.why === "missing") return t(r.kind === "issue" ? "memory.why.missing.issue" : "memory.why.missing.requirement");
+  if (r.why === "missing") return t(`memory.why.missing.${r.kind}`);
   return t(`memory.why.${r.why}` as ProductCopyKey);
 }
 
@@ -67,12 +65,13 @@ const LINK = "rounded-sm text-link hover:underline focus-visible:outline-none fo
 /** A key as the reader reads it: bare in this project, with its project's slug in another. */
 const keyLabel = (ref: string, project: string | null | undefined, slug: string) => (project && project !== slug ? `${project} ${ref}` : ref);
 
-/** Where a cited source lives (MJ-6): an issue, requirement or release page, or the commit on the repository host. */
+/** Where a cited source lives (MJ-6): an issue, requirement, workflow or release page, or the commit on the repository host. */
 function citeHref(c: MemoryCite): string | null {
   if (c.kind === "commit") return c.url ?? null;
   if (!c.project) return null;
   if (c.kind === "issue") return issueHref(c.project, c.ref);
   if (c.kind === "requirement") return requirementHref(c.project, c.ref);
+  if (c.kind === "workflow") return workflowHref(c.project, c.ref);
   return releaseHref(c.project, c.ref);
 }
 
@@ -105,7 +104,7 @@ function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | nul
   return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
 }
 
-export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, selected, onSelect, onCorrect, onRetire }: MemoryEntryRowProps) {
+export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
   const day = (iso: string) => formatDate(iso, lang, timeZone);
@@ -126,9 +125,6 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, selected
   return (
     <li className="grid gap-1.5 border-b border-line-subtle px-5 py-3 max-md:px-3" data-testid="memory-entry">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {onSelect && canAct ? (
-          <input type="checkbox" className="self-center" checked={selected === true} aria-label={t("memory.select", { ref: entry.sourceRef })} onChange={(e) => onSelect(entry.id, e.target.checked)} />
-        ) : null}
         <span className="font-mono text-12-5 text-fg" translate="no">
           {entry.sourceRef}
         </span>

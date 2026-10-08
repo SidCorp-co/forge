@@ -1,8 +1,9 @@
 import type { MemoryEntriesResponse, MemoryEntryState } from "@forge/contracts/memory";
 import { apiClient } from "@/lib/api/client";
 
-export interface MemoryQuery {
-  q: string;
+/** One item's memory: those naming `cites` (a requirement or issue key, or a workflow's flow), in one list. */
+export interface ItemMemoryQuery {
+  cites: string;
   state: MemoryEntryState;
 }
 
@@ -19,10 +20,9 @@ export const memoryApi = {
       method: "POST",
       body: JSON.stringify({ ids }),
     }),
-  /** `GET /api/memory/entries` — the project's memory as a person reads it (MJ-1). */
-  entries: (projectId: string, q: MemoryQuery) => {
-    const params = new URLSearchParams({ projectId, state: q.state, limit: "100" });
-    if (q.q.trim()) params.set("q", q.q.trim());
+  /** `GET /api/memory/entries?cites=` — the memories naming one item, as a person reads them on it (REQ-33 BC-4). */
+  entries: (projectId: string, q: ItemMemoryQuery) => {
+    const params = new URLSearchParams({ projectId, state: q.state, limit: "100", cites: q.cites });
     return apiClient<MemoryEntriesResponse>(`/memory/entries?${params.toString()}`);
   },
   /** `POST /api/memory/:id/correct` — new text and the reason; the old body is kept as a revision. */

@@ -6,7 +6,7 @@ import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
+import { memoryCitesSchema, memoryEntriesInputSchema, readMemoryEntries } from './entries.js';
 import { runMemoryGet } from './get-service.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
@@ -75,13 +75,15 @@ const entriesQuerySchema = paginationSchema.extend({
     .pipe(z.array(z.enum(memorySources)).min(1))
     .optional(),
   state: z.enum(MEMORY_ENTRY_STATES).optional(),
+  cites: memoryCitesSchema.optional(),
 });
 
-// MJ-1: the Memory page's read — who wrote each row and when, whether it was checked, what it
+// MJ-1: memory as a person reads it — who wrote each row and when, whether it was checked, what it
 // cites and which of those no longer resolve, why it needs a check, and every person's correction
-// or retirement; `counts` sizes each list by the same rule.
+// or retirement; `counts` sizes each list by the same rule. `cites` keeps the rows naming one
+// requirement, issue or workflow: the read its own page shows (REQ-33 BC-4).
 memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
-  const { projectId, q, sources, state, limit, offset } = c.req.valid('query');
+  const { projectId, q, sources, state, cites, limit, offset } = c.req.valid('query');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
@@ -91,6 +93,7 @@ memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async 
       ...(q ? { q } : {}),
       ...(sources ? { sources } : {}),
       ...(state ? { state } : {}),
+      ...(cites ? { cites } : {}),
       limit,
       offset,
     }),

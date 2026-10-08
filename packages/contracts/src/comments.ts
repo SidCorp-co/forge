@@ -65,8 +65,6 @@ export {
 	REASON_TEXT_MAX,
 } from "./reason-text.js";
 
-const DECISIONS_LIST_MAX = 200;
-
 const text = (max: number) => z.string().trim().min(1).max(max);
 
 export const decisionFieldsSchema = z.strictObject({
@@ -111,8 +109,6 @@ export type EditEntityCommentRequest = z.infer<
 
 export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE}, ${WRITTEN_LANG_SHAPE} } — body or decision, or both; decision only on a decision`;
 
-const ref = z.string().trim().min(1).max(200);
-
 /**
  * Whose decisions a read lists: `people` (the default where a person reads them) keeps those a
  * person made; `agents` those an agent recorded, a master's pass logs among them; `all` both.
@@ -122,25 +118,22 @@ export type DecisionMaker = (typeof DECISION_MAKERS)[number];
 export const DECISION_MAKERS_SHAPE = `by? (${DECISION_MAKERS.join(" | ")}; people by default)`;
 
 /**
- * The project's decisions, newest first. `requirement` (REQ-n or uuid) keeps those on the
- * requirement and on the issues that deliver it; `workflow` (flow or uuid), `issue` (key or uuid)
- * and `who` (a user uuid) keep those on it or by them; `since` and `until` bound when each was made.
+ * The project's decisions, newest first, as `forge_decisions` and a requirement's Decisions tab
+ * read them. `requirement` (REQ-n or uuid) keeps those on the requirement and on the issues that
+ * deliver it; `workflow` (flow or uuid), `issue` (key or uuid) and `who` (a user uuid) keep those
+ * on it or by them; `since` bounds when each was made.
  */
-export const listDecisionsQuerySchema = z.strictObject({
-	scope: z.enum(COMMENT_SCOPES).optional(),
-	limit: z.coerce.number().int().min(1).max(DECISIONS_LIST_MAX).optional(),
-	requirement: ref.optional(),
-	workflow: ref.optional(),
-	issue: ref.optional(),
-	who: z.uuid().optional(),
-	since: z.iso.date().or(z.iso.datetime()).optional(),
-	until: z.iso.date().or(z.iso.datetime()).optional(),
-	by: z.enum(DECISION_MAKERS).optional(),
-});
-
-export type ListDecisionsQuery = z.infer<typeof listDecisionsQuerySchema>;
-
-export const LIST_DECISIONS_QUERY_SHAPE = `scope? (${COMMENT_SCOPES.join(" | ")}), limit? (1..${DECISIONS_LIST_MAX}), requirement? (REQ-n or uuid), workflow? (flow or uuid), issue? (key or uuid), who? (user uuid), since?, until? (an ISO date or date-time), ${DECISION_MAKERS_SHAPE}`;
+export interface ListDecisionsQuery {
+	scope?: CommentScope | undefined;
+	limit?: number | undefined;
+	requirement?: string | undefined;
+	workflow?: string | undefined;
+	issue?: string | undefined;
+	who?: string | undefined;
+	/** An ISO date or date-time. */
+	since?: string | undefined;
+	by?: DecisionMaker | undefined;
+}
 
 export interface CommentTargetView {
 	scope: CommentScope;

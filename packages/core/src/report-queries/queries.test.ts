@@ -65,8 +65,33 @@ describe('progress-by-requirement', () => {
       shipped: 3,
       awaitingRelease: 2,
       toDo: 1,
+      lane: 'now',
+      p50At: null,
+      p85At: null,
+      basis: 'no open work',
     });
+    expect(frame.rows[1]).toMatchObject({ key: 'REQ-2', lane: 'next' });
     expect(frame.rows).toHaveLength(2);
+  });
+
+  it("carries each requirement's forecast with its basis, as the roadmap reads it (REQ-33 BC-3)", async () => {
+    status.read.mockResolvedValue({
+      requirements: {
+        items: [
+          {
+            ...req('REQ-1', 'in_delivery', 2, 5),
+            delivery: delivery({ inHands: { ...span, ...stamp } as never }),
+          },
+        ],
+      },
+    } as unknown as ProjectStatus);
+    const [row] = (await progressByRequirement.run(ctx, {})).rows;
+    expect(row).toMatchObject({
+      lane: 'now',
+      p50At: span.p50At,
+      p85At: span.p85At,
+      basis: 'forecast',
+    });
   });
 
   it('keeps only the requested state', async () => {

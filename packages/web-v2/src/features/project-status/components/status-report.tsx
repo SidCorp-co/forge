@@ -58,15 +58,14 @@ function Honesty({ d, moved, clock }: { d: RoadmapItem["delivery"]; moved: Roadm
   ) : null;
 }
 
-/** Now, Next and Later from core's roadmap read; `rules` says under each how it is filled and ordered. */
-export function Roadmap({ s, slug, clock, rules = false }: { s: Pick<ProjectStatus, "roadmap">; slug: string; clock: EtaClock; rules?: boolean }) {
+/** Now, Next and Later from core's roadmap read (`ROADMAP_HORIZON_OF`, the lane rule the Requirements list groups by). */
+function Roadmap({ s, slug, clock }: { s: Pick<ProjectStatus, "roadmap">; slug: string; clock: EtaClock }) {
   const t = useCopy();
   return (
     <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-3">
       {ROADMAP_HORIZONS.map((h) => (
         <div key={h} data-testid="status-horizon" data-horizon={h}>
           <h3 className="mb-1.5 text-13 font-semibold text-fg">{t(`status.horizon.${h}`)}</h3>
-          {rules ? <p className="mb-2 text-12 text-muted" data-testid="roadmap-rule">{t(`roadmap.rule.${h}`)}</p> : null}
           {s.roadmap[h].length === 0 ? (
             <Quiet>{t("status.horizonEmpty")}</Quiet>
           ) : (

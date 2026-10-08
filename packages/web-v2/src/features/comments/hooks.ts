@@ -2,11 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { commentsApi } from "./api";
-import type { CreateEntityCommentRequest, DecisionFilters, EntityCommentScope } from "./types";
+import type { CreateEntityCommentRequest, DecisionReadScope, EntityCommentScope } from "./types";
 
-const decisionsKey = (projectId: string, scope: EntityCommentScope, ref: string) => ["entity-decisions", projectId, scope, ref];
+const decisionsKey = (projectId: string, scope: DecisionReadScope, ref: string) => ["entity-decisions", projectId, scope, ref];
 
-export function useEntityDecisions(projectId: string | undefined, scope: EntityCommentScope, ref: string | undefined) {
+export function useEntityDecisions(projectId: string | undefined, scope: DecisionReadScope, ref: string | undefined) {
   return useQuery({
     queryKey: decisionsKey(projectId ?? "", scope, ref ?? ""),
     queryFn: () => commentsApi.list(projectId as string, scope, ref as string, "decision"),
@@ -21,18 +21,7 @@ export function usePostEntityComment(projectId: string, scope: EntityCommentScop
     mutationFn: (body: CreateEntityCommentRequest) => commentsApi.post(projectId, scope, ref, body),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: decisionsKey(projectId, scope, ref) });
-      qc.invalidateQueries({ queryKey: ["project-decisions", projectId] });
       qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId] });
     },
-  });
-}
-
-/** The project's decisions under `filters`, keyed so a recorded decision refreshes every filtered read. */
-export function useProjectDecisions(projectId: string | undefined, filters: DecisionFilters) {
-  return useQuery({
-    queryKey: ["project-decisions", projectId ?? "", filters],
-    queryFn: () => commentsApi.decisions(projectId as string, filters),
-    enabled: Boolean(projectId),
-    staleTime: 15_000,
   });
 }

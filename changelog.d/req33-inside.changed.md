@@ -1,0 +1,1 @@
+**Decisions, roadmap lanes and memory are read on the item they are about.** The three project pages are gone; issues gain a Decisions tab, items a Memory tab, and the Requirements list a roadmap grouping.

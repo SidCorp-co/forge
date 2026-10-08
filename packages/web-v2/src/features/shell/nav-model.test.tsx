@@ -7,7 +7,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { isNavGroup } from "@/design";
 import { type SwitcherProject, ProjectSwitcher, switcherRows } from "./components/project-switcher";
-import { projectMenu, workspaceNavItems } from "./nav-model";
+import { buildWorkspaceCommands } from "./commands";
+import { PROJECT_ITEMS, buildActiveKey, projectMenu, workspaceNavItems } from "./nav-model";
 
 const project = (over: Partial<SwitcherProject>): SwitcherProject => ({
   id: "p1",
@@ -38,6 +39,16 @@ describe("the nav model", () => {
     expect(dev?.defaultOpen).toBeUndefined();
     expect(dev?.items.find((it) => it.key === "proj-issues")).toMatchObject({ badge: 2 });
     expect(dev?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
+  });
+
+  it("holds no Decisions, Roadmap or Memory entry: each is read on the item it is about (REQ-33 BC-1)", () => {
+    for (const sub of ["/decisions", "/roadmap", "/memory"]) expect(PROJECT_ITEMS.map((it) => it.sub)).not.toContain(sub);
+    for (const key of ["proj-decisions", "proj-roadmap", "proj-memory"]) expect(PROJECT_ITEMS.map((it) => it.key)).not.toContain(key);
+    expect(projectMenu({}).map((e) => e.label)).toEqual(["Dashboard", "Requirements", "Workflows", "Releases", "Feedback", "Development"]);
+    expect(buildActiveKey("/projects/hop/memory", "hop")).toBe("proj-overview");
+    const palette = buildWorkspaceCommands({ router: { push: vi.fn() }, slug: "hop", onNewChat: vi.fn(), activeProjectName: "HOP", scopedProjects: [], pinnedIds: new Set(), pinnedViews: [], recents: [], toast: vi.fn() });
+    expect(palette.map((c) => c.label).filter((l) => /^HOP · (Decisions|Roadmap|Memory)$/.test(l))).toEqual([]);
+    expect(palette.map((c) => c.label)).toContain("HOP · Requirements");
   });
 
   it("badges Workflows with the same designs rows the Dashboard draws", () => {

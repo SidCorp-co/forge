@@ -20,6 +20,8 @@ import {
   PROJECT_STATUS_ROWS,
   type ProjectStatus,
   provenInFull,
+  ROADMAP_HORIZON_OF,
+  type RoadmapHorizon,
   type RoadmapItem,
   type StatusInFlight,
   type StatusLate,
@@ -383,6 +385,14 @@ function lateOf(
   return { asOf, items };
 }
 
+/** The requirements on one roadmap lane, by the one lane rule (`ROADMAP_HORIZON_OF`, REQ-33 BC-3). */
+export function onLane<R extends { standing: { state: RequirementState } }>(
+  list: readonly R[],
+  lane: RoadmapHorizon,
+): R[] {
+  return list.filter((r) => ROADMAP_HORIZON_OF[r.standing.state] === lane);
+}
+
 async function roadmapOf(
   list: readonly RequirementSummary[],
   coming: readonly ScopeForecast[],
@@ -401,9 +411,12 @@ async function roadmapOf(
     moved: moved.get(r.key) ?? null,
     deferral,
   });
-  const inState = (state: RequirementState) => list.filter((r) => r.standing.state === state);
+  const onHorizon = (h: RoadmapHorizon) => onLane(list, h);
+  // Later reads what was deferred first, with why and to which phase, then what is not agreed yet
+  const later = onHorizon('later');
   const deferred = await Promise.all(
-    inState('deferred')
+    later
+      .filter((r) => r.standing.state === 'deferred')
       .sort(byKey)
       .map(async (r) => {
         const d = await deferralOf(r.id, r.status);
@@ -415,15 +428,16 @@ async function roadmapOf(
   );
   return {
     asOf: new Date().toISOString(),
-    now: inState('in_delivery')
+    now: onHorizon('now')
       .sort(soonest)
       .map((r) => item(r)),
-    next: inState('agreed')
+    next: onHorizon('next')
       .sort(soonest)
       .map((r) => item(r)),
     later: [
       ...deferred,
-      ...inState('draft')
+      ...later
+        .filter((r) => r.standing.state !== 'deferred')
         .sort(byKey)
         .map((r) => item(r)),
     ],

@@ -49,7 +49,7 @@ const row = (entry: MemoryEntry, acts = { onVerify: vi.fn(), onCorrect: vi.fn(),
   return acts;
 };
 
-describe("a memory on the Memory page", () => {
+describe("a memory on the record it names", () => {
   it("says it needs a check because nobody checked it in three days", () => {
     row(BASE);
     expect(screen.getByTestId("memory-needs-check").textContent).toBe("Needs a check: nobody has checked it in 3 days");
@@ -180,17 +180,6 @@ describe("a memory on the Memory page", () => {
     const acts = row(BASE);
     fireEvent.click(screen.getByRole("button", { name: "Still true" }));
     expect(acts.onVerify).toHaveBeenCalledWith("m1");
-  });
-
-  it("offers a pick box only where the list asks for one, and reports it", () => {
-    const onSelect = vi.fn();
-    renderWithQuery(
-      <InterfaceLanguageScope language="en">
-        <MemoryEntryRow entry={BASE} slug="hop" timeZone="UTC" busy={false} onVerify={vi.fn()} onCorrect={vi.fn()} onRetire={vi.fn()} onSelect={onSelect} selected={false} />
-      </InterfaceLanguageScope>,
-    );
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select gotcha/flat-board" }));
-    expect(onSelect).toHaveBeenCalledWith("m1", true);
   });
 
   it("reads in Vietnamese", () => {

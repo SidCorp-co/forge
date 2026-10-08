@@ -1,6 +1,6 @@
 // MJ-3, MJ-6: a memory is only as true as the records it names. Every read that shows one to a
-// person or an agent reads the sources its text cites — issue and requirement keys, commits and
-// releases — and links each. A key is read in the project the text places it in: this project,
+// person or an agent reads the sources its text cites — issue and requirement keys, workflows by
+// their flow (REQ-33 BC-4), commits and releases — and links each. A key is read in the project the text places it in: this project,
 // unless a sibling project of the same organization is named beside it (`epod ISS-4`, `epod#ISS-4`).
 // A key the text places in a project it does not name (`core ISS-96`) is `unchecked` and never read
 // against this project's numbers. Each key that no longer resolves — no such record, dropped,
@@ -35,6 +35,14 @@ export interface CiteProject {
 export interface CiteContext {
   self: CiteProject;
   siblings: readonly CiteProject[];
+  /** The flows this project's workflows are drawn under; a workflow is named only in its own project. */
+  flows?: readonly string[];
+}
+
+/** A flow named as a whole word, any case: not inside a longer flow, key or path segment. */
+function flowPattern(flow: string): RegExp {
+  const escaped = flow.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, 'gi');
 }
 
 /** One key or source as the text names it, before anything is resolved. */
@@ -100,6 +108,12 @@ export function parseCites(text: string, ctx: CiteContext): ParsedCite[] {
       push({ at: m.index, ref, kind: 'issue', project, seq: Number(n) });
     }
   }
+  for (const flow of ctx.flows ?? []) {
+    for (const m of text.matchAll(flowPattern(flow))) {
+      if (m.index === undefined) continue;
+      push({ at: m.index, ref: flow, kind: 'workflow', project: ctx.self });
+    }
+  }
   for (const m of text.matchAll(SHA_RE)) {
     const sha = m[0];
     if (m.index === undefined || !/[0-9]/.test(sha) || !/[a-f]/.test(sha)) continue;
@@ -116,6 +130,8 @@ export function parseCites(text: string, ctx: CiteContext): ParsedCite[] {
 export interface ProjectHoldings {
   issues: ReadonlyMap<number, { status: string; archived: boolean; updatedAt: Date }>;
   requirements: ReadonlyMap<number, { status: string; updatedAt: Date }>;
+  /** The project's workflows by flow, with their last change. */
+  workflows: ReadonlyMap<string, Date>;
   releases: ReadonlySet<string>;
   repositoryWebUrl: string | null;
 }
@@ -153,6 +169,10 @@ export function resolveCites(
       if (row === undefined) out.push({ ...base, state: 'gone', why: 'missing' });
       else if (row.status === 'dropped') out.push({ ...base, state: 'gone', why: 'dropped' });
       else out.push({ ...base, state: 'resolved', changedAt: row.updatedAt.toISOString() });
+    } else if (c.kind === 'workflow') {
+      const changedAt = h.workflows.get(c.ref);
+      if (changedAt === undefined) out.push({ ...base, state: 'gone', why: 'missing' });
+      else out.push({ ...base, state: 'resolved', changedAt: changedAt.toISOString() });
     } else if (c.kind === 'release') {
       if (h.releases.has(c.ref)) out.push({ ...base, state: 'resolved' });
     } else {
@@ -169,7 +189,9 @@ export function resolveCites(
 /** The cites that no longer resolve, as the stale list names them. */
 export function staleRefsOf(cites: readonly MemoryCite[], selfSlug: string): MemoryStaleRef[] {
   return cites.flatMap((c) =>
-    c.state === 'gone' && c.why && (c.kind === 'issue' || c.kind === 'requirement')
+    c.state === 'gone' &&
+    c.why &&
+    (c.kind === 'issue' || c.kind === 'requirement' || c.kind === 'workflow')
       ? [
           {
             ref: c.ref,
@@ -188,7 +210,7 @@ export interface Citations {
   staleRefs: MemoryStaleRef[];
 }
 
-async function contextOf(projectId: string): Promise<CiteContext> {
+async function contextOf(projectId: string, flows: readonly string[]): Promise<CiteContext> {
   const reads = memoryIssueReads();
   const rows = await reads.siblingProjects(projectId);
   const self = rows.find((r) => r.id === projectId);
@@ -204,12 +226,13 @@ async function contextOf(projectId: string): Promise<CiteContext> {
         ? issuePrefixSet(held)
         : issuePrefixSet({ active: r.issuePrefix, held: [] }),
   });
-  return { self: project(self), siblings: rows.map(project) };
+  return { self: project(self), siblings: rows.map(project), flows };
 }
 
 async function holdingsOf(
   projectId: string,
   parsed: readonly ParsedCite[],
+  workflows: ReadonlyMap<string, Date>,
 ): Promise<ProjectHoldings> {
   const reads = memoryIssueReads();
   const mine = parsed.filter((c) => c.project?.id === projectId);
@@ -226,7 +249,7 @@ async function holdingsOf(
       ? reads.repositoryWebUrl(projectId)
       : Promise.resolve(null),
   ]);
-  return { issues, requirements, releases, repositoryWebUrl };
+  return { issues, requirements, workflows, releases, repositoryWebUrl };
 }
 
 /** For each text, every source it cites, linked, and the ones among them that no longer resolve. */
@@ -235,13 +258,18 @@ export async function resolveCitations(
   texts: readonly string[],
 ): Promise<Citations[]> {
   if (texts.length === 0) return [];
-  const ctx = await contextOf(projectId);
+  const drawn = await memoryIssueReads().workflowFlows(projectId);
+  const ctx = await contextOf(
+    projectId,
+    drawn.map((w) => w.flow),
+  );
+  const workflows = new Map(drawn.map((w) => [w.flow, w.updatedAt]));
   const parsed = texts.map((t) => parseCites(t, ctx));
   const projectIds = new Set(parsed.flat().flatMap((c) => (c.project ? [c.project.id] : [])));
   const held = new Map<string, ProjectHoldings>();
   await Promise.all(
     [...projectIds].map(async (id) => {
-      held.set(id, await holdingsOf(id, parsed.flat()));
+      held.set(id, await holdingsOf(id, parsed.flat(), id === projectId ? workflows : new Map()));
     }),
   );
   return parsed.map((p) => {

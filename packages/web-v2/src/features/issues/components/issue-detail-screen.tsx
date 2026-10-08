@@ -2,7 +2,8 @@
 
 // web-v2 Issue detail (`/projects/[slug]/issues/[id]`, ISS-294): the shared DetailHeader in the top
 // bar (back to the list view it came from, key, title, status, one primary action), whose turn as
-// banners, then Overview / Criteria / Runs / Activity as tabs (`?tab=`) beside a sticky facts rail —
+// banners, then Overview / Criteria / Runs / Mockups / Decisions / Memory / Activity as tabs (`?tab=`)
+// beside a sticky facts rail —
 // the read model's standing over the editable properties. Live via WS on the keys `['issue',id]` /
 // `['comments',id]` / `['activities',id]` and `['issues','standing']` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
@@ -22,6 +23,9 @@ import {
   useListOrigin,
   useUrlTab,
 } from "@/design";
+import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
+import { useEntityDecisions } from "@/features/comments/hooks";
+import { ItemMemory, useItemMemoryCount } from "@/features/memory/components/item-memory";
 import { useResumeRun } from "@/features/run-control/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -127,6 +131,8 @@ export function IssueDetailScreen({
   const checklist = useMemo(() => keyedChecklist(issue?.acceptanceCriteria), [issue?.acceptanceCriteria]);
   const hasCriteriaRows = (criteriaQ.data?.criteria.length ?? 0) > 0;
   useRememberIssue(id, slug, issue?.displayId, issue?.title);
+  const decisionsQ = useEntityDecisions(projectId, "issue", issue?.displayId);
+  const memories = useItemMemoryCount(projectId, issue?.displayId ?? "");
 
   if (issueQ.isLoading || issueQ.isError || !issue) return <IssueUnread query={issueQ} />;
   if (switching) return <IssueUnread query={issueQ} switching />;
@@ -176,6 +182,8 @@ export function IssueDetailScreen({
     { value: "criteria" as const, label: t("issues.tab.criteria"), count: criteriaQ.data?.criteria.length ?? checklist.length },
     { value: "runs" as const, label: t("issues.tab.runs"), count: runsTabCount(issue.agentSessions ?? [], stepOutcomes) },
     { value: "mockups" as const, label: t("common.mockups.title"), count: mockupsQ.data?.returned },
+    { value: "decisions" as const, label: t("issues.tab.decisions"), count: decisionsQ.data?.returned },
+    { value: "memory" as const, label: t("memory.title"), count: memories },
     { value: "activity" as const, label: t("issues.tab.activity"), count: commentsQ.data?.totalCount },
   ];
 
@@ -340,6 +348,8 @@ function IssueTabBody({
         />
       ) : null}
       {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
+      {tab === "decisions" ? <DecisionsPanel projectId={projectId} scope="issue" targetRef={issue.displayId} /> : null}
+      {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={issue.displayId} /> : null}
       {tab === "activity" ? (
         <ActivityTab
           issueId={issue.id}

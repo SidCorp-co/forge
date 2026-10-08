@@ -1,14 +1,13 @@
-import type { ListDecisionsQuery } from "@forge/contracts/comments";
+import type { EntityCommentScope } from "@forge/contracts/comments";
 
 export type {
   CreateEntityCommentRequest,
   DecisionFields,
-  DecisionListResponse,
   EntityCommentListResponse,
   EntityCommentResponse,
   EntityCommentScope,
   EntityCommentView,
 } from "@forge/contracts/comments";
 
-/** The narrowing the project's Decisions view sends; each one left out narrows nothing. */
-export type DecisionFilters = Partial<Pick<ListDecisionsQuery, "requirement" | "workflow" | "issue" | "who" | "since" | "until" | "by" | "limit">>;
+/** What an item's decisions are read on: a requirement, workflow or feedback item, or an issue (REQ-33 BC-2). */
+export type DecisionReadScope = EntityCommentScope | "issue";

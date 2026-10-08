@@ -21,6 +21,7 @@ describe("the queries' state columns", () => {
     );
     expect(declared).toEqual({
       'progress-by-requirement.state': 'requirement',
+      'progress-by-requirement.lane': null,
       'roadmap-eta.lane': null,
       'roadmap-eta.state': 'requirement',
       'release-readiness.state': 'releaseState',

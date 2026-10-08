@@ -35,7 +35,7 @@ const act = (w: World, id: string, verb: 'correct' | 'retire', body: unknown, to
 
 const code = (b: Body) => b.code;
 
-describe('the Memory page read and a person acts on it', () => {
+describe('memory as a person reads it, and a person acts on it', () => {
   let w: World;
   let agentToken: string;
   let agentId: string;

@@ -63,6 +63,9 @@ export function useRecordDecision(id: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["comments", id] });
       qc.invalidateQueries({ queryKey: ["activities", id] });
+      // the issue's Decisions tab, and a requirement's that rolls this issue's up
+      qc.invalidateQueries({ queryKey: ["entity-decisions"] });
+      qc.invalidateQueries({ queryKey: ["requirement-decisions"] });
     },
   });
 }

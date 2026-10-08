@@ -21,10 +21,10 @@ export const MEMORY_REFUSAL_STATUSES = {
 } as const satisfies RefusalStatuses<MemoryRefusalCode>;
 
 // Sources that copy another record (an issue's text, a comment, a job): a person corrects the record
-// itself, and the copy follows it, so the Memory page offers neither act on them.
+// itself, and the copy follows it, so no memory list offers either act on them.
 export const MEMORY_MIRROR_SOURCES = ["issue", "comment", "job"] as const;
 
-// The sources the Memory page lists unless asked otherwise: what agents and people wrote down, not
+// The sources a memory list reads unless asked otherwise: what agents and people wrote down, not
 // the issue mirrors the tracker already shows.
 export const MEMORY_AUTHORED_SOURCES = ["note", "knowledge", "policy", "decision"] as const;
 
@@ -33,23 +33,24 @@ export const MEMORY_STALE_WHYS = ["missing", "dropped", "archived"] as const;
 export type MemoryStaleWhy = (typeof MEMORY_STALE_WHYS)[number];
 
 export interface MemoryStaleRef {
-	/** The key as the memory names it: `ISS-12`, `REQ-4`. */
+	/** The key as the memory names it (`ISS-12`, `REQ-4`), or a workflow's flow. */
 	ref: string;
-	kind: "issue" | "requirement";
+	kind: "issue" | "requirement" | "workflow";
 	why: MemoryStaleWhy;
 	/** The project the key was read in, by slug, when the memory places it in another project. */
 	project?: string;
 }
 
-export const MEMORY_CITE_KINDS = ["issue", "requirement", "commit", "release"] as const;
+export const MEMORY_CITE_KINDS = ["issue", "requirement", "workflow", "commit", "release"] as const;
 export type MemoryCiteKind = (typeof MEMORY_CITE_KINDS)[number];
 
 /**
  * One source a memory names, as the reader links it (MJ-6). An issue or requirement key is read in
  * the project the text places it in — this one unless a sibling project is named beside it — and a
  * key the text places in a project it does not name is `unchecked`, never read against this
- * project's numbers. A commit links to the project's repository and is not checked; a release is a
- * cite only when the project has that release.
+ * project's numbers. A workflow has no key: the text names it by its flow, as a whole word, and it
+ * is read in this project only (REQ-33 BC-4). A commit links to the project's repository and is not
+ * checked; a release is a cite only when the project has that release.
  */
 export interface MemoryCite {
 	ref: string;
@@ -79,7 +80,7 @@ export interface MemoryAct {
 	reason: string;
 }
 
-/** A memory as the project's Memory page reads it. */
+/** A memory as a person reads it on the record it names. */
 export interface MemoryEntry {
 	id: string;
 	source: string;

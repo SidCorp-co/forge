@@ -36,9 +36,47 @@ const refsIn = (text: string) =>
 const holdings = (over: Partial<ProjectHoldings> = {}): ProjectHoldings => ({
   issues: new Map(),
   requirements: new Map(),
+  workflows: new Map(),
   releases: new Set(),
   repositoryWebUrl: null,
   ...over,
+});
+
+describe('a workflow a memory names (REQ-33 BC-4)', () => {
+  const flows: CiteContext = { ...CTX, flows: ['referral-intake', 'intake'] };
+  const WRITTEN = new Date('2026-10-01T00:00:00.000Z');
+
+  it('reads a flow the project draws as a whole word in any case, never inside a longer one', () => {
+    const cites = parseCites(
+      'The Referral-Intake workflow asks first; intake2 and pre-intake do not count',
+      flows,
+    );
+    expect(cites.map((c) => [c.kind, c.ref, c.project?.slug])).toEqual([
+      ['workflow', 'referral-intake', 'hop'],
+    ]);
+    expect(parseCites('intake asks first', flows).map((c) => c.ref)).toEqual(['intake']);
+    expect(parseCites('referral-intake asks first', CTX)).toEqual([]);
+  });
+
+  it('resolves it with its last change, and names it gone by name once the project no longer draws it', () => {
+    const parsed = parseCites('referral-intake asks for consent', flows);
+    const drawn = new Map([
+      [HOP.id, holdings({ workflows: new Map([['referral-intake', WRITTEN]]) })],
+    ]);
+    expect(resolveCites(parsed, drawn)).toEqual([
+      {
+        ref: 'referral-intake',
+        kind: 'workflow',
+        project: 'hop',
+        state: 'resolved',
+        changedAt: WRITTEN.toISOString(),
+      },
+    ]);
+    const gone = resolveCites(parsed, new Map([[HOP.id, holdings()]]));
+    expect(staleRefsOf(gone, 'hop')).toEqual([
+      { ref: 'referral-intake', kind: 'workflow', why: 'missing' },
+    ]);
+  });
 });
 
 describe('the sources a memory cites', () => {
