@@ -3,8 +3,8 @@
 // every refusal named is one core can return: a misspelt code teaches a refusal no reader will meet.
 
 import { MERGE_REFUSAL_CODES } from '@forge/contracts/issues';
-import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { MEMORY_REFUSAL_CODES } from '@forge/contracts/memory';
+import { QUESTION_REFUSAL_CODES } from '@forge/contracts/questions';
 import { RELEASE_BLOCKER_CODES, RELEASE_REFUSAL_CODES } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
 import { releaseBatchStatePrompt } from '../state-prompts/release-batch.js';
