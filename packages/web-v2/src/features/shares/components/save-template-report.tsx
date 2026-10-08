@@ -6,11 +6,12 @@
 // reads as core's sentence in the answer's own row, and nothing is kept.
 
 import Link from "next/link";
-import type { TemplateSave } from "@/features/shares";
+
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { keptReportHref } from "@/lib/routes/status";
 import { useSaveTemplateReport } from "../hooks";
+import type { TemplateSave } from "../subject";
 
 export function SaveTemplateReport({ projectId, projectSlug, save }: { projectId: string; projectSlug: string | undefined; save: TemplateSave }) {
   const t = useCopy();

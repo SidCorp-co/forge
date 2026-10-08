@@ -1,8 +1,31 @@
 "use client";
 
 import type { ShareCreate } from "@forge/contracts/shares";
+import type { StatusReportMeta } from "@forge/contracts/status-reports";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api/client";
 import { sharesApi } from "./api";
+import type { TemplateSave } from "./subject";
+
+/**
+ * The key of a project's kept status reports. It lives here, below the Status page, because both a
+ * chat answer's Save report and the Status page's own save refresh it; project-status reads it from here.
+ */
+export const STATUS_REPORTS_ROOT = ["status-reports"] as const;
+
+/**
+ * Keeps a template run as a status report (`POST /projects/:id/status/reports`): its template, its
+ * runs in order and the narrative slots written. Core reads each run back as the saver and judges
+ * the narrative against them; a refusal names what is wrong and nothing is kept.
+ */
+export function useSaveTemplateReport(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: TemplateSave) =>
+      apiClient<StatusReportMeta>(`/projects/${encodeURIComponent(projectId)}/status/reports`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [...STATUS_REPORTS_ROOT, projectId] }),
+  });
+}
 
 const sharesKey = (projectId: string | undefined) => ["project", projectId, "shares"] as const;
 

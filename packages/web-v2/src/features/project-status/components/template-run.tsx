@@ -10,12 +10,12 @@ import type { ReportDocument } from "@forge/contracts/report-templates";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { Button, ErrorState, ProjectLoader, ViewHeading } from "@/design";
-import { ReportDocumentBody } from "@/features/shares";
+import { ReportDocumentBody, useSaveTemplateReport } from "@/features/shares";
 import { formatApiError } from "@/lib/api/error";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { keptReportHref } from "@/lib/routes/status";
-import { useReportTemplates, useRunTemplate, useSaveTemplateReport } from "../hooks";
+import { useReportTemplates, useRunTemplate } from "../hooks";
 import { TemplateParamFields, type TemplateParamValues, TemplatePicker, templateParamsOf } from "./template-params";
 
 function DrawnReport({ projectId, slug, title, document }: { projectId: string; slug: string; title: string; document: ReportDocument }) {
