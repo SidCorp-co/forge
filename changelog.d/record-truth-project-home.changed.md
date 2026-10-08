@@ -1,0 +1,1 @@
+**A project's home opens with what it is and where it stands.** Its description, business modules, what is in delivery, the release live and the one being prepared, and what comes next lead; the system map follows, asks below.
