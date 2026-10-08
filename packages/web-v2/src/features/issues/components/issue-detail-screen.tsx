@@ -23,8 +23,6 @@ import {
   useListOrigin,
   useUrlTab,
 } from "@/design";
-import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
-import { ItemMemory } from "@/features/memory/components/item-memory";
 import { useResumeRun } from "@/features/run-control/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -80,6 +78,7 @@ import {
   RunsTab,
   runsTabCount,
 } from "./detail/issue-tabs";
+import { IssueDecisionsTab, IssueMemoryTab } from "./detail/issue-record-tabs";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -346,8 +345,8 @@ function IssueTabBody({
         />
       ) : null}
       {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}
-      {tab === "decisions" ? <DecisionsPanel projectId={projectId} scope="issue" targetRef={issue.displayId} /> : null}
-      {tab === "memory" ? <ItemMemory projectId={projectId} slug={slug} cites={issue.displayId} /> : null}
+      {tab === "decisions" ? <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} /> : null}
+      {tab === "memory" ? <IssueMemoryTab projectId={projectId} slug={slug} issueKey={issue.displayId} /> : null}
       {tab === "activity" ? (
         <ActivityTab
           issueId={issue.id}
