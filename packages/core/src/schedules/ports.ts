@@ -38,6 +38,8 @@ interface SchedulesPorts {
     viewerUserId: string;
     recipients: string[];
     days: number | undefined;
+    /** A report template to run for the owner instead of reading the project status. */
+    template?: { id: string; params: Record<string, string | number | boolean> | undefined };
     period: Date;
     timeZone: string | null;
     fireId: string;

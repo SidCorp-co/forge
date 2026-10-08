@@ -54,6 +54,9 @@ export async function routeScheduleStatusReportFire(
       viewerUserId,
       recipients: params.recipients,
       days: params.days,
+      ...(params.templateId
+        ? { template: { id: params.templateId, params: params.templateParams } }
+        : {}),
       period: slotAt(schedule.cron, now, schedule.timeZone ?? null),
       timeZone: schedule.timeZone ?? null,
       fireId,

@@ -129,7 +129,13 @@ import {
 } from './release-batch/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
-import { keptRunFrames, messageShareSource, templateShareSource } from './reports/index.js';
+import {
+  checkTemplateNarrative,
+  keptRunFrames,
+  messageShareSource,
+  runTemplate,
+  templateShareSource,
+} from './reports/index.js';
 import {
   embedRequirementHead,
   provideInterfaceContracts,
@@ -141,7 +147,7 @@ import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
-import { provideStatusReportsPorts } from './status-reports/index.js';
+import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
 import {
   proposeRequirementDuplicate,
   redactFeedbackSuggestions,
@@ -173,10 +179,15 @@ provideExecutionPorts();
 provideStatusReportsPorts({
   readProjectStatus: ({ projectId, access, userId, agency, days, now }) =>
     readProjectStatus(projectId, statusViewerOf(access, userId, agency), days, now),
+  runTemplate: async (args) => {
+    const { document, notDrawn } = await runTemplate({ ...args, surface: 'rest' });
+    return { document, notDrawn };
+  },
+  checkTemplateNarrative,
 });
-// no module freezes a subject for a share yet: a message's blocks, a template's output and a stored
-// report each bring their source with the change that makes them a report document (REQ-32 A4, A7, B3)
-provideShareSubjectSources([messageShareSource, templateShareSource]);
+// a message's blocks, a template's output and a kept template report: each is frozen by the module
+// that owns it into one report document (REQ-32 A4, A7, B3)
+provideShareSubjectSources([messageShareSource, templateShareSource, statusReportShareSource]);
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,

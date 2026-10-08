@@ -17,6 +17,7 @@ const meta = (id: string, asOf: string) => ({
   projectId: "p1",
   asOf,
   days: 7,
+  template: null,
   period: null,
   producer: { kind: "person" as const, user: { id: "u1", name: "Ann" }, schedule: null },
 });
@@ -25,6 +26,7 @@ const detail: StatusReportDetail = {
   report: meta("r2", AT),
   previous: meta("r1", "2026-09-30T10:00:00.000Z"),
   status: STATUS,
+  document: null,
   diff: {
     since: "2026-09-30T10:00:00.000Z",
     shipped: [{ version: "0.2.0", releasedAt: "2026-10-06T09:30:00.000Z", issues: [{ key: "ISS-11", title: "Saved boards keep every card" }] }],

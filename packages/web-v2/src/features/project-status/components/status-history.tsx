@@ -19,6 +19,7 @@ import { useDeleteStatusReport, useStatusReport, useStatusReports } from "../hoo
 import { ReportSchedule } from "./report-schedule";
 import { SinceLastReport } from "./since-last-report";
 import { StatusReport } from "./status-report";
+import { TemplateReport } from "./template-report";
 
 /** Who or what produced a report, in the reader's language. */
 export function producerText(r: StatusReportMeta, t: ReturnType<typeof useCopy>): string {
@@ -87,11 +88,20 @@ function OpenReport({ projectId, reportId, slug, clock }: { projectId: string; r
   if (!q.data) return <ProjectLoader label={t("status.loading")} />;
   return (
     <div className="grid gap-9" data-testid="status-history-open">
-      <SinceLastReport detail={q.data} slug={slug} clock={clock} />
-      <div className="grid gap-3">
-        <ViewHeading>{t("status.history.stored")}</ViewHeading>
-        <StatusReport s={q.data.status} slug={slug} clock={clock} />
-      </div>
+      {q.data.document ? (
+        <div className="grid gap-3">
+          <ViewHeading>{t("status.history.stored")}</ViewHeading>
+          <TemplateReport projectId={projectId} meta={q.data.report} document={q.data.document} clock={clock} />
+        </div>
+      ) : q.data.status ? (
+        <>
+          <SinceLastReport detail={q.data} slug={slug} clock={clock} />
+          <div className="grid gap-3">
+            <ViewHeading>{t("status.history.stored")}</ViewHeading>
+            <StatusReport s={q.data.status} slug={slug} clock={clock} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -126,7 +136,7 @@ export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: 
                 >
                   <span className="text-fg">{when(r.asOf)}</span>
                   <span className="min-w-0 flex-1 text-muted">{producerText(r, t)}</span>
-                  <span className="text-12-5 text-muted">{t("status.window", { days: r.days })}</span>
+                  <span className="text-12-5 text-muted">{r.template ? r.template.title : t("status.window", { days: r.days ?? 0 })}</span>
                 </button>
                 {mayRemoveReport(r, viewer) ? (
                   <RemoveReport projectId={projectId} report={r} when={when(r.asOf)} onRemoved={() => (r.id === open ? setParams({ report: null }) : undefined)} />

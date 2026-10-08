@@ -287,10 +287,22 @@ ruling and is not registered.
   over its words or stating a number no run returned is refused by name. Agent mode reaches both
   over `POST /api/projects/:id/report-templates/:templateId/runs` and `.../narrative`.
 - **Sharing a template output.** The `template-output` subject is `<templateId>:<runId>,<runId>`
-  (`reports/template-share-source.ts`); each run is read again as the creator. The narrative is
-  held nowhere a share can reach before B3 stores a `ReportDocument`, so a shared output carries
-  its blocks and runs with every slot empty. Saving and scheduling a template run through
-  `status_reports` is B3 and needs its migration.
+  (`reports/template-share-source.ts`); each run is read again as the creator. That subject keeps no
+  narrative, so a shared output carries its blocks and runs with every slot empty; a narrative is
+  shared by saving the run first (next item).
+- **Saving and scheduling a template run (B3).** `status_reports` holds either a project status read
+  or a template's `ReportDocument` (`template_id`, `template_version`, `document`; migration 0463),
+  immutable either way. `POST /api/projects/:id/status/reports` with `{ templateId, runIds, narrative? }`
+  judges the narrative with `checkTemplateNarrative` and keeps the document, so the narrative is
+  stored with who saved it; it lists in the same history as the status reads, exports as Markdown
+  (`GET .../status/reports/:reportId/export`, `reportDocumentMarkdown`: the narrative, then each
+  block's `toText`, with unwritten slots named), and is removed by its author or a project admin. A
+  `status_report` schedule with `params.templateId` runs the template for its owner on each fire and
+  stores the output. A fire has no model, so its narrative slots are stored empty and the notice names
+  them; the project status digest does not fill them, because it states figures read from the project
+  status and a narrative may cite only the template's own runs. The `status-report` share subject
+  (`status-reports/share-source.ts`) freezes the kept document, so a shared saved report carries its
+  narrative; a kept project status read is refused by name.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts:FigureFacts`) carries
   the values of the turn's report runs: every run a result of this turn or a block it drew names by
   id, read from `report_runs` through the `reportRunFrames` message read
