@@ -1,1 +1,0 @@
-**A person can record "could not judge" on a criterion, and the Judge pre-fills the live build.** It needs a reason and never counts as a pass; Short says it counts as one; an attached file can be cited.
