@@ -205,6 +205,7 @@ export function ConversationChat({
               }}
             >
             <ConversationThread
+              projectSlug={projectRow?.slug}
               atBottom={atBottom}
               messages={messages}
               windows={windows}

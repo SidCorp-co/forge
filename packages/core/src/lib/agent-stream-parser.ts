@@ -22,7 +22,7 @@ export interface AgentTodo {
 }
 
 export interface ContentBlock {
-  /** `questionnaire`, `questionnaire_answers` and `designs` are written by a service, never by a model (ISS-63). */
+  /** `questionnaire`, `questionnaire_answers`, `designs` and `visual` are written by a service, never by a model (ISS-63). */
   type:
     | 'text'
     | 'tool'
@@ -30,7 +30,9 @@ export interface ContentBlock {
     | 'thinking'
     | 'questionnaire'
     | 'questionnaire_answers'
-    | 'designs';
+    | 'designs'
+    | 'visual'
+    | 'unsupported';
   text?: string | undefined;
   toolCall?: ToolCall | undefined;
   todos?: AgentTodo[] | undefined;
@@ -42,6 +44,10 @@ export interface ContentBlock {
   batchId?: string | undefined;
   /** A `designs` block: the designs a message names, whose status is read live. */
   designs?: { heading: string; workflowIds: string[]; approve?: boolean | undefined } | undefined;
+  /** A `visual` block: one report block of `@forge/contracts/visual-blocks`, written by a service and checked against the registry where it is drawn. */
+  visual?: unknown;
+  /** An `unsupported` block: the type of a stored entry this build does not know, kept so a reader can name it. */
+  unsupported?: string | undefined;
 }
 
 export interface AgentMessage {

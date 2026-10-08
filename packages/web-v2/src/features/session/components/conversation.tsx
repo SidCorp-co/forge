@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachmentList } from "@/features/attachments/components/attachment-list";
+import { UnsupportedBlock, VisualBlockView } from "@/features/visual-blocks";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
@@ -205,6 +206,8 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
       return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
     }
     if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
+    if (block.type === "visual") return <VisualBlockView key={i} block={block.block} />;
+    if (block.type === "unsupported") return <UnsupportedBlock key={i} kind={block.name} />;
     if (block.type === "thinking") {
       return (
         <ThinkingLine

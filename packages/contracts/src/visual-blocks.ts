@@ -439,10 +439,14 @@ function sorted(rows: ReportFrame["rows"], field: string, dir: "asc" | "desc"): 
   });
 }
 
+/** The rows a table block shows: the frame's rows sorted as the block says, then cut to its limit. */
+export function tableRows(b: VisualBlockOf<"table">): ReportFrame["rows"] {
+  const rows = b.sort ? sorted(b.frame.rows, b.sort.field, b.sort.dir) : b.frame.rows;
+  return b.limit === undefined ? rows : rows.slice(0, b.limit);
+}
+
 function tableText(b: VisualBlockOf<"table">): string {
-  let rows = b.sort ? sorted(b.frame.rows, b.sort.field, b.sort.dir) : b.frame.rows;
-  if (b.limit !== undefined) rows = rows.slice(0, b.limit);
-  return titled(b, markdownTable(b.frame, b.columns, rows));
+  return titled(b, markdownTable(b.frame, b.columns, tableRows(b)));
 }
 
 function chartText(b: VisualBlockOf<"chart">): string {
@@ -483,19 +487,30 @@ function timelineText(b: VisualBlockOf<"timeline">): string {
   return titled(b, lines.join("\n"));
 }
 
-function kpiText(b: VisualBlockOf<"kpi">): string {
+/** One figure of a kpi block as it is shown: its label, its value as text, and its signed delta where it has one. */
+export interface KpiFigure {
+  label: string;
+  value: string;
+  delta?: string;
+}
+
+/** The figures a kpi block shows, read from the one row it names. */
+export function kpiFigures(b: VisualBlockOf<"kpi">): KpiFigure[] {
   const row = b.frame.rows[b.row ?? 0];
-  const lines = b.figures.map((fig) => {
+  return b.figures.map((fig) => {
     const field = b.frame.fields.find((x) => x.name === fig.field);
     const dfield = fig.delta === undefined ? undefined : b.frame.fields.find((x) => x.name === fig.delta);
-    const value = field && row ? cellText(field, row[field.name]) : "—";
-    let delta = "";
+    const out: KpiFigure = { label: fig.label, value: field && row ? cellText(field, row[field.name]) : "—" };
     if (dfield && row) {
       const raw = row[dfield.name];
-      delta = ` (${typeof raw === "number" && raw > 0 ? "+" : ""}${cellText(dfield, raw)})`;
+      out.delta = `${typeof raw === "number" && raw > 0 ? "+" : ""}${cellText(dfield, raw)}`;
     }
-    return `- ${md(fig.label)}: ${md(value)}${delta}`;
+    return out;
   });
+}
+
+function kpiText(b: VisualBlockOf<"kpi">): string {
+  const lines = kpiFigures(b).map((f) => `- ${md(f.label)}: ${md(f.value)}${f.delta === undefined ? "" : ` (${f.delta})`}`);
   return titled(b, lines.join("\n"));
 }
 
