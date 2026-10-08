@@ -1,6 +1,7 @@
 // MJ-1: the project's memory as a person reads it — what it says, who wrote it and when, whether
 // anyone checked it, which records it names and which of those no longer resolve, why it needs a
-// check, and every correction or retirement a person made with their reason; with each list's
+// check, every correction or retirement a person made with their reason, and the text it held
+// before each body that replaced it (ISS-434); with each list's
 // count, read by the same rule. Behind `GET /api/memory/entries`. A person reads it on the record
 // it names (REQ-33 BC-4): `cites` keeps the memories naming that one requirement, issue or workflow.
 //
@@ -11,6 +12,7 @@ import {
   MEMORY_CHECK_AFTER_DAYS,
   MEMORY_CHECK_REASONS,
   MEMORY_ENTRY_STATES,
+  MEMORY_REVISIONS_SHOWN,
   type MemoryAct,
   type MemoryActor,
   type MemoryArchiveCause,
@@ -18,11 +20,13 @@ import {
   type MemoryCite,
   type MemoryEntry,
   type MemoryEntryState,
+  type MemoryRevision,
 } from '@forge/contracts/memory';
-import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lte, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { memories, memorySources } from '../db/schema.js';
+import { memoryRevisions } from '../db/schema-memory-revisions.js';
 import { peopleOf } from '../lib/people.js';
 import { DECAY_FLAGGED, DECAY_UNUSED } from './decay.js';
 import { memoryOfLiveIssue } from './live-issue.js';
@@ -261,9 +265,59 @@ export async function readMemoryEntries(
   return { rows: await entriesOf(page), total: counts[input.state], counts };
 }
 
+interface StoredRevision {
+  memoryId: string;
+  text: string;
+  writtenBy: string | null;
+  replacedAt: Date;
+  total: number;
+}
+
+/**
+ * The bodies each of `ids` held before a later write or correction replaced it, newest first and at
+ * most `MEMORY_REVISIONS_SHOWN` each, with how many there are in all: the rows the
+ * `memories_record_replacement` trigger kept (migrations 0208, 0469).
+ */
+async function revisionsOf(ids: readonly string[]): Promise<Map<string, StoredRevision[]>> {
+  const by = new Map<string, StoredRevision[]>();
+  if (ids.length === 0) return by;
+  const ranked = db
+    .select({
+      memoryId: memoryRevisions.memoryId,
+      text: memoryRevisions.textContent,
+      writtenBy: sql<string | null>`${memoryRevisions.metadata} ->> 'writtenBy'`.as('written_by'),
+      replacedAt: memoryRevisions.replacedAt,
+      rank: sql<number>`row_number() OVER (PARTITION BY ${memoryRevisions.memoryId} ORDER BY ${memoryRevisions.replacedAt} DESC, ${memoryRevisions.id})`.as(
+        'rank',
+      ),
+      total: sql<number>`count(*) OVER (PARTITION BY ${memoryRevisions.memoryId})`.as('total'),
+    })
+    .from(memoryRevisions)
+    .where(inArray(memoryRevisions.memoryId, [...ids]))
+    .as('ranked');
+  const rows = await db
+    .select()
+    .from(ranked)
+    .where(lte(ranked.rank, MEMORY_REVISIONS_SHOWN))
+    .orderBy(asc(ranked.memoryId), asc(ranked.rank));
+  for (const r of rows) {
+    const list = by.get(r.memoryId) ?? [];
+    list.push({
+      memoryId: r.memoryId,
+      text: r.text,
+      writtenBy: r.writtenBy,
+      replacedAt: new Date(r.replacedAt),
+      total: Number(r.total),
+    });
+    by.set(r.memoryId, list);
+  }
+  return by;
+}
+
 /** A page of read rows as the reader reads them: every writer, checker and actor named. */
 async function entriesOf(page: Checked[]): Promise<MemoryEntry[]> {
   const md = (m: unknown) => (m ?? {}) as Record<string, unknown>;
+  const revisions = await revisionsOf(page.map(({ r }) => r.id));
   const actorIds = page.flatMap(({ r }) => {
     const m = md(r.metadata);
     return [
@@ -271,6 +325,7 @@ async function entriesOf(page: Checked[]): Promise<MemoryEntry[]> {
       typeof m.writtenBy === 'string' ? m.writtenBy : null,
       ...storedActs(m.corrections).map((a) => a.by),
       storedAct(m.retired)?.by ?? null,
+      ...(revisions.get(r.id) ?? []).map((v) => v.writtenBy),
     ];
   });
   const people = await peopleOf(actorIds);
@@ -310,6 +365,14 @@ async function entriesOf(page: Checked[]): Promise<MemoryEntry[]> {
             }
           : null,
       corrections: storedActs(m.corrections).map(act),
+      revisions: (revisions.get(r.id) ?? []).map(
+        (v): MemoryRevision => ({
+          text: v.text,
+          writtenBy: actor(v.writtenBy),
+          replacedAt: v.replacedAt.toISOString(),
+        }),
+      ),
+      revisionCount: revisions.get(r.id)?.[0]?.total ?? 0,
       retired: retired ? act(retired) : null,
       archivedAt: r.archivedAt ? r.archivedAt.toISOString() : null,
       archivedBy: r.archivedAt && !retired ? archivedByOf(m) : null,

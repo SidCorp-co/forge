@@ -62,11 +62,14 @@ describe('the report-queries door', () => {
     expect(Math.abs(Date.now() - Date.parse(parsed.asOf))).toBeLessThan(60_000);
   });
 
-  it('answers the same rows as the status read it summarises', async () => {
+  it('answers the rows of the reads it summarises: the Requirements list, and the status roadmap', async () => {
     const status = (await api(w.token, 'GET', `/api/projects/${w.projectId}/status`)).body;
-    const items = (status.requirements as Body).items as Body[];
+    const list = (await api(w.token, 'GET', `/api/projects/${w.projectId}/requirements`)).body
+      .requirements as Body[];
     const frame = (await run(w.token, 'progress-by-requirement')).body.frame as Body;
-    expect((frame.rows as Body[]).map((r) => r.key)).toEqual(items.map((i) => i.key));
+    expect((frame.rows as Body[]).map((r) => r.key).sort()).toEqual(
+      list.map((i) => i.key).sort(),
+    );
     const roadmap = status.roadmap as Record<'now' | 'next' | 'later', Body[]>;
     const eta = (await run(w.token, 'roadmap-eta')).body.frame as Body;
     expect((eta.rows as Body[]).map((r) => r.key)).toEqual(

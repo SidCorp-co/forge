@@ -1,4 +1,4 @@
-import type { DeliveryForecast, FeedbackForecast, Forecast, ForecastSpan, ReleaseLeg, ScopeForecast } from "@forge/contracts/forecast";
+import { type DeliveryForecast, deliveryDatesOf, type FeedbackForecast, type Forecast, type ForecastSpan, type ReleaseLeg, type ScopeForecast } from "@forge/contracts/forecast";
 import type { Said } from "@forge/contracts/said";
 import { formatDateTime } from "@/lib/i18n/format";
 import { said, saysKey } from "@/lib/i18n/said";
@@ -86,9 +86,10 @@ export function etaOfDelivery(d: DeliveryForecast, c: EtaClock): Eta {
     return { kind: "done", at: d.shipped.at, tail: null, detail: copy.shipped(d.shipped.version, when) };
   }
   const tail = tailOf(d.release);
-  if (d.inHands) return { kind: "range", p50At: d.inHands.p50At, p85At: d.inHands.p85At, tail: null, detail: `${rangeHead(d.inHands, d.asOf, c)} ${said}` };
+  // the dates are the one reading the progress report takes too (`deliveryDatesOf`), so the two never disagree
+  const dates = deliveryDatesOf(d);
+  if (dates) return { kind: "range", p50At: dates.p50At, p85At: dates.p85At, tail: dates.of === "hands" ? null : tail, detail: `${rangeHead(dates, d.asOf, c)} ${said}` };
   const own = etaOfForecast(d.landing, c);
-  if (own.kind === "range") return { ...own, tail, detail: `${rangeHead(own, d.asOf, c)} ${said}` };
   if (own.kind === "done") return { kind: "landed", at: own.at, tail, detail: said };
   return own;
 }

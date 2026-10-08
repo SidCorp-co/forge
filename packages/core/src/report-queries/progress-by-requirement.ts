@@ -1,23 +1,24 @@
-// progress-by-requirement: per requirement on the delivery line, the criteria proven of the total,
-// its issues shipped, awaiting release and to do, and where it stands on the roadmap: its lane by
-// the one lane rule (`ROADMAP_HORIZON_OF`, REQ-33 BC-3) and its forecast with the forecast's basis.
-// Built over the project status read, which already decides each of those figures; this file only
-// lays them out as a frame.
+// progress-by-requirement: per requirement, the criteria proven of the total, its issues shipped,
+// awaiting release and to do, and where it stands on the roadmap: its lane by the one lane rule
+// (`ROADMAP_HORIZON_OF`, REQ-33 BC-3) and its forecast with the forecast's basis. Built over the two
+// reads the Requirements list reads — its rows and its forecasts — so the report holds every
+// requirement the list does, Later and off the roadmap included, with the dates its ETA cell shows
+// (ISS-433). This file only lays them out as a frame.
 
-import { ROADMAP_HORIZON_OF, type StatusRequirement } from '@forge/contracts/project-status';
+import type { ScopeForecast } from '@forge/contracts/forecast';
+import { ROADMAP_HORIZON_OF, ROADMAP_HORIZONS } from '@forge/contracts/project-status';
 import {
   defineReportQuery,
   type ReportCell,
   type ReportField,
   type ReportFrame,
 } from '@forge/contracts/report-queries';
-import { REQUIREMENT_STATES } from '@forge/contracts/requirements';
+import { REQUIREMENT_STATES, type RequirementSummary } from '@forge/contracts/requirements';
 import { z } from 'zod';
-import { readProjectStatus } from '../project-status/index.js';
+import { readRequirementForecasts } from '../forecast/index.js';
+import { listRequirementsAs } from '../requirements/index.js';
 import { defineAdapter, type ReportQueryAdapter } from './adapter.js';
 import { etaOf } from './roadmap-eta.js';
-
-const STATUS_DAYS = 7;
 
 const OUTPUT = [
   { name: 'key', type: 'ref', label: 'Requirement' },
@@ -50,36 +51,56 @@ export const progressByRequirement: ReportQueryAdapter<typeof params> = defineAd
     egress: 'product',
     surfaces: ['rest', 'chat', 'cli'],
   }),
-  reads: ['project-status/read.ts:readProjectStatus'],
+  reads: ['requirements:listRequirementsAs', 'forecast/scope.ts:readRequirementForecasts'],
   async run(ctx, p): Promise<ReportFrame> {
-    const status = await readProjectStatus(
-      ctx.projectId,
-      ctx.viewer,
-      STATUS_DAYS,
-      ctx.now ?? new Date(),
-    );
-    const rows = progressRows(status.requirements.items, p.state);
-    return { fields: [...OUTPUT], rows };
+    const [list, forecasts] = await Promise.all([
+      listRequirementsAs(ctx.viewer, ctx.projectId),
+      readRequirementForecasts(ctx.projectId, ctx.viewer, ctx.now ?? new Date()),
+    ]);
+    return { fields: [...OUTPUT], rows: progressRows(list, forecasts.requirements, p.state) };
   },
 });
 
-/** The frame's rows: each requirement's figures, its lane (none once it is off the roadmap) and its forecast. */
+/** Now, Next, Later, then off the roadmap: the order the list's roadmap grouping reads. */
+const LANE_ORDER = [...ROADMAP_HORIZONS, null] as const;
+
+/**
+ * The frame's rows: each requirement of the list, its figures, its lane (none once it is off the
+ * roadmap) and its forecast; a requirement the forecast holds no scope for (a dropped one) says so.
+ * Each lane soonest first, then by key.
+ */
 export function progressRows(
-  items: readonly StatusRequirement[],
-  state?: StatusRequirement['state'],
+  list: readonly Pick<RequirementSummary, 'key' | 'title' | 'standing' | 'delivery'>[],
+  forecasts: readonly Pick<ScopeForecast, 'key' | 'progress' | 'delivery'>[],
+  state?: RequirementSummary['standing']['state'],
 ): Record<string, ReportCell>[] {
-  return items
-    .filter((r) => state === undefined || r.state === state)
-    .map((r) => ({
-      key: r.key,
-      title: r.title,
-      state: r.state,
-      criteriaProven: r.criteria.proven,
-      criteriaTotal: r.criteria.total,
-      shipped: r.progress.shipped,
-      awaitingRelease: r.progress.awaitingRelease,
-      toDo: r.progress.toDo,
-      lane: ROADMAP_HORIZON_OF[r.state],
-      ...etaOf(r.delivery),
-    }));
+  const scopes = new Map(forecasts.map((s) => [s.key, s]));
+  const rows = list
+    .filter((r) => state === undefined || r.standing.state === state)
+    .map((r) => {
+      const scope = scopes.get(r.key);
+      const lane = ROADMAP_HORIZON_OF[r.standing.state];
+      const eta = scope
+        ? etaOf(scope.delivery)
+        : { p50At: null, p85At: null, basis: `no forecast: ${r.standing.state}` };
+      return {
+        key: r.key,
+        title: r.title,
+        state: r.standing.state,
+        criteriaProven: r.delivery.criteriaCoverage.passing,
+        criteriaTotal: r.delivery.criteriaCoverage.criteria,
+        shipped: scope?.progress.shipped ?? 0,
+        awaitingRelease: scope?.progress.awaitingRelease ?? 0,
+        toDo: scope?.progress.toDo ?? 0,
+        lane,
+        ...eta,
+      };
+    });
+  const at = (v: ReportCell) => (typeof v === 'string' ? Date.parse(v) : Number.POSITIVE_INFINITY);
+  return rows.sort(
+    (a, b) =>
+      LANE_ORDER.indexOf(a.lane) - LANE_ORDER.indexOf(b.lane) ||
+      at(a.p50At) - at(b.p50At) ||
+      a.key.localeCompare(b.key, 'en', { numeric: true }),
+  );
 }

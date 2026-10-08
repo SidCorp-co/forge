@@ -80,6 +80,18 @@ export interface MemoryAct {
 	reason: string;
 }
 
+/** A body a later write or correction replaced, kept so a person can read what it said before. */
+export interface MemoryRevision {
+	text: string;
+	/** Who wrote that body; null for one written before writes were stamped. */
+	writtenBy: MemoryActor | null;
+	/** When a later write or correction replaced it. */
+	replacedAt: string;
+}
+
+/** The earlier bodies an entry carries, newest first; `revisionCount` says how many there are in all. */
+export const MEMORY_REVISIONS_SHOWN = 20;
+
 /** A memory as a person reads it on the record it names. */
 export interface MemoryEntry {
 	id: string;
@@ -88,7 +100,10 @@ export interface MemoryEntry {
 	text: string;
 	writtenAt: string;
 	updatedAt: string;
-	/** Who last wrote the body; null for a row written before writes were stamped. */
+	/**
+	 * Who wrote the body, by writing it: a person's correction is not a write and leaves the writer
+	 * as it was, naming its own actor in `corrections`. Null for a row written before writes were stamped.
+	 */
 	writtenBy: MemoryActor | null;
 	/** When an agent or person last checked it against what is live; null when never. */
 	verifiedAt: string | null;
@@ -108,6 +123,10 @@ export interface MemoryEntry {
 	 */
 	flagged: { since: string; by: string | null; reason: string | null } | null;
 	corrections: MemoryAct[];
+	/** The bodies it held before, newest first, at most `MEMORY_REVISIONS_SHOWN`; empty when never replaced. */
+	revisions: MemoryRevision[];
+	/** How many earlier bodies it has in all. */
+	revisionCount: number;
 	retired: MemoryAct | null;
 	archivedAt: string | null;
 	/** Why the row is archived when no person retired it; null when nothing recorded why. */

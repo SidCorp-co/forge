@@ -28,6 +28,8 @@ const cadence: MemoryEntry = {
   changed: [],
   flagged: null,
   corrections: [],
+  revisions: [],
+  revisionCount: 0,
   retired: null,
   archivedAt: null,
   archivedBy: null,

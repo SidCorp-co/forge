@@ -1,5 +1,5 @@
 import type { MemoryEntry } from "@forge/contracts/memory";
-import { fireEvent, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InterfaceLanguageScope } from "@/lib/i18n/interface-language";
 import { renderWithQuery } from "@/test/render";
@@ -35,6 +35,8 @@ const BASE: MemoryEntry = {
   changed: [],
   flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: "ISS-126 replaced the theme this note names" },
   corrections: [],
+  revisions: [],
+  revisionCount: 0,
   retired: null,
   archivedAt: null,
   archivedBy: null,
@@ -185,5 +187,30 @@ describe("a memory on the record it names", () => {
   it("reads in Vietnamese", () => {
     row(BASE, undefined, "vi");
     expect(screen.getByTestId("memory-meta").textContent).toContain("Chưa ai kiểm chứng"); // i18n-allow: the vi copy under test
+  });
+  it("keeps the agent as its writer, names the person who corrected it with why, and shows the earlier text (ISS-434)", () => {
+    const LAN = { id: "u-lan", name: "Lan", agent: false };
+    row({
+      ...BASE,
+      text: "The board is flat, cards kept.",
+      corrections: [{ by: LAN, at: "2026-10-08T10:00:00.000Z", reason: "the owner restated it" }],
+      revisions: [{ text: "The board is flat.", writtenBy: BASE.writtenBy, replacedAt: "2026-10-08T10:00:01.000Z" }],
+      revisionCount: 1,
+    });
+    expect(screen.getByTestId("memory-meta").textContent).toContain("Written by runner (agent)");
+    expect(screen.getByTestId("memory-corrections").textContent).toBe("Corrected by Lan on 08/10/2026: the owner restated it");
+    const earlier = screen.getByTestId("memory-revisions");
+    expect(earlier.querySelector("summary")?.textContent).toBe("Earlier text · 1");
+    expect(screen.getByTestId("memory-revision").textContent).toBe("Replaced on 08/10/2026. Written by runner (agent):The board is flat.");
+  });
+
+  it("shows no earlier text on a memory never replaced, and says how many when more are kept than shown", () => {
+    row(BASE);
+    expect(screen.queryByTestId("memory-revisions")).toBeNull();
+    cleanup();
+    const r = { text: "x", writtenBy: null, replacedAt: "2026-10-08T10:00:00.000Z" };
+    row({ ...BASE, revisions: [r], revisionCount: 25 });
+    expect(screen.getByTestId("memory-revisions").querySelector("summary")?.textContent).toBe("Earlier text · newest 1 of 25");
+    expect(screen.getByTestId("memory-revision").textContent).toContain("Writer not recorded");
   });
 });
