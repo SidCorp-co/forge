@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.199] - 2026-10-08
+
+BA can propose revisions on new requirements; chat tabs reload when stale
+
+### Changed
+
+- **A run tests its own scope.** It names its pattern first, proves each criterion by running it, and runs typecheck plus its direct tests; verify runs at merge, the whole suites nightly and before a release cut (REQ-36).
+
+### Fixed
+
+- **The BA assistant can improve a new requirement's draft.** Its suggestion takes the revision it read, no longer refused as stale; accepting it rewrites the open draft. A refused mockup or tool call now says why in the chat.
+- **A chat tab opened before an update now says to reload the page.** It no longer fails with "Invalid input". Ask Agent also tells the model the right record kind, and an agent cannot open a room it cannot use.
+
 ## [0.4.0-dev.198] - 2026-10-08
 
 Progress report covers Later-lane requirements; memory corrections keep writer and earlier text
