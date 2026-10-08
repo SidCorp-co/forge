@@ -89,10 +89,52 @@ describe('readIssueSearchTerm (ISS-1334)', () => {
     expect(err.message).toContain('`ISS`, `FD`');
   });
 
-  it('refuses a prefix whose project is gone, since it stays spent', async () => {
+  it('refuses a prefix whose project is gone, since it stays spent, without saying anyone holds it', async () => {
     holders = { GONE: { projectId: null } };
 
-    expect((await refusal('GONE-5')).code).toBe('ISSUE_KEY_FOREIGN_PREFIX');
+    const err = await refusal('GONE-5');
+
+    expect([err.code, err.status]).toEqual(['ISSUE_KEY_FOREIGN_PREFIX', 400]);
+    expect(err.message).toContain('no longer exists');
+    expect(err.message).not.toContain('another project holds');
+  });
+
+  it.each([
+    'ISS 1280',
+    'iss  1280',
+    'ISS - 1280',
+    '#1280',
+    '#ISS-1280',
+    'ISS-1280,',
+    'ISS-1280.',
+    'ISS-1280;',
+    '(ISS-1280)',
+    '[ISS-1280]',
+    '`ISS-1280`',
+    ' (#1280), ',
+  ])('reads the near-form %j as the key 1280', async (term) => {
+    expect(await readIssueSearchTerm('p1', term)).toEqual({ kind: 'key', issSeq: 1280 });
+  });
+
+  it('reads a held prefix written with a space as a key', async () => {
+    heldPrefixes = ['FP'];
+    activePrefix = 'FP';
+
+    expect(await readIssueSearchTerm('p1', 'fp 1280')).toEqual({ kind: 'key', issSeq: 1280 });
+  });
+
+  it.each(['"500"', '"ISS-1280"', 'HTTP 500', 'UTF 8', 'ISS1280', '1.5', '1280.0', '#tag'])(
+    'reads %j as text',
+    async (term) => {
+      expect(await readIssueSearchTerm('p1', term)).toEqual({ kind: 'text', text: term });
+    },
+  );
+
+  it('quotes the key as read, so a wrapped term nests no backtick in the sentence', async () => {
+    const err = await refusal('`ISS-9999`,');
+
+    expect(err.code).toBe('ISSUE_KEY_NOT_HELD');
+    expect(err.message.startsWith('`ISS-9999` reads as an issue key')).toBe(true);
   });
 
   it.each(['0', 'ISS-0', '2147483648', '21474836470'])(

@@ -14,7 +14,7 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { classifyError } = await import('./server.js');
+const { classifyError, toolErrorText } = await import('./server.js');
 
 const TOKEN_HASH = 'c3ludGhldGljLXRva2VuLWhhc2gtZm9yLW1jcA';
 
@@ -30,6 +30,15 @@ describe("an MCP tool's error text", () => {
     expect(message).toContain('update "personal_access_tokens"');
     expect(message).not.toContain(TOKEN_HASH);
     expect(message).not.toContain('pat-1');
+  });
+
+  it('drops the status word and keeps a refusal code first, as a key refusal reaches the caller', () => {
+    expect(toolErrorText('NOT_FOUND: ISSUE_KEY_NOT_HELD: `ISS-9` reads as an issue key')).toBe(
+      'Error: ISSUE_KEY_NOT_HELD: `ISS-9` reads as an issue key',
+    );
+    expect(toolErrorText('BAD_REQUEST: ISSUE_KEY_OUT_OF_RANGE: x')).toBe(
+      'Error: ISSUE_KEY_OUT_OF_RANGE: x',
+    );
   });
 
   it('still reads a refusal by its prefix', () => {

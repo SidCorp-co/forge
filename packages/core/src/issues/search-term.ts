@@ -25,8 +25,14 @@ export class IssueSearchKeyRefused extends Error {
   }
 }
 
-/** Wider than `parseIssueRef`'s ten digits, so an eleven-digit number is refused as a key rather than searched. */
-const KEY_TERM = /^\s*(?:([A-Za-z][A-Za-z0-9]{1,5})-)?(\d+)\s*$/;
+/**
+ * Wider than `parseIssueRef`: any digit count, so an eleven-digit number is refused as a key rather
+ * than searched; a space may stand for the hyphen; and the wrapping a pasted key carries — one pair
+ * of `()`, `[]` or backticks, a leading `#`, trailing `, . ; : ! ?` — is not part of it. Double
+ * quotes are not unwrapped: a quoted number is how a person searches it as text.
+ */
+const KEY_TERM =
+  /^\s*[([`]?\s*#?\s*(?:([A-Za-z][A-Za-z0-9]{1,5})(?:\s*-\s*|\s+))?(\d+)\s*[)\]`]?\s*[,.;:!?]*\s*$/;
 
 /**
  * Reads a search term as a key or as text. A bare number is a key; so is a number behind `ISS` or
@@ -42,15 +48,21 @@ export async function readIssueSearchTerm(
   if (!hit || !digits) return { kind: 'text', text: term };
 
   const given = hit[1]?.toUpperCase();
+  const asRead = given ? `${given}-${digits}` : digits;
   if (given && given !== LEGACY_ISSUE_PREFIX) {
     const held = await heldIssuePrefixes(projectId);
     if (!held.includes(given)) {
-      if (!(await issuePrefixHolder(given))) return { kind: 'text', text: term };
+      const holder = await issuePrefixHolder(given);
+      if (!holder) return { kind: 'text', text: term };
       const answersTo = [LEGACY_ISSUE_PREFIX, ...held].map((p) => `\`${p}\``).join(', ');
+      const whose =
+        holder.projectId === null
+          ? 'which belonged to a project that no longer exists'
+          : 'which another project holds';
       throw new IssueSearchKeyRefused(
         'ISSUE_KEY_FOREIGN_PREFIX',
         400,
-        `\`${term.trim()}\` names the prefix \`${given}\`, which another project holds — this project answers to ${answersTo}. The issues search looks in this project only.`,
+        `\`${asRead}\` names the prefix \`${given}\`, ${whose} — this project answers to ${answersTo}. The issues search looks in this project only.`,
       );
     }
   }
@@ -60,7 +72,7 @@ export async function readIssueSearchTerm(
     throw new IssueSearchKeyRefused(
       'ISSUE_KEY_OUT_OF_RANGE',
       400,
-      `\`${term.trim()}\` reads as an issue key, and an issue's number runs from 1 to ${ISS_SEQ_MAX}.`,
+      `\`${asRead}\` reads as an issue key, and an issue's number runs from 1 to ${ISS_SEQ_MAX}.`,
     );
   }
 
@@ -76,7 +88,7 @@ export async function readIssueSearchTerm(
     throw new IssueSearchKeyRefused(
       'ISSUE_KEY_NOT_HELD',
       404,
-      `\`${term.trim()}\` reads as an issue key, and this project holds no issue ${named}.`,
+      `\`${asRead}\` reads as an issue key, and this project holds no issue ${named}.`,
     );
   }
   return { kind: 'key', issSeq };

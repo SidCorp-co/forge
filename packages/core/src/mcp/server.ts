@@ -96,6 +96,11 @@ export function classifyError(err: unknown): { code: AuditResultCode; message: s
   return { code: 'error', message };
 }
 
+/** What the caller reads: the status word goes, and a refusal code after it stays first. */
+export function toolErrorText(message: string): string {
+  return `Error: ${message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '')}`;
+}
+
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
   const top = args.projectId;
   if (typeof top === 'string') return top;
@@ -259,9 +264,8 @@ export function createMcpServer(ctx: McpContext): Server {
     } catch (err) {
       const { code, message } = classifyError(err);
       writeMcpAudit({ ...auditBase, resultCode: code });
-      const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
       return {
-        content: [{ type: 'text', text: `Error: ${text}` }],
+        content: [{ type: 'text', text: toolErrorText(message) }],
         isError: true,
       };
     }
