@@ -2,11 +2,10 @@ import type { ReportQueryDescriptorView } from '@forge/contracts/report-queries'
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
-import { egressForRequest } from '../lib/data-egress.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
-import { getReportQuery, listReportQueries } from './registry.js';
-import { runReportQuery } from './run.js';
+import { runReport } from '../reports/index.js';
+import { listReportQueries } from './registry.js';
 
 const runParam = z.strictObject({ id: z.uuid(), queryId: z.string().min(1).max(64) });
 const runBody = z.strictObject({ params: z.record(z.string(), z.unknown()).optional() });
@@ -30,7 +29,7 @@ reportQueryRoutes.get('/report-queries', (c) => {
   return c.json({ queries });
 });
 
-/** Runs one query as the caller; refused by name unless the caller holds what the query declares. */
+/** Runs one query as the caller and keeps the run; refused by name unless the caller holds what the query declares. */
 reportQueryRoutes.post(
   '/projects/:id/report-queries/:queryId/runs',
   zValidator(
@@ -45,26 +44,14 @@ reportQueryRoutes.post(
     if (!agency)
       throw new Error('report queries: a request reached its handler without an auth gate');
     const userId = c.get('userId');
-    const { egress } = getReportQuery(queryId).descriptor;
-    if (egress !== 'product') {
-      throw new Error(
-        `report query "${queryId}" is ${egress}-class and no egress surface is declared for it; add the surface before registering it`,
-      );
-    }
     const access = await loadProjectAccess(projectId, userId);
-    const run = await runReportQuery({
+    const run = await runReport({
       projectId,
       queryId,
       params: c.req.valid('json').params,
       asker: { userId, agency, access },
+      surface: 'rest',
     });
-    const frame = await egressForRequest(
-      agency,
-      projectId,
-      'requirement',
-      run.frame,
-      `the report query ${queryId}`,
-    );
-    return c.json({ ...run, frame });
+    return c.json(run);
   },
 );

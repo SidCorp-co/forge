@@ -1,6 +1,7 @@
 "use client";
 
 import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/contracts/visual-blocks";
+import { useVisualBlockContext } from "./context";
 import { BLOCK_RENDERERS, type BlockRenderer } from "./registry";
 import { SourceNote } from "./source-note";
 import { UnsupportedBlock } from "./unsupported";
@@ -12,10 +13,12 @@ function kindOf(raw: unknown): string {
   return kind === undefined ? "nameless" : JSON.stringify(kind);
 }
 
-function RefusedBlock({ kind, reasons }: { kind: string; reasons: string[] }) {
+function RefusedBlock({ kind, why = "does not match its shape", reasons }: { kind: string; why?: string; reasons: string[] }) {
   return (
     <div className="text-[12.5px] text-muted" data-testid="visual-block-refused" data-kind={kind}>
-      <p>This answer has a {kind} block that does not match its shape, so it is not drawn.</p>
+      <p>
+        This answer has a {kind} block that {why}, so it is not drawn.
+      </p>
       <ul className="mt-1 list-disc pl-5 font-mono text-[11px] text-subtle">
         {reasons.map((r) => (
           <li key={r}>{r}</li>
@@ -37,19 +40,31 @@ function Frame({ kind, title, children }: { kind: string; title?: string | undef
 /**
  * One stored `visual` block, drawn through the registry. A kind the contract does not know, a kind
  * with no renderer here, and a block that fails its kind's check are each drawn by name; none is
- * dropped. A drawn block shows its source: the query and the moment it was read.
+ * dropped. A drawn block shows its source: the query and the moment it was read; a block of a run
+ * whose query and read time this screen was not given is refused by name, never drawn untraced.
  */
 export function VisualBlockView({ block: raw }: { block: unknown }) {
+  const { sourceFacts } = useVisualBlockContext();
   const kind = kindOf(raw);
   if (!isVisualBlockKind(kind)) return <UnsupportedBlock kind={kind} />;
   const checked = checkBlock(raw);
   if (!checked.ok) return <RefusedBlock kind={kind} reasons={checked.refusals.map((r) => r.message)} />;
   const Renderer = BLOCK_RENDERERS[kind] as BlockRenderer<VisualBlockKind>;
   const block = checked.block;
+  const facts = block.source ? sourceFacts?.(block.source) : undefined;
+  if (block.source && "runId" in block.source && !facts) {
+    return (
+      <RefusedBlock
+        kind={kind}
+        why="names no read its figures came from"
+        reasons={[`report run ${block.source.runId}: its query and read time were not stored with this block, so its figures cannot be traced to a read`]}
+      />
+    );
+  }
   return (
     <Frame kind={kind} title={block.title}>
       <Renderer block={block as never} />
-      <SourceNote source={block.source} />
+      <SourceNote source={block.source} facts={facts} />
     </Frame>
   );
 }

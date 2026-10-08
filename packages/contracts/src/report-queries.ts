@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { PROJECT_PERMISSIONS } from "./permissions.js";
+import type { RefusalStatuses } from "./refusal.js";
 
 export const REPORT_FIELD_TYPES = [
   "string",
@@ -197,3 +198,42 @@ export const ReportRunSchema = z
   })
   .strict();
 export type ReportRun = z.infer<typeof ReportRunSchema>;
+
+/** How long a stored run keeps its frame. Past it the run reads as gone, by name, and a sweep deletes it. */
+export const REPORT_RUN_KEEP_DAYS = 30;
+
+/**
+ * What a drawn block says about where its figures came from: the run, the query that produced the
+ * frame, and the moment it was read. Copied from the stored run when the block is attached, beside
+ * the frame, so a block outlives its run's keep still naming its read.
+ */
+export const ReportRunFactsSchema = z
+  .object({
+    runId: z.string().min(1),
+    queryId: z.string().regex(REPORT_ID_PATTERN),
+    version: z.number().int().min(1),
+    asOf: z.iso.datetime(),
+  })
+  .strict();
+export type ReportRunFacts = z.infer<typeof ReportRunFactsSchema>;
+
+export const REPORT_REFUSAL_CODES = [
+  "REPORT_REFUSED",
+  "REPORT_QUERY_NOT_ON_SURFACE",
+  "REPORT_RUN_NOT_FOUND",
+  "REPORT_RUN_EXPIRED",
+  "REPORT_RUN_READ_FORBIDDEN",
+  "REPORT_RUN_OTHER_PROJECT",
+  "REPORT_BLOCK_REFUSED",
+  "REPORT_BLOCK_FIGURE_NOT_IN_RUN",
+  "REPORT_BLOCK_SOURCE_UNSUPPORTED",
+  "REPORT_BLOCK_NO_ROOM",
+  "REPORT_BLOCK_ROOM_NOT_WEB",
+] as const;
+export type ReportRefusalCode = (typeof REPORT_REFUSAL_CODES)[number];
+
+export const REPORT_REFUSAL_STATUSES = {
+  REPORT_RUN_NOT_FOUND: 404,
+  REPORT_RUN_EXPIRED: 404,
+  REPORT_RUN_READ_FORBIDDEN: 403,
+} as const satisfies RefusalStatuses<ReportRefusalCode>;
