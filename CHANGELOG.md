@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.147] - 2026-10-08
+
+Agents are taught the ask, wait and release acts that landed today
+
+### Changed
+
+- **Agents learn today's acts where they take them.** Runs, masters and the BA door name a question's requirement, park on a merge mark, mark carried artifacts, say what an abort carried, defer pin-only re-pins, and write honest memory.
+
 ## [0.4.0-dev.146] - 2026-10-08
 
 One path per helper after parallel lanes, and provider-verified releases name their checker

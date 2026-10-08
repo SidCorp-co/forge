@@ -1,1 +1,0 @@
-**Agents learn today's acts where they take them.** Runs, masters and the BA door name a question's requirement, park on a merge mark, mark carried artifacts, say what an abort carried, defer pin-only re-pins, and write honest memory.
