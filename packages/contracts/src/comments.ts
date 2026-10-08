@@ -114,6 +114,14 @@ export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, dec
 const ref = z.string().trim().min(1).max(200);
 
 /**
+ * Whose decisions a read lists: `people` (the default where a person reads them) keeps those a
+ * person made; `agents` those an agent recorded, a master's pass logs among them; `all` both.
+ */
+export const DECISION_MAKERS = ["people", "agents", "all"] as const;
+export type DecisionMaker = (typeof DECISION_MAKERS)[number];
+export const DECISION_MAKERS_SHAPE = `by? (${DECISION_MAKERS.join(" | ")}; people by default)`;
+
+/**
  * The project's decisions, newest first. `requirement` (REQ-n or uuid) keeps those on the
  * requirement and on the issues that deliver it; `workflow` (flow or uuid), `issue` (key or uuid)
  * and `who` (a user uuid) keep those on it or by them; `since` and `until` bound when each was made.
@@ -127,11 +135,12 @@ export const listDecisionsQuerySchema = z.strictObject({
 	who: z.uuid().optional(),
 	since: z.iso.date().or(z.iso.datetime()).optional(),
 	until: z.iso.date().or(z.iso.datetime()).optional(),
+	by: z.enum(DECISION_MAKERS).optional(),
 });
 
 export type ListDecisionsQuery = z.infer<typeof listDecisionsQuerySchema>;
 
-export const LIST_DECISIONS_QUERY_SHAPE = `scope? (${COMMENT_SCOPES.join(" | ")}), limit? (1..${DECISIONS_LIST_MAX}), requirement? (REQ-n or uuid), workflow? (flow or uuid), issue? (key or uuid), who? (user uuid), since?, until? (an ISO date or date-time)`;
+export const LIST_DECISIONS_QUERY_SHAPE = `scope? (${COMMENT_SCOPES.join(" | ")}), limit? (1..${DECISIONS_LIST_MAX}), requirement? (REQ-n or uuid), workflow? (flow or uuid), issue? (key or uuid), who? (user uuid), since?, until? (an ISO date or date-time), ${DECISION_MAKERS_SHAPE}`;
 
 export interface CommentTargetView {
 	scope: CommentScope;
@@ -161,6 +170,11 @@ export interface EntityCommentView {
 	edited: boolean;
 	createdAt: string;
 	updatedAt: string;
+	/**
+	 * The time the text's own first-line stamp states (`Decision (master, 2026-10-08 23:00Z)`) when
+	 * it is later than the record was written: a record that dates itself ahead. Null otherwise.
+	 */
+	datedAhead: string | null;
 }
 
 export interface EntityCommentListResponse {
@@ -176,4 +190,8 @@ export interface DecisionListResponse {
 	decisions: EntityCommentView[];
 	returned: number;
 	limit: number;
+	/** Whose decisions are listed. */
+	by: DecisionMaker;
+	/** How many decisions under the same filters the other makers hold, folded away; 0 when `by` is all. */
+	folded: number;
 }

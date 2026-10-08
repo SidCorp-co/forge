@@ -78,13 +78,14 @@ const entriesQuerySchema = paginationSchema.extend({
 });
 
 // MJ-1: the Memory page's read — who wrote each row and when, whether it was checked, what it
-// cites and which of those no longer resolve, and every person's correction or retirement.
+// cites and which of those no longer resolve, why it needs a check, and every person's correction
+// or retirement; `counts` sizes each list by the same rule.
 memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async (c) => {
   const { projectId, q, sources, state, limit, offset } = c.req.valid('query');
   const userId = c.get('userId');
   await requireCan(actorFor(userId), 'project.read', projectResource(projectId));
 
-  const { rows, total } = await readMemoryEntries(
+  const { rows, total, counts } = await readMemoryEntries(
     memoryEntriesInputSchema.parse({
       projectId,
       ...(q ? { q } : {}),
@@ -94,5 +95,5 @@ memoryListRoutes.get('/entries', zValidator('query', entriesQuerySchema), async 
       offset,
     }),
   );
-  return c.json(listResponse(c, rows, total, { limit, offset }));
+  return c.json({ ...listResponse(c, rows, total, { limit, offset }), counts });
 });

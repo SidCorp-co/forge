@@ -1,5 +1,6 @@
 "use client";
 
+import type { DecisionMaker } from "@forge/contracts/comments";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions/api";
 import { requirementsApi } from "./api";
@@ -60,10 +61,10 @@ export function usePromoteDrafts(projectId: string, req: string) {
   });
 }
 
-export function useRequirementDecisions(projectId: string | undefined, req: string | undefined) {
+export function useRequirementDecisions(projectId: string | undefined, req: string | undefined, by: DecisionMaker = "people") {
   return useQuery({
-    queryKey: ["requirement-decisions", projectId ?? "", req ?? ""],
-    queryFn: () => requirementsApi.decisions(projectId as string, req as string),
+    queryKey: ["requirement-decisions", projectId ?? "", req ?? "", by],
+    queryFn: () => requirementsApi.decisions(projectId as string, req as string, by),
     enabled: Boolean(projectId && req),
     staleTime: 15_000,
   });

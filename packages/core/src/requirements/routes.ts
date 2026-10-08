@@ -33,6 +33,7 @@ import { revisionRoutes } from './revision-routes.js';
 import {
   actorOf,
   answer,
+  decisionsQuery,
   projectParam,
   type RequirementEnv,
   reqParam,
@@ -61,9 +62,9 @@ requirementRoutes.get('/:id/requirements', projectParam, viewQuery, async (c) =>
   return c.json({ requirements, returned: requirements.length });
 });
 
-requirementRoutes.get('/:id/requirements/:req/decisions', reqParam, async (c) => {
+requirementRoutes.get('/:id/requirements/:req/decisions', reqParam, decisionsQuery, async (c) => {
   const { id, req } = c.req.valid('param');
-  return c.json(await readRequirementDecisionsAs(actorOf(c), id, req));
+  return c.json(await readRequirementDecisionsAs(actorOf(c), id, req, {}, c.req.valid('query').by));
 });
 
 requirementRoutes.post(

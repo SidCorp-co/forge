@@ -17,8 +17,10 @@ import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
 import { LandsThisWeek, LateItems } from "@/features/project-dashboard/components/plan-sections";
+import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
+import { useModuleRollup } from "@/features/modules/hooks";
 import { useComingNext, useEtaClock, useFeedbackForecasts, useRequirementForecasts } from "@/features/forecast/hooks";
-import { etaOfScope } from "@/features/forecast/eta";
+import { etaInline, etaOfScope } from "@/features/forecast/eta";
 import { useFeedbackList } from "@/features/feedback/hooks";
 import { useReleases } from "@/features/releases/hooks";
 import { useRequirements } from "@/features/requirements/hooks";
@@ -64,6 +66,7 @@ export default function ProjectOverviewPage() {
   const workflowsQ = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocumentQ = useProjectDocument(projectId);
+  const modulesQ = useModuleRollup(projectId);
   useOnboardingState(projectId);
   const clock = useEtaClock();
 
@@ -92,6 +95,11 @@ export default function ProjectOverviewPage() {
   }
 
   const glyph = projectGlyph(project.id);
+  const declared = projectDocumentQ.data?.declared ? projectDocumentQ.data.document : null;
+  const describedAs = (declared?.project as { description?: unknown } | undefined)?.description;
+  const production = releasesQ.data?.production;
+  const productionHost = production?.ok && production.url ? production.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
+  const live = releasesQ.data?.releases.find((r) => r.current && r.state === "shipped");
   // the member's asks core marked (`NEEDS_YOU_AREA_SPACE`): the same set /attention lists for this project
   const attention = asksOf(needsYouQ.data?.items ?? []);
   const draft = releasesQ.data?.releases.find((r) => r.state === "draft");
@@ -130,7 +138,29 @@ export default function ProjectOverviewPage() {
       </header>
 
       <div className="space-y-6">
-        <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
+        {/* what the project is and where it stands comes first; the system map follows, the asks below it */}
+        <ProjectOrientation
+          slug={project.slug}
+          description={typeof describedAs === "string" && describedAs.trim() ? describedAs : null}
+          modules={modulesQ.data ? modulesQ.data.modules.filter((m) => m.parentId === null).map((m) => ({ id: m.id, name: m.name, slug: m.slug })) : null}
+          now={statusQ.data?.roadmap.now ?? []}
+          next={statusQ.data?.roadmap.next ?? []}
+          live={live ? { version: live.version, where: productionHost } : null}
+          draft={draft ? { version: draft.version, eta: (() => { const eta = etaOfScope(comingQ.data?.draft, clock); return eta ? etaInline(eta, clock) : null; })() } : null}
+        />
+
+        {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
+          <SystemOverviewRegion
+            records={workflowsQ.data.workflows}
+            projectId={project.id}
+            templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
+            slug={project.slug}
+            projectName={project.name}
+            projectDocument={projectDocumentQ.data}
+            canEdit={canManageProject(project.role)}
+            variant="compact"
+          />
+        ) : null}
 
         <BaFigures
           slug={project.slug}
@@ -147,18 +177,7 @@ export default function ProjectOverviewPage() {
           <LateItems rows={lateRows(rows)} clock={clock} />
         </div>
 
-        {workflowsQ.data && workflowsQ.data.workflows.length > 0 ? (
-          <SystemOverviewRegion
-            records={workflowsQ.data.workflows}
-            projectId={project.id}
-            templates={(templatesQ.data?.templates ?? []).map((t) => t.template)}
-            slug={project.slug}
-            projectName={project.name}
-            projectDocument={projectDocumentQ.data}
-            canEdit={canManageProject(project.role)}
-            variant="compact"
-          />
-        ) : null}
+        <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
       </div>
     </PageContainer>
     </>

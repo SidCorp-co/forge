@@ -28,12 +28,14 @@ export const STATUS_REPORT_REFUSAL_CODES = [
 	"STATUS_REPORT_NO_RECIPIENTS",
 	"STATUS_REPORT_RECIPIENT_NOT_MEMBER",
 	"STATUS_REPORT_PERIOD_DELIVERED",
+	"STATUS_REPORT_DELETE_FORBIDDEN",
 ] as const;
 export type StatusReportRefusalCode =
 	(typeof STATUS_REPORT_REFUSAL_CODES)[number];
 
 export const STATUS_REPORT_REFUSAL_STATUSES = {
 	STATUS_REPORT_PERIOD_DELIVERED: 409,
+	STATUS_REPORT_DELETE_FORBIDDEN: 403,
 } as const satisfies RefusalStatuses<StatusReportRefusalCode>;
 
 /** What a `status_report` schedule's `params` hold: who receives it and the window it reads. */

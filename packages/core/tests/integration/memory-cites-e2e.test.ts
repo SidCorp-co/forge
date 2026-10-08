@@ -184,7 +184,13 @@ describe('a key is read in the project the memory places it in, and every source
   it('checks a named sibling key against the sibling, leaves an unnamed project key unchecked, and links the rest', async () => {
     const row = (await entries(w)).find((r) => r.sourceRef === 'gotcha/cross') as Entry;
     expect(row.cites).toEqual([
-      { ref: 'ISS-1', kind: 'issue', project: sibling.slug, state: 'resolved' },
+      {
+        ref: 'ISS-1',
+        kind: 'issue',
+        project: sibling.slug,
+        state: 'resolved',
+        changedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      },
       { ref: 'ISS-1', kind: 'issue', project: null, state: 'unchecked' },
       {
         ref: '779e4736a',

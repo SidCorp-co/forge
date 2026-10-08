@@ -2,6 +2,7 @@ import type {
   CommentScope,
   DecisionFields,
   DecisionListResponse,
+  DecisionMaker,
   EntityCommentListResponse,
   EntityCommentScope,
   EntityCommentView,
@@ -12,9 +13,9 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type { CommentIntent } from '@forge/contracts/record-events';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { WrittenLang } from '@forge/contracts/written-lang';
-import { and, asc, desc, eq, gte, isNotNull, lt, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNotNull, lt, not, or, type SQL, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { comments, issues, users } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
@@ -29,6 +30,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import { datedAhead } from './dated-ahead.js';
 import { type CommentArc, scopeOfArc } from './entity-rules.js';
 import { feedbackRowIn, requirementRowIn } from './ports.js';
 
@@ -162,6 +164,7 @@ export function entityCommentView(
     edited: row.updatedAt.getTime() !== row.createdAt.getTime(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    datedAhead: withhold ? null : datedAhead(row.body, row.createdAt),
   };
   return withhold ? view : egress.shown(view, `comment ${row.id}`);
 }
@@ -264,6 +267,29 @@ async function decisionFilters(projectId: string, query: ListDecisionsQuery) {
   );
 }
 
+// a person made a decision when it was written in their own name, by no device; the view's author
+// agency reads the same two facts (`entityCommentView`)
+const MADE_BY_A_PERSON = and(
+  sql`${comments.authorDeviceId} IS NULL`,
+  sql`coalesce(${users.kind}, 'human') = 'human'`,
+) as SQL;
+
+const MAKER: Record<DecisionMaker, SQL | undefined> = {
+  people: MADE_BY_A_PERSON,
+  agents: not(MADE_BY_A_PERSON),
+  all: undefined,
+};
+
+const OTHER_MAKERS: Record<DecisionMaker, SQL | undefined> = {
+  people: MAKER.agents,
+  agents: MAKER.people,
+  all: undefined,
+};
+
+/**
+ * The project's decisions under the query, newest first. `by` defaults to a person's (`people`):
+ * an agent's records, a master's pass logs among them, are folded away and counted in `folded`.
+ */
 export async function listDecisionsAs(
   actor: EntityCommentActor,
   projectId: string,
@@ -272,6 +298,7 @@ export async function listDecisionsAs(
 ): Promise<DecisionListResponse> {
   await requireCan(actorFor(actor.userId), 'project.read', projectResource(projectId));
   const limit = query.limit ?? DECISIONS_DEFAULT_LIMIT;
+  const by = query.by ?? 'people';
   const narrowed = await decisionFilters(projectId, query);
   const inProject = or(
     eq(issues.projectId, projectId),
@@ -279,6 +306,23 @@ export async function listDecisionsAs(
     eq(projectWorkflows.projectId, projectId),
     eq(feedback.projectId, projectId),
   );
+  const decisionsWhere = (maker: SQL | undefined) =>
+    and(eq(comments.intent, 'decision'), inProject, narrowed, maker);
+  const folded = OTHER_MAKERS[by]
+    ? Number(
+        (
+          await db
+            .select({ n: count() })
+            .from(comments)
+            .leftJoin(users, eq(comments.authorId, users.id))
+            .leftJoin(issues, eq(comments.issueId, issues.id))
+            .leftJoin(requirements, eq(comments.requirementId, requirements.id))
+            .leftJoin(projectWorkflows, eq(comments.workflowId, projectWorkflows.id))
+            .leftJoin(feedback, eq(comments.feedbackId, feedback.id))
+            .where(decisionsWhere(OTHER_MAKERS[by]))
+        )[0]?.n ?? 0,
+      )
+    : 0;
   const rows = await db
     .select({
       ...entityCommentColumns,
@@ -292,11 +336,12 @@ export async function listDecisionsAs(
       fbTitle: feedback.title,
     })
     .from(comments)
+    .leftJoin(users, eq(comments.authorId, users.id))
     .leftJoin(issues, eq(comments.issueId, issues.id))
     .leftJoin(requirements, eq(comments.requirementId, requirements.id))
     .leftJoin(projectWorkflows, eq(comments.workflowId, projectWorkflows.id))
     .leftJoin(feedback, eq(comments.feedbackId, feedback.id))
-    .where(and(eq(comments.intent, 'decision'), inProject, narrowed))
+    .where(decisionsWhere(MAKER[by]))
     .orderBy(desc(comments.createdAt), desc(comments.id))
     .limit(limit);
   const [authors, prefix, egress] = await Promise.all([
@@ -311,7 +356,7 @@ export async function listDecisionsAs(
     const target = targetOfRow(scope, r, prefix);
     return entityCommentView(r, target, authors, egress[scope]);
   });
-  return { decisions, returned: decisions.length, limit };
+  return { decisions, returned: decisions.length, limit, by, folded };
 }
 
 const joined = <T>(value: T | null, commentId: string): T => {

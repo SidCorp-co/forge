@@ -3,17 +3,19 @@
 // History (the status page's second tab): every report the project kept, newest first, each dated
 // and naming who or what produced it; opening one shows what changed since the report before it
 // and the report as it was kept. Flat hairline rows; the open report's id rides the URL (`report`),
-// which is where a sent report's notice and inbox row link to.
+// which is where a sent report's notice and inbox row link to. The person who saved a report, or a
+// project admin, removes it after a confirmation; a sent report is an admin's to remove (core's rule).
 
 import type { StatusReportMeta } from "@forge/contracts/status-reports";
-import { useEffect } from "react";
-import { ErrorState, ProjectLoader, useUrlParams, ViewHeading } from "@/design";
+import { useEffect, useState } from "react";
+import { Button, ConfirmDialog, ErrorState, ProjectLoader, useUrlParams, ViewHeading } from "@/design";
 import type { EtaClock } from "@/features/forecast/eta";
 import { formatApiError } from "@/lib/api/error";
 import { formatDateTime } from "@/lib/i18n/format";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { useAuth } from "@/providers/auth-provider";
 import { projectStatusApi } from "../api";
-import { useStatusReport, useStatusReports } from "../hooks";
+import { useDeleteStatusReport, useStatusReport, useStatusReports } from "../hooks";
 import { ReportSchedule } from "./report-schedule";
 import { SinceLastReport } from "./since-last-report";
 import { StatusReport } from "./status-report";
@@ -24,6 +26,54 @@ export function producerText(r: StatusReportMeta, t: ReturnType<typeof useCopy>)
     return r.producer.schedule ? t("status.history.sentBy", { name: r.producer.schedule.name }) : t("status.history.sentByGone");
   }
   return t("status.history.savedBy", { name: r.producer.user?.name ?? t("status.history.someone") });
+}
+
+/** Whether the reader may remove a report, by the rule core enforces: its saver, or a project admin. */
+export function mayRemoveReport(r: StatusReportMeta, viewer: { userId: string | null; isAdmin: boolean }): boolean {
+  if (viewer.isAdmin) return true;
+  return r.producer.kind === "person" && viewer.userId !== null && r.producer.user?.id === viewer.userId;
+}
+
+function RemoveReport({ projectId, report, when, onRemoved }: { projectId: string; report: StatusReportMeta; when: string; onRemoved: () => void }) {
+  const t = useCopy();
+  const [asking, setAsking] = useState(false);
+  const remove = useDeleteStatusReport(projectId);
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setAsking(true)} data-testid="status-history-remove">
+        {t("status.history.delete")}
+      </Button>
+      <ConfirmDialog
+        open={asking}
+        tone="danger"
+        title={t("status.history.deleteTitle")}
+        message={
+          <>
+            <p>{t("status.history.deleteMessage", { at: when })}</p>
+            {remove.isError ? (
+              <p className="mt-2 text-danger" role="alert">
+                {t("status.history.deleteFailed")}: {formatApiError(remove.error)}
+              </p>
+            ) : null}
+          </>
+        }
+        confirmLabel={t("status.history.deleteConfirm")}
+        loading={remove.isPending}
+        onConfirm={() =>
+          remove.mutate(report.id, {
+            onSuccess: () => {
+              setAsking(false);
+              onRemoved();
+            },
+          })
+        }
+        onClose={() => {
+          setAsking(false);
+          remove.reset();
+        }}
+      />
+    </>
+  );
 }
 
 function OpenReport({ projectId, reportId, slug, clock }: { projectId: string; reportId: string; slug: string; clock: EtaClock }) {
@@ -46,9 +96,10 @@ function OpenReport({ projectId, reportId, slug, clock }: { projectId: string; r
   );
 }
 
-export function StatusHistory({ projectId, slug, clock }: { projectId: string; slug: string; clock: EtaClock }) {
+export function StatusHistory({ projectId, slug, clock, isAdmin }: { projectId: string; slug: string; clock: EtaClock; isAdmin: boolean }) {
   const t = useCopy();
   const q = useStatusReports(projectId);
+  const viewer = { userId: useAuth().user?.id ?? null, isAdmin };
   const [params, setParams] = useUrlParams();
   const open = params.get("report");
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
@@ -65,18 +116,21 @@ export function StatusHistory({ projectId, slug, clock }: { projectId: string; s
         ) : (
           <ul className="border-t border-line-subtle">
             {q.data.reports.map((r) => (
-              <li key={r.id}>
+              <li key={r.id} className="flex items-center gap-2 border-b border-line-subtle">
                 <button
                   type="button"
                   aria-current={r.id === open ? "true" : undefined}
                   onClick={() => setParams({ report: r.id === open ? null : r.id })}
-                  className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 border-b border-line-subtle py-2 text-left text-13 hover:bg-hover aria-[current=true]:font-semibold"
+                  className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-0.5 py-2 text-left text-13 hover:bg-hover aria-[current=true]:font-semibold"
                   data-testid="status-history-row"
                 >
                   <span className="text-fg">{when(r.asOf)}</span>
                   <span className="min-w-0 flex-1 text-muted">{producerText(r, t)}</span>
                   <span className="text-12-5 text-muted">{t("status.window", { days: r.days })}</span>
                 </button>
+                {mayRemoveReport(r, viewer) ? (
+                  <RemoveReport projectId={projectId} report={r} when={when(r.asOf)} onRemoved={() => (r.id === open ? setParams({ report: null }) : undefined)} />
+                ) : null}
               </li>
             ))}
           </ul>

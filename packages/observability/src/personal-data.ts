@@ -10,11 +10,39 @@ interface PersonalDataScrub {
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 
-// a run of 9 to 19 digits, spaced or dashed, is a phone, national id or card number; a date
-// or a time holds at most 8 digits, so it is left alone
-const DIGIT_RUN = /\+?\d[\d .-]{6,}\d/g;
+// a run of 9 to 19 digits is a phone, national id or card number, however its groups are
+// split: any space (a pasted number carries no-break and thin ones), a dot, a hyphen or dash, or
+// an area code in brackets. A date holds at most 8 digits, and the hour after it is cut off at
+// its colon, so a date and a time are left alone
+const SEPARATOR = "[\\p{Zs}\\t.()\\-\\u2010-\\u2015]";
+const DIGIT_RUN = new RegExp(`\\+?\\(?\\d(?:${SEPARATOR}*\\d){7,}`, "gu");
+const HOUR_TAIL = new RegExp(`${SEPARATOR}+\\d{1,2}$`, "u");
+// a run too long to be one number is two written side by side: each Vietnamese mobile (0 and
+// nine digits) or landline (0 and ten) inside it is masked, opening and ending where a group does
+const ONE_PHONE = new RegExp(`(?<!\\d)(?:\\+84|\\(?0)(?:${SEPARATOR}*\\d){9,10}(?!\\d)`, "gu");
 const MIN_DIGITS = 9;
 const MAX_DIGITS = 19;
+
+const digitCount = (run: string) => run.replace(/\D/g, "").length;
+
+function maskNumbers(text: string, onNumber: () => void): string {
+	const mask = () => {
+		onNumber();
+		return PERSONAL_DATA_PLACEHOLDER.number;
+	};
+	const maskRun = (run: string): string => {
+		const digits = digitCount(run);
+		if (digits < MIN_DIGITS) return run;
+		if (digits <= MAX_DIGITS) return mask();
+		return run.replace(ONE_PHONE, mask);
+	};
+	return text.replace(DIGIT_RUN, (run: string, at: number) => {
+		if (!/^:\d/.test(text.slice(at + run.length, at + run.length + 2))) return maskRun(run);
+		const hour = HOUR_TAIL.exec(run);
+		if (!hour) return run;
+		return maskRun(run.slice(0, hour.index)) + hour[0];
+	});
+}
 
 const NAME_LABELS = [
 	"name",
@@ -141,11 +169,8 @@ export function scrubPersonalData(input: string): PersonalDataScrub {
 	text = scrubUnlabelled(text, () => {
 		redactions.name += 1;
 	});
-	text = text.replace(DIGIT_RUN, (run) => {
-		const digits = run.replace(/\D/g, "").length;
-		if (digits < MIN_DIGITS || digits > MAX_DIGITS) return run;
+	text = maskNumbers(text, () => {
 		redactions.number += 1;
-		return PERSONAL_DATA_PLACEHOLDER.number;
 	});
 	return { text, redactions };
 }

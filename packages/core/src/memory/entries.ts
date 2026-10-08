@@ -1,16 +1,22 @@
 // MJ-1: the project's memory as a person reads it — what it says, who wrote it and when, whether
-// anyone checked it, which records it names and which of those no longer resolve, and every
-// correction or retirement a person made with their reason. Behind `GET /api/memory/entries`.
+// anyone checked it, which records it names and which of those no longer resolve, why it needs a
+// check, and every correction or retirement a person made with their reason; with each list's
+// count, read by the same rule. Behind `GET /api/memory/entries`.
 //
 // Does NOT check authorization — callers MUST verify project membership before invoking.
 
 import {
   MEMORY_AUTHORED_SOURCES,
+  MEMORY_CHECK_AFTER_DAYS,
+  MEMORY_CHECK_REASONS,
   MEMORY_ENTRY_STATES,
   type MemoryAct,
   type MemoryActor,
   type MemoryArchiveCause,
+  type MemoryCheckReason,
+  type MemoryCite,
   type MemoryEntry,
+  type MemoryEntryState,
 } from '@forge/contracts/memory';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -31,7 +37,7 @@ export const memoryEntriesInputSchema = z.object({
     .array(z.enum(memorySources))
     .min(1)
     .default([...MEMORY_AUTHORED_SOURCES]),
-  /** `live` and `stale` hide retired and archived rows; `retired` lists only those. */
+  /** `live` and `stale` hide retired and archived rows; `retired` lists only those; `stale` is every live row needing a check. */
   state: z.enum(MEMORY_ENTRY_STATES).default('live'),
   limit: z.number().int().min(1).max(200).default(50),
   offset: z.number().int().min(0).default(0),
@@ -69,76 +75,126 @@ function likeWords(q: string | undefined): SQL[] {
     });
 }
 
-/**
- * The rows the `stale` state reads: a release flagged them, or — derived after the page is read —
- * they name a record that no longer resolves. The first half is a column condition; the second is
- * applied to the rows read, so `stale` pages over flagged rows and every row citing a key.
- */
+// A key the text may cite: rows naming one are read in full, since whether a cite is gone or
+// changed is known only once it resolves.
 const CITES_A_KEY = sql`${memories.textContent} ~ '\\m[A-Z][A-Z0-9]{1,5}-[0-9]{1,6}\\M'`;
+
+const CHECK_AFTER_MS = MEMORY_CHECK_AFTER_DAYS * 86_400_000;
+
+const columns = {
+  id: memories.id,
+  source: memories.source,
+  sourceRef: memories.sourceRef,
+  text: memories.textContent,
+  metadata: memories.metadata,
+  createdAt: memories.createdAt,
+  updatedAt: memories.updatedAt,
+  lastVerifiedAt: memories.lastVerifiedAt,
+  archivedAt: memories.archivedAt,
+};
+
+type Read = {
+  id: string;
+  source: string;
+  sourceRef: string;
+  text: string;
+  metadata: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  lastVerifiedAt: Date | null;
+  archivedAt: Date | null;
+};
+
+type Checked = { r: Read; c: Citations; needsCheck: MemoryCheckReason[]; changed: MemoryCite[] };
+
+/** The cites of a memory that changed after it was last written or checked. */
+function changedCites(r: Read, c: Citations): MemoryCite[] {
+  const statedAt = Math.max(r.updatedAt.getTime(), r.lastVerifiedAt?.getTime() ?? 0);
+  return c.cites.filter(
+    (x) =>
+      x.state === 'resolved' && x.changedAt !== undefined && Date.parse(x.changedAt) > statedAt,
+  );
+}
+
+/**
+ * Why a current memory needs a check (`MEMORY_CHECK_REASONS`, in order): nobody checked it for
+ * `MEMORY_CHECK_AFTER_DAYS` days since it was written or last checked, a cited record changed after
+ * the memory was last written or checked, a cited record no longer resolves, or a release flagged it.
+ */
+function checkReasons(r: Read, c: Citations, changed: readonly MemoryCite[], now: number) {
+  const held = {
+    unchecked: now - (r.lastVerifiedAt ?? r.createdAt).getTime() > CHECK_AFTER_MS,
+    changed: changed.length > 0,
+    gone: c.staleRefs.length > 0,
+    flagged: typeof (r.metadata as Record<string, unknown> | null)?.staleSince === 'string',
+  } satisfies Record<MemoryCheckReason, boolean>;
+  return MEMORY_CHECK_REASONS.filter((k) => held[k]);
+}
+
+async function checked(projectId: string, read: Read[], now: number): Promise<Checked[]> {
+  const resolved = await resolveCitations(
+    projectId,
+    read.map((r) => r.text),
+  );
+  return read.map((r, i) => {
+    const c = resolved[i] ?? NO_CITATIONS;
+    if (r.archivedAt) return { r, c, needsCheck: [], changed: [] };
+    const changed = changedCites(r, c);
+    return { r, c, needsCheck: checkReasons(r, c, changed, now), changed };
+  });
+}
+
+async function countOf(where: SQL | undefined): Promise<number> {
+  const [{ n } = { n: 0 }] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(memories)
+    .where(where);
+  return Number(n);
+}
 
 export async function readMemoryEntries(
   input: MemoryEntriesInput,
-): Promise<{ rows: MemoryEntry[]; total: number }> {
-  const conds: SQL[] = [
+  now = Date.now(),
+): Promise<{ rows: MemoryEntry[]; total: number; counts: Record<MemoryEntryState, number> }> {
+  const scope: SQL[] = [
     eq(memories.projectId, input.projectId),
     inArray(memories.source, input.sources),
     ...likeWords(input.q),
   ];
-  if (input.state === 'retired') conds.push(isNotNull(memories.archivedAt));
-  else conds.push(isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));
-  if (input.state === 'stale') {
-    conds.push(sql`(${memories.metadata}->>'staleSince' IS NOT NULL OR ${CITES_A_KEY})`);
-  }
-  const where = and(...conds);
-
-  const columns = {
-    id: memories.id,
-    source: memories.source,
-    sourceRef: memories.sourceRef,
-    text: memories.textContent,
-    metadata: memories.metadata,
-    createdAt: memories.createdAt,
-    updatedAt: memories.updatedAt,
-    lastVerifiedAt: memories.lastVerifiedAt,
-    archivedAt: memories.archivedAt,
-  };
-  const ordered = () =>
+  const live = and(...scope, isNull(memories.archivedAt), memoryOfLiveIssue(input.projectId));
+  const retired = and(...scope, isNotNull(memories.archivedAt));
+  const ordered = (where: SQL | undefined) =>
     db
       .select(columns)
       .from(memories)
       .where(where)
       .orderBy(desc(memories.updatedAt), asc(memories.id));
 
-  let page: { r: Awaited<ReturnType<typeof ordered>>[number]; c: Citations }[];
-  let total: number;
+  // the rows that may need a check: unchecked past the cutoff, flagged, or citing a key; which of
+  // them do is known once their cites resolve, so the list is cut after
+  const cutoff = new Date(now - CHECK_AFTER_MS);
+  const candidates = await ordered(
+    and(
+      live,
+      sql`(coalesce(${memories.lastVerifiedAt}, ${memories.createdAt}) < ${cutoff.toISOString()}::timestamptz OR ${memories.metadata}->>'staleSince' IS NOT NULL OR ${CITES_A_KEY})`,
+    ),
+  );
+  const due = (await checked(input.projectId, candidates, now)).filter(
+    (x) => x.needsCheck.length > 0,
+  );
+  const [liveN, retiredN] = await Promise.all([countOf(live), countOf(retired)]);
+  const counts = { live: liveN, stale: due.length, retired: retiredN };
+
+  let page: Checked[];
   if (input.state === 'stale') {
-    // Which candidates are stale is known only once their keys resolve, so the page is cut after.
-    const read = await ordered();
-    const resolved = await resolveCitations(
-      input.projectId,
-      read.map((r) => r.text),
-    );
-    const stale = read
-      .map((r, i) => ({ r, c: resolved[i] ?? NO_CITATIONS }))
-      .filter(
-        ({ r, c }) =>
-          c.staleRefs.length > 0 || Boolean((r.metadata as Record<string, unknown>)?.staleSince),
-      );
-    page = stale.slice(input.offset, input.offset + input.limit);
-    total = stale.length;
+    page = due.slice(input.offset, input.offset + input.limit);
   } else {
-    const [{ n } = { n: 0 }] = await db
-      .select({ n: sql<number>`count(*)::int` })
-      .from(memories)
-      .where(where);
-    const read = await ordered().limit(input.limit).offset(input.offset);
-    const resolved = await resolveCitations(
-      input.projectId,
-      read.map((r) => r.text),
-    );
-    page = read.map((r, i) => ({ r, c: resolved[i] ?? NO_CITATIONS }));
-    total = Number(n);
+    const read = await ordered(input.state === 'retired' ? retired : live)
+      .limit(input.limit)
+      .offset(input.offset);
+    page = await checked(input.projectId, read, now);
   }
+  const total = counts[input.state];
 
   const md = (m: unknown) => (m ?? {}) as Record<string, unknown>;
   const actorIds = page.flatMap(({ r }) => {
@@ -157,7 +213,7 @@ export async function readMemoryEntries(
   };
   const act = (a: StoredAct): MemoryAct => ({ by: actor(a.by), at: a.at, reason: a.reason });
 
-  const rows = page.map(({ r, c }): MemoryEntry => {
+  const rows = page.map(({ r, c, needsCheck, changed }): MemoryEntry => {
     const m = md(r.metadata);
     const retired = storedAct(m.retired);
     return {
@@ -171,6 +227,8 @@ export async function readMemoryEntries(
       verifiedAt: r.lastVerifiedAt ? r.lastVerifiedAt.toISOString() : null,
       cites: c.cites,
       staleRefs: c.staleRefs,
+      needsCheck,
+      changed,
       flagged:
         typeof m.staleSince === 'string'
           ? {
@@ -186,7 +244,7 @@ export async function readMemoryEntries(
       archivedBy: r.archivedAt && !retired ? archivedByOf(m) : null,
     };
   });
-  return { rows, total };
+  return { rows, total, counts };
 }
 
 /**

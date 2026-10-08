@@ -30,6 +30,8 @@ const BASE: MemoryEntry = {
     { ref: "ISS-1", kind: "issue", why: "dropped" },
     { ref: "REQ-9", kind: "requirement", why: "missing" },
   ],
+  needsCheck: ["unchecked", "gone", "flagged"],
+  changed: [],
   flagged: { since: "2026-10-06T00:00:00.000Z", by: "ISS-126", reason: "ISS-126 replaced the theme this note names" },
   corrections: [],
   retired: null,
@@ -47,6 +49,36 @@ const row = (entry: MemoryEntry, acts = { onCorrect: vi.fn(), onRetire: vi.fn() 
 };
 
 describe("a memory on the Memory page", () => {
+  it("says it needs a check because nobody checked it in three days", () => {
+    row(BASE);
+    expect(screen.getByTestId("memory-needs-check").textContent).toBe("Needs a check: nobody has checked it in 3 days");
+  });
+
+  it("names the cited records that changed since it was last written or checked", () => {
+    const changed: MemoryEntry = {
+      ...BASE,
+      cites: [
+        { ref: "ISS-4", kind: "issue", project: "hop", state: "resolved", changedAt: "2026-10-06T09:00:00.000Z" },
+        { ref: "REQ-2", kind: "requirement", project: "hop", state: "resolved", changedAt: "2026-10-01T09:00:00.000Z" },
+        { ref: "ISS-7", kind: "issue", project: "epod", state: "resolved", changedAt: "2026-10-06T10:00:00.000Z" },
+      ],
+      staleRefs: [],
+      flagged: null,
+      needsCheck: ["changed"],
+      changed: [
+        { ref: "ISS-4", kind: "issue", project: "hop", state: "resolved", changedAt: "2026-10-06T09:00:00.000Z" },
+        { ref: "ISS-7", kind: "issue", project: "epod", state: "resolved", changedAt: "2026-10-06T10:00:00.000Z" },
+      ],
+    };
+    row(changed);
+    expect(screen.getByTestId("memory-needs-check").textContent).toBe("Needs a check: ISS-4, epod ISS-7 changed since it was last written or checked");
+  });
+
+  it("says nothing of a check on a memory that holds", () => {
+    row({ ...BASE, staleRefs: [], flagged: null, needsCheck: [], changed: [] });
+    expect(screen.queryByTestId("memory-needs-check")).toBeNull();
+  });
+
   it("names who wrote it, an agent, when, and that nobody has checked it", () => {
     row(BASE);
     const meta = screen.getByTestId("memory-meta").textContent ?? "";

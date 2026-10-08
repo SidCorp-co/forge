@@ -1,8 +1,9 @@
 "use client";
 
 // The project's Memory page (MJ-1): every memory agents and people wrote down, found by its words,
-// in three lists — current, those needing a check (they name a record that no longer exists, or a
-// release flagged them) and retired — each read with who wrote it, when and whether it still holds.
+// in three lists — current, those needing a check (nobody checked them for MEMORY_CHECK_AFTER_DAYS
+// days, a record they cite changed since or no longer exists, or a release flagged them) and
+// retired — each counted by core's one rule and read with who wrote it, when and whether it holds.
 
 import { MEMORY_ENTRY_STATES, type MemoryEntryState } from "@forge/contracts/memory";
 import { EmptyState, ErrorState, ListSearch, PageTitle, ProjectLoader, SegmentedControl, useUrlChoice, useUrlParams } from "@/design";
@@ -26,7 +27,10 @@ export function MemoryScreen({ projectId, slug }: { projectId: string; slug: str
       <PageTitle hint={t("memory.hint")}>{t("memory.title")}</PageTitle>
       <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
         <SegmentedControl
-          options={MEMORY_ENTRY_STATES.map((s) => ({ value: s, label: t(`memory.state.${s}` as ProductCopyKey) }))}
+          options={MEMORY_ENTRY_STATES.map((s) => {
+            const label = t(`memory.state.${s}` as ProductCopyKey);
+            return { value: s, label: q.data ? t("memory.stateCount", { state: label, n: q.data.counts[s] }) : label };
+          })}
           value={state as MemoryEntryState}
           onChange={(s) => setState(s)}
         />

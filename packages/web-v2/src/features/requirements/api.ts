@@ -1,3 +1,4 @@
+import type { DecisionMaker } from "@forge/contracts/comments";
 import type { PromoteDraftsAnswer, RequirementDecisionsResponse } from "@forge/contracts/requirements";
 import { apiClient } from "@/lib/api/client";
 import type {
@@ -41,7 +42,8 @@ export const requirementsApi = {
   promoteDrafts: (projectId: string, req: string, issues?: string[]) =>
     apiClient<PromoteDraftsAnswer>(`${one(projectId, req)}/promote`, post(issues ? { issues } : {})),
   /** Its decisions and those on its issues, with the answers its questions and its issues' questions took. */
-  decisions: (projectId: string, req: string) => apiClient<RequirementDecisionsResponse>(`${one(projectId, req)}/decisions`),
+  decisions: (projectId: string, req: string, by: DecisionMaker = "people") =>
+    apiClient<RequirementDecisionsResponse>(`${one(projectId, req)}/decisions${by === "people" ? "" : `?by=${by}`}`),
   /** Links an existing issue as one that delivers it; `adoptPlan` records the issue's plan as written against the current revision. */
   linkIssue: (projectId: string, req: string, issue: string, adoptPlan: boolean) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/issues`, post({ issue, ...(adoptPlan ? { adoptPlan: true } : {}) })),

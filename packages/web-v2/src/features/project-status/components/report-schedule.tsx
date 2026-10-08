@@ -7,7 +7,7 @@
 
 import { STATUS_REPORT_DEFAULT_CRON } from "@forge/contracts/status-reports";
 import { type FormEvent, useMemo, useState } from "react";
-import { Button, Checkbox, Field, Input, NativeSelect, ViewHeading } from "@/design";
+import { Button, Checkbox, ConfirmDialog, Field, Input, NativeSelect, ViewHeading } from "@/design";
 import { useCreateSchedule, useDeleteSchedule, useRunSchedule, useSchedules, useUpdateSchedule } from "@/features/automation/schedule-hooks";
 import type { ScheduleRow } from "@/features/automation/schedule-types";
 import { useProjectMembers } from "@/features/issues/hooks";
@@ -46,6 +46,7 @@ function ScheduleLine({ row, projectId }: { row: ScheduleRow; projectId: string 
   const update = useUpdateSchedule(projectId);
   const remove = useDeleteSchedule(projectId);
   const run = useRunSchedule(projectId);
+  const [asking, setAsking] = useState(false);
   const w = weeklyOf(row.cron);
   return (
     <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-subtle py-2 text-13" data-testid="status-schedule-row">
@@ -61,9 +62,19 @@ function ScheduleLine({ row, projectId }: { row: ScheduleRow; projectId: string 
       <Button size="sm" onClick={() => update.mutate({ id: row.id, patch: { enabled: !row.enabled } })} disabled={update.isPending}>
         {row.enabled ? t("status.schedule.pause") : t("status.schedule.resume")}
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => remove.mutate(row.id)} disabled={remove.isPending}>
+      <Button size="sm" variant="ghost" onClick={() => setAsking(true)} disabled={remove.isPending}>
         {t("status.schedule.delete")}
       </Button>
+      <ConfirmDialog
+        open={asking}
+        tone="danger"
+        title={t("status.schedule.deleteTitle")}
+        message={t("status.schedule.deleteMessage")}
+        confirmLabel={t("status.schedule.deleteConfirm")}
+        loading={remove.isPending}
+        onConfirm={() => remove.mutate(row.id, { onSettled: () => setAsking(false) })}
+        onClose={() => setAsking(false)}
+      />
     </li>
   );
 }
