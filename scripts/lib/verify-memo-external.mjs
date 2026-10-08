@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 const BIG = 256 * 1024;
-const SYSTEM = ['/proc', '/sys', '/dev', '/usr', '/lib', '/lib64', '/bin', '/sbin', '/etc', '/opt'];
+const SYSTEM = ['/proc', '/sys', '/dev', '/usr', '/lib', '/lib64', '/bin', '/sbin', '/opt'];
 
 function toolState(home, tmp) {
   const dirs = ['.npm', '.cache', '.local', '.nvm'].map((d) => join(home, d));
@@ -29,19 +29,31 @@ export function signatureOf(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
+/** Whether a file was written after `since`, so the signature taken now is not what the run read. */
+function modifiedSince(path, since) {
+  try {
+    return lstatSync(path).isFile() && lstatSync(path).mtimeMs > since;
+  } catch {
+    return false;
+  }
+}
+
 /** The outside reads of a trace as `[path, signature]`, and a fault for each outside listing. */
-export function externalDeps({ root, lines, home = homedir(), tmp = tmpdir() }) {
+export function externalDeps({ root, lines, since = Infinity, home = homedir(), tmp = tmpdir() }) {
   const skipped = toolState(home, tmp);
   const deps = new Map();
   const faults = new Set();
+  const moved = new Set();
   for (const line of lines.filter((l) => l[0] === 'R' || l[0] === 'L')) {
     const path = line.slice(2);
     const mirrored = path.toLowerCase().startsWith(`${root.toLowerCase()}/`);
     if (under(root, path) || mirrored || skipped.some((d) => under(d, path))) continue;
     if (line[0] === 'L') faults.add(`listed ${path}/, outside the checkout`);
     else if (!deps.has(path)) deps.set(path, signatureOf(path));
+    if (line[0] === 'R' && modifiedSince(path, since)) moved.add(path);
   }
-  return { deps: [...deps].filter(([, sig]) => sig !== null).sort(), faults: [...faults].sort() };
+  const kept = [...deps].filter(([, sig]) => sig !== null).sort();
+  return { deps: kept, faults: [...faults].sort(), moved: [...moved].sort() };
 }
 
 /** Whether every outside read an entry recorded still reads as it did. */

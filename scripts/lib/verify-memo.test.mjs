@@ -315,6 +315,13 @@ describe('the git questions a check may ask', () => {
     );
   });
 
+  it('refuses an option that selects revisions of its own, such as every branch', () => {
+    for (const flag of ['--all', '--branches', '--glob=refs/heads/*', '--remotes=origin', '-g']) {
+      expect(fault(asks, 'log', flag)).toMatch(/selects revisions/);
+    }
+    expect(fault(asks, 'rev-list', '--all', 'HEAD')).toMatch(/selects revisions/);
+  });
+
   it('refuses a question to a remote beyond the default branch lookup', () => {
     expect(fault(asks, 'ls-remote', 'origin')).toMatch(/asks a remote/);
     expect(fault(asks, 'ls-remote', '--heads', 'origin')).toMatch(/asks a remote/);
@@ -351,6 +358,20 @@ describe('what a check reads outside the checkout', () => {
     rmSync(outside, { recursive: true, force: true });
   });
 
+  it('holds the machine config under /etc, and names a file written after the run began', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const file = join(outside, 'cfg');
+    writeFileSync(file, 'one');
+    const lines = [`R ${file}`, 'R /etc/passwd'];
+    const found = deps(lines);
+    expect(found.deps.map(([p]) => p)).toContain('/etc/passwd');
+    expect(found.moved).toEqual([]);
+    expect(externalDeps({ root, lines, since: Date.now() - 60_000, home, tmp }).moved).toEqual([
+      file,
+    ]);
+    rmSync(outside, { recursive: true, force: true });
+  });
+
   it('holds a probe that later appears, which would change what a tool resolves', () => {
     const outside = mkdtempSync(join(tmpdir(), 'outside-'));
     const found = deps([`R ${join(outside, 'package.json')}`]);
@@ -367,7 +388,7 @@ describe('what a check reads outside the checkout', () => {
       'R /usr/lib/x',
       `R ${root.toUpperCase()}/NODE_MODULES/X`,
     ];
-    expect(deps(lines)).toEqual({ deps: [], faults: [] });
+    expect(deps(lines)).toEqual({ deps: [], faults: [], moved: [] });
   });
 
   it('names a directory listed outside the checkout, which no signature holds', () => {
@@ -405,9 +426,12 @@ describe('a program a traced run started', () => {
     expect(spawnFault(['sh', '-c', 'node a.mjs | cat secret.txt'], named)).toMatch(/`cat`/);
   });
 
-  it('is refused when a shell runs a script or a substitution, whose commands cannot be listed', () => {
+  it('is refused when a shell runs a script, a substitution or a redirected input, which the trace cannot list', () => {
     expect(spawnFault(['sh', 'tool.sh'], none)).toMatch(/`sh script`/);
     expect(spawnFault(['bash', '-c', 'node $(which cat) x'], none)).toMatch(/substitution/);
+    expect(spawnFault(['sh', '-c', 'node child.cjs < docs/input.txt'], none)).toMatch(
+      /input redirection/,
+    );
   });
 });
 
@@ -544,6 +568,33 @@ describe('a check taken through the memo', () => {
     expect(asMemo().plan(check).kind).toBe('hit');
     writeFileSync(peek, 'two');
     expect(asMemo().plan(check).kind).toBe('miss');
+    rmSync(outside, { recursive: true, force: true });
+  });
+
+  it('does not file a verdict when a file it read outside the checkout was replaced while it ran', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'));
+    const peek = join(outside, 'user.rc');
+    writeFileSync(peek, 'passing');
+    const places = { home: '/nowhere/home', tmp: '/nowhere/tmp' };
+    const m = new Memo({
+      root,
+      args: [],
+      env: env(),
+      baseRef: 'main',
+      base: 'x',
+      declarations,
+      places,
+    });
+    const plan = m.plan(check);
+    const r = spawnSync('node', ['check.mjs'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...plan.env, PEEK: peek },
+    });
+    writeFileSync(peek, 'failing');
+    m.settle(plan, r.status, r.stdout, { code: r.status });
+    expect(m.unfiled[0].reason).toMatch(/outside the checkout changed while it ran/);
+    expect(listEntries(dir)).toEqual([]);
     rmSync(outside, { recursive: true, force: true });
   });
 

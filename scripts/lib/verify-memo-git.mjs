@@ -48,6 +48,9 @@ const TREE_REV_PARSE = new Set(['--show-toplevel', '--git-dir', '--is-shallow-re
 /** Answers about history and the base, held only where a declaration says `git: true`. */
 const STATE = new Set(['rev-parse', 'merge-base', 'show', 'log', 'diff', 'cat-file', 'rev-list']);
 const INDEX_FLAGS = new Set(['--cached', '--staged']);
+/** Options that choose revisions of their own, which no key here holds. */
+const SELECTORS =
+  /^--(all|branches|tags|remotes|glob|exclude|stdin|reflog|walk-reflogs|alternate-refs)(=|$)|^-g$/;
 
 const options = (args) => args.filter((a) => a.startsWith('-') && a !== '--');
 const operands = (args) => {
@@ -111,6 +114,8 @@ export function gitFault(argv, decl, state = {}) {
   if (!STATE.has(name)) return refuse('which the key cannot hold');
   if (args.some((a) => INDEX_FLAGS.has(a) || a.startsWith(':')))
     return refuse('which reads the index');
+  if (args.some((a) => SELECTORS.test(a)))
+    return refuse('which selects revisions the key does not hold');
   if (name === 'diff' && operands(args).length === 0)
     return refuse('which with no revision reads the index');
   const stray = operands(args)

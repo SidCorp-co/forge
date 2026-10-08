@@ -76,7 +76,14 @@ export class Memo {
       this.served.push(check.label);
       return { kind: 'hit', entry };
     }
-    return { kind: 'miss', check, decl, ...keyed, ...traceEnv(this.env) };
+    return {
+      kind: 'miss',
+      check,
+      decl,
+      ...keyed,
+      startedAt: Date.now() - 10,
+      ...traceEnv(this.env),
+    };
   }
 
   /**
@@ -89,12 +96,24 @@ export class Memo {
     const lines = readTrace(plan.dir);
     if (status !== 0 || verdict.code !== 0 || verdict.condition) return verdict;
     const { check, decl } = plan;
-    const outside = externalDeps({ root: this.root, lines, ...this.places });
+    const outside = externalDeps({
+      root: this.root,
+      lines,
+      since: plan.startedAt,
+      ...this.places,
+    });
     const faults = [
       ...audit({ root: this.root, decl, tree: this.tree, lines, git: this.git }),
       ...outside.faults,
     ];
     if (faults.length > 0) return this.refuse(check, verdict, faults);
+    if (outside.moved.length > 0) {
+      this.unfiled.push({
+        label: check.label,
+        reason: `a file it read outside the checkout changed while it ran: ${outside.moved[0]}`,
+      });
+      return verdict;
+    }
     if (!lines.some((l) => l[0] === 'R' || l[0] === 'L')) {
       this.unfiled.push({ label: check.label, reason: 'no process of it was traced' });
       return verdict;

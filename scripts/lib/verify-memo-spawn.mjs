@@ -32,7 +32,8 @@ export function programsOf(argv) {
   if (shell && rest[0] !== '-c') return [`${basename(cmd)} script`];
   const text = shell ? (rest[1] ?? '') : argv.length === 1 && /\s/.test(cmd) ? cmd : null;
   if (text === null) return [basename(cmd)];
-  if (/`|\$\(/.test(text)) return [`${text.slice(0, 40)} (a substitution)`];
+  if (/`|\$\(|</.test(text))
+    return [`${text.slice(0, 40)} (a substitution or an input redirection)`];
   return text.split(SEGMENTS).filter(Boolean).map(firstWord);
 }
 
