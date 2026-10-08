@@ -98,3 +98,22 @@ export function identityPhraseOf(v: VerdictReading): string {
 			return "no identity";
 	}
 }
+
+/**
+ * Where a verdict on an issue is judged by default (REQ-6 BC-2, BC-4), as core reads it
+ * (`GET /api/issues/:id/judged-build`). `live`: the commit production serves now, which carries the
+ * issue's work. `shipped`: the commit the release that shipped the work was verified live at, where
+ * the live build could not be read or could not be shown to carry it. `merged`: the commit the
+ * issue merged as, where no release shipped it. `sha` is null where Forge names no build.
+ */
+export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged"] as const;
+export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
+
+export interface JudgedBuild {
+	sha: string | null;
+	source: JudgedBuildSource | null;
+	/** The release whose build `sha` is, where one is: the live one, or the one that shipped it. */
+	version: string | null;
+	/** How core knows, or why it could not say more, in one sentence. */
+	basis: string;
+}

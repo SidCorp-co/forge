@@ -12,7 +12,7 @@ import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interfa
 import type { Copy } from "@/lib/i18n/product-copy";
 import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { identityPhrase } from "../identity-phrase";
-import { type CriterionRow, useCriteria, type VerdictCommit } from "../criteria";
+import { type CriterionRow, useCriteria } from "../criteria";
 import { RecordVerdict } from "./criteria-acts";
 
 function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string): string {
@@ -33,8 +33,8 @@ export function CriteriaList({
   headingAct,
 }: {
   issueId: string;
-  /** Present where the reader may record a verdict: the commit it is judged against by default. */
-  judge?: { commit: VerdictCommit | null } | undefined;
+  /** Whether the reader may record a verdict; the Judge reads the build it defaults to from core. */
+  judge?: boolean;
   headingAct?: ReactNode;
 }) {
   const q = useCriteria(issueId);
@@ -65,7 +65,7 @@ export function CriteriaList({
                   <StatusBadge family="criterion" value={criterionStandingOf(row.latest)} />
                 </span>
               </Tooltip>
-              {judge ? <RecordVerdict issueId={issueId} row={row} commit={judge.commit} /> : null}
+              {judge ? <RecordVerdict issueId={issueId} row={row} /> : null}
             </li>
           );
         })}
