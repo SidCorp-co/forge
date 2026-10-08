@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.173] - 2026-10-08
+
+Shared answers on public links draw their tables and charts
+
+### Added
+
+- **A shared answer now shows its charts and tables as drawn.** The link page draws each block the way the chat does, with a text alternative and the query and read time it came from; references stay plain text.
+
 ## [0.4.0-dev.172] - 2026-10-08
 
 Chat answers draw charts, roadmap timelines and logic diagrams
