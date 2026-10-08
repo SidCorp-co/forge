@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
-import { loadVisibleProjectIds } from '../../lib/authz.js';
+import { loadVisibleProjectIds, projectWriteRefusal } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
 import {
@@ -89,7 +89,7 @@ export async function assertPrincipalIsWriter(
     throw new Error('NOT_FOUND: project not found or not accessible');
   }
   if (!role.isWriter) {
-    throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
+    throw new Error(`FORBIDDEN: ${projectWriteRefusal(role.role)}`);
   }
 }
 

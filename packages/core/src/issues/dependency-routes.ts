@@ -20,7 +20,7 @@ import {
   issueDependencyKinds,
   issues,
 } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess, projectWriteRefusal } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -125,7 +125,7 @@ issueDependencyRoutes.post(
     }
 
     const access = await loadProjectAccess(a.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertProjectRole(access, 'member', projectWriteRefusal(access.role));
 
     const input: SetIssueDependencyInput = {
       projectId: a.projectId,
@@ -210,7 +210,7 @@ issueDependencyRoutes.delete(
     // who pairs an arbitrary `:edgeId` with their own `:id` learns whether the
     // edge exists (404 vs 400 vs 403 leaks state).
     const access = await loadProjectAccess(edge.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    assertProjectRole(access, 'member', projectWriteRefusal(access.role));
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
       throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');

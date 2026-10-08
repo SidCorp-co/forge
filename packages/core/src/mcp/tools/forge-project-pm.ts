@@ -9,9 +9,9 @@
  * `./forge-pm-*.ts` file. This dispatcher owns input validation,
  * required-field checks per action, and routing. Authorization is
  * re-applied inside each handler (`assertPrincipalIsMember` for the
- * read-only / cycle-checked actions, `assertPmActor` for `dispatch` and
- * `write_decision`) — the dispatcher does NOT collapse auth into a single
- * pre-switch call.
+ * read-only actions, `assertPrincipalIsWriter` for `set_dependency`,
+ * `assertPmActor` for `dispatch` and `write_decision`) — the dispatcher does
+ * NOT collapse auth into a single pre-switch call.
  */
 
 import { z } from 'zod';
@@ -83,7 +83,7 @@ export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) =
     'snapshot/graph/runner_load: read-only; require projectId + project membership. ' +
     'graph also accepts optional rootIssueId (BFS) and depth (default 2, max 5); without rootIssueId returns the full graph capped at 200 nodes with truncated:true + remainingNodes:N. ' +
     'dispatch: enqueue a coder-skill job for an issue (projectId, issueId, jobType, reason; optional payload, modelTier); requires PM-actor capability, so not reachable over MCP. ' +
-    `set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil, holdsUntil). Only \`blocks\` gates dispatch; \`holdsUntil: "shipped"\` (blocks only) holds the dependent until the blocker is closed instead of until it is developed, and an edge that omits it keeps today's reading. ${WORK_EVIDENCE_WAIVER_NOTE} The result's \`effects\` names what the edge you just wrote actually does. Idempotent — a repeat call returns created:false and applies whichever of \`validUntil\`/\`reason\` you passed (\`updated:true\` when it changed something). Expire a stale edge by setting \`validUntil\` in the past; that is the only retraction this tool offers (removing the row is the REST DELETE, not an MCP action). When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ` +
+    `set_dependency: record a dependency edge (projectId, fromIssueId, toIssueId, kind; optional reason, validUntil, holdsUntil). The caller needs the project member role or above, as at REST and at forge_issues data.relations: a viewer is refused naming the role it holds. Only \`blocks\` gates dispatch; \`holdsUntil: "shipped"\` (blocks only) holds the dependent until the blocker is closed instead of until it is developed, and an edge that omits it keeps today's reading. ${WORK_EVIDENCE_WAIVER_NOTE} The result's \`effects\` names what the edge you just wrote actually does. Idempotent — a repeat call returns created:false and applies whichever of \`validUntil\`/\`reason\` you passed (\`updated:true\` when it changed something). Expire a stale edge by setting \`validUntil\` in the past; that is the only retraction this tool offers (removing the row is the REST DELETE, not an MCP action). When creating a NEW issue that needs a blocking edge, prefer forge_issues.create { data.relations } (atomic, edges committed before issueCreated fires) or create the issue as status:draft first — a blocks edge set after an open create can miss the first dispatch tick. ` +
     'write_decision: durable PM decision turn (projectId, cause, summary; optional sessionId, eventRef, actions, confidence, modelTier, tookMs, escalate); requires PM-actor capability. To escalate alongside the decision, pass an `escalate` object — top-level `summary` is the decision summary, `escalate.summary` becomes the notification title.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {

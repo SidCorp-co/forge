@@ -13,7 +13,7 @@ against live code or git before you rely on it.
 | You need | Call |
 |---|---|
 | Issues, status, tasks | `forge_issues`, `forge_comments` |
-| Ordering between issues | `forge_issues.create`/`.update` with `data.relations`, or `forge_project_pm action=set_dependency` (`from` = the blocker; the same token, no paired device) |
+| Ordering between issues | `forge_issues.create`/`.update` with `data.relations`, or `forge_project_pm action=set_dependency` (`from` = the blocker; the same token, no paired device; every door that writes an edge needs the project member role or above, and a viewer is refused naming the role it holds) |
 | Repo path, branches, preview URLs, test credentials | `forge_projects.get` |
 | Pipeline gates | `forge_config` |
 | The project's own prose | `forge_knowledge` |
