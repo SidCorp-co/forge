@@ -85,17 +85,19 @@ export function forgeIssuesDescription(refClause: string): string {
     'whose issue holds no branch, handoff or merged commit, i.e. work landed on the base branch ' +
     "itself - the data.commit it checked against the project's repository: resolved there, " +
     'declaring this issue in its subject, and contained in the base or live branch, else refused ' +
-    'COMMIT_NOT_IN_REPOSITORY, COMMIT_NOT_THIS_ISSUE, COMMIT_NOT_LANDED or COMMIT_UNVERIFIED - ' +
-    'except that where the project declares no way to read its repository (no GitHub binding, no ' +
-    'deploy key beside a repository URL) the mark is accepted as asserted and the commit is kept ' +
-    'in mergedClaimedCommit as a claim Forge did NOT verify, which counts as the work evidence; ' +
+    'COMMIT_NOT_IN_REPOSITORY, COMMIT_NOT_THIS_ISSUE or COMMIT_NOT_LANDED - ' +
+    'except that wherever Forge cannot verify the commit (the project declares no way to read its ' +
+    'repository, the reader it has fails, or no base branch is named) the mark is accepted as ' +
+    'asserted and the commit is kept in mergedClaimedCommit as a claim Forge did NOT verify, which ' +
+    'counts as the work evidence, the answer naming the cause and the setting that fixes it; ' +
     'mark again once the repository can be read and Forge checks the claim, upgrading it to ' +
     'observed or refusing it by name. ' +
     'Anywhere else your commit never reaches the column: it ' +
     'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
     'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read, ' +
-    'in which case mark naming no commit. The answer, and every row this tool returns, ' +
+    'in which case mark naming no commit. A person marking with data.commit is held to this: ' +
+    'COMMIT_UNVERIFIED stands for a person. The answer, and every row this tool returns, ' +
     'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +

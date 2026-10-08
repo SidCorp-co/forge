@@ -30,12 +30,14 @@ export type CommitLanding =
       detail: string;
       details: Record<string, unknown>;
       /**
-       * Present only where the project declares no way to read its repository at all (no GitHub
-       * binding, no deploy key beside a repository URL) — never where a reader is configured and
-       * fails, and never where the repository was read and says no. `why` is that cause and the
-       * setting that clears it, as the mark's own words carry it.
+       * Present wherever Forge could not tell whether the commit is this issue's landing: the
+       * project declares no way to read its repository (`noReader`, ISS-1409), a reader is
+       * configured and fails, or the project names no base branch to look on. Absent where the
+       * repository was READ and says no, which stays a refusal by name. `why` is the cause in the
+       * host's own words (for `noReader`, with the setting that clears it); `clears` finishes
+       * "mark again ..." with what would let Forge verify it.
        */
-      unreadable?: { why: string };
+      unreadable?: { why: string; clears: string; noReader: boolean };
     };
 
 export type CommitLandingDeps = Partial<RepositoryAccessDeps>;
@@ -44,35 +46,26 @@ function refuse(
   code: CommitLandingRefusalCode,
   detail: string,
   details: Record<string, unknown>,
-  unreadable?: { why: string },
+  unreadable?: { why: string; clears: string; noReader: boolean },
 ): CommitLanding {
   return unreadable
     ? { ok: false, code, detail, details, unreadable }
     : { ok: false, code, detail, details };
 }
 
-/**
- * An agent's mark on an issue holding no branch or handoff has the commit as its one route left, so
- * the refusal names what reopens it, never the branch the work was done on, which on the
- * base-branch lane is the base branch `collectWorkEvidence` discards.
- */
+/** `claimable: false` leaves it a refusal: an issue that was not found has nothing to record a claim on. */
 function unreadable(
   commit: string,
   why: string,
   clears: string,
-  declaredNone = false,
+  how: { noReader?: boolean; claimable?: boolean } = {},
 ): CommitLanding {
+  const { noReader = false, claimable = true } = how;
   return refuse(
     'COMMIT_UNVERIFIED',
-    `commit ${commit} could not be checked against this project's repository, so it is not ` +
-      `taken as evidence unchecked: ${why}. This issue records no branch or handoff, so the ` +
-      `commit is the only evidence an agent's mark can carry here, and a branch recorded under ` +
-      `the base branch's name is not evidence. Two routes clear it: mark again ${clears}; or ` +
-      'have a person mark it merged naming no commit and move it through `developed` and ' +
-      "`testing`, which hold an agent to this evidence and not a person; a person's mark naming " +
-      'a commit is checked against the same repository',
+    `commit ${commit} could not be checked against this project's repository: ${why}. Mark again ${clears}`,
     { commit },
-    declaredNone ? { why } : undefined,
+    claimable ? { why, clears, noReader } : undefined,
   );
 }
 
@@ -98,7 +91,11 @@ export async function readCommitLanding(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
-  if (!row) return unreadable(commit, 'the issue was not found', readableThrough('binding'));
+  if (!row) {
+    return unreadable(commit, 'the issue was not found', readableThrough('binding'), {
+      claimable: false,
+    });
+  }
   const { projectId, issSeq } = row;
   const baseBranch = row.baseBranch?.trim() || null;
   if (!baseBranch) {
@@ -114,7 +111,9 @@ export async function readCommitLanding(
     projectId,
     async (access) => {
       if (access.kind === 'refused') {
-        return unreadable(commit, saying(access), readableThrough(access.route), access.unbound);
+        return unreadable(commit, saying(access), readableThrough(access.route), {
+          noReader: access.unbound,
+        });
       }
       return landingIn(access.reader, { projectId, issSeq, commit, baseBranch, branches });
     },

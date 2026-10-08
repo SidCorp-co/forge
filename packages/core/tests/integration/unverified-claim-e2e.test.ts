@@ -1,7 +1,7 @@
 /**
- * ISS-1409 — where core has no way to read a project's repository, an agent's commit mark is
- * accepted as an `asserted` mark that carries the commit as an unverified claim, and where it
- * can read, or has a reader that fails, every refusal stands. Real Postgres, the repository
+ * ISS-1409 — where Forge cannot verify an agent's commit (no way to read the repository, a reader
+ * that fails, no base branch) the mark is accepted as an `asserted` mark carrying the commit as an
+ * unverified claim, and where it READ the repository and the repository says no, every refusal stands. Real Postgres, the repository
  * stood in for by `tests/helpers/commit-landing-fixture.ts`.
  */
 
@@ -85,14 +85,18 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     expect(await claimOf(issue.id)).toBe(OWN);
   });
 
-  it('stays refused where the project names no base branch (criterion 6)', async () => {
+  it('records the claim and names the base branch to set, where the project names none (criterion 6)', async () => {
     noReader();
     await setBaseBranch(null);
     const issue = await seed({ sessionContext: {} });
-    const refused = await refusal(() => mark(issue, OWN));
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
-    expect(refused.message).toContain('the project names no base branch');
-    expect(await row(issue.id)).toMatchObject({ merged_at: null });
+    const res = await mark(issue, OWN);
+    expect(res.mark).toBe('asserted');
+    expect(res.markDetail).toContain('the project names no base branch to look for it on');
+    expect(res.markDetail).toContain('mark again once the project names its base branch');
+    expect(await claimOf(issue.id)).toBe(OWN);
+    expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+    await advance(issue.id, 'in_progress', 'developed');
+    expect((await row(issue.id)).status).toBe('developed');
   });
 
   it('still refuses NO_WORK_EVIDENCE for an agent that names no commit', async () => {
@@ -118,15 +122,29 @@ describe('ISS-1409 — the claim beside a mark that already stands (real Postgre
     expect((await row(issue.id)).status).toBe('developed');
   });
 
-  it('keeps the first claim where a repeat names another commit, and says it did not stamp it', async () => {
+  it('keeps the first claim where a repeat names another commit, and names the commit it did not keep', async () => {
     noReader();
     const issue = await seed();
     await mark(issue, OWN);
     const again = await mark(issue, FOREIGN);
     expect(again.action).toBe('already_merged');
     expect(await claimOf(issue.id)).toBe(OWN);
-    expect(again.markDetail).toContain(OWN);
-    expect(again.markDetail).not.toContain(FOREIGN);
+    const audit = (await comments(issue.id)).at(-1) as string;
+    for (const text of [again.markDetail, audit]) {
+      expect(text).toContain(OWN);
+      expect(text).toContain(`Commit ${FOREIGN}, which this call named, was NOT recorded`);
+      expect(text).toContain('first claim');
+    }
+  });
+
+  it('says nothing of a commit the repeat names where it is the standing claim, whole or abbreviated', async () => {
+    noReader();
+    const issue = await seed();
+    await mark(issue, OWN);
+    for (const named of [OWN, OWN.slice(0, 9), OWN.toUpperCase()]) {
+      const again = await mark(issue, named);
+      expect(again.markDetail).not.toContain('was NOT recorded');
+    }
   });
 
   it('records the merged pull request Forge holds, and no claim, where one exists', async () => {
@@ -141,7 +159,7 @@ describe('ISS-1409 — the claim beside a mark that already stands (real Postgre
   });
 });
 
-describe('ISS-1409 — a reader that exists keeps every refusal (real Postgres)', () => {
+describe("ISS-1409 — a reader that was read keeps its refusals, and a person's mark keeps its own (real Postgres)", () => {
   it.each([
     ['COMMIT_NOT_IN_REPOSITORY', FABRICATED],
     ['COMMIT_NOT_THIS_ISSUE', FOREIGN],
@@ -154,15 +172,25 @@ describe('ISS-1409 — a reader that exists keeps every refusal (real Postgres)'
     expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
   });
 
-  it.each(['read', 'mint'] as const)(
-    'refuses COMMIT_UNVERIFIED where the configured reader fails (%s), writing nothing (criterion 6)',
-    async (down) => {
+  it.each([
+    ['read', 'HTTP 502'],
+    ['mint', 'minting an installation token: HTTP 404'],
+  ] as const)(
+    'records an unverified claim naming the cause where the configured reader fails (%s), and advances the issue (criterion 6)',
+    async (down, says) => {
       repo.down = down;
       const issue = await seed();
-      const refused = await refusal(() => mark(issue, OWN));
-      expect(refused.code).toBe('COMMIT_UNVERIFIED');
-      expect(refused.message).toContain('not taken as evidence unchecked');
-      expect(await row(issue.id)).toMatchObject({ merged_at: null });
+      const res = await mark(issue, OWN);
+      expect(res.mark).toBe('asserted');
+      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toContain(says);
+      expect(res.markDetail).toContain('mark again once the tracker can read');
+      expect((await comments(issue.id)).at(-1)).toContain(says);
+      expect(await claimOf(issue.id)).toBe(OWN);
+      expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+      await advance(issue.id, 'in_progress', 'developed');
+      await advance(issue.id, 'developed', 'testing');
+      expect((await row(issue.id)).status).toBe('testing');
     },
   );
 
@@ -225,13 +253,16 @@ describe('ISS-1409 — the claim is verified by a repeat mark once the repositor
     expect(await claimOf(issue.id)).toBe(OWN);
   });
 
-  it('refuses COMMIT_UNVERIFIED on a repeat made against a configured reader that fails, keeping the claim (criterion 8)', async () => {
+  it('answers already_merged and names the cause on a repeat made against a configured reader that still fails, keeping the claim (criterion 8)', async () => {
     noReader();
     const issue = await seed();
     await mark(issue, OWN);
     repo.down = 'read';
-    const refused = await refusal(() => mark(issue, undefined));
-    expect(refused.code).toBe('COMMIT_UNVERIFIED');
+    const again = await mark(issue, undefined);
+    expect(again.action).toBe('already_merged');
+    expect(again.mark).toBe('asserted');
+    expect(again.markDetail).toContain('NOT verified');
+    expect(again.markDetail).toContain('HTTP 502');
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
   });

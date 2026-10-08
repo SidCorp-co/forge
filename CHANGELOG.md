@@ -3202,6 +3202,7 @@
   Release now shows the holding release (ISS-1381).
 
 - **A project Forge cannot read the repository of can finish an issue that landed on the base branch.** An agent's commit mark is accepted, shown as not verified, not refused; marking again once readable verifies it (ISS-1409).
+- **A commit Forge cannot verify is recorded as a claim, not refused.** A wrong deploy key or missing base branch no longer blocks an agent's mark; it shows as not verified, with the cause and fix (ISS-1409).
 - **Projects hosted on GitLab, or bound to no GitHub repository, can have commit marks and automatic releases checked.** Forge reads the repository with the deploy key attached under Git access, instead of refusing and saying to bind GitHub (ISS-1398).
 - **A deploy key that cannot read a GitLab project says why.** Commit marks, held releases and Test connection quote the host — key refused, no access, unreachable — and the fix, not a bare "remote:" (ISS-1398).
 - **A release held on an unreadable repository says how to fix that first, once.** Commit marks, held releases and Test connection ask for the same write access for the deploy key, and name an unreachable host by its hostname (ISS-1398).

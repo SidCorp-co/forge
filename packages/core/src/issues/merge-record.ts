@@ -86,7 +86,13 @@ export function describeMergeMark(args: {
   leftOut?: { commit: string; why: string } | null;
   /** The commit the mark holds as a claim because the project gives Forge no way to read its
    *  repository (ISS-1409), and the cause with the setting that clears it. */
-  unverified?: { commit: string; why: string } | null;
+  unverified?: {
+    commit: string;
+    why: string;
+    clears: string;
+    noReader: boolean;
+    notKept?: string | null;
+  } | null;
 }): string {
   if (args.kind === 'unmarked') {
     return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
@@ -111,14 +117,23 @@ export function describeMergeMark(args: {
     return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}${left}`;
   }
   if (args.unverified) {
+    const notKept = args.unverified.notKept
+      ? `. Commit ${args.unverified.notKept}, which this call named, was NOT recorded: this issue's first claim, ${args.unverified.commit}, stands, and \`unmark\` then \`mark\` is the only correction`
+      : '';
+    const { noReader, why, clears } = args.unverified;
+    const because = noReader
+      ? "because Forge has no way to read this project's repository"
+      : `because Forge could not check it against this project's repository: ${why}`;
+    const toVerify = noReader
+      ? `To have Forge verify it: ${why}. Then mark again`
+      : `To have Forge verify it, mark again ${clears}`;
     return (
       'this mark is a CLAIM Forge did not observe, not a merge it witnessed: ' +
       `commit ${args.unverified.commit} is recorded as this call's claim in \`merged_claimed_commit\` ` +
-      "and is NOT verified, because Forge has no way to read this project's repository, so it did not " +
+      `and is NOT verified, ${because}; it did not ` +
       'check that the commit exists, declares this issue or is on the base branch, and ' +
-      '`merged_commit_sha` stays empty. To have Forge verify it: ' +
-      `${args.unverified.why}. Then mark again, naming the commit or none, and Forge checks the claim ` +
-      `and upgrades this mark to observed, or refuses it by name${left}`
+      `\`merged_commit_sha\` stays empty. ${toVerify}, naming the commit or none, and Forge checks ` +
+      `the claim and upgrades this mark to observed, or refuses it by name${notKept}${left}`
     );
   }
   const claim = args.claimedCommit
