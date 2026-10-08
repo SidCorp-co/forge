@@ -3182,6 +3182,11 @@
 - **A chat message sent while a runner update saves chats gets its own answer.** It no longer
   receives the save's "checkpoint written" with its real answer dropped; a message that cannot
   be written is refused by name (ISS-1223).
+- **A runner release names the merge that brought its change in.** A runner fix can now be
+  verified as released, and runner rows read a release as current when it contains the
+  newest runner change (ISS-1223).
+- **The runner README says what bounds a handover's closed admission.** It is each closing window,
+  at most 10 seconds, and one attempt can open more than one (ISS-1223).
 - **`forge-runner top` reads master panes under any locale.** A detail opened with Enter stays on its first page for a whole refresh, and where no model has a rate the cost reads as unread, never `$0.00` (ISS-1341, ISS-1375).
 - **A release run's page reads plainly.** Times are in your clock, a release aborted before it
   started says who aborted it and why, the roster is the run's own, and the page is one flat

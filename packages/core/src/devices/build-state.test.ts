@@ -7,11 +7,17 @@ vi.mock('../install/routes.js', () => ({
   getPublishedRunnerBuild: () => publishedRunnerBuild(),
 }));
 const runnerHead = vi.fn((): string | null => null);
+const releaseContains = vi.fn(
+  async (_release: string, _head: string): Promise<boolean | null> => null,
+);
 vi.mock('../install/main-runner-head.js', () => ({
   mainRunnerHead: () => runnerHead(),
+  releaseContainsRunnerHead: (release: string, head: string) => releaseContains(release, head),
 }));
 
-const { annotateDeviceBuilds, compareRunnerBuild } = await import('./build-state.js');
+const { annotateDeviceBuilds, compareRunnerBuild, releaseContainsHeadFor } = await import(
+  './build-state.js'
+);
 
 const HEAD = 'fbe6468ddf0a1b2c3d4e5f60718293a4b5c6d7e8';
 const OLDER = 'bd2e36d5ea1b2c3d4e5f60718293a4b5c6d7e8f9';
@@ -22,7 +28,7 @@ describe('compareRunnerBuild — a box running what landed', () => {
   it('is current when it matches the published release and that release is what landed', () => {
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: HEAD },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r).toMatchObject({ state: 'current', releaseState: 'current', outdated: false });
     expect(r.detail).toBe('runner 0.17.1 (fbe6468ddf)');
@@ -33,7 +39,7 @@ describe('compareRunnerBuild — the box against the published release', () => {
   it('is behind when its version is below the published release', () => {
     const r = compareRunnerBuild(
       { version: '0.17.0', commit: OLDER },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('behind');
     expect(r.outdated).toBe(true);
@@ -45,7 +51,7 @@ describe('compareRunnerBuild — the box against the published release', () => {
     // comparison cannot see, and the one this box was in (ISS-1165).
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: OLDER },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('behind');
     expect(r.detail).toContain('is not running a published build');
@@ -54,7 +60,7 @@ describe('compareRunnerBuild — the box against the published release', () => {
   it('reads a version lower in its patch and not only in its minor', () => {
     const r = compareRunnerBuild(
       { version: '0.17.9', commit: HEAD },
-      { published: published('0.17.10'), mainRunnerHead: HEAD },
+      { published: published('0.17.10'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('behind');
   });
@@ -66,7 +72,7 @@ describe('compareRunnerBuild — the published release against what landed', () 
   it('marks a box outdated when no release carries the runner on the branch', () => {
     const r = compareRunnerBuild(
       { version: '0.17.0', commit: OLDER },
-      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD },
+      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD, releaseContainsHead: false },
     );
     expect(r.state).toBe('current');
     expect(r.releaseState).toBe('behind');
@@ -77,7 +83,7 @@ describe('compareRunnerBuild — the published release against what landed', () 
   it('names the box first and the release second when both are readable', () => {
     const r = compareRunnerBuild(
       { version: '0.17.0', commit: OLDER },
-      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD },
+      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD, releaseContainsHead: false },
     );
     expect(r.detail.startsWith('runner 0.17.0 (bd2e36d5ea)')).toBe(true);
   });
@@ -85,9 +91,74 @@ describe('compareRunnerBuild — the published release against what landed', () 
   it('reports the box behind rather than the release when both are', () => {
     const r = compareRunnerBuild(
       { version: '0.16.0', commit: OLDER },
-      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD },
+      { published: published('0.17.0', OLDER), mainRunnerHead: HEAD, releaseContainsHead: false },
     );
     expect(r.detail).toBe('runner 0.16.0 is behind the published 0.17.0');
+  });
+});
+
+describe('compareRunnerBuild — a release stamped at the merge that brought the runner change in', () => {
+  // The release carries the merge commit and core's path-filtered read names the pull
+  // request head, so the two are never equal; what is asked is whether the release
+  // contains the head.
+  const MERGE = '54a2e89e229d68d34086bc77ae8705acc9842c44';
+
+  it('is current when the release contains the newest runner commit', () => {
+    const r = compareRunnerBuild(
+      { version: '0.17.1', commit: MERGE },
+      { published: published('0.17.1', MERGE), mainRunnerHead: HEAD, releaseContainsHead: true },
+    );
+    expect(r).toMatchObject({ state: 'current', releaseState: 'current', outdated: false });
+  });
+
+  it('is behind when the release does not contain the newest runner commit', () => {
+    const r = compareRunnerBuild(
+      { version: '0.17.1', commit: MERGE },
+      { published: published('0.17.1', MERGE), mainRunnerHead: HEAD, releaseContainsHead: false },
+    );
+    expect(r).toMatchObject({ releaseState: 'behind', outdated: true });
+    expect(r.detail).toContain('no release carries what landed');
+  });
+
+  it('is unknown, and not behind, where GitHub could not say whether it does', () => {
+    const r = compareRunnerBuild(
+      { version: '0.17.1', commit: MERGE },
+      { published: published('0.17.1', MERGE), mainRunnerHead: HEAD, releaseContainsHead: null },
+    );
+    expect(r.releaseState).toBe('unknown');
+    expect(r.outdated).toBe(false);
+  });
+
+  it('does not let a containment answer move a release that is the runner head itself', () => {
+    const r = compareRunnerBuild(
+      { version: '0.17.1', commit: HEAD },
+      { published: published('0.17.1', HEAD), mainRunnerHead: HEAD, releaseContainsHead: false },
+    );
+    expect(r.releaseState).toBe('current');
+  });
+});
+
+describe('releaseContainsHeadFor — when GitHub is asked', () => {
+  beforeEach(() => {
+    releaseContains.mockReset();
+  });
+
+  it('asks nothing where the release is the runner head, which is its own answer', async () => {
+    await expect(releaseContainsHeadFor(published('0.17.1', HEAD), HEAD)).resolves.toBeNull();
+    expect(releaseContains).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing where there is no release, no commit on it or no head', async () => {
+    await releaseContainsHeadFor(null, HEAD);
+    await releaseContainsHeadFor(published('0.17.1', null), HEAD);
+    await releaseContainsHeadFor(published('0.17.1', OLDER), null);
+    expect(releaseContains).not.toHaveBeenCalled();
+  });
+
+  it('asks about the release commit and the head where they differ, and returns the answer', async () => {
+    releaseContains.mockResolvedValue(true);
+    await expect(releaseContainsHeadFor(published('0.17.1', OLDER), HEAD)).resolves.toBe(true);
+    expect(releaseContains).toHaveBeenCalledWith(OLDER, HEAD);
   });
 });
 
@@ -95,7 +166,7 @@ describe('compareRunnerBuild — what it will not call current', () => {
   it('is unknown where the box reported no commit', () => {
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: null },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('unknown');
     expect(r.detail).toContain('did not say which build');
@@ -104,7 +175,7 @@ describe('compareRunnerBuild — what it will not call current', () => {
   it('is unknown where the box has reported no version at all', () => {
     const r = compareRunnerBuild(
       { version: null, commit: null },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('unknown');
     expect(r.detail).toContain('has not reported a runner version');
@@ -113,7 +184,7 @@ describe('compareRunnerBuild — what it will not call current', () => {
   it('is unknown where nothing is published to compare against', () => {
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: HEAD },
-      { published: null, mainRunnerHead: HEAD },
+      { published: null, mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('unknown');
     expect(r.releaseState).toBe('unknown');
@@ -122,7 +193,7 @@ describe('compareRunnerBuild — what it will not call current', () => {
   it('is unknown, not behind, where the box is ahead of what is published', () => {
     const r = compareRunnerBuild(
       { version: '0.18.0', commit: HEAD },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('unknown');
     expect(r.detail).toContain('ahead of the published');
@@ -131,7 +202,7 @@ describe('compareRunnerBuild — what it will not call current', () => {
   it('is unknown where the published release records no commit to compare against', () => {
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: HEAD },
-      { published: published('0.17.1', null), mainRunnerHead: HEAD },
+      { published: published('0.17.1', null), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('unknown');
     expect(r.releaseState).toBe('unknown');
@@ -144,7 +215,7 @@ describe("compareRunnerBuild — core's own blind spot is not the box's fault", 
   it('leaves a box that matches the published release current when the branch cannot be read', () => {
     const r = compareRunnerBuild(
       { version: '0.17.1', commit: HEAD },
-      { published: published('0.17.1'), mainRunnerHead: null },
+      { published: published('0.17.1'), mainRunnerHead: null, releaseContainsHead: null },
     );
     expect(r.state).toBe('current');
     expect(r.releaseState).toBe('unknown');
@@ -154,7 +225,7 @@ describe("compareRunnerBuild — core's own blind spot is not the box's fault", 
   it('does not let an unreadable branch hide a version that is behind', () => {
     const r = compareRunnerBuild(
       { version: '0.16.0', commit: OLDER },
-      { published: published('0.17.1'), mainRunnerHead: null },
+      { published: published('0.17.1'), mainRunnerHead: null, releaseContainsHead: null },
     );
     expect(r.state).toBe('behind');
     expect(r.outdated).toBe(true);
@@ -163,7 +234,7 @@ describe("compareRunnerBuild — core's own blind spot is not the box's fault", 
   it('does not let a missing box commit hide a version that is behind', () => {
     const r = compareRunnerBuild(
       { version: '0.16.0', commit: null },
-      { published: published('0.17.1'), mainRunnerHead: HEAD },
+      { published: published('0.17.1'), mainRunnerHead: HEAD, releaseContainsHead: null },
     );
     expect(r.state).toBe('behind');
   });
@@ -173,15 +244,18 @@ describe('annotateDeviceBuilds — what a device row carries', () => {
   beforeEach(() => {
     publishedRunnerBuild.mockReset();
     runnerHead.mockReset();
+    releaseContains.mockReset();
   });
 
   const annotate = async (
     rows: Array<{ agentVersion: string | null; agentCommit: string | null }>,
     release: { version: string; commit: string | null } | null,
     head: string | null,
+    contains: boolean | null = false,
   ) => {
     publishedRunnerBuild.mockResolvedValue(release);
     runnerHead.mockReturnValue(head);
+    releaseContains.mockResolvedValue(contains);
     return annotateDeviceBuilds(rows);
   };
 
@@ -205,6 +279,18 @@ describe('annotateDeviceBuilds — what a device row carries', () => {
     expect(row?.runnerReleaseState).toBe('behind');
     expect(row?.agentOutdated).toBe(true);
     expect(row?.mainRunnerHead).toBe(HEAD);
+  });
+
+  it('marks a box on a release stamped at the merge as current where the release contains the head', async () => {
+    const [row] = await annotate(
+      [{ agentVersion: '0.17.1', agentCommit: OLDER }],
+      { version: '0.17.1', commit: OLDER },
+      HEAD,
+      true,
+    );
+    expect(releaseContains).toHaveBeenCalledWith(OLDER, HEAD);
+    expect(row?.runnerReleaseState).toBe('current');
+    expect(row?.agentOutdated).toBe(false);
   });
 
   it('marks a box carrying what landed as current and not outdated', async () => {

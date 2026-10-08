@@ -44,14 +44,23 @@ jobs:
           # tags have to be here: a shallow checkout would compute the manifest's
           # own version every time and collide on the first push.
           fetch-depth: 0
-      # The identity a release carries is the newest commit that TOUCHED the runner,
-      # not the head of the push. A push can carry a runner commit followed by an
-      # unrelated one; stamping the push head would leave the binary claiming a
-      # commit that core's own path-filtered read of the branch never returns, and
-      # every freshly updated box would read as behind for ever.
+      # The identity a release carries is the commit on `main` that brought the newest
+      # runner change in: the merge for a merged pull request, the commit itself for a
+      # push made straight to `main`. Not the path-filtered log's newest commit, which
+      # for a merged pull request names its head and never the merge, so no build contained
+      # the merge that landed it and a verification `--contains <merge>` was refused
+      # for every runner issue (ISS-1223). Not the head of the push either: a push can
+      # carry a runner change followed by an unrelated commit, and stamping that head
+      # would release a commit that is not where the runner change came in. The assignment is
+      # a line of its own so a refusal from the script fails this step; the script's
+      # output substituted inside the echo that writes the output would have become an
+      # empty commit and a green step.
       - name: The runner this release is cut from
         id: head
-        run: echo "sha=$(git log -1 --format=%H -- packages/runner)" >> "$GITHUB_OUTPUT"
+        run: |
+          sha="$(node scripts/runner-release-commit.mjs)"
+          [ -n "$sha" ] || { echo "::error::scripts/runner-release-commit.mjs printed no commit" >&2; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
       - name: The version this release carries
         id: next
         run: node scripts/next-runner-version.mjs >> "$GITHUB_OUTPUT"

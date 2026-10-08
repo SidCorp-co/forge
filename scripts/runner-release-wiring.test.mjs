@@ -49,11 +49,25 @@ describe('runner-autorelease — how the release is reached', () => {
     expect(AUTO).toMatch(/sha: \$\{\{ needs\.tag\.outputs\.sha \}\}/);
   });
 
-  // The identity has to be the commit that TOUCHED the runner, because that is what
-  // core's own path-filtered read of the branch returns. Stamping the head of the
-  // push would leave a freshly updated box reading as behind for ever.
-  it('takes its identity from the newest commit under the runner package', () => {
-    expect(AUTO).toContain('git log -1 --format=%H -- packages/runner');
+  // The identity is the commit that brought the newest runner change in: the merge, so a
+  // build contains it and a verification's `--contains <merge>` can be answered.
+  it('takes its identity from the script that names the commit that brought the runner change in', () => {
+    expect(AUTO).toContain('node scripts/runner-release-commit.mjs');
+  });
+
+  it('no longer takes the pull request head, which is what the path-filtered log names', () => {
+    expect(AUTO).not.toMatch(/git log -1[^\n]*packages\/runner/);
+  });
+
+  // `echo "sha=$(cmd)"` writes `sha=` and succeeds when `cmd` fails, and the release
+  // would then tag and build an empty commit.
+  it('assigns the commit on its own, so a failed choice fails the step', () => {
+    expect(AUTO).toMatch(/\n\s+sha="\$\(node scripts\/runner-release-commit\.mjs\)"\n/);
+    expect(AUTO).not.toMatch(/echo "sha=\$\(/);
+  });
+
+  it('refuses an empty commit by name before it is written out', () => {
+    expect(AUTO).toMatch(/\[ -n "\$sha" \]/);
   });
 
   it('never hands the release the head of the push instead', () => {
