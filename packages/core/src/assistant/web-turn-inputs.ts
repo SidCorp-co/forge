@@ -32,6 +32,7 @@ import {
   webAgentConversationPersona,
   webConversationPersona,
 } from './door-persona.js';
+import { turnPageContext } from './page-item.js';
 import type { WindowTurnInputs } from './route-window.js';
 import { buildBaFirstRequirementsToolset } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
@@ -42,7 +43,6 @@ import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
 import { fenceToolsetToOrigin, handoffVenueRefusal, turnOriginRefused } from './turn-origin.js';
 import type { TurnHookContext, TurnInputs, TurnReply } from './turn-request.js';
-import { uiSnapshotPageContext } from './ui-snapshot.js';
 
 interface WebTurnArgs {
   project: { id: string; slug: string; name: string };
@@ -184,6 +184,11 @@ async function divertToAgent(
     askedByLabel: args.askedBy,
     asker: authority,
     conversationContext: await args.window.conversationContext(),
+    pageContext: await turnPageContext({
+      conversationId: args.window.conversationId,
+      projectId: args.project.id,
+      userId: authority.userId,
+    }),
     ...(args.window.images.length ? { images: args.window.images } : {}),
     persona: webAgentConversationPersona(args.project, args.askedBy),
     door: 'web-agent-completion',
@@ -288,7 +293,11 @@ async function prepareWebTurn(
     persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
     resolveImage: makeConversationImageResolver(conversationId),
     resolveDocument,
-    pageContext: uiSnapshotPageContext(conversationId),
+    pageContext: await turnPageContext({
+      conversationId,
+      projectId: args.project.id,
+      userId: authority.userId,
+    }),
     tools: mergeToolsets(
       buildProjectToolset(ctx),
       buildUiActionToolset(),

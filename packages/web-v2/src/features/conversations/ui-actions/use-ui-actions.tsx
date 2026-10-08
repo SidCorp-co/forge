@@ -58,7 +58,7 @@ function filterParts(f: NonNullable<UiSnapshot["filter"]>, t: Copy, language: st
 
 /** The one line under the composer: what page the assistant is looking at, in the reader's words. */
 export function seesLabel(s: UiSnapshot, t: Copy, language: string): string {
-  const parts: string[] = [s.route === "issue" && s.issueKey ? s.issueKey : s.route === "other" ? s.path : routeWord(s.route, t)];
+  const parts: string[] = [s.item ? s.item.key : s.route === "other" ? s.path : routeWord(s.route, t)];
   if (s.filter) parts.push(...filterParts(s.filter, t, language));
   if (s.selection && s.selection.length > 0) parts.push(t("conversations.sees.selected", { n: s.selection.length }));
   if (s.board) parts.push(t("conversations.sees.boardOf", { shapes: shapesText(s.board.shapes.length, t) }));
@@ -74,7 +74,7 @@ export function seesDetail(s: UiSnapshot, at: { project: string | null; scope: "
     t("conversations.sees.project", { project: at.project ?? none }),
     t("conversations.sees.route", { route: routeWord(s.route, t), path: s.path }),
   ];
-  if (s.issueKey) lines.push(t("conversations.sees.issue", { key: s.issueKey }));
+  if (s.item) lines.push(t("conversations.sees.item", { key: s.item.key }));
   if (s.filter) {
     const parts = filterParts(s.filter, t, language);
     lines.push(t("conversations.sees.filters", { parts: parts.length ? parts.join(", ") : none }));

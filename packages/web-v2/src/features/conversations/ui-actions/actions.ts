@@ -10,9 +10,11 @@ import {
   type UiAction,
   type UiIssueFilter,
   type UiIssueFilterField,
+  type UiPageItem,
   type UiRoute,
   type UiSnapshot,
   uiActionNamed,
+  uiPageItemSchema,
 } from "@forge/contracts/ui-actions";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
@@ -73,6 +75,29 @@ export function filterFromSearch(search: string, userId: string | null): UiIssue
   return out;
 }
 
+// each record page's list segment under /projects/<slug>, and the kind of record it shows
+const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
+  issues: "issue",
+  requirements: "requirement",
+  feedback: "feedback",
+  workflows: "workflow",
+};
+
+/** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */
+export function pageItemOf(rest: string): UiPageItem | null {
+  const m = /^\/([a-z]+)\/([^/]+)$/.exec(rest);
+  const kind = m ? ITEM_SEGMENT[m[1] as string] : undefined;
+  if (!m || !kind) return null;
+  let key: string;
+  try {
+    key = decodeURIComponent(m[2] as string);
+  } catch {
+    return null;
+  }
+  const parsed = uiPageItemSchema.safeParse({ kind, key });
+  return parsed.success ? parsed.data : null;
+}
+
 export function uiSnapshotOf(args: {
   pathname: string;
   search: string;
@@ -88,8 +113,8 @@ export function uiSnapshotOf(args: {
   };
   const at = projectPath(args.pathname);
   if (!at) return { ...base, route: "other" };
-  const issue = /^\/issues\/([A-Z][A-Z0-9]*-\d+)$/.exec(at.rest);
-  if (issue) return { ...base, route: "issue", issueKey: issue[1] as string };
+  const item = pageItemOf(at.rest);
+  if (item) return { ...base, route: item.kind, item };
   const route = ROUTE_BY_SUFFIX.find(([, suffix]) => suffix === at.rest)?.[0];
   if (!route) return { ...base, route: "other" };
   if (route !== "issues") return { ...base, route };

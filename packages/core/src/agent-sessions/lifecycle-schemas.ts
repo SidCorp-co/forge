@@ -1,27 +1,5 @@
-import { SKILL_NAME_RE } from '@forge/contracts/skills';
 import { z } from 'zod';
-import { pageContextSchema } from './page-context.js';
 import { modelTierSchema } from './session-model.js';
-
-export const startBodySchema = z
-  .object({
-    projectSlug: z.string().min(1).max(120),
-    prompt: z.string().min(1).max(40_000).optional(),
-    repoPath: z.string().max(2000).nullable().optional(),
-    preBuilt: z.boolean().optional(),
-    issueIds: z.array(z.uuid()).max(50).optional(),
-    type: z.string().max(80).optional(),
-    pageContext: pageContextSchema.optional(),
-    /** ISS-499 — session attachments to attach to the first turn. */
-    attachmentIds: z.array(z.uuid()).max(10).optional(),
-    skillName: z.string().regex(SKILL_NAME_RE).optional(),
-    /**
-     * ISS-718 — the model this session should run on, remembered on the session
-     * and re-sent on every later turn. Absent = Claude Code's configured Default.
-     */
-    model: modelTierSchema.nullable().optional(),
-  })
-  .strict();
 
 export const sendBodySchema = z
   .object({
@@ -34,7 +12,6 @@ export const sendBodySchema = z
     message: z.string().max(40_000),
     claudeSessionId: z.string().max(500).nullable().optional(),
     deviceId: z.uuid().nullable().optional(),
-    pageContext: pageContextSchema.optional(),
     attachmentIds: z.array(z.uuid()).max(10).optional(),
     model: modelTierSchema.nullable().optional(),
   })

@@ -176,7 +176,11 @@ export async function startConversationAgentTurn(
   const spoken = await egressShown(
     projectId,
     'conversation',
-    { question: args.question, conversationContext: args.conversationContext },
+    {
+      question: args.question,
+      conversationContext: args.conversationContext,
+      pageContext: args.pageContext ?? null,
+    },
     `conversation ${args.conversationId}`,
   );
   const deviceId = await pickTurnCredentialDevice(projectId);
@@ -231,6 +235,7 @@ export async function startConversationAgentTurn(
       message: buildConversationAgentPrompt({
         persona: args.persona,
         conversationContext: spoken.conversationContext,
+        pageContext: spoken.pageContext,
         question: spoken.question,
         askedByLabel: args.askedByLabel,
         progressFacts: progress ? buildProgressFactsBlock(progress) : null,
@@ -267,6 +272,7 @@ export async function startConversationAgentTurn(
 function buildConversationAgentPrompt(args: {
   persona: string;
   conversationContext?: string | null | undefined;
+  pageContext?: Record<string, unknown> | null | undefined;
   question: string;
   askedByLabel?: string | null | undefined;
   progressFacts?: string | null | undefined;
@@ -277,6 +283,10 @@ function buildConversationAgentPrompt(args: {
     lines.push(
       `Conversation context — the discussion that led to this message (if it references older matter, use the available history tools before concluding):\n${conversation}`,
     );
+  }
+  // the same object Assistant mode reads above its message (`assistant/turn-context.ts`)
+  if (args.pageContext && Object.keys(args.pageContext).length > 0) {
+    lines.push(`Page context:\n${JSON.stringify(args.pageContext, null, 2)}`);
   }
   const progressFacts = args.progressFacts?.trim();
   if (progressFacts) lines.push(progressFacts);

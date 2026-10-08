@@ -201,12 +201,38 @@ export function uiActionJsonSchema(name: UiActionName): Record<string, unknown> 
 /** The marker a deferred call's result carries, which the browser reads to know it owes the execution. */
 export const UI_ACTION_DEFERRED = 'browser' as const;
 
+/** The records a page can be about, each the route its own page is read as (REQ-30 BC-6). */
+export const UI_PAGE_ITEM_KINDS = ['issue', 'requirement', 'feedback', 'workflow'] as const;
+export type UiPageItemKind = (typeof UI_PAGE_ITEM_KINDS)[number];
+
+/** A workflow page names its flow (`chat-turn`) or its uuid, as the page's own path does. */
+export const WORKFLOW_PAGE_REF = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
+
+/** The one record the page beside the chat is about, by the key its page is addressed with. */
+export const uiPageItemSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('issue'), key: issueKey }),
+  z.strictObject({
+    kind: z.literal('requirement'),
+    key: z.string().regex(/^REQ-\d{1,9}$/, 'a requirement key such as REQ-30'),
+  }),
+  z.strictObject({
+    kind: z.literal('feedback'),
+    key: z.string().regex(/^FB-\d{1,9}$/, 'a feedback key such as FB-12'),
+  }),
+  z.strictObject({
+    kind: z.literal('workflow'),
+    key: z.string().regex(WORKFLOW_PAGE_REF, 'a workflow flow such as chat-turn, or its uuid'),
+  }),
+]);
+export type UiPageItem = z.infer<typeof uiPageItemSchema>;
+
 /** What the page beside the chat looks like, sent with each message — typed, never scraped. */
 export const uiSnapshotSchema = z.strictObject({
   v: z.literal(UI_ACTION_VERSION),
-  route: z.enum([...ROUTE_NAMES, 'issue', 'other']),
+  route: z.enum([...ROUTE_NAMES, ...UI_PAGE_ITEM_KINDS, 'other']),
   path: z.string().max(500),
-  issueKey: issueKey.optional(),
+  /** The record the page is about, which core loads for the turn; absent on a page about none. */
+  item: uiPageItemSchema.optional(),
   filter: uiIssueFilterSchema.optional(),
   selection: z.array(issueKey).max(100).optional(),
   /** The board open in the dock, as the assistant last drew it (ISS-48). */
@@ -216,7 +242,7 @@ export type UiSnapshot = z.infer<typeof uiSnapshotSchema>;
 
 /** The snapshot as the one line a person reads under the composer and the model reads above the message. */
 export function describeUiSnapshot(s: UiSnapshot): string {
-  const parts: string[] = [s.route === 'issue' && s.issueKey ? s.issueKey : s.route === 'other' ? s.path : s.route];
+  const parts: string[] = [s.item ? s.item.key : s.route === 'other' ? s.path : s.route];
   const f = s.filter;
   if (f) {
     if (f.createdBy) parts.push('created by me');

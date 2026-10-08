@@ -25,12 +25,6 @@ import {
 } from './chat-device.js';
 import { isChatDoorSession } from './chat-door.js';
 import { stripSystemNoise } from './content-filter.js';
-import {
-  formatPageContextLine,
-  type PageContext,
-  readPersistedPageContext,
-  samePageContext,
-} from './page-context.js';
 import { agentSessionsPorts } from './ports.js';
 import { refuseSession } from './refusals.js';
 import { seedTurn } from './session-events.js';
@@ -44,8 +38,7 @@ type AgentSessionRow = typeof agentSessions.$inferSelect;
 /**
  * Derive a session title from the first user message (ISS-462): collapse all
  * whitespace/newlines to single spaces, trim, cap at 80 chars (ellipsised).
- * Returns '' for blank input so the caller can skip titling. Always fed the
- * RAW user text — never the `[Context: …]`-decorated prompt.
+ * Returns '' for blank input so the caller can skip titling.
  */
 export function deriveChatTitle(raw: string): string {
   const collapsed = raw.replace(/\s+/g, ' ').trim();
@@ -163,9 +156,8 @@ export interface DispatchChatTurnArgs {
   project: { id: string; slug: string };
   /** Client resolved by {@link resolveChatDevice}; caller has already 409'd / skipped on a null remote device. */
   client: ChatClient;
-  /** Raw user text / prompt (NOT pre-decorated — this fn prepends [Context: …]). */
+  /** The user text or prompt, sent as written. */
   message: string;
-  pageContext?: PageContext | null;
   /** /send may carry the client's claudeSessionId; falls back to the row's. */
   claudeSessionId?: string | null;
   /**
@@ -267,7 +259,7 @@ interface TurnPlan {
   deviceId: string;
   migrated: boolean;
   repoPath: string;
-  /** The user text with its `[Context: …]` header when the page changed. */
+  /** The user text as the turn sends it. */
   message: string;
   attachments: SessionAttachmentRef[];
   prevMessages: TranscriptEntry[];
@@ -279,17 +271,6 @@ interface TurnPlan {
   language: ContentLanguageView | null;
   /** A chat door's turn: the box runs it holding its turn token and none of the box's own. */
   confined: boolean;
-}
-
-/**
- * The [Context: …] header goes first only when the user switched page/issue since the previous
- * turn; a brand-new session has none, so its first turn always gets it.
- */
-function turnMessage(args: DispatchChatTurnArgs): string {
-  const prev = (args.session.metadata as { pageContext?: unknown } | null)?.pageContext;
-  return !args.pageContext || samePageContext(readPersistedPageContext(prev), args.pageContext)
-    ? args.message
-    : `${formatPageContextLine(args.pageContext)}\n${args.message}`;
 }
 
 /** The session's checkout, re-read from the device binding when the turn lands on another box. */
@@ -313,7 +294,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   const { deviceId } = client;
   if (!deviceId) throw noClaudeClient('session');
   const migrated = !!client.migrated;
-  const message = turnMessage(args);
+  const { message } = args;
   const repoPath = await turnCheckout(session, args.project.id, deviceId, migrated);
   // a turn no socket of the box would receive is refused before anything is written
   requireListeningBox(deviceId);
@@ -391,7 +372,6 @@ function sessionPatch(
     deviceId,
   };
   if (args.model !== undefined) metadata.model = args.model ?? 'default';
-  if (args.pageContext) metadata.pageContext = args.pageContext;
   if (language) {
     metadata[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
   }

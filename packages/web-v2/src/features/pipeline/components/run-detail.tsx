@@ -216,7 +216,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
             <SectionTitle className="leading-tight">{title}</SectionTitle>
             {slug && runId && (
               <div>
-                <AskAboutThis kind="run" refId={runId} />
+                <AskAboutThis about={{ kind: "run", ref: runId }} />
               </div>
             )}
             <div className="flex flex-wrap items-center gap-2.5">

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const SESSION_ID = '00000000-0000-4000-8000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-8000-000000000003';
-const ISSUE_ID = '00000000-0000-4000-8000-000000000004';
 const NOW = new Date('2026-10-06T10:00:00Z');
 
 const state = vi.hoisted(() => ({
@@ -241,27 +240,6 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
     expect(state.transitions).toEqual([]);
     expect(frame()?.data.claudeSessionId).toBe('claude-client');
   });
-
-  it('prepends the [Context: …] header only when the page changed', async () => {
-    const pageContext = { page: 'issue', issueId: ISSUE_ID, issueDisplayId: 'ISS-1' };
-    await dispatchChatTurn({
-      session: sessionOf({ metadata: { pageContext } }),
-      project,
-      client: { deviceId: 'd-1' },
-      message: 'same page',
-      pageContext,
-    });
-    expect(frame()?.data.message).toBe('same page');
-    state.frames.length = 0;
-    await dispatchChatTurn({
-      session: sessionOf({ metadata: { pageContext: { page: 'board' } } }),
-      project,
-      client: { deviceId: 'd-1' },
-      message: 'moved',
-      pageContext,
-    });
-    expect(frame()?.data.message).toBe('[Context: page=issue ISS-1]\nmoved');
-  });
 });
 
 describe('dispatchChatTurn: a cold start writes the prompt', () => {
@@ -272,7 +250,6 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
       project,
       client: { deviceId: 'd-1' },
       message: '  first\n question ',
-      pageContext: { page: 'board' },
       attachmentIds: ['a-1'],
       skillName: 'forge-plan',
       model: 'opus' as never,
@@ -283,7 +260,6 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
     expect(metaWritten()).toEqual({
       deviceId: 'd-1',
       model: 'opus',
-      pageContext: { page: 'board' },
       contentLanguage: {
         contentLanguage: 'vi',
         keepTermsInEnglish: [],
@@ -296,7 +272,7 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
     });
     expect(state.written[0]?.messages).toEqual([
       expect.objectContaining({
-        content: '[Context: page=board]\n  first\n question ',
+        content: '  first\n question ',
         attachments: [{ id: 'a-1', name: 'a-1.png' }],
       }),
     ]);
@@ -315,7 +291,7 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
     });
     const prompt = data.prompt as string;
     expect(prompt.startsWith('/forge-plan\nPREAMBLE\n## Content language')).toBe(true);
-    expect(prompt.endsWith('---\n\n[Context: page=board]\n  first\n question ')).toBe(true);
+    expect(prompt.endsWith('---\n\n  first\n question ')).toBe(true);
     expect(applyAutoTitleAsync).toHaveBeenCalledWith({
       sessionId: SESSION_ID,
       userMessage: '  first\n question ',

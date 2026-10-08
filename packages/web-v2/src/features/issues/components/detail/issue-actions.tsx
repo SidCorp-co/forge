@@ -96,7 +96,7 @@ export function IssueActions({
       {primary}
       {/* below 768px the bar holds the back control, the one primary act and the menu; asking and help wait for the room */}
       <span className="contents max-md:hidden">
-        <AskAboutThis kind="issue" refId={issue.displayId} />
+        <AskAboutThis about={null} />
         <HelpButton
         summary={t("issues.help.summary")}
         actions={[t("issues.help.action1"), t("issues.help.action2"), t("issues.help.action3")]}

@@ -1378,37 +1378,6 @@
                       }
                     ]
                   },
-                  "pageContext": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "issueDisplayId": {
-                        "maxLength": 40,
-                        "type": "string"
-                      },
-                      "issueId": {
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                        "type": "string"
-                      },
-                      "issueStatus": {
-                        "maxLength": 40,
-                        "type": "string"
-                      },
-                      "issueTitle": {
-                        "maxLength": 500,
-                        "type": "string"
-                      },
-                      "page": {
-                        "maxLength": 40,
-                        "minLength": 1,
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "page"
-                    ],
-                    "type": "object"
-                  },
                   "sessionId": {
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
@@ -4614,9 +4583,81 @@
                         },
                         "type": "object"
                       },
-                      "issueKey": {
-                        "pattern": "^[A-Z][A-Z0-9]*-\\d+$",
-                        "type": "string"
+                      "item": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^[A-Z][A-Z0-9]*-\\d+$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "issue",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^REQ-\\d{1,9}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "requirement",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^FB-\\d{1,9}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "feedback",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "workflow",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
+                          }
+                        ]
                       },
                       "path": {
                         "maxLength": 500,
@@ -4635,6 +4676,9 @@
                           "improvements",
                           "settings",
                           "issue",
+                          "requirement",
+                          "feedback",
+                          "workflow",
                           "other"
                         ],
                         "type": "string"

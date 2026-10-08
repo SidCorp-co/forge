@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
-import { type AboutKind, aboutDraft } from "./ask-about";
+import { type AskAbout, aboutDraft } from "./ask-about";
 import { type ChatTarget, clampDockWidth, defaultDockWidth, targetInScope } from "./dock-target";
 
 export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
@@ -25,7 +25,8 @@ export interface ChatDockApi {
   toggle: () => void;
   select: (target: ChatTarget) => void;
   follow: (conversationId: string) => void;
-  askAbout: (kind: AboutKind, ref: string) => void;
+  /** A fresh draft about `about`, or about the page's own record when null (it rides as the page item). */
+  askAbout: (about: AskAbout) => void;
   /** A page names the room Ask Agent opens on it (a requirement's BA assistant room); null clears it. */
   setDoor: (door: DockDoor | null) => void;
 }
@@ -84,9 +85,9 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
     [projectId],
   );
   const askAbout = useCallback(
-    (kind: AboutKind, ref: string) => {
+    (about: AskAbout) => {
       if (!projectId) return;
-      show({ kind: "draft", projectId, draft: aboutDraft(kind, ref) });
+      show({ kind: "draft", projectId, draft: aboutDraft(about) });
     },
     [projectId, show],
   );

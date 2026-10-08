@@ -230,7 +230,7 @@ export function ChatDockBody({ dock, fullScreen }: { dock: ChatDockApi; fullScre
 
 function BoardForProject({ projectId, slug }: { projectId: string; slug: string }) {
   const { snapshot } = useUiSnapshot(slug);
-  return <BoardPanel projectId={projectId} issueKey={snapshot.issueKey} />;
+  return <BoardPanel projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
 }
 
 function ResizeHandle({

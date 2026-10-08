@@ -42,6 +42,8 @@ export interface ConversationAgentTurnArgs {
   asker: SessionAsker;
   persona: string;
   conversationContext?: string | null | undefined;
+  /** The page beside the chat with the record it is about, as core loaded it (REQ-30 BC-6); null on none. */
+  pageContext?: Record<string, unknown> | null | undefined;
   /** Where the reply is screened when it comes back. */
   door: 'agent-chat-completion' | 'web-agent-completion';
   replies: ConversationAgentReplies;

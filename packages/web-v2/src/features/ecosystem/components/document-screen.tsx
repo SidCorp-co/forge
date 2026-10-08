@@ -81,7 +81,7 @@ function DocumentHeader({ view, slug, docRef, held, names }: { view: DocumentVie
         {view.standing?.overdue ? <Badge tone="red">Overdue</Badge> : null}
         {held ? <Badge tone="amber">Held</Badge> : null}
         <span className="fg-caption">{view.side === "sender" ? "you sent this" : "sent to you"}</span>
-        <AskAboutThis kind="document" refId={d.number ?? docRef} />
+        <AskAboutThis about={{ kind: "document", ref: d.number ?? docRef }} />
       </div>
       <h2 className="break-words text-16 font-semibold text-fg">{d.subject}</h2>
       <p className="fg-caption break-words">
