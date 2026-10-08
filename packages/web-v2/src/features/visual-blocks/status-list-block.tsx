@@ -2,9 +2,11 @@
 
 import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 import { Cell } from "./cells";
+import { useBlockInstants } from "./instants";
 
 /** A status-list block: one hairline row per frame row, its ref a link to the issue, requirement or release it names. */
 export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-list"> }) {
+  const instants = useBlockInstants();
   const field = (name: string) => block.frame.fields.find((f) => f.name === name);
   const ref = field(block.ref);
   const status = field(block.status);
@@ -24,7 +26,7 @@ export function StatusListBlockView({ block }: { block: VisualBlockOf<"status-li
               <Cell field={status} cell={row[status.name]} />
             </span>
             {waiting && on !== null && on !== undefined && (
-              <span className="text-[11.5px] text-subtle">waiting on {cellText(waiting, on)}</span>
+              <span className="text-[11.5px] text-subtle">waiting on {cellText(waiting, on, instants)}</span>
             )}
           </li>
         );

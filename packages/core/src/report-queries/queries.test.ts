@@ -188,7 +188,7 @@ describe('roadmap-eta', () => {
       etaOf(
         delivery({ shipped: { version: '1.0.0', at: '2026-10-01T00:00:00.000Z' }, inHands: span }),
       ),
-    ).toEqual({ p50At: null, p85At: null, basis: 'shipped in 1.0.0 at 2026-10-01T00:00:00.000Z' });
+    ).toEqual({ p50At: null, p85At: null, basis: 'shipped in 1.0.0 (2026-10-01T00:00:00.000Z)' });
     expect(etaOf(delivery({ release: person })).basis).toBe(
       'no forecast: landed, waits on Ana to cut the release',
     );

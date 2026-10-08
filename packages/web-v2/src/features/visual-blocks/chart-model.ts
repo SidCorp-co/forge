@@ -1,5 +1,5 @@
 import type { ReportCell, ReportField } from "@forge/contracts/report-queries";
-import { cellText, type VisualBlockOf } from "@forge/contracts/visual-blocks";
+import { cellText, type InstantReading, type VisualBlockOf } from "@forge/contracts/visual-blocks";
 
 /** One line or bar group of a chart: the words the legend gives it and the value at each x. */
 export interface ChartSeries {
@@ -58,7 +58,7 @@ function reached(values: readonly number[]): { domain: [number, number]; ticks: 
  * cells of each y field, split by the series field where the block names one. A block whose rows
  * cannot be placed to scale comes back as the reason, not as a drawing.
  */
-export function chartModel(b: VisualBlockOf<"chart">): ChartModel | ChartUnsupported {
+export function chartModel(b: VisualBlockOf<"chart">, reading?: InstantReading): ChartModel | ChartUnsupported {
   const x = fieldOf(b, b.x);
   const ys = b.y.map((n) => fieldOf(b, n));
   if (!x || ys.some((y) => !y)) return { unsupported: "a field it names is not in the frame" };
@@ -80,7 +80,7 @@ export function chartModel(b: VisualBlockOf<"chart">): ChartModel | ChartUnsuppo
   const seen = new Set<string>();
   for (const row of b.frame.rows) {
     const raw = row[x.name];
-    const label = cellText(x, raw);
+    const label = cellText(x, raw, reading);
     const at = scale === "time" ? (typeof raw === "string" ? Date.parse(raw) : Number.NaN) : scale === "linear" ? (num(raw) ?? Number.NaN) : points.length;
     if (Number.isNaN(at)) return { unsupported: `a row has no ${x.label} to place it by` };
     const group = scale !== "category" ? `${at}` : seriesField === undefined ? `#${points.length}` : `L${label}`;
@@ -91,7 +91,7 @@ export function chartModel(b: VisualBlockOf<"chart">): ChartModel | ChartUnsuppo
       points.push({ label, at });
       cells.push(new Map());
     }
-    const sname = seriesField ? cellText(seriesField, row[seriesField.name]) : "";
+    const sname = seriesField ? cellText(seriesField, row[seriesField.name], reading) : "";
     if (seriesField && !names.includes(sname)) names.push(sname);
     for (const y of yFields) {
       const key = `${sname}\u0000${y.name}`;

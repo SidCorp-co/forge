@@ -7,6 +7,7 @@ import { StatusBadge, ToneBadge } from "@/design/primitives/enum-badge";
 import { type StatusFamily, statusReading } from "@/design/vocabulary";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useVisualBlockContext } from "./context";
+import { useBlockInstants } from "./instants";
 import { refHref } from "./ref-link";
 
 /**
@@ -42,7 +43,8 @@ export function useStateLabel(): (field: ReportField, value: string) => string {
 /** One frame cell as it is read: a `ref` links to what it names when the project is known, a `status` is a badge, everything else is its text. */
 export function Cell({ field, cell }: { field: ReportField; cell: ReportCell | undefined }) {
   const { projectSlug } = useVisualBlockContext();
-  const text = cellText(field, cell);
+  const instants = useBlockInstants();
+  const text = cellText(field, cell, instants);
   if (field.type === "status" && typeof cell === "string" && cell !== "") return <StateCell field={field} value={cell} />;
   if (field.type === "ref" && typeof cell === "string" && cell !== "" && projectSlug) {
     return (

@@ -342,7 +342,7 @@ function zodRefusals(error: z.ZodError, out: Refusals): void {
 function entry<K extends VisualBlockKind>(
   kind: K,
   schema: z.ZodType<VisualBlockOf<K>>,
-  toText: (block: VisualBlockOf<K>) => string,
+  toText: (block: VisualBlockOf<K>, reading?: InstantReading) => string,
 ): BlockKindEntry<K> {
   return {
     kind,
@@ -386,7 +386,7 @@ export interface BlockKindEntry<K extends VisualBlockKind = VisualBlockKind> {
   /** Is this block valid; a refusal names the kind, the field and the valid shape. */
   check(raw: unknown): BlockCheck;
   /** The plain-text and Markdown fallback. */
-  toText(block: VisualBlockOf<K>): string;
+  toText(block: VisualBlockOf<K>, reading?: InstantReading): string;
 }
 
 // ---- text fallback --------------------------------------------------------------------------
@@ -405,14 +405,35 @@ function duration(ms: number): string {
 }
 
 /**
- * One cell as text: null is an em dash, a duration is spoken, a midnight date loses its time, and a
- * state reads as its sentence-case label (`stateLabel`), the words its badge shows.
+ * How a screen reads an instant: the viewer's own words and timezone. The contract cannot know
+ * either, so a reading is handed in by whoever draws the text; without one an instant keeps its
+ * ISO form, which is what a stored or exported fallback carries.
  */
-export function cellText(field: ReportField, cell: ReportCell | undefined): string {
+export interface InstantReading {
+  /** An ISO instant or date inside a cell, as a person reads it. */
+  instant(iso: string): string;
+}
+
+/** An ISO-8601 instant or calendar date, wherever it stands inside a sentence. */
+const ISO_INSTANT = /\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?/g;
+
+/** Every ISO instant in a text, each read as the screen reads it; the rest of the text is untouched. */
+export function readInstantsIn(text: string, reading: InstantReading | undefined): string {
+  return reading ? text.replace(ISO_INSTANT, (iso) => reading.instant(iso)) : text;
+}
+
+/**
+ * One cell as text: null is an em dash, a duration is spoken, a date is read by the screen's
+ * `reading` (without one a midnight date loses its time and any other keeps its ISO form), a
+ * sentence that names an instant has it read the same way, and a state reads as its sentence-case
+ * label (`stateLabel`), the words its badge shows.
+ */
+export function cellText(field: ReportField, cell: ReportCell | undefined, reading?: InstantReading): string {
   if (cell === null || cell === undefined) return "—";
   if (field.type === "status" && typeof cell === "string" && cell !== "") return stateLabel(field, cell);
   if (field.type === "duration" && typeof cell === "number") return duration(cell);
-  if (field.type === "date" && typeof cell === "string") return cell.replace(/T00:00:00(\.0+)?Z$/, "");
+  if (field.type === "date" && typeof cell === "string") return reading ? readInstantsIn(cell, reading) : cell.replace(/T00:00:00(\.0+)?Z$/, "");
+  if (field.type === "string" && typeof cell === "string") return readInstantsIn(cell, reading);
   if (typeof cell === "number") return field.unit ? `${cell} ${field.unit}` : String(cell);
   return cell;
 }
@@ -423,11 +444,11 @@ function titled(block: { title?: string | undefined }, body: string): string {
   return block.title === undefined ? body : `**${md(block.title)}**\n\n${body}`;
 }
 
-function markdownTable(frame: ReportFrame, columns: readonly string[], rows = frame.rows): string {
+function markdownTable(frame: ReportFrame, columns: readonly string[], rows = frame.rows, reading?: InstantReading): string {
   const fields = columns.map((c) => frame.fields.find((f) => f.name === c)).filter((f): f is ReportField => !!f);
   const head = `| ${fields.map((f) => md(f.label)).join(" | ")} |`;
   const rule = `| ${fields.map((f) => (NUMERIC.includes(f.type) ? "---:" : "---")).join(" | ")} |`;
-  const body = rows.map((r) => `| ${fields.map((f) => md(cellText(f, r[f.name]))).join(" | ")} |`);
+  const body = rows.map((r) => `| ${fields.map((f) => md(cellText(f, r[f.name], reading))).join(" | ")} |`);
   return [head, rule, ...body].join("\n");
 }
 
@@ -454,8 +475,8 @@ export function tableRows(b: VisualBlockOf<"table">): ReportFrame["rows"] {
   return b.limit === undefined ? rows : rows.slice(0, b.limit);
 }
 
-function tableText(b: VisualBlockOf<"table">): string {
-  return titled(b, markdownTable(b.frame, b.columns, tableRows(b)));
+function tableText(b: VisualBlockOf<"table">, reading?: InstantReading): string {
+  return titled(b, markdownTable(b.frame, b.columns, tableRows(b), reading));
 }
 
 /** A cell a spreadsheet would run as a formula; it is written with a leading apostrophe so it reads as text. */
@@ -495,13 +516,13 @@ export function tableCsv(b: VisualBlockOf<"table">): string {
   return `${CSV_BOM}${lines.join("\r\n")}\r\n`;
 }
 
-function chartText(b: VisualBlockOf<"chart">): string {
+function chartText(b: VisualBlockOf<"chart">, reading?: InstantReading): string {
   const columns = [b.x, ...(b.series ? [b.series] : []), ...b.y];
   const label = (name: string) => b.frame.fields.find((f) => f.name === name)?.label ?? name;
   const what = `${b.variant === "burndown" ? "Burndown" : b.variant === "line" ? "Line chart" : "Bar chart"} of ${b.y
     .map(label)
     .join(", ")} by ${label(b.x)}`;
-  return titled(b, `${what}\n\n${markdownTable(b.frame, columns)}`);
+  return titled(b, `${what}\n\n${markdownTable(b.frame, columns, b.frame.rows, reading)}`);
 }
 
 function flowText(b: VisualBlockOf<"flow">): string {
@@ -514,11 +535,11 @@ function flowText(b: VisualBlockOf<"flow">): string {
   return titled(b, [...lines, ...alone].join("\n"));
 }
 
-function timelineText(b: VisualBlockOf<"timeline">): string {
+function timelineText(b: VisualBlockOf<"timeline">, reading?: InstantReading): string {
   const f = (name: string) => b.frame.fields.find((x) => x.name === name);
   const at = (row: ReportFrame["rows"][number], name: string | undefined) => {
     const field = name === undefined ? undefined : f(name);
-    return field ? cellText(field, row[field.name]) : "—";
+    return field ? cellText(field, row[field.name], reading) : "—";
   };
   const key = b.start ?? b.p50;
   const rows = key ? sorted(b.frame.rows, key, "asc") : b.frame.rows;
@@ -541,30 +562,30 @@ export interface KpiFigure {
 }
 
 /** The figures a kpi block shows, read from the one row it names. */
-export function kpiFigures(b: VisualBlockOf<"kpi">): KpiFigure[] {
+export function kpiFigures(b: VisualBlockOf<"kpi">, reading?: InstantReading): KpiFigure[] {
   const row = b.frame.rows[b.row ?? 0];
   return b.figures.map((fig) => {
     const field = b.frame.fields.find((x) => x.name === fig.field);
     const dfield = fig.delta === undefined ? undefined : b.frame.fields.find((x) => x.name === fig.delta);
-    const out: KpiFigure = { label: fig.label, value: field && row ? cellText(field, row[field.name]) : "—" };
+    const out: KpiFigure = { label: fig.label, value: field && row ? cellText(field, row[field.name], reading) : "—" };
     if (dfield && row) {
       const raw = row[dfield.name];
-      out.delta = `${typeof raw === "number" && raw > 0 ? "+" : ""}${cellText(dfield, raw)}`;
+      out.delta = `${typeof raw === "number" && raw > 0 ? "+" : ""}${cellText(dfield, raw, reading)}`;
     }
     return out;
   });
 }
 
-function kpiText(b: VisualBlockOf<"kpi">): string {
-  const lines = kpiFigures(b).map((f) => `- ${md(f.label)}: ${md(f.value)}${f.delta === undefined ? "" : ` (${f.delta})`}`);
+function kpiText(b: VisualBlockOf<"kpi">, reading?: InstantReading): string {
+  const lines = kpiFigures(b, reading).map((f) => `- ${md(f.label)}: ${md(f.value)}${f.delta === undefined ? "" : ` (${f.delta})`}`);
   return titled(b, lines.join("\n"));
 }
 
-function statusListText(b: VisualBlockOf<"status-list">): string {
+function statusListText(b: VisualBlockOf<"status-list">, reading?: InstantReading): string {
   const lines = b.frame.rows.map((r) => {
     const get = (name: string | undefined) => {
       const field = name === undefined ? undefined : b.frame.fields.find((x) => x.name === name);
-      return field ? cellText(field, r[field.name]) : "—";
+      return field ? cellText(field, r[field.name], reading) : "—";
     };
     const waiting = b.waitingOn !== undefined && r[b.waitingOn] != null ? ` (waiting on ${md(get(b.waitingOn))})` : "";
     return `- ${md(get(b.ref))}: ${md(get(b.status))}${waiting}`;
@@ -657,9 +678,9 @@ export function shownFrame(block: VisualBlock): ReportFrame | null {
   };
 }
 
-/** The plain-text fallback of a block that passed `checkBlock`. */
-export function blockToText(block: VisualBlock): string {
-  return (BLOCK_KINDS[block.kind] as BlockKindEntry<typeof block.kind>).toText(block as never);
+/** The plain-text fallback of a block that passed `checkBlock`; a screen passes its `reading` so no instant stays ISO. */
+export function blockToText(block: VisualBlock, reading?: InstantReading): string {
+  return (BLOCK_KINDS[block.kind] as BlockKindEntry<typeof block.kind>).toText(block as never, reading);
 }
 
 /**
