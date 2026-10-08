@@ -65,7 +65,7 @@ export function WaitingOn({ w: core, whoNode }: WaitingOnProps) {
 
 export type BannerTone = LegendTone | "agent" | "calm";
 
-const bannerColours = (t: BannerTone) =>
+export const bannerColours = (t: BannerTone) =>
   t === "calm" ? { bg: "var(--bg-sunken)", dot: "var(--ink-400)" } : t === "agent" ? AGENT_TINT : LEGEND[t];
 
 export interface WaitBannerProps {

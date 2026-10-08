@@ -64,8 +64,8 @@
 .wfc-label .wfc-mono { display: block; text-align: left; }
 
 .wfc-float { position: absolute; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--border-default); border-radius: var(--r-md); background: color-mix(in srgb, var(--bg-surface) 94%, transparent); backdrop-filter: blur(6px); box-shadow: var(--shadow-sm); }
-.wfc-tl { top: 12px; left: 12px; max-width: calc(100% - 330px); }
-.wfc-tr { top: 12px; right: 12px; width: 290px; padding: 0; display: block; }
+.wfc-tl { top: 12px; left: 12px; max-width: calc(100% - 296px); }
+.wfc-tr { top: 12px; right: 12px; width: 260px; padding: 0; display: block; }
 .wfc-bl { bottom: 12px; left: 12px; }
 .wfc-bc { bottom: 12px; left: 50%; transform: translateX(-50%); gap: 6px; padding: 5px; }
 .wfc-sep { width: 1px; align-self: stretch; margin: 2px; background: var(--border-default); }

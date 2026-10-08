@@ -25,6 +25,20 @@ export interface CanvasHealth {
   hrefOf: (m: NodeHealthView["markers"][number]) => string | null;
 }
 
+/** Focus mode: the canvas alone, filling the viewport, with its toolbar, zoom, minimap and step panel. */
+export interface CanvasFocus {
+  on: boolean;
+  onToggle: () => void;
+}
+
+/** The switch that marks, on the canvas, what changed since the approved revision. */
+export interface CanvasChanges {
+  on: boolean;
+  onToggle: (on: boolean) => void;
+  label: string;
+  title: string;
+}
+
 export interface WorkflowCanvasProps {
   doc: Pick<WorkflowBody, "title" | "summary" | "kind" | "steps" | "edges" | "flow" | "lanes" | "personas">;
   template: WorkflowTemplate | null;
@@ -35,6 +49,9 @@ export interface WorkflowCanvasProps {
   /** Where core reads a system context's graph; the C4 canvas draws nothing without it. */
   graph?: SystemGraphRef | null;
   health?: CanvasHealth | null;
+  /** Absent on a compact pane: focus mode is the design page's. */
+  focus?: CanvasFocus | null;
+  changes?: CanvasChanges | null;
 }
 
 /**

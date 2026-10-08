@@ -4,7 +4,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { SearchBox, WalkBar } from "./controls";
 import { type Canvas, pathOf, searchSteps, walkOrder } from "./model";
 import { DetailPanel, type Selection } from "./panel";
-import type { CanvasHealth } from "./workflow-canvas";
+import type { CanvasFocus, CanvasHealth } from "./workflow-canvas";
 
 /** What both canvases share about attention: the selection and the path it lights, the search hits, and the walk through the design in reading order. */
 export function useStepFocus(c: Canvas) {
@@ -57,8 +57,13 @@ export function useStepFocus(c: Canvas) {
     walking: walk !== null && walk < order.length,
     panelWalk: walk === null ? null : { order, at: walk },
     advance,
-    /** Escape and the panel's close: end a walk, else clear the selection. */
-    dismiss: () => (walk !== null ? stopWalk() : setSelection(null)),
+    /** Escape and the panel's close: end a walk, else clear the selection; false when there was neither. */
+    dismiss: (): boolean => {
+      if (walk !== null) stopWalk();
+      else if (selection !== null) setSelection(null);
+      else return false;
+      return true;
+    },
     stopWalk,
   };
 }
@@ -68,7 +73,7 @@ export type StepFocus = ReturnType<typeof useStepFocus>;
 /** The parts of a canvas's frame that answer to the focus: walking, search, the side panel and the keys; a compact canvas has none of the chrome. */
 export function focusChrome(
   f: StepFocus,
-  o: { c: Canvas; reveal: (id: string) => void; decision: ReactNode; compact?: boolean; health?: CanvasHealth | null },
+  o: { c: Canvas; reveal: (id: string) => void; decision: ReactNode; compact?: boolean; health?: CanvasHealth | null; focus?: CanvasFocus | null },
 ) {
   const walkTo = (i: number) => {
     const id = f.advance(i);
@@ -80,6 +85,7 @@ export function focusChrome(
     dim: Boolean(f.focus),
     onPaneClick: () => f.setSelection(null),
     onEscape: f.dismiss,
+    focus: full ? (o.focus ?? null) : null,
     onArrow: (dir: -1 | 1) => {
       if (f.walking && f.walk !== null) walkTo(f.walk + dir);
     },

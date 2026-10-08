@@ -1,25 +1,23 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-  type BannerTone,
   DetailLayout,
   DetailMobileTitle,
   DetailPane,
   DetailTabs,
   FactsRail,
   StatusBadge,
-  Toggle,
   useUrlTab,
   ViewHeading,
-  WaitBanner,
 } from "@/design";
 import { DecisionsPanel } from "@/features/comments/components/decisions-panel";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { ProductCopyKey } from "@/lib/i18n/product-copy";
-import { saidView } from "@/lib/i18n/said";
+import { cn } from "@/lib/utils/cn";
 import { readCanvas, titleOf } from "../canvas/model";
 import { revisionReason } from "../decision-words";
 import { WorkflowCanvas } from "../canvas/workflow-canvas";
@@ -29,7 +27,9 @@ import { useHealthOverlay, useWorkflowHealth } from "../hooks";
 import type { RevisionChanges } from "@forge/contracts/workflows";
 import { revisionSummary } from "../revision-summary";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord, WorkflowStep } from "../types";
+import { DesignBanner } from "./design-banner";
 import { OrphanedTraces } from "./design-decision";
+import { useBannerOpen, useCanvasFocus, useDetailSqueezes, useRailCollapsed } from "./design-room";
 import { WorkflowDesignFacts } from "./workflow-design-facts";
 import { DesignPill } from "./workflow-parts";
 
@@ -37,39 +37,6 @@ const DESIGN_TABS = ["design", "steps", "revisions", "decisions"] as const;
 type DesignTab = (typeof DESIGN_TABS)[number];
 
 export const useDesignTab = () => useUrlTab(DESIGN_TABS);
-
-const BANNER_TONE: Record<WorkflowDesign["waitingOn"]["kind"], BannerTone> = {
-  you: "you",
-  person: "calm",
-  agent: "agent",
-  none: "calm",
-};
-
-function DesignBanner({ d, children, className }: { d: WorkflowDesign; children?: ReactNode; className?: string }) {
-  const t = useCopy();
-  const time = useTimeFormat();
-  const w = saidView(d.waitingOn, useInterfaceLanguage());
-  if (w.kind === "none") return null;
-  const head = w.kind === "you" ? t("workflows.waitingOnYou") : t("workflows.waitingOn", { who: w.who });
-  const latest = d.revisions[0];
-  return (
-    <WaitBanner tone={BANNER_TONE[w.kind]} head={head} body={w.act} rule={w.rule} className={className} testId="design-banner">
-      {latest && d.status === "returned" && latest.reason ? (
-        <span className="line-clamp-2 text-12-5 text-muted" title={latest.reason}>
-          {latest.reason}
-        </span>
-      ) : null}
-      <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-        {latest && d.status === "proposed" ? (
-          <span className="text-12-5 text-muted" title={time.dateTime(latest.proposedAt)}>
-            {t("workflows.proposedBy", { who: latest.proposedByName ?? latest.proposedBy })} · {time.relative(latest.proposedAt)}
-          </span>
-        ) : null}
-        {children}
-      </span>
-    </WaitBanner>
-  );
-}
 
 const MARK: Record<string, ProductCopyKey> = { added: "workflows.mark.added", changed: "workflows.mark.changed", removed: "workflows.mark.removed" };
 
@@ -191,7 +158,8 @@ interface DesignPageProps {
   decisionCount?: number;
   tab: DesignTab;
   onTab: (t: DesignTab) => void;
-  noteControl?: ReactNode;
+  /** The waiting decision's parts for the banner, where the viewer can take it. */
+  decision?: { acts: ReactNode; detail: ReactNode; alert: ReactNode } | null;
   walkDecision?: ReactNode;
   /** The act that clears this base's pin-only dependents, where it has any. */
   repins?: ReactNode;
@@ -207,9 +175,40 @@ export function shownDesign(d: WorkflowDesign, record: WorkflowRecord) {
   return { shown, shownRevision, approved: canDiff ? approved : null };
 }
 
-export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, noteControl, walkDecision, repins }: DesignPageProps) {
+/** The fold on the canvas's right edge that hides or shows the facts rail; wide screens only, where the rail sits beside it. */
+function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+  const t = useCopy();
+  const label = collapsed ? t("workflows.rail.show") : t("workflows.rail.hide");
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={!collapsed}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "absolute top-1/2 z-30 flex h-12 w-5 -translate-y-1/2 items-center justify-center border border-line-subtle bg-surface text-muted hover:bg-hover hover:text-fg max-lg:hidden",
+        collapsed ? "right-0 rounded-l-sm border-r-0" : "-right-px rounded-l-sm",
+      )}
+      data-testid="design-rail-toggle"
+    >
+      {collapsed ? <PanelRightOpen size={14} aria-hidden /> : <PanelRightClose size={14} aria-hidden />}
+    </button>
+  );
+}
+
+export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, decision, walkDecision, repins }: DesignPageProps) {
   const t = useCopy();
   const [changes, setChanges] = useState(false);
+  const [focusOn, setFocus] = useCanvasFocus();
+  const focus = focusOn && tab === "design";
+  const [railCollapsed, setRailCollapsed] = useRailCollapsed();
+  const [bannerOpen, setBannerOpen] = useBannerOpen();
+  const [floatOpen, setFloatOpen] = useState(false);
+  const column = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  const squeezed = useDetailSqueezes(column, headRef, detailRef, { active: tab === "design" && !focus, open: `${bannerOpen}|${floatOpen}` });
   const { shown, shownRevision, approved } = shownDesign(d, record);
   const health = useWorkflowHealth(projectId, record.document.id).data;
   const overlay = useHealthOverlay(health, "design", slug, record.document.flow);
@@ -222,21 +221,37 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
     { value: "decisions" as const, label: t("workflows.tab.decisions"), ...(decisionCount !== undefined ? { count: decisionCount } : {}) },
   ];
   const badge = d.status ? <DesignPill status={d.status} reason={d.status === "returned" ? d.revisions[0]?.reason : null} /> : undefined;
+  // Squeezed, a remembered open detail stays folded (the canvas keeps its share) and one opened now floats over the canvas
   const head = (
-    <>
+    <div ref={headRef}>
       <DetailMobileTitle itemKey={record.document.flow} title={shown.title} badge={badge} />
-      <DesignBanner d={d} className="px-6 py-2.5 max-md:px-4">
-        {noteControl}
-        {d.status === "proposed" && health ? <OrphanedTraces traces={health.orphanedTraces} revision={d.proposedRevision} /> : null}
-      </DesignBanner>
+      <DesignBanner
+        d={d}
+        acts={decision?.acts}
+        detail={
+          <>
+            {decision?.detail}
+            {d.status === "proposed" && health ? <OrphanedTraces traces={health.orphanedTraces} revision={d.proposedRevision} /> : null}
+          </>
+        }
+        alert={decision?.alert}
+        open={squeezed ? floatOpen : bannerOpen}
+        onOpen={(o) => {
+          if (!squeezed) setBannerOpen(o);
+          setFloatOpen(o);
+        }}
+        float={squeezed}
+        detailRef={detailRef}
+      />
       {repins}
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="design-tabs" />
-    </>
+    </div>
   );
   return (
     <DetailLayout
       testId="workflow-design-detail"
       dataKey={record.document.flow}
+      railCollapsed={tab === "design" && railCollapsed}
       rail={
         <FactsRail testId="design-rail">
           <WorkflowDesignFacts d={d} record={record} shown={shown} shownRevision={shownRevision} template={template} slug={slug} health={health} />
@@ -244,15 +259,10 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
       }
     >
       {tab === "design" ? (
-        <div className="flex flex-col lg:h-[calc(100dvh-48px)]" data-testid="view-design">
+        <div ref={column} className="flex flex-col lg:h-[calc(100dvh-48px)]" data-testid="view-design">
           {head}
-          {fullDiff ? (
-            <div className="flex items-center gap-2 border-b border-line-subtle bg-surface px-6 py-1.5 text-12-5 font-semibold max-md:px-4" title={t("workflows.againstApproved", { r: d.approvedRevision ?? "" })}>
-              <Toggle checked={changes} onChange={setChanges} aria-label={t("workflows.changesSinceLabel")} />
-              {t("workflows.changesSince", { r: d.approvedRevision ?? "" })}
-            </div>
-          ) : null}
-          <div className="flex min-h-0 flex-1 flex-col">
+          {/* Focus mode lifts this one element over the page, so the canvas keeps its zoom, selection and walk */}
+          <div className={cn("relative flex min-h-0 flex-1 flex-col", focus && "fixed inset-0 z-40 bg-app")} data-testid="design-canvas-area" data-focus={focus}>
             <WorkflowCanvas
               doc={{ ...shown, steps: stepsForLayer({ steps: stepsWithRemoved(shown, diff) }, health ?? null, overlay?.layer ?? "planned") }}
               template={template}
@@ -260,7 +270,14 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
               health={overlay}
               decision={walkDecision}
               graph={{ projectId, workflowId: record.document.id, revision: shownRevision, against: diff ? d.approvedRevision : null }}
+              focus={{ on: focus, onToggle: () => setFocus(!focus) }}
+              changes={
+                fullDiff
+                  ? { on: changes, onToggle: setChanges, label: t("workflows.canvas.changes", { r: d.approvedRevision ?? "" }), title: t("workflows.changesSince", { r: d.approvedRevision ?? "" }) }
+                  : null
+              }
             />
+            {focus ? null : <RailEdge collapsed={railCollapsed} onToggle={() => setRailCollapsed(!railCollapsed)} />}
           </div>
         </div>
       ) : (

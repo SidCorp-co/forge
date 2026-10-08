@@ -140,7 +140,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     layout.center(id, needBand || needOpen);
   };
 
-  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, health });
+  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, health, focus: props.focus });
 
   const clickStep = (id: string) => {
     if (f.step === id && lod < 2 && open.has(id)) {
@@ -229,7 +229,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
       onFit={() => void rf.fitView({ duration: 240, padding: 0.08 })}
       nodeColor={nodeColor}
       nodeStroke={nodeStroke}
-      toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} />}
+      toolbar={<ViewBar language={language} lod={lod} banded={banded} allOpen={allOpen} onLanguage={setLanguage} onLod={setLevel} onToggleAll={toggleAll} onWalk={() => walkTo(0)} health={health} changes={props.changes} focus={props.focus} />}
       {...frameFocus}
     />
   );

@@ -14,7 +14,7 @@ import { useSystemGraph } from "../hooks";
 import type { SystemGraph } from "../types";
 import { C4_EDGE_TYPES, C4_NODE_TYPES, type C4BoxData, type C4FrameData, type C4LineData } from "./c4-nodes";
 import { HEALTH_MARKER_KINDS } from "@forge/contracts/workflow-health";
-import { HealthBar } from "./controls";
+import { HealthBar, PageBar } from "./controls";
 import { Frame } from "./frame";
 import { useCanvasModel } from "./model";
 import { hue } from "./style";
@@ -108,7 +108,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     if (b) void rf.setCenter(b.x + b.w / 2, b.y + b.h / 2, { zoom: rf.getViewport().zoom, duration: 320 });
   };
 
-  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact });
+  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact, focus: props.focus });
 
   const relayout = (next: () => void) => {
     pendingFit.current = true;
@@ -163,6 +163,8 @@ export function C4Canvas(props: WorkflowCanvasProps) {
       }
       onWalk={() => walkTo(0)}
       health={health}
+      changes={props.changes}
+      focus={props.focus}
     />
   );
 
@@ -256,6 +258,8 @@ function C4Toolbar({
   onDetail,
   onWalk,
   health,
+  changes,
+  focus,
 }: {
   compact: boolean;
   level: Level;
@@ -265,6 +269,8 @@ function C4Toolbar({
   onDetail: (v: Detail) => void;
   onWalk: () => void;
   health: WorkflowCanvasProps["health"];
+  changes: WorkflowCanvasProps["changes"];
+  focus: WorkflowCanvasProps["focus"];
 }) {
   const t = useCopy();
   return (
@@ -288,6 +294,7 @@ function C4Toolbar({
         </>
       )}
       {health ? <HealthBar health={health} /> : null}
+      {compact ? null : <PageBar changes={changes} focus={focus} />}
     </div>
   );
 }

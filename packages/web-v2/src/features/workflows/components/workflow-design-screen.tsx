@@ -39,14 +39,19 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
   else {
     const template = templateFor(shown, (templates.data?.templates ?? []).map((x) => x.template));
     const blocked = d.approvalBlocked !== null;
-    const noteControl = revision !== null ? (
-      <>
-        <PinOnlyReading change={d.pinOnly} approvedRevision={d.approvedRevision} />
-        <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
-        <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />
-        <DecisionError decide={decide} />
-      </>
-    ) : null;
+    const decision =
+      revision !== null
+        ? {
+            acts: <DecisionNoteControl revision={revision} decide={decide} approveBlocked={blocked} />,
+            detail: (
+              <>
+                <PinOnlyReading change={d.pinOnly} approvedRevision={d.approvedRevision} />
+                <ApprovalReading revision={revision} block={d.approvalBlocked} leavesStale={d.approvalLeavesStale} />
+              </>
+            ),
+            alert: <DecisionError decide={decide} />,
+          }
+        : null;
     const walkDecision = revision !== null ? (
       <span className="grid gap-2">
         <ApproveAction revision={revision} decide={decide} block={d.approvalBlocked} />
@@ -64,7 +69,7 @@ export function WorkflowDesignScreen({ projectId, slug, flow }: { projectId: str
         decisionCount={decisions.data?.returned}
         tab={tab}
         onTab={setTab}
-        noteControl={noteControl}
+        decision={decision}
         walkDecision={walkDecision}
         repins={<RepinPanel projectId={projectId} workflowId={record.document.id} slug={slug} />}
       />
