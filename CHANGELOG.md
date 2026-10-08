@@ -3150,6 +3150,8 @@
 
 - **A paused schedule no longer wears a green pill for a run from weeks ago.** Automation says "Paused", dates the last run ("Succeeded 17 days ago · stale"), opens with "5 schedules · none enabled" and reads cron in words.
 
+- **A skipped schedule no longer takes Automation down.** Pressing Run with no runner online crashed the screen; it now reads "Skipped 3 hours ago", an unknown status reads its own word, and the dashboard card says "skipped", not "never run".
+
 - **A status change kept at another status says so.** When an agent's park becomes needs-info,
   or its close is held for release, the answer names the status asked for, the one kept, and why.
 

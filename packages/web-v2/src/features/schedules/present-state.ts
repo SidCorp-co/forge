@@ -56,11 +56,16 @@ export type LastRunView =
       stale: boolean;
     };
 
-const VERDICT: Record<"success" | "failed" | "running", { word: string; since: string }> = {
+const VERDICT: Record<NonNullable<ScheduleRow["lastStatus"]>, { word: string; since: string }> = {
   success: { word: "Succeeded", since: "" },
   failed: { word: "Failed", since: "" },
   running: { word: "Running", since: "since " },
+  skipped: { word: "Skipped", since: "" },
 };
+
+function verdictWords(status: NonNullable<ScheduleRow["lastStatus"]>): { word: string; since: string } {
+  return VERDICT[status] ?? { word: String(status), since: "" };
+}
 
 /**
  * The last run as a dated fact. Never a status: the verdict is words with an age, and past the
@@ -68,7 +73,7 @@ const VERDICT: Record<"success" | "failed" | "running", { word: string; since: s
  */
 export function lastRunView(row: ScheduleRow, now: Date): LastRunView {
   if (!row.lastStatus) return { kind: "never" };
-  const { word, since } = VERDICT[row.lastStatus];
+  const { word, since } = verdictWords(row.lastStatus);
   const age = row.lastRunAt ? formatAge(row.lastRunAt, now) : null;
   const text = age ? `${word} ${since}${age}` : `${word}, time unknown`;
   return { kind: "ran", text, stale: isStale(row, now) };

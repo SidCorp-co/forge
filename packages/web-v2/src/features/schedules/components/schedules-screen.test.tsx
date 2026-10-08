@@ -122,6 +122,24 @@ describe("SchedulesScreen — present state", () => {
     expect(last.className).not.toContain("text-danger");
   });
 
+  it("a skipped last run renders as neutral dated text and the screen stays up", () => {
+    rows = [row({ id: "k", enabled: true, lastStatus: "skipped", lastRunAt: ago(3 * HOUR) })];
+    renderScreen();
+    const [r] = tableRows();
+    const last = within(r).getByText(/Skipped 3 hours ago/);
+    expect(last.className).toContain("text-subtle");
+    expect(last.getAttribute("style")).toBeNull();
+  });
+
+  it("a last status the screen has never heard of reads its raw word in the same neutral text", () => {
+    const unknown = "quarantined" as unknown as ScheduleRow["lastStatus"];
+    rows = [row({ id: "u", enabled: true, lastStatus: unknown, lastRunAt: ago(2 * HOUR) })];
+    renderScreen();
+    const [r] = tableRows();
+    const last = within(r).getByText(/quarantined 2 hours ago/);
+    expect(last.className).toContain("text-subtle");
+  });
+
   it("a never-run schedule says Never run with no age", () => {
     rows = [row({ id: "d", lastStatus: null, lastRunAt: null, lastSessionId: null })];
     renderScreen();
