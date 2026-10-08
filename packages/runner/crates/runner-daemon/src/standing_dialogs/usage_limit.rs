@@ -10,6 +10,8 @@
 
 use std::time::Duration;
 
+use jiff::tz::{AmbiguousOffset, TimeZone};
+use jiff::{Span, Timestamp};
 use runner_transport::{master as master_api, CoreClient};
 
 /// Tells core the account is capped.
@@ -70,28 +72,83 @@ pub fn dismissed_line(pane: &str, resets_in_seconds: Option<u64>) -> String {
     )
 }
 
-/// Seconds from now until `printed` (the text after "continue automatically
-/// at", e.g. `3:40pm (Asia/Saigon)`), or `None` where it cannot be read. A time
-/// of day already past today is tomorrow's. Read by `date -d`, which owns the
-/// time-zone database this crate does not carry; `printed` is an argument and
-/// never reaches a shell.
-pub async fn resets_in_seconds(printed: &str, now_unix: i64) -> Option<u64> {
+/// Seconds from `now_unix` until `printed` (the text after "continue
+/// automatically at", e.g. `3:40pm (Asia/Saigon)`), or `None` where it cannot
+/// be read. A clock with no zone is read in the box's own zone.
+pub fn resets_in_seconds(printed: &str, now_unix: i64) -> Option<u64> {
     let (clock, zone) = split_zone(printed)?;
-    if clock.is_empty()
-        || !clock
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == ':' || c == ' ')
-        || !clock.chars().any(|c| c.is_ascii_digit())
-    {
+    let clock = Clock::parse(&clock)?;
+    let tz = match zone {
+        Some(name) => TimeZone::get(&name).ok()?,
+        None => TimeZone::try_system().ok()?,
+    };
+    next_occurrence(clock, &tz, Timestamp::from_second(now_unix).ok()?)
+}
+
+/// A printed time of day: `3:40pm`, `3:40 PM`, `3pm` or `15:40`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Clock {
+    hour: i8,
+    minute: i8,
+}
+
+impl Clock {
+    fn parse(text: &str) -> Option<Self> {
+        let text = text.trim().to_ascii_lowercase();
+        let (digits, meridiem) = match text.strip_suffix("am") {
+            Some(d) => (d.trim_end(), Some(false)),
+            None => match text.strip_suffix("pm") {
+                Some(d) => (d.trim_end(), Some(true)),
+                None => (text.as_str(), None),
+            },
+        };
+        let (hour, minute) = match digits.split_once(':') {
+            Some((h, m)) if m.len() == 2 => (h, number(m)?),
+            Some(_) => return None,
+            // A bare hour is a clock only with am or pm after it.
+            None if meridiem.is_some() => (digits, 0),
+            None => return None,
+        };
+        let hour = number(hour)?;
+        let hour = match meridiem {
+            None if hour <= 23 => hour,
+            Some(pm) if (1..=12).contains(&hour) => hour % 12 + if pm { 12 } else { 0 },
+            _ => return None,
+        };
+        (minute <= 59).then_some(Self { hour, minute })
+    }
+}
+
+fn number(text: &str) -> Option<i8> {
+    if text.is_empty() || text.len() > 2 || !text.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    let at = date_epoch(&clock, zone.as_deref(), "").await?;
-    let secs = if at > now_unix {
-        at - now_unix
-    } else {
-        // Today's has passed: the printed time is the next one.
-        date_epoch(&clock, zone.as_deref(), " tomorrow").await? - now_unix
-    };
+    text.parse().ok()
+}
+
+/// Seconds from `now` to the first instant after it at which `tz`'s wall
+/// clock reads `clock`: today's if still ahead, otherwise tomorrow's. Across a
+/// daylight-saving shift the rule is the same wall clock, never a count of
+/// hours: a time the spring-forward gap skips never shows that day, so it is
+/// the next day's; a time the fall-back fold shows twice is the first of the
+/// two still ahead.
+fn next_occurrence(clock: Clock, tz: &TimeZone, now: Timestamp) -> Option<u64> {
+    let today = now.to_zoned(tz.clone()).date();
+    let at = (0..=7)
+        .filter_map(|day| today.checked_add(Span::new().days(day)).ok())
+        .flat_map(|date| {
+            let wall = date.at(clock.hour, clock.minute, 0, 0);
+            let offsets = match tz.to_ambiguous_timestamp(wall).offset() {
+                AmbiguousOffset::Unambiguous { offset } => vec![offset],
+                AmbiguousOffset::Gap { .. } => vec![],
+                AmbiguousOffset::Fold { before, after } => vec![before, after],
+            };
+            offsets
+                .into_iter()
+                .filter_map(move |offset| offset.to_timestamp(wall).ok())
+        })
+        .find(|at| *at > now)?;
+    let secs = at.as_second() - now.as_second();
     // A reset further off than a week is a misread, not a window.
     (0 < secs && secs <= 7 * 24 * 3600).then_some(secs as u64)
 }
@@ -112,37 +169,90 @@ fn split_zone(printed: &str) -> Option<(String, Option<String>)> {
     }
 }
 
-async fn date_epoch(clock: &str, zone: Option<&str>, suffix: &str) -> Option<i64> {
-    let mut cmd = tokio::process::Command::new("date");
-    if let Some(z) = zone {
-        cmd.env("TZ", z);
-    }
-    let out = tokio::time::timeout(
-        Duration::from_secs(5),
-        cmd.arg("-d")
-            .arg(format!("{clock}{suffix}"))
-            .arg("+%s")
-            .stdin(std::process::Stdio::null())
-            .output(),
-    )
-    .await
-    .ok()?
-    .ok()?;
-    out.status
-        .success()
-        .then(|| String::from_utf8_lossy(&out.stdout).trim().parse().ok())
-        .flatten()
-}
-
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn a_printed_time_of_day_is_seconds_from_now_and_never_past() {
-        let now = runner_platform::clock::now_secs();
-        let got = resets_in_seconds("3:40pm (UTC)", now).await.expect("read");
-        assert!(got > 0 && got <= 24 * 3600, "{got}");
+    /// `2026-06-15T12:00:00Z` — 19:00 in Ho Chi Minh City, which keeps +07 all year.
+    const NOON_UTC: i64 = 1_781_524_800;
+
+    #[test]
+    fn a_printed_time_of_day_is_seconds_from_now_and_never_past() {
+        let got = resets_in_seconds("3:40pm (UTC)", NOON_UTC);
+        assert_eq!(got, Some(3 * 3600 + 40 * 60));
+    }
+
+    #[test]
+    fn every_printed_shape_is_read_in_the_zone_it_names() {
+        for (printed, want) in [
+            ("3:40pm (UTC)", 13_200),
+            ("15:40 (UTC)", 13_200),
+            ("3pm (UTC)", 10_800),
+            ("3:40 PM (UTC)", 13_200),
+            ("12pm (UTC)", 86_400),
+            ("12am (UTC)", 43_200),
+            // 19:00 there now, so 21:30 is 2h30m off and 6am is tomorrow's.
+            ("9:30pm (Asia/Ho_Chi_Minh)", 9_000),
+            ("6am (Asia/Ho_Chi_Minh)", 39_600),
+        ] {
+            assert_eq!(
+                resets_in_seconds(printed, NOON_UTC),
+                Some(want),
+                "{printed}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_time_already_past_today_is_tomorrows() {
+        assert_eq!(resets_in_seconds("11:40am (UTC)", NOON_UTC), Some(85_200));
+        // The printed minute itself is not ahead, so it is tomorrow's.
+        assert_eq!(resets_in_seconds("12:00 (UTC)", NOON_UTC), Some(86_400));
+        assert_eq!(
+            resets_in_seconds("7pm (Asia/Ho_Chi_Minh)", NOON_UTC),
+            Some(86_400)
+        );
+    }
+
+    #[test]
+    fn no_zone_is_the_box_zone() {
+        let tz = jiff::tz::TimeZone::try_system().expect("this box names its zone");
+        let now = jiff::Timestamp::from_second(NOON_UTC).unwrap();
+        let clock = Clock::parse("3:40pm").unwrap();
+        assert_eq!(
+            resets_in_seconds("3:40pm", NOON_UTC),
+            next_occurrence(clock, &tz, now)
+        );
+        assert!(resets_in_seconds("3:40pm", NOON_UTC).is_some());
+    }
+
+    /// New York springs forward at 2am on 2026-03-08 and falls back at 2am on
+    /// 2026-11-01.
+    #[test]
+    fn a_daylight_saving_shift_moves_the_reset_by_the_clock_not_by_the_hours() {
+        // 01:00 EST: 3:30am is 1h30m off, not 2h30m, the hour from 2 to 3 never shows.
+        let spring = 1_772_949_600;
+        assert_eq!(
+            resets_in_seconds("3:30am (America/New_York)", spring),
+            Some(5_400)
+        );
+        // 2:30am never shows that day, so the next time the clock reads it is
+        // 2026-03-09 02:30 EDT.
+        assert_eq!(
+            resets_in_seconds("2:30am (America/New_York)", spring),
+            Some(88_200)
+        );
+        // 00:30 EDT: 1:30am shows twice; the first is 1h off.
+        let fall = 1_793_507_400;
+        assert_eq!(
+            resets_in_seconds("1:30am (America/New_York)", fall),
+            Some(3_600)
+        );
+        // 01:45 EDT: the first 1:30 has passed, the second (EST) is 45m off.
+        assert_eq!(
+            resets_in_seconds("1:30am (America/New_York)", fall + 4_500),
+            Some(2_700)
+        );
     }
 
     #[test]
@@ -172,11 +282,28 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn text_that_is_not_a_time_is_unreadable() {
-        let now = runner_platform::clock::now_secs();
-        for junk in ["", "soon", "$(touch x)", "3pm (a b)", "3pm (Asia/Sai;gon)"] {
-            assert_eq!(resets_in_seconds(junk, now).await, None, "{junk:?}");
+    #[test]
+    fn text_that_is_not_a_time_is_unreadable() {
+        let now = NOON_UTC;
+        for junk in [
+            "",
+            "soon",
+            "$(touch x)",
+            "3pm (a b)",
+            "3pm (Asia/Sai;gon)",
+            "3pm (Mars/Olympus_Mons)",
+            "3pm (UTC",
+            "13pm (UTC)",
+            "0am (UTC)",
+            "24:00 (UTC)",
+            "15:60 (UTC)",
+            "15:4 (UTC)",
+            "15 (UTC)",
+            "3:40pmx (UTC)",
+            "3:40:10pm (UTC)",
+            "next tuesday (UTC)",
+        ] {
+            assert_eq!(resets_in_seconds(junk, now), None, "{junk:?}");
         }
     }
 }

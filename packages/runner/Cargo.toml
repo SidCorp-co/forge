@@ -31,6 +31,9 @@ hostname = "0.4"
 sha2 = "0.11"
 hex = "0.4"
 base64 = "0.23"
+# Reads a printed usage-limit reset in its named zone: the system tzdb on unix,
+# a bundled one on Windows, where there is none.
+jiff = "0.2"
 # ISS-305 — open the browser to the /pair approval URL during `forge-runner login`.
 webbrowser = "1"
 

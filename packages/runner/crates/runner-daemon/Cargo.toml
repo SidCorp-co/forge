@@ -22,6 +22,7 @@ uuid = { workspace = true }
 rusqlite = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+jiff = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process", "fs"] }
