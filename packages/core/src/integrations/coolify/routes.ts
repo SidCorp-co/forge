@@ -197,7 +197,11 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
       if (err instanceof CoolifyReadFailedError) {
         throw new HTTPException(424, {
           message: err.message,
-          cause: { code: 'COOLIFY_UNREACHABLE' },
+          // Coolify answering something that is not JSON did reach Coolify: its own code, so a caller
+          // acting on the code is not told Forge could not connect.
+          cause: {
+            code: err.kind === 'not-json' ? 'COOLIFY_ANSWER_NOT_JSON' : 'COOLIFY_UNREACHABLE',
+          },
         });
       }
       return asHttp(err);

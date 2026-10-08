@@ -24,6 +24,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err.kind).toBe('unreachable');
     expect(err.message).toContain('Could not reach Coolify');
     expect(err.message).toContain('fetch failed ECONNREFUSED');
+    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 
   it('names a Coolify that did not answer in time', async () => {
@@ -37,6 +38,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('timeout');
     expect(err.message).toContain('Coolify timed out');
+    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 
   it('names a 200 whose body is not JSON', async () => {
@@ -46,6 +48,7 @@ describe('readRollbackImagesNamingFailure', () => {
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('not-json');
     expect(err.message).toContain('something that is not JSON');
+    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 
   it('leaves a Coolify HTTP refusal as the CoolifyApiError it is', async () => {
