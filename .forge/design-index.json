@@ -112,6 +112,26 @@
   "REQ-27": {
    "title": "People sign in with a password or Google and agents act with personal access tokens, and invitations and notices reach people by mail",
    "status": "draft"
+  },
+  "REQ-28": {
+   "title": "Every design template carries structured cross-design refs, checked to resolve to an approved revision step",
+   "status": "draft"
+  },
+  "REQ-29": {
+   "title": "Requirements carry an area the list groups and filters by",
+   "status": "draft"
+  },
+  "REQ-30": {
+   "title": "Assistant and Agent chat: role, routing and limits",
+   "status": "agreed"
+  },
+  "REQ-31": {
+   "title": "The Ask Agent panel opens at its largest width, toggles to half of it, and the page beside it stays usable at either size",
+   "status": "draft"
+  },
+  "REQ-32": {
+   "title": "Chat answers visually: reports, diagrams, templates, share links",
+   "status": "agreed"
   }
  },
  "workflows": {
@@ -155,6 +175,38 @@
     "tick",
     "triage",
     "wait_triage"
+   ]
+  },
+  "chat-turn": {
+   "title": "Chat turn: Assistant and Agent",
+   "steps": [
+    "ask",
+    "attach",
+    "badfile",
+    "busy",
+    "check",
+    "classify",
+    "confine",
+    "confirm",
+    "context",
+    "crash",
+    "denied",
+    "door",
+    "draft",
+    "held",
+    "investigate",
+    "mode",
+    "net",
+    "noconfine",
+    "nodevice",
+    "noissue",
+    "perms",
+    "recorded",
+    "repo",
+    "restate",
+    "sandbox",
+    "shown",
+    "write"
    ]
   },
   "core-components": {
@@ -265,6 +317,7 @@
    "steps": [
     "answer",
     "ask",
+    "auto-verify",
     "breaking",
     "decide",
     "decline",
@@ -274,9 +327,11 @@
     "file",
     "intake",
     "issue",
+    "message",
     "resolve",
     "revision",
     "scrubber",
+    "snooze",
     "stale",
     "suggest",
     "upgrade",

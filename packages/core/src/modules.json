@@ -929,12 +929,12 @@
       "kind": "read-model",
       "context": "operations",
       "reads": [],
-      "serves": ["REQ-19"]
+      "serves": ["REQ-32"]
     },
     "reports": {
       "kind": "domain",
       "context": "operations",
-      "serves": ["REQ-19"]
+      "serves": ["REQ-32"]
     },
     "requirements": {
       "kind": "domain",
@@ -1037,7 +1037,7 @@
     "shares": {
       "kind": "domain",
       "context": "operations",
-      "serves": ["REQ-19"]
+      "serves": ["REQ-32"]
     },
     "skills": {
       "kind": "domain",
@@ -1313,7 +1313,7 @@
       "serves": ["REQ-12"]
     },
     "visual-blocks": {
-      "serves": ["REQ-19"]
+      "serves": ["REQ-32"]
     },
     "whats-new": {
       "serves": ["REQ-14", "issue-delivery#act-release"]
