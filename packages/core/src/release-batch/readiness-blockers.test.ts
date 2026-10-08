@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listBindings = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
-// The enumerator reads the roster with a query that ENDS at `where()`, and the
+// The enumerator reads the roster with a query that ENDS at `where()` or `orderBy()`, and the
 // runner pool with `db.execute`, so the mock has to answer both.
 const selectRows = vi.fn(async () => [] as unknown[]);
 const execRows = vi.fn(async () => [] as unknown[]);
@@ -16,7 +16,8 @@ vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => Object.assign(selectRows(), { limit: selectLimit }),
+        where: () =>
+          Object.assign(selectRows(), { limit: selectLimit, orderBy: () => selectRows() }),
       }),
     }),
     execute: () => execRows(),

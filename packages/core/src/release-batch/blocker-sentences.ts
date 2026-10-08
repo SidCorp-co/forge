@@ -38,6 +38,7 @@ export type ReleaseBlockerCode =
   | 'RELEASE_CHECK_UNEVALUATED';
 
 export type ReleaseWarningCode =
+  | 'RELEASE_ROSTER_IN_PARTS'
   | 'RELEASE_RUNNER_PREFERENCE_UNMET'
   | 'RELEASE_CRITERIA_HELD_BACK'
   | 'RELEASE_CRITERIA_UNCORROBORATED'
@@ -193,6 +194,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_CARRIED_DECISION_REFUSED: [],
   RELEASE_CUT_DROPS_ROSTER: [],
   RELEASE_CHECK_UNEVALUATED: [],
+  RELEASE_ROSTER_IN_PARTS: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
   RELEASE_CRITERIA_UNCORROBORATED: [],
@@ -506,6 +508,12 @@ export function heldBackWarningSentence(
         ? `${lead}: each still owes an acceptance criterion, and at least one could not be weighed because the repository could not be read. ${readableFirst(clears, 'that')} Otherwise each stays at the gate until a judging run earns it.`
         : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
   return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
+}
+
+/** The sweep cuts an over-cap roster in parts, so there is nothing here for a person to cut (ISS-1360). */
+export function rosterInPartsWarningSentence(waiting: number, part: number, later: number): string {
+  const text = `${waiting} issues are waiting at the release gate and one release carries at most ${RELEASE_ROSTER_LIMIT}. This project releases without a person acting, so the automatic sweep cuts them in parts, the oldest merges first: this answer is about the first ${part}, and the ${later} behind ${later === 1 ? 'it' : 'them'} go in a later release once this one has finished. Nothing here is for a person to cut.`;
+  return withCosts('RELEASE_ROSTER_IN_PARTS', text);
 }
 
 /** The declared release label no box carries. Here, not at the call site: this module owns every

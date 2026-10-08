@@ -5,7 +5,6 @@ import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
   heldBackWarningSentence,
-  RELEASE_ROSTER_LIMIT,
   type ReleaseBlocker,
   type ReleaseWarning,
   uncorroboratedWarningSentence,
@@ -55,9 +54,9 @@ export async function criteriaHold(
   serving: ServingReading | undefined,
   weighing: Weighing | string = UNWEIGHED,
 ): Promise<void> {
-  // The roster limit bounds the per-issue comment reads below; above it
-  // `RELEASE_ROSTER_OVERSIZE` is already the reason standing.
-  if (waiting.length === 0 || waiting.length > RELEASE_ROSTER_LIMIT) return;
+  // The roster resolver hands this at most one release's part, which bounds the per-issue comment
+  // reads below.
+  if (waiting.length === 0) return;
   const auto = await evaluate(
     'auto-release',
     async () => await projectAutoProdDeploy(projectId),

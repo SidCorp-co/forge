@@ -46,6 +46,7 @@ const {
   REMEDY_COST,
   releaseBlockerSentence,
   remedyCostClause,
+  rosterInPartsWarningSentence,
   runnerPreferenceUnmetSentence,
 } = await import('./blockers.js');
 type RemedyAct = import('./blockers.js').RemedyAct;
@@ -78,6 +79,7 @@ const BLOCKER_CODES = [
 ] as const;
 
 const WARNING_CODES = [
+  'RELEASE_ROSTER_IN_PARTS',
   'RELEASE_RUNNER_PREFERENCE_UNMET',
   'RELEASE_CRITERIA_HELD_BACK',
   'RELEASE_CRITERIA_UNCORROBORATED',
@@ -162,6 +164,10 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
     {
       code: 'RELEASE_RUNNER_AMBIGUOUS' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: ['a', 'b'] }),
+    },
+    {
+      code: 'RELEASE_ROSTER_IN_PARTS' as ReasonCode,
+      message: rosterInPartsWarningSentence(58, 50, 8),
     },
     {
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET' as ReasonCode,

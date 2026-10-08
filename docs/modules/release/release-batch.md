@@ -91,6 +91,24 @@ On a project whose deploy is a person's, the finish does close every issue whose
 no verify probe it is recorded unverified, written on each issue as whoever finished the release
 (`packages/core/src/release-batch/unverified-close.ts:noteUnverifiedCloses`), and claims no deploy.
 
+### A roster over the cap (ISS-1360)
+
+One release names at most 50 issues (`packages/core/src/release-batch/blocker-sentences.ts:RELEASE_ROSTER_LIMIT`).
+What a project does with more than that depends on who cuts its releases:
+
+| the project | readiness over the whole roster |
+|---|---|
+| releases without a person acting (`autoProdDeploy`) | no block: the warning `RELEASE_ROSTER_IN_PARTS` names the waiting count, the 50 in this part and how many are left; every check (note, close, carried range, criteria) judges that part alone |
+| a person cuts the release | `RELEASE_ROSTER_OVERSIZE` (409), its remedy telling a person to cut in parts |
+| a caller names more than 50 ids | `RELEASE_ROSTER_OVERSIZE` (409), on either kind of project |
+
+The part is the oldest 50 merges among the rows no batch has claimed, an issue with no merge mark last
+(`packages/core/src/release-batch/waiting-order.ts:oldestMergeFirst`), which is the order the sweep
+cuts in (`packages/core/src/schedules/release-batch-run.ts:cutWaitingRelease`). The rows behind the
+part carry `RELEASE_QUEUED_BEHIND` and go in the next automatic release once the running one has
+finished. On a chain that promotes by merging a branch, a part's range still carries the landings of
+the rows behind it, and the carried check above answers those as it answers any unnamed landing.
+
 ## 2. From the claim to a box: the start (ISS-1323)
 
 A create that passes moves the roster to `releasing` and enqueues one `release_batch` job.
