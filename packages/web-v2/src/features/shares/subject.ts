@@ -5,8 +5,12 @@
 
 import type { ShareSubjectKind } from "@forge/contracts/shares";
 
+/**
+ * What the web shares: a chat answer or a kept status report. A template's output is shared over
+ * REST (`template-output`), never offered here: in a thread the whole turn is shared instead.
+ */
 export interface ShareSubject {
-  kind: ShareSubjectKind;
+  kind: Exclude<ShareSubjectKind, "template-output">;
   id: string;
 }
 
