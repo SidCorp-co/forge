@@ -207,6 +207,38 @@ describe("the Release section's prose", () => {
 		expect(container.textContent).toMatch(/closes unverified/i);
 		expect(container.textContent).not.toMatch(/refused/i);
 	});
+
+	it("does not say a release is refused for declaring two live targets, and says each is read", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ providers: ["coolify", "coolify"], hasVerify: true, gaps: [] }),
+		});
+
+		const { container } = draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(container.textContent).toContain("a probe on each live target");
+		expect(container.textContent).not.toMatch(/refused/i);
+		expect(container.textContent).not.toMatch(/ONE check/);
+		expect(container.textContent).not.toMatch(/cut this project's releases by hand/i);
+	});
+
+	it("says a live target with no probe is named as not read, where another target has one", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				providers: ["coolify", "coolify"],
+				hasVerify: false,
+				gaps: ["verify-probes"],
+			}),
+		});
+
+		const { container } = draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(container.textContent).toContain("one with none is named as not read");
+		expect(container.textContent).toMatch(/names this one as not read/);
+	});
 });
 
 describe("the Runner pools matrix", () => {

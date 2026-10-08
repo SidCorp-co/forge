@@ -22,8 +22,6 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "No release-procedure fact — the release runs a generic fallback written for another repo.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
-  "release-multi-channel":
-    "Two live deploy bindings are declared, and a release run records ONE check of ONE address — so closing the batch on it would claim a delivery nobody looked at. Cutting a release is refused by name until then. Retire one of the two, or keep both and cut this project's releases by hand.",
   "release-target":
     "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or, if this project ships nothing, press \"This project ships nothing\" on the Repository tab.",
   rollback:
@@ -31,7 +29,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "rollback-prose":
     "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
-    "A live binding declares no verify probe — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so.",
+    "A live binding declares no verify probe — a release still runs, but nothing reads that deployment. Where no live binding declares one the release closes unverified; where another does, each issue it closes names this one as not read.",
   "live-commit-endpoint":
     "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe. Set it under Settings → Testing → Live.",
 };
@@ -39,7 +37,6 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
 const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
   "release-target": "Add a live deploy binding",
   "release-runner-ambiguous": "Reconcile the release runner labels",
-  "release-multi-channel": "Review the live deploy bindings",
 };
 
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
@@ -59,6 +56,14 @@ const UNREAD = "could not be read";
 const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this project's pool";
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
+
+/** One reading is taken per live target that declares a probe, so with several targets the answer is per target. */
+function verifiedBy(r: ReleaseReadiness): string {
+  if (r.providers.length > 1) {
+    return r.hasVerify ? "a probe on each live target" : "not on every live target — one with none is named as not read";
+  }
+  return r.hasVerify ? "a probe" : "nothing";
+}
 
 /** What the badge says about the declared chain — the words a reader of the screen uses. */
 function chainText(r: ReleaseReadiness): string {
@@ -200,7 +205,7 @@ export function ReleaseSection({
         <div>
           <dt className="fg-caption text-subtle">Deploy verified by</dt>
           <dd className="fg-body-sm text-fg">
-            {!r.channelsRead ? UNREAD : r.hasVerify ? "a probe" : "nothing"}
+            {!r.channelsRead ? UNREAD : verifiedBy(r)}
           </dd>
         </div>
       </dl>

@@ -309,7 +309,7 @@ describe('loadReleaseReadiness', () => {
 });
 
 describe('loadReleaseReadiness — more than one live channel', () => {
-  it('names two live channels as their own gap, even where nothing else is missing', async () => {
+  it('names no gap for two live channels that each declare a probe, since each is read', async () => {
     project({
       releaseChain: [{ branch: 'main' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
@@ -336,11 +336,11 @@ describe('loadReleaseReadiness — more than one live channel', () => {
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
-    expect(out?.gaps).toEqual(['release-multi-channel']);
+    expect(out?.gaps).toEqual([]);
     expect(out?.releaseRunnerLabel).toBe('prod-box');
   });
 
-  it('reports no multi-channel gap for the one-channel projects the fleet actually has', async () => {
+  it('reports no gap for the one-channel projects the fleet actually has', async () => {
     project({
       releaseChain: [{ branch: 'main' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },

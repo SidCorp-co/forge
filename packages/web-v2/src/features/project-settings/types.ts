@@ -247,7 +247,6 @@ export interface ReleaseReadiness {
 		| "test-commands"
 		| "release-procedure"
 		| "release-runner-ambiguous"
-		| "release-multi-channel"
 		| "release-target"
 		| "rollback"
 		| "rollback-prose"

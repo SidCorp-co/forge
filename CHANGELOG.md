@@ -3148,6 +3148,8 @@
 
 ### Fixed
 
+- **A project with two live deploy bindings is no longer told a release is refused.** Settings listed it as a gap though each binding with a probe is now read; one with none is named as not read.
+
 - **A failed inbound webhook names what failed in the error report.** The report now holds the adapter's own error, tagged with provider, project and binding, where every failure used to read `handler failed`. The sender's response is unchanged.
 
 - **A failed inbound webhook's error report names its binding even when a database write failed.** A delivery for a repository with "signature" in its name is also no longer refused as badly signed, and its failure reaches the report.
