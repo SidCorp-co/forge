@@ -110,6 +110,22 @@ before anyone tries: a proposed design whose base moved reads as waiting on its 
 not on its approver. Approve the base first, or write the design again naming the base revision that is approved. Prose that cites another design is
 never read as a base.
 
+### A base approved at a new revision: one act for the pin-only dependents
+A proposed revision that differs from its approved revision only in the base revisions it pins, read on the
+canonical design and never on its text, reads as a pin-only change: the design read carries \`pinOnly\` with
+each pin old → new, every path at which the two differ (each a \`/basedOn/<i>/revision\`) and the fingerprint
+they share once the pins are set aside. \`GET …/workflows/<base>/design/repins\` plans the act that clears a base's
+dependents: every design whose approved revision pins the base at another revision, and every design resting
+on one of those, ordered every base first. \`POST …/design/repins { revision, designs: [{ workflowId, revision }] }\`
+takes it in one transaction for whoever holds \`workflow-designs.approve\`: each design is re-pinned as a revision
+written by the acting person (a pin-only proposal already filed at those pins is approved as filed) and
+approved, one recorded decision per design whose note names the act's id. A design with any other change
+pending is refused \`WORKFLOW_REPIN_PENDING_CHANGE\` and goes through its own review; a re-pin that would rest
+on a base with no approved revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\`; bases naming each other in a
+ring are refused \`WORKFLOW_REPIN_CYCLE\`; a design the plan does not take is \`WORKFLOW_REPIN_NOT_DEPENDENT\`. A
+base or design read at a revision that has moved is \`WORKFLOW_DESIGN_REVISION_STALE\`. Nothing moves a pin
+without the act. Needs you shows the base's dependents as one row, not one per design.
+
 An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria
 are judged against a design revision — holds the issues it \`blocks\` until that revision is approved,
 whatever its own status: proposing the design moves the issue on, and only the approval releases its

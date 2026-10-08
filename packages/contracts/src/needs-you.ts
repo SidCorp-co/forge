@@ -49,6 +49,8 @@ export interface NeedsYouItem {
 	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow, a question's id. */
 	key: string;
 	title: string;
+	/** `title` as said, where core words the row itself rather than carrying a name as written. */
+	says?: { title: Said };
 	waitingOn: WaitingOn;
 	touchedAt: string | null;
 }

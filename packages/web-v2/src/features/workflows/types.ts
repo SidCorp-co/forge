@@ -14,9 +14,10 @@ import type {
 } from "@forge/contracts/system-graph";
 import type { WaitingOn } from "@forge/contracts/standing";
 import type { WorkflowHealthSummary } from "@forge/contracts/workflow-health";
-import type { DesignApprovalBlock, DesignBuild, DesignBuildGate, DesignLeftStale, DesignRequirementLink, DesignWaitingKind, RevisionChanges } from "@forge/contracts/workflows";
+import type { DesignApprovalBlock, DesignBuild, DesignBuildGate, DesignLeftStale, DesignRequirementLink, DesignWaitingKind, PinOnlyChange, RevisionChanges } from "@forge/contracts/workflows";
 
-export type { DesignBuildGate, DesignRequirementLink };
+export type { DesignBuildGate, DesignRequirementLink, PinOnlyChange };
+export type { RepinActResult, RepinItem, RepinPlan, RepinRefused } from "@forge/contracts/workflows";
 export type { Boundary, FactRow, FocalSystem, GraphFacts, GraphNode, IntegrationState, NodeKind, Relationship, SystemGraph };
 
 /** Where core reads a system-context design's graph: one revision, and one whose removed steps it draws too. */
@@ -177,6 +178,14 @@ export interface WorkflowDesign {
   approvalBlocked: DesignApprovalBlock | null;
   /** The designs approving the proposed revision leaves on a stale base. */
   approvalLeavesStale: DesignLeftStale[];
+  /** The proposed revision against the approved one, where only the base revisions it pins differ; null otherwise. */
+  pinOnly: PinOnlyChange | null;
+}
+
+/** `POST …/design/repins`: the base revision the plan was read at, and each design to take at the revision it was read at. */
+export interface RepinActBody {
+  revision: number;
+  designs: { workflowId: string; revision: number }[];
 }
 
 /** An approval may carry its approver's note (its conditions); a return always carries its reason. */

@@ -17,16 +17,18 @@ import {
   type NeedsYouResponse,
 } from '@forge/contracts/needs-you';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { Said } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
+import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
 import { listFeedbackAs } from '../feedback/list-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
-import { designRowOf } from './needs-you-design.js';
+import { designRowOf, repinRowOf } from './needs-you-design.js';
 import { questionRowsOf } from './needs-you-question.js';
-import { designHealthOf } from './ports.js';
+import { designHealthOf, designRepinsOf } from './ports.js';
 
 export interface NeedsYouViewer {
   userId: string;
@@ -42,6 +44,7 @@ export interface AttentionRow {
   entity: NeedsYouEntity;
   key: string;
   title: string;
+  says?: { title: Said };
   standing: Standing;
   touchedAt: string | null;
 }
@@ -75,6 +78,23 @@ async function automationOf(projectId: string, userId: string, now: Date) {
   return readAutomationStanding(projectId, viewer, { firesLimit: AUTOMATION_FIRES_DEFAULT }, now);
 }
 
+/**
+ * A moved base's pin-only dependents as one row; a pin-only proposal the act would approve is counted
+ * in that row and is not a row of its own.
+ */
+function designRowsOf(
+  health: ReadonlyMap<string, WorkflowHealth>,
+  repins: Awaited<ReturnType<typeof designRepinsOf>>,
+): AttentionRow[] {
+  const grouped = new Set(repins.groups.flatMap((g) => g.ready.map((r) => r.flow)));
+  return [
+    ...repins.groups.map((g) => repinRowOf(g, repins.canDecide)),
+    ...[...health.values()]
+      .filter((h) => !grouped.has(h.flow))
+      .flatMap((h) => designRowOf(h) ?? []),
+  ];
+}
+
 const newestFirst = (a: AttentionRow, b: AttentionRow) =>
   (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
 
@@ -87,17 +107,27 @@ export async function readAttention(
   viewer: NeedsYouViewer,
   now: Date = new Date(),
 ) {
-  const [requirements, feedback, releases, issues, contracts, automation, health, detached] =
-    await Promise.all([
-      listRequirementsAs(viewer, projectId),
-      listFeedbackAs(viewer, projectId),
-      listReleases(projectId, viewer),
-      listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
-      readContractStanding(projectId, viewer.userId, now),
-      automationOf(projectId, viewer.userId, now),
-      designHealthOf(viewer, projectId),
-      questionRowsOf(projectId, viewer),
-    ]);
+  const [
+    requirements,
+    feedback,
+    releases,
+    issues,
+    contracts,
+    automation,
+    health,
+    detached,
+    repins,
+  ] = await Promise.all([
+    listRequirementsAs(viewer, projectId),
+    listFeedbackAs(viewer, projectId),
+    listReleases(projectId, viewer),
+    listIssueStanding(projectId, 'open', { userId: viewer.userId }, now),
+    readContractStanding(projectId, viewer.userId, now),
+    automationOf(projectId, viewer.userId, now),
+    designHealthOf(viewer, projectId),
+    questionRowsOf(projectId, viewer),
+    designRepinsOf(viewer, projectId),
+  ]);
   if (!feedback.ok) {
     throw new Error(
       `needs-you: the feedback list refused its own unfiltered read (${feedback.refusals.map((r) => r.code).join(', ')})`,
@@ -141,7 +171,7 @@ export async function readAttention(
       touchedAt: c.touchedAt,
     })),
     questions: detached,
-    designs: [...health.values()].flatMap((h) => designRowOf(h) ?? []),
+    designs: designRowsOf(health, repins),
     automation: [
       ...automation.schedules.map(
         (s): AttentionRow => ({
@@ -190,6 +220,7 @@ export async function readNeedsYou(
           entity: r.entity,
           key: r.key,
           title: r.title,
+          ...(r.says ? { says: r.says } : {}),
           waitingOn: r.standing.waitingOn,
           touchedAt: r.touchedAt,
         }),

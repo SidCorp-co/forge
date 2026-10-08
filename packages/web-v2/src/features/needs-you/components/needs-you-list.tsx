@@ -20,7 +20,7 @@ const rowView =
     key: `${n.entity}:${n.key}`,
     keyLabel: needsYouKeyLabel(n, (a) => label("needsYouArea", a)),
     href: needsYouHref(slug, n),
-    title: n.title,
+    title: saidOrNull(n.says?.title, lang) ?? n.title,
     facts: [label("needsYouArea", n.area)],
     note: saidOrNull(n.waitingOn.says.effect, lang),
     state: null,

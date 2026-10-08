@@ -12,6 +12,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { DESIGN_DECISIONS } from './design.js';
+import { readRepinPlanAs, repinAs } from './design-repin-service.js';
 import {
   type DesignOutcome,
   decideDesignAs,
@@ -273,6 +274,47 @@ workflowRoutes.post(
         reason: body.reason ?? null,
       }),
     );
+  },
+);
+
+workflowRoutes.get('/:id/workflows/:workflow/design/repins', workflowParam, async (c) => {
+  const { id, workflow } = c.req.valid('param');
+  return c.json(
+    await egressForRequest(
+      c.get('agency'),
+      id,
+      'design',
+      await readRepinPlanAs(writerOf(c), id, workflow),
+      `workflow ${workflow} re-pins`,
+    ),
+  );
+});
+
+workflowRoutes.post(
+  '/:id/workflows/:workflow/design/repins',
+  workflowParam,
+  strictBody(
+    z.strictObject({
+      revision: z.number().int().min(1),
+      designs: z
+        .array(z.strictObject({ workflowId: z.uuid(), revision: z.number().int().min(1) }))
+        .min(1)
+        .max(200),
+    }),
+    '{ revision, designs: [{ workflowId, revision }] } names the base revision approved and each design to re-pin at the revision the plan read it at',
+  ),
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const outcome = await repinAs({
+      projectId: id,
+      baseId: workflow,
+      actor: writerOf(c),
+      revision: body.revision,
+      designs: body.designs,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'WORKFLOW_REFUSED');
+    return c.json(outcome.result);
   },
 );
 

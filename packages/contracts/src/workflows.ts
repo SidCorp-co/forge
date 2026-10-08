@@ -85,6 +85,67 @@ export interface DesignLeftStale {
 	basedOnRevision: number;
 }
 
+/** One base a design declares, moved from the revision its approved revision pins to the one it is re-pinned on. */
+export interface PinMove {
+	workflow: string;
+	from: number;
+	to: number;
+}
+
+/**
+ * A revision that differs from its design's approved revision only in the base revisions it pins,
+ * read on the canonical design (`design.ts:fingerprintShape`): `changed` lists every path at which
+ * the two differ, each a `/basedOn/<i>/revision`, and `fingerprint` is the design fingerprint they
+ * share once the pins are set aside, the proof that nothing else changed.
+ */
+export interface PinOnlyChange {
+	pins: PinMove[];
+	changed: string[];
+	fingerprint: string;
+}
+
+/** Where an act's pin-only revision comes from: written by the act from the approved one, or a pin-only proposal already filed. */
+export type RepinSource = "approved" | "proposal";
+
+/** One design the re-pin act would approve, in the order it approves them, every base before what builds on it. */
+export interface RepinItem {
+	workflowId: string;
+	flow: string;
+	/** The workflow revision read, which the act names back (compare-and-set). */
+	revision: number;
+	approvedRevision: number;
+	source: RepinSource;
+	/** The revision the act leaves approved. */
+	approves: number;
+	/** Who wrote a filed proposal; null where the act writes the re-pin. */
+	proposedByName: string | null;
+	pins: PinMove[];
+	proof: { changed: string[]; fingerprint: string };
+}
+
+/** A design resting on the base's old revision that the act will not take, with the refusal naming why. */
+export interface RepinRefused {
+	workflowId: string;
+	flow: string;
+	revision: number;
+	refusal: { code: DesignRefusalCode; path: string; detail: string; flow?: string };
+}
+
+/** `GET …/workflows/:base/design/repins`: what one act approving the base's pin-only dependents would do. */
+export interface RepinPlan {
+	base: { workflowId: string; flow: string; approvedRevision: number | null };
+	canDecide: boolean;
+	ready: RepinItem[];
+	refused: RepinRefused[];
+}
+
+/** `POST …/workflows/:base/design/repins`: the act's id, which every decision it recorded names, and what it approved. */
+export interface RepinActResult {
+	act: string;
+	base: { workflowId: string; flow: string; approvedRevision: number };
+	approved: { workflowId: string; flow: string; revision: number; pins: PinMove[] }[];
+}
+
 export const DESIGN_WAITING_KINDS = [
 	"you",
 	"person",
@@ -212,6 +273,9 @@ export const DESIGN_REFUSAL_CODES = [
 	"WORKFLOW_DESIGN_UNCHANGED",
 	"WORKFLOW_DESIGN_NOT_APPROVED",
 	"WORKFLOW_DESIGN_BASE_UNAPPROVED",
+	"WORKFLOW_REPIN_PENDING_CHANGE",
+	"WORKFLOW_REPIN_NOT_DEPENDENT",
+	"WORKFLOW_REPIN_CYCLE",
 	"WORKFLOW_DESIGN_ISSUE_IS_BUILD",
 	"WORKFLOW_DESIGN_ISSUE_REQUIRED",
 	"WORKFLOW_BUILD_ALREADY_LINKED",

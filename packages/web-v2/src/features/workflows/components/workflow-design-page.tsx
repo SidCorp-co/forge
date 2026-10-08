@@ -191,6 +191,8 @@ interface DesignPageProps {
   onTab: (t: DesignTab) => void;
   noteControl?: ReactNode;
   walkDecision?: ReactNode;
+  /** The act that clears this base's pin-only dependents, where it has any. */
+  repins?: ReactNode;
 }
 
 export function shownDesign(d: WorkflowDesign, record: WorkflowRecord) {
@@ -203,7 +205,7 @@ export function shownDesign(d: WorkflowDesign, record: WorkflowRecord) {
   return { shown, shownRevision, approved: canDiff ? approved : null };
 }
 
-export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, noteControl, walkDecision }: DesignPageProps) {
+export function WorkflowDesignPage({ projectId, slug, d, record, template, decisionCount, tab, onTab, noteControl, walkDecision, repins }: DesignPageProps) {
   const t = useCopy();
   const [changes, setChanges] = useState(false);
   const { shown, shownRevision, approved } = shownDesign(d, record);
@@ -225,6 +227,7 @@ export function WorkflowDesignPage({ projectId, slug, d, record, template, decis
         {noteControl}
         {d.status === "proposed" && health ? <OrphanedTraces traces={health.orphanedTraces} revision={d.proposedRevision} /> : null}
       </DesignBanner>
+      {repins}
       <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="design-tabs" />
     </>
   );
