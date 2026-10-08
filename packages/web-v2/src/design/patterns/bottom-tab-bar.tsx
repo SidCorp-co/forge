@@ -12,6 +12,8 @@ export interface BottomTabItem {
   badge?: number;
   /** Set where the figure is not read: it is no statement, a held `badge` included, and the tab says why. */
   badgeRead?: BadgeRead;
+  /** What `badge` counts, so the tab names its own figure; see `BadgeFigure`. */
+  badgeCounts?: string;
   /** Custom leading element replacing the icon — e.g. a ProjectMark glyph for the project switcher. */
   leading?: React.ReactNode;
 }

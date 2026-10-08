@@ -1,4 +1,5 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
+import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
 import type { BadgeFigure } from "@/design/patterns/badge-read";
 import type { RailItem } from "./nav-rail-compact";
 
@@ -124,6 +125,10 @@ export function compactWorkspaceRailItems(attention: BadgeFigure): RailItem[] {
   }));
 }
 
+/** What the Issues row's figure counts, said in the Dashboard tile's own words. Never the Attention
+ *  figure's: the two rows sit side by side with two different numbers. */
+export const OPEN_WORK_COUNTS = `in ${OPEN_WORK_LABEL.toLowerCase()}`;
+
 /** Project tier with the Issues queue badge (= open issues). Agents would carry
  *  an active-sessions count, but the console rollup has no per-project session
  *  total yet, so it stays unbadged until that field ships. */
@@ -133,6 +138,7 @@ export function projectRailItems(openIssues: number | undefined): RailItem[] {
     label: it.label,
     icon: it.icon,
     badge: it.key === "proj-issues" ? openIssues : undefined,
+    badgeCounts: it.key === "proj-issues" ? OPEN_WORK_COUNTS : undefined,
   }));
 }
 
@@ -144,7 +150,7 @@ export function bottomTabItems(
   if (slug) {
     return [
       { key: "proj-overview", label: "Dashboard", icon: "grid" },
-      { key: "proj-issues", label: "Issues", icon: "list", badge: openIssues },
+      { key: "proj-issues", label: "Issues", icon: "list", badge: openIssues, badgeCounts: OPEN_WORK_COUNTS },
       { key: "chat", label: "Chat", icon: "chat" },
       { key: "proj-agents", label: "Agents", icon: "agent" },
       { key: "switcher", label: "Project", icon: "folder" },

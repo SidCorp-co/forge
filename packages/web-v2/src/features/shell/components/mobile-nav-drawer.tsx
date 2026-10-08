@@ -12,7 +12,7 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
-import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
+import { OPEN_WORK_COUNTS, PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
 
 // Workspace destinations for the mobile drawer: the rail rows plus the two
 // most-wanted secondary destinations (Attention, Settings), so the workspace
@@ -32,6 +32,7 @@ function DrawerNavButton({
   label,
   badge,
   badgeRead,
+  badgeCounts,
 }: {
   active: boolean;
   onClick: () => void;
@@ -39,8 +40,9 @@ function DrawerNavButton({
   label: string;
   badge?: number;
   badgeRead?: BadgeRead;
+  badgeCounts?: string;
 }) {
-  const face = badgeFace({ badge, badgeRead });
+  const face = badgeFace({ badge, badgeRead, badgeCounts });
   return (
     <button
       type="button"
@@ -140,6 +142,7 @@ export function MobileNavDrawer({
           leading={<Icon name={it.icon} size={18} />}
           label={it.label}
           badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
+          badgeCounts={it.key === "proj-issues" ? OPEN_WORK_COUNTS : undefined}
         />
       ))}
     </>
@@ -160,6 +163,7 @@ export function MobileNavDrawer({
           label={it.label}
           badge={it.key === "attention" ? attention.badge : undefined}
           badgeRead={it.key === "attention" ? attention.badgeRead : undefined}
+          badgeCounts={it.key === "attention" ? attention.badgeCounts : undefined}
         />
       ))}
     </>
