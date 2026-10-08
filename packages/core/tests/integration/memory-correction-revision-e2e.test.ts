@@ -45,8 +45,16 @@ describe('a memory corrected from the item it names', () => {
     await addProjectMember(w.projectId, agent.id, 'member');
     agentToken = await userToken(agent.id);
     await issue(w, { status: 'open', createdAt: ago(2) }); // ISS-1
-    await agentWrites('note', 'gotcha/rebase', 'After a rebase, test:changed shows 24 failed files (ISS-1).');
-    await agentWrites('decision', 'decision/board', 'The board stays flat (ISS-1), owner 2026-10-04.');
+    await agentWrites(
+      'note',
+      'gotcha/rebase',
+      'After a rebase, test:changed shows 24 failed files (ISS-1).',
+    );
+    await agentWrites(
+      'decision',
+      'decision/board',
+      'The board stays flat (ISS-1), owner 2026-10-04.',
+    );
   });
 
   it('keeps the old text as an earlier revision on the item, the agent as its writer, and the person as its corrector', async () => {
@@ -107,9 +115,7 @@ describe('a memory corrected from the item it names', () => {
       reason: 'The owner added the dividers',
     });
     expect(res.status, JSON.stringify(res.body)).toBe(200);
-    const after = (await onItem(w, 'ISS-1')).find(
-      (r) => r.sourceRef === 'decision/board',
-    ) as Entry;
+    const after = (await onItem(w, 'ISS-1')).find((r) => r.sourceRef === 'decision/board') as Entry;
     expect((after.revisions as Body[]).map((r) => r.text)).toEqual([
       'The board stays flat (ISS-1), owner 2026-10-04.',
     ]);
@@ -122,9 +128,7 @@ describe('a memory corrected from the item it names', () => {
     expect(same.body.code).toBe('MEMORY_UNCHANGED');
     const noReason = await correct(w, row.id, { text: 'Something else (ISS-1).', reason: 'x' });
     expect(noReason.status).toBe(400);
-    const after = (await onItem(w, 'ISS-1')).find(
-      (r) => r.sourceRef === 'decision/board',
-    ) as Entry;
+    const after = (await onItem(w, 'ISS-1')).find((r) => r.sourceRef === 'decision/board') as Entry;
     expect(after.revisions).toHaveLength(1);
   });
 });

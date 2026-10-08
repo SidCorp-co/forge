@@ -217,7 +217,10 @@ describe('roadmap-eta', () => {
     });
     expect(
       etaOf(
-        delivery({ landing: range, release: { kind: 'not_enough_history', n: 2, floor: 10 } as never }),
+        delivery({
+          landing: range,
+          release: { kind: 'not_enough_history', n: 2, floor: 10 } as never,
+        }),
       ).basis,
     ).toMatch(/^lands by then; release not forecast: 2 of 10 releases on record/);
   });

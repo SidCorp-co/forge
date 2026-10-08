@@ -67,9 +67,7 @@ describe('the report-queries door', () => {
     const list = (await api(w.token, 'GET', `/api/projects/${w.projectId}/requirements`)).body
       .requirements as Body[];
     const frame = (await run(w.token, 'progress-by-requirement')).body.frame as Body;
-    expect((frame.rows as Body[]).map((r) => r.key).sort()).toEqual(
-      list.map((i) => i.key).sort(),
-    );
+    expect((frame.rows as Body[]).map((r) => r.key).sort()).toEqual(list.map((i) => i.key).sort());
     const roadmap = status.roadmap as Record<'now' | 'next' | 'later', Body[]>;
     const eta = (await run(w.token, 'roadmap-eta')).body.frame as Body;
     expect((eta.rows as Body[]).map((r) => r.key)).toEqual(

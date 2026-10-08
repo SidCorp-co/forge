@@ -64,7 +64,9 @@ async function corrected(source: string, metadata: Record<string, unknown>): Pro
 }
 
 async function writerOf(id: string): Promise<string | null | undefined> {
-  const [row] = await m.sql<{ md: Record<string, unknown> }[]>`SELECT metadata AS md FROM memories WHERE id = ${id}`;
+  const [row] = await m.sql<
+    { md: Record<string, unknown> }[]
+  >`SELECT metadata AS md FROM memories WHERE id = ${id}`;
   return row?.md.writtenBy as string | null | undefined;
 }
 
@@ -74,7 +76,9 @@ describe('0469: a corrected memory keeps its writer and its old text', () => {
     expect(await writerOf(id)).toBe(person);
     await m.migrate();
     expect(await writerOf(id)).toBe(agent);
-    const [row] = await m.sql<{ md: Record<string, unknown> }[]>`SELECT metadata AS md FROM memories WHERE id = ${id}`;
+    const [row] = await m.sql<
+      { md: Record<string, unknown> }[]
+    >`SELECT metadata AS md FROM memories WHERE id = ${id}`;
     expect(row?.md.corrections).toEqual([expect.objectContaining({ by: person })]);
     expect(row?.md.verifiedBy).toBe(person);
   });
@@ -102,11 +106,15 @@ describe('0469: a corrected memory keeps its writer and its old text', () => {
 
   it('keeps a decision’s replaced text as a revision from now on, as it already did a note’s', async () => {
     const before = await corrected('decision', { writtenBy: agent });
-    const [none] = await m.sql<{ n: number }[]>`SELECT count(*)::int AS n FROM memory_revisions WHERE memory_id = ${before}`;
+    const [none] = await m.sql<
+      { n: number }[]
+    >`SELECT count(*)::int AS n FROM memory_revisions WHERE memory_id = ${before}`;
     expect(none?.n).toBe(0);
     await m.migrate();
     await m.sql`UPDATE memories SET text_content = 'newer text' WHERE id = ${before}`;
-    const revisions = await m.sql<{ text_content: string }[]>`SELECT text_content FROM memory_revisions WHERE memory_id = ${before}`;
+    const revisions = await m.sql<
+      { text_content: string }[]
+    >`SELECT text_content FROM memory_revisions WHERE memory_id = ${before}`;
     expect(revisions.map((r) => r.text_content)).toEqual(['new text']);
     const mirror = randomUUID();
     await m.sql`
@@ -114,7 +122,9 @@ describe('0469: a corrected memory keeps its writer and its old text', () => {
       VALUES (${mirror}, ${projectId}, 'issue', ${randomUUID()}, 'issue text')
     `;
     await m.sql`UPDATE memories SET text_content = 'issue text, edited' WHERE id = ${mirror}`;
-    const [mirrored] = await m.sql<{ n: number }[]>`SELECT count(*)::int AS n FROM memory_revisions WHERE memory_id = ${mirror}`;
+    const [mirrored] = await m.sql<
+      { n: number }[]
+    >`SELECT count(*)::int AS n FROM memory_revisions WHERE memory_id = ${mirror}`;
     expect(mirrored?.n).toBe(0);
   });
 });
