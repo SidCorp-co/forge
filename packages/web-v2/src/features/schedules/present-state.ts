@@ -63,7 +63,6 @@ const VERDICT: Record<NonNullable<ScheduleRow["lastStatus"]>, { word: string; si
   skipped: { word: "Skipped", since: "" },
 };
 
-/** A status core writes that this screen has no wording for reads as its own word, neutral. */
 function verdictWords(status: NonNullable<ScheduleRow["lastStatus"]>): { word: string; since: string } {
   return VERDICT[status] ?? { word: String(status), since: "" };
 }
