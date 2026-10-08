@@ -9,7 +9,7 @@
  * dependent's waiting banner stale until some other event woke the dispatcher.
  *
  * Authorization stays at the transport edge: REST resolves a project role,
- * MCP asserts device-owner membership. This module takes inputs already
+ * MCP asserts the token owner is a project member. This module takes inputs already
  * authorized and owns only the domain rules, so neither transport's error
  * vocabulary leaks into the other's.
  */

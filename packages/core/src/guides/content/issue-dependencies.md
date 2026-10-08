@@ -9,7 +9,7 @@ Edges are directional `fromIssue --kind--> toIssue`:
 
 ### Setting a blocks edge — avoid the create-then-block race
 - Blocker known **at create time** → pass it in the create call itself (`data.relations: [{ kind: 'blocks', dependsOnId }]`), committed before the issue dispatches. This is atomic.
-- Both issues already exist → `forge_issues action=update` with `data.relations: [{ kind: 'blocks', dependsOnId }]`, relative to the issue you are updating (`dependsOnId` = it blocks me, `blocksId` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with `from` = the blocker — that route needs a paired-device token.
+- Both issues already exist → `forge_issues action=update` with `data.relations: [{ kind: 'blocks', dependsOnId }]`, relative to the issue you are updating (`dependsOnId` = it blocks me, `blocksId` = I block it). This works with any credential class and commits the edge before the call's own status transition. Or set it via the PM dependency tool with `from` = the blocker — it takes the same token and needs no paired device, only membership of the project.
 - Red flag: creating the new issue at `open` and setting the blocks edge in a second call — the issue can dispatch in the gap between the two calls.
 - Verify, don't assume: `forge_issues action=get` returns `relations.blocks` and `relations.blockedBy`, each edge flagged `expired` once its `validUntil` has passed. Retract an edge by re-sending it with `validUntil` in the past — the write reports `updated: true`.
 
