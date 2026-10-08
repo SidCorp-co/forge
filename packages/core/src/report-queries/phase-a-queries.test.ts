@@ -38,14 +38,33 @@ describe('the registration list', () => {
   });
 });
 
+const shippedRelease = (n: number) => ({
+  version: `0.4.0-dev.${n}`,
+  releasedAt: `2026-10-08T${String(n % 24).padStart(2, '0')}:00:00.000Z`,
+  headline: `dev.${n}`,
+  issueCount: n === 165 ? 2 : 1,
+  requirements: n === 165 ? ['REQ-30', 'REQ-32'] : ['REQ-32'],
+  contents: [],
+  verified: {},
+});
+/** forge-dev on 2026-10-08: nothing in flight, 27 dev releases shipped that day. */
+const SHIPPED_DEV_185 = {
+  releaseCount: 27,
+  issueCount: 28,
+  releases: Array.from({ length: 27 }, (_, i) => shippedRelease(185 - i)),
+} as never;
+const NOTHING_SHIPPED = { releaseCount: 0, issueCount: 0, releases: [] } as never;
+
 describe('release-readiness', () => {
-  it('answers one row: state, progress, whose turn and the draft behind', () => {
-    const frame = releaseReadinessFrame(next());
+  it('answers the release in flight first: state, progress, whose turn and the draft behind', () => {
+    const frame = releaseReadinessFrame(next(), NOTHING_SHIPPED);
     expect(ReportFrameSchema.safeParse(frame).success).toBe(true);
     expect(frame.rows).toEqual([
       {
+        stage: 'in_flight',
         release: '0.4.0',
         state: 'in_progress',
+        releasedAt: null,
         total: 5,
         shipped: 2,
         awaitingRelease: 1,
@@ -55,12 +74,14 @@ describe('release-readiness', () => {
         turnAct: 'approve the release',
         behindRelease: '0.4.1',
         behindIssues: 3,
+        shippedReleases: 0,
+        shippedIssues: 0,
       },
     ]);
   });
 
   it('holds null cells where nobody has the turn and nothing is behind', () => {
-    const [row] = releaseReadinessFrame(next({ turn: null, behind: null })).rows;
+    const [row] = releaseReadinessFrame(next({ turn: null, behind: null }), NOTHING_SHIPPED).rows;
     expect(row).toMatchObject({
       turnWho: null,
       turnAct: null,
@@ -69,9 +90,51 @@ describe('release-readiness', () => {
     });
   });
 
-  it('holds no row where no release is cut or collecting', () => {
-    const frame = releaseReadinessFrame(next({ version: null, state: null, ...NONE }));
-    expect(frame.rows).toEqual([]);
+  it('returns the releases shipped in the window, newest first, with date, version and issues', () => {
+    const frame = releaseReadinessFrame(
+      next({ version: null, state: null, ...NONE }),
+      SHIPPED_DEV_185,
+    );
+    expect(ReportFrameSchema.safeParse(frame).success).toBe(true);
+    const shipped = frame.rows.filter((r) => r.stage === 'shipped');
+    expect(shipped.length).toBe(25);
+    expect(shipped[0]).toMatchObject({
+      release: '0.4.0-dev.185',
+      state: 'shipped',
+      releasedAt: '2026-10-08T17:00:00.000Z',
+      total: 1,
+      shipped: 1,
+      requirements: 'REQ-32',
+    });
+    expect(shipped.find((r) => r.release === '0.4.0-dev.165')).toMatchObject({
+      total: 2,
+      requirements: 'REQ-30, REQ-32',
+    });
+  });
+
+  it('says in its first row that none is in flight, counting every release the window shipped', () => {
+    const frame = releaseReadinessFrame(
+      next({ version: null, state: null, ...NONE }),
+      SHIPPED_DEV_185,
+    );
+    expect(frame.rows[0]).toMatchObject({
+      stage: 'none_in_flight',
+      release: null,
+      state: null,
+      shippedReleases: 27,
+      shippedIssues: 28,
+    });
+    expect(frame.rows.filter((r) => r.stage === 'none_in_flight')).toHaveLength(1);
+  });
+
+  it('still holds its first row where nothing is in flight and nothing shipped', () => {
+    const frame = releaseReadinessFrame(
+      next({ version: null, state: null, ...NONE }),
+      NOTHING_SHIPPED,
+    );
+    expect(frame.rows).toEqual([
+      expect.objectContaining({ stage: 'none_in_flight', shippedReleases: 0 }),
+    ]);
     expect(ReportFrameSchema.safeParse(frame).success).toBe(true);
   });
 });

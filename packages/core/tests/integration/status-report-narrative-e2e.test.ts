@@ -1,3 +1,4 @@
+import { shownFrame, type VisualBlock } from '@forge/contracts/visual-blocks';
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -8,8 +9,8 @@ import { type World, world } from '../helpers/forecast-world.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
 // A template report a schedule stores carries a narrative one model call wrote from the template's
-// slot guidance and this fire's own runs alone, judged like any narrative (no number the runs did not
-// return). A refused answer gets one retry carrying the refusal; a second refusal, no model, or a
+// slot guidance and what this fire's blocks show of its own runs alone, judged like any narrative (no
+// number its blocks do not show). A refused answer gets one retry carrying the refusal; a second refusal, no model, or a
 // project whose data policy forbids it stores the slots empty, names the reason in the notice and
 // keeps which path ran on the report (REQ-32 criteria 7 and 8). The model is faked at the provider
 // seam: the deployment's chat provider in the registry, behind the same `openChat` gate chat uses.
@@ -87,7 +88,7 @@ const usageOf = async (projectId: string) => [
 ];
 
 describe('a scheduled template report writes its narrative', () => {
-  it('stores the narrative the model wrote, from the slot guidance and its own runs alone', async () => {
+  it('stores the narrative the model wrote, from the slot guidance and what its blocks show alone', async () => {
     answers = [JSON.stringify(CLEAN)];
     const { id, detail, notices } = await fire(w);
     expect(await exportOf(w, id)).toContain('_Summary written by scripted-model._');
@@ -104,13 +105,12 @@ describe('a scheduled template report writes its narrative', () => {
       'Nothing else from the project is given to you, so state nothing they do not hold.',
     );
     expect(String(system?.content)).toContain('English (`en`)');
-    const runs = (detail.document as Body).runs as {
-      queryId: string;
-      frame: { rows: unknown[] };
-    }[];
-    for (const run of runs) {
-      expect(String(input?.content)).toContain(`### Query ${run.queryId}`);
-      expect(String(input?.content)).toContain(`Rows: ${JSON.stringify(run.frame.rows)}`);
+    const blocks = (detail.document as Body).blocks as VisualBlock[];
+    for (const block of blocks) {
+      const shown = shownFrame(block);
+      if (!shown) continue;
+      expect(String(input?.content)).toContain(`### ${block.kind} "${block.title}"`);
+      expect(String(input?.content)).toContain(`Rows: ${JSON.stringify(shown.rows)}`);
     }
     expect(String(input?.content)).not.toContain(w.projectId);
     for (const body of notices) {
@@ -137,7 +137,7 @@ describe('a scheduled template report writes its narrative', () => {
     expect((detail.document as Body).narrative).toEqual(CLEAN);
     const retry = asked[1] as ChatMessage[];
     expect(String(retry.at(-1)?.content)).toContain(
-      'states 98765, which no run of template "progress" returned',
+      'states 98765, which no block of template "progress" shows',
     );
     const usage = await usageOf(w.projectId);
     expect(usage.at(-1)).toEqual({ model: 'scripted-model', request_count: 2, input_tokens: 240 });

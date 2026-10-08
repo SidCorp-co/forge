@@ -125,11 +125,29 @@ const ERROR: Line = {
   vi: (name) => `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
 };
 
-const UNVERIFIED: Line = {
-  en: (name) =>
-    `Sorry, ${name} could not check the project's figures, so it will not send an answer it is unsure of. This is not about your question; please ask again in a few minutes.`,
-  vi: (name) =>
-    `Xin lỗi, ${name} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`, // i18n-allow: user-facing channel reply
+/**
+ * What a held reply stated that nothing its turn read backs, as the line a screen ran out of
+ * rewrites over names it: the reader is told what happened, never that a check could not run.
+ */
+export type HeldClaim = 'figure' | 'date' | 'issue' | 'status' | 'record';
+
+const HELD_CLAIM: Record<HeldClaim, string> = {
+  figure: 'it stated a figure that nothing it read backs',
+  date: 'it stated a date that nothing it read backs',
+  issue: 'it named an issue that nothing it read backs',
+  status: 'it said where the work stands without a read that shows it',
+  record: 'it said it had done something, such as a save or a share, that it had not done',
+};
+
+/**
+ * The line a reply the screen held goes out as, when no rewrite passed and its claims could not be
+ * marked. QA of ISS-420 on dev.185: the old line said the figures "could not be checked" and asked
+ * for a retry "in a few minutes", while the check had run and held an honest refusal, so the reader
+ * was told of a failure that never happened. English only: Forge's own copy is not translated.
+ */
+const heldLine = (name: string, claims: readonly HeldClaim[]): string => {
+  const why = [...new Set(claims)].map((c) => HELD_CLAIM[c]).join('; ');
+  return `${name} wrote an answer, but the reply check held it${why ? `: ${why}` : ''}. No rewrite fixed that, so the answer was not sent. Nothing failed; asking again, or asking for one thing at a time, may get an answer it can check.`;
 };
 
 const EMPTY: Line = {
@@ -241,7 +259,8 @@ const PARTIAL: Record<
   {
     head: (name: string, seconds: number) => string;
     did: string;
-    read: (n: number) => string;
+    /** Leads the one sentence that says, by tool in plain words, what the turn read. */
+    read: string;
     nothingYet: string;
   }
 > = {
@@ -249,14 +268,14 @@ const PARTIAL: Record<
     head: (name, seconds) =>
       `${name} has not finished this after ${seconds} seconds, so here is what it has so far — still working… the rest will be posted in this conversation.`,
     did: 'Done so far:',
-    read: (n) => `Read so far (${n}):`,
+    read: 'Read so far:',
     nothingYet: 'Nothing is finished yet; it is still reading the project.',
   },
   vi: {
     head: (name, seconds) =>
       `${name} chưa xong yêu cầu này sau ${seconds} giây nên gửi trước phần đã có — đang làm tiếp… phần còn lại sẽ được gửi ngay trong cuộc trò chuyện này.`, // i18n-allow: user-facing channel reply
     did: 'Đã làm:', // i18n-allow: user-facing channel reply
-    read: (n) => `Đã đọc (${n}):`, // i18n-allow: user-facing channel reply
+    read: 'Đã đọc:', // i18n-allow: user-facing channel reply
     nothingYet: 'Chưa có việc nào xong; đang đọc dữ liệu dự án.', // i18n-allow: user-facing channel reply
   },
 };
@@ -281,8 +300,8 @@ export function turnFailureReason(code: TurnFailureCode, name: string): string {
 export const errorFallbackReply = (name: string, lang: ReplyLanguage = 'en'): string =>
   ERROR[lang](name);
 
-export const unverifiedFallbackReply = (name: string, lang: ReplyLanguage = 'en'): string =>
-  UNVERIFIED[lang](name);
+export const heldFallbackReply = (name: string, claims: readonly HeldClaim[] = []): string =>
+  heldLine(name, claims);
 
 export const emptyFallbackReply = (name: string, lang: ReplyLanguage = 'en'): string =>
   EMPTY[lang](name);

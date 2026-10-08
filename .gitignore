@@ -17,6 +17,10 @@ out
 
 # Test output
 coverage
+# core's upload store when a server runs with no UPLOADS_DIR (`lib/env.ts` defaults to ./uploads):
+# runtime state, never source. The integration suite stores into a temp dir per file instead
+# (packages/core/tests/helpers/file-database.ts, held by tests/integration/uploads-dir-e2e.test.ts).
+packages/core/uploads/
 playwright-report
 playwright/.cache
 .playwright-mcp/

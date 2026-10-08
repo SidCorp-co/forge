@@ -3,6 +3,7 @@
 // made stands and is named back to the model rather than made a second time.
 
 import type { CallToolResult } from '../lib/tool-result.js';
+import type { ToolResultEntry } from '../messaging/facts.js';
 import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
 
 const CLI_TOOL = 'forge';
@@ -24,6 +25,7 @@ const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'forge_feedback',
   'forge_requirement_draft',
   'forge_requirement_revise',
+  'forge_template_save',
 ]);
 
 /** One call that landed this turn, as the partial reply and the retry name it. */
@@ -48,6 +50,8 @@ export interface TurnWrites {
   calls(): readonly DoneCall[];
   /** The text of every result the model was shown this turn, refused ones included. */
   resultTexts(): readonly string[];
+  /** The same results by the tool that returned each, a refused one marked so: a declared read grounds a figure (`figures-rule.ts`). */
+  results(): readonly ToolResultEntry[];
 }
 
 const oneLine = (text: string, cap: number): string => {
@@ -123,13 +127,21 @@ function refiled(title: string, earlier: CallToolResult): CallToolResult {
  */
 export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   const done: DoneCall[] = [];
-  const shown: string[] = [];
+  const shown: ToolResultEntry[] = [];
   const filings = new Map<string, Promise<CallToolResult>>();
-  if (!tools) return { tools, doneSoFar: () => null, calls: () => [], resultTexts: () => [] };
+  if (!tools) {
+    return {
+      tools,
+      doneSoFar: () => null,
+      calls: () => [],
+      resultTexts: () => [],
+      results: () => [],
+    };
+  }
   const run = async (name: string, argsJson: string): Promise<CallToolResult> => {
     const result = await tools.execute(name, argsJson);
     const text = toolResultText(result);
-    shown.push(text.slice(0, GROUNDING_CHARS));
+    shown.push({ name, text: text.slice(0, GROUNDING_CHARS), isError: result.isError === true });
     if (!result.isError) {
       done.push({
         name,
@@ -166,7 +178,8 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   return {
     tools: ledgered,
     calls: () => [...done],
-    resultTexts: () => [...shown],
+    resultTexts: () => shown.map((r) => r.text),
+    results: () => [...shown],
     doneSoFar() {
       if (done.length === 0) return null;
       const listed = done.slice(-LISTED_CALLS).map((c) => `- ${c.said} → ${c.result}`);

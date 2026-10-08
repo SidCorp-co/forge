@@ -5,17 +5,15 @@
 // provider's in-band one where its key is set (REQ-32 C2), else none, and every computation is then
 // refused by name.
 
-import { eq } from 'drizzle-orm';
 import { chatDoorOfToken } from './agent-sessions/index.js';
 import { postServiceAnswer } from './assistant/index.js';
 import {
   agentTurnOfSession,
   derivedScope,
+  readAnswerTurn,
   readableConversation,
   stageAgentTurnBlock,
 } from './conversations/index.js';
-import { db } from './db/client.js';
-import { conversationMessages } from './db/schema-conversations.js';
 import { providerExecutors } from './integrations/llm/index.js';
 import { readProjectDocument } from './project-config/index.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
@@ -55,17 +53,7 @@ export function provideReportPorts(): void {
       const room = await readableConversation(conversationId, userId);
       return { adapter: room.adapter, projectIds: await derivedScope(conversationId) };
     },
-    messageOf: async (messageId) => {
-      const [row] = await db
-        .select({
-          conversationId: conversationMessages.conversationId,
-          blocks: conversationMessages.blocks,
-        })
-        .from(conversationMessages)
-        .where(eq(conversationMessages.id, messageId))
-        .limit(1);
-      return row ?? null;
-    },
+    turnOf: readAnswerTurn,
     postAnswer: postServiceAnswer,
     restTurnOf,
   });

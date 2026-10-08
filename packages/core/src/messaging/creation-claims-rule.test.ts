@@ -186,6 +186,61 @@ describe('a reply claiming it shared an answer or saved a report', () => {
   });
 });
 
+// QA of ISS-422 on dev.185 (eco-a): both replies said a save no call made, and both went out; the
+// second only with "(unverified, this may be wrong)" set after it by another rule's refusal
+describe('a save claim in any phrasing', () => {
+  const SAVE_TOOL: Call = {
+    name: 'forge_template_save',
+    arguments: JSON.stringify({ projectId: PID }),
+  };
+  const QA = [
+    'The progress report template has run and its results are saved in the project report history.',
+    'Saved the progress report to the project report history. It includes the progress-by-requirement and criteria-coverage runs.',
+  ];
+  const FAMILY = [
+    'The report has been saved to the history.',
+    'Your answer was stored in the report history.',
+    'We have just saved the progress report.',
+    'It is now in the project report history.',
+    'I added it to the report history.',
+    'Báo cáo tiến độ đã được lưu vào lịch sử báo cáo của dự án.', // i18n-allow: a Vietnamese save claim
+    'Đã lưu báo cáo tiến độ vào lịch sử.', // i18n-allow: a subjectless Vietnamese save claim
+    'Kết quả được lưu trong lịch sử báo cáo.', // i18n-allow: a passive Vietnamese save claim
+  ];
+
+  it('holds the two replies the QA saw, and passes them after a forge_template_save call', async () => {
+    for (const said of QA) {
+      expect(await held(said, []), said).toHaveLength(1);
+      expect(await held(said, [SAVE_TOOL]), said).toEqual([]);
+      expect(await held(said, [{ ...SAVE_TOOL, isError: true }]), said).toHaveLength(1);
+    }
+  });
+
+  it('holds the family the same way, in either language', async () => {
+    for (const said of FAMILY) expect(await held(said, []), said).toHaveLength(1);
+  });
+
+  it('lets a denial, an offer, a future, a conditional and a run kept 30 days pass', async () => {
+    for (const said of [
+      'I have not saved the report yet; tell me to and I will save it.',
+      'The report is not saved.',
+      'I can save this report to the history if you want.',
+      'The report will be saved once you confirm.',
+      'Once it is saved, it appears in the report history.',
+      'Each run is kept for 30 days.',
+      'Báo cáo chưa được lưu vào lịch sử.', // i18n-allow: a Vietnamese denial
+      'Báo cáo sẽ được lưu vào lịch sử khi bạn xác nhận.', // i18n-allow: a Vietnamese future
+      'Mình có thể lưu báo cáo này vào lịch sử.', // i18n-allow: a Vietnamese offer
+    ]) {
+      expect(await held(said, []), said).toEqual([]);
+    }
+  });
+
+  it('holds the hedged form the QA saw as well', async () => {
+    expect(await held(`${QA[1]} (unverified, this may be wrong).`, [])).toHaveLength(1);
+  });
+});
+
 describe('a hedged claim to have written a record', () => {
   it('is held, quoted, whatever the hedge: a record was written or it was not', async () => {
     const hedged = 'I recorded this as FB-9999 (unverified, this may be wrong).';

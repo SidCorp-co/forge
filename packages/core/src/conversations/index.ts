@@ -6,6 +6,7 @@ export {
   writableConversation,
 } from './access.js';
 export { acknowledgeRequest } from './acknowledgement.js';
+export { type AnswerTurn, readAnswerTurn } from './answer-turn.js';
 export {
   attachmentIdFromRef,
   type ConversationAttachmentRef,
@@ -38,6 +39,8 @@ export {
   errorFallbackReply,
   failedTurnReport,
   findingsWords,
+  type HeldClaim,
+  heldFallbackReply,
   isTurnFailureCode,
   nothingMoreReply,
   partialReplyWords,
@@ -46,7 +49,6 @@ export {
   type TurnFailureCause,
   type TurnFailureCode,
   turnFailureReason,
-  unverifiedFallbackReply,
 } from './fallback-replies.js';
 export { existingProjectHandle, type ProjectHandle, resolveProjectHandle } from './handles.js';
 export { runHeartbeatTick } from './heartbeat.js';
@@ -125,6 +127,7 @@ export {
   setRoomQuiet,
   settleConversationMode,
 } from './store.js';
+export { askerOfReply, toolContentFor } from './tool-content.js';
 export { recordDeliveredReply, recordDeliveredReplyToVenue, recordSilence } from './transcript.js';
 export { conversationsNeedingIndex, indexConversationOnce } from './transcript-index.js';
 export { RETRIEVAL_MAX_RESULTS, searchConversationTranscript } from './transcript-search.js';

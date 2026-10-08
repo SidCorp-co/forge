@@ -13,7 +13,18 @@ export interface IssueRow {
   readonly status: string;
 }
 
-/** What `figures-rule.ts` holds a figure to: the turn's report runs, and what the person asked. */
+/** One result a tool returned this turn, by the name the turn called it. */
+export interface ToolResultEntry {
+  readonly name: string;
+  readonly text: string;
+  /** The call was refused or threw: what it answered grounds nothing. */
+  readonly isError?: boolean | undefined;
+}
+
+/**
+ * What `figures-rule.ts` holds a figure to: the turn's report runs, the results of the reads it
+ * declares as grounding (`FIGURE_GROUNDING_RESULTS`), and what the person asked.
+ */
 export interface FigureFacts {
   /** Every value the person's question holds; a figure equal to one is theirs, said back. */
   readonly asked: ReadonlySet<number>;
@@ -21,6 +32,8 @@ export interface FigureFacts {
   readonly runs: number;
   /** The values the runs' frames hold, rounded: index `d` holds them at `d` decimals. */
   readonly held: readonly ReadonlySet<number>[];
+  /** The values the turn's grounding reads returned, rounded the same way; empty where it made none. */
+  readonly read: readonly ReadonlySet<number>[];
 }
 
 export interface MessageFacts {
@@ -52,6 +65,11 @@ export interface MessageFacts {
    */
   readonly memoryDates: ReadonlySet<string>;
   readonly issueLookupFailed: boolean;
+  /**
+   * Every value the person's question holds, where the caller gave it: a figure equal to one is
+   * theirs, said back, and no rule reads it as the reply's own claim.
+   */
+  readonly asked: ReadonlySet<number>;
   /** Null where the turn could run no report, so a figure has nothing to be held to. */
   readonly figures: FigureFacts | null;
   /**
@@ -73,6 +91,7 @@ export const NO_FACTS: MessageFacts = {
   readCounts: new Set(),
   memoryDates: new Set(),
   issueLookupFailed: false,
+  asked: new Set(),
   figures: null,
   heldBlocks: null,
 };

@@ -40,6 +40,11 @@ interface DeliveredReply {
    * code-authored line (ISS-277).
    */
   awaitsReplyFrom?: string | null | undefined;
+  /**
+   * The person whose authority the turn that wrote this reply ran under. Its tool inputs and
+   * outputs ran with their permissions, so only they are shown them (`toolContentFor`).
+   */
+  askedBy?: string | null | undefined;
 }
 
 /**
@@ -56,13 +61,12 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       awaitsReplyFrom: reply.awaitsReplyFrom ?? null,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       externalId: reply.receipt.messageId,
-      deliveryProof: reply.deliveryKey
-        ? {
-            ...reply.receipt,
-            deliveryKey: reply.deliveryKey,
-            ...(reply.decision ? { decision: reply.decision } : {}),
-          }
-        : reply.receipt,
+      deliveryProof: {
+        ...reply.receipt,
+        ...(reply.deliveryKey ? { deliveryKey: reply.deliveryKey } : {}),
+        ...(reply.deliveryKey && reply.decision ? { decision: reply.decision } : {}),
+        ...(reply.askedBy ? { askedBy: reply.askedBy } : {}),
+      },
     });
   } catch (err) {
     logger.warn(

@@ -9,6 +9,39 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.190] - 2026-10-08
+
+Assistant figures must be shown or read; save claims need a real save
+
+### Fixed
+
+- **The Assistant can save a template report, and states only what it read.** A figure shows in a drawn block or a read; a save claim needs a real save; honest refusals go out, and held answers say why.
+
+## [0.4.0-dev.189] - 2026-10-08
+
+Shared chat answers hold the whole turn; tool content stays the asker's
+
+### Changed
+
+- **Release readiness reports what shipped, not only what is in flight.** It lists the releases shipped in the last 14 days (the `days` param) with date, version and issue count, and says when none is in flight.
+
+### Fixed
+
+- **Sharing a chat answer shares the whole answer.** Share on any message of a turn freezes its question as the title, its reply and every block it drew; the 90-second partial reply names what it read in plain words.
+
+### Security
+
+- **A chat reply's tool inputs and outputs are shown only to the person who asked.** Every other member of the room sees which tools ran, how long each took, and the reply.
+
+## [0.4.0-dev.188] - 2026-10-08
+
+Design revisions re-proposed under a new issue point at that issue
+
+### Changed
+
+- **A waiting design revision can be re-pointed at the issue that drew it.** Proposing again with `issue` re-names it; re-pins are never refused for naming no issue, and design refusals now read in short sentences naming the flow.
+- **Forge works requirement first.** A requirement and its workflow are made right before delivery, delivery is judged against their criteria on the running build, and old code is cleaned as the work meets it.
+
 ## [0.4.0-dev.187] - 2026-10-08
 
 Requirement draft promotion asks only signers who can admit issues

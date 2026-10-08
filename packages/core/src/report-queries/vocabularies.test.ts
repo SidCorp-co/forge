@@ -24,6 +24,8 @@ describe("the queries' state columns", () => {
       'progress-by-requirement.lane': null,
       'roadmap-eta.lane': null,
       'roadmap-eta.state': 'requirement',
+      // in flight, none in flight or shipped: which part of the frame a row is, read by no badge family
+      'release-readiness.stage': null,
       'release-readiness.state': 'releaseState',
       'criteria-coverage.verdict': 'bcVerdict',
       'workflow-status.kind': null,

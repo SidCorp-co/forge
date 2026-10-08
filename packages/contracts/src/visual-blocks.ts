@@ -615,6 +615,48 @@ export function checkBlocks(raws: readonly unknown[]): BlockCheck[] {
   return raws.map(checkBlock);
 }
 
+/** The fields of its frame a framed block puts in front of its reader, in the order it names them. */
+function shownFields(block: VisualBlock): string[] {
+  switch (block.kind) {
+    case "table":
+      return block.columns;
+    case "chart":
+      return [block.x, ...(block.series ? [block.series] : []), ...block.y];
+    case "kpi":
+      return block.figures.flatMap((f) => [f.field, ...(f.delta === undefined ? [] : [f.delta])]);
+    case "status-list":
+      return [block.ref, block.status, ...(block.waitingOn === undefined ? [] : [block.waitingOn])];
+    case "timeline":
+      return [block.label, block.start, block.end, block.p50, block.p85, block.lane].filter(
+        (f): f is string => f !== undefined,
+      );
+    case "flow":
+      return [];
+  }
+}
+
+/**
+ * What a block shows of its frame: the fields it draws, over the rows it draws (a table's sorted and
+ * cut to its limit, the one row a kpi reads). A figure the reader can check against the block is one
+ * of these cells, or the count of its rows. A flow shows its own labels and no frame, so it answers
+ * null, as does a block with no frame.
+ */
+export function shownFrame(block: VisualBlock): ReportFrame | null {
+  if (block.kind === "flow" || !block.frame) return null;
+  const names = new Set(shownFields(block));
+  const fields = block.frame.fields.filter((f) => names.has(f.name));
+  const rows =
+    block.kind === "table"
+      ? tableRows(block)
+      : block.kind === "kpi"
+        ? block.frame.rows.slice(block.row ?? 0, (block.row ?? 0) + 1)
+        : block.frame.rows;
+  return {
+    fields,
+    rows: rows.map((r) => Object.fromEntries(fields.map((f) => [f.name, r[f.name] ?? null]))),
+  };
+}
+
 /** The plain-text fallback of a block that passed `checkBlock`. */
 export function blockToText(block: VisualBlock): string {
   return (BLOCK_KINDS[block.kind] as BlockKindEntry<typeof block.kind>).toText(block as never);

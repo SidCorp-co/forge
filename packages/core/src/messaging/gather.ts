@@ -17,6 +17,7 @@ import {
   NO_FACTS,
   type ProgressFacts,
 } from './facts.js';
+import { askedValues } from './figure-exemptions.js';
 import { figureFactsOf, runIdsIn } from './figures-rule.js';
 import { extractIssueClaims } from './issue-tokens.js';
 import { messageReads } from './reads.js';
@@ -38,7 +39,14 @@ interface GatherInput {
    * Where the turn could run a report: what the person asked, and the texts its reads returned and
    * its calls sent, whose run ids name the runs a figure is held to. Absent, no figure is judged.
    */
-  readonly figures?: { readonly asked: string; readonly texts: readonly string[] };
+  readonly figures?: {
+    readonly asked: string;
+    readonly texts: readonly string[];
+    /** What the turn's grounding reads returned (`figures-rule.ts:groundingTexts`). */
+    readonly reads?: readonly string[];
+  };
+  /** What the person asked: a number they typed is theirs, said back (`facts.ts:MessageFacts`). */
+  readonly question?: string;
   /** The blocks held with this reply, as JSON (`facts.ts:MessageFacts`). */
   readonly heldBlocks?: readonly string[];
   /**
@@ -116,7 +124,7 @@ async function figureFactsFor(
   const ids = runIdsIn(input.figures.texts);
   const frames =
     ids.length === 0 ? [] : await messageReads().reportRunFrames(input.projectId, ids, tx);
-  return figureFactsOf(input.figures.asked, frames);
+  return figureFactsOf(input.figures.asked, frames, input.figures.reads ?? []);
 }
 
 /** Everything the cell's rules need, and nothing they do not. */
@@ -129,6 +137,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     offeredTools: input.offeredTools ?? [],
     readCounts: input.readCounts ?? new Set(),
     memoryDates: input.memoryDates ?? new Set(),
+    asked: input.question === undefined ? new Set() : askedValues(input.question),
     figures: await figureFactsFor(input, needs, tx),
     heldBlocks: input.heldBlocks ?? null,
   };

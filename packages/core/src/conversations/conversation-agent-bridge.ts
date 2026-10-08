@@ -23,7 +23,7 @@ import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { droppedAs, type StagedBlock } from '../lib/staged-block.js';
 import { refusalsOf } from '../messaging/contract.js';
-import type { ProgressFacts } from '../messaging/facts.js';
+import type { ProgressFacts, ToolResultEntry } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
@@ -104,6 +104,26 @@ function toolResultTexts(messages: unknown): string[] {
   return out;
 }
 
+/**
+ * What each of the session's named tool calls returned, by the tool's name, refused ones marked:
+ * a declared read's result grounds a figure (`messaging/figures-rule.ts:FIGURE_GROUNDING_RESULTS`).
+ */
+function namedToolResults(messages: unknown): ToolResultEntry[] {
+  if (!Array.isArray(messages)) return [];
+  const out: ToolResultEntry[] = [];
+  for (const entry of messages) {
+    const toolCalls = (entry as { toolCalls?: unknown } | null)?.toolCalls;
+    if (!Array.isArray(toolCalls)) continue;
+    for (const tc of toolCalls) {
+      const t = tc as { name?: unknown; output?: unknown; isError?: unknown } | null;
+      if (!t || typeof t.name !== 'string' || t.output === undefined || t.output === null) continue;
+      const text = typeof t.output === 'string' ? t.output : JSON.stringify(t.output);
+      out.push({ name: t.name, text, isError: t.isError === true });
+    }
+  }
+  return out;
+}
+
 function finalAssistantText(messages: unknown): string | null {
   if (!Array.isArray(messages)) return null;
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -175,6 +195,7 @@ async function composeOutcome(
         progress: readProgressFacts(session.metadata),
         question: meta.question,
         restResults: toolResultTexts(messages),
+        namedResults: namedToolResults(messages),
         heldBlocks: staged.map((b) => b.block.visual),
       }),
     rewrite: () => {
