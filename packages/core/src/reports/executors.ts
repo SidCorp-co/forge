@@ -5,6 +5,7 @@
 // it. With no adapter registered every execution is refused by name, never faked.
 
 import {
+  type ComputePolicy,
   type ExecutionRefusalCode,
   type Executor,
   ExecutorDescriptorSchema,
@@ -12,14 +13,9 @@ import {
 import { portSlot } from '../lib/port-slot.js';
 import { refuser } from '../lib/refusal.js';
 
-export const refuseExecution = refuser<ExecutionRefusalCode>('EXECUTION_REFUSED');
+export type { ComputePolicy };
 
-/** A project's compute setting as its document holds it; undefined where the document sets none. */
-export interface ComputePolicy {
-  enabled: boolean;
-  zdrOnly?: boolean | undefined;
-  thirdParty?: boolean | undefined;
-}
+export const refuseExecution = refuser<ExecutionRefusalCode>('EXECUTION_REFUSED');
 
 interface ExecutorPorts {
   /** The project's `compute` setting, read from its project document. */

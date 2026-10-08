@@ -110,26 +110,30 @@ Reasons:
 
 ## Phased plan
 
-**Phase 1: computation in Assistant mode, with option (a).**
+**Phase 1: computation in Assistant mode, with option (a).** Built as REQ-32 C2, the
+`anthropic-code-exec` adapter of the reports Executor port; `docs/proposals/chat-visual-answers.md`,
+"C2, as built", says where it departs from the items below.
 
-1. **Provider events.** `packages/core/src/integrations/llm/ai-sdk.ts:bridgeStream` carries a
-   provider-executed tool call and its result as their own events. Today it maps every
-   `tool-call` part to a client `tool_call`, which `run-turn-core.ts` would then try to execute.
-   It also drops every `tool-result` part.
-2. **Storage and display.** The transcript stores the command, its exit code, a capped stdout and
-   stderr, and any files produced. The reply shows the command and its output (BC-11).
-3. **Offering the tool.** It is offered only when the resolved provider is `anthropic` and
-   `ANTHROPIC_API_URL` points at Anthropic itself. On any other wire, a request that needs it is
-   refused by name ("commands need the Anthropic provider; this project answers through
-   LiteLLM"). It never falls back to running the command anywhere else.
-4. **Tool version.** Pin `code_execution_20260120`, the newest version `@ai-sdk/anthropic` 4.0.72
-   exposes. Moving to `20260521`, which adds the 90 s cell limit to the tool description, needs a
-   package upgrade.
-5. **Containers.** Use one container per conversation, keyed by `container.id`. Never reuse one
-   across conversations, projects or people. Expire it with the conversation.
+1. **Provider events.** The provider-executed call and its result are read in the adapter's own
+   execute-only call (`integrations/llm/code-execution.ts`), never in a turn's stream; a turn offers
+   no provider tool, and `ai-sdk.ts:bridgeStream` refuses a provider-executed part by name rather
+   than mapping it to a client `tool_call` that `run-turn-core.ts` would try to execute.
+2. **Storage and display.** The execution record (`report_executions`, REQ-32 C1) stores the
+   script, its exit code, a capped stdout and stderr, and the frames it produced. The reply shows
+   the script and its output (BC-11).
+3. **Offering the tool.** The adapter is registered only where the deployment holds
+   `ANTHROPIC_API_KEY`, and runs on `ANTHROPIC_API_URL`; a deployment without it answers a
+   computation `EXECUTOR_UNAVAILABLE` by name, and a URL that does not serve the Files API fails each
+   call by name. It never falls back to running the command anywhere else.
+4. **Tool version.** `code_execution_20260521`, the newest current version, spoken over the wire
+   directly: `@ai-sdk/anthropic` 4.0.72 stops at `20260120`.
+5. **Containers.** One container per project, conversation and asker, its `container.id` kept in
+   core's process. Never reused across conversations, projects or people; dropped when the
+   provider refuses it as expired, 29 days after it was first seen, or on a restart.
 6. **Inputs.** The only inputs are files the turn's own tools have already read under the asker's
    permissions (BC-10), passed through `@forge/observability`'s `scrubSecretsDeep` before
-   `container_upload`. Uploaded files are deleted through the Files API when the turn ends.
+   `container_upload`. Uploaded and generated files are deleted through the Files API as soon as
+   each execution is read back, and each upload expires on its own after an hour.
 7. **Limits per turn.** Core enforces at most 8 executions per turn and 120 s of execution wall
    time per turn. Hitting either is reported as a stop, with which limit was hit (BC-9).
 8. **Permission.** Running a command is a permission, `assistant.exec`, per ADR 0007. External
@@ -196,8 +200,9 @@ Self-hosting E2B on KVM is the exit if the vendor becomes the problem.
 - **Core changes before anything is visible:** Phase 1 has to change the provider bridge
   (`bridgeStream`), the transcript shape, the reply view and the per-turn caps. The tool itself
   is free, but this is not a one-line change.
-- **Pinned to the SDK's tool version:** `@ai-sdk/anthropic` 4.0.72 stops at
-  `code_execution_20260120`, so the newest tool version waits on a package upgrade.
+- **A second wire beside the SDK:** `@ai-sdk/anthropic` 4.0.72 stops at `code_execution_20260120`,
+  so the adapter speaks the Messages and Files APIs over `fetch` itself, and a change in their
+  shapes is Forge's to follow.
 - **Phase 2 trusts a shared kernel on the owner's machines:** a user-namespace escape there
   reaches a box that holds device credentials. Waiting until demand is shown is part of the price.
 - **Phase 2 changes a mode boundary:** Assistant mode reaching the repository blurs BC-2's line

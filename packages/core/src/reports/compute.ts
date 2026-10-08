@@ -22,6 +22,7 @@ import {
   ExecutionRequestSchema,
   type ExecutionResult,
   ExecutionResultSchema,
+  type ExecutionScope,
   type Executor,
 } from '@forge/contracts/report-executions';
 import type { ReportFrame } from '@forge/contracts/report-queries';
@@ -141,10 +142,10 @@ async function adapterBar(
   if (policy.zdrOnly === true && !adapter.zdrEligible) {
     return `${adapter.id} is not ZDR-eligible, and the project's compute.zdrOnly admits only one that is`;
   }
-  if (policy.thirdParty === false && adapter.dataLeavesTo !== EXECUTOR_DATA_STAYS_WITH_FORGE) {
-    return `${adapter.id} sends the data to ${adapter.dataLeavesTo}, and the project's compute.thirdParty is false`;
+  if (policy.thirdParty !== true && adapter.dataLeavesTo !== EXECUTOR_DATA_STAYS_WITH_FORGE) {
+    return `${adapter.id} sends the data to ${adapter.dataLeavesTo}, and the project's compute.thirdParty is ${policy.thirdParty === false ? 'false' : 'unset'}; a project admin admits a third-party sandbox with compute.thirdParty: true`;
   }
-  if (!(await adapter.availableFor({ id: projectId }))) {
+  if (!(await adapter.availableFor({ id: projectId, compute: policy }))) {
     return `${adapter.id} is not available for this project`;
   }
   return null;
@@ -220,10 +221,11 @@ function keptLog(text: string): string {
 async function executeOn(
   adapter: Executor,
   request: ReturnType<typeof ExecutionRequestSchema.parse>,
+  scope: ExecutionScope,
 ): Promise<ExecutionResult> {
   let raw: unknown;
   try {
-    raw = await adapter.execute(request);
+    raw = await adapter.execute(request, scope);
   } catch (err) {
     throw refuseExecution(
       'EXECUTOR_FAILED',
@@ -309,6 +311,7 @@ export async function computeExecution(args: {
         inputs: scrubSecretsDeep(egress.value),
         limits,
       }),
+      { projectId, conversationId, askedBy: asker.userId },
     );
     const logs = { stdout: keptLog(result.logs.stdout), stderr: keptLog(result.logs.stderr) };
     let frames = scrubSecretsDeep(result.frames);

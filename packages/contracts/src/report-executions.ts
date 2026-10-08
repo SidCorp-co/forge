@@ -63,10 +63,28 @@ export const ExecutorDescriptorSchema = z
   .strict();
 export type ExecutorDescriptor = z.infer<typeof ExecutorDescriptorSchema>;
 
+/** A project's `compute` setting as its project document holds it. Absent `enabled` is off. */
+export interface ComputePolicy {
+  enabled: boolean;
+  zdrOnly?: boolean | undefined;
+  /** `true` admits a sandbox whose data leaves to a third party; unset or `false` admits none. */
+  thirdParty?: boolean | undefined;
+}
+
+/**
+ * Whose computation an adapter runs, so one that keeps state between calls (a container) keeps it
+ * per project, conversation and asker and never across them. A REST caller has no conversation.
+ */
+export interface ExecutionScope {
+  projectId: string;
+  conversationId: string | null;
+  askedBy: string;
+}
+
 /** The port. An adapter is registered at boot by the process entry; nothing that consumes it imports one. */
 export interface Executor extends ExecutorDescriptor {
-  availableFor(project: { id: string }): boolean | Promise<boolean>;
-  execute(request: ExecutionRequest): Promise<ExecutionResult>;
+  availableFor(project: { id: string; compute: ComputePolicy }): boolean | Promise<boolean>;
+  execute(request: ExecutionRequest, scope: ExecutionScope): Promise<ExecutionResult>;
 }
 
 /**
@@ -81,7 +99,110 @@ export const EXECUTOR_DATA_STAYS_WITH_FORGE = "forge";
  * each: files in the sandbox's working directory, never a network call.
  */
 export const EXECUTION_IO =
-  'the input frames are a JSON array of { fields, rows } in the file inputs.json in the working directory, in the order the inputs were named; the script writes { "frames": [{ fields, rows }, ...] } to the file frames.json, each field { name, type: string|number|date|duration|status|ref, label, unit? }';
+  'the input frames are a JSON array of { fields, rows } in the file inputs.json in the working directory, in the order the inputs were named; the script writes { "frames": [{ fields, rows }, ...] } to the file frames.json, each field { name, type: string|number|date|duration|status|ref, label, unit? }, or one table to frames.csv (a header row of field names; a column whose every cell is a number is a number field, any other a string field)';
+
+/** The files a script hands its frames back in, in the order an adapter looks for them. */
+export const EXECUTION_OUTPUT_FILES = ["frames.json", "frames.csv"] as const;
+export type ExecutionOutputFile = (typeof EXECUTION_OUTPUT_FILES)[number];
+
+/** CSV records, RFC 4180 quoting: a quoted cell may hold a comma, a doubled quote or a line break. */
+function csvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let record: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"' && cell === "") quoted = true;
+    else if (c === ",") {
+      record.push(cell);
+      cell = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      record.push(cell);
+      records.push(record);
+      record = [];
+      cell = "";
+    } else cell += c;
+  }
+  if (cell !== "" || record.length > 0) {
+    record.push(cell);
+    records.push(record);
+  }
+  return records.filter((r) => !(r.length === 1 && r[0] === ""));
+}
+
+const NUMERIC_CELL = /^-?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/** One table from frames.csv: a column whose every non-empty cell is a number is a number field. */
+function csvFrame(text: string): { ok: true; frame: unknown } | { ok: false; why: string } {
+  const [header, ...rows] = csvRecords(text);
+  if (!header || header.length === 0) return { ok: false, why: "frames.csv has no header row" };
+  const short = rows.findIndex((r) => r.length !== header.length);
+  if (short >= 0) {
+    return {
+      ok: false,
+      why: `frames.csv row ${short + 2} has ${rows[short]?.length ?? 0} cells, and the header names ${header.length}`,
+    };
+  }
+  const numeric = header.map((_, col) =>
+    rows.every((r) => (r[col] ?? "").trim() === "" || NUMERIC_CELL.test((r[col] ?? "").trim())),
+  );
+  return {
+    ok: true,
+    frame: {
+      fields: header.map((name, col) => ({ name, type: numeric[col] ? "number" : "string", label: name })),
+      rows: rows.map((r) =>
+        Object.fromEntries(
+          header.map((name, col) => {
+            const raw = (r[col] ?? "").trim();
+            return [name, raw === "" ? null : numeric[col] ? Number(raw) : (r[col] ?? "")];
+          }),
+        ),
+      ),
+    },
+  };
+}
+
+/**
+ * The frames a script wrote to one of `EXECUTION_OUTPUT_FILES`, or why they cannot be read. Every
+ * adapter reads its output through this, so one script's frames come back alike from each.
+ */
+export function framesFromOutput(
+  file: ExecutionOutputFile,
+  text: string,
+): { ok: true; frames: z.infer<typeof ReportFrameSchema>[] } | { ok: false; why: string } {
+  let candidate: unknown;
+  if (file === "frames.json") {
+    try {
+      candidate = (JSON.parse(text) as { frames?: unknown } | null)?.frames;
+    } catch (err) {
+      return { ok: false, why: `frames.json is not JSON: ${err instanceof Error ? err.message : String(err)}` };
+    }
+    if (!Array.isArray(candidate)) return { ok: false, why: 'frames.json holds no "frames" array' };
+  } else {
+    const table = csvFrame(text);
+    if (!table.ok) return table;
+    candidate = [table.frame];
+  }
+  const parsed = z.array(ReportFrameSchema).safeParse(candidate);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      why: `${file} is not frames of { fields, rows }: ${parsed.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".") || "(frames)"}: ${i.message}`)
+        .join("; ")}`,
+    };
+  }
+  return { ok: true, frames: parsed.data };
+}
 
 /** The limits one execution runs under when the caller names none. */
 export const EXECUTION_DEFAULT_LIMITS = {
