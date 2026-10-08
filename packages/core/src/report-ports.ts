@@ -2,6 +2,7 @@
 // model a domain may not import (ADR 0008), and the room a block is posted into is the conversations
 // context's, so both are handed in here from their owners' faces.
 
+import { eq } from 'drizzle-orm';
 import { publishToConversationReaders, WEB_CONVERSATION_EVENT } from './assistant/index.js';
 import {
   appendMessages,
@@ -9,6 +10,8 @@ import {
   handleForProject,
   readableConversation,
 } from './conversations/index.js';
+import { db } from './db/client.js';
+import { conversationMessages } from './db/schema-conversations.js';
 import { logger } from './lib/logger.js';
 import { getReportQuery, listReportQueries, runReportQuery } from './report-queries/index.js';
 import { provideReportsPorts } from './reports/index.js';
@@ -21,6 +24,17 @@ export function provideReportPorts(): void {
     roomOf: async (conversationId, userId) => {
       const room = await readableConversation(conversationId, userId);
       return { adapter: room.adapter, projectIds: await derivedScope(conversationId) };
+    },
+    messageOf: async (messageId) => {
+      const [row] = await db
+        .select({
+          conversationId: conversationMessages.conversationId,
+          blocks: conversationMessages.blocks,
+        })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.id, messageId))
+        .limit(1);
+      return row ?? null;
     },
     postAnswer: async ({ conversationId, projectId, askerUserId, content, blocks }) => {
       const author = (await handleForProject(conversationId, projectId)) ?? askerUserId;

@@ -129,6 +129,7 @@ import {
 } from './release-batch/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
+import { messageShareSource } from './reports/index.js';
 import {
   embedRequirementHead,
   provideInterfaceContracts,
@@ -175,7 +176,7 @@ provideStatusReportsPorts({
 });
 // no module freezes a subject for a share yet: a message's blocks, a template's output and a stored
 // report each bring their source with the change that makes them a report document (REQ-32 A4, A7, B3)
-provideShareSubjectSources([]);
+provideShareSubjectSources([messageShareSource]);
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,
@@ -225,6 +226,8 @@ provideProjectConfigPorts({
   recordSecretResolve,
   rememberHandedOut,
 });
+// the chat toolset composed below describes the registered queries, so they are registered first
+registerReportQueries();
 provideReportPorts();
 provideChatTools([...CHAT_READ_MODEL_TOOLS, ...CHAT_RECORD_TOOLS, ...CHAT_REPORT_TOOLS]);
 provideDataPolicy(
@@ -357,7 +360,6 @@ if (isMain) {
   }
   await logUnprovenPatPeppers();
   registerAllIntegrations();
-  registerReportQueries();
   await registerDeployWorker();
   await seedBuiltinSkills(db);
   await runOnceBackfills();

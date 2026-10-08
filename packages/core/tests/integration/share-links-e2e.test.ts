@@ -219,10 +219,10 @@ describe('creating a share', () => {
   });
 
   it('refuses a subject kind no module can freeze yet, naming the kinds that can', async () => {
-    const res = await create(member, { audience: 'members', subjectKind: 'message' });
+    const res = await create(member, { audience: 'members', subjectKind: 'status-report' });
     expect(res.status, JSON.stringify(res.body)).toBe(422);
     expect(res.body.code).toBe('SHARE_SUBJECT_UNSUPPORTED');
-    expect(String(res.body.detail)).toContain('registered: template-output');
+    expect(String(res.body.detail)).toContain('registered: message, template-output');
   });
 });
 

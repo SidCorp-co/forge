@@ -34,6 +34,8 @@ interface ReportsPorts {
     conversationId: string,
     userId: string,
   ): Promise<{ adapter: string; projectIds: string[] }>;
+  /** One stored message: the room it sits in and its blocks column, or null where no message has the id. */
+  messageOf(messageId: string): Promise<{ conversationId: string; blocks: unknown } | null>;
   /** Appends one service-written answer to the room, as the project's handle, and tells its readers. */
   postAnswer(args: {
     conversationId: string;
