@@ -230,7 +230,13 @@ interface IssuePorts {
     issueId: string,
   ) => Promise<{
     requirement: { seq: number; revision: number | null } | null;
-    wordings: { id: string; code: string; sinceRevision: number; retiredRevision: number | null }[];
+    wordings: {
+      id: string;
+      code: string;
+      body: string;
+      sinceRevision: number;
+      retiredRevision: number | null;
+    }[];
   }>;
   /** Of these traced wordings, the live ones of the issue's own requirement, as `REQ-n BC-m`. */
   liveTracedCodesOf: (tx: Tx, issueId: string, ids: readonly string[]) => Promise<string[]>;

@@ -1,0 +1,1 @@
+**People can verify shipped work from the web.** Judge a criterion with a note and screenshot, tie a closed issue to its requirement's criteria, comment and decide on requirements, save and schedule template reports, and set computation.

@@ -1,15 +1,19 @@
 "use client";
 
 // ISS-55 — the issue's acceptance criteria, flat: one row per criterion with its verdict badge.
-// The identity, reason, author and time sit behind the badge's tooltip, not on the row.
+// The identity, reason, author and time sit behind the badge's tooltip, not on the row. A person who
+// may write records a verdict from the row, and ties the issue to its requirement's criteria from
+// the heading.
 
-import { PageSectionTitle, EmptyPanelLine, StatusBadge, statusReading, Tooltip } from "@/design";
+import type { ReactNode } from "react";
+import { EmptyPanelLine, StatusBadge, statusReading, Tooltip, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { criterionStandingOf } from "@forge/contracts/verdict-identity";
 import { identityPhrase } from "../identity-phrase";
-import { type CriterionRow, useCriteria } from "../criteria";
+import { type CriterionRow, useCriteria, type VerdictCommit } from "../criteria";
+import { RecordVerdict } from "./criteria-acts";
 
 function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: string) => string): string {
   const v = row.latest;
@@ -23,7 +27,16 @@ function tooltipOf(row: CriterionRow, t: Copy, language: string, at: (iso: strin
   return parts.filter(Boolean).join("\n");
 }
 
-export function CriteriaList({ issueId }: { issueId: string }) {
+export function CriteriaList({
+  issueId,
+  judge,
+  headingAct,
+}: {
+  issueId: string;
+  /** Present where the reader may record a verdict: the commit it is judged against by default. */
+  judge?: { commit: VerdictCommit | null } | undefined;
+  headingAct?: ReactNode;
+}) {
   const q = useCriteria(issueId);
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -38,8 +51,8 @@ export function CriteriaList({ issueId }: { issueId: string }) {
   if (rows.length === 0) return null;
   return (
     <section aria-label={t("issues.criteria.acceptance")}>
-      <PageSectionTitle className="mb-2">{t("issues.criteria.acceptance")}</PageSectionTitle>
-      <ol className="divide-y" style={{ borderColor: "var(--border-subtle)" }}>
+      <ViewHeading right={headingAct}>{t("issues.criteria.acceptance")}</ViewHeading>
+      <ol className="divide-y divide-line-subtle">
         {rows.map((row) => {
           return (
             <li key={row.id} className="flex items-start gap-3 py-2">
@@ -52,6 +65,7 @@ export function CriteriaList({ issueId }: { issueId: string }) {
                   <StatusBadge family="criterion" value={criterionStandingOf(row.latest)} />
                 </span>
               </Tooltip>
+              {judge ? <RecordVerdict issueId={issueId} row={row} commit={judge.commit} /> : null}
             </li>
           );
         })}

@@ -6,7 +6,8 @@
 // resolved against the project members, and reply/add boxes.
 
 import { WrittenMark } from "@/lib/i18n/written";
-import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, SegmentedControl, Textarea } from "@/design";
+import { Avatar, Badge, BodyView, Button, EmptyState, Field, Icon, Textarea } from "@/design";
+import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments/components/entity-comment-thread";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -26,11 +27,14 @@ import { StagedFileList, useStagedFiles } from "@/features/attachments/component
 function AddCommentBox({
   issueId,
   parentId,
+  intent = "question",
   placeholder,
   onDone,
 }: {
   issueId: string;
   parentId?: string;
+  /** What the comment is: a question owed a reply (a reply's default, as it always was), or a note. */
+  intent?: "question" | "note";
   placeholder: string;
   onDone?: () => void;
 }) {
@@ -43,7 +47,7 @@ function AddCommentBox({
     const text = body.trim();
     if (!text) return;
     create.mutate(
-      { body: text, parentId, files: staged.files },
+      { body: text, intent, parentId, files: staged.files },
       {
         onSuccess: () => {
           setBody("");
@@ -92,7 +96,7 @@ function AddCommentBox({
             disabled={!body.trim()}
             onClick={submit}
           >
-            {parentId ? t("issues.thread.reply") : t("issues.thread.comment")}
+            {parentId ? t("issues.thread.reply") : t(intent === "note" ? "common.intent.post" : "common.intent.ask")}
           </Button>
         </div>
       </div>
@@ -161,22 +165,20 @@ function RecordDecisionBox({ issueId, onDone }: { issueId: string; onDone: () =>
 }
 
 function Composer({ issueId }: { issueId: string }) {
-  const [mode, setMode] = useState<"comment" | "decision">("comment");
+  const [mode, setMode] = useState<ComposerIntent>("question");
   const t = useCopy();
   return (
     <div className="space-y-2">
-      <SegmentedControl
-        value={mode}
-        onChange={setMode}
-        options={[
-          { value: "comment", label: t("issues.thread.comment") },
-          { value: "decision", label: t("common.decisions.decision"), title: t("issues.thread.decisionTitle") },
-        ]}
-      />
+      <IntentPicker value={mode} onChange={setMode} />
       {mode === "decision" ? (
-        <RecordDecisionBox issueId={issueId} onDone={() => setMode("comment")} />
+        <RecordDecisionBox issueId={issueId} onDone={() => setMode("question")} />
       ) : (
-        <AddCommentBox issueId={issueId} placeholder={t("issues.thread.addPlaceholder")} />
+        <AddCommentBox
+          key={mode}
+          issueId={issueId}
+          intent={mode}
+          placeholder={t(mode === "note" ? "common.intent.notePlaceholder" : "common.intent.questionPlaceholder")}
+        />
       )}
     </div>
   );
@@ -202,10 +204,7 @@ function CommentItem({
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);
   const ownerEmail = node.author?.ownerEmail;
-  return (
-    <div
-      className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}
-    >
+  const head = (
       <div className="flex items-start gap-2.5">
         <Avatar initials={initials(author)} size={26} />
         <div className="min-w-0 flex-1">
@@ -275,6 +274,10 @@ function CommentItem({
           )}
         </div>
       </div>
+  );
+  return (
+    <div className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}>
+      {node.intent === "decision" ? <DecisionInThread>{head}</DecisionInThread> : head}
       {node.replies.length > 0 && (
         <div className="mt-3 space-y-3">
           {node.replies.map((child) => (

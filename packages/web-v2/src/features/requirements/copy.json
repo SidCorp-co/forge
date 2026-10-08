@@ -44,6 +44,8 @@
     "requirements.act.undeferTip": "Deferred: {reason}. Undeferring puts it back at {from}.",
     "requirements.act.undeferWhy": "Why it comes back into the current release",
     "requirements.act.undeferWhyLabel": "Why it comes back into the release",
+    "requirements.activity.comments": "Comments",
+    "requirements.activity.history": "History",
     "requirements.assistant.accept": "Accept",
     "requirements.assistant.count": "Suggestions {n} · never applied on its own",
     "requirements.assistant.label": "BA assistant suggestions",

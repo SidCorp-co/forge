@@ -38,7 +38,8 @@ export function fakeCore(reply: (call: Call) => { status?: number; body: unknown
     const call = {
       method: init?.method ?? "GET",
       path: `${url.pathname.replace(/^\/api/, "")}${url.search}`,
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      // a multipart upload is kept as the FormData it is; every other body is JSON
+      body: init?.body instanceof FormData ? init.body : init?.body ? JSON.parse(String(init.body)) : undefined,
     };
     calls.push(call);
     const r = reply(call);

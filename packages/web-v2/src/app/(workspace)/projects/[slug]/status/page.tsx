@@ -4,6 +4,7 @@ import { Button, ErrorState, PageContainer, ProjectLoader, Tabs, useUrlChoice } 
 import { useEtaClock } from "@/features/forecast/hooks";
 import { StatusHistory } from "@/features/project-status/components/status-history";
 import { STATUS_WINDOWS, StatusReport } from "@/features/project-status/components/status-report";
+import { TemplateRun } from "@/features/project-status/components/template-run";
 import { useProjectStatus, useSaveStatusReport } from "@/features/project-status/hooks";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 import { canManageProject } from "@/features/projects/write-access";
@@ -12,7 +13,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 
-const STATUS_TABS = ["report", "history"] as const;
+const STATUS_TABS = ["report", "templates", "history"] as const;
 
 function SaveReport({ projectId, days }: { projectId: string; days: number }) {
   const t = useCopy();
@@ -72,13 +73,20 @@ function Report({ projectId, slug, isAdmin }: { projectId: string; slug: string;
         <Tabs
           tabs={[
             { value: "report", label: t("status.tab.report") },
+            { value: "templates", label: t("status.tab.templates") },
             { value: "history", label: t("status.tab.history") },
           ]}
           value={tab}
           onChange={(v) => setTab(v as (typeof STATUS_TABS)[number])}
         />
       </div>
-      {tab === "history" ? <StatusHistory projectId={projectId} slug={slug} clock={clock} isAdmin={isAdmin} /> : <Live projectId={projectId} slug={slug} />}
+      {tab === "history" ? (
+        <StatusHistory projectId={projectId} slug={slug} clock={clock} isAdmin={isAdmin} />
+      ) : tab === "templates" ? (
+        <TemplateRun projectId={projectId} slug={slug} />
+      ) : (
+        <Live projectId={projectId} slug={slug} />
+      )}
     </PageContainer>
   );
 }

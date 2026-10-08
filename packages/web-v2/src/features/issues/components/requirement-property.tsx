@@ -2,10 +2,12 @@
 
 // The issue rail's Requirement property: the requirement the issue delivers, which a person links
 // or unlinks there. An issue serves one requirement, so a linked one is unlinked before another is
-// picked; core refuses a requirement not agreed yet, or one the issue cannot join, by name.
+// picked; picking one asks before it links, since a link changes what the issue is read against.
+// Core refuses a requirement not agreed yet, or one the issue cannot join, by name.
 
 import Link from "next/link";
-import { Button, Select } from "@/design";
+import { useState } from "react";
+import { Button, ConfirmDialog, Select } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -28,6 +30,7 @@ export function IssueRequirementProperty({
   const t = useCopy();
   const list = useLinkableRequirements(current || disabled ? undefined : projectId);
   const act = useIssueRequirementLink(projectId, issueKey);
+  const [asking, setAsking] = useState<{ key: string; title: string } | null>(null);
   if (current) {
     return (
       <div className="grid justify-items-end gap-1" data-testid="issue-requirement">
@@ -55,10 +58,19 @@ export function IssueRequirementProperty({
         value=""
         options={options}
         disabled={act.isPending || list.isLoading}
-        onChange={(req) => act.mutate({ req, unlink: false })}
+        onChange={(req) => setAsking({ key: req, title: list.data?.find((r) => r.key === req)?.title ?? "" })}
         className="w-48"
       />
       <RefusalLine error={act.error} testid="issue-requirement-refusal" />
+      <ConfirmDialog
+        open={asking !== null}
+        title={t("issues.rail.requirementConfirmTitle", { issue: issueKey, req: asking?.key ?? "" })}
+        message={t("issues.rail.requirementConfirm", { issue: issueKey, req: asking?.key ?? "", title: asking?.title ?? "" })}
+        confirmLabel={t("issues.rail.requirementConfirmAct")}
+        loading={act.isPending}
+        onClose={() => setAsking(null)}
+        onConfirm={() => asking && act.mutate({ req: asking.key, unlink: false }, { onSettled: () => setAsking(null) })}
+      />
     </div>
   );
 }
