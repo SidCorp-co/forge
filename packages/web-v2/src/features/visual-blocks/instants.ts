@@ -1,6 +1,6 @@
 "use client";
 
-import type { InstantReading } from "@forge/contracts/visual-blocks";
+import { type InstantReading, readInstantsIn } from "@forge/contracts/visual-blocks";
 import { useMemo } from "react";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { type EtaClock, doneDayText, partsOf, whenText } from "@/lib/i18n/eta-clock-words";
@@ -46,4 +46,55 @@ export function instantsOn(clock: EtaClock): BlockInstants {
 export function useBlockInstants(): BlockInstants {
   const clock = useEtaClock();
   return useMemo(() => instantsOn(clock), [clock]);
+}
+
+/**
+ * Prose as a person reads it: every ISO instant in the text as the same reading a block draws, except
+ * inside a fenced block, a code span or a link destination, which keep their text as written.
+ */
+export function readProseInstants(text: string, reading: InstantReading): string {
+  let out = "";
+  let from = 0;
+  const keep = (start: number, end: number) => {
+    out += readInstantsIn(text.slice(from, start), reading) + text.slice(start, end);
+    from = end;
+  };
+  for (let at = 0; at < text.length; ) {
+    const fence = /[ \t]*(`{3,}|~{3,})/y;
+    fence.lastIndex = at;
+    const f = at === 0 || text[at - 1] === "\n" ? fence.exec(text) : null;
+    if (f) {
+      const mark = f[1] as string;
+      const close = new RegExp(`\\n[ \\t]*${mark[0] === "`" ? "`" : "~"}{${mark.length},}[ \\t]*(?=\\n|$)`, "g");
+      close.lastIndex = at + f[0].length - 1;
+      const m = close.exec(text);
+      const end = m ? m.index + m[0].length : text.length;
+      keep(at, end);
+      at = end;
+      continue;
+    }
+    const c = text[at];
+    if (c === "`") {
+      let n = 1;
+      while (text[at + n] === "`") n++;
+      const end = text.indexOf("`".repeat(n), at + n);
+      if (end >= 0) {
+        keep(at, end + n);
+        at = end + n;
+        continue;
+      }
+      at += n;
+      continue;
+    }
+    if (c === "]" && text[at + 1] === "(") {
+      const end = text.indexOf(")", at);
+      if (end >= 0) {
+        keep(at, end + 1);
+        at = end + 1;
+        continue;
+      }
+    }
+    at++;
+  }
+  return out + readInstantsIn(text.slice(from), reading);
 }
