@@ -1,12 +1,12 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
-import { healthOf, thrownSaid } from '../health-said.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
   declareIntegration,
   forgeReads,
   type HealthCheckResult,
+  healthOf,
   type InboundDispatchInput,
   type InboundDispatchResult,
   type InboundFact,
@@ -16,6 +16,7 @@ import {
   recordRefusedInbound,
   refusedInbound,
   resolveApiBaseUrl,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';

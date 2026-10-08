@@ -1,18 +1,19 @@
 import type { InboundRefusalCode } from '@forge/contracts/integrations';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import type { BindingRole } from '../../db/schema.js';
-import { healthOf, thrownSaid } from '../health-said.js';
 import {
   type AdapterContext,
   applyClaimedInbound,
   declareIntegration,
   type HealthCheckResult,
+  healthOf,
   type InboundDispatchInput,
   type InboundDispatchResult,
   type InboundFact,
   type IntegrationAdapterMethods,
   recordRefusedInbound,
   refusedInbound,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import { sourceHostMismatch } from '../source-host/index.js';

@@ -68,6 +68,7 @@ import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { logger } from './lib/logger.js';
+import { provideWrittenLangPorts } from './lib/written-lang.js';
 import { CHAT_READ_MODEL_TOOLS } from './mcp/index.js';
 import {
   provideMemoryIssueReads,
@@ -101,6 +102,7 @@ import { pipelineRunProjectId } from './pipeline/index.js';
 import {
   encryptPlaintextBindingSecrets,
   provideProjectConfigPorts,
+  readContentLanguage,
   readDeclaredSource,
   readProjectDocument,
 } from './project-config/index.js';
@@ -191,6 +193,9 @@ provideProjectsPorts({
     await emitNotification({ ...notice, type: 'invitation_received' });
   },
   unaddressableSlug: unaddressableProjectSlug,
+});
+provideWrittenLangPorts({
+  contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
 });
 provideProjectConfigPorts({
   projectDocumentNames,

@@ -1,9 +1,9 @@
 import { say, verbatim } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
-import { healthOf } from '../health-said.js';
 import {
   declareIntegration,
   type HealthCheckResult,
+  healthOf,
   type IntegrationAdapterMethods,
   updateConnection,
 } from '../index.js';

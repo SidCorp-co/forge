@@ -1,7 +1,6 @@
 import { say } from '@forge/contracts/said';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { healthOf } from '../integrations/health-said.js';
 import {
   adapterOrRefuse,
   applySecretsPatch,
@@ -14,6 +13,7 @@ import {
   defaultConnectionDisplayName,
   effectiveConfig,
   findConnectionById,
+  healthOf,
   type IntegrationConnectionRow,
   listBindingsByConnectionIds,
   listBindingsForConnection,

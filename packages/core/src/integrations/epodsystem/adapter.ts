@@ -1,12 +1,13 @@
 import { say, sayEn } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
-import { healthOf, thrownSaid } from '../health-said.js';
 import {
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
+  healthOf,
   type IntegrationAdapterMethods,
   isPreviousCredentialValid,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import { epodsystemGraphqlBase } from './endpoints.js';

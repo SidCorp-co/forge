@@ -1,7 +1,6 @@
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { traceStep } from '../../../lib/error-tracking.js';
 import { logger } from '../../../lib/logger.js';
-import { healthOf, thrownSaid } from '../../health-said.js';
 import {
   type AdapterContext,
   type DeployTargetDispatch,
@@ -9,9 +8,11 @@ import {
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
+  healthOf,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
   recordDelivery,
+  thrownSaid,
   updateConnection,
   updateDelivery,
 } from '../../index.js';

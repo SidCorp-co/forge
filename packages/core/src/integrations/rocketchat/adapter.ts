@@ -9,12 +9,13 @@
  */
 
 import { type Said, say } from '@forge/contracts/said';
-import { healthOf, thrownSaid } from '../health-said.js';
 import {
   type AdapterContext,
   declareIntegration,
   type HealthCheckResult,
+  healthOf,
   type IntegrationAdapterMethods,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import {

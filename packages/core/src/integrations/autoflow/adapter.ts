@@ -1,13 +1,14 @@
 import { type Said, say, sayEn, verbatim } from '@forge/contracts/said';
 import { logger } from '../../lib/logger.js';
-import { healthOf, thrownSaid } from '../health-said.js';
 import {
   declareIntegration,
   findConnectionById,
   type HealthCheckResult,
   type HealthStatus,
+  healthOf,
   type IntegrationAdapterMethods,
   isPreviousCredentialValid,
+  thrownSaid,
   updateConnection,
 } from '../index.js';
 import { type AutoflowGqlResult, autoflowGql } from './client.js';
