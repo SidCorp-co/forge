@@ -6,7 +6,7 @@ import { WhatChanges } from "@/features/releases/components/release-changes";
 import type { Said } from "@forge/contracts/said";
 import { gateView, say, sentence } from "./said";
 import { Seeded } from "./vi-chrome-requirements";
-import type { ShellScreen } from "./vi-chrome-shell";
+import type { ChromeScreen } from "./vi-chrome-screens";
 
 // The pieces the screen lanes share, for the vi walking test: the Decisions and Mockups tabs, the
 // badges of the approval, reconciliation, build-gate, integration and data-policy families, and core's
@@ -169,7 +169,7 @@ const gates = () => (
   </>
 );
 
-export const SCREENS: ShellScreen[] = [
+export const SCREENS: ChromeScreen[] = [
   { name: "Decisions tab", render: decisions },
   { name: "Mockups tab", render: mockups },
   { name: "Shared badges", render: badges },

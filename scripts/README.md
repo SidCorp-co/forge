@@ -906,6 +906,32 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 
 CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
 
+## The web suite's language checks — Forge is not multilingual
+
+The owner ruled on 2026-10-08 that Forge is not multilingual: the Vietnamese already written stays,
+nothing more is translated, and new copy is English only. A key with no vi word reads its English on
+a vi page (`packages/web-v2/src/lib/i18n/product-copy.ts:productCopy`, `copyOr`,
+`productCopyTemplate`), proven on the Dashboard by `packages/web-v2/src/test/en-only-copy.test.tsx`.
+
+Retired by that ruling, so no check makes a new key, enum value or core sentence carry a vi word:
+
+- the vi walking test's English-word assertion (`packages/web-v2/src/test/vi-chrome.test.tsx`), its
+  word list and the `translate="no"` and tooltip parsing that only it needed, and the same
+  assertion over core's vi sentences in `packages/web-v2/src/lib/i18n/said.test.ts`;
+- every "each English key has its vi" requirement: in `packages/web-v2/src/lib/i18n/copy-files.test.ts`,
+  `packages/web-v2/src/lib/i18n/copy-readers.test.ts`, `packages/web-v2/src/lib/i18n/labels.test.ts`,
+  `packages/web-v2/src/design/vocabulary-common.test.ts`,
+  `packages/web-v2/src/features/workflows/template-words.test.ts` and
+  `packages/web-v2/src/features/conversations/membership.test.ts`.
+
+Kept, because they are about structure rather than language: the walking test still renders every
+screen and refuses one that draws no words, a raw copy key, the marker for a key this build lacks, or a
+blank label (`packages/web-v2/src/test/unread.ts:unreadIn`), and two rail rows whose English differs
+reading as one vi word; a key two copy files hold (`packages/web-v2/src/lib/i18n/product-copy.ts:composeCopy`);
+a re-added `product-copy.json` (`scripts/split-product-copy.mjs --check`); a vi word with no English, or
+blank where its English is not; and a vi template that fills a value its key does not declare. Where a
+vi word exists it is still read, and `check-source-language` still keeps Vietnamese out of source.
+
 ## check-lazy-module-init.mjs — importing a core module does no work
 
 `packages/core/src/lib/env.ts` validates the whole environment on the first READ of `env`, and

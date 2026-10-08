@@ -1,9 +1,8 @@
 import type { ReactElement } from "react";
 
 // The screens the vi walking test renders, gathered from every `vi-chrome-*.tsx` beside this file:
-// each exports `SCREENS`, a name and a function per screen returning it filled with data that carries
-// NO English words of its own (fixture content is not chrome). A new screen goes in its area's file,
-// or in a new `vi-chrome-<area>.tsx`; no shared list names it.
+// each exports `SCREENS`, a name and a function per screen returning it filled with placeholder data.
+// A new screen goes in its area's file, or in a new `vi-chrome-<area>.tsx`; no shared list names it.
 
 export interface ChromeScreen {
   name: string;

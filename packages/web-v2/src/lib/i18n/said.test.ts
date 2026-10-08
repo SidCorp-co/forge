@@ -1,14 +1,14 @@
 import { type Said, SAID_ENTRIES, type SaidKey, type SaidKind, type SaidValue, say, sayEn, verbatim } from "@forge/contracts/said";
 import { waitingOn } from "@forge/contracts/standing";
 import { describe, expect, it } from "vitest";
-import { englishChromeWord } from "@/test/english-chrome";
 import { PRODUCT_STRINGS as strings } from "./product-copy";
 import { said, saidView, saysKey, unknownSaid } from "./said";
 
 // What core says reaches a reader as a registry key and typed values (`@forge/contracts/said`), read
-// through the product copy of the reader's language. These hold every key to a vi template that fills
-// only the values the key declares, the English read to exactly the sentence core sends beside it, and
-// a key this build lacks to a visible marker, never to English.
+// through the product copy of the reader's language. These hold a key's vi template, where one was
+// written, to filling only the values the key declares, the English read to exactly the sentence core
+// sends beside it, and a key this build lacks to a visible marker, never to English. A key with no vi
+// template reads its English on a vi page: Forge is not multilingual (the owner's ruling of 2026-10-08).
 
 const VI = strings.vi as Record<string, string>;
 const ENTRIES = Object.entries(SAID_ENTRIES) as [SaidKey, (typeof SAID_ENTRIES)[SaidKey]][];
@@ -44,29 +44,19 @@ const sample = (key: SaidKey): Said => {
 const slots = (template: string) => new Set([...template.matchAll(/\{(\w+)\}/g)].map((m) => m[1] as string));
 
 describe("what core says, read in vi", () => {
-  it("has a vi template for every key core can say", () => {
-    expect(ENTRIES.filter(([k]) => typeof VI[k] !== "string").map(([k]) => k)).toEqual([]);
-  });
-
-  it("fills every value a key declares and no other, an English agreement word aside", () => {
+  it("fills every value a key declares and no other, an English agreement word aside, where a vi template was written", () => {
     const wrong: string[] = [];
     for (const [key, entry] of ENTRIES) {
+      if (typeof VI[key] !== "string") continue;
       const declared = Object.entries(entry.vars ?? {});
       const want = new Set(declared.filter(([, k]) => k !== "agreement").map(([n]) => n));
       const all = new Set(declared.map(([n]) => n));
-      const got = slots(VI[key] ?? "");
+      const got = slots(VI[key] as string);
       const missing = [...want].filter((n) => !got.has(n));
       const stray = [...got].filter((n) => !all.has(n));
       if (missing.length || stray.length) wrong.push(`${key}: missing {${missing.join(",")}} stray {${stray.join(",")}}`);
     }
     expect(wrong).toEqual([]);
-  });
-
-  it("holds no English chrome word in any key's vi sentence", () => {
-    const english = ENTRIES.map(([key]) => [key, said(sample(key), "vi")] as const)
-      .map(([key, text]) => [key, englishChromeWord(text), text] as const)
-      .filter(([, word]) => word !== null);
-    expect(english).toEqual([]);
   });
 
   it("reads the session a run closed short of an outcome in vi, not as core's English (live QA, run detail)", () => {
