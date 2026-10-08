@@ -3,7 +3,7 @@
 // The public documentation at `/guides`: a landing with the three doors and a search over every
 // page, and a reader built from the same furniture as the in-app `/docs` screen.
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { EmptyState, PageTitle } from "@/design";
 import { LINK_CLASS } from "@/design/patterns/body-tags";
 import {
@@ -42,19 +42,19 @@ function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
 
 /** Core's own words, with each backticked span set as code; nothing here restates what core says. */
 function Said({ text }: { text: string }) {
-  return (
-    <>
-      {text.split("`").map((part, i) =>
-        i % 2 === 1 ? (
-          <code key={i} className="font-mono">
-            {part}
-          </code>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
+  let offset = 0;
+  const parts = text.split("`").map((part, i) => {
+    const key = offset;
+    offset += part.length + 1;
+    return i % 2 === 1 ? (
+      <code key={key} className="font-mono">
+        {part}
+      </code>
+    ) : (
+      <Fragment key={key}>{part}</Fragment>
+    );
+  });
+  return <>{parts}</>;
 }
 
 function useSearch(corpus: readonly PublicDoc[]) {
