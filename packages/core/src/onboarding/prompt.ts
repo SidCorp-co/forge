@@ -75,7 +75,7 @@ function questionnaireRules(roundsSent: number) {
 // hundreds of commits; designs drawn from it describe a product that no longer exists
 function landedTree(branch: string | null, onboardingId: string) {
   const ref = branch ? `origin/${branch}` : "the remote's default branch (git remote show origin)";
-  return `the tree at ${ref}, never the checkout as it stands: the checkout you start in can lag its remote. Run git fetch origin, then git worktree add --detach .claude/worktrees/onboarding-${onboardingId} ${branch ? ref : '<that branch>'}, read and cite file:symbol from that worktree, name its sha in your first update, and remove it when you stop. Never commit, switch or reset the checkout you start in`;
+  return `the tree at ${ref}, never the checkout as it stands: the checkout you start in can lag its remote. Run git fetch origin, then git worktree add --detach .claude/worktrees/onboarding-${onboardingId} ${branch ? ref : '<that branch>'}, read and cite file:symbol from that worktree, name its sha in your first update, and remove it before your last act (post_questionnaire or mark_done), which ends the job and closes this session. Never commit, switch or reset the checkout you start in`;
 }
 
 export function analysePrompt(ctx: OnboardingPromptContext): string {
