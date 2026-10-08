@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.169] - 2026-10-08
+
+Chat answers draw tables, key figures and status lists; unknown blocks are named
+
+### Added
+
+- **A chat answer can now show a table, key figures or a status list.** Each shows its query and read time, status items link to what they name, and an answer block this screen cannot draw is named, not dropped.
+
 ## [0.4.0-dev.168] - 2026-10-08
 
 Shared contracts for chat-visual reports, blocks, templates, executors and shares
