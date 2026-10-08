@@ -254,8 +254,8 @@ const design = {
   canDecide: true,
   waitingOn: you(say("standing.act.approveDesign", { what: "Luong" })),
   revisions: [
-    { revision: 2, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: null, decidedBy: null, decidedByName: null, decidedAt: null, reason: null, state: "proposed", changes: { steps: { added: ["Buoc d"], removed: [], changed: ["Buoc a"] }, edges: { added: 1, removed: 0, changed: 2 } } },
-    { revision: 1, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: "approve", decidedBy: "u2", decidedByName: "Minh", decidedAt: AT, reason: "ghi chu", state: "current", changes: null },
+    { revision: 2, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: null, decidedBy: null, decidedByName: null, decidedAt: null, reason: null, says: { reason: null }, state: "proposed", changes: { steps: { added: ["Buoc d"], removed: [], changed: ["Buoc a"] }, edges: { added: 1, removed: 0, changed: 2 } } },
+    { revision: 1, document: body("dat-hang"), proposedBy: "u1", proposedByName: "Lan", proposedAt: AT, decision: "approve", decidedBy: "u2", decidedByName: "Minh", decidedAt: AT, reason: "ghi chu", says: { reason: verbatim("ghi chu") }, state: "current", changes: null },
   ],
   builds: [{ issueId: "i1", displayId: "ISS-1", title: "Muc", status: "in_progress", builtAgainst: 1 }],
   gate: { open: false, rule: "giu", says: { rule: verbatim("giu") } },

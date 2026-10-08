@@ -12,6 +12,7 @@ import { requirementHref } from "@/lib/routes/requirements";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
+import { revisionReason } from "../decision-words";
 import { markersByKind, sourceHref, targetWords } from "../health";
 import type { WorkflowBody, WorkflowDesign, WorkflowRecord } from "../types";
 import { HealthMark } from "./health-parts";
@@ -316,8 +317,10 @@ interface DesignFactsProps {
 export function WorkflowDesignFacts({ d, record, shown, shownRevision, template, slug, health }: DesignFactsProps) {
   const t = useCopy();
   const time = useTimeFormat();
+  const language = useInterfaceLanguage();
   const latest = d.revisions[0] ?? null;
   const approved = d.revisions.find((r) => r.revision === d.approvedRevision) ?? null;
+  const approvedReason = approved ? revisionReason(approved, language) : null;
   const shownState = d.revisions.find((r) => r.revision === shownRevision)?.state ?? null;
   const owned = shown.steps.filter((s) => s.node?.owner).length;
   const deadlines = shown.steps.filter((s) => s.node?.sla).length;
@@ -344,9 +347,9 @@ export function WorkflowDesignFacts({ d, record, shown, shownRevision, template,
               <span title={approved.decidedAt ? t("workflows.facts.approvedAt", { at: time.dateTime(approved.decidedAt) }) : undefined}>
                 {approved.decidedByName ? t("workflows.facts.revBy", { r: approved.revision, who: approved.decidedByName }) : t("workflows.facts.rev", { r: approved.revision })}
               </span>
-              {approved.reason ? (
-                <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approved.reason} data-testid="fact-approved-note">
-                  {approved.reason}
+              {approvedReason ? (
+                <span className="line-clamp-4 whitespace-pre-wrap break-words text-12-5 text-muted" title={approvedReason} data-testid="fact-approved-note">
+                  {approvedReason}
                 </span>
               ) : null}
             </span>

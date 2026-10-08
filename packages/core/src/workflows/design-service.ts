@@ -1,4 +1,7 @@
 import { approvalPermission } from '@forge/contracts/permissions';
+import { type Said, verbatim } from '@forge/contracts/said';
+import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
+import type { PinOnlyChange } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -27,6 +30,7 @@ import {
   parkedAtDecision,
   recordApprovedDesign,
 } from './design-issue.js';
+import { pinOnlyChange } from './design-repin.js';
 import { designRequirementsOf } from './design-requirements.js';
 import {
   buildGateOf,
@@ -37,7 +41,13 @@ import {
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
 import { answerDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
-import { assertWriter, drawingIssueOf, storedWorkflow, type WorkflowWriter } from './service.js';
+import {
+  assertWriter,
+  drawingIssueOf,
+  storedWorkflow,
+  templatesOf,
+  type WorkflowWriter,
+} from './service.js';
 import {
   buildOfIssue,
   buildsOf,
@@ -48,6 +58,7 @@ import {
   lockWorkflows,
   moveDesign,
   readWorkflow,
+  type StoredDesign,
   type StoredWorkflow,
   setBuildSteps,
   workflowsOf,
@@ -61,7 +72,7 @@ export type DesignOutcome =
   | { ok: true; design: DesignView }
   | { ok: false; refusals: DesignRefusal[] };
 
-async function approverRefusalFor(
+export async function approverRefusalFor(
   actor: WorkflowWriter,
   projectId: string,
 ): Promise<DesignRefusal | null> {
@@ -76,14 +87,29 @@ async function rowIn(projectId: string, id: string): Promise<StoredWorkflow> {
   return row;
 }
 
+/** The newest revision against the approved one, where only the base revisions it pins differ. */
+function pinOnlyOf(
+  designs: readonly StoredDesign[],
+  approvedRevision: number | null,
+  templates: readonly WorkflowTemplate[] | undefined,
+): PinOnlyChange | null {
+  const approved = readStoredWorkflow(
+    designs.find((d) => d.revision === approvedRevision)?.document,
+  );
+  const proposed = readStoredWorkflow(designs[0]?.document);
+  if (!approved || !proposed || designs[0]?.revision === approvedRevision) return null;
+  return pinOnlyChange(approved, proposed, findTemplate(templates ?? [], proposed.template));
+}
+
 async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
   const approver = approvalPermission('workflow-designs');
-  const [designs, builds, prefix, requirements, held] = await Promise.all([
+  const [designs, builds, prefix, requirements, held, templates] = await Promise.all([
     designsOf(db, row.id),
     buildsOf(db, [row.id]),
     activeIssuePrefix(row.projectId),
     designRequirementsOf(row.id),
     row.designStatus === 'proposed' ? workflowsOf(db, row.projectId) : [],
+    row.designStatus === 'proposed' ? templatesOf(row.projectId) : null,
   ]);
   const names = await userNames([
     ...designs.map((d) => d.proposedByUser),
@@ -127,6 +153,9 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
         }
       : null,
     approvalLeavesStale: awaiting !== null ? designsLeftStale(row.flow, awaiting, held) : [],
+    // a proposal that only moves the revisions its bases are pinned at, with the proof nothing else moved
+    pinOnly:
+      awaiting !== null ? pinOnlyOf(designs, row.approvedRevision, templates?.templates) : null,
     revisions: designs.map((d, at) => ({
       revision: d.revision,
       designIssueId: d.designIssueId,
@@ -139,6 +168,8 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       decidedByName: name(d.decidedByUser),
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
+      // Forge's own sentence by key; a decider's words as they wrote them
+      says: { reason: d.reasonSays ?? (d.reason ? verbatim(d.reason) : null) },
       state: revisionStateOf(d, head),
       changes: revisionChangesOf(designs[at + 1]?.document, d.document),
     })),
@@ -220,6 +251,65 @@ export async function proposeDesign(input: {
   return { ok: true, design: await designView(await rowIn(projectId, id), writer) };
 }
 
+/**
+ * Everything one decision records, inside a transaction holding the project's workflow lock and after
+ * its refusals were read: the decided revision, the design's move, the design issue's mark, the
+ * questions it answers and the event.
+ */
+export async function recordDecision(
+  tx: Tx,
+  input: {
+    projectId: string;
+    row: Pick<StoredWorkflow, 'id' | 'flow' | 'designStatus'>;
+    designIssueId: string | null;
+    revision: number;
+    decision: DesignDecision;
+    reason: string | null;
+    /** `reason` as said, where Forge composed it; absent where the decider wrote it. */
+    reasonSays?: Said | null;
+    decider: WorkflowWriter;
+  },
+): Promise<{ parked: boolean; approved: DesignIssueOutcome | null }> {
+  const { projectId, row, designIssueId, revision, decision, reason, decider } = input;
+  const id = row.id;
+  await decideDesign(tx, {
+    workflowId: id,
+    revision,
+    decision,
+    userId: decider.userId,
+    reason,
+    reasonSays: input.reasonSays ?? null,
+  });
+  await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
+    writer: decider,
+    reason,
+    ...(decision === 'approve' ? { approvedRevision: revision } : {}),
+  });
+  const parked = await parkedAtDecision(tx, designIssueId);
+  // the approved revision is its design issue's deliverable: its mark records it (ISS-262)
+  const approved =
+    decision === 'approve'
+      ? await recordApprovedDesign(tx, { designIssueId, flow: row.flow, revision, decider })
+      : null;
+  // the decision is the answer a question waiting on this revision asked for (ISS-254)
+  await answerDesignQuestions(tx, {
+    workflowId: id,
+    revision,
+    flow: row.flow,
+    decision,
+    reason,
+    by: decider.userId,
+    agency: decider.agency,
+  });
+  await emitEvent(tx, 'workflow.designDecided', {
+    projectId,
+    workflowId: id,
+    decision,
+    issueId: designIssueId,
+  });
+  return { parked, approved };
+}
+
 export async function decideDesignAs(input: {
   projectId: string;
   id: string;
@@ -260,38 +350,14 @@ export async function decideDesignAs(input: {
         ? baseApprovalRefusal(revision, readBases(bases, await workflowsOf(tx, projectId)))
         : null;
     if (unapproved) return { refusals: [unapproved] };
-    await decideDesign(tx, { workflowId: id, revision, decision, userId: decider.userId, reason });
-    await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
-      writer: decider,
-      reason,
-      ...(decision === 'approve' ? { approvedRevision: revision } : {}),
-    });
-    const parked = await parkedAtDecision(tx, latest?.designIssueId ?? null);
-    // the approved revision is its design issue's deliverable: its mark records it (ISS-262)
-    const approved =
-      decision === 'approve'
-        ? await recordApprovedDesign(tx, {
-            designIssueId: latest?.designIssueId ?? null,
-            flow: row.flow,
-            revision,
-            decider,
-          })
-        : null;
-    // the decision is the answer a question waiting on this revision asked for (ISS-254)
-    await answerDesignQuestions(tx, {
-      workflowId: id,
-      revision,
-      flow: row.flow,
-      decision,
-      reason,
-      by: decider.userId,
-      agency: decider.agency,
-    });
-    await emitEvent(tx, 'workflow.designDecided', {
+    const { parked, approved } = await recordDecision(tx, {
       projectId,
-      workflowId: id,
+      row,
+      designIssueId: latest?.designIssueId ?? null,
+      revision,
       decision,
-      issueId: latest?.designIssueId ?? null,
+      reason,
+      decider,
     });
     return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked, approved };
   });

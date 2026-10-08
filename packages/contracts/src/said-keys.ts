@@ -602,6 +602,9 @@ export const SAID = {
 	"designs.rule.youDecide": { en: "revision {r} is proposed and you may decide it", vars: { r: "count" } },
 	"designs.rule.approverDecides": { en: "a design is decided by whoever holds workflow-designs.approve on the project (project admin, or an org owner or admin), person or agent" },
 	"designs.act.repin": { en: "re-pin basedOn" },
+	"designs.title.repinBatch": { en: "{n} {designs} only {need} {its} pin moved → r{r}", vars: { n: "count", designs: "agreement", need: "agreement", its: "agreement", r: "count" } },
+	"designs.act.repinBatch": { en: "approve {n} pin-only {changes} → r{r}", vars: { n: "count", changes: "agreement", r: "count" } },
+	"designs.rule.repinBatch": { en: "{flow} is approved at revision {r}, and these designs differ from their approved revisions only in the base revision they pin: one act re-pins and approves them together, one recorded decision each", vars: { flow: "name", r: "count" } },
 	"designs.act.revise": { en: "revise it" },
 	"designs.act.reviseR": { en: "revise revision {r}", vars: { r: "count" } },
 	"designs.rule.returned": { en: "a returned design is owed by the project's master, whoever wrote it: core wakes it on the return and its box carries the return to every pass until the next revision is proposed" },
@@ -925,4 +928,5 @@ export const SAID = {
 	"pulse.gap.ownerlessOne": { en: "1 commit waiting on {base} belongs to no issue, so a closed issue whose work it is reads as nothing waiting", vars: { base: "name" } },
 	"pulse.gap.ownerlessMany": { en: "{n} commits waiting on {base} belong to no issue, so a closed issue whose work they are reads as nothing waiting", vars: { n: "count", base: "name" } },
 	"pulse.gap.all": { en: "{parts}", vars: { parts: "saidList" } },
+	"designs.reason.repinOnly": { en: "Pin-only re-pin, approved together in act {act} (\"{actWords}\" on {flow}): {pins}. Nothing else changed: with the pins set aside the design's canonical fingerprint is {fp}, as approved r{r} has it.", vars: { act: "code", actWords: "said", flow: "name", pins: "text", fp: "code", r: "count" } },
 } as const satisfies Record<string, SaidEntry>;

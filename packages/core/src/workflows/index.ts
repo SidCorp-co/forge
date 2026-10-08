@@ -7,6 +7,7 @@ export {
 } from './build-gate.js';
 export { proposesWorkflowOf } from './design-issue.js';
 export { approvedDesignRevisions, buildIssuesAmong, workflowDesign } from './design-lookup.js';
+export { repinGroupsAs } from './design-repin-service.js';
 export { provideWorkflowHealthPorts } from './health-ports.js';
 export { projectHealthAs } from './health-read.js';
 export { workflowJsonSchemas } from './json-schema.js';

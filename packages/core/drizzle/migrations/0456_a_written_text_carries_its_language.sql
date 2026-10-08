@@ -7,7 +7,9 @@
 --
 -- An integration connection's health detail is a sentence core composes from what the probe found;
 -- `last_health_says` keeps the registry sentence (`@forge/contracts/said`) it was rendered from, so the
--- integrations card reads it in the reader's language.
+-- integrations card reads it in the reader's language. A design decision's `reason_says` does the same
+-- for the reason Forge composes when one act re-pins and approves a base's pin-only dependents; a
+-- reason the decider wrote stays as written, with the column null.
 --
 -- Additive: nullable columns and checks only. NO BACKFILL, deliberately: a row written before this
 -- holds no record of its writer's language, and a language guessed from the project or the text would
@@ -17,6 +19,7 @@
 --             ALTER TABLE <t> DROP CONSTRAINT IF EXISTS <t>_written_lang_chk;
 --             ALTER TABLE <t> DROP COLUMN IF EXISTS written_lang;
 --           ALTER TABLE integration_connections DROP COLUMN IF EXISTS last_health_says;
+--           ALTER TABLE project_workflow_designs DROP COLUMN IF EXISTS reason_says;
 
 ALTER TABLE "issues" ADD COLUMN IF NOT EXISTS "written_lang" text;--> statement-breakpoint
 ALTER TABLE "issues" DROP CONSTRAINT IF EXISTS "issues_written_lang_chk";--> statement-breakpoint
@@ -36,4 +39,5 @@ ALTER TABLE "requirement_revisions" ADD CONSTRAINT "requirement_revisions_writte
 ALTER TABLE "agent_reports" ADD COLUMN IF NOT EXISTS "written_lang" text;--> statement-breakpoint
 ALTER TABLE "agent_reports" DROP CONSTRAINT IF EXISTS "agent_reports_written_lang_chk";--> statement-breakpoint
 ALTER TABLE "agent_reports" ADD CONSTRAINT "agent_reports_written_lang_chk" CHECK ("agent_reports"."written_lang" IS NULL OR "agent_reports"."written_lang" IN ('en', 'vi'));--> statement-breakpoint
-ALTER TABLE "integration_connections" ADD COLUMN IF NOT EXISTS "last_health_says" jsonb;
+ALTER TABLE "integration_connections" ADD COLUMN IF NOT EXISTS "last_health_says" jsonb;--> statement-breakpoint
+ALTER TABLE "project_workflow_designs" ADD COLUMN IF NOT EXISTS "reason_says" jsonb;
