@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.153] - 2026-10-08
+
+Status page tells only the truth: real asks, one count, proven delivery, anchored forecasts
+
+### Fixed
+
+- **Project status now says only what is true.** Waiting on people lists member asks by person; one Needs you count; full delivery needs every criterion proven; forecasts hold until an event and say why they moved; cancelled releases explain themselves.
+
 ## [0.4.0-dev.152] - 2026-10-08
 
 Product copy split into per-feature files so web merges stop conflicting
