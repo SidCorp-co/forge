@@ -85,10 +85,12 @@ it lives in numbered revisions, and each revision carries business criteria unde
   passes \`adoptPlan: true\`, attesting the plan already satisfies the current revision
   (\`REQUIREMENT_NO_PLAN_TO_ADOPT\` when the issue has no plan).
 - A breakdown accept files its issues at \`draft\`, and while every live issue is a draft the standing
-  waits on a holder of \`requirements.approve\` to "promote N draft issues". **promote** \`{ issues? }\`
-  moves them \`draft → open\`: the named ones (key or uuid), or every linked draft when none is named.
-  Each moves through its own status move, so the move's own guards hold (\`issues.admit\`, an archived
-  issue). The answer is \`{ requirement, promoted, refused }\`: a draft whose move was refused is named
+  asks a holder of both \`requirements.approve\` and \`issues.admit\` to "promote N draft issues"; anyone
+  else reads it as waiting on "a BA or owner who can admit issues" (signing does not widen who may
+  admit). **promote** \`{ issues? }\` moves them \`draft → open\`: the named ones (key or uuid), or every
+  linked draft when none is named. A caller without \`issues.admit\` is refused \`PERMISSION_FORBIDDEN\`
+  naming it before anything moves. Each moves through its own status move, so the move's own guards
+  hold (an archived issue). The answer is \`{ requirement, promoted, refused }\`: a draft whose move was refused is named
   in \`refused\` with its own code while the rest still move, and when none moves the act is refused
   with nothing written, each issue's code at \`/issues/<key>\`. Refused whole by name:
   \`REQUIREMENT_NO_DRAFT_ISSUES\`, \`REQUIREMENT_ISSUE_NOT_LINKED\` or \`REQUIREMENT_ISSUE_NOT_DRAFT\` at
@@ -123,7 +125,7 @@ reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
 return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`
-on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
+(promote takes \`issues.admit\` beside it) on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent
 proposes without writing the revision itself is a \`revision_diff\` suggestion (${guideRef('suggestions')}),

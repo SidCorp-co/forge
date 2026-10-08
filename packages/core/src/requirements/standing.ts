@@ -67,8 +67,11 @@ export interface StandingIssueCriterion {
 export interface StandingInput {
   status: RequirementStatus;
   owner: RequirementStanding['owner'];
-  /** Null for a reader with no person behind it; nothing then reads as theirs. */
-  viewer: { userId: string; canSignOff: boolean } | null;
+  /**
+   * Null for a reader with no person behind it; nothing then reads as theirs. `canAdmit` is
+   * issues.admit, which the promote of a draft needs beside the sign-off.
+   */
+  viewer: { userId: string; canSignOff: boolean; canAdmit: boolean } | null;
   revisions: readonly StandingRevision[];
   currentRevision: number | null;
   criteria: readonly StandingCriterion[];
@@ -102,6 +105,7 @@ type ProofInput = Pick<
 export type Phased = StandingInput & { phase: DeliveryPhase | null };
 
 const SIGNER = say('standing.who.baOrOwner');
+const ADMITTER = say('standing.who.signerAdmitter');
 
 function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
   if (status !== 'agreed') return status;
@@ -204,7 +208,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (ISS-86); 6. every
 // issue closed and every BC proven → the BA's check task, a BC unproven → whoever owes its proof
 // (`proofTurn`); 7. an open breakdown → a signer; 8. an issue planned on an earlier revision or baseline → the master
-// re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a person promotes them;
+// re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a signer who can
+// admit promotes them (only they are asked: question 3b8292dc);
 // 11. else moving. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
 function turnOf(
   input: Phased,
@@ -342,13 +347,14 @@ function turnOf(
   }
   const drafts = draftIssuesToPromote(status, live);
   if (drafts.length === live.length) {
-    return signerWait(
-      viewer,
+    const act =
       drafts.length === 1
         ? say('standing.act.promoteDraft')
-        : say('standing.act.promoteDrafts', { n: drafts.length }),
-      say('requirements.rule.onlyDrafts'),
-    );
+        : say('standing.act.promoteDrafts', { n: drafts.length });
+    const rule = say('requirements.rule.onlyDrafts');
+    return viewer?.canSignOff && viewer.canAdmit
+      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) }
+      : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule) };
   }
   const running = live.filter((i) => i.status === 'in_progress').length;
   const shipped = live.filter((i) => i.status === 'closed').length;

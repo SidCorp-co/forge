@@ -37,8 +37,8 @@ make product decisions without depending on a developer for each step.
 
 ### The loop
 
-**Issue → Pipeline → Skills + Memory → Agent/Human → Evidence → State → Outcome → Memory → next
-issue**
+**Requirement + Workflow → Issue → Pipeline → Skills + Memory → Agent/Human → Evidence → State →
+Outcome → Requirement proven or corrected → Memory → next issue**
 
 Forge is not a pipeline engine, an agent runner, a memory store or a dashboard in isolation. **The
 lifecycle makes skills and memory part of execution rather than optional context.** Evidence makes
@@ -154,17 +154,22 @@ Grouped for recall. The **bold name** is the identifier — cite it, not the num
    projects define policy.
 8. **memory-must-be-trustworthy** — memory is part of the lifecycle's learning loop, not passive
    storage. Its provenance, correctness, relevance and lifecycle are core system concerns.
+9. **requirement-leads-delivery** — the requirement and its workflow say what is expected, and they
+   are made right first; delivery conforms to them. Where what was built and what is expected
+   disagree, the requirement or the workflow is corrected before more is built, never left to drift
+   behind the code. Work is delivered when a criterion it names holds on the running build, not when
+   it ships. Old code is cleaned as the work meets it, inside that work, not in a separate sweep.
 
 ### Who acts
 
-9. **agents-and-humans-share-the-lifecycle** — not separate workflows. The system decides who acts
+10. **agents-and-humans-share-the-lifecycle** — not separate workflows. The system decides who acts
     next by capability, context and authority.
-10. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: **the
+11. **route-judgment-not-bottlenecks** — not approval everywhere, not involvement nowhere: **the
     right human, at the right decision, with the right context, at the right time.**
-11. **measured-together-never-apart** — a single operating number is a number that can be gamed.
+12. **measured-together-never-apart** — a single operating number is a number that can be gamed.
     Driving interventions toward zero by no longer surfacing what needs one is `state-never-lies`
     wearing an improving metric. No number is read alone.
-12. **trust-gates-capability** — new capability ships only when the lifecycle it runs on is
+13. **trust-gates-capability** — new capability ships only when the lifecycle it runs on is
     trustworthy. Reach is earned by the kernel, not scheduled.
 
 ---

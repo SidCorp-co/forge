@@ -105,7 +105,7 @@ describe('whose turn an open draft revision is', () => {
   const draftBy = (authorAgency: 'human' | 'agent') => ({
     ...input([]),
     status: 'draft' as const,
-    viewer: { userId: 'u1', canSignOff: true },
+    viewer: { userId: 'u1', canSignOff: true, canAdmit: true },
     currentRevision: null,
     revisions: [
       {
@@ -153,7 +153,7 @@ describe('whose turn an open draft revision is', () => {
 // FB-73: an agree is refused REQUIREMENT_DESIGN_UNAPPROVED while a linked design is unapproved, so
 // the requirement cannot read as waiting on the signer to agree it
 describe('a draft requirement whose linked designs are not all approved', () => {
-  const signer = { userId: 'u1', canSignOff: true };
+  const signer = { userId: 'u1', canSignOff: true, canAdmit: true };
   const draftHead = (
     unapprovedDesigns: { flow: string; title: string; designStatus: string | null }[],
   ) => ({
@@ -201,30 +201,39 @@ describe('a draft requirement whose linked designs are not all approved', () => 
   });
 });
 
-// FB-93: the "promote N draft issues" line counts what the promote act moves (`draftIssuesToPromote`)
+// FB-93: the "promote N draft issues" line counts what the promote act moves (`draftIssuesToPromote`).
+// It asks only a person who can act on it, a signer who also holds issues.admit (question 3b8292dc,
+// B), while its only live issues are drafts (requirement-to-delivery step `turn`, as approved).
 describe('an agreed requirement whose live issues are drafts', () => {
-  it('asks the signer to promote every draft, a dropped one not counted', () => {
+  const admitter = { userId: 'u1', canSignOff: true, canAdmit: true };
+
+  it('asks a signer who can admit to promote every draft, a dropped one not counted', () => {
     const s = deriveStanding({
       ...input([issue(1, 'draft', false), issue(2, 'draft', false), issue(3, 'dropped', false)]),
-      viewer: { userId: 'u1', canSignOff: true },
+      viewer: admitter,
     });
     expect(s.attentionGroup).toBe('needs_you');
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'promote 2 draft issues' });
   });
 
-  it('names the signer to a viewer who cannot sign', () => {
-    const s = deriveStanding(input([issue(1, 'draft', false)]));
+  it.each([
+    ['a viewer who cannot sign', null],
+    ['a signer without issues.admit', { userId: 'u2', canSignOff: true, canAdmit: false }],
+    ['an admitter who cannot sign', { userId: 'u3', canSignOff: false, canAdmit: true }],
+  ])('names a BA or owner who can admit issues to %s, and does not ask them', (_, viewer) => {
+    const s = deriveStanding({ ...input([issue(1, 'draft', false)]), viewer });
+    expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
-      who: 'BA or owner',
+      who: 'a BA or owner who can admit issues',
       act: 'promote 1 draft issue',
     });
   });
 
-  it('asks nothing once one of them is promoted', () => {
+  it('asks nothing once one of them is promoted, as the approved design draws it', () => {
     const s = deriveStanding({
       ...input([issue(1, 'open', false), issue(2, 'draft', false)]),
-      viewer: { userId: 'u1', canSignOff: true },
+      viewer: admitter,
     });
     expect(s.waitingOn.act).not.toContain('promote');
     expect(s.attentionGroup).toBe('moving');

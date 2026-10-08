@@ -166,7 +166,7 @@ describe('a write proposing a revision names the issue drawing it (ISS-261)', ()
       const [refusal] = res.json.error.refusals;
       expect(refusal.path).toBe('/issue');
       expect(refusal.detail).toContain(
-        `revision 1, the one it supersedes, was drawn under ${lapsed.key}, which is ${status}`,
+        `Revision 1, the one it supersedes, was drawn under ${lapsed.key}, which is ${status}.`,
       );
       expect(refusal.detail).toContain(`workflow lapsed-${status}-flow's design`);
       expect(refusal.detail).not.toContain(id);
@@ -231,7 +231,7 @@ describe('a write proposing a revision names the issue drawing it (ISS-261)', ()
     const [refusal] = res.json.error.refusals;
     expect(refusal.path).toBe('/issue');
     expect(refusal.detail).toContain(
-      `revision 2, the one it supersedes, names no issue, and revision 1, the latest that named one, was drawn under ${closed.key}, which is closed`,
+      `Revision 2, the one it supersedes, names no issue. Revision 1 is the latest that named one, and it was drawn under ${closed.key}, which is closed.`,
     );
     expect(refusal.detail).not.toContain('the one it supersedes, was drawn under');
     expect(refusal.detail).toContain("workflow null-after-closed-flow's design");

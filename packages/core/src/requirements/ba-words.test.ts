@@ -27,7 +27,7 @@ const issue = (n: number, status: string): StandingIssue => ({
 const base = {
   status: 'agreed' as const,
   owner: { id: 'u1', name: 'Ba', kind: 'human' as const },
-  viewer: { userId: 'u1', canSignOff: true },
+  viewer: { userId: 'u1', canSignOff: true, canAdmit: true },
   revisions: [],
   currentRevision: 3,
   criteria: [],
@@ -71,7 +71,7 @@ describe('the act a requirement waits on reads in a BA’s words', () => {
   it('says the same for a person who cannot sign it off', () => {
     const s = deriveStanding({
       ...base,
-      viewer: { userId: 'u2', canSignOff: false },
+      viewer: { userId: 'u2', canSignOff: false, canAdmit: false },
       stalePins: [{ flow: 'order-flow', title: 'Order handling', pinned: null, approved: 1 }],
     });
     expect(s.attentionGroup).toBe('waiting');

@@ -50,6 +50,7 @@ interface StandingRow {
 interface StandingViewer {
   userId: string;
   canSignOff: boolean;
+  canAdmit: boolean;
 }
 
 /** Rows a caller already holds for these requirements (the detail does), so they are not read twice. */
