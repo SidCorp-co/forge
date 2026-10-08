@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AcceptStep, AGENT_TINT, Button, Input } from "@/design";
+import { AcceptStep, AGENT_TINT, Button } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { labelCopy } from "@/lib/i18n/labels";
@@ -9,6 +9,7 @@ import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-
 import { requirementAffected, useSuggestionDecision, useWaitingSuggestions } from "../hooks";
 import type { SuggestionKind, SuggestionProducer, SuggestionView as Suggestion } from "../types";
 import { BreakdownSlices } from "./breakdown-slices";
+import { RejectStep } from "./reject-step";
 
 type Payload = Record<string, unknown>;
 const str = (v: unknown) => (typeof v === "string" ? v : null);
@@ -117,7 +118,6 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
   const time = useTimeFormat();
   const decide = useSuggestionDecision(projectId, requirementAffected(projectId, reqKey));
   const [step, setStep] = useState<"accept" | "reject" | null>(null);
-  const [reason, setReason] = useState("");
   const details = detailLines(s, t);
   const busy = decide.isPending;
   return (
@@ -172,28 +172,11 @@ function Row({ s, projectId, reqKey }: { s: Suggestion; projectId: string; reqKe
         />
       ) : null}
       {step === "reject" ? (
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            decide.mutate({ kind: "reject", id: s.id, reason: reason.trim() }, { onSuccess: () => setStep(null) });
-          }}
-        >
-          <Input
-            aria-label={t("requirements.suggestion.rejectWhy")}
-            placeholder={t("requirements.suggestion.rejectWhy")}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            className="min-w-[16rem] flex-1"
-            autoFocus
-          />
-          <Button type="submit" size="sm" disabled={!reason.trim()} loading={busy}>
-            {t("requirements.act.reject")}
-          </Button>
-          <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => setStep(null)}>
-            {t("common.cancel")}
-          </Button>
-        </form>
+        <RejectStep
+          loading={busy}
+          onCancel={() => setStep(null)}
+          onConfirm={(why) => decide.mutate({ kind: "reject", id: s.id, reason: why }, { onSuccess: () => setStep(null) })}
+        />
       ) : null}
       <RefusalLine error={decide.error} />
     </li>
