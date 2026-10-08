@@ -104,9 +104,12 @@ What a project does with more than that depends on who cuts its releases:
 
 The part is the oldest 50 merges among the rows no batch has claimed, an issue with no merge mark last
 (`packages/core/src/release-batch/waiting-order.ts:oldestMergeFirst`), which is the order the sweep
-cuts in (`packages/core/src/schedules/release-batch-run.ts:cutWaitingRelease`). The rows behind the
-part carry `RELEASE_QUEUED_BEHIND` and go in the next automatic release once the running one has
-finished. On a chain that promotes by merging a branch, a part's range still carries the landings of
+cuts in (`packages/core/src/schedules/release-batch-run.ts:cutWaitingRelease`). The sweep first sets
+aside a row it is holding back, so a held row inside the part lets a later one into the cut; readiness
+judges the oldest 50 as they stand. The rows behind the cut carry `RELEASE_QUEUED_BEHIND` and go in the
+next automatic release once the running one has finished. Whether a project releases without a person
+is read by `packages/core/src/pipeline/auto-prod-deploy.ts:readAutoProdDeploy`, and a read that fails
+is `RELEASE_CHECK_UNEVALUATED` beside the size refusal, never taken for a project where a person cuts. On a chain that promotes by merging a branch, a part's range still carries the landings of
 the rows behind it, and the carried check above answers those as it answers any unnamed landing.
 
 ## 2. From the claim to a box: the start (ISS-1323)

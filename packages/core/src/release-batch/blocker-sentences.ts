@@ -512,7 +512,7 @@ export function heldBackWarningSentence(
 
 /** The sweep cuts an over-cap roster in parts, so there is nothing here for a person to cut (ISS-1360). */
 export function rosterInPartsWarningSentence(waiting: number, part: number, later: number): string {
-  const text = `${waiting} issues are waiting at the release gate and one release carries at most ${RELEASE_ROSTER_LIMIT}. This project releases without a person acting, so the automatic sweep cuts them in parts, the oldest merges first: this answer is about the first ${part}, and the ${later} behind ${later === 1 ? 'it' : 'them'} go in a later release once this one has finished. Nothing here is for a person to cut.`;
+  const text = `${waiting} issues are waiting at the release gate and one release carries at most ${RELEASE_ROSTER_LIMIT}. This project releases without a person acting, so the automatic sweep cuts them in parts, the oldest merge first, setting aside any it is holding back: this answer is judged on the oldest ${part}, and the ${later} behind ${later === 1 ? 'it' : 'them'} wait for a later release. Nothing here is for a person to cut.`;
   return withCosts('RELEASE_ROSTER_IN_PARTS', text);
 }
 

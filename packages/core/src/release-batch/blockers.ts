@@ -11,7 +11,7 @@ import { issues } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { logger } from '../logger.js';
-import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
+import { readAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
@@ -157,7 +157,7 @@ async function partOfAutomaticRoster(
 ): Promise<{ part: string[]; waiting: number; later: number } | undefined> {
   const auto = await evaluate(
     'auto-release',
-    async () => await projectAutoProdDeploy(projectId),
+    async () => await readAutoProdDeploy(projectId),
     out,
   );
   if (auto !== true) return undefined;

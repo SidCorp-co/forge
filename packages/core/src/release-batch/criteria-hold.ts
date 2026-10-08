@@ -1,6 +1,6 @@
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
+import { readAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
@@ -59,7 +59,7 @@ export async function criteriaHold(
   if (waiting.length === 0) return;
   const auto = await evaluate(
     'auto-release',
-    async () => await projectAutoProdDeploy(projectId),
+    async () => await readAutoProdDeploy(projectId),
     out,
   );
   if (auto !== true) return;
