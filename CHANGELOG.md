@@ -3152,11 +3152,7 @@
 
 - **A skipped schedule no longer takes Automation down.** Pressing Run with no runner online crashed the screen; it now reads "Skipped 3 hours ago", an unknown status reads its own word, and the dashboard card says "skipped", not "never run".
 
-- **Asking what a deploy target can be rolled back to says why it cannot.** The read answered
-  a bare "error code: 502" page whenever Coolify refused it, because the proxy in front of Forge
-  replaces that status's body with its own. It now answers a status the proxy lets through and says
-  what Coolify answered, to which request, and that no rollback image list came back; on the
-  Coolify Forge runs against, that request is answered "not found".
+- **A deploy target's rollback list says why it is missing.** The read answered a bare "error code: 502" page when Coolify refused it. It now names what Coolify answered and to which request; on this Coolify that is "not found".
 
 - **A status change kept at another status says so.** When an agent's park becomes needs-info,
   or its close is held for release, the answer names the status asked for, the one kept, and why.
