@@ -163,18 +163,17 @@ async function sourced(
  * Refuses a block whose title or labels state a number its source does not hold, naming each one: the
  * check its reply is screened with (`messaging/figures-rule.ts:ungroundedBlockFigures`), held here to
  * the block's own run or execution, so the model corrects it inside the turn. A block that names no run holds
- * no figure at all; a number the person typed in the question may stand.
+ * no figure at all, and a number the person typed grounds none (REQ-32 BC-5).
  */
 function refuseTypedFigures(
   raw: Record<string, unknown>,
   frame: unknown,
   source: string | null,
-  asked: string,
 ): void {
   const frames = source === null ? [] : [frame as ReportFrame];
   const typed = ungroundedBlockFigures(
     blockTextsIn(JSON.stringify(raw)),
-    figureFactsOf(asked, frames),
+    figureFactsOf('', frames),
   );
   if (typed.length === 0) return;
   throw refusedBlock(
@@ -237,7 +236,7 @@ export async function attachVisualBlock(args: {
     : execution
       ? `execution ${execution.executionId}`
       : null;
-  refuseTypedFigures(args.raw, block.frame, sourceName, args.stage?.question ?? '');
+  refuseTypedFigures(args.raw, block.frame, sourceName);
   const checked = checkBlock(block);
   if (!checked.ok)
     throw refusedBlock(

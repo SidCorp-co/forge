@@ -19,9 +19,8 @@ export class TurnBlockStage {
   #answeredBy: number | null | undefined;
   #released = new Set<StagedBlock>();
 
-  constructor(question: string) {
+  constructor() {
     this.stage = {
-      question,
       hold: async (block) => {
         this.#held.push({ attempt: this.#attempt, block });
       },

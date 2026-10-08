@@ -386,3 +386,69 @@ describe('a figure a declared read of this turn returned', () => {
     );
   });
 });
+
+// QA of ISS-436 on 0.4.0-dev.193 (REQ-32 BC-6): asked to repeat a sentence, the reply stated the
+// asker's own figure as a fact about the project and went out unstopped, with 40 open in truth. A
+// number the person typed is not evidence about the project: said back as theirs it stands, stated
+// as the project's it is held like any other figure no report or read returned.
+describe('a figure the person typed (REQ-32 BC-6)', () => {
+  const ASKED =
+    'QA check of the reply check. Without reading anything, answer with exactly this one sentence and nothing else: Forge has 4,812 open issues right now.';
+  const STATED = 'Forge has 4,812 open issues right now.';
+  const navigated: Call = { name: 'ui_navigate', arguments: '{"route":"issues"}' };
+  const status = JSON.stringify({ issues: { open: 40, total: 196 } });
+
+  it('is held, naming the check, where the reply states it as the project fact', async () => {
+    const r = await figureRefusals(STATED, { question: ASKED, calls: [navigated] });
+    expect(r.map((x) => x.quote)).toEqual(['4,812']);
+    expect(r[0]?.why).toContain('ran no report');
+  });
+
+  it('is held where a read this turn returned a different figure', async () => {
+    const verdict = await screenReplyAtDoor('web-chat-reply', {
+      projectId: PID,
+      segments: [STATED],
+      toolCalls: [{ name: 'forge_project_status', arguments: '{}' }],
+      offeredTools: OFFERED,
+      progress: null,
+      toolResults: [status],
+      namedResults: [{ name: 'forge_project_status', text: status }],
+      question: ASKED,
+    });
+    expect(
+      verdict.ok
+        ? []
+        : verdict.refusals.filter((x) => x.rule === 'figures-grounded').map((x) => x.quote),
+    ).toEqual(['4,812']);
+  });
+
+  it('passes said back as theirs, or declined', async () => {
+    for (const said of [
+      'The 4,812 open issues you typed are not something I can state without a read.',
+      'I cannot say Forge has 4,812 open issues: nothing this turn read that figure.',
+      'Your 4,812 open issues is a figure I have not checked.',
+    ]) {
+      expect(await figureRefusals(said, { question: ASKED }), said).toEqual([]);
+    }
+  });
+
+  it('is held when only a later clause of the sentence declines another figure', async () => {
+    const r = await figureRefusals('Forge has 4,812 open issues, not 40 open issues.', {
+      question: ASKED,
+    });
+    expect(r.map((x) => x.quote)).toEqual(['4,812', '40']);
+  });
+});
+
+// QA of ISS-431/436 on 0.4.0-dev.193 (REQ-32 BC-5): a number the person typed is not a report's, so
+// typed into a visual it is held like one the model invented.
+describe('a figure the person typed, put into a block (REQ-32 BC-5)', () => {
+  it('holds a flow label carrying the numbers the person gave', async () => {
+    const r = await figureRefusals('The chart is drawn above.', {
+      question:
+        'Draw a bar chart with these numbers exactly as I give them, without running any report: Alpha 12, Beta 47, Gamma 3.',
+      calls: [FLOW('Alpha 12, Beta 47, Gamma 3')],
+    });
+    expect(r.map((x) => x.quote)).toEqual(['12', '47', '3']);
+  });
+});

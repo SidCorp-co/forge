@@ -20,8 +20,6 @@ export interface StagedBlock {
 
 /** Where a turn holds the blocks it draws until its reply is judged. */
 export interface BlockStage {
-  /** What the person asked: a number they typed may stand in a block's title or label. */
-  readonly question: string;
   hold(block: StagedBlock): Promise<void>;
 }
 

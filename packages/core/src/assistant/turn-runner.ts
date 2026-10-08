@@ -132,7 +132,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     );
   }
   const conversation = await openConversation(req.venue);
-  const stage = new TurnBlockStage(req.message);
+  const stage = new TurnBlockStage();
   const reply = await composeWithin(req, conversation.id, stage);
   if ('rest' in reply) return deliverPartial(req, transport, conversation.id, reply, stage);
   return withDrops(req, stage, await settledOutcome(req, transport, conversation.id, reply, stage));

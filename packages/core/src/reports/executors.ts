@@ -28,6 +28,8 @@ export const executorPorts = slot.get;
 
 const adapters = new Map<string, Executor>();
 let composed = false;
+/** Why each executor the deployment could not enable is absent, as the boot call named it. */
+let absent: readonly string[] = [];
 
 /** Adds one adapter; a second adapter under an id, or a descriptor off the contract, is refused. */
 export function registerExecutor(adapter: Executor): void {
@@ -52,9 +54,13 @@ export function registerExecutor(adapter: Executor): void {
   adapters.set(adapter.id, adapter);
 }
 
-/** The process entry's one call: the executors this deployment enabled, possibly none. */
-export function provideExecutors(list: readonly Executor[]): void {
+/** The process entry's one call: the executors this deployment enabled, possibly none, and why any is absent. */
+export function provideExecutors(
+  list: readonly Executor[],
+  unavailable: readonly string[] = [],
+): void {
   composed = true;
+  absent = unavailable;
   for (const adapter of list) registerExecutor(adapter);
 }
 
@@ -76,7 +82,7 @@ export function registeredExecutors(): Executor[] {
   if (adapters.size === 0) {
     throw refuseExecution(
       'EXECUTOR_UNAVAILABLE',
-      'no sandbox executor is enabled on this deployment, so no computation can run here; answer from a report query (forge_report) instead, or ask the operator to enable an executor adapter',
+      `no sandbox executor is enabled on this deployment${absent.length > 0 ? ` (${absent.join('; ')})` : ''}, so no computation can run here and nothing was sent anywhere; answer from a report query (forge_report) instead, or ask the operator to enable an executor adapter`,
     );
   }
   return [...adapters.values()];
