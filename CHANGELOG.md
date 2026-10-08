@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.205] - 2026-10-08
+
+Chat answers draw dates the way the Requirements list does
+
+### Fixed
+
+- **A date in a chat answer reads like the same date in the Requirements list.** Every visual block, the forecast basis included, now draws an instant as the list does ("Oct 5") in the viewer's timezone, not as raw ISO.
+
 ## [0.4.0-dev.204] - 2026-10-08
 
 The BA door no longer states an asker's invented figure as fact
