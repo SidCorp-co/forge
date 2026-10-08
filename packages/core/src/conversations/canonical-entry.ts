@@ -9,16 +9,31 @@ const BLOCK_TYPES: ReadonlySet<unknown> = new Set<ContentBlock['type']>([
   'questionnaire',
   'questionnaire_answers',
   'designs',
+  'visual',
+  'unsupported',
 ]);
 
-/** The blocks column, read back as blocks or as nothing. */
+/** What a stored entry was, said in a word: its `type` where it names one, else what kind of value it is. */
+function nameOf(entry: unknown): string {
+  if (entry === null) return 'null';
+  if (Array.isArray(entry)) return 'array';
+  if (typeof entry !== 'object') return typeof entry;
+  const type = (entry as { type?: unknown }).type;
+  return typeof type === 'string' && type.length > 0 ? type : '(no type)';
+}
+
+/**
+ * The blocks column, read back as blocks or as nothing. An entry whose type this build does not
+ * know is kept as an `unsupported` block naming it, so a reader says "a hologram block" instead of
+ * the part of the answer disappearing; the stored row is never rewritten.
+ */
 export function asBlocks(value: unknown): ContentBlock[] | null {
   if (!Array.isArray(value)) return null;
-  const out: ContentBlock[] = [];
-  for (const b of value) {
-    if (!b || typeof b !== 'object') continue;
-    if (BLOCK_TYPES.has((b as { type?: unknown }).type)) out.push(b as ContentBlock);
-  }
+  const out: ContentBlock[] = value.map((b) =>
+    b && typeof b === 'object' && BLOCK_TYPES.has((b as { type?: unknown }).type)
+      ? (b as ContentBlock)
+      : { type: 'unsupported', unsupported: nameOf(b) },
+  );
   return out.length > 0 ? out : null;
 }
 
