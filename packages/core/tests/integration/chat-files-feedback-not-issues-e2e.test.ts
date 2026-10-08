@@ -104,9 +104,9 @@ beforeAll(async () => {
       value: { authority, menu: AGENT_TURN_MENU },
     });
   };
-  // a chat token never holds feedback.approve today (a token holds it only where its grant names
-  // it, and no turn menu does), so the triage path is planted with one that does: the insert, not
-  // the permission, is what must refuse it
+  // a chat token never holds feedback.approve today (its grant is named, a named grant holds it
+  // only where it names it, and no turn menu does), so the triage path is planted with one that
+  // does: the insert, not the permission, is what must refuse it
   const approvingChat = async () => {
     const token = await boxToken({ conversationAgent: { conversationId: randomUUID() } }, 'system');
     await db.execute(sql`

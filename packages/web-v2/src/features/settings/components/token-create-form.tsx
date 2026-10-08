@@ -233,18 +233,11 @@ function DraftFields({
           <Radio value="named" label={t("settings.tokens.named")} />
         </RadioGroup>
         {draft.grantMode === "named" && (
-          <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {(menu?.permissions ?? []).map((permission) => (
-              <Checkbox
-                key={permission}
-                checked={draft.permissions.includes(permission)}
-                onChange={() =>
-                  setDraft((d) => ({ ...d, permissions: toggled(d.permissions, permission) }))
-                }
-                label={permission}
-              />
-            ))}
-          </div>
+          <>
+            <PermissionPicks names={menu?.permissions ?? []} draft={draft} setDraft={setDraft} />
+            <p className="fg-body-sm text-muted mt-4">{t("settings.tokens.explicitLabel")}</p>
+            <PermissionPicks names={menu?.explicit ?? []} draft={draft} setDraft={setDraft} />
+          </>
         )}
       </Field>
       <Field label={t("settings.tokens.expires")} hint={t("settings.tokens.expiresHint")}>
@@ -263,6 +256,30 @@ function DraftFields({
         />
       </Field>
     </>
+  );
+}
+
+/** One checkbox per permission name; a pick toggles it in the draft's named grant. */
+function PermissionPicks({
+  names,
+  draft,
+  setDraft,
+}: {
+  names: string[];
+  draft: TokenDraft;
+  setDraft: Dispatch<SetStateAction<TokenDraft>>;
+}) {
+  return (
+    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      {names.map((permission) => (
+        <Checkbox
+          key={permission}
+          checked={draft.permissions.includes(permission)}
+          onChange={() => setDraft((d) => ({ ...d, permissions: toggled(d.permissions, permission) }))}
+          label={permission}
+        />
+      ))}
+    </div>
   );
 }
 

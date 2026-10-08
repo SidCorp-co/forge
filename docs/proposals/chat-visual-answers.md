@@ -244,8 +244,8 @@ What an adapter added in C2 or C3 inherits:
   chat tool `forge_compute` (in `CHAT_REPORT_TOOLS`) and by `POST /api/projects/:id/executions`; `GET
   /api/projects/:id/executions/:executionId` reads one back to the person who asked it. Its checks run
   in this order, each refused by name and none reaching an adapter: an executor enabled at all; the
-  asker's `assistant.exec` (admin's by default, token-explicit, so a turn token or a personal token
-  holds it only where its grant names it); in chat, a web room about the project (an external door is
+  asker's `assistant.exec` (admin's by default, token-explicit, so a turn token, whose grant is named,
+  never holds it, and a personal token holds it when granted Full or naming it); in chat, a web room about the project (an external door is
   `EXECUTION_DOOR_FORBIDDEN`); the project document's `compute.enabled` (absent is off,
   `EXECUTION_DISABLED`); the limits (`EXECUTION_MAX_LIMITS`, never lowered silently); the turn's caps
   (`EXECUTION_TURN_CAPS`: 8 calls, 120 s of wall time, 2 MB of output); the inputs, each a run the
@@ -353,7 +353,8 @@ ruling and is not registered.
   longer read refuses the share by name, and a kind with no source registered is refused naming the
   kinds that have one. Two audiences: `members` (opener must be signed in and hold `project.read` now)
   and `link` (anyone with the token; creating one needs `shares.public`, admin by default and
-  token-explicit per ADR 0007).
+  token-explicit per ADR 0007: a Full token holds it where its holder does, a named one where it
+  names it).
 - **Expiring.** `expires_at` is required: default 7 days, at most 30.
 - **Revocable.** The creator or a `project.admin` revokes it, effective on the next request. A share
   stands only while its creator still holds the permission that created it (`shares.write`, or

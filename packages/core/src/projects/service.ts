@@ -219,7 +219,8 @@ export async function addProjectMemberIfAbsent(
 
 /**
  * Change a member's role or grant; null when the membership is gone. An agent's live credentials
- * take the new grant's token-explicit permissions in the same transaction.
+ * take the new grant's observer key (`PAT_FULL_NARROWING_PERMISSIONS`) in the same transaction; the
+ * rest of the grant they hold through `*`, read from the membership on every check.
  */
 export async function changeProjectMember(
   projectId: string,

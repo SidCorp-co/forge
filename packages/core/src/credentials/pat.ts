@@ -180,16 +180,16 @@ export async function supersedeNamedToken(
       ),
     );
 }
-/** A grant with its token-explicit names replaced by `explicit`, its route grant kept as it was. */
-function grantNaming(permissions: StatedPatGrant, explicit: readonly string[]): string[] {
+/** A grant with its token-explicit names replaced by `named`, its route grant kept as it was. */
+function grantNaming(permissions: StatedPatGrant, named: readonly string[]): string[] {
   const routes = permissions.filter(
     (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
   );
-  return [...new Set([...routes, ...explicit])];
+  return [...new Set([...routes, ...named])];
 }
 
 /**
- * Every live token of one holder names exactly `explicit` among its token-explicit permissions;
+ * Every live token of one holder names exactly `named` among its token-explicit permissions;
  * answers how many. A token left naming nothing reaches nothing and is revoked, and one stating no
  * grant is left as it is: refused at every door, and regranting it would hand it a reach nobody
  * chose.
@@ -197,7 +197,7 @@ function grantNaming(permissions: StatedPatGrant, explicit: readonly string[]): 
 export async function regrantLiveTokens(
   tx: Tx,
   userId: string,
-  explicit: readonly string[],
+  named: readonly string[],
 ): Promise<number> {
   const live = await tx
     .select({ id: personalAccessTokens.id, permissions: personalAccessTokens.permissions })
@@ -206,7 +206,7 @@ export async function regrantLiveTokens(
   let regranted = 0;
   for (const token of live) {
     if (!patGrantIsStated(token.permissions)) continue;
-    const permissions = grantNaming(token.permissions, explicit);
+    const permissions = grantNaming(token.permissions, named);
     await tx
       .update(personalAccessTokens)
       .set(permissions.length > 0 ? { permissions } : { revokedAt: sql`now()` })

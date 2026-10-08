@@ -1,8 +1,11 @@
-import { TOKEN_EXPLICIT_PERMISSIONS } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { regrantLiveTokens } from '../credentials/pat.js';
-import { PAT_PERMISSION_ALL, type StatedPatGrant } from '../credentials/pat-permissions.js';
+import {
+  PAT_FULL_NARROWING_PERMISSIONS,
+  PAT_PERMISSION_ALL,
+  type StatedPatGrant,
+} from '../credentials/pat-permissions.js';
 import { db, type Tx } from '../db/client.js';
 import { projectMembers } from '../db/schema.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -52,17 +55,21 @@ export async function agentCredentialFence(
 }
 
 /**
- * The token-explicit permissions (every approval among them) the agent's memberships grant. A
- * credential core mints for an agent names them, because a token reaches one only by name: the
- * org admin's grant on the membership is what decides, and the credential carries it.
+ * The narrowing names (`PAT_FULL_NARROWING_PERMISSIONS`) the agent's memberships grant. A credential
+ * core mints for an agent names them beside `*`, because naming one is what makes it an observer's
+ * credential (`TOKEN_GRANT_EXCLUSIONS`). Nothing else is named: a full grant already holds every
+ * permission the agent's role and membership grants hold, approvals included (REQ-27 BC-4).
  */
-async function agentExplicitGrant(agentUserId: string, tx: Tx = db): Promise<string[]> {
+async function agentNarrowingGrant(agentUserId: string, tx: Tx = db): Promise<string[]> {
   const rows = await tx
     .select({ grants: projectMembers.grants })
     .from(projectMembers)
     .where(eq(projectMembers.userId, agentUserId));
-  const explicit = TOKEN_EXPLICIT_PERMISSIONS as readonly string[];
-  return [...new Set(rows.flatMap((r) => r.grants).filter((g) => explicit.includes(g)))];
+  return [
+    ...new Set(
+      rows.flatMap((r) => r.grants).filter((g) => PAT_FULL_NARROWING_PERMISSIONS.includes(g)),
+    ),
+  ];
 }
 
 async function isAgent(tx: Tx, userId: string): Promise<boolean> {
@@ -70,24 +77,25 @@ async function isAgent(tx: Tx, userId: string): Promise<boolean> {
 }
 
 /**
- * The grant of a credential core mints for its holder: every route, and, for an agent, its explicit
- * permissions by name. A person's is every route alone.
+ * The grant of a credential core mints for its holder: full, and, for an agent, narrowed by the
+ * observer key its memberships grant. A person's is full alone.
  */
 export async function agentCredentialGrant(
   holderUserId: string,
   tx: Tx = db,
 ): Promise<StatedPatGrant> {
-  const explicit = (await isAgent(tx, holderUserId))
-    ? await agentExplicitGrant(holderUserId, tx)
+  const narrowing = (await isAgent(tx, holderUserId))
+    ? await agentNarrowingGrant(holderUserId, tx)
     : [];
-  return [PAT_PERMISSION_ALL, ...explicit];
+  return [PAT_PERMISSION_ALL, ...narrowing];
 }
 
 /**
- * Bring every live credential of an agent in line with its memberships' grants, after one changed.
- * A person's tokens name what that person chose at mint and are left as they are.
+ * Bring every live credential of an agent in line with its memberships' grants, after one changed:
+ * each names the narrowing permissions they grant and no other token-explicit one. A person's
+ * tokens name what that person chose at mint and are left as they are.
  */
 export async function regrantAgentCredentials(tx: Tx, userId: string): Promise<number> {
   if (!(await isAgent(tx, userId))) return 0;
-  return regrantLiveTokens(tx, userId, await agentExplicitGrant(userId, tx));
+  return regrantLiveTokens(tx, userId, await agentNarrowingGrant(userId, tx));
 }

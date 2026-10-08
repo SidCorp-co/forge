@@ -243,23 +243,23 @@ describe('a computation refused before the executor sees it', () => {
   beforeAll(() => registerExecutor(fake));
   afterAll(() => unregisterExecutorForTest(fake.id));
 
-  it('refuses a member without assistant.exec, and a token whose grant does not name it', async () => {
+  it('refuses a member without assistant.exec, and a named grant that does not name it', async () => {
     const run = await runQuery(w.projectId, member.token);
     const res = await compute({ language: 'python', script, inputs: [run.runId] }, member.token);
     expect([res.status, code(res)]).toEqual([403, 'PERMISSION_FORBIDDEN']);
     expect(detail(res)).toContain('assistant.exec');
-    const everyRoute = (
+    const routesOnly = (
       await mintPat({
-        permissions: ['*'],
+        permissions: ['projects:read', 'projects:write'],
         userId: w.userId,
         name: 'routes',
         projectIds: [w.projectId],
       })
     ).plaintext;
-    const byToken = await compute({ language: 'python', script, inputs: [] }, everyRoute);
+    const byToken = await compute({ language: 'python', script, inputs: [] }, routesOnly);
     expect([byToken.status, code(byToken)]).toEqual([403, 'PERMISSION_FORBIDDEN']);
     expect(detail(byToken)).toContain(
-      'A token holds assistant.exec only where its own grant names it',
+      'A named token grant holds assistant.exec only where it names it',
     );
     expect(execute).not.toHaveBeenCalled();
   });
@@ -330,7 +330,7 @@ describe('a turn’s caps', () => {
   it('refuses a call past the turn’s wall-time cap, naming the cap and what is left', async () => {
     const capped = (
       await mintPat({
-        permissions: ['*', 'assistant.exec'],
+        permissions: ['*'],
         userId: w.userId,
         name: 'one turn',
         projectIds: [w.projectId],

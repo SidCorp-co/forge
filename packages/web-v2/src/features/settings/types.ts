@@ -15,7 +15,10 @@ type PatGrant = "unstated" | "full" | "named";
 
 /** What `GET /api/pat` says the create door will accept. */
 export interface PatMenu {
+  /** The route groups a named grant picks from. */
   permissions: string[];
+  /** The approvals and other acts a named grant holds only where it names them; Full holds them. */
+  explicit: string[];
   full: string;
 }
 
