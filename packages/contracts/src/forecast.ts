@@ -307,6 +307,27 @@ export interface DeliveryForecast extends ForecastStamp {
 	shipped: { version: string | null; at: string | null } | null;
 }
 
+/** The dates a delivery forecast shows, and which half they are of. */
+export interface DeliveryDates {
+	p50At: string;
+	p85At: string;
+	/** `hands`: landing plus release lag. `landing`: the landing alone, a person or a short history holding the release. */
+	of: "hands" | "landing";
+}
+
+/**
+ * The one reading of which dates a delivery shows, wherever a requirement's ETA is read: the
+ * Requirements list's cell (`web-v2 forecast/eta.ts:etaOfDelivery`) and the progress report
+ * (`core report-queries/roadmap-eta.ts:etaOf`). In hands where the forecast holds that span, else
+ * the landing range where only the landing is forecast, else none; shipped work shows none.
+ */
+export function deliveryDatesOf(d: DeliveryForecast | null | undefined): DeliveryDates | null {
+	if (!d || d.shipped) return null;
+	if (d.inHands) return { p50At: d.inHands.p50At, p85At: d.inHands.p85At, of: "hands" };
+	if (d.landing.kind === "forecast") return { p50At: d.landing.p50At, p85At: d.landing.p85At, of: "landing" };
+	return null;
+}
+
 /** One feedback item: who triages it while untriaged, else its linked work's delivery. */
 export interface FeedbackForecast {
 	key: string;

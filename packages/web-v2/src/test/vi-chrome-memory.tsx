@@ -34,6 +34,8 @@ const BASE: MemoryEntry = {
   changed: [],
   flagged: { since: AT, by: "ISS-126", reason: "ISS-126 thay giao dien" },
   corrections: [{ by: LAN, at: AT, reason: "da doi chieu" }],
+  revisions: [],
+  revisionCount: 0,
   retired: null,
   archivedAt: null,
   archivedBy: null,

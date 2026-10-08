@@ -3,8 +3,9 @@
 // One memory on the record it names (MJ-1, MJ-3, REQ-33 BC-4): what it says, who wrote it and when, whether anyone
 // checked it, why it needs a check (core's reasons: unchecked too long, a cited record changed since),
 // which records it names that no longer exist, a release's "may be outdated" flag read
-// as the guess it is, and every correction or retirement with its reason. "Still true" stamps the row checked
-// by the person; "Not true anymore" leads to Correct or Retire, which each take a reason before they send; a mirror of an issue, comment or job offers neither.
+// as the guess it is, every correction or retirement with its reason, and the text it held before each
+// body that replaced it (ISS-434), its writer named as the one who wrote it, never the corrector.
+// "Still true" stamps the row checked by the person; "Not true anymore" leads to Correct or Retire, which each take a reason before they send; a mirror of an issue, comment or job offers neither.
 
 import { MEMORY_CHECK_AFTER_DAYS, MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
 import Link from "next/link";
@@ -183,6 +184,21 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onVerify, onCorrec
             <li key={c.at}>{t("memory.corrected", { name: actorName(t, c.by), date: day(c.at), reason: c.reason })}</li>
           ))}
         </ul>
+      ) : null}
+      {entry.revisions.length > 0 ? (
+        <details className="text-12 text-muted" data-testid="memory-revisions">
+          <summary className="cursor-pointer select-none">
+            {entry.revisionCount > entry.revisions.length ? t("memory.earlierShown", { shown: entry.revisions.length, n: entry.revisionCount }) : t("memory.earlier", { n: entry.revisionCount })}
+          </summary>
+          <ol className="mt-1 grid gap-2 border-l border-line-subtle pl-3">
+            {entry.revisions.map((r) => (
+              <li key={r.replacedAt} className="grid gap-0.5" data-testid="memory-revision">
+                <span>{t("memory.replaced", { date: day(r.replacedAt), name: actorName(t, r.writtenBy) })}</span>
+                <p className="whitespace-pre-wrap text-12-5 text-fg">{r.text}</p>
+              </li>
+            ))}
+          </ol>
+        </details>
       ) : null}
       {gone ? (
         <p className="text-12-5 text-muted" data-testid="memory-retired">

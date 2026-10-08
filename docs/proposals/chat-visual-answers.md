@@ -109,7 +109,7 @@ read; it never computes the same fact a second way.
 
 | Query | Answers | Built over |
 |---|---|---|
-| `progress-by-requirement` | per requirement: criteria proven of total, issues shipped / awaiting release / to do | `readProjectStatus` (`requirements` section) |
+| `progress-by-requirement` | per requirement of the Requirements list, every lane and off the roadmap: criteria proven of total, issues shipped / awaiting release / to do, lane and forecast dates as the list's ETA reads them (`deliveryDatesOf`) | `packages/core/src/requirements/read.ts:listRequirementsAs`, `packages/core/src/forecast/scope.ts:readRequirementForecasts` |
 | `roadmap-eta` | now / next / later by requirement, each with its p50–p85 forecast range | `readProjectStatus` (`roadmap`), `packages/core/src/forecast/scope.ts:readForecastLine` |
 | `release-readiness` | row 0: the release in flight (state, progress, whose turn, the draft behind it) or a `none_in_flight` row, with the window's shipped totals; then the releases shipped in the last `days` (default 14), newest first, with date, version and issue count | `readProjectStatus` (`nextRelease`, `shipped`) |
 | `criteria-coverage` | per requirement criterion: proven, failing, untested, and by which issue | the requirement read behind `forge_requirement` |
