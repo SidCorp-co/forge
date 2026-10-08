@@ -1,1 +1,0 @@
-**An onboarding job removes its landed-tree worktree before its last act.** The prompt said "when you stop", but post_questionnaire or mark_done ends the job and closes the session first, so the worktree was left behind.
