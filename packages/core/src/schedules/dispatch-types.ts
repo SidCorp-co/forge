@@ -42,6 +42,8 @@ type RoutedScheduleResult =
       status: 'skipped';
     }
   | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string }
+  /** A fire core runs itself (script, release cut, Sentry pull) ran and failed; `error` is as the fire records it. */
+  | { ok: false; reason: 'run-failed'; status: 'failed'; error: string }
   | { ok: false; reason: 'rule-refused'; status: 'failed' | 'skipped'; refusal: Refusal }
   | {
       ok: false;

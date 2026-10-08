@@ -110,11 +110,25 @@ describe('a schedule script keeps ctx.log, ctx.params and ctx.notify', () => {
     expect(r.value).toEqual({ team: 'core', project: 'p-1' });
   });
 
-  it('refuses a notify without a title, as before', async () => {
+  it('refuses a notify without a title, as before, naming what the title was', async () => {
     const r = await run('ctx.notify({ body: "no title" })');
     expect(r.status).toBe('failed');
-    expect(r.error?.message).toContain(
-      'ctx.notify requires a { title: string, body?, severity? } payload',
+    expect(r.error?.message).toBe(
+      'ctx.notify requires a { title: string, body?, severity? } payload, and its title was nothing',
+    );
+  });
+
+  it.each([
+    ["ctx.notify('nightly ran')", `a string; write ctx.notify({ title: "nightly ran" })`],
+    ['ctx.notify()', "nothing; write ctx.notify({ title: '…' })"],
+    ["ctx.notify(['a'])", "an array; write ctx.notify({ title: '…' })"],
+    ['ctx.notify(3)', "a number; write ctx.notify({ title: '…' })"],
+  ])('refuses %s by naming what it was given and the call to write', async (script, named) => {
+    const r = await run(script);
+    expect(r.status).toBe('failed');
+    expect(r.notifications).toEqual([]);
+    expect(r.error?.message).toBe(
+      `ctx.notify requires a { title: string, body?, severity? } payload, and was given ${named}`,
     );
   });
 });

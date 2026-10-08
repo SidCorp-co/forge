@@ -56,13 +56,10 @@ export async function routeScheduleReleaseBatchFire(
 
   if (outcome.status === 'failed') {
     logger.warn({ scheduleId: input.schedule.id, fireId }, 'schedule.release-batch: cut failed');
+    const error = outcome.error ?? outcome.output;
     return {
-      result: { ok: false, reason: 'session-failed', status: 'failed' },
-      settle: {
-        status: 'failed',
-        error: outcome.error ?? outcome.output,
-        output: outcome.output,
-      },
+      result: { ok: false, reason: 'run-failed', status: 'failed', error },
+      settle: { status: 'failed', error, output: outcome.output },
     };
   }
   if (outcome.status === 'skipped') {

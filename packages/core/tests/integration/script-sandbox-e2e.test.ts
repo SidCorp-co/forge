@@ -7,6 +7,7 @@ import { CHAT_TURN_MENU, mintTurnCredential } from '../../src/credentials/turn-c
 import { db } from '../../src/db/client.js';
 import { resolveTurnAuthority } from '../../src/permissions/index.js';
 import { forgeComputeTool } from '../../src/reports/tool.js';
+import { runScheduleTickOnce } from '../../src/schedules/timers.js';
 import { api, type Body } from '../helpers/api.js';
 import { createTestIssue, createTestProject, createTestRequirement } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
@@ -291,6 +292,80 @@ ctx.log('counted');`);
     expect(await notices('Requirement count')).toEqual([{ project_id: w.projectId, body: '2' }]);
     const tokens = await scriptTokens(w.userId);
     expect(tokens.every((t) => t.revoked_at !== null)).toBe(true);
+  });
+
+  it('answers a Run now whose script failed with the script’s own error, never "session-failed"', async () => {
+    // QA's probe on dev.205 (ISS-479): a string where ctx.notify takes { title }, refused as the old
+    // engine refused it; the answer said "nothing was started: session-failed" and hid the cause
+    const made = await api(w.token, 'POST', '/api/schedules', {
+      projectId: w.projectId,
+      name: `script ${randomUUID().slice(0, 8)}`,
+      cron: '0 3 1 1 *',
+      kind: 'script',
+      script: "await ctx.notify('qa-204 probe: script schedule ran'); return { ok: true };",
+      enabled: false,
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const id = String(made.body.id);
+    const ran = await api(w.token, 'POST', `/api/schedules/${id}/run`);
+    expect(ran.status, JSON.stringify(ran.body)).toBe(422);
+    expect(ran.body.code).toBe('SCHEDULE_RUN_FAILED');
+    const detail = String(ran.body.detail);
+    expect(detail).not.toContain('session-failed');
+    expect(detail).toContain('the script ran and failed');
+    expect(detail).toContain('ctx.notify requires a { title: string, body?, severity? } payload');
+    expect(detail).toContain('was given a string');
+    const fire = await fireOf(id);
+    expect(fire).toMatchObject({ status: 'failed', run_as: w.userId, reads: [] });
+    expect(detail).toContain(String(fire.error));
+  });
+
+  it('fires by the cron tick as its owner, notifies, and records who ran it', async () => {
+    const made = await api(w.token, 'POST', '/api/schedules', {
+      projectId: w.projectId,
+      name: `script ${randomUUID().slice(0, 8)}`,
+      cron: '0 3 * * *',
+      kind: 'script',
+      script: `ctx.log('nightly'); ctx.notify({ title: 'Cron notice', body: 'by the tick' });`,
+      enabled: true,
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(201);
+    const id = String(made.body.id);
+    // due a minute ago, written by SQL as Postgres writes a time: to the microsecond
+    await db.execute(
+      sql`UPDATE schedules SET next_run_at = now() - interval '1 minute' WHERE id = ${id}`,
+    );
+    const [due] = await rows(
+      sql`SELECT extract(microseconds FROM next_run_at)::bigint % 1000 AS us FROM schedules WHERE id = ${id}`,
+    );
+    // the plant: a next_run_at a JS Date cannot hold exactly (one in a thousand lands on 000)
+    if (Number(due?.us) === 0) {
+      await db.execute(
+        sql`UPDATE schedules SET next_run_at = next_run_at + interval '1 microsecond' WHERE id = ${id}`,
+      );
+    }
+
+    const fired = await runScheduleTickOnce(new Date());
+    expect(fired).toContain(id);
+    const [fire] = await rows(sql`
+      SELECT trigger, status, output, run_as, reads FROM schedule_runs WHERE schedule_id = ${id}
+    `);
+    expect(fire).toEqual({
+      trigger: 'scheduled',
+      status: 'success',
+      output: 'nightly',
+      run_as: w.userId,
+      reads: [],
+    });
+    expect(await notices('Cron notice')).toEqual([
+      { project_id: w.projectId, body: 'by the tick' },
+    ]);
+    const [next] = await rows(
+      sql`SELECT next_run_at > now() AS later FROM schedules WHERE id = ${id}`,
+    );
+    expect(next?.later).toBe(true);
+    // a second tick in the same minute claims nothing: the fire is not repeated
+    expect(await runScheduleTickOnce(new Date())).not.toContain(id);
   });
 
   it('fails a write by name, and the fire records the refusal', async () => {

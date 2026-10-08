@@ -5,7 +5,7 @@
 // run faster than a minute.
 
 import { CronExpressionParser } from 'cron-parser';
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, lte } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { schedules } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
@@ -73,7 +73,7 @@ function assertTimers(timers: readonly Timer[]): void {
 }
 
 /** Claim each enabled schedule whose nextRunAt has come, and fire it. */
-async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
+export async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
   const due = await db
     .select()
     .from(schedules)
@@ -82,7 +82,10 @@ async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
   const dispatched: string[] = [];
   for (const schedule of due) {
     try {
-      // Atomic claim: only one ticker wins for this (id, nextRunAt) pair.
+      // Atomic claim: the first ticker moves nextRunAt past now and every later one finds it not
+      // due. Read on the row, never by equality with the Date read above: a Date holds
+      // milliseconds and the column microseconds, so an equality misses any time SQL wrote and
+      // skips that schedule silently on every tick.
       const claimed = await db
         .update(schedules)
         .set({ nextRunAt: nextRunFor(schedule.cron, now, schedule.timeZone) })
@@ -90,9 +93,7 @@ async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
           and(
             eq(schedules.id, schedule.id),
             eq(schedules.enabled, true),
-            schedule.nextRunAt
-              ? eq(schedules.nextRunAt, schedule.nextRunAt)
-              : sql`${schedules.nextRunAt} IS NULL`,
+            lte(schedules.nextRunAt, now),
           ),
         )
         .returning({ id: schedules.id });

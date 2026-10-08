@@ -267,6 +267,13 @@ export async function deleteSchedule(id: string, actorUserId: string): Promise<v
   await db.delete(schedules).where(eq(schedules.id, id));
 }
 
+/** What a fire core runs itself is called in the answer naming why it failed. */
+const RUN_NOUN: Partial<Record<ScheduleKind, string>> = {
+  script: 'script',
+  release_batch: 'release cut',
+  sentry_pull: 'Sentry pull',
+};
+
 /** A manual run acts as the person who pressed it, bounded by the token they pressed it with. */
 export async function runScheduleNow(
   id: string,
@@ -307,6 +314,12 @@ export async function runScheduleNow(
   if (!result.ok && result.reason === 'refused') throw refusalError(result.refusal);
   if (!result.ok && result.reason === 'rule-refused') {
     throw new RefusalError([result.refusal], 'SCHEDULE_REFUSED');
+  }
+  if (!result.ok && result.reason === 'run-failed') {
+    throw refuse(
+      'SCHEDULE_RUN_FAILED',
+      `the ${RUN_NOUN[schedule.kind] ?? 'run'} ran and failed: ${result.error} (fire ${result.fireId})`,
+    );
   }
   if (!result.ok) {
     // ISS-244 — manual /run no longer queues; surface "no device online"

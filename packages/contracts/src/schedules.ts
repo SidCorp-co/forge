@@ -35,7 +35,16 @@ export const SCHEDULE_RUN_STREAK_SKIP_REASONS = [
 	"project-not-found",
 ] as const satisfies readonly ScheduleRunSkipReason[];
 
-export const SCHEDULE_REFUSAL_CODES = ["SCHEDULE_REFUSED", "SCHEDULE_DISPATCH_FAILED"] as const;
+/**
+ * SCHEDULE_DISPATCH_FAILED: nothing was started (no session, no box). SCHEDULE_RUN_FAILED: a fire
+ * that runs in core (a script, a release cut, a Sentry pull) ran and failed; its detail is that
+ * run's own error, as the fire records it.
+ */
+export const SCHEDULE_REFUSAL_CODES = [
+	"SCHEDULE_REFUSED",
+	"SCHEDULE_DISPATCH_FAILED",
+	"SCHEDULE_RUN_FAILED",
+] as const;
 export type ScheduleRefusalCode = (typeof SCHEDULE_REFUSAL_CODES)[number];
 
 /** Who may change a schedule: its owner with write access; anyone else needs admin, and the save takes it over. */
@@ -43,5 +52,7 @@ export function scheduleWritePermission(
 	ownerId: string | null,
 	actorUserId: string,
 ): "project.write" | "project.admin" {
-	return ownerId !== null && ownerId === actorUserId ? "project.write" : "project.admin";
+	return ownerId !== null && ownerId === actorUserId
+		? "project.write"
+		: "project.admin";
 }
