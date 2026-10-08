@@ -121,6 +121,22 @@ describe('the key', () => {
     expect(key(built).key).not.toBe(builtBefore);
   });
 
+  it('holds a single built file by content, and a probed path by whether it is there and not by what it holds', () => {
+    put('.gitignore', 'gen.d.ts\nbuildinfo\n');
+    commit();
+    put('gen.d.ts', 'one');
+    put('buildinfo', 'one');
+    const both = { roots: ['src'], built: ['gen.d.ts'], probed: ['buildinfo'] };
+    const before = key(both).key;
+    put('buildinfo', 'two, a longer text');
+    expect(key(both).key).toBe(before);
+    put('gen.d.ts', 'two');
+    const built = key(both).key;
+    expect(built).not.toBe(before);
+    rmSync(join(root, 'buildinfo'));
+    expect(key(both).key).not.toBe(built);
+  });
+
   it('holds the content a link leads to, so a declared link cannot hide an undeclared file', () => {
     symlinkSync('../docs/n.md', join(root, 'src/link.txt'));
     const before = key(decl).key;
@@ -253,6 +269,16 @@ describe('the audit of a trace against a declaration', () => {
     expect(
       faults([R('.cache-file'), R('!**/skip/**')], { ...decl, derived: ['.cache-file'] }),
     ).toEqual([]);
+  });
+
+  it('accepts a stat of a probed path and refuses a read of it, which the key does not hold', () => {
+    put('docs/n.md', 'note');
+    const probed = { ...decl, probed: ['docs/n.md'] };
+    expect(
+      faults([`P ${join(root, 'docs/n.md')}`, `M ${join(root, 'docs/n.md')}`], probed),
+    ).toEqual([]);
+    expect(faults([R('docs/n.md')], probed)).toEqual(['read docs/n.md']);
+    expect(faults([`P ${join(root, 'docs/n.md')}`])).toEqual(['stat docs/n.md']);
   });
 
   it('names a read of an ignored file inside a root, which no key holds', () => {
@@ -455,7 +481,7 @@ describe('the preload', () => {
     const traced = traceEnv({ PATH: process.env.PATH });
     put(
       'probe.cjs',
-      "const fs=require('node:fs');fs.readFileSync('src/a.txt');fs.readdirSync('docs');fs.existsSync('nope.txt');fs.statSync('quiet.txt',{throwIfNoEntry:false});require('node:child_process').spawnSync('git',['ls-files']);",
+      "const fs=require('node:fs');fs.readFileSync('src/a.txt');fs.readdirSync('docs');fs.existsSync('nope.txt');fs.statSync('quiet.txt',{throwIfNoEntry:false});fs.statSync('src/b.txt');require('node:child_process').spawnSync('git',['ls-files']);",
     );
     const r = spawnSync('node', ['probe.cjs'], { cwd: root, env: traced.env, encoding: 'utf8' });
     const lines = readTrace(traced.dir);
@@ -464,6 +490,8 @@ describe('the preload', () => {
     expect(lines).toContain(`L ${join(root, 'docs')}`);
     expect(lines).toContain(`M ${join(root, 'nope.txt')}`);
     expect(lines).toContain(`M ${join(root, 'quiet.txt')}`);
+    expect(lines).toContain(`P ${join(root, 'src/b.txt')}`);
+    expect(lines).not.toContain(`R ${join(root, 'src/b.txt')}`);
     expect(lines).toContain('S ["git","ls-files"]');
     expect(existsSync(traced.dir)).toBe(false);
   });
@@ -484,12 +512,13 @@ describe('the preload', () => {
 
 /** A check as verify runs one: `node check.mjs` over the files under `src`, red when one holds BAD. */
 const CHECK = `
-import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 const files = readdirSync('src');
 const bad = files.filter((f) => readFileSync('src/' + f, 'utf8').includes('BAD'));
 if (process.env.PEEK) readFileSync(process.env.PEEK);
 if (process.env.IMPORT) await import(process.env.IMPORT);
 if (process.env.PROBE) existsSync(process.env.PROBE);
+if (process.env.STAT) statSync(process.env.STAT);
 if (process.env.STREAM) await new Promise((done) => createReadStream(process.env.STREAM).on('data', () => {}).on('close', done));
 if (process.env.ASYNC) await (await import('node:fs/promises')).readFile(process.env.ASYNC);
 if (process.env.SHELLED) {
@@ -586,6 +615,22 @@ describe('a check taken through the memo', () => {
     expect(done.verdict.code).toBe(2);
     expect(done.verdict.out).toContain('read docs/n.md');
     expect(listEntries(dir)).toEqual([]);
+  });
+
+  it('refuses a stat of a path its declaration does not name, and files a check that only stats a probed one', () => {
+    const outside = join(root, 'docs/n.md');
+    expect(run(memo(), { STAT: outside }).verdict.out).toContain('stat docs/n.md');
+    expect(listEntries(dir)).toEqual([]);
+    const probed = { c: { roots: ['check.mjs', 'src'], probed: ['docs/n.md'] } };
+    const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(m, { STAT: outside }).verdict.code).toBe(0);
+    expect(listEntries(dir)).toHaveLength(1);
+    put('docs/n.md', 'the content moves, the name does not');
+    const again = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(again, { STAT: outside }).plan.kind).toBe('hit');
+    rmSync(outside);
+    const gone = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(gone, { STAT: outside }).plan.kind).toBe('miss');
   });
 
   it('refuses a module the check imports from outside its declaration', () => {

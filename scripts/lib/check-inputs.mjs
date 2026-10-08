@@ -1,9 +1,11 @@
 // What each `verify` check reads, so a passed verdict can be filed under the content of exactly
 // that. `roots` are the paths whose files the check reads whole; `listed` are directories it only
-// lists; `built` is output git ignores that it still reads; `git: true` is a check that also asks
-// git about history or its base branch; `derived` is a cache the tool keeps inside a root; `blind`
-// names the native programs it runs, which the trace cannot see. A check that cannot name its inputs is
-// `uncached` with the reason. Over-naming costs a re-run; under-naming is refused by the trace.
+// lists; `built` is output git ignores that it still reads, whose content the key holds; `probed`
+// is output git ignores that it only stats, whose names the key holds; `git: true` is a check that
+// also asks git about history or its base branch, which every scoped form does; `derived` is a
+// cache the tool keeps inside a root; `blind` names the native programs it runs, which the trace
+// cannot see. A check that cannot name its inputs is `uncached` with the reason. Over-naming costs
+// a re-run; under-naming is refused by the trace.
 
 /** `scripts/` bar its tests and prose: the checkers and what they import. */
 const CODE = { path: 'scripts', skip: /(\.test\.[cm]?[jt]s|\.md)$/ };
@@ -28,6 +30,9 @@ const BIOME = [
   'packages/biome.jsonc',
 ];
 const BUILT = ['packages/contracts/dist', 'packages/observability/dist'];
+/** Ignored build output that archmap reads, or only stats: a tsbuildinfo, cargo's `target/`. */
+const BUILD_READ = ['packages/web-v2/next-env.d.ts', 'packages/web-v2/.next/types'];
+const BUILD_PROBED = ['packages/web-v2/tsconfig.tsbuildinfo', 'packages/runner/target'];
 
 const DECLARED = {
   'source-language': { roots: [CODE, CONFORMANCE, 'packages/core', 'packages/web-v2'] },
@@ -46,11 +51,15 @@ const DECLARED = {
   },
   'pat-surface': { roots: [CODE, 'packages/core'] },
   'injected-doc-modes': { roots: [CODE, 'packages/core'] },
-  'retired-model': { roots: ['scripts', ...WORKSPACE], listed: ['packages/runner'] },
+  'retired-model': {
+    roots: ['scripts', ...WORKSPACE],
+    listed: ['packages/runner'],
+    built: BUILD_READ,
+  },
   'status-tuples': { roots: [CODE, CONFORMANCE, ...WORKSPACE] },
   'doc-citations': { roots: ['.'], git: true },
   'honest-costs': { roots: [CODE, 'docs'] },
-  archmap: { roots: ['.'] },
+  archmap: { roots: ['.'], built: BUILD_READ, probed: BUILD_PROBED },
   'core lint': { roots: [...PNPM, ...WORKSPACE], listed: ['packages/runner'], blind: ['biome'] },
   'lint-budget': {
     roots: [CODE, CONFORMANCE, '.forge/lint-baseline.json', ...PNPM, ...WORKSPACE],
@@ -80,14 +89,26 @@ const DECLARED = {
     uncached:
       'it scopes to the runner crates this change touched and runs cargo, whose own target directory is the state it measures',
   },
-  'comment-budget': { roots: ['.'] },
+  // Its `--changed` form, which `--entry` and `--window` run, asks git for the diff against the base.
+  'comment-budget': { roots: ['.'], git: true },
   'lockfile-transport': { roots: [CODE, 'pnpm-lock.yaml'] },
   'migration-order': {
     uncached:
       "its subject is every open branch's migration journal, which lives on remote refs no key here holds",
   },
-  'conformance levels': { roots: ['.'], built: BUILT, git: true, blind: ['biome'] },
-  'conformance audit': { roots: ['.'], built: BUILT, git: true },
+  'conformance levels': {
+    roots: ['.'],
+    built: [...BUILT, ...BUILD_READ],
+    probed: BUILD_PROBED,
+    git: true,
+    blind: ['biome'],
+  },
+  'conformance audit': {
+    roots: ['.'],
+    built: [...BUILT, ...BUILD_READ],
+    probed: BUILD_PROBED,
+    git: true,
+  },
 };
 
 /** The table above, with what every check depends on added to each one that is cached. */

@@ -25,7 +25,7 @@ import { listFiles } from './verify-memo-git.mjs';
 import { spawnFault } from './verify-memo-spawn.mjs';
 
 /** Bumped whenever the shape of a key or of a stored entry changes, so an old store never answers. */
-const SCHEMA = 1;
+const SCHEMA = 2;
 const OUT_CAP = 1 << 20;
 /** Variables a check or its tools are known to read, whose values the key therefore holds. */
 const ENV_READ = [
@@ -196,17 +196,51 @@ export function coveredFiles(tree, roots) {
   return tree.files().filter((rel) => roots.some((r) => inRoot(r, rel)));
 }
 
-/** Files git ignores but a check still reads — a build's output — listed from disk. */
+/** Files git ignores but a check still reads — a build's output, a directory of it or one file — listed from disk. */
 export function builtFiles(root, dirs = []) {
   const out = [];
   for (const d of dirs) {
-    if (!existsSync(join(root, d))) continue;
+    const st = lstatOrNull(join(root, d));
+    if (!st) continue;
+    if (!st.isDirectory()) {
+      if (st.isFile() || st.isSymbolicLink()) out.push(d);
+      continue;
+    }
     for (const name of readdirSync(join(root, d), { recursive: true })) {
       const rel = `${d}/${String(name).split('\\').join('/')}`;
       if (lstatSync(join(root, rel)).isFile()) out.push(rel);
     }
   }
   return out.sort();
+}
+
+/**
+ * The paths a check only stats, which exist under `paths`: a file, or every file under a directory.
+ * Their names are all a stat can say, so the key holds those and not what is in them.
+ */
+export function probedNames(root, paths = []) {
+  const names = new Set();
+  for (const p of paths) {
+    const st = lstatOrNull(join(root, p));
+    if (!st) continue;
+    if (!st.isDirectory()) {
+      names.add(p);
+      continue;
+    }
+    names.add(`${p}/`);
+    for (const name of readdirSync(join(root, p), { recursive: true })) {
+      names.add(`${p}/${String(name).split('\\').join('/')}`);
+    }
+  }
+  return [...names].sort();
+}
+
+function lstatOrNull(abs) {
+  try {
+    return lstatSync(abs);
+  } catch {
+    return null;
+  }
 }
 
 /** Every directory above a root, so a name appearing beside what a check reads moves its key. */
@@ -247,6 +281,7 @@ export function keyFor({ check, decl, tree, git, env = process.env }) {
     files: sha(lines.join('\n')),
     built: sha(built.map((f) => `${f}\0${tree.hash(f)}`).join('\n')),
     listed: sha(named.join('\n')),
+    probed: sha(probedNames(tree.root, decl.probed).join('\n')),
     shape: sha(shape(tree, decl.roots).join('\n')),
     git: decl.git ? git : null,
     env: ENV_READ.map((k) => env[k] ?? null),
@@ -301,6 +336,7 @@ export function audit({ root, decl, tree, lines, git }) {
   const rootDirs = [...decl.roots.map(rootPath), ...(decl.built ?? []), ...(decl.listed ?? [])];
   const under = (rel) => rootDirs.some((r) => covers(r, rel));
   const above = (rel) => rel === '.' || rootDirs.some((r) => r.startsWith(`${rel}/`));
+  const probed = (rel) => (decl.probed ?? []).some((p) => covers(p, rel));
   const faults = new Set();
   for (const line of lines) {
     const body = line.slice(2);
@@ -311,6 +347,7 @@ export function audit({ root, decl, tree, lines, git }) {
     }
     const rel = relative(root, body);
     if (OUTSIDE(rel) || GLOB.test(rel) || reachable.has(rel) || derived.has(rel)) continue;
+    if ('PM'.includes(line[0]) && probed(rel)) continue;
     const st = stats(root, rel);
     if (line[0] === 'L' || st?.isDirectory()) {
       if (!(under(rel) || above(rel))) faults.add(`listed ${rel}/`);
@@ -318,7 +355,7 @@ export function audit({ root, decl, tree, lines, git }) {
       if (!(under(rel) || above(dirname(rel) === '.' ? '.' : dirname(rel))))
         faults.add(`probed ${rel}`);
     } else {
-      faults.add(`read ${rel}`);
+      faults.add(`${line[0] === 'P' ? 'stat' : 'read'} ${rel}`);
     }
   }
   return [...faults].sort();

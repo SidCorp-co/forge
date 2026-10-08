@@ -58,7 +58,7 @@ export function externalDeps({ root, lines, since = Infinity, home = homedir(), 
   const skipped = toolState(home, tmp);
   const seen = new Map();
   const faults = new Set();
-  for (const line of lines.filter((l) => 'RMQL'.includes(l[0]))) {
+  for (const line of lines.filter((l) => 'RPMQL'.includes(l[0]))) {
     const path = line.slice(2);
     const mirrored = path.toLowerCase().startsWith(`${root.toLowerCase()}/`);
     if (under(root, path) || mirrored || skipped.some((d) => under(d, path))) continue;
@@ -70,7 +70,7 @@ export function externalDeps({ root, lines, since = Infinity, home = homedir(), 
   for (const [path, kinds] of seen) {
     const sig = signatureOf(path);
     if (sig !== null) deps.push([path, sig]);
-    const found = kinds.includes('R');
+    const found = kinds.includes('R') || kinds.includes('P');
     const missing = kinds.includes('M');
     if (
       (found && sig === '-') ||
