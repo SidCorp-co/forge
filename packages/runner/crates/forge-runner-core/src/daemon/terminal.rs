@@ -1250,7 +1250,7 @@ pub(crate) mod testing {
         }
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     /// A tmux that refuses `set-environment`, the verb the daemon reconciles the
     /// session server's environment with, and answers every other from the real
     /// server (ISS-1325).
@@ -1259,7 +1259,7 @@ pub(crate) mod testing {
         _dir: crate::test_scratch::Scratch,
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     impl RefusingSetEnvironment {
         pub(crate) fn installed() -> Self {
             let (_installed, _dir) = refusing("set-environment");
