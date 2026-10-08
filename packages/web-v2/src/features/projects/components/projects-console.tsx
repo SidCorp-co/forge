@@ -50,7 +50,7 @@ function SectionLabel({
 }
 
 export function ProjectsConsole() {
-  const { items, totals, isLoading, isError, error, refetch, toggle } = useProjectsConsole();
+  const { items, totals, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -154,6 +154,8 @@ export function ProjectsConsole() {
           />
           <AttentionBanner
             count={attentionCount}
+            read={healthRead}
+            onRetry={() => refetch()}
             attentionOnly={attentionOnly}
             onToggle={() => setAttentionOnly((a) => !a)}
           />

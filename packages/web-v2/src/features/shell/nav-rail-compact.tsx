@@ -12,7 +12,8 @@
 // live in `useRailPrefs` and are toggled from the account menu.
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/design/icons/icon';
-import { badgeFace, type BadgeRead } from '@/design/patterns/badge-read';
+import { badgeFace, type BadgeRead, type QueryRead } from '@/design/patterns/badge-read';
+import { ReadFigure } from '@/features/projects/components/read-figure';
 import { Menu, type MenuItem } from '@/design/patterns/menu';
 import { Popover } from '@/design/primitives/popover';
 import { ProjectMark } from '@/design/primitives/project-mark';
@@ -38,7 +39,9 @@ export interface SwitcherProject {
   initials: string;
   tint: string;
   ink: string;
-  liveRuns: number;
+  /** Null where the health rollup was not read; `liveRunsRead` then says why. */
+  liveRuns: number | null;
+  liveRunsRead: QueryRead;
   pinned: boolean;
 }
 
@@ -49,7 +52,14 @@ export interface NavRailCompactProps {
   activeKey: string;
   /** Slug of the active project — marks the current row in the switcher. */
   activeSlug?: string | null;
-  activeProject?: { name: string; initials: string; tint: string; ink: string; liveRuns: number } | null;
+  activeProject?: {
+    name: string;
+    initials: string;
+    tint: string;
+    ink: string;
+    liveRuns: number | null;
+    liveRunsRead: QueryRead;
+  } | null;
   switcherProjects: SwitcherProject[];
   onNavigate: (key: string) => void;
   onSelectProject: (slug: string) => void;
@@ -256,10 +266,16 @@ export function NavRailCompact({
                 <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
               </span>
             </span>
-            {activeProject.liveRuns > 0 && (
-              <span className="font-mono text-9-5 font-semibold text-accent-text">
-                {activeProject.liveRuns} live
+            {activeProject.liveRuns === null ? (
+              <span className="font-mono text-9-5 font-semibold text-subtle">
+                <ReadFigure value={null} read={activeProject.liveRunsRead} counts="live runs" />
               </span>
+            ) : (
+              activeProject.liveRuns > 0 && (
+                <span className="font-mono text-9-5 font-semibold text-accent-text">
+                  {activeProject.liveRuns} live
+                </span>
+              )
             )}
           </button>
 
@@ -309,8 +325,14 @@ export function NavRailCompact({
                   >
                     <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
                     <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
-                    {p.liveRuns > 0 && (
-                      <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
+                    {p.liveRuns === null ? (
+                      <span className="flex-none font-mono text-11 text-subtle">
+                        <ReadFigure value={null} read={p.liveRunsRead} counts="live runs" />
+                      </span>
+                    ) : (
+                      p.liveRuns > 0 && (
+                        <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
+                      )
                     )}
                   </button>
                   <button

@@ -6,6 +6,7 @@
 // many each is short and a link to the list that holds them.
 
 import Link from "next/link";
+import { ReadFigure } from "@/features/projects/components/read-figure";
 import type { LeftOutState, StateFigure } from "../derive";
 
 function shortOf(f: StateFigure): string {
@@ -39,7 +40,18 @@ export function BoardLeftOut({
               className="text-accent-text hover:underline"
             >
               {l.label}
-              {l.count === undefined ? "" : ` ${l.count}`}
+              {l.count === undefined ? (
+                l.read === "read" ? (
+                  ""
+                ) : (
+                  <>
+                    {" "}
+                    <ReadFigure value={null} read={l.read} subject={`${l.label}'s count`} />
+                  </>
+                )
+              ) : (
+                ` ${l.count}`
+              )}
             </Link>
           </span>
         ))}

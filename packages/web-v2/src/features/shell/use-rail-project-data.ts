@@ -47,6 +47,7 @@ export function useRailProjectData(opts: {
             tint: g.tint,
             ink: g.ink,
             liveRuns: p.liveRuns,
+            liveRunsRead: p.healthRead,
             pinned: p.pinned,
           };
         }),
@@ -71,10 +72,11 @@ export function useRailProjectData(opts: {
             initials: projectMark.initials,
             tint: projectMark.tint,
             ink: projectMark.ink,
-            liveRuns: railConsole?.liveRuns ?? 0,
+            liveRuns: railConsole ? railConsole.liveRuns : projectsConsole.healthRead === 'read' ? 0 : null,
+            liveRunsRead: projectsConsole.healthRead,
           }
         : null,
-    [railProject, projectMark, railConsole],
+    [railProject, projectMark, railConsole, projectsConsole.healthRead],
   );
 
   return {

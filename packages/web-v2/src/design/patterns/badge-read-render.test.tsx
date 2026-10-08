@@ -106,7 +106,7 @@ describe("the Issues badge, drawn beside the Attention one", () => {
         projectItems={projectRailItems(OPEN_WORK_29)}
         activeKey="proj-issues"
         activeSlug="sable"
-        activeProject={{ name: "Sable", initials: "SA", tint: "#eee", ink: "#111", liveRuns: 0 }}
+        activeProject={{ name: "Sable", initials: "SA", tint: "#eee", ink: "#111", liveRuns: 0, liveRunsRead: "read" }}
         switcherProjects={[]}
         onNavigate={() => {}}
         onSelectProject={() => {}}
@@ -175,7 +175,7 @@ describe("the Issues badge, where its read is not in", () => {
         projectItems={projectRailItems(figure)}
         activeKey="proj-issues"
         activeSlug="sable"
-        activeProject={{ name: "Sable", initials: "SA", tint: "#eee", ink: "#111", liveRuns: 0 }}
+        activeProject={{ name: "Sable", initials: "SA", tint: "#eee", ink: "#111", liveRuns: 0, liveRunsRead: "read" }}
         switcherProjects={[]}
         onNavigate={() => {}}
         onSelectProject={() => {}}

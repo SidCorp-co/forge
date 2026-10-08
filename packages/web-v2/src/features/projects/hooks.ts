@@ -93,11 +93,12 @@ export function useProjectsConsole(): ProjectsConsole {
   const health = useProjectHealth();
   const { pinnedIds, toggle } = usePinnedProjects();
 
+  const healthRead = queryRead(health);
   const items = useMemo(
-    () => mergeProjects(projects.data ?? [], health.data, pinnedIds),
-    [projects.data, health.data, pinnedIds],
+    () => mergeProjects(projects.data ?? [], health.data, pinnedIds, healthRead),
+    [projects.data, health.data, pinnedIds, healthRead],
   );
-  const totals = useMemo(() => workspaceTotals(items), [items]);
+  const totals = useMemo(() => workspaceTotals(items, healthRead), [items, healthRead]);
 
   return {
     items,
@@ -106,7 +107,7 @@ export function useProjectsConsole(): ProjectsConsole {
     isError: projects.isError,
     error: projects.error,
     projectsRead: queryRead(projects),
-    healthRead: queryRead(health),
+    healthRead,
     refetch: () => {
       projects.refetch();
       health.refetch();

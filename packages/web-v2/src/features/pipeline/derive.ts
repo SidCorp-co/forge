@@ -6,6 +6,7 @@ import {
 import { REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
 import { deriveQueuedStep, hasLiveAgentSession, queuedChipStatus } from "@/features/issues/waiting";
 import { LABEL_VIEW, NO_CHECK_IN_CHIP, statusLabel, statusToChip } from "@/features/issues/derive";
+import type { QueryRead } from "@/design/patterns/badge-read";
 import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues/types";
 import { type StageKey, stageColor } from "@/design/stages";
@@ -143,16 +144,22 @@ export function boardColumns(
 export interface LeftOutState {
   state: WorkState;
   label: string;
-  /** Undefined until the project's counts arrive: the figure is never invented. */
+  /** Undefined until the project's counts are read: the figure is never invented, nor taken from rows held after a refetch failed. */
   count: number | undefined;
+  /** What the counts' read answered, so a count that is not there says whether it is on its way or failed. */
+  read: QueryRead;
 }
 
-/** The states the board leaves out, with core's count of each. */
-export function boardLeftOut(work: Partial<Record<WorkState, number>> | undefined): LeftOutState[] {
+/** The states the board leaves out, with core's count of each where the health read came in. */
+export function boardLeftOut(
+  work: Partial<Record<WorkState, number>> | undefined,
+  read: QueryRead,
+): LeftOutState[] {
   return BOARD_LEFT_OUT_STATES.map((state) => ({
     state,
     label: WORK_STATE_LABELS[state],
-    count: work?.[state],
+    count: read === 'read' ? work?.[state] : undefined,
+    read,
   }));
 }
 

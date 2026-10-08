@@ -4,6 +4,7 @@
 // logic — health derivation, list↔health join, totals, sort, filter — is unit
 // testable in `derive.test.ts` without rendering anything.
 import type { HealthKey } from '@/design';
+import type { QueryRead } from '@/design/patterns/badge-read';
 import type {
   ProjectConsoleItem,
   ProjectHealthRow,
@@ -15,8 +16,9 @@ import type {
 /** Health states that count as "needs attention" (banner + filter + sort). */
 const ATTENTION_HEALTH: ReadonlySet<HealthKey> = new Set<HealthKey>(['attention', 'down']);
 
+/** A project whose health was not read is not one the console can say needs attention. */
 export function isAttention(item: Pick<ProjectConsoleItem, 'health'>): boolean {
-  return ATTENTION_HEALTH.has(item.health);
+  return item.health !== null && ATTENTION_HEALTH.has(item.health);
 }
 
 export function deriveHealth(
@@ -33,20 +35,22 @@ export function deriveHealth(
 
 /**
  * Join the `GET /api/projects` list against the `GET /api/projects/health`
- * rollup (by project id), layering the client-only pinned set on top. A list
- * row with no matching health row falls back to safe zero/idle defaults, so a
- * just-created project still renders.
+ * rollup (by project id), layering the client-only pinned set on top. A list row the
+ * read rollup has no row for falls back to zero/idle, so a just-created project still
+ * renders; where the read is `pending`, or `failed` over rows still held, no row states one.
  */
 export function mergeProjects(
   list: ProjectListItem[],
   health: ProjectHealthRow[] | undefined,
   pinnedIds: ReadonlySet<string>,
+  healthRead: QueryRead,
 ): ProjectConsoleItem[] {
   const healthById = new Map<string, ProjectHealthRow>();
-  for (const h of health ?? []) healthById.set(h.id, h);
+  if (healthRead === 'read') for (const h of health ?? []) healthById.set(h.id, h);
 
   return list.map((p) => {
     const h = healthById.get(p.id);
+    const read = healthRead === 'read';
     return {
       id: p.id,
       slug: p.slug,
@@ -58,12 +62,13 @@ export function mergeProjects(
       createdAt: p.createdAt,
       description: h?.description ?? null,
       repoPath: h?.repoPath ?? null,
-      health: h ? deriveHealth(h) : 'idle',
-      liveRuns: h?.liveRuns ?? 0,
-      openIssues: h?.totalActive ?? 0,
-      runnerCount: h?.runnerCount ?? 0,
-      spend24hUsd: h?.spend24hUsd ?? 0,
-      memberCount: h?.memberCount ?? 0,
+      healthRead,
+      health: read ? (h ? deriveHealth(h) : 'idle') : null,
+      liveRuns: read ? (h?.liveRuns ?? 0) : null,
+      openIssues: read ? (h?.totalActive ?? 0) : null,
+      runnerCount: read ? (h?.runnerCount ?? 0) : null,
+      spend24hUsd: read ? (h?.spend24hUsd ?? 0) : null,
+      memberCount: read ? (h?.memberCount ?? 0) : null,
       members: h?.members ?? [],
       lastActivityAt: h?.lastActivityAt ?? null,
       pinned: pinnedIds.has(p.id),
@@ -71,22 +76,26 @@ export function mergeProjects(
   });
 }
 
-/** Workspace summary across all console items, for the stats band. */
-export function workspaceTotals(items: ProjectConsoleItem[]): WorkspaceTotals {
+/** Workspace summary across all console items, for the stats band. Its figures are null until the health read is `read`. */
+export function workspaceTotals(items: ProjectConsoleItem[], healthRead: QueryRead): WorkspaceTotals {
+  if (healthRead !== 'read') {
+    return { projects: items.length, healthRead, liveRuns: null, openIssues: null, runners: null, spend24hUsd: null };
+  }
   return items.reduce<WorkspaceTotals>(
     (acc, p) => ({
       projects: acc.projects + 1,
-      liveRuns: acc.liveRuns + p.liveRuns,
-      openIssues: acc.openIssues + p.openIssues,
-      runners: acc.runners + p.runnerCount,
-      spend24hUsd: acc.spend24hUsd + p.spend24hUsd,
+      healthRead,
+      liveRuns: (acc.liveRuns ?? 0) + (p.liveRuns ?? 0),
+      openIssues: (acc.openIssues ?? 0) + (p.openIssues ?? 0),
+      runners: (acc.runners ?? 0) + (p.runnerCount ?? 0),
+      spend24hUsd: (acc.spend24hUsd ?? 0) + (p.spend24hUsd ?? 0),
     }),
-    { projects: 0, liveRuns: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
+    { projects: 0, healthRead, liveRuns: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
   );
 }
 
 // Lower rank sorts first under the "health" sort (worst → best).
-const HEALTH_RANK: Record<HealthKey, number> = { down: 0, attention: 1, healthy: 2, idle: 3 };
+const HEALTH_RANK: Record<HealthKey | 'unread', number> = { down: 0, attention: 1, healthy: 2, idle: 3, unread: 4 };
 
 /** Most-recent-activity first; nulls (never active) sink to the bottom. */
 function recencyKey(item: ProjectConsoleItem): number {
@@ -102,7 +111,7 @@ export function sortProjects(
   out.sort((a, b) => {
     if (sort === 'name') return a.name.localeCompare(b.name);
     if (sort === 'health') {
-      return (HEALTH_RANK[a.health] - HEALTH_RANK[b.health]) || (recencyKey(b) - recencyKey(a));
+      return (HEALTH_RANK[a.health ?? 'unread'] - HEALTH_RANK[b.health ?? 'unread']) || (recencyKey(b) - recencyKey(a));
     }
     return recencyKey(b) - recencyKey(a); // 'recent'
   });

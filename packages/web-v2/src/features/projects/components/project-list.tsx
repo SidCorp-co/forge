@@ -8,7 +8,9 @@ import { formatRelativeTime, formatSpend } from '../derive';
 import { projectGlyph, projectInitials } from '../glyph';
 import type { ProjectConsoleItem } from '../types';
 import { LiveCount } from './live-count';
+import { ReadFigure } from './read-figure';
 import { MemberStack } from './member-stack';
+import { OPEN_WORK_LABEL } from '@forge/contracts/work-state';
 
 export interface ProjectListProps {
   items: ProjectConsoleItem[];
@@ -69,24 +71,40 @@ export function ProjectList({ items, now, onTogglePin }: ProjectListProps) {
               </TD>
               <TD className="max-w-[1px] truncate text-muted">{p.description ?? '—'}</TD>
               <TD>
-                <HealthDot health={p.health} />
+                {p.health ? (
+                  <HealthDot health={p.health} />
+                ) : (
+                  <ReadFigure value={null} read={p.healthRead} subject="the project's health" />
+                )}
               </TD>
               <TD>
-                <LiveCount n={p.liveRuns} />
+                <LiveCount n={p.liveRuns} read={p.healthRead} />
               </TD>
               <TD>
-                <Stat icon="inbox">{p.openIssues}</Stat>
+                <Stat icon="inbox">
+                  <ReadFigure value={p.openIssues} read={p.healthRead} counts={`in ${OPEN_WORK_LABEL.toLowerCase()}`} />
+                </Stat>
               </TD>
               <TD>
-                <Stat icon="server">{p.runnerCount}</Stat>
+                <Stat icon="server">
+                  <ReadFigure value={p.runnerCount} read={p.healthRead} counts="runners" />
+                </Stat>
               </TD>
               <TD className="text-right font-mono text-12 text-subtle">
-                {formatSpend(p.spend24hUsd)}
-                <span className="ml-1.5 text-disabled">{formatRelativeTime(p.lastActivityAt, now)}</span>
+                <ReadFigure value={p.spend24hUsd} read={p.healthRead} counts="dollars spent in 24h">
+                  {formatSpend}
+                </ReadFigure>
+                {p.healthRead === 'read' && (
+                  <span className="ml-1.5 text-disabled">{formatRelativeTime(p.lastActivityAt, now)}</span>
+                )}
               </TD>
               <TD>
                 <span className="flex justify-end">
-                  <MemberStack members={p.members} total={p.memberCount} size={22} />
+                  {p.memberCount === null ? (
+                    <ReadFigure value={null} read={p.healthRead} subject="the team" />
+                  ) : (
+                    <MemberStack members={p.members} total={p.memberCount} size={22} />
+                  )}
                 </span>
               </TD>
             </TR>
