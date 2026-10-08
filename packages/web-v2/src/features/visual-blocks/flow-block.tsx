@@ -6,6 +6,7 @@ import {
   type Edge,
   EdgeLabelRenderer,
   type EdgeProps,
+  Handle,
   type Node,
   type NodeProps,
   MarkerType,
@@ -14,7 +15,7 @@ import {
   ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type Placed, labelBox, layoutGraph, rounded } from "@/lib/graph/layout";
 import { TextAlternative } from "./text-alternative";
 
@@ -27,13 +28,19 @@ interface LineData extends Record<string, unknown> {
   labelAt: { x: number; y: number } | null;
 }
 
+// A browser measures each drawn node and reads its ends from the handles it finds in the DOM, so a
+// node without them loses every line at its first measure; they are drawn, unseen and inert.
+const END = "pointer-events-none! opacity-0!";
+
 function Step({ data }: NodeProps<Node<StepData>>) {
   return (
     <div
       className="flex size-full items-center justify-center rounded-[6px] border border-line-strong bg-surface px-2 text-center text-[12px] leading-tight text-fg"
       data-testid="flow-node"
     >
+      <Handle type="target" position={Position.Top} isConnectable={false} className={END} />
       {data.label}
+      <Handle type="source" position={Position.Bottom} isConnectable={false} className={END} />
     </div>
   );
 }
@@ -61,6 +68,8 @@ function Line({ id, data, markerEnd }: EdgeProps<Edge<LineData>>) {
 const NODE_TYPES = { step: Step };
 const EDGE_TYPES = { line: Line };
 const NODE_H_MIN = 36;
+/** The tallest box a diagram is drawn in; a taller diagram scrolls inside it at its own size. */
+const FLOW_BOX = "max-h-[520px]";
 
 type Laid = { placed: Placed } | { failed: string } | null;
 
@@ -122,8 +131,16 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
         selectable: false,
       };
     });
-    return { nodes, edges, height: Math.min(520, Math.max(120, placed.height + 24)) };
+    // drawn at its own size, never scaled: a diagram wider or taller than its box scrolls inside it
+    return { nodes, edges, height: Math.max(120, Math.ceil(placed.height + 24)), width: Math.ceil(placed.width + 24) };
   }, [laid, block, sizes]);
+
+  // a layered diagram hangs from its root at the centre: a narrow box opens on the middle of it
+  const scroller = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = scroller.current;
+    if (flow && el) el.scrollLeft = Math.max(0, (el.scrollWidth - el.clientWidth) / 2);
+  }, [flow]);
 
   if (laid && "failed" in laid) {
     return (
@@ -134,8 +151,11 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
   }
   if (!flow) return <p className="text-[12px] text-subtle">Laying out the diagram.</p>;
   return (
-    <div style={{ height: flow.height }} className="w-full" data-testid="flow-canvas">
+    <div ref={scroller} className={`overflow-auto ${FLOW_BOX}`} data-testid="flow-scroll">
+    <div style={{ height: flow.height, minWidth: flow.width }} className="w-full" data-testid="flow-canvas">
       <ReactFlow
+        // the canvas takes no gesture of its own, so a finger on it scrolls the box as anywhere else
+        className="[&_.react-flow__pane]:touch-auto"
         nodes={flow.nodes}
         edges={flow.edges}
         nodeTypes={NODE_TYPES}
@@ -144,14 +164,17 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
         nodesConnectable={false}
         elementsSelectable={false}
         zoomOnScroll={false}
+        zoomOnPinch={false}
         zoomOnDoubleClick={false}
+        panOnDrag={false}
         preventScrolling={false}
-        minZoom={0.2}
-        maxZoom={1.5}
+        minZoom={1}
+        maxZoom={1}
         fitView
-        fitViewOptions={{ padding: 0.06, maxZoom: 1 }}
+        fitViewOptions={{ padding: 0, minZoom: 1, maxZoom: 1 }}
         proOptions={{ hideAttribution: true }}
       />
+    </div>
     </div>
   );
 }
@@ -159,7 +182,7 @@ function FlowDiagram({ block }: { block: VisualBlockOf<"flow"> }) {
 /** A flow block: the nodes and edges the answer names, drawn as a diagram. It holds no figure. */
 export function FlowBlockView({ block }: { block: VisualBlockOf<"flow"> }) {
   return (
-    <div data-testid="flow-block">
+    <div className="min-w-0" data-testid="flow-block">
       <div aria-hidden>
         <ReactFlowProvider>
           <FlowDiagram block={block} />

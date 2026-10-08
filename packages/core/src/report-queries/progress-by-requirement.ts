@@ -18,7 +18,7 @@ const STATUS_DAYS = 7;
 const OUTPUT = [
   { name: 'key', type: 'ref', label: 'Requirement' },
   { name: 'title', type: 'string', label: 'Title' },
-  { name: 'state', type: 'status', label: 'State' },
+  { name: 'state', type: 'status', label: 'State', vocabulary: 'requirement' },
   { name: 'criteriaProven', type: 'number', label: 'Criteria proven' },
   { name: 'criteriaTotal', type: 'number', label: 'Criteria' },
   { name: 'shipped', type: 'number', label: 'Issues shipped' },

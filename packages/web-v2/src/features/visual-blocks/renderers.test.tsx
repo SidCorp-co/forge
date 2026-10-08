@@ -115,7 +115,8 @@ describe("chart block", () => {
     expect(screen.getByTestId("chart-block").getAttribute("data-variant")).toBe("line");
     expect(screen.queryByTestId("chart-legend")).toBeNull();
     expect(document.querySelectorAll(".recharts-line").length).toBe(1);
-    expect(document.querySelector("style")?.textContent ?? "").toContain("var(--chart-1)");
+    // the chart's own style sheet, wherever another component's sheet sits before it in the document
+    expect([...document.querySelectorAll("style")].map((st) => st.textContent).join("\n")).toContain("var(--chart-1)");
   });
 
   it("splits by the series field and names each series in the legend", () => {

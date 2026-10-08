@@ -90,9 +90,12 @@ never dropped.)
   such as feedback is classed as it is today), `surfaces` (`rest`, `chat`, `cli` — the
   one-question-one-answer flag of `docs/proposals/destination/one-question-one-answer.md`).
 - `ReportFrame` — the one interchange shape, after Grafana's frame: `fields[]` of
-  `{ name, type: 'string'|'number'|'date'|'duration'|'status'|'ref', unit?, label }` and `rows[]`;
+  `{ name, type: 'string'|'number'|'date'|'duration'|'status'|'ref', unit?, label, vocabulary? }` and `rows[]`;
   a `ref` cell is an entity key (`ISS-12`, `REQ-3`, `FB-9`, a release version) the renderer turns
-  into a link for a member.
+  into a link for a member. A `status` cell is drawn as the shared state badge; `vocabulary`
+  (`REPORT_FIELD_VOCABULARIES` in `packages/contracts/src/report-queries.ts`) names the state
+  family whose label and tone it wears, and a `status` field naming none reads sentence-cased and
+  neutral.
 - `ReportRun` — `{ runId, queryId, version, params, projectId, actor, asOf, frame }`: **every
   figure carries the query and the read that produced it.**
 
@@ -130,9 +133,9 @@ union on `kind`, each kind a zod schema with a `v` (schema version):
 
 | Kind | Holds | Drawn by (web) |
 |---|---|---|
-| `table` | columns picked from the frame, sort, row limit | flush table, hairline dividers |
+| `table` | columns picked from the frame, sort, row limit | flush table, hairline dividers; in a narrow container it scrolls sideways with its first column held, text clamped to two lines, ten rows then "Show all" |
 | `chart` | `variant: bar \| line \| burndown`, x field, y fields, series | `packages/web-v2/src/components/ui/chart.tsx` over recharts |
-| `flow` | nodes and edges with plain-text labels, at most 60 nodes; or a `workflow-status` frame's graph | `@xyflow/react` laid out by `elkjs`, as the workflow canvas does |
+| `flow` | nodes and edges with plain-text labels, at most 60 nodes; or a `workflow-status` frame's graph | `@xyflow/react` laid out by `elkjs`, as the workflow canvas does, drawn at its own size and scrolled sideways where its container is narrower |
 | `timeline` | items with a start, an end or a p50–p85 range, and a lane | a flat roadmap strip |
 | `kpi` | two to six figures, each a field of one row, with a label and an optional delta | a flat row of figures, no cards |
 | `status-list` | rows of `{ ref, status, waitingOn }` | a list whose `ref` links to the entity |

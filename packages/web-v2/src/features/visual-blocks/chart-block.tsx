@@ -87,7 +87,7 @@ export function ChartBlockView({ block }: { block: VisualBlockOf<"chart"> }) {
   const common = { data, margin: MARGIN, accessibilityLayer: false } as const;
   const tip = <Tooltip contentStyle={TIP} labelFormatter={(_, p) => p?.[0]?.payload?.label ?? ""} />;
   return (
-    <div data-testid="chart-block" data-variant={model.variant} data-scale={model.scale}>
+    <div className="min-w-0" data-testid="chart-block" data-variant={model.variant} data-scale={model.scale}>
       <Legend model={model} />
       <div aria-hidden>
         <ChartContainer config={config} className="aspect-auto h-[240px] w-full" initialDimension={{ width: 480, height: 240 }}>

@@ -1,6 +1,8 @@
 "use client";
 
 import { checkBlock, isVisualBlockKind, type VisualBlockKind } from "@forge/contracts/visual-blocks";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useVisualBlockContext } from "./context";
 import { BLOCK_RENDERERS, type BlockRenderer } from "./registry";
 import { SourceNote } from "./source-note";
@@ -28,11 +30,52 @@ function RefusedBlock({ kind, why = "does not match its shape", reasons }: { kin
   );
 }
 
-function Frame({ kind, title, children }: { kind: string; title?: string | undefined; children: React.ReactNode }) {
+/** The kinds whose drawing gains from room: each offers to open at full width. A figure row and a status list read the same at any width. */
+const WIDENS: ReadonlySet<VisualBlockKind> = new Set(["table", "chart", "flow", "timeline"]);
+
+function Caption({ title, action }: { title?: string | undefined; action?: React.ReactNode }) {
+  if (!title && !action) return null;
   return (
-    <figure className="m-0 my-1 min-w-0" data-testid="visual-block" data-kind={kind}>
-      {title && <figcaption className="mb-1 text-[12.5px] font-semibold text-fg">{title}</figcaption>}
+    <figcaption className="mb-1 flex min-w-0 items-baseline justify-between gap-3">
+      <span className="min-w-0 text-[12.5px] font-semibold text-fg">{title}</span>
+      {action}
+    </figcaption>
+  );
+}
+
+/**
+ * One block's frame: its title, its drawing, its source. Every screen that shows a block, the chat
+ * panel, the full-page thread and a share page, draws it through this one frame, so the same content
+ * is drawn the same way and only the width differs. A kind that gains from room offers to open the
+ * same drawing at full width in the shared dialog.
+ */
+function Frame({ kind, title, children }: { kind: VisualBlockKind; title?: string | undefined; children: React.ReactNode }) {
+  const [wide, setWide] = useState(false);
+  const action = WIDENS.has(kind) ? (
+    <button
+      type="button"
+      className="flex-none text-[11.5px] font-medium text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      onClick={() => setWide(true)}
+      data-testid="visual-block-open-wide"
+    >
+      Open wide
+    </button>
+  ) : undefined;
+  return (
+    <figure className="m-0 my-1 min-w-0 max-w-full" data-testid="visual-block" data-kind={kind}>
+      <Caption title={title} action={action} />
       {children}
+      {wide && (
+        <Dialog open onOpenChange={(next) => !next && setWide(false)}>
+          <DialogContent
+            className="flex max-h-[90vh] w-[min(96vw,1200px)] max-w-none flex-col gap-2 overflow-y-auto bg-app p-5 sm:max-w-none"
+            data-testid="visual-block-wide"
+          >
+            <DialogTitle className="pr-8 text-[13px] font-semibold text-fg">{title ?? "Answer"}</DialogTitle>
+            <div className="min-w-0">{children}</div>
+          </DialogContent>
+        </Dialog>
+      )}
     </figure>
   );
 }
