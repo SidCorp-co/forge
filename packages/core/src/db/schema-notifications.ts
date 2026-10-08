@@ -14,6 +14,7 @@ import { users } from './schema-auth.js';
 import { issues } from './schema-issues.js';
 import { projects } from './schema-projects.js';
 import { scheduleRuns } from './schema-schedule-runs.js';
+import { statusReports } from './schema-status-reports.js';
 
 export const notificationTypes = [
   'issue_status_changed',
@@ -39,6 +40,7 @@ export const notificationTypes = [
   'feedback_verify_asked',
   'feedback_shipped',
   'feedback_message',
+  'status_report',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 
@@ -77,6 +79,10 @@ export const notifications = pgTable(
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     pendingSince: timestamp('pending_since', { withTimezone: true }),
     groupKey: text('group_key'),
+    /** The stored status report a `status_report` notice links to. */
+    statusReportId: uuid('status_report_id').references(() => statusReports.id, {
+      onDelete: 'cascade',
+    }),
     inhibitedBy: uuid('inhibited_by'),
     dedupeKey: text('dedupe_key'),
   },
@@ -93,6 +99,9 @@ export const notifications = pgTable(
       .on(t.dedupeKey)
       .where(sql`dedupe_key IS NOT NULL`),
     groupKeyIdx: index('notifications_group_key_idx').on(t.groupKey),
+    statusReportIdx: index('notifications_status_report_idx')
+      .on(t.statusReportId)
+      .where(sql`status_report_id IS NOT NULL`),
     scheduleRunIdx: index('notifications_schedule_run_idx')
       .on(t.scheduleRunId)
       .where(sql`schedule_run_id IS NOT NULL`),

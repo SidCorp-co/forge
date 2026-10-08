@@ -1,6 +1,15 @@
 import type { ProjectStatus } from "@forge/contracts/project-status";
+import type { StatusReportDetail, StatusReportMeta } from "@forge/contracts/status-reports";
 import { apiClient } from "@/lib/api/client";
 
+const base = (projectId: string) => `/projects/${encodeURIComponent(projectId)}/status`;
+
 export const projectStatusApi = {
-  read: (projectId: string, days: number) => apiClient<ProjectStatus>(`/projects/${encodeURIComponent(projectId)}/status?days=${days}`),
+  read: (projectId: string, days: number) => apiClient<ProjectStatus>(`${base(projectId)}?days=${days}`),
+  reports: (projectId: string) => apiClient<{ reports: StatusReportMeta[] }>(`${base(projectId)}/reports`),
+  report: (projectId: string, reportId: string) => apiClient<StatusReportDetail>(`${base(projectId)}/reports/${encodeURIComponent(reportId)}`),
+  markRead: (projectId: string, reportId: string) =>
+    apiClient<{ read: number }>(`${base(projectId)}/reports/${encodeURIComponent(reportId)}/read`, { method: "POST" }),
+  save: (projectId: string, days: number) =>
+    apiClient<StatusReportMeta>(`${base(projectId)}/reports`, { method: "POST", body: JSON.stringify({ days }) }),
 };

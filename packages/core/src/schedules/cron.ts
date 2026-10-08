@@ -8,20 +8,34 @@ interface CronValidationResult {
 
 const MIN_INTERVAL_MS = 60 * 60 * 1000;
 
-function nextDate(interval: CronExpression): Date {
-  const result = interval.next() as unknown as { toDate(): Date };
-  return result.toDate();
+function asDate(result: unknown): Date {
+  return (result as { toDate(): Date }).toDate();
 }
 
-export function validateCron(cron: string): CronValidationResult {
+/** The options a schedule's cron is read with: its zone where it names one, else UTC, as the tick reads it. */
+function readIn(timeZone: string | null | undefined, currentDate?: Date) {
+  return { ...(currentDate ? { currentDate } : {}), tz: timeZone || 'UTC' };
+}
+
+/** Whether `timeZone` is an IANA zone this runtime can read a cron in. */
+export function isTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function validateCron(cron: string, timeZone?: string | null): CronValidationResult {
   let interval: CronExpression;
   try {
-    interval = CronExpressionParser.parse(cron);
+    interval = CronExpressionParser.parse(cron, readIn(timeZone));
   } catch {
     return { ok: false, error: 'Invalid cron expression' };
   }
-  const t1 = nextDate(interval).getTime();
-  const t2 = nextDate(interval).getTime();
+  const t1 = asDate(interval.next()).getTime();
+  const t2 = asDate(interval.next()).getTime();
   const diffMs = t2 - t1;
   if (diffMs < MIN_INTERVAL_MS) {
     return {
@@ -34,11 +48,20 @@ export function validateCron(cron: string): CronValidationResult {
   return { ok: true };
 }
 
-export function nextRunFor(cron: string, fromDate: Date = new Date()): Date | null {
+export function nextRunFor(
+  cron: string,
+  fromDate: Date = new Date(),
+  timeZone?: string | null,
+): Date | null {
   try {
-    const interval = CronExpressionParser.parse(cron, { currentDate: fromDate });
-    return nextDate(interval);
+    return asDate(CronExpressionParser.parse(cron, readIn(timeZone, fromDate)).next());
   } catch {
     return null;
   }
+}
+
+/** The latest slot of `cron` at or before `at`: the period a fire at `at` answers. */
+export function slotAt(cron: string, at: Date, timeZone?: string | null): Date {
+  const just = new Date(Math.floor(at.getTime() / 60_000) * 60_000 + 60_000);
+  return asDate(CronExpressionParser.parse(cron, readIn(timeZone, just)).prev());
 }

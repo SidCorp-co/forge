@@ -2,6 +2,7 @@
 
 import { type RefObject, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { keptReportHref } from "@/lib/routes/status";
 import { NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { BELL_PAGE_SIZE } from "../api";
@@ -61,6 +62,11 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
     const slug = projects?.find((p) => p.id === projectId)?.slug;
     if (slug && issueId) router.push(`/projects/${slug}/issues/${issueId}`);
   };
+  /** A sent status report's notice opens the kept report, on its project's History tab. */
+  const openReport = (projectId: string | null | undefined, reportId: string) => {
+    const slug = projects?.find((p) => p.id === projectId)?.slug;
+    if (slug) router.push(keptReportHref(slug, reportId));
+  };
 
   const nextPage = Math.min(remaining, BELL_PAGE_SIZE);
   const more =
@@ -88,7 +94,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   // ISS-510: toasts and browser notifications for live deliveries reuse the bell's mark-read + deep link.
   useNotificationDelivery((n) => {
     markRead.mutate(n.notificationId);
-    openIssue(n.projectId, n.issueId);
+    if (n.statusReportId) openReport(n.projectId, n.statusReportId);
+    else openIssue(n.projectId, n.issueId);
   });
   // ISS-523: the open count on the favicon and the title, from the same source as the bell.
   useOpenIndicator(openCount?.count ?? 0);
@@ -128,7 +135,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
             const row = rows.find((n) => n.id === id);
             if (row?.readAt === null) markRead.mutate(id);
             onClose();
-            openIssue(row?.projectId, row?.issueId);
+            if (row?.subject?.kind === "status_report") router.push(keptReportHref(row.subject.key, row.subject.id));
+            else openIssue(row?.projectId, row?.issueId);
           }}
           onMarkAllRead={() => markAllRead.mutate()}
           expandedId={expandedId}

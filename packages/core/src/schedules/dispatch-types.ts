@@ -1,5 +1,6 @@
 import type { SessionAsker, SessionRefusal } from '../agent-sessions/index.js';
 import type { ScheduleKind } from '../db/schema.js';
+import type { Refusal } from '../lib/refusal.js';
 import type { FireSettlement } from './fires.js';
 
 interface ScheduleRowForDispatch {
@@ -13,6 +14,9 @@ interface ScheduleRowForDispatch {
   kind?: ScheduleKind | null;
   script?: string | null;
   ownerId: string | null;
+  /** The cron and the zone it is read in: what names the period a `status_report` fire answers. */
+  cron?: string;
+  timeZone?: string | null;
 }
 
 export interface DispatchScheduleInput {
@@ -38,6 +42,7 @@ type RoutedScheduleResult =
       status: 'skipped';
     }
   | { ok: false; reason: 'session-failed'; status: 'failed'; sessionId?: string }
+  | { ok: false; reason: 'rule-refused'; status: 'failed' | 'skipped'; refusal: Refusal }
   | {
       ok: false;
       reason: 'refused';

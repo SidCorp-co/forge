@@ -135,6 +135,7 @@ import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/r
 import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
+import { statusReportRoutes } from './status-reports/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { whatsNewRoutes } from './whats-new/routes.js';
@@ -246,6 +247,7 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', forecastRoutes);
   app.route('/api/projects', needsYouRoutes);
   app.route('/api/projects', projectStatusRoutes);
+  app.route('/api/projects', statusReportRoutes);
   app.route('/api/projects', masterStandingRoutes);
   app.route('/api/projects', runStandingRoutes);
   app.route('/api/projects', labelProjectRoutes);

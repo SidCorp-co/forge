@@ -85,7 +85,7 @@ async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
       // Atomic claim: only one ticker wins for this (id, nextRunAt) pair.
       const claimed = await db
         .update(schedules)
-        .set({ nextRunAt: nextRunFor(schedule.cron, now) })
+        .set({ nextRunAt: nextRunFor(schedule.cron, now, schedule.timeZone) })
         .where(
           and(
             eq(schedules.id, schedule.id),
@@ -109,6 +109,8 @@ async function runScheduleTickOnce(now: Date = new Date()): Promise<string[]> {
           kind: schedule.kind,
           script: schedule.script ?? null,
           ownerId: schedule.ownerId,
+          cron: schedule.cron,
+          timeZone: schedule.timeZone,
         },
         tick: true,
       });

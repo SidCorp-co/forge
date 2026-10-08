@@ -16,6 +16,7 @@ export const NOTIFICATION_TYPES = [
 	"feedback_verify_asked",
 	"feedback_shipped",
 	"feedback_message",
+	"status_report",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -38,16 +39,17 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	feedback_verify_asked: "Verify the fix",
 	feedback_shipped: "Shipped",
 	feedback_message: "Feedback update",
+	status_report: "Status report",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
-const NOTIFICATION_SUBJECT_KINDS = ["issue", "project"] as const;
+const NOTIFICATION_SUBJECT_KINDS = ["issue", "project", "status_report"] as const;
 export type NotificationSubjectKind =
 	(typeof NOTIFICATION_SUBJECT_KINDS)[number];
 
 export interface NotificationSubject {
 	kind: NotificationSubjectKind;
-	/** `ISS-12` for an issue, the project's slug for a project. */
+	/** `ISS-12` for an issue, the project's slug for a project or a status report of it. */
 	key: string;
 	id: string;
 }
@@ -189,6 +191,12 @@ const NOTIFICATION_CONTRACT: Record<
 		kind: "signal",
 		tier: "log",
 	},
+	status_report: {
+		severity: "info",
+		channels: ["bell", "toast"],
+		kind: "signal",
+		tier: "ticket",
+	},
 };
 
 /** A type's kind, tier, default severity and channels: the one declaration core and web both read. */
@@ -228,4 +236,13 @@ export function feedbackShippedKey(feedbackId: string, runId: string): string {
 /** The prefix every such notice of one item shares: what the feedback page reads "Reporter told" from. */
 export function feedbackShippedPrefix(feedbackId: string): string {
 	return `feedback-shipped:${feedbackId}:`;
+}
+
+/** The dedupe key of one recipient's notice of one period of a status-report schedule: told once per (schedule, period, recipient). */
+export function statusReportNoticeKey(
+	scheduleId: string,
+	period: string,
+	userId: string,
+): string {
+	return `status-report:${scheduleId}:${period}:${userId}`;
 }

@@ -36,6 +36,7 @@ const KIND_TONE: Record<AttentionKind, SemanticTone> = {
   failed_job: "failure",
   runner_offline: "infra",
   channel_gate: "attention",
+  status_report: "neutral",
 };
 
 const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: string; bg: string }> = {
@@ -43,6 +44,7 @@ const KIND_META: Record<AttentionKind, { label: string; icon: IconName; fg: stri
   failed_job: { label: "Failed", icon: "alert", ...tone("failed_job") },
   runner_offline: { label: "Runner offline", icon: "server", ...tone("runner_offline") },
   channel_gate: { label: "Approve gate", icon: "check", ...tone("channel_gate") },
+  status_report: { label: "Status report", icon: "mail", ...tone("status_report") },
 };
 
 function tone(kind: AttentionKind): { fg: string; bg: string } {
@@ -190,6 +192,7 @@ function Inbox({ view }: { view: AttentionView }) {
     mentions: view.mentions.filter(keep),
     failedJobs: view.failedJobs.filter(keep),
     channelGates: view.channelGates.filter(keep),
+    statusReports: view.statusReports.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
   const needsYou = view.needsYou.filter((n) => projectSlugs.has(n.projectSlug));
@@ -199,6 +202,7 @@ function Inbox({ view }: { view: AttentionView }) {
     scoped.mentions.length +
     scoped.failedJobs.length +
     scoped.channelGates.length +
+    scoped.statusReports.length +
     scoped.offlineRunners.length;
 
   return (
@@ -233,6 +237,7 @@ function Inbox({ view }: { view: AttentionView }) {
           <Group title="Channel gates" items={scoped.channelGates} onOpen={router.push} />
           <Group title="Mentions" items={scoped.mentions} onOpen={router.push} />
           <Group title="Failed jobs" items={scoped.failedJobs} onOpen={router.push} />
+          <Group title="Status reports" items={scoped.statusReports} onOpen={router.push} />
           <Group title="Offline runners" items={scoped.offlineRunners} onOpen={router.push} />
         </div>
       )}

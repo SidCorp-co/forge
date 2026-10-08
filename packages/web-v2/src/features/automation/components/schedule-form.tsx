@@ -29,7 +29,9 @@ export function ScheduleForm({
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const kindOptions = KINDS.map((k) => ({ value: k, label: enumLabel("scheduleKind", k, language) }));
+  // a status report is set up on the project's status page, where its recipients are picked
+  const kinds = initial && !KINDS.includes(initial.kind) ? [...KINDS, initial.kind] : KINDS;
+  const kindOptions = kinds.map((k) => ({ value: k, label: enumLabel("scheduleKind", k, language) }));
   const [name, setName] = useState(initial?.name ?? "");
   const [cron, setCron] = useState(initial?.cron ?? "");
   const [kind, setKind] = useState<ScheduleKind>(initial?.kind ?? "prompt");

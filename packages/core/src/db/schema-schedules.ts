@@ -26,6 +26,8 @@ export const schedules = pgTable(
     params: jsonb('params'),
     kind: text('kind', { enum: scheduleKinds }).notNull().default('prompt'),
     script: text('script'),
+    /** The IANA zone the cron is read in; null reads it in UTC. */
+    timeZone: text('time_zone'),
     /**
      * Who a cron firing acts as (ISS-30): whoever last saved the schedule. Null once that account
      * is gone, which refuses the run by name until an admin saves it again.

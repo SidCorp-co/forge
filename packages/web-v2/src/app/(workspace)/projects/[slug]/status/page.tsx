@@ -1,21 +1,39 @@
 "use client";
 
-import { ErrorState, PageContainer, ProjectLoader, useUrlChoice } from "@/design";
+import { Button, ErrorState, PageContainer, ProjectLoader, Tabs, useUrlChoice } from "@/design";
 import { useEtaClock } from "@/features/forecast/hooks";
+import { StatusHistory } from "@/features/project-status/components/status-history";
 import { STATUS_WINDOWS, StatusReport } from "@/features/project-status/components/status-report";
-import { useProjectStatus } from "@/features/project-status/hooks";
+import { useProjectStatus, useSaveStatusReport } from "@/features/project-status/hooks";
 import { ProjectRefGate } from "@/features/projects/components/project-gate";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 
-function Report({ projectId, slug }: { projectId: string; slug: string }) {
+const STATUS_TABS = ["report", "history"] as const;
+
+function SaveReport({ projectId, days }: { projectId: string; days: number }) {
+  const t = useCopy();
+  const [, setTab] = useUrlChoice("tab", STATUS_TABS, "report");
+  const save = useSaveStatusReport(projectId);
+  return (
+    <Button
+      onClick={() => save.mutate(days, { onSuccess: () => setTab("history") })}
+      disabled={save.isPending}
+      data-testid="status-save"
+      title={save.isError ? `${t("status.saveFailed")}: ${formatApiError(save.error)}` : undefined}
+    >
+      {save.isError ? t("status.saveFailed") : t("status.save")}
+    </Button>
+  );
+}
+
+function Live({ projectId, slug }: { projectId: string; slug: string }) {
   const t = useCopy();
   const clock = useEtaClock();
   const [window, setWindow] = useUrlChoice("days", STATUS_WINDOWS, "7");
   const q = useProjectStatus(projectId, Number(window));
-  useRoom(projectRoom(projectId));
   if (q.isError) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
@@ -31,8 +49,35 @@ function Report({ projectId, slug }: { projectId: string; slug: string }) {
     );
   }
   return (
-    <PageContainer className="max-w-[1100px]">
-      <StatusReport s={q.data} slug={slug} clock={clock} window={window} onWindow={setWindow} />
+    <StatusReport
+      s={q.data}
+      slug={slug}
+      clock={clock}
+      window={window}
+      onWindow={setWindow}
+      actions={<SaveReport projectId={projectId} days={Number(window)} />}
+    />
+  );
+}
+
+function Report({ projectId, slug }: { projectId: string; slug: string }) {
+  const t = useCopy();
+  const clock = useEtaClock();
+  const [tab, setTab] = useUrlChoice("tab", STATUS_TABS, "report");
+  useRoom(projectRoom(projectId));
+  return (
+    <PageContainer className="grid max-w-[1100px] gap-6">
+      <div className="print:hidden">
+        <Tabs
+          tabs={[
+            { value: "report", label: t("status.tab.report") },
+            { value: "history", label: t("status.tab.history") },
+          ]}
+          value={tab}
+          onChange={(v) => setTab(v as (typeof STATUS_TABS)[number])}
+        />
+      </div>
+      {tab === "history" ? <StatusHistory projectId={projectId} slug={slug} clock={clock} /> : <Live projectId={projectId} slug={slug} />}
     </PageContainer>
   );
 }

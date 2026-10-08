@@ -9,7 +9,7 @@ export { owedTriages } from './owed-triage.js';
 export { rowIn } from './read.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { feedbackAnsweredBy } from './release-feedback.js';
-export { noticeCopy, reporterLanguageOf } from './reporter-language.js';
+export { noticeCopy, reporterLanguageOf, reporterLanguagesOf } from './reporter-language.js';
 export { shippedNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';

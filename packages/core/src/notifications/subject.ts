@@ -7,12 +7,27 @@ export function statusWords(status: string): string {
   return label ? label.toLowerCase() : status;
 }
 
-/** A grouped delivery names its project: the issue on any one member is not the delivery's. */
+/**
+ * A grouped delivery names its project: the issue on any one member is not the delivery's. A status
+ * report's notice names the stored report, keyed by its project's slug.
+ */
 export function deliverySubject(
-  row: { members: number; issueId: string | null; projectId: string | null },
+  row: {
+    members: number;
+    issueId: string | null;
+    projectId: string | null;
+    statusReportId?: string | null;
+  },
   issueKeys: ReadonlyMap<string, string>,
   projectSlugs: ReadonlyMap<string, string>,
 ): NotificationSubject | null {
+  const reportSlug =
+    row.members === 1 && row.statusReportId && row.projectId
+      ? projectSlugs.get(row.projectId)
+      : undefined;
+  if (row.statusReportId && reportSlug) {
+    return { kind: 'status_report', key: reportSlug, id: row.statusReportId };
+  }
   const issueKey = row.members === 1 && row.issueId ? issueKeys.get(row.issueId) : undefined;
   if (row.issueId && issueKey) return { kind: 'issue', key: issueKey, id: row.issueId };
   const slug = row.projectId ? projectSlugs.get(row.projectId) : undefined;
