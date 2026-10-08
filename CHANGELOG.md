@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.162] - 2026-10-08
+
+Agent chat runs sandboxed, holding only its turn credential, not the box's
+
+### Security
+
+- **A chat session on a runner box now holds only its own turn credential.** The box runs it sandboxed, without its stored PAT, device token, workspace token or push keys; a box that cannot is refused by name.
+
 ## [0.4.0-dev.161] - 2026-10-08
 
 Built-in workflow templates name the person's step Customer action, not Patient action
