@@ -1,1 +1,0 @@
-**The chat no longer puts unsourced numbers in front of you.** A reply stating a figure you typed as the project's is held, the board refuses numbers no report returned, and sandbox computation runs only on the Claude API.
