@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.177] - 2026-10-08
+
+QA fixes: document criteria past intro prose, project-scoped report query list
+
+### Changed
+
+- **Report queries are listed under the project, so a token can reach them.** The catalogue moved to GET /api/projects/:id/report-queries, a member-checked project read under projects:read; an Agent chat turn already ran and posted reports.
+
+### Fixed
+
+- **A spec section with intro prose now gives its bullets as criteria.** Prose lines are skipped and reported by number, and the result states the exact count. An empty or continued item is still refused by line.
+
 ## [0.4.0-dev.176] - 2026-10-08
 
 Chat figures must come from a report run; share and save claims must be real
