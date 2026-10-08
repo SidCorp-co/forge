@@ -358,12 +358,34 @@ export interface RequirementCoverage {
 export const DELIVERY_PHASES = ["agreed", "in_delivery", "delivered"] as const;
 export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
 
+/** A requirement's business criteria counted by their coverage: every live criterion, those passing,
+ *  and those judged (passing or failing). */
+export interface CriteriaCoverage {
+	criteria: number;
+	passing: number;
+	judged: number;
+}
+
+/** The one count of a coverage: what the delivery rollup, the standing and a release's requirement
+ *  bar all read, so the three never disagree. */
+export function criteriaCoverageOf(
+	coverage: readonly { verdict: BcVerdict }[],
+): CriteriaCoverage {
+	return {
+		criteria: coverage.length,
+		passing: coverage.filter((c) => c.verdict === "passing").length,
+		judged: coverage.filter(
+			(c) => c.verdict === "passing" || c.verdict === "failing",
+		).length,
+	};
+}
+
 export interface RequirementDelivery {
 	phase: DeliveryPhase | null;
 	liveIssues: number;
 	startedIssues: number;
 	closedIssues: number;
-	criteriaCoverage: { criteria: number; passing: number; judged: number };
+	criteriaCoverage: CriteriaCoverage;
 }
 
 export interface RequirementStanding

@@ -11,7 +11,7 @@ import type {
 	LandingSurface,
 } from "./landing-artifacts.js";
 import type { RefusalStatuses } from "./refusal.js";
-import type { BcVerdict, RequirementState } from "./requirements.js";
+import type { BcVerdict, CriteriaCoverage, RequirementState } from "./requirements.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -485,6 +485,8 @@ export interface ReleaseRequirementView {
 	completes: boolean;
 	advances: { code: string; verdict: BcVerdict }[];
 	remaining: { issues: string[]; criteria: string[] };
+	/** The requirement's own criteria counted from its coverage, so a bar reads passed out of the total. */
+	coverage: CriteriaCoverage;
 }
 
 export interface ReleaseCriterionView {

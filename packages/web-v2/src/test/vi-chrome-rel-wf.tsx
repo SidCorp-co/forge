@@ -90,7 +90,7 @@ const detail = {
     { id: "i1", key: "ISS-1", title: "Muc", status: "awaiting_release", section: null, requirement: "REQ-1", proof: "proven", criteria: { total: 1, proven: 1, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: ["ui"], landing: { kind: "named", artifacts: [], unmappedPaths: [], unread: null, source: "box" }, unclassified: false },
     { id: "i2", key: "ISS-2", title: "Muc", status: "awaiting_release", section: null, requirement: null, proof: "unrecorded", criteria: { total: 0, proven: 0, failing: 0, open: 0 }, waitingOn: you(CUT), surfaces: [], landing: { kind: "unclassified", why: "ly do", paths: [], source: null }, unclassified: true },
   ],
-  requirementsCompleted: [{ key: "REQ-1", title: "Muc", state: "in_delivery", completes: false, advances: [{ code: "BC-1", verdict: "passing" }], remaining: { issues: ["ISS-2"], criteria: ["BC-2"] } }],
+  requirementsCompleted: [{ key: "REQ-1", title: "Muc", state: "in_delivery", completes: false, advances: [{ code: "BC-1", verdict: "passing" }], remaining: { issues: ["ISS-2"], criteria: ["BC-2"] }, coverage: { criteria: 2, passing: 1, judged: 1 } }],
   issueCriteria: [{ key: "ISS-1", title: "Muc", criteria: [{ n: 1, statement: "Dieu kien", standing: "pass", bc: "BC-1", identity: null, reason: null, judgedAt: AT, judgedBy: "agent" }] }],
   changes: {
     surfaces: [

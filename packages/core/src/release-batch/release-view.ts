@@ -10,7 +10,7 @@ import type {
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
-import type { BcVerdict } from '@forge/contracts/requirements';
+import { type BcVerdict, criteriaCoverageOf } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import {
   holdersWho,
@@ -274,5 +274,6 @@ export function completionOf(
     completes: agreed && req.coverage.length > 0 && issues.length === 0 && criteria.length === 0,
     advances,
     remaining: { issues, criteria },
+    coverage: criteriaCoverageOf(req.coverage),
   };
 }

@@ -12,6 +12,7 @@ import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
   type CoverageIssue,
+  criteriaCoverageOf,
   type DeliveryPhase,
   draftIssuesToPromote,
   type RequirementAttentionGroup,
@@ -403,11 +404,7 @@ function deliveryOf(
     liveIssues: live.length,
     startedIssues: started,
     closedIssues: closed,
-    criteriaCoverage: {
-      criteria: coverage.length,
-      passing: coverage.filter((c) => c.verdict === 'passing').length,
-      judged: coverage.filter((c) => c.verdict === 'passing' || c.verdict === 'failing').length,
-    },
+    criteriaCoverage: criteriaCoverageOf(coverage),
   };
 }
 
@@ -451,9 +448,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
     attentionGroup: group,
     waitingOn,
     facts: {
-      passing: coverage.filter((c) => c.verdict === 'passing').length,
-      judged: coverage.filter((c) => c.verdict === 'passing' || c.verdict === 'failing').length,
-      criteria: coverage.length,
+      ...delivery.criteriaCoverage,
       issuesRunning: live.filter((i) => i.status === 'in_progress').length,
       issuesTotal: live.length,
       proposedRevision: input.revisions.find((r) => r.state === 'proposed')?.revision ?? null,

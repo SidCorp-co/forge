@@ -69,6 +69,7 @@ type Release = {
     completes: boolean;
     advances: Array<{ code: string }>;
     remaining: { issues: string[]; criteria: string[] };
+    coverage: { criteria: number; passing: number; judged: number };
   }>;
   issueCriteria: Array<{
     key: string;
@@ -284,6 +285,28 @@ describe('the requirements a release completes and the criteria of its issues', 
       completes: true,
       remaining: { issues: [], criteria: [] },
     });
+  });
+
+  it('counts the requirement out of its own criteria, and a verdict that passes one grows passing by one', async () => {
+    const req = await agreedRequirement();
+    const a = await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A' });
+    await traceIssue(a, req.id, [{ bc: req.bc['BC-1'] as string, verdict: null }]);
+    const before = (await detail('owner', '0.1.0')).requirementsCompleted[0];
+    expect(before?.coverage).toEqual({ criteria: 2, passing: 0, judged: 0 });
+    await addVerdict({
+      issue: { id: a, projectId },
+      draft: {
+        criterion: 1,
+        verdict: 'pass',
+        reason: null,
+        identity: { kind: 'commit', sha: BETA_SHA },
+        evidence: ['vitest'],
+      },
+      author: { userId: ownerId, deviceId: null, agency: 'human' },
+    });
+    const after = (await detail('owner', '0.1.0')).requirementsCompleted[0];
+    expect(after?.coverage).toEqual({ criteria: 2, passing: 1, judged: 1 });
+    expect(after?.remaining.criteria).toEqual(['BC-2']);
   });
 
   it('is partial while a criterion fails, naming it', async () => {

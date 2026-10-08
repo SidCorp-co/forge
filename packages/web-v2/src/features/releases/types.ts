@@ -11,6 +11,7 @@ export type {
   ReleaseIssueView,
   ReleaseListResponse,
   ReleaseNoteEntry,
+  ReleaseRequirementView,
   ReleaseResponse,
   ReleaseSummary,
   ReleaseVersionCarrier,

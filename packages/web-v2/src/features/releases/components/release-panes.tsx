@@ -4,6 +4,7 @@ import { LANDING_SURFACES, type LandingSurface } from "@forge/contracts/landing-
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
+  CoverageBar,
   EnumBadge,
   FieldLabel,
   FilterChip,
@@ -21,7 +22,14 @@ import type { Copy } from "@/lib/i18n/product-copy";
 import { issueHref } from "@/lib/routes/issues";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { requirementHref } from "@/lib/routes/requirements";
-import type { ReleaseDetail, ReleaseFeedbackView, ReleaseIssueView, ReleaseNoteEntry, ReleaseSummary } from "../types";
+import type {
+  ReleaseDetail,
+  ReleaseFeedbackView,
+  ReleaseIssueView,
+  ReleaseNoteEntry,
+  ReleaseRequirementView,
+  ReleaseSummary,
+} from "../types";
 import { DisclosureToggle, GateLine } from "./release-bits";
 import { TourHint } from "@/features/tours/components/tour-hint";
 import { changesSentence, WhatChanges } from "./release-changes";
@@ -34,6 +42,30 @@ export type ReleaseTab = (typeof RELEASE_TABS)[number];
 
 const MAINTENANCE = "Maintenance";
 
+/** A requirement's criteria as one bar: passing, failing, and not judged yet, out of its own total. */
+function CriteriaBar({ coverage }: { coverage: ReleaseRequirementView["coverage"] }) {
+  const t = useCopy();
+  const label = useLabel();
+  if (coverage.criteria === 0) return <span className="text-12 text-subtle">{t("releases.noCriteria")}</span>;
+  return (
+    <span className="flex items-center gap-2" data-testid="requirement-criteria">
+      <span className="w-40 shrink-0">
+        <CoverageBar
+          legend={false}
+          segments={[
+            { key: "passing", label: label("bcVerdict", "passing"), count: coverage.passing, tone: "ready" },
+            { key: "failing", label: label("bcVerdict", "failing"), count: coverage.judged - coverage.passing, tone: "err" },
+            { key: "unjudged", label: t("releases.notJudgedYet"), count: coverage.criteria - coverage.judged, fill: "var(--paper-400)" },
+          ]}
+        />
+      </span>
+      <span className="text-12 tabular-nums text-muted">
+        {t("releases.criteriaPassing", { passing: coverage.passing, total: coverage.criteria })}
+      </span>
+    </span>
+  );
+}
+
 function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
   const t = useCopy();
   if (r.requirementsCompleted.length === 0) {
@@ -42,7 +74,7 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
   return (
     <ul className="border-t border-line-subtle" data-testid="release-requirements">
       {r.requirementsCompleted.map((q) => (
-        <li key={q.key} className="grid gap-0.5 border-b border-line-subtle py-2.5 text-13">
+        <li key={q.key} className="grid gap-1 border-b border-line-subtle py-2.5 text-13" data-testid="release-requirement">
           <span className="flex flex-wrap items-center gap-2">
             <Link className="font-mono text-12 font-semibold text-link hover:underline" href={requirementHref(slug, q.key)}>
               {q.key}
@@ -53,16 +85,14 @@ function Requirements({ r, slug }: { r: ReleaseDetail; slug: string }) {
               {q.completes ? t("releases.completesIt") : t("releases.partial")}
             </span>
           </span>
+          <CriteriaBar coverage={q.coverage} />
           <span className="text-12-5 text-muted">
             {q.advances.length > 0 ? `${t("releases.moves", { codes: q.advances.map((a) => a.code).join(", ") })} ` : ""}
             {q.completes
               ? t("releases.nothingElse")
-              : [
-                  q.remaining.issues.length > 0 ? t("releases.stillOpen", { keys: q.remaining.issues.join(", ") }) : "",
-                  q.remaining.criteria.length > 0 ? t("releases.notYetPassing", { codes: q.remaining.criteria.join(", ") }) : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+              : q.remaining.issues.length > 0
+                ? t("releases.stillOpen", { keys: q.remaining.issues.join(", ") })
+                : ""}
           </span>
         </li>
       ))}
