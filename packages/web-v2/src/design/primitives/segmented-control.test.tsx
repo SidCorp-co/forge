@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// ISS-1334: a tab's count was as wide as its digits, so a refused key (every count 0) narrowed the
-// tab bar and the filter selects after it re-wrapped. A control that asks for a stable count takes
-// one slot width for every figure; layout itself is measured in a browser, not here.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
