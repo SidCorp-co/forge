@@ -1,12 +1,12 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
-import { ChevronDown, ChevronUp, CircleHelp, Maximize, Map as MapIcon, Play } from "lucide-react";
+import { ChevronDown, ChevronUp, CircleHelp, Expand, Maximize, Map as MapIcon, Play, Shrink } from "lucide-react";
 import { useState } from "react";
 import { Button, Input, SegmentedControl, TemplateIcon, Toggle } from "@/design";
 import type { HealthLayer } from "../health";
 import { useCopy } from "@/lib/i18n/interface-language";
-import type { CanvasHealth } from "./workflow-canvas";
+import type { CanvasChanges, CanvasFocus, CanvasHealth } from "./workflow-canvas";
 import type { Canvas } from "./model";
 import { titleOf } from "./model";
 import { DASH, edgeHue, hue } from "./style";
@@ -24,6 +24,8 @@ export function ViewBar(p: {
   onToggleAll: () => void;
   onWalk: () => void;
   health?: CanvasHealth | null | undefined;
+  changes?: CanvasChanges | null | undefined;
+  focus?: CanvasFocus | null | undefined;
 }) {
   const t = useCopy();
   return (
@@ -62,7 +64,49 @@ export function ViewBar(p: {
         <span className="wfc-t">{t("workflows.canvas.walk")}</span>
       </Button>
       {p.health ? <HealthBar health={p.health} /> : null}
+      <PageBar changes={p.changes} focus={p.focus} />
     </div>
+  );
+}
+
+/**
+ * What the design page adds to a canvas's toolbar: the switch that marks what changed since the
+ * approved revision, and focus mode (the canvas alone, filling the viewport; F to enter or leave).
+ */
+export function PageBar({ changes, focus }: { changes?: CanvasChanges | null | undefined; focus?: CanvasFocus | null | undefined }) {
+  const t = useCopy();
+  const focusLabel = focus?.on ? t("workflows.canvas.focusExit") : t("workflows.canvas.focus");
+  return (
+    <>
+      {changes ? (
+        <>
+          <span className="wfc-sep" />
+          <span className="inline-flex items-center gap-1.5 px-1 text-12-5 font-semibold" title={changes.title} data-testid="design-changes-toggle">
+            <Toggle checked={changes.on} onChange={changes.onToggle} aria-label={changes.title} />
+            {changes.label}
+          </span>
+        </>
+      ) : null}
+      {focus ? (
+        <>
+          <span className="wfc-sep" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="wfc-ib"
+            aria-pressed={focus.on}
+            aria-label={focusLabel}
+            title={focus.on ? t("workflows.canvas.focusExitHint") : t("workflows.canvas.focusHint")}
+            onClick={focus.onToggle}
+            data-testid="canvas-focus"
+          >
+            {focus.on ? <Shrink size={16} /> : <Expand size={16} />}
+            <span className="wfc-t">{focusLabel}</span>
+          </Button>
+        </>
+      ) : null}
+    </>
   );
 }
 

@@ -7,6 +7,7 @@ import { type Edge, type EdgeTypes, MiniMap, type Node, type NodeTypes, type OnN
 import { type ReactNode, type RefObject, useEffect, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Legend, ZoomBar } from "./controls";
+import type { CanvasFocus } from "./workflow-canvas";
 
 const wide = () => typeof window === "undefined" || window.innerWidth > 700;
 
@@ -33,7 +34,8 @@ interface FrameProps {
   onFit: () => void;
   /** Zoom by a factor; absent, zoom within the bounds. */
   onZoom?: (factor: number) => void;
-  onEscape: () => void;
+  /** Escape: true when it ended a walk or cleared a selection, so focus mode is left only by the next one. */
+  onEscape: () => boolean;
   onArrow?: (dir: -1 | 1) => void;
   nodeColor: (n: Node) => string;
   nodeStroke: (n: Node) => string;
@@ -46,6 +48,8 @@ interface FrameProps {
   compact?: boolean;
   /** The drawing is larger than the view. */
   overflowing?: boolean;
+  /** Focus mode, where the page offers it: F enters or leaves it, Shift+F fits, Escape leaves it. */
+  focus?: CanvasFocus | null | undefined;
 }
 
 /**
@@ -64,15 +68,20 @@ export function Frame(p: FrameProps) {
   useEffect(() => {
     if (p.compact) return;
     const onKey = (ev: KeyboardEvent) => {
-      const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement;
-      if (typing) return;
+      const typing = ev.target instanceof HTMLInputElement || ev.target instanceof HTMLTextAreaElement || (ev.target instanceof HTMLElement && ev.target.isContentEditable);
+      if (typing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+      const focus = p.focus;
       if (ev.key === "/") {
         ev.preventDefault();
         p.wrap.current?.querySelector<HTMLInputElement>("input[type=search]")?.focus();
       } else if (ev.key === "ArrowRight") p.onArrow?.(1);
       else if (ev.key === "ArrowLeft") p.onArrow?.(-1);
-      else if (ev.key === "Escape") p.onEscape();
-      else if (ev.key === "f" || ev.key === "F") p.onFit();
+      else if (ev.key === "Escape") {
+        if (!p.onEscape() && focus?.on) focus.onToggle();
+      } else if (ev.key === "f" || ev.key === "F") {
+        if (focus && !ev.shiftKey) focus.onToggle();
+        else p.onFit();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -83,10 +92,10 @@ export function Frame(p: FrameProps) {
   // Side by side, the row takes the screen's height rather than the panel's: `contain: size` keeps the
   // panel's 16 steps from stretching it, so the panel scrolls and the canvas fills the screen.
   return (
-    <div className={cn("flex min-h-0 flex-1", !p.compact && "max-lg:flex-col lg:[contain:size]")} data-testid="workflow-canvas" data-layout={p.layout}>
+    <div className={cn("flex min-h-0 flex-1", !p.compact && "max-lg:flex-col lg:[contain:size]")} data-testid="workflow-canvas" data-layout={p.layout} data-focus={Boolean(p.focus?.on)}>
       <div
         ref={p.wrap}
-        className={cn("wfc min-w-0 flex-1", !p.compact && "max-lg:h-[72vh] max-lg:flex-none")}
+        className={cn("wfc min-w-0 flex-1", !p.compact && !p.focus?.on && "max-lg:h-[72vh] max-lg:flex-none")}
         data-ready={p.ready}
         data-dim={p.dim}
         data-compact={Boolean(p.compact)}

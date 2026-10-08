@@ -5,7 +5,7 @@ import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-locatio
 
 export type UrlPatch = Record<string, string | null | undefined>;
 
-/** Writes `patch` over the current query (`null` or `""` deletes a key), keeping every other key. */
+/** Writes `patch` over the current query (`null` or `""` deletes a key), keeping every other key and the anchor. */
 export function writeUrlParams(patch: UrlPatch): void {
   if (typeof window === "undefined") return;
   const next = new URLSearchParams(window.location.search);
@@ -14,7 +14,7 @@ export function writeUrlParams(patch: UrlPatch): void {
     else next.delete(k);
   }
   const qs = next.toString();
-  window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   notifyLocationChange();
 }
 

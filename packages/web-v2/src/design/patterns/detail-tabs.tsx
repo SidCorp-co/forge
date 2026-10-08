@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils/cn";
 import type { ReactNode } from "react";
 import { useCallback, useRef } from "react";
 import { useUrlChoice } from "../hooks/use-url-params";
@@ -45,11 +46,12 @@ export function DetailTabs<T extends string>({ tabs, value, onChange, testId }: 
 }
 
 /** The page grid: main column and the facts rail beside it (under it below 1024px). */
-export function DetailLayout({ children, rail, testId, dataKey }: { children: ReactNode; rail: ReactNode; testId?: string; dataKey?: string }) {
+export function DetailLayout({ children, rail, testId, dataKey, railCollapsed = false }: { children: ReactNode; rail: ReactNode; testId?: string; dataKey?: string; railCollapsed?: boolean }) {
+  // A collapsed rail is a wide-screen choice: below 1024px the rail follows the content as always
   return (
-    <article className="grid min-h-[calc(100dvh-48px)] bg-app lg:grid-cols-[minmax(0,1fr)_320px]" data-testid={testId} data-key={dataKey}>
+    <article className={cn("grid min-h-[calc(100dvh-48px)] bg-app", !railCollapsed && "lg:grid-cols-[minmax(0,1fr)_320px]")} data-testid={testId} data-key={dataKey} data-rail={railCollapsed ? "collapsed" : "open"}>
       <div className="min-w-0">{children}</div>
-      {rail}
+      {railCollapsed ? <div className="lg:hidden">{rail}</div> : rail}
     </article>
   );
 }
