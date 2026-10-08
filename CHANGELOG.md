@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.152] - 2026-10-08
+
+Product copy split into per-feature files so web merges stop conflicting
+
+### Changed
+
+- **Web lanes no longer collide on one copy file.** The product copy lives in each feature's `copy.json`, a key in two files or English without vi is refused by name, and vi screens register themselves.
+
 ## [0.4.0-dev.151] - 2026-10-08
 
 Status reports: dated snapshots, weekly schedules, and a History tab of changes
