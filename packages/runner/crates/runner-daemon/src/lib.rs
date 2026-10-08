@@ -13,6 +13,7 @@
 //! supervises it here (ISS-1080).
 mod actors;
 mod ancestry_read;
+mod box_frames;
 mod checkout_frame;
 mod compute_run;
 pub mod control;
@@ -29,6 +30,7 @@ pub mod master_limit;
 pub mod master_pass;
 pub mod pool_jobs;
 pub mod pool_reads;
+mod probation;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_record;
@@ -374,7 +376,7 @@ async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
 /// What a daemon reconciles before it starts anything: which projects route here, the hooks the
 /// daemon it replaced installed, and the forge-master skill and orientation in every checkout.
 async fn boot(cfg: &Config, client: &CoreClient) {
-    serve_probation();
+    probation::serve();
     // Discover server-side assignments (`/me/runners`). This is the source of
     // truth for which projects route to this device and for their repo paths;
     // config.toml is only a local fallback now (ISS-271). Best-effort: an old
@@ -608,59 +610,6 @@ fn spawn_panes_and_master(
 }
 
 /// Run the daemon until Ctrl-C. `device_token` comes from the cred store.
-/// Say what a probation holds back, and confirm this build's own probation
-/// once it has stayed up for its period (ISS-1378).
-fn serve_probation() {
-    say_what_is_held_back();
-    tokio::spawn(async {
-        tokio::time::sleep(runner_update::probation::PERIOD).await;
-        confirm_probation();
-    });
-}
-
-/// End the probation of the build this process serves, which has stayed up.
-fn confirm_probation() {
-    let exe = match runner_platform::exe::own() {
-        Ok(own) => own.path,
-        Err(e) => {
-            tracing::warn!("[update] this build's probation cannot be confirmed: {e}");
-            return;
-        }
-    };
-    match runner_update::probation::confirm(&exe, runner_update::CURRENT_VERSION) {
-        Ok(true) => tracing::info!(
-            "[update] {} has served {}s and is confirmed: its probation is over",
-            runner_update::CURRENT_VERSION,
-            runner_update::probation::PERIOD.as_secs()
-        ),
-        Ok(false) => {}
-        Err(e) => tracing::warn!(
-            "[update] the probation of {} at {} could not be ended ({e}); a later restart counts against it as though this one had not stayed up",
-            runner_update::CURRENT_VERSION,
-            runner_update::probation::path(&exe).display()
-        ),
-    }
-}
-
-/// Say, from this process's first moment, a release a probation put back from
-/// the build it serves: the first update check is half a minute away.
-fn say_what_is_held_back() {
-    let exe = match runner_platform::exe::own() {
-        Ok(own) => own.path,
-        Err(e) => {
-            tracing::warn!("[update] whether a release is held back cannot be read: {e}");
-            return;
-        }
-    };
-    match runner_update::probation::rejected(&exe) {
-        Ok(Some(r)) => tracing::warn!("[update] {} is held back: {}", r.version, r.why(&exe)),
-        Ok(None) => {}
-        Err(why) => tracing::warn!(
-            "[update] the record of a release a probation put back is unreadable, so no update is installed until it is: {why}"
-        ),
-    }
-}
-
 pub async fn run(
     cfg: Config,
     core_url: String,
