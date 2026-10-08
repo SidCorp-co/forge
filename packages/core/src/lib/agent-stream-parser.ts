@@ -1,3 +1,5 @@
+import type { ReportRunFacts } from '@forge/contracts/report-queries';
+
 // Optional fields carry explicit `| undefined` because core compiles with
 // `exactOptionalPropertyTypes: true` (the desktop source does not) and the
 // parser assigns `undefined` to several of these by design.
@@ -46,6 +48,8 @@ export interface ContentBlock {
   designs?: { heading: string; workflowIds: string[]; approve?: boolean | undefined } | undefined;
   /** A `visual` block: one report block of `@forge/contracts/visual-blocks`, written by a service and checked against the registry where it is drawn. */
   visual?: unknown;
+  /** A `visual` block's run: the query and the read its figures came from, copied from `report_runs` when it was attached. */
+  run?: ReportRunFacts | undefined;
   /** An `unsupported` block: the type of a stored entry this build does not know, kept so a reader can name it. */
   unsupported?: string | undefined;
 }

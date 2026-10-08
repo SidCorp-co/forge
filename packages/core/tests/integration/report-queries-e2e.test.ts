@@ -1,14 +1,11 @@
 import { ReportRunSchema } from '@forge/contracts/report-queries';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { registerReportQueries } from '../../src/report-queries/index.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
 
 // The report-queries door: a query runs as the caller, over what the caller may read, and its
 // result says which query, which params and which read produced it (REQ-32, lane A2).
-
-registerReportQueries();
 
 const detail = (res: { body: Body }) =>
   String(res.body.detail ?? (res.body.error as Body | undefined)?.message);

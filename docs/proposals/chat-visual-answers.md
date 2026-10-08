@@ -155,9 +155,15 @@ fails when a contract kind has no web renderer or a renderer has no contract kin
 **How a block reaches a message:** a new `ContentBlock` type `visual` in
 `packages/core/src/lib/agent-stream-parser.ts`, stored in the `blocks` column that already
 exists. Like `questionnaire` and `designs`, it is written by a service, never by the model's
-text: the model calls the chat tool `forge_show` with `{ kind, source: { runId }, encoding }`;
-`reports` validates it against the registry and the stored run, copies the run's frame in, and
-attaches the block to the reply. In Agent mode the session reaches the same service over REST
+text: the model calls the chat tool `forge_show` with `{ block: { kind, source: { runId }, ...fields } }`;
+`reports` (`packages/core/src/reports/blocks.ts:attachVisualBlock`) reads the run back as the
+asker, copies its frame in, checks the block against the registry, and posts it into the room as a
+service-written answer above the reply (the reply row is the assistant's, which no tool edits). The
+stored block carries its run's `{ runId, queryId, version, asOf }` beside the frame, which is what
+web shows as its source. A block that brings a frame of its own must bring its run's exactly, or it
+is refused naming each figure the run never read; a run is read back only by the person it was read
+as, and past its 30-day keep it reads as gone, by name. Only a web room draws a block; another door
+is refused until B5. In Agent mode the session reaches the same service over REST
 (`POST /api/conversations/:id/blocks`), as Agent mode reaches every other Forge write.
 
 **Who may add one:** one change that adds the contract schema, `isSensible`, `check`, `toText`
@@ -268,7 +274,7 @@ ruling and is not registered.
 
 - **Tools, composed, not wired.** `forge_report` (run a query), `forge_show` (attach a block),
   `forge_template` (run a template) and, in Phase C, `forge_compute` (run an execution) join
-  `CHAT_READ_MODEL_TOOLS` / `CHAT_RECORD_TOOLS` in `packages/core/src/mcp/` and reach the
+  `CHAT_REPORT_TOOLS` in `packages/core/src/mcp/chat-report-tools.ts` and reach the
   assistant through `provideChatTools`. The assistant's turn loop, prompt composer and providers
   are unchanged; the system prompt gains one guide entry saying when to answer with a block.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts`) gains the turn's

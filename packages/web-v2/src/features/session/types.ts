@@ -1,3 +1,4 @@
+import type { ReportRunFacts } from "@forge/contracts/report-queries";
 import { type Copy, productCopy } from "@/lib/i18n/product-copy";
 import { decodeToolOutput } from "./result-summary";
 
@@ -44,8 +45,8 @@ export type CanonicalBlock =
   // Structured messages a service writes (ISS-63), drawn by features/onboarding, never by the session renderer.
   | { type: "questionnaire" | "questionnaire_answers"; batchId?: string }
   | { type: "designs"; designs?: { heading: string; workflowIds: string[]; approve?: boolean } }
-  // A report block a service wrote, drawn through features/visual-blocks, and a stored entry core did not know, kept so it can be named.
-  | { type: "visual"; visual?: unknown }
+  // A report block a service wrote with the query and read time of its run, drawn through features/visual-blocks, and a stored entry core did not know, kept so it can be named.
+  | { type: "visual"; visual?: unknown; run?: ReportRunFacts }
   | { type: "unsupported"; unsupported?: string };
 
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
