@@ -1,1 +1,0 @@
-**Vietnamese pages no longer pass English off as their own.** Forge's own sentences (health, refusals, hints, markers, history, chrome) read in Vietnamese; text a person or agent wrote keeps its language, shown as written and marked.
