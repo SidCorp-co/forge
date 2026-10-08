@@ -3146,6 +3146,8 @@
 
 - **A failed inbound webhook names what failed in the error report.** The report now holds the adapter's own error, tagged with provider, project and binding, where every failure used to read `handler failed`. The sender's response is unchanged.
 
+- **A paused schedule no longer wears a green pill for a run from weeks ago.** Automation says "Paused", dates the last run ("Succeeded 17 days ago · stale"), opens with "5 schedules · none enabled" and reads cron in words.
+
 - **A status change kept at another status says so.** When an agent's park becomes needs-info,
   or its close is held for release, the answer names the status asked for, the one kept, and why.
 
