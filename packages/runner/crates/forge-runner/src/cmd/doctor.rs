@@ -35,6 +35,10 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     failed |= !check_bin("claude", "Claude Code CLI");
     failed |= !check_bin("git", "git");
     failed |= !check_bin("tmux", "tmux (hosts the master session)");
+    println!(
+        "{}",
+        confinement_row(runner_platform::confine::availability())
+    );
 
     let cfg_path = Config::path()?;
     if cfg_path.exists() {
@@ -719,6 +723,19 @@ fn no_pane_line(
         "{} resolved by core, and no master pane here — a pane started now is handed them and {file} is rewritten from them; it {holds}",
         found.resolved_names.join(", ")
     )
+}
+
+/// Whether this box can take a chat session, which runs holding only its own turn credential.
+/// A box that cannot still runs masters and jobs, so this row informs and does not fail.
+fn confinement_row(confine: &runner_platform::confine::Availability) -> String {
+    match confine {
+        runner_platform::confine::Availability::Available => {
+            "✔ chat sandbox a chat session runs holding only its own turn credential".to_string()
+        }
+        runner_platform::confine::Availability::Unavailable(why) => format!(
+            "• chat sandbox core refuses chat sessions on this box, which cannot confine one: {why}"
+        ),
+    }
 }
 
 /// Returns `true` when the binary is on PATH.

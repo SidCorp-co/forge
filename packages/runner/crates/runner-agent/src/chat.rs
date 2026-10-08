@@ -31,10 +31,11 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::claude_code::{ClaudeCodeRunner, Resident};
-use crate::JobSpec; // UNRESOLVED
-use crate::Runner; // UNRESOLVED
-use crate::RunnerEvent; // UNRESOLVED
-use crate::TurnCredential; // UNRESOLVED
+use crate::Confinement;
+use crate::JobSpec;
+use crate::Runner;
+use crate::RunnerEvent;
+use crate::TurnCredential;
 use runner_platform::error::{Error, Result};
 use runner_transport::agent_sessions::{self, SessionPatch, WriteFailure};
 use runner_transport::CoreClient;
@@ -87,6 +88,11 @@ struct StartFrame {
     /// that answers nobody but the box's own holder.
     #[serde(default)]
     forge_token: Option<String>,
+    /// Core's word that this session holds only `forge_token`: a chat door, whose own token
+    /// cannot file an issue, must not reach this box's credentials that can. Absent, as from a
+    /// core that predates it, the session runs with the box's view.
+    #[serde(default)]
+    confined: bool,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -114,6 +120,9 @@ struct SendFrame {
     /// previous turn's was revoked when that turn stopped.
     #[serde(default)]
     forge_token: Option<String>,
+    /// See `StartFrame::confined`.
+    #[serde(default)]
+    confined: bool,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -134,6 +143,8 @@ struct Turn {
     /// See `StartFrame::forge_token`. A turn that carries one never reuses a resident process:
     /// that process's MCP config holds the token of the turn that spawned it, revoked since.
     credential: Option<TurnCredential>,
+    /// See `StartFrame::confined`.
+    confined: bool,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -273,6 +284,7 @@ pub async fn handle_start(
             attachment_dir,
             event_seq_base: f.event_seq_base,
             credential: handed_credential(f.forge_token),
+            confined: f.confined,
         },
     )
     .await
@@ -314,6 +326,7 @@ pub async fn handle_send(
             attachment_dir,
             event_seq_base: f.event_seq_base,
             credential: handed_credential(f.forge_token),
+            confined: f.confined,
         },
     )
     .await
@@ -358,6 +371,9 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         resume_id: turn.resume_id.clone(),
         counts_against_session_cap: false,
         credential: turn.credential.clone(),
+        confinement: turn.confined.then(|| Confinement {
+            reads: turn.attachment_dir.iter().cloned().collect(),
+        }),
     }
 }
 
@@ -821,6 +837,49 @@ mod tests {
             .filter(|(m, _, _)| m == "PATCH")
             .map(|(_, _, b)| serde_json::from_str(b).unwrap())
             .collect()
+    }
+
+    fn turn_of(frame: Value, attachment_dir: Option<PathBuf>) -> Turn {
+        let f: SendFrame = serde_json::from_value(frame).unwrap();
+        Turn {
+            session_id: f.session_id,
+            prompt: f.message,
+            repo_path: "/repo".into(),
+            project_slug: f.project_slug,
+            system_prompt: None,
+            model: f.model,
+            resume_id: None,
+            mcp_servers_override: None,
+            attachment_dir,
+            event_seq_base: f.event_seq_base,
+            credential: handed_credential(f.forge_token),
+            confined: f.confined,
+        }
+    }
+
+    /// Core marks a chat door's turn `confined`; the session it spawns is then confined, and
+    /// reads the turn's attachments, which sit where its view is otherwise empty.
+    #[test]
+    fn a_turn_core_marks_confined_spawns_a_confined_session_that_reads_its_attachments() {
+        let frame = serde_json::json!({
+            "sessionId": "s1", "message": "hi", "forgeToken": "t", "confined": true
+        });
+        let turn = turn_of(frame, Some(PathBuf::from("/tmp/forge-attach-s1")));
+        let spec = chat_spec("s1", "hi", &turn);
+        assert_eq!(
+            spec.confinement,
+            Some(Confinement {
+                reads: vec![PathBuf::from("/tmp/forge-attach-s1")]
+            }),
+            "a turn core marked confined spawned a session with the box's view"
+        );
+    }
+
+    #[test]
+    fn a_turn_core_does_not_mark_spawns_a_session_with_the_boxs_view() {
+        let frame = serde_json::json!({ "sessionId": "s1", "message": "hi", "forgeToken": "t" });
+        let spec = chat_spec("s1", "hi", &turn_of(frame, None));
+        assert_eq!(spec.confinement, None);
     }
 
     /// A turn held open past its first moments, then ended: the box has to

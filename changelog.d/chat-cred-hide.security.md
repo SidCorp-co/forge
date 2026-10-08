@@ -1,0 +1,1 @@
+**A chat session on a runner box now holds only its own turn credential.** The box runs it sandboxed, without its stored PAT, device token, workspace token or push keys; a box that cannot is refused by name.

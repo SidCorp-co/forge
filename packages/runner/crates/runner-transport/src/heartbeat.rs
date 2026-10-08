@@ -147,10 +147,7 @@ pub(crate) fn heartbeat_body(
 ) -> serde_json::Value {
     let mut body = serde_json::json!({
         "agentVersion": version,
-        // A session handed a `forgeToken` on `agent:start` runs under it (ISS-17), and so does
-        // a follow-up handed one on `agent:send` (ISS-27); core picks only a box that says so
-        // for a turn that answers a person.
-        "capabilities": { "turnCredential": true, "followUpCredential": true },
+        "capabilities": capabilities(runner_platform::confine::availability()),
     });
     if let Some(commit) = commit {
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
@@ -170,6 +167,23 @@ pub(crate) fn heartbeat_body(
     body
 }
 
+/// What this box can do for a session. A session handed a `forgeToken` on `agent:start` runs
+/// under it (ISS-17), and so does a follow-up handed one on `agent:send` (ISS-27); core picks
+/// only a box that says so for a turn that answers a person. `confinedChat` is whether a session
+/// core marks `confined` runs holding that token alone, and where it cannot, why not, which core
+/// names when it refuses a chat door's turn here.
+pub(crate) fn capabilities(confine: &runner_platform::confine::Availability) -> serde_json::Value {
+    let mut out = serde_json::json!({ "turnCredential": true, "followUpCredential": true });
+    match confine {
+        runner_platform::confine::Availability::Available => out["confinedChat"] = true.into(),
+        runner_platform::confine::Availability::Unavailable(why) => {
+            out["confinedChat"] = false.into();
+            out["confinedChatUnavailable"] = why.clone().into();
+        }
+    }
+    out
+}
+
 /// The pool object exactly as it rides on the heartbeat body.
 pub fn pool_body(pool: &[runner_proto::pool_read::Condition]) -> serde_json::Value {
     serde_json::json!({ "projects": pool })
@@ -178,6 +192,19 @@ pub fn pool_body(pool: &[runner_proto::pool_read::Condition]) -> serde_json::Val
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_box_that_cannot_confine_a_chat_says_so_and_why() {
+        use runner_platform::confine::Availability;
+        let caps = capabilities(&Availability::Unavailable("no bwrap".into()));
+        assert_eq!(caps["confinedChat"], false, "{caps}");
+        assert_eq!(caps["confinedChatUnavailable"], "no bwrap", "{caps}");
+        let caps = capabilities(&Availability::Available);
+        assert_eq!(caps["confinedChat"], true, "{caps}");
+        assert!(caps.get("confinedChatUnavailable").is_none(), "{caps}");
+        assert_eq!(caps["turnCredential"], true, "{caps}");
+        assert_eq!(caps["followUpCredential"], true, "{caps}");
+    }
 
     #[test]
     fn a_binary_the_box_cannot_resolve_rides_on_the_beat() {

@@ -25,6 +25,33 @@ export const noClaudeClient = (scope: 'project' | 'session' | 'picked') =>
         : 'No online Claude client for this session. Bring its runner online, then try again.',
   );
 
+/** What a box's heartbeat declares when it runs a session core marks `confined` holding only its turn token. */
+export const CONFINED_CHAT_CAPABILITY = 'confinedChat';
+
+/**
+ * A chat door's turn is refused by name on a box that cannot confine it, before anything is
+ * written: run unconfined, its shell reads the box's other credentials — the checkout's
+ * workspace token, the holder's stored PAT — and files with those what its own token may not.
+ */
+export async function requireConfiningBox(deviceId: string): Promise<void> {
+  const [box] = await db
+    .select({ name: devices.name, capabilities: devices.capabilities })
+    .from(devices)
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  const declared = (box?.capabilities ?? {}) as Record<string, unknown>;
+  if (declared[CONFINED_CHAT_CAPABILITY] === true) return;
+  const said = declared.confinedChatUnavailable;
+  const why =
+    typeof said === 'string' && said.trim()
+      ? said.trim()
+      : 'its forge-runner predates confining a chat session — update it on the box (`forge-runner update`)';
+  throw refuseSession(
+    'BOX_CANNOT_CONFINE_CHAT',
+    `A chat session holds only its own turn credential, and the runner box ${box?.name ?? deviceId} cannot confine one, so nothing was dispatched: ${why}.`,
+  );
+}
+
 /** A turn is refused by name when no socket reads its box's room: nobody would take the frame. */
 export function requireListeningBox(deviceId: string): void {
   if (!agentSessionsPorts().boxIsListening(deviceId)) throw noClaudeClient('session');

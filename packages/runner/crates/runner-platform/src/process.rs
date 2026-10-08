@@ -75,9 +75,27 @@ pub fn resolve_claude_bin() -> &'static str {
 }
 
 pub fn build_command(args: &[String], repo_path: &str) -> Command {
-    let mut cmd = Command::new(resolve_claude_bin());
+    build_command_for(OsStr::new(resolve_claude_bin()), args, repo_path)
+}
+
+/// [`build_command`] for `program` in place of `claude`.
+pub fn build_command_for(program: &OsStr, args: &[String], repo_path: &str) -> Command {
+    let mut cmd = Command::new(program);
     cmd.args(args).current_dir(repo_path);
     cmd.env_remove("CLAUDECODE");
+    own_session(&mut cmd);
+
+    // Bound every MCP tool call so a hung MCP server can't wedge the job forever
+    // (see DEFAULT_MCP_TOOL_TIMEOUT_MS). Respect an operator-set value.
+    if let Some(v) = mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
+        cmd.env("MCP_TOOL_TIMEOUT", v);
+    }
+    cmd
+}
+
+/// Start `cmd` as the leader of its own session and process group, which is what
+/// [`graceful_kill`] signals.
+pub fn own_session(cmd: &mut Command) {
     #[cfg(unix)]
     unsafe {
         cmd.pre_exec(|| {
@@ -86,13 +104,8 @@ pub fn build_command(args: &[String], repo_path: &str) -> Command {
                 .map_err(std::io::Error::other)
         });
     }
-
-    // Bound every MCP tool call so a hung MCP server can't wedge the job forever
-    // (see DEFAULT_MCP_TOOL_TIMEOUT_MS). Respect an operator-set value.
-    if let Some(v) = mcp_tool_timeout_default(std::env::var_os("MCP_TOOL_TIMEOUT").as_deref()) {
-        cmd.env("MCP_TOOL_TIMEOUT", v);
-    }
-    cmd
+    #[cfg(not(unix))]
+    let _ = cmd;
 }
 
 /// SIGTERM the process group, then SIGKILL after 5s. On Windows, `taskkill /T`.

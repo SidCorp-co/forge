@@ -5,6 +5,7 @@
 //! Session key = the core `jobId`, so `abort(job_id)` maps a `job.cancel`
 //! frame straight onto the right process.
 
+pub(crate) mod confine;
 mod outcome;
 use outcome::*;
 mod permits;
@@ -24,7 +25,7 @@ use tokio::sync::{mpsc, Mutex};
 use super::{JobSpec, Runner, RunnerEvent, SessionId};
 use runner_core::inflight;
 use runner_platform::error::{Error, Result};
-use runner_platform::process::{build_command, graceful_kill};
+use runner_platform::process::{build_command_for, graceful_kill, own_session, resolve_claude_bin};
 use runner_workspace::mcp;
 
 fn user_message_line(text: &str) -> String {
@@ -321,10 +322,17 @@ impl Runner for ClaudeCodeRunner {
             .prompt
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
-        let credential = match &spec.credential {
-            Some(handed) => handed.0.clone(),
-            None => mcp::config::job_credential()?,
-        };
+        let credential =
+            match (&spec.credential, &spec.confinement) {
+                (Some(handed), _) => handed.0.clone(),
+                (None, Some(_)) => return Err(Error::Other(
+                    "[CHAT_CONFINEMENT_NO_CREDENTIAL] core asked for this session to hold only \
+                     the credential it was handed, and handed none; this box's own PAT is not \
+                     put in its place"
+                        .into(),
+                )),
+                (None, None) => mcp::config::job_credential()?,
+            };
 
         let invoked_with_resume = spec.resume_id.is_some();
 
@@ -340,7 +348,7 @@ impl Runner for ClaudeCodeRunner {
         )?;
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let mut child = spawn_claude(&spec, &effective_repo, &credential, &mcp_path)?;
+        let mut child = spawn_claude(&spec, &effective_repo, &credential, &mcp_path).await?;
         tracing::info!("[claude] spawned job={job_id}");
         let session_stdin = Some(write_first_turn(&mut child, &prompt).await?);
 
@@ -467,32 +475,77 @@ impl Runner for ClaudeCodeRunner {
 }
 
 /// Spawn `claude` for `spec` in `repo`, its MCP config at `mcp_path`.
-fn spawn_claude(
+async fn spawn_claude(
     spec: &JobSpec,
     repo: &str,
     credential: &str,
     mcp_path: &std::path::Path,
 ) -> Result<tokio::process::Child> {
     let args = build_args(spec, &mcp_path.to_string_lossy());
-    let mut cmd = build_command(&args, repo);
-    cmd.env("FORGE_PAT", credential);
-    for (k, v) in project_env(spec) {
-        cmd.env(k, v);
-    }
+    let program = std::ffi::OsStr::new(resolve_claude_bin());
+    let made = session_command(spec, program, &args, repo, credential, mcp_path, None).await;
+    let mut cmd = match made {
+        Ok(cmd) => cmd,
+        Err(e) => {
+            let _ = std::fs::remove_file(mcp_path);
+            return Err(e);
+        }
+    };
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
-    // Give MCP servers room to connect before the `system/init` snapshot.
-    // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
-    // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
-    // claude default is tight. Caller-set env wins (don't clobber an override).
-    if std::env::var_os("MCP_TIMEOUT").is_none() {
-        cmd.env("MCP_TIMEOUT", "15000");
-    }
     cmd.spawn().map_err(|e| {
         let _ = std::fs::remove_file(mcp_path);
         Error::Other(format!("failed to spawn claude: {e}"))
     })
+}
+
+/// The command a session runs as. A run inherits this runner's environment and view of the box,
+/// with `credential` as its `$FORGE_PAT`; a confined session gets [`confine::chat_sandbox`] and
+/// is refused by name where this box cannot confine. `view` stands in for this process's own.
+pub(crate) async fn session_command(
+    spec: &JobSpec,
+    program: &std::ffi::OsStr,
+    args: &[String],
+    repo: &str,
+    credential: &str,
+    mcp_path: &std::path::Path,
+    view: Option<confine::BoxView>,
+) -> Result<tokio::process::Command> {
+    let Some(confinement) = &spec.confinement else {
+        let mut cmd = build_command_for(program, args, repo);
+        cmd.env("FORGE_PAT", credential);
+        for (k, v) in project_env(spec) {
+            cmd.env(k, v);
+        }
+        // Give MCP servers room to connect before the `system/init` snapshot.
+        // Heavy stdio servers (e.g. chrome-devtools-mcp / playwright launched via
+        // `npx`, which fetch a package + spawn a browser) routinely need >5s; the
+        // claude default is tight. Caller-set env wins (don't clobber an override).
+        if std::env::var_os("MCP_TIMEOUT").is_none() {
+            cmd.env("MCP_TIMEOUT", "15000");
+        }
+        return Ok(cmd);
+    };
+    let view = match view {
+        Some(view) => view,
+        None => confine::BoxView::current()?,
+    };
+    let repo = std::path::Path::new(repo);
+    let (git_dirs, git_identity) = confine::read_git(repo).await;
+    let handed = confine::Handed {
+        repo,
+        credential,
+        mcp_config: mcp_path,
+        reads: &confinement.reads,
+        project_slug: spec.project_slug.as_deref(),
+        project_id: &spec.project_id,
+        git_dirs,
+        git_identity,
+    };
+    let mut cmd = confine::chat_sandbox(&view, &handed).command(program, args)?;
+    own_session(&mut cmd);
+    Ok(cmd)
 }
 
 /// Write the first turn into the spawn's stdin, and hand the stdin back held
@@ -522,4 +575,56 @@ fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
         out.push(("FORGE_PROJECT_SLUG", slug.clone()));
     }
     out
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod confine_tests;
+
+#[cfg(all(test, not(target_os = "linux")))]
+mod confine_elsewhere_tests {
+    //! Where this box cannot confine, a session core marks `confined` is refused by name, never
+    //! run with the box's view.
+    use super::*;
+
+    #[tokio::test]
+    async fn a_confined_session_is_refused_by_name_where_the_box_cannot_confine() {
+        let repo = std::env::temp_dir();
+        let spec = JobSpec {
+            job_id: "s1".into(),
+            project_id: String::new(),
+            project_slug: Some("p".into()),
+            repo_path: repo.clone(),
+            prompt: Some("hi".into()),
+            system_prompt: None,
+            model: None,
+            permission_mode: None,
+            mcp_servers_override: None,
+            resume_id: None,
+            counts_against_session_cap: false,
+            credential: Some(crate::TurnCredential("t".into())),
+            confinement: Some(crate::Confinement::default()),
+        };
+        let view = confine::BoxView {
+            home: repo.clone(),
+            inherited: vec![],
+            runner_config: None,
+            claude_bin: None,
+            temp_dir: repo.clone(),
+        };
+        let made = session_command(
+            &spec,
+            std::ffi::OsStr::new("claude"),
+            &[],
+            &repo.to_string_lossy(),
+            "t",
+            &repo.join("mcp.json"),
+            Some(view),
+        )
+        .await;
+        let err = made.expect_err("a confined session was built on a box that cannot confine");
+        assert!(
+            err.to_string().contains("CHAT_CONFINEMENT_UNAVAILABLE"),
+            "the refusal does not name itself: {err}"
+        );
+    }
 }

@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   written: [] as Array<{ id: string; messages: unknown[] }>,
   seeded: [] as Array<Record<string, unknown>>,
   calls: [] as string[],
+  box: { name: 'box-1', capabilities: { confinedChat: true } as Record<string, unknown> },
 }));
 
 vi.mock('../db/client.js', () => {
@@ -37,7 +38,12 @@ vi.mock('../db/client.js', () => {
       },
     }),
   };
-  return { db: { transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
+  const limit = async () => {
+    state.calls.push('boxCapabilities');
+    return [state.box];
+  };
+  const select = () => ({ from: () => ({ where: () => ({ limit }) }) });
+  return { db: { transaction: async (fn: (t: unknown) => unknown) => fn(tx), select } };
 });
 
 const current = vi.hoisted(() => () => base);
@@ -130,6 +136,7 @@ function sessionOf(over: Record<string, unknown> = {}) {
     repoPath: '/r',
     claudeSessionId: 'claude-old',
     startedAt: new Date(0),
+    kind: 'chat',
     metadata: { deviceId: 'd-1' },
     ...over,
   };
@@ -151,6 +158,7 @@ beforeEach(() => {
     boundPath: '/bound',
     preambleFails: false,
     transcript: [{ type: 'user', content: 'earlier' }],
+    box: { name: 'box-1', capabilities: { confinedChat: true } },
   });
   for (const k of ['set', 'transitions', 'frames', 'written', 'seeded', 'calls'] as const) {
     state[k].length = 0;
@@ -211,6 +219,7 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
             mcpServersOverride: { forge: { url: 'x' } },
             message: 'hello',
             claudeSessionId: 'claude-old',
+            confined: true,
           },
         },
       },
@@ -376,6 +385,28 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
   });
 });
 
+describe('dispatchChatTurn: a chat door runs confined on its box', () => {
+  const turn = (metadata: Record<string, unknown>) => ({
+    session: sessionOf({ metadata: { deviceId: 'd-1', ...metadata } }),
+    project,
+    client: { deviceId: 'd-1' },
+    message: 'x',
+    credential: 'turn-token',
+  });
+
+  it("a chat session's turn tells the box to hold only its turn token", async () => {
+    await dispatchChatTurn(turn({}));
+    expect(frame()?.data).toMatchObject({ forgeToken: 'turn-token', confined: true });
+  });
+
+  it('a schedule fire is a run, not a chat: its box is not asked to confine it', async () => {
+    state.box = { name: 'box-1', capabilities: {} };
+    await dispatchChatTurn(turn({ source: 'schedule.run', scheduleRunId: 'f-1' }));
+    expect(frame()?.data).not.toHaveProperty('confined');
+    expect(state.calls).not.toContain('boxCapabilities');
+  });
+});
+
 describe('dispatchChatTurn: refusals write nothing', () => {
   const nothingWritten = () => {
     expect(state.set).toEqual([]);
@@ -416,6 +447,22 @@ describe('dispatchChatTurn: refusals write nothing', () => {
     expect(state.calls).toEqual(['boxIsListening']);
     nothingWritten();
   });
+
+  it.each([
+    ['cannot', { confinedChat: false, confinedChatUnavailable: 'this box runs macos' }, 'macos'],
+    ['never declared it', { turnCredential: true }, 'forge-runner update'],
+  ])(
+    'a box that %s confine a chat is BOX_CANNOT_CONFINE_CHAT, naming why',
+    async (_, caps, why) => {
+      state.box = { name: 'mac-mini', capabilities: caps };
+      const turn = { session: sessionOf(), project, client: { deviceId: 'd-1' }, message: 'x' };
+      const err = await dispatchChatTurn(turn).catch((e: unknown) => e);
+      expect(err).toMatchObject(refused('BOX_CANNOT_CONFINE_CHAT'));
+      expect(JSON.stringify(err)).toContain('mac-mini');
+      expect(JSON.stringify(err)).toContain(why);
+      nothingWritten();
+    },
+  );
 
   it('an invalid skill name is refused', async () => {
     await expect(

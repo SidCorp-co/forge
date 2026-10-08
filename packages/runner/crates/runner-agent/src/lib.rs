@@ -36,6 +36,16 @@ pub struct JobSpec {
     /// the session's `forge` MCP credential and its `$FORGE_PAT`, in place of the box's own —
     /// which belongs to whoever paired the box, not to the person who asked.
     pub credential: Option<TurnCredential>,
+    /// Core's word that this session holds only `credential`: none of this box's own, in its
+    /// environment or on any path it can read. `None` runs it with the box's view, as a run.
+    pub confinement: Option<Confinement>,
+}
+
+/// What a confined session is handed beyond its checkout, its MCP config and Claude Code's
+/// own install: files it reads, such as a turn's attachments.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Confinement {
+    pub reads: Vec<PathBuf>,
 }
 
 /// A per-session token handed over by core. Its `Debug` never prints the secret.
