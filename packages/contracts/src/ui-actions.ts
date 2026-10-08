@@ -240,6 +240,20 @@ export const uiSnapshotSchema = z.strictObject({
 });
 export type UiSnapshot = z.infer<typeof uiSnapshotSchema>;
 
+/**
+ * Snapshot keys an earlier web build sent and this contract no longer takes, each with what replaced
+ * it. A tab loaded before the deploy still sends them; it is refused by name with a sentence its
+ * own code prints as written, never a bare "Invalid input" (ISS-441).
+ */
+export const RETIRED_UI_SNAPSHOT_KEYS = {
+  issueKey: 'item {kind: "issue", key}',
+} as const;
+
+/** What a person reads when their tab sent a retired snapshot key: the page is older than Forge. */
+export function retiredSnapshotKeySentence(key: keyof typeof RETIRED_UI_SNAPSHOT_KEYS): string {
+  return `This page was loaded before Forge was updated, so it describes itself in a shape Forge no longer reads (uiSnapshot.${key}, now ${RETIRED_UI_SNAPSHOT_KEYS[key]}). Reload the page, then send your message again.`;
+}
+
 /** The snapshot as the one line a person reads under the composer and the model reads above the message. */
 export function describeUiSnapshot(s: UiSnapshot): string {
   const parts: string[] = [s.item ? s.item.key : s.route === 'other' ? s.path : s.route];

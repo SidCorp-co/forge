@@ -1,7 +1,11 @@
 // `POST /api/conversations/:id/messages` — a person says something in a web room, and gets back
 // what the room now holds.
 
-import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
+import {
+  RETIRED_UI_SNAPSHOT_KEYS,
+  retiredSnapshotKeySentence,
+  uiSnapshotSchema,
+} from '@forge/contracts/ui-actions';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
@@ -17,6 +21,7 @@ import {
 } from '../conversations/index.js';
 import { conversationModes } from '../db/schema-conversations.js';
 import { chatModelName } from '../integrations/llm/index.js';
+import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -48,6 +53,39 @@ const sendSchema = z
       'a message carries text, a file, or both — this one carries neither, so there is nothing to say',
   });
 
+type Retired = keyof typeof RETIRED_UI_SNAPSHOT_KEYS;
+const isRetired = (key: string): key is Retired => Object.hasOwn(RETIRED_UI_SNAPSHOT_KEYS, key);
+
+/**
+ * A snapshot carrying a key an earlier web build sent comes from a tab loaded before the deploy. It
+ * is refused under CONVERSATION_PAGE_OUT_OF_DATE, a code outside every web build's fixed lines, so
+ * that tab prints the sentence telling its person to reload, rather than "Invalid input" (ISS-441).
+ * Every other fault in the body keeps its BAD_REQUEST row.
+ */
+function refuseRetiredSnapshotKeys(r: { success: boolean; error?: z.core.$ZodError }): void {
+  if (r.success || !r.error) return;
+  const issues = r.error.issues;
+  const snapshotKeys = (i: z.core.$ZodIssue): string[] =>
+    i.code === 'unrecognized_keys' && i.path.length === 1 && i.path[0] === 'uiSnapshot'
+      ? i.keys
+      : [];
+  const retired = issues.flatMap(snapshotKeys).filter(isRetired);
+  if (retired.length === 0) return;
+  // an issue naming only retired keys is said by the rows above it; any other fault keeps its row
+  const others = issues.filter(
+    (i) => !snapshotKeys(i).length || snapshotKeys(i).some((k) => !isRetired(k)),
+  );
+  const rows: Refusal[] = [
+    ...retired.map((key) => ({
+      code: 'CONVERSATION_PAGE_OUT_OF_DATE',
+      path: jsonPointer(['uiSnapshot', key]),
+      detail: retiredSnapshotKeySentence(key),
+    })),
+    ...others.map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
+  ];
+  throw new RefusalError(rows, 'CONVERSATION_PAGE_OUT_OF_DATE');
+}
+
 /** A room's name, taken from the first thing said in it. */
 const ROOM_NAME_MAX = 80;
 function roomNameFrom(content: string, attached: readonly { name: string }[]): string {
@@ -75,7 +113,7 @@ function soleProject(row: ConversationRow, scope: string[]): string {
 conversationMessageRoutes.post(
   '/:id/messages',
   zValidator('param', idParamSchema),
-  zValidator('json', sendSchema),
+  zValidator('json', sendSchema, refuseRetiredSnapshotKeys),
   async (c) => {
     const { id } = c.req.valid('param');
     const { content, mode, clientToken, attachmentIds, uiSnapshot } = c.req.valid('json');

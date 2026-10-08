@@ -43,14 +43,20 @@ function missing(err: unknown): null {
   throw err;
 }
 
-/** What a record's page shows of it that the model needs to know which one is meant. */
-type Shown = { key: string; fields: Record<string, unknown> } | null;
+/**
+ * What a record's page shows of it that the model needs to know which one is meant: its metadata
+ * (status, its own kind, revisions), which reaches the model at every data level, and its content
+ * (the title), which goes through the egress rule of the record's surface. A record's own `kind`
+ * is carried under its own name (`feedbackKind`, `workflowKind`), never as `kind`, which names
+ * the page item's kind.
+ */
+type Shown = { key: string; meta: Record<string, unknown>; content: { title: unknown } } | null;
 
 async function issueShown(projectId: string, key: string, userId: string): Promise<Shown> {
   try {
     const row = await resolveIssueRouteRef(key, projectId, userId);
     if (row.projectId !== projectId) return null;
-    return { key, fields: { title: row.title, status: row.status } };
+    return { key, meta: { status: row.status }, content: { title: row.title } };
   } catch (err) {
     return missing(err);
   }
@@ -72,7 +78,8 @@ async function requirementShown(projectId: string, key: string): Promise<Shown> 
   if (!row) return null;
   return {
     key: requirementKey(row.seq),
-    fields: { title: row.title, status: row.status, revision: row.revision },
+    meta: { status: row.status, revision: row.revision },
+    content: { title: row.title },
   };
 }
 
@@ -81,7 +88,8 @@ async function feedbackShown(projectId: string, key: string): Promise<Shown> {
     const row = await feedbackRowIn(db, projectId, key);
     return {
       key: feedbackKey(row.fbSeq),
-      fields: { title: row.title, kind: row.kind, status: row.status },
+      meta: { feedbackKind: row.kind, status: row.status },
+      content: { title: row.title },
     };
   } catch (err) {
     return missing(err);
@@ -110,13 +118,13 @@ async function workflowShown(projectId: string, key: string): Promise<Shown> {
   const title = (row.document as { title?: unknown } | null)?.title;
   return {
     key: row.flow,
-    fields: {
-      title: typeof title === 'string' ? title : null,
-      kind: row.kind,
+    meta: {
+      workflowKind: row.kind,
       designStatus: row.designStatus,
       revision: row.revision,
       approvedRevision: row.approvedRevision,
     },
+    content: { title: typeof title === 'string' ? title : null },
   };
 }
 
@@ -158,19 +166,10 @@ export async function loadPageItem(
     };
   }
   const level = await dataPolicyOf(projectId);
-  const out = egressAt(level, SURFACE[item.kind], shown.fields, `${item.kind} ${shown.key}`);
-  if (!out.ok) {
-    // the key, kind and status are metadata and stay; the content the policy keeps in does not
-    const status = shown.fields.status ?? shown.fields.designStatus ?? null;
-    return {
-      kind: item.kind,
-      key: shown.key,
-      found: true,
-      status,
-      withheld: out.refusal.detail,
-    };
-  }
-  return { kind: item.kind, key: shown.key, found: true, ...out.value };
+  const out = egressAt(level, SURFACE[item.kind], shown.content, `${item.kind} ${shown.key}`);
+  // the metadata stays at every level; the content the policy keeps in is said withheld, not sent
+  const content = out.ok ? out.value : { withheld: out.refusal.detail };
+  return { ...shown.meta, ...content, kind: item.kind, key: shown.key, found: true };
 }
 
 /**

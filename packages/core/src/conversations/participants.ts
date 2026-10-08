@@ -253,6 +253,39 @@ export async function attachOpeningHandle(
 }
 
 /**
+ * One user is in a room once, as a person or as a handle (`conversation_participants_live_user_unique`).
+ * An add that met the same user in the other role was dropped by its `onConflictDoNothing`, so the
+ * project's own agent opened a room it sat in only as the handle and was then refused that room as
+ * no person in it (ISS-441). Meeting the other role is refused by name; meeting the same one is a
+ * repeat and changes nothing.
+ */
+async function refuseOtherRole(
+  tx: Executor,
+  conversationId: string,
+  userId: string,
+  adding: ConversationParticipantKind,
+): Promise<void> {
+  const [held] = await tx
+    .select({ kind: conversationParticipants.kind })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.userId, userId),
+        isNull(conversationParticipants.removedAt),
+      ),
+    )
+    .limit(1);
+  if (!held || held.kind === adding) return;
+  throw refuseConversation(
+    'PARTICIPANT_KIND_TAKEN',
+    held.kind === 'handle'
+      ? `user ${userId} is already in conversation ${conversationId} as the handle of its project, the agent that answers there, and a user is in a room once; a room is opened and joined by the people who talk to that agent, so act with a person's own credential, not the agent's — nothing was written`
+      : `user ${userId} is already in conversation ${conversationId} as a person, and a user is in a room once, so it cannot also join as a handle — nothing was written`,
+  );
+}
+
+/**
  * Put a handle in a live room on somebody's behalf. This is the moment a room's
  * scope widens, so it is the moment the authorization is checked.
  */
@@ -275,7 +308,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     `adding @${handle.handle} to a room`,
   );
 
-  await tx
+  const added = await tx
     .insert(conversationParticipants)
     .values({
       conversationId: args.conversationId,
@@ -285,7 +318,10 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
       addedBy: args.actorUserId,
       label: handle.handle,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: conversationParticipants.id });
+  if (added.length === 0)
+    await refuseOtherRole(tx, args.conversationId, args.handleUserId, 'handle');
 }
 
 interface AddPersonArgs {
@@ -305,7 +341,7 @@ export async function addPerson(args: AddPersonArgs): Promise<void> {
       'a person joins a conversation as a Forge user or as the key their channel gave; with neither there is nobody to add',
     );
   }
-  await tx
+  const added = await tx
     .insert(conversationParticipants)
     .values({
       conversationId: args.conversationId,
@@ -315,7 +351,11 @@ export async function addPerson(args: AddPersonArgs): Promise<void> {
       label: args.label ?? null,
       addedBy: args.actorUserId ?? null,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: conversationParticipants.id });
+  if (added.length === 0 && args.userId) {
+    await refuseOtherRole(tx, args.conversationId, args.userId, 'person');
+  }
 }
 
 interface RemoveParticipantArgs {
