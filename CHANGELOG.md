@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.207] - 2026-10-08
+
+Exported reports state dates in UTC; requirement standing names whom work waits on
+
+### Fixed
+
+- **A report export now states its dates in UTC.** The Markdown export, a template run text, the stored text fallback and a table CSV read an instant as "Oct 4, 18:19 UTC", never as raw ISO.
+- **A requirement's top strip now names who it actually waits on.** Once every issue has landed it names the person owing the release cut and links the release; a parked issue's owner is named with the issue linked.
+
 ## [0.4.0-dev.206] - 2026-10-08
 
 Pending requirement suggestions can be rejected with a reason from the assistant strip
