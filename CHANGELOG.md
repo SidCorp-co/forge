@@ -9,6 +9,29 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.165] - 2026-10-08
+
+Records a BA or customer reads are trustworthy: decisions, customer notes, home, memory
+
+### Added
+
+- **A release's notes can be handed to a customer.** The Notes tab opens with a view naming no issue key, internal title or path, each change once, to copy or export; notes calling a production release a demo are named.
+- **A kept status report can be removed.** Its saver or a project admin removes it from History after a confirmation; a sent report is an admin's; anyone else is refused STATUS_REPORT_DELETE_FORBIDDEN. Deleting a report schedule now asks first.
+
+### Changed
+
+- **Decisions show what a person decided.** The decisions log and a requirement's Decisions tab fold away what agents recorded, a master's pass logs among them, and count them; a record whose text dates itself ahead of its writing is flagged.
+- **A project's home opens with what it is and where it stands.** Its description, business modules, what is in delivery, the release live and the one being prepared, and what comes next lead; the system map follows, asks below.
+
+### Fixed
+
+- **Signing in to the operator pages no longer fails when the browser also holds another Forge instance's session.** The admin gate sends every session cookie to core, and an ended session returns you to sign-in with a plain message.
+- **Memory's "Needs a check" counts what is due.** A memory nobody checked in 3 days, or whose cited record changed since, joins those citing a gone record or flagged by a release; each row says why, each list its count.
+
+### Security
+
+- **A phone number is masked however it was typed.** On a project that scrubs on write, a number split by no-break or thin spaces, dashes or bracketed area codes is stored as [number]; a date with its time stays.
+
 ## [0.4.0-dev.164] - 2026-10-08
 
 Chat replies' claims of recording feedback or requirements are checked against the turn's writes
