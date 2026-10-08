@@ -27,6 +27,7 @@ export {
   readConversationAgentTurns,
   turnState,
 } from './conversation-agent-read.js';
+export { type RoomDocument, readRoomDocumentByName, readRoomDocumentByRef } from './documents.js';
 export {
   askerLanguageOf,
   CORRECTIVE_PREFIX,

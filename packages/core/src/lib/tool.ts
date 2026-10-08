@@ -55,7 +55,16 @@ export interface ChatTurnFacts {
   ecosystemId?: string | null;
   /** The images the speaker sent with this message, which a Feedback item the turn records carries. */
   images?: readonly { name: string; mime: string; dataBase64: string }[];
+  /**
+   * A document attached in this turn's room, read by its file name as scrubbed text, for a tool that
+   * takes the document's own lines rather than the model's retyping of them.
+   */
+  readDocument?: (file: string) => Promise<TurnDocument>;
 }
+
+export type TurnDocument =
+  | { ok: true; name: string; mime: string; text: string; redacted: boolean }
+  | { ok: false; reason: string };
 
 /**
  * Per-request context passed to tool factories. `projectSlug` is the optional

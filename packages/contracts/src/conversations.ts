@@ -31,6 +31,7 @@ export const CONVERSATION_REFUSAL_CODES = [
 	"EMPTY_FILE",
 	"FILE_TOO_LARGE",
 	"MIME_NOT_ALLOWED",
+	"DOCUMENT_UNREADABLE",
 ] as const;
 
 export type ConversationRefusalCode =

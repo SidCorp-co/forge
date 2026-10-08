@@ -38,6 +38,7 @@ import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
 import { applyTurnContext } from './turn-context.js';
+import { type DocumentResolver, resolveTurnDocuments } from './turn-documents.js';
 import { loadTurnSelf } from './turn-self.js';
 import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
 
@@ -70,6 +71,8 @@ export interface ExternalChatTurnArgs {
   images?: readonly TurnImage[] | undefined;
   /** Re-fetch bytes for an image from an EARLIER turn inside the vision lookback; omit to let older images fall out of view. */
   resolveImage?: ImageResolver | undefined;
+  /** Read back the documents the window's messages carry, shown to the model as text; omit and none is shown. */
+  resolveDocument?: DocumentResolver | undefined;
   /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates as an error instead of wedging the caller. */
   signal?: AbortSignal | undefined;
   /**
@@ -194,9 +197,12 @@ async function setUpTurn(
     contentLanguage: contentLanguageBlock(language, 'chat'),
   });
   const history = turn ? [...turn.history, ...turn.pending].slice(-PROVIDER_HISTORY_WINDOW) : [];
-  const resolvedImages = await resolveVisionImages(history, images, args.resolveImage);
+  const [resolvedImages, resolvedDocuments] = await Promise.all([
+    resolveVisionImages(history, images, args.resolveImage),
+    resolveTurnDocuments(history, args.resolveDocument),
+  ]);
   const said: ChatMessage[] = turn
-    ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
+    ? toProviderMessages(turn, resolvedImages, resolvedDocuments).slice(-PROVIDER_HISTORY_WINDOW)
     : [{ role: 'user' as const, content: args.message }];
   const prior = args.priorRounds ?? [];
   const [system, ...spoken] = applyTurnContext(

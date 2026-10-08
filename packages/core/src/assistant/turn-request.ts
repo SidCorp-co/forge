@@ -14,6 +14,7 @@ import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import type { DoorId } from '../messaging/contract.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+import type { DocumentResolver } from './turn-documents.js';
 import type { ImageResolver, TurnImage } from './vision.js';
 
 /** What the transport contributes to a turn beyond the message itself. */
@@ -25,6 +26,7 @@ export interface TurnInputs {
   pageContext?: Record<string, unknown> | null;
   images?: readonly TurnImage[] | undefined;
   resolveImage?: ImageResolver | undefined;
+  resolveDocument?: DocumentResolver | undefined;
 }
 
 /** What a hook is given: the phase name the report will carry, the turn's abort, and whose authority it runs under. */

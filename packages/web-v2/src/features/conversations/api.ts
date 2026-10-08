@@ -1,3 +1,4 @@
+import { conversationTypeOfFile } from "@forge/contracts/attachments";
 import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
 import type {
@@ -148,7 +149,7 @@ export const conversationsApi = {
       // A browser naming no type gets a refusal that names one, not a schema error.
       body: JSON.stringify({
         name: file.name,
-        mime: file.type || "application/octet-stream",
+        mime: conversationTypeOfFile(file.name, file.type) || "application/octet-stream",
         operationId,
       }),
     });

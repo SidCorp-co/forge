@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import { criteriaFromDocument } from './document-criteria.js';
 import { listRequirementsAs, readRequirementAs } from './read.js';
 import { revisionFields } from './route-kit.js';
 import { createRequirement, writeRevision } from './service.js';
@@ -104,10 +105,39 @@ const requirementKey = z
   .string()
   .regex(/^REQ-\d+$/, 'a requirement is named by its key, REQ-n')
   .describe('the requirement key, e.g. REQ-12');
+const criteriaFrom = z
+  .strictObject({
+    file: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .describe('the attached file name exactly as the conversation shows it, e.g. spec.md'),
+    section: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe(
+        'the heading whose list holds the criteria, e.g. "Acceptance criteria"; leave it out when the whole file is the list',
+      ),
+  })
+  .describe(
+    'Take the criteria from a document attached in this conversation, each list item verbatim, instead of writing `criteria`: a line that cannot be taken is refused by its number. Send `criteria: []` with it.',
+  );
 const draftInput = z.strictObject({
   projectId: z.uuid(),
   title: z.string().trim().min(1).max(500),
   ...revisionFields,
+  criteria: revisionFields.criteria.default([]),
+  criteriaFrom: criteriaFrom.optional(),
+  preview: z
+    .boolean()
+    .optional()
+    .describe(
+      'with criteriaFrom: write nothing, and answer how many criteria the file gives and from which lines, to show the person before they confirm',
+    ),
 });
 const reviseInput = z.strictObject({
   projectId: z.uuid(),
@@ -138,13 +168,81 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${WRITE_RULE}`,
+  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, and write once they confirm.`,
   inputSchema: zodToMcpSchema(draftInput),
   handler: async (args) => {
-    const { projectId, title, ...write } = draftInput.parse(args);
-    return drafted(await createRequirement({ projectId, actor: actorOf(ctx), title, write }));
+    const { projectId, title, criteriaFrom, preview, ...write } = draftInput.parse(args);
+    if (!criteriaFrom) {
+      if (preview) return documentRefusal('preview reads criteriaFrom, and this call names none');
+      return drafted(await createRequirement({ projectId, actor: actorOf(ctx), title, write }));
+    }
+    const taken = await documentCriteria(ctx, criteriaFrom, write.criteria.length);
+    if (!taken.ok) return documentRefusal(taken.detail);
+    if (preview) return { preview: previewOf(criteriaFrom, taken.criteria) };
+    const criteria = taken.criteria.map(({ body }) => ({ body }));
+    return drafted(
+      await createRequirement({
+        projectId,
+        actor: actorOf(ctx),
+        title,
+        write: { ...write, criteria },
+      }),
+    );
   },
 });
+
+function documentRefusal(detail: string) {
+  return refusedAnswer(
+    [{ code: 'CRITERIA_DOCUMENT_REFUSED', path: '/criteriaFrom', detail }],
+    'REQUIREMENT_REFUSED',
+  );
+}
+
+type Taken =
+  | { ok: true; criteria: { body: string; line: number }[] }
+  | { ok: false; detail: string };
+
+/** The criteria a document attached in this turn's room gives, verbatim, or the line it could not take. */
+async function documentCriteria(
+  ctx: Parameters<ContextScopedMcpToolFactory>[0],
+  from: z.infer<typeof criteriaFrom>,
+  written: number,
+): Promise<Taken> {
+  if (written > 0) {
+    return {
+      ok: false,
+      detail: `this call names ${written} criteria and criteriaFrom both; the criteria come from one place — send criteria: [] to take them from ${from.file}`,
+    };
+  }
+  const read = ctx.turn?.readDocument;
+  if (!read) {
+    return {
+      ok: false,
+      detail:
+        'criteriaFrom reads a document attached in a conversation, and this call was not made from one',
+    };
+  }
+  const doc = await read(from.file);
+  if (!doc.ok) return { ok: false, detail: doc.reason };
+  const parsed = criteriaFromDocument(doc.text, { file: doc.name, section: from.section });
+  return parsed.ok ? parsed : { ok: false, detail: parsed.detail };
+}
+
+const PREVIEW_ENDS = 3;
+
+function previewOf(from: z.infer<typeof criteriaFrom>, criteria: { body: string; line: number }[]) {
+  const first = criteria[0]?.line ?? 0;
+  const last = criteria[criteria.length - 1]?.line ?? 0;
+  return {
+    file: from.file,
+    ...(from.section ? { section: from.section } : {}),
+    criteria: criteria.length,
+    lines: `${first}-${last}`,
+    first: criteria.slice(0, PREVIEW_ENDS),
+    last: criteria.length > PREVIEW_ENDS * 2 ? criteria.slice(-PREVIEW_ENDS) : [],
+    written: false,
+  };
+}
 
 export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirement_revise',

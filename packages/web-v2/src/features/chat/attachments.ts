@@ -9,7 +9,12 @@
 import {
   ATTACHMENT_NAME_MAX_BYTES,
   attachmentNameExceedsBudget,
+  CONVERSATION_ATTACHMENT_TYPES,
   CONVERSATION_MIMES,
+  conversationAcceptedList,
+  conversationAttachmentType,
+  conversationTypeOfFile,
+  formatAttachmentCap,
   safeAttachmentName,
   SESSION_MIMES,
 } from "@forge/contracts/attachments";
@@ -27,6 +32,10 @@ export interface AttachmentPolicy {
    * what the composer can say before the bytes are sent, not a second rule.
    */
   maxBytes: number;
+  /** The cap for one type, where a target caps its types apart; absent, every type takes `maxBytes`. */
+  capOf?: (mime: string) => number;
+  /** The type a file is staged as, where the browser's own can be missing or wrong; absent, `file.type`. */
+  typeOfFile?: (file: File) => string;
   maxFiles: number;
   /** How the refusal names what IS taken. */
   takes: string;
@@ -35,10 +44,12 @@ export interface AttachmentPolicy {
 export const CONVERSATION_ATTACHMENTS: AttachmentPolicy = {
   target: "conversation",
   mimes: CONVERSATION_MIMES,
-  extensions: [".png", ".jpg", ".jpeg", ".gif", ".webp"],
-  maxBytes: 10 * 1024 * 1024,
+  extensions: CONVERSATION_ATTACHMENT_TYPES.flatMap((t) => t.extensions),
+  maxBytes: Math.max(...CONVERSATION_ATTACHMENT_TYPES.map((t) => t.maxBytes)),
+  capOf: (mime) => conversationAttachmentType(mime)?.maxBytes ?? 0,
+  typeOfFile: (file) => conversationTypeOfFile(file.name, file.type),
   maxFiles: 10,
-  takes: "a PNG, JPEG, GIF or WebP image",
+  takes: conversationAcceptedList(),
 };
 
 export const SESSION_ATTACHMENTS: AttachmentPolicy = {
@@ -87,8 +98,12 @@ function named(file: File): string {
   return file.name || "an unnamed file";
 }
 
-function typeOf(file: File): string {
-  return file.type || "no type the browser could name";
+function typeOf(file: File, policy: AttachmentPolicy): string {
+  return policy.typeOfFile?.(file) ?? file.type;
+}
+
+function namedType(type: string): string {
+  return type || "no type the browser could name";
 }
 
 /**
@@ -104,21 +119,25 @@ export function stageFiles(
   const refused: StagingRefusal[] = [];
   let room = policy.maxFiles - alreadyStaged;
   for (const file of picked) {
+    const type = typeOf(file, policy);
     if (file.size <= 0) {
       refused.push({ name: named(file), reason: "it is empty" });
       continue;
     }
-    if (file.size > policy.maxBytes) {
+    if (!policy.mimes.includes(type)) {
       refused.push({
         name: named(file),
-        reason: `it is ${formatSize(file.size)} and a ${policy.target} takes files up to ${formatSize(policy.maxBytes)}`,
+        reason: `${namedType(type)} is not a type a ${policy.target} takes — attach ${policy.takes}`,
       });
       continue;
     }
-    if (!policy.mimes.includes(file.type)) {
+    const cap = policy.capOf?.(type) ?? policy.maxBytes;
+    if (file.size > cap) {
       refused.push({
         name: named(file),
-        reason: `${typeOf(file)} is not a type a ${policy.target} takes — attach ${policy.takes}`,
+        reason: policy.capOf
+          ? `it is ${formatSize(file.size)} of ${type}, and a ${policy.target} takes ${type} up to ${formatAttachmentCap(cap)} — attach ${policy.takes}`
+          : `it is ${formatSize(file.size)} and a ${policy.target} takes files up to ${formatSize(cap)}`,
       });
       continue;
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filingTitle, turnWrites } from './turn-writes.js';
+import { filingTitle, isWriteCall, turnWrites } from './turn-writes.js';
 
 const filing = (title: string) =>
   JSON.stringify({ kind: 'bug', title, body: 'x', screen: '/projects/hop/tags' });
@@ -69,5 +69,23 @@ describe('a record from chat is made once per turn and title', () => {
     expect(filingTitle('forge_requirement_revise', JSON.stringify({ title: 'x' }))).toBeNull();
     expect(filingTitle('forge', JSON.stringify({ argv: ['comment', 'ISS-1', '-'] }))).toBeNull();
     expect(filingTitle('forge_knowledge', filing('x'))).toBeNull();
+  });
+
+  it('takes a preview for the read it is, so the draft it showed is still recorded after it', async () => {
+    const draft = { title: 'Panel width', criteriaFrom: { file: 'spec.md' } };
+    expect(
+      filingTitle('forge_requirement_draft', JSON.stringify({ ...draft, preview: true })),
+    ).toBeNull();
+    expect(
+      isWriteCall('forge_requirement_draft', JSON.stringify({ ...draft, preview: true })),
+    ).toBe(false);
+    const t = tracker();
+    const writes = turnWrites(t.tools);
+    await writes.tools?.execute(
+      'forge_requirement_draft',
+      JSON.stringify({ ...draft, preview: true }),
+    );
+    await writes.tools?.execute('forge_requirement_draft', JSON.stringify(draft));
+    expect(t.filed()).toBe(2);
   });
 });

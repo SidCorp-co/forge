@@ -64,9 +64,18 @@ function argvOf(argsJson: string): string[] | null {
   }
 }
 
-/** The title a record tool files a new item under, or null for any other call. */
+/** A record tool asked only to show what it would record (`preview: true`): a read, which files nothing. */
+function isPreview(argsJson: string): boolean {
+  try {
+    return (JSON.parse(argsJson) as { preview?: unknown }).preview === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The title a record tool files a new item under, or null for any other call and for a preview. */
 export function filingTitle(name: string, argsJson: string): string | null {
-  if (!RECORD_TOOLS.has(name)) return null;
+  if (!RECORD_TOOLS.has(name) || isPreview(argsJson)) return null;
   try {
     const title = (JSON.parse(argsJson) as { title?: unknown }).title;
     return typeof title === 'string' && title.trim() ? title : null;
@@ -89,7 +98,7 @@ const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g;
 
 /** Did this call change something? The `forge` verbs and flags that write, and the record and note tools. */
 export function isWriteCall(name: string, argsJson: string): boolean {
-  if (WRITE_TOOLS.has(name)) return true;
+  if (WRITE_TOOLS.has(name)) return !isPreview(argsJson);
   if (name !== CLI_TOOL) return false;
   const argv = argvOf(argsJson);
   if (!argv?.[0]) return false;
