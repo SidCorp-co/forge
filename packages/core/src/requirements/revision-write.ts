@@ -302,8 +302,65 @@ export async function newRevisionIn(
   return writeCriteria(tx, requirementId, next, write.criteria);
 }
 
+/**
+ * Rewrites open revision `revision` whole, in place: its text, its author and its criteria, which
+ * are reset to what the revisions before it left and re-applied (a code it gave may be named again).
+ * A person's edit of their draft keeps its state; an accepted revision_diff built on the open
+ * revision lands it at `landing` (REQ-30 BC-3: the BA improves a new requirement's draft).
+ */
+export async function rewriteRevisionIn(
+  tx: Tx,
+  input: {
+    projectId: string;
+    requirementId: string;
+    revision: number;
+    actor: RequirementActor;
+    write: RevisionWrite;
+    landing?: RevisionLanding | undefined;
+  },
+): Promise<RequirementRefusal[] | null> {
+  const { projectId, requirementId, revision, actor } = input;
+  const stored = storedWrite(await dataPolicyOf(projectId), input.write);
+  const asked = await withAskedQuestions(tx, {
+    projectId,
+    requirementId,
+    spec: specOf(stored.spec),
+  });
+  if ('refusals' in asked) return asked.refusals;
+  const { landing } = input;
+  await tx
+    .update(requirementRevisions)
+    .set({
+      spec: asked.spec,
+      tldr: stored.tldr ?? null,
+      changeSummary: stored.changeSummary ?? null,
+      reason: stored.reason.trim(),
+      authorId: actor.userId,
+      authorAgency: actor.agency,
+      writtenLang: await writtenLangFor(
+        actor,
+        projectId,
+        input.write.writtenLang,
+        tx,
+        [input.write.reason, input.write.changeSummary, input.write.tldr].join('\n'),
+      ),
+      ...(stored.fromSuggestionId ? { fromSuggestionId: stored.fromSuggestionId } : {}),
+      ...(landing?.state === 'proposed'
+        ? { state: 'proposed' as const, proposedAt: new Date(), proposedBy: landing.proposedBy }
+        : {}),
+    })
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, requirementId),
+        eq(requirementRevisions.revision, revision),
+      ),
+    );
+  const own = await resetDraftCriteria(tx, requirementId, revision);
+  return writeCriteria(tx, requirementId, revision, stored.criteria, own);
+}
+
 /** The open (draft or proposed) revision of a requirement, if any. */
-async function openRevisionOf(tx: Tx, requirementId: string) {
+export async function openRevisionOf(tx: Tx, requirementId: string) {
   const [open] = await tx
     .select({ revision: requirementRevisions.revision, state: requirementRevisions.state })
     .from(requirementRevisions)

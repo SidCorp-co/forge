@@ -26,7 +26,7 @@ effect is written in the accept's own transaction and points back at it. The doo
 ### The kinds, and what each targets
 | Kind | Target | Accepting it writes |
 |---|---|---|
-| \`revision_diff\` | a requirement | a new revision on that requirement, authored by the producer and **proposed** by whoever accepts the suggestion (the accept is its propose); never a current one, so the requirement's own accept, which re-baselines it, still follows |
+| \`revision_diff\` | a requirement | a new revision on that requirement (or, built on its open draft or proposed revision, that revision rewritten), authored by the producer and **proposed** by whoever accepts the suggestion (the accept is its propose); never a current one, so the requirement's own accept, which re-baselines it, still follows |
 | \`requirement_draft\` | an issue, or an approved journey design (a first requirement) | a new requirement at revision 1, a draft; on a journey it is linked to that design and the approved \`designs\` it names. A design not approved is \`SUGGESTION_DESIGN_NOT_APPROVED\`, one the project lacks \`SUGGESTION_DESIGN_UNKNOWN\`, and a second on a journey \`SUGGESTION_JOURNEY_SUGGESTED\` |
 | \`readiness\` | a requirement | the readiness result at its base revision, which an agree reads when the project gates on readiness |
 | \`breakdown\` | a requirement | every proposed issue, filed at **draft** with its complexity, priority and category, linked to the requirement, traced to its BCs, edged by \`blockedBy\`, linked as the build of the pinned design it builds and waiting on each provider version its \`contractWaits\` names, in one transaction; nothing dispatches until they are promoted, the build gate holds each until its design is approved, and a wait holds it until a version at or above it is approved |
@@ -39,9 +39,15 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
 
 ### The base revision is checked twice
 - On a requirement, \`baseRevision\` is the head you read; on an issue or a feedback item, and on a
-  requirement with no current revision yet, it is \`null\`.
-- It is compared with the head **when the suggestion is written and again when it is accepted**. A moved
-  head is \`SUGGESTION_BASE_STALE\`, naming both revisions. At accept the row is also marked \`stale\`.
+  requirement with no current revision yet, it is \`null\`. A \`revision_diff\` on a requirement with an
+  open (draft or proposed) revision is based on that open revision instead, and its accept rewrites
+  that revision in place, landing it proposed: a new requirement's draft can be improved before it is
+  ever agreed (REQ-30 BC-3).
+- It is compared with the head (or that open revision) **when the suggestion is written and again
+  when it is accepted**. A moved base is \`SUGGESTION_BASE_STALE\`, naming both revisions. At accept the
+  row is also marked \`stale\`.
+- The BA assistant's \`ba_suggest\` takes no base from the model: it uses what that turn's
+  \`ba_read_requirement\` returned, or reads it at creation.
 - Every proposed suggestion on a requirement goes \`stale\` the moment a newer revision of it is
   accepted, and accepting one \`revision_diff\` stales the other proposed suggestions on that
   requirement. Read the head again and propose against it; never re-send a stale payload unchanged.

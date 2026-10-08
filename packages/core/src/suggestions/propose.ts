@@ -28,6 +28,7 @@ import { firstRequirementRefusalsIn } from './first-requirement.js';
 import {
   headOf,
   onTarget,
+  openBaseOf,
   resolveTarget,
   rowOf,
   type SuggestionActor,
@@ -54,7 +55,7 @@ import {
   answer,
   inTx,
   lockTarget,
-  movedBase,
+  movedBaseIn,
   recordDecision,
   type SuggestionOutcome,
 } from './write.js';
@@ -190,7 +191,7 @@ export async function createSuggestion(input: {
   const refusals = await inTx(async (tx) => {
     await lockTarget(tx, projectId, target);
     const head = await headOf(tx, projectId, target);
-    const stale = baseStaleRefusal(input.baseRevision, head);
+    const stale = baseStaleRefusal(input.baseRevision, head, await openBaseOf(tx, kind, target));
     if (stale) return [stale];
     const proposed = await proposeIn(
       tx,
@@ -256,7 +257,7 @@ export async function reviseSuggestion(input: {
     await lockTarget(tx, projectId, target);
     const row = await rowOf(tx, projectId, input.id, true);
     const head = await headOf(tx, projectId, target);
-    const moved = movedBase(row, target, head);
+    const moved = await movedBaseIn(tx, row, target, head);
     if (row.status === 'stale' && moved) return [moved];
     const decided = decidedRefusal(row.status);
     if (decided) return [decided];

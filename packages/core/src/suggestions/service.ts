@@ -47,7 +47,7 @@ import {
   answer,
   inTx,
   lockTarget,
-  movedBase,
+  movedBaseIn,
   recordDecision,
   type SuggestionOutcome,
 } from './write.js';
@@ -221,7 +221,7 @@ export async function acceptSuggestion(input: {
     if (first.kind === 'requirement_draft') await lockRequirements(tx, projectId);
     const row = await rowOf(tx, projectId, input.id, true);
     const head = await headOf(tx, projectId, target);
-    const moved = movedBase(row, target, head);
+    const moved = await movedBaseIn(tx, row, target, head);
     if (row.status === 'stale' && moved) return [moved];
     const decided = decidedRefusal(row.status);
     if (decided) return [decided];

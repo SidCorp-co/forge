@@ -20,7 +20,9 @@ import {
   createRequirementIn,
   dropAsDuplicateIn,
   newRevisionIn,
+  openRevisionOf,
   type RevisionWrite,
+  rewriteRevisionIn,
   rowIn,
 } from '../requirements/index.js';
 import { breakdownEffect } from './breakdown.js';
@@ -82,15 +84,29 @@ export async function writeEffect(
   if (row.kind === 'revision_diff' && target.type === 'requirement') {
     const write = SUGGESTION_PAYLOADS.revision_diff.schema.parse(row.payload) as RevisionWrite;
     // feedback-triage `revision`: the accept of the suggestion is the revision's propose, so the
-    // only act it still owes is the accept that re-baselines it; it is never left at draft
-    const refusals = await newRevisionIn(tx, {
-      requirementId: target.id,
-      head,
-      baseRevision: row.baseRevision,
-      actor: authorOf(row, actor),
-      write: { ...write, fromSuggestionId: row.id },
-      landing: { state: 'proposed', proposedBy: actor.userId },
-    });
+    // only act it still owes is the accept that re-baselines it; it is never left at draft. Built on
+    // the open revision (a new requirement's draft, REQ-30 BC-3), it rewrites that one in place
+    const open = await openRevisionOf(tx, target.id);
+    const landing = { state: 'proposed', proposedBy: actor.userId } as const;
+    const authored = { ...write, fromSuggestionId: row.id };
+    const refusals =
+      open && open.revision === row.baseRevision
+        ? await rewriteRevisionIn(tx, {
+            projectId,
+            requirementId: target.id,
+            revision: open.revision,
+            actor: authorOf(row, actor),
+            write: authored,
+            landing,
+          })
+        : await newRevisionIn(tx, {
+            requirementId: target.id,
+            head,
+            baseRevision: row.baseRevision,
+            actor: authorOf(row, actor),
+            write: authored,
+            landing,
+          });
     if (refusals?.length) return { refusals };
     const [written] = await tx
       .select({ revision: requirementRevisions.revision })

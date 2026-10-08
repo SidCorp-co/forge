@@ -20,14 +20,25 @@ import {
   refusedAnswer,
 } from '../../lib/tool.js';
 import { readRequirementAs, similarRequirements } from '../../requirements/index.js';
-import { createSuggestion, listSuggestions } from '../../suggestions/index.js';
+import { createSuggestion, listSuggestions, suggestionBaseOf } from '../../suggestions/index.js';
 import { askClarification, clarificationOf, sendQuestionnaire } from './ba-ask-tools.js';
 import { drawMockup } from './ba-mockup-tool.js';
 import { actorOf, type BaRoom, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
+/**
+ * What this turn's ba_read_requirement returned, which ba_suggest bases its suggestion on: the
+ * model never types a base (forge-dev 0.4.0-dev.193, REQ-31 and REQ-36: it sent the draft it had
+ * read, 1, and was refused SUGGESTION_BASE_STALE against "no revision"). The toolset is built per
+ * turn, so this is the turn's read; unread, the server reads the base at creation.
+ */
+interface TurnRead {
+  head: number | null;
+  open: number | null;
+}
+
 const readRequirement =
-  (room: BaRoom): ContextScopedMcpToolFactory =>
+  (room: BaRoom, seen: { read: TurnRead | null }): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_read_requirement',
     reach: 'project',
@@ -43,6 +54,14 @@ const readRequirement =
         room.requirementId,
         MCP_DOOR,
       );
+      const latest = detail.latestRevision;
+      seen.read = {
+        head: detail.currentRevision,
+        open:
+          latest && (latest.state === 'draft' || latest.state === 'proposed')
+            ? latest.revision
+            : null,
+      };
       const [waiting, clarification, embedding] = await Promise.all([
         listSuggestions({
           projectId: room.projectId,
@@ -152,7 +171,6 @@ const findSimilar =
 
 const suggestInput = z.strictObject({
   kind: z.enum(SUGGESTION_KINDS),
-  baseRevision: z.number().int().min(1).nullable(),
   payload: z.record(z.string(), z.unknown()),
   issue: z
     .string()
@@ -184,17 +202,25 @@ function chatModel(): string | null {
 }
 
 const suggest =
-  (room: BaRoom): ContextScopedMcpToolFactory =>
+  (room: BaRoom, seen: { read: TurnRead | null }): ContextScopedMcpToolFactory =>
   (ctx) => ({
     name: 'ba_suggest',
     reach: 'project',
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Propose a change for a person to accept or reject. kind revision_diff: payload { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] } — the whole criteria list of the new revision: a criterion kept or reworded names its live code; a NEW criterion carries NO code, never one you number yourself, and Forge gives it the next; a code that is not live on baseRevision is refused at once, CRITERION_CODE_UNKNOWN; a live criterion left out is retired. In spec, write what the revision leaves unsettled as spec.openQuestions [{ question, whoAnswers, blocking }] (a blocking one still open refuses the agree, REQUIREMENT_OPEN_QUESTIONS; keep the questionId of one already asked) and what it takes as true without proof as spec.assumptions [{ text, owner, confirmBy }], never as prose in goal or scope. readiness: { checks: [{ check, passed, detail? }] }. A breakdown takes suggestions.write (PERMISSION_FORBIDDEN without it). duplicate: { duplicateOf, similarity?, note? }. requirement_draft / triage target an issue (pass `issue`); a first requirement for a journey is drafted in its case room. baseRevision is the currentRevision you read (null when there is none).',
+      'Propose a change for a person to accept or reject; its base is the requirement as you read it this turn. Each kind takes its own payload. revision_diff: { reason, spec?, tldr?, changeSummary?, criteria: [{ code?, body, form? }] }, the WHOLE criteria list: a kept or reworded criterion names its live code, a new one carries no code (Forge numbers it), an unknown code is refused (CRITERION_CODE_UNKNOWN), a live one left out is retired; spec.openQuestions [{ question, whoAnswers, blocking }] and spec.assumptions [{ text, owner, confirmBy }] hold what is unsettled or unproven. On a requirement with an open draft or proposed revision it rewrites that revision. readiness: { checks: [{ check, passed, detail? }] }, a kind of its own, never a key of revision_diff. duplicate: { duplicateOf, similarity?, note? }. breakdown needs suggestions.write. requirement_draft and triage target an issue: pass `issue`.',
     inputSchema: schema(suggestInput),
     handler: async (args) => {
       const input = suggestInput.parse(args);
+      const read = seen.read;
+      const baseRevision = input.issue
+        ? null
+        : read
+          ? input.kind === 'revision_diff'
+            ? (read.open ?? read.head)
+            : read.head
+          : await suggestionBaseOf(room.projectId, room.requirementId, input.kind);
       const outcome = await createSuggestion({
         projectId: room.projectId,
         actor: actorOf(ctx),
@@ -202,7 +228,7 @@ const suggest =
         producerId: ctx.turn?.handleUserId ?? null,
         kind: input.kind,
         target: input.issue ? { issue: input.issue } : { requirement: room.requirementId },
-        baseRevision: input.baseRevision,
+        baseRevision,
         payload: input.payload,
         model: chatModel(),
         conversationMessageId: await latestMessageId(ctx.turn?.conversationId),
@@ -215,6 +241,7 @@ const suggest =
           id: outcome.suggestion.id,
           kind: outcome.suggestion.kind,
           status: 'proposed',
+          baseRevision: outcome.suggestion.baseRevision,
         },
         note: 'Waiting on a person to accept or reject it on the requirement page.',
       };
@@ -223,11 +250,12 @@ const suggest =
 
 /** The BA door's whole catalog, bound to the room's requirement. */
 export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
+  const seen: { read: TurnRead | null } = { read: null };
   return buildToolset(ctx, [
-    { factory: readRequirement(room) },
+    { factory: readRequirement(room, seen) },
     { factory: readIssue(room) },
     { factory: findSimilar(room) },
-    { factory: suggest(room) },
+    { factory: suggest(room, seen) },
     { factory: askClarification(room) },
     { factory: sendQuestionnaire(room) },
     { factory: drawMockup(room) },

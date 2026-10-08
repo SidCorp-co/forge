@@ -32,12 +32,17 @@ function shorten(text: string): string {
   return flat.length > ERROR_CHARS ? `${flat.slice(0, ERROR_CHARS)}…` : flat;
 }
 
-/** The error's own words, wherever this wire put them. */
+/** The error's own words, wherever this wire put them: a refusal's `message`, or the `{ error }` a
+ *  chat tool that threw answers (a BA turn's failed board read only "Failed", REQ-36). */
 function errorText(result: unknown): string {
   if (typeof result === "string") return shorten(result);
   if (result != null && typeof result === "object") {
     const m = (result as { message?: unknown }).message;
     if (typeof m === "string" && m.length > 0) return shorten(m);
+    const e = (result as { error?: unknown }).error;
+    if (typeof e === "string" && e.length > 0) return shorten(e);
+    const em = e != null && typeof e === "object" ? (e as { message?: unknown }).message : undefined;
+    if (typeof em === "string" && em.length > 0) return shorten(em);
   }
   return "";
 }

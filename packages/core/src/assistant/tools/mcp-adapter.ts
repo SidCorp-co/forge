@@ -62,7 +62,15 @@ export function toolError(message: string): CallToolResult {
 export function thrownMessage(err: unknown): string {
   const cause = (err as { cause?: unknown } | null)?.cause;
   if (cause instanceof Error && cause.message) return redactQueryParams(cause.message, err);
-  return redactQueryParams(err instanceof Error ? err.message : String(err), err);
+  const message = err instanceof Error ? err.message : String(err);
+  // a route helper's 400 says only "Invalid input" and keeps the reason in cause.details
+  // (middleware/route-errors.ts:badRequest); the turn is told the reason (forge-dev 2026-10-08, REQ-36)
+  const details = (cause as { details?: unknown } | null | undefined)?.details;
+  if (details !== undefined && details !== null && details !== '') {
+    const why = typeof details === 'string' ? details : JSON.stringify(details);
+    return redactQueryParams(`${message}: ${why}`, err);
+  }
+  return redactQueryParams(message, err);
 }
 
 /** Flatten a result to the string the model reads as its `role:'tool'` message: text blocks joined, any other block (image, resource) JSON-serialised, capped at RESULT_CAP. */

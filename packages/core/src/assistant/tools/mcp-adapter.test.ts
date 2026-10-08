@@ -91,3 +91,16 @@ describe('the chat adapter over a project-bound turn', () => {
     );
   });
 });
+
+describe('a chat tool that threw', () => {
+  it('names the reason a route helper kept in cause.details, not only "Invalid input"', async () => {
+    const { badRequest } = await import('../../middleware/route-errors.js');
+    const { thrownMessage } = await import('./mcp-adapter.js');
+    // forge-dev 2026-10-08, REQ-36: ba_read_issue("REQ-34") answered the turn only "Invalid input"
+    expect(thrownMessage(badRequest('`REQ-34` is not an issue key of this project'))).toBe(
+      'Invalid input: `REQ-34` is not an issue key of this project',
+    );
+    expect(thrownMessage(badRequest({ field: 'issue' }))).toBe('Invalid input: {"field":"issue"}');
+    expect(thrownMessage(new Error('plain'))).toBe('plain');
+  });
+});

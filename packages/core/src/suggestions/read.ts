@@ -4,13 +4,13 @@
  */
 
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { SuggestionView } from '@forge/contracts/suggestions';
+import type { SuggestionKind, SuggestionView } from '@forge/contracts/suggestions';
 import { and, eq } from 'drizzle-orm';
-import type { Tx } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import type { KernelActor } from '../lifecycle/index.js';
 import { notFound } from '../middleware/route-errors.js';
-import { rowIn } from '../requirements/index.js';
+import { openRevisionOf, rowIn } from '../requirements/index.js';
 import type { SuggestionTarget } from './target.js';
 
 export interface SuggestionActor {
@@ -69,6 +69,23 @@ export const onTarget = (t: SuggestionTarget) =>
 /** The target's head revision: a requirement's current revision, none for an issue or feedback. */
 export async function headOf(tx: Tx, projectId: string, t: SuggestionTarget) {
   return t.type === 'requirement' ? (await rowIn(tx, projectId, t.id)).currentRevision : null;
+}
+
+/** The open revision a suggestion of `kind` builds on instead of the head: a revision_diff's on a
+ *  requirement with a draft or proposed revision; null for every other kind and target. */
+export async function openBaseOf(tx: Tx, kind: SuggestionKind, t: SuggestionTarget) {
+  return kind === 'revision_diff' && t.type === 'requirement' ? openRevisionOf(tx, t.id) : null;
+}
+
+/** The revision a new suggestion of `kind` on `t` is based on, read now: its open revision, else the head. */
+export async function baseOf(tx: Tx, projectId: string, kind: SuggestionKind, t: SuggestionTarget) {
+  return (await openBaseOf(tx, kind, t))?.revision ?? (await headOf(tx, projectId, t));
+}
+
+/** The base a producer that did not read the target this turn gets: read at creation, outside the
+ *  write's transaction, which still compares it with the target as it stands. */
+export function suggestionBaseOf(projectId: string, requirementId: string, kind: SuggestionKind) {
+  return baseOf(db, projectId, kind, { type: 'requirement', id: requirementId });
 }
 
 /** A suggestion of `projectId`, locked for update when asked; 404 otherwise. */

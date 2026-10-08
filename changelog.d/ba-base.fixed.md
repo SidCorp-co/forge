@@ -1,0 +1,1 @@
+**The BA assistant can improve a new requirement's draft.** Its suggestion takes the revision it read, no longer refused as stale; accepting it rewrites the open draft. A refused mockup or tool call now says why in the chat.
