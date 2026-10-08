@@ -16,7 +16,7 @@ import {
 	type ReportDocument,
 	TEMPLATE_NARRATIVE_SLOTS,
 } from "./report-templates.js";
-import { UTC_READING, blockToText, readInstantsIn } from "./visual-blocks.js";
+import { blockToText, readInstantsIn, UTC_READING } from "./visual-blocks.js";
 
 export const STATUS_REPORT_PRODUCERS = ["person", "schedule"] as const;
 export type StatusReportProducerKind = (typeof STATUS_REPORT_PRODUCERS)[number];
