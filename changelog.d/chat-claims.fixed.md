@@ -1,0 +1,1 @@
+**When the assistant says it recorded your feedback or drafted a requirement, that is checked against what it wrote.** A claim it cannot back is held instead of shown; a chat reply saying it created an issue is always held.
