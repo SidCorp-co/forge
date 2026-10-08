@@ -42,14 +42,24 @@ interface ReplyScreenInput {
    * figures are held to the runs these results name.
    */
   readonly restResults?: readonly string[];
+  /**
+   * The blocks held with this reply, posted with it if it passes. Given, a block's title and labels
+   * are read from them rather than from the turn's calls, which name blocks that were refused or
+   * belong to an answer this reply replaced.
+   */
+  readonly heldBlocks?: readonly unknown[];
 }
 
 /** What the figures rule reads of this turn, or nothing where the turn could run no report. */
 function figureInput(
   input: ReplyScreenInput,
+  held: readonly string[],
 ): { asked: string; texts: readonly string[] } | undefined {
   if (input.question === undefined) return undefined;
-  const sent = input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments);
+  const sent = [
+    ...input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments),
+    ...held,
+  ];
   if (input.restResults) return { asked: input.question, texts: [...input.restResults, ...sent] };
   if (!input.offeredTools?.some(isReportTool)) return undefined;
   return { asked: input.question, texts: [...(input.toolResults ?? []), ...sent] };
@@ -60,7 +70,8 @@ export async function screenReplyAtDoor(
   input: ReplyScreenInput,
 ): Promise<MessageVerdict> {
   const { audience, intent } = doorCell(door);
-  const figures = figureInput(input);
+  const held = input.heldBlocks?.map((b) => JSON.stringify(b));
+  const figures = figureInput(input, held ?? []);
   const facts = await gatherFacts({
     projectId: input.projectId,
     audience,
@@ -76,6 +87,7 @@ export async function screenReplyAtDoor(
       : {}),
     progress: input.progress,
     ...(figures ? { figures } : {}),
+    ...(held ? { heldBlocks: held } : {}),
     ...(input.executor ? { executor: input.executor } : {}),
   });
   const verdict = screenMessage({ audience, intent, segments: input.segments, facts });

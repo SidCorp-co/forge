@@ -4,6 +4,7 @@
 
 import { readSessionAsker, type SessionAsker } from '@forge/contracts/agent-sessions';
 import type { MemberLens } from '../db/schema.js';
+import { type DroppedBlock, type StagedBlock, stagedBlocksOf } from '../lib/staged-block.js';
 import type { ConversationVenue } from './ports.js';
 import type { ConversationImage } from './store.js';
 
@@ -87,6 +88,8 @@ export interface HeldReply {
   at: string;
   text: string;
   refusals: HeldRefusal[];
+  /** The blocks the session drew for this reply: held with it, never posted into the room. */
+  blocks: StagedBlock[];
 }
 
 /** Why the screen held a reply, as one plain sentence per rule it broke. */
@@ -120,6 +123,13 @@ export interface ConversationAgentMeta {
   failover?: { attempt: number; triedDeviceIds: string[] } | undefined;
   /** The reply the screen held, where it held one; stamped by the bridge. */
   held?: HeldReply | undefined;
+  /**
+   * The blocks the session posted over REST, waiting on its reply: posted above it if it passes,
+   * kept with it if it is held (`reports/routes.ts`, `conversation-agent-stage.ts`).
+   */
+  staged: StagedBlock[];
+  /** Blocks the session drew that nobody will see, and why; stamped by the bridge. */
+  droppedBlocks: DroppedBlock[];
   /** The pictures the turn carried, so a failover copies them onto its retry session too. */
   images: ConversationImage[];
 }
@@ -141,7 +151,15 @@ function heldOf(raw: unknown): HeldReply | undefined {
     (r): r is HeldRefusal =>
       !!r && str(r.rule) && str(r.why) && str(r.shape) && (r.quote === null || str(r.quote)),
   );
-  return { at: h.at, text: h.text, refusals };
+  return { at: h.at, text: h.text, refusals, blocks: stagedBlocksOf(h.blocks) };
+}
+
+function droppedOf(raw: unknown): DroppedBlock[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (d): d is DroppedBlock =>
+      !!d && str(d.kind) && str(d.why) && (d.runId === null || str(d.runId)),
+  );
 }
 
 export function readConversationAgentMeta(metadata: unknown): ConversationAgentMeta | null {
@@ -189,6 +207,8 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
     failure: typeof m.failure === 'string' ? m.failure : null,
     ...(m.failover ? { failover: m.failover as ConversationAgentMeta['failover'] } : {}),
     ...(held ? { held } : {}),
+    staged: stagedBlocksOf(m.staged),
+    droppedBlocks: droppedOf(m.droppedBlocks),
     images: imagesOf(m.images),
   };
 }

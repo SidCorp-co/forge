@@ -262,6 +262,11 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     if (!parts) {
       throw new Error(`rocketchat: "${venue.externalId}" is not a Rocket.Chat venue id`);
     }
+    if (opts?.blocks?.length) {
+      throw new Error(
+        `rocketchat: a reply to ${venue.externalId} carries ${opts.blocks.length} visual block(s), and a Rocket.Chat room draws none — a block is attached only in a Forge web room`,
+      );
+    }
     const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) {
       throw new Error(

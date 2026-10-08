@@ -1,13 +1,18 @@
 // What a room is told when an Agent session wrote a reply and the screen held it (dev, 2026-10-08:
 // conversation 218168c7 was told the session "ended without an answer" while the reply sat in the
-// transcript). The screen runs for real; the database, the transcript store and the room are fakes.
+// transcript), and what becomes of the blocks the session posted over REST meanwhile: released with a
+// reply that passes, held with one that is held, dropped by name with none (REQ-32 criteria 5 and 6).
+// The screen runs for real; the database, the transcript store and the room are fakes.
 
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { StagedBlock } from '../lib/staged-block.js';
 import { facts } from '../messaging/facts.js';
 
 const stamps: Array<{ field: string; value: unknown }> = [];
 const delivered: string[] = [];
+const released: unknown[][] = [];
+let staged: StagedBlock[] = [];
 const recorded: string[] = [];
 let deliver: ((session: unknown) => Promise<void>) | null = null;
 let transcript: unknown[] = [];
@@ -42,6 +47,13 @@ vi.mock('../messaging/gather.js', () => ({
     }),
 }));
 
+vi.mock('./conversation-agent-stage.js', () => ({
+  agentTurnOfSession: async () => ({
+    found: true,
+    turn: { conversationId: 'c', question: 'q', settled: true, staged },
+  }),
+}));
+
 vi.mock('./conversation-agent-failover.js', () => ({
   redispatchConversationAgentTurn: async () => ({ ok: false, status: 'exhausted' }),
 }));
@@ -57,8 +69,9 @@ const { registerConversationTransport } = await import('./ports.js');
 
 registerConversationTransport({
   adapter: 'web',
-  deliver: async (_venue, message) => {
+  deliver: async (_venue, message, opts) => {
     delivered.push(message.text);
+    released.push([...(opts?.blocks ?? [])]);
     return { messageId: 'm-1' };
   },
   fetchHistory: async () => [],
@@ -97,6 +110,8 @@ const stamped = (field: string) => stamps.filter((s) => s.field === field).map((
 beforeEach(() => {
   stamps.length = 0;
   delivered.length = 0;
+  released.length = 0;
+  staged = [];
   recorded.length = 0;
 });
 
@@ -170,5 +185,71 @@ describe('a held reply reads back as held, and only its asker reads the reply', 
     expect(other.held?.reason).toBe(asker.held?.reason);
     expect(other.held?.reply).toBeNull();
     expect(agentTurnRow(row, meta, null).held?.reply).toBeNull();
+  });
+});
+
+const table: StagedBlock = {
+  text: '| Requirement |\n| --- |\n| REQ-1 |',
+  block: {
+    type: 'visual',
+    visual: { v: 1, kind: 'table', columns: ['key'], source: { runId: 'run-1' } },
+    run: {
+      runId: 'run-1',
+      queryId: 'progress-by-requirement',
+      version: 1,
+      asOf: '2026-10-08T09:30:00.000Z',
+    },
+  },
+  kind: 'table',
+  runId: 'run-1',
+  projectId: 'p-1',
+  askerUserId: 'u-asker',
+};
+
+describe('the blocks an Agent session posted wait on its reply', () => {
+  it('are released with a reply that passes, posted with it and not before', async () => {
+    staged = [table];
+    transcript = said(HELD);
+    await deliver?.(session('completed'));
+    expect(delivered).toEqual([HELD]);
+    expect(released).toEqual([[table]]);
+    expect(stamped('droppedBlocks')).toEqual([]);
+  });
+
+  it('are held with a held reply: never posted, kept on the held reply, and read back by its asker alone', async () => {
+    const { readConversationAgentMeta } = await import('./conversation-agent-meta.js');
+    const { agentTurnRow } = await import('./conversation-agent-read.js');
+    staged = [table];
+    transcript = said('Mình sẽ kiểm tra lại độ rộng panel và báo lại bạn sau.'); // i18n-allow: an empty promise the screen holds
+    await deliver?.(session('completed'));
+    expect(released).toEqual([[]]);
+    const [held] = stamped('held') as Array<{ blocks: StagedBlock[] }>;
+    expect(held?.blocks).toEqual([table]);
+
+    const meta = readConversationAgentMeta({
+      conversationAgent: { ...session('completed').metadata.conversationAgent, held, staged },
+    });
+    if (!meta) throw new Error('the stamped marker did not read back');
+    const row = { id: 's-1', status: 'completed', runtimeState: null };
+    expect(agentTurnRow(row, meta, 'u-asker').held?.blocks).toEqual([table.block]);
+    expect(agentTurnRow(row, meta, 'u-someone-else').held?.blocks).toBeNull();
+    expect(agentTurnRow(row, meta, null).held?.blocks).toBeNull();
+  });
+
+  it('are dropped by name when the session left no reply, and never posted', async () => {
+    staged = [table];
+    transcript = [];
+    await deliver?.(session('completed'));
+    expect(delivered).toEqual([FAILED]);
+    expect(released).toEqual([[]]);
+    expect(stamped('droppedBlocks')).toEqual([
+      [
+        {
+          kind: 'table',
+          runId: 'run-1',
+          why: 'no reply went out: the session finished without writing a reply',
+        },
+      ],
+    ]);
   });
 });

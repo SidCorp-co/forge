@@ -21,6 +21,7 @@ import {
 } from '../agent-sessions/index.js';
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
+import { droppedAs, type StagedBlock } from '../lib/staged-block.js';
 import { refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
@@ -33,17 +34,19 @@ import {
   heldBecause,
   readConversationAgentMeta,
 } from './conversation-agent-meta.js';
+import { agentTurnOfSession } from './conversation-agent-stage.js';
 import { codeAuthored, conversationTransport, type ScreenedMessage, screened } from './ports.js';
 import { recordDeliveredReply } from './transcript.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
 /**
- * What the venue is told: the screened reply, a notice that the screen held the reply the session
- * wrote, or — only where the session left no reply at all — the door's failure sentence.
+ * What the venue is told: the screened reply with the blocks it releases, a notice that the screen
+ * held the reply the session wrote (its blocks held with it), or — only where the session left no
+ * reply at all — the door's failure sentence.
  */
 type Outcome =
-  | { kind: 'answered'; message: ScreenedMessage }
+  | { kind: 'answered'; message: ScreenedMessage; blocks: readonly StagedBlock[] }
   | { kind: 'held'; message: ScreenedMessage; held: HeldReply }
   | { kind: 'failed'; message: ScreenedMessage; failure: string };
 
@@ -146,7 +149,11 @@ function heldNotice(meta: ConversationAgentMeta, held: HeldReply): string {
   return `The agent wrote a reply, but the reply check held it back. ${heldBecause(held.refusals)} ${HELD_REPLY_IS[meta.door]}`;
 }
 
-async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta): Promise<Outcome> {
+async function composeOutcome(
+  session: SessionRow,
+  meta: ConversationAgentMeta,
+  staged: readonly StagedBlock[],
+): Promise<Outcome> {
   const messages = session.status === 'completed' ? await readTranscript(session.id) : [];
   const text = session.status === 'completed' ? finalAssistantText(messages) : null;
   if (!text) {
@@ -168,6 +175,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
         progress: readProgressFacts(session.metadata),
         question: meta.question,
         restResults: toolResultTexts(messages),
+        heldBlocks: staged.map((b) => b.block.visual),
       }),
     rewrite: () => {
       throw new Error(`${meta.door} declares no repair; nothing can ask that session again`);
@@ -180,7 +188,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
         `conversation-agent-bridge: session ${session.id} passed the ${meta.door} screen over a text its proof does not cover`,
       );
     }
-    return { kind: 'answered', message };
+    return { kind: 'answered', message, blocks: staged };
   }
   const held: HeldReply = {
     at: new Date().toISOString(),
@@ -191,16 +199,42 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
       quote: r.quote,
       shape: r.shape,
     })),
+    blocks: [...staged],
   };
   logger.warn(
     {
       sessionId: session.id,
       conversationId: meta.conversationId,
       rules: held.refusals.map((r) => r.rule),
+      heldBlocks: staged.length,
     },
     'conversation-agent-bridge: the screen held the session reply; the room is told why',
   );
   return { kind: 'held', message: codeAuthored(heldNotice(meta, held)), held };
+}
+
+/** The blocks waiting on this session's reply, read once its delivery is claimed and nothing more can join them. */
+async function stagedOf(sessionId: string): Promise<StagedBlock[]> {
+  const read = await agentTurnOfSession(sessionId);
+  return read.found ? (read.turn?.staged ?? []) : [];
+}
+
+/** Name in the turn's record the blocks nobody will see, and why. */
+async function stampDropped(
+  session: SessionRow,
+  meta: ConversationAgentMeta,
+  staged: readonly StagedBlock[],
+  why: string,
+): Promise<void> {
+  if (staged.length === 0) return;
+  logger.warn(
+    { sessionId: session.id, conversationId: meta.conversationId, blocks: staged.length, why },
+    'conversation-agent-bridge: the blocks this turn drew are dropped',
+  );
+  await setSessionMarkerField(session.id, CONVERSATION_AGENT_MARKER, 'droppedBlocks', [
+    ...meta.droppedBlocks,
+    ...droppedAs(staged, why),
+  ]);
 }
 
 /**
@@ -241,6 +275,7 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
   }
 
   if (!(await claimDelivery(session, null))) return;
+  const staged = await stagedOf(session.id);
 
   if (
     session.status !== 'completed' &&
@@ -248,19 +283,32 @@ async function deliverConversationAgentReplyOnce(session: SessionRow): Promise<v
   ) {
     const failover = await redispatchConversationAgentTurn(session);
     if (failover.ok) {
+      await stampDropped(
+        session,
+        meta,
+        staged,
+        'the turn moved to another box, whose session draws its own blocks',
+      );
       await stampDelivered(session.id);
       return;
     }
   }
 
-  const outcome = await composeOutcome(session, meta);
+  const outcome = await composeOutcome(session, meta, staged);
   const { message } = outcome;
   if (outcome.kind === 'held') {
     await setSessionMarkerField(session.id, CONVERSATION_AGENT_MARKER, 'held', outcome.held);
   }
+  if (outcome.kind === 'failed') {
+    await stampDropped(session, meta, staged, `no reply went out: ${outcome.failure}`);
+  }
 
   try {
-    const receipt = await transport.deliver(meta.venue, message);
+    const receipt = await transport.deliver(
+      meta.venue,
+      message,
+      outcome.kind === 'answered' ? { blocks: outcome.blocks } : undefined,
+    );
     await recordDeliveredReply({
       conversationId: meta.conversationId,
       projectId: meta.venue.projectId,

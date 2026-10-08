@@ -59,18 +59,21 @@ export async function claimSessionMetadataDelivery(
 
 /**
  * Merge `stamp` into one metadata key while neither its `claimedAt` nor its `deliveredAt` is set:
- * false when another writer claimed it first. `metadata` is the row as the caller read it.
+ * false when another writer claimed it first. The merge is made on the row as it holds it now, so a
+ * field another writer set since `session` was read (a block staged by `appendUnclaimedMarkerItem`)
+ * survives the claim.
  */
 export async function claimSessionMarker(
-  session: { id: string; metadata: unknown },
+  session: { id: string },
   key: string,
   stamp: Record<string, unknown>,
 ): Promise<boolean> {
-  const prev = (session.metadata as Record<string, unknown>) ?? {};
-  const prevMarker = (prev[key] as Record<string, unknown>) ?? {};
   const claimed = await db
     .update(agentSessions)
-    .set({ metadata: { ...prev, [key]: { ...prevMarker, ...stamp } } as never })
+    .set({
+      metadata: sql`jsonb_set(coalesce(${agentSessions.metadata}, '{}'::jsonb), ARRAY[${key}::text],
+        coalesce(${agentSessions.metadata} -> ${key}::text, '{}'::jsonb) || ${JSON.stringify(stamp)}::jsonb, true)`,
+    })
     .where(
       and(
         eq(agentSessions.id, session.id),
@@ -79,6 +82,34 @@ export async function claimSessionMarker(
     )
     .returning({ id: agentSessions.id });
   return claimed.length > 0;
+}
+
+/**
+ * Append `item` to the list `field` under one metadata key, only while that key's `claimedAt` and
+ * `deliveredAt` are both unset: false once a writer has claimed it, so nothing joins a delivery
+ * already taken.
+ */
+export async function appendUnclaimedMarkerItem(
+  agentSessionId: string,
+  key: string,
+  field: string,
+  item: unknown,
+): Promise<boolean> {
+  const appended = await db
+    .update(agentSessions)
+    .set({
+      metadata: sql`jsonb_set(${agentSessions.metadata}, ARRAY[${key}::text, ${field}::text],
+        coalesce(${agentSessions.metadata} -> ${key}::text -> ${field}::text, '[]'::jsonb) || jsonb_build_array(${JSON.stringify(item)}::jsonb), true)`,
+    })
+    .where(
+      and(
+        eq(agentSessions.id, agentSessionId),
+        sql`${agentSessions.metadata} -> ${key}::text IS NOT NULL`,
+        sql`(${agentSessions.metadata} -> ${key}::text ->> 'claimedAt') IS NULL AND (${agentSessions.metadata} -> ${key}::text ->> 'deliveredAt') IS NULL`,
+      ),
+    )
+    .returning({ id: agentSessions.id });
+  return appended.length > 0;
 }
 
 /** Merge `stamp` into one metadata key as the row holds it now. */

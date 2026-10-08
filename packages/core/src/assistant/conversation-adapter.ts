@@ -7,13 +7,18 @@ import type {
   ScreenedMessage,
 } from '../conversations/index.js';
 import {
+  appendMessages,
   assertConversationReadable,
+  type DeliveryOptions,
   findConversation,
+  handleForProject,
   listParticipants,
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { publishEphemeral } from '../lib/ephemeral.js';
+import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
 
@@ -86,6 +91,35 @@ export async function publishToConversationReaders(
 }
 
 /**
+ * Appends one service-written answer to the room — a visual block and its plain-text fallback — as
+ * the project's handle, or as the asker where the room has none, and tells its readers.
+ */
+export async function postServiceAnswer(args: {
+  conversationId: string;
+  projectId: string;
+  askerUserId: string;
+  content: string;
+  blocks: readonly ContentBlock[];
+}): Promise<{ messageId: string }> {
+  const { conversationId } = args;
+  const author = (await handleForProject(conversationId, args.projectId)) ?? args.askerUserId;
+  const [message] = await appendMessages({
+    conversationId,
+    messages: [
+      { role: 'assistant', authorUserId: author, content: args.content, blocks: args.blocks },
+    ],
+  });
+  if (!message) throw new Error(`conversations: the answer to ${conversationId} was not stored`);
+  await publishToConversationReaders(conversationId, {
+    event: WEB_CONVERSATION_EVENT,
+    data: { conversationId, messageId: message.id, role: 'assistant', content: '' },
+  }).catch((err: unknown) => {
+    logger.warn({ err, conversationId }, 'conversations: the room was not told of the answer');
+  });
+  return { messageId: message.id };
+}
+
+/**
  * The Forge UI's four ports.
  */
 export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame> = {
@@ -105,12 +139,26 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
     return { linked: true, userId: frame.userId };
   },
 
-  async deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt> {
+  async deliver(
+    venue: ConversationVenue,
+    message: ScreenedMessage,
+    opts?: DeliveryOptions,
+  ): Promise<DeliveryReceipt> {
     const conversation = await findConversation('web', venue.externalId);
     if (!conversation) {
       throw new Error(
         `web conversations: no conversation is open at web venue "${venue.externalId}", so there is no room to deliver into — the conversation was deleted while its turn was running`,
       );
+    }
+    // the blocks this reply releases go in just above it, and only now that it passed its screen
+    for (const held of opts?.blocks ?? []) {
+      await postServiceAnswer({
+        conversationId: conversation.id,
+        projectId: held.projectId,
+        askerUserId: held.askerUserId,
+        content: held.text,
+        blocks: [held.block],
+      });
     }
     const messageId = randomUUID();
     await publishToConversationReaders(conversation.id, {

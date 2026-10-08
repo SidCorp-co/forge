@@ -23,6 +23,7 @@ import { markUnverified, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
+import type { TurnBlockStage } from './turn-stage.js';
 
 /**
  * What a turn says when it has nothing to add.
@@ -224,6 +225,11 @@ export interface ScreenedTurnArgs {
    * the asker's language. Absent, the generic error line stands.
    */
   brokenReport?: (attempt: ExternalChatTurnResult) => string;
+  /**
+   * The blocks the turn drew, held until this screen settles: each attempt is judged with the blocks
+   * it drew, and the stage is told whose words went out, which decides the blocks released with them.
+   */
+  stage?: TurnBlockStage;
   log?: Record<string, unknown>;
 }
 
@@ -258,8 +264,10 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     text: string,
     of: ExternalChatTurnResult,
     language: boolean,
+    drewIn: number,
   ): Promise<MessageVerdict> => {
     const verdict = await screenReplyAtDoor(args.door, {
+      ...(args.stage ? { heldBlocks: args.stage.of(drewIn).map((b) => b.block.visual) } : {}),
       projectId: args.projectId,
       segments: [text],
       toolCalls: of.toolCalls,
@@ -279,7 +287,7 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
           ? ({ ok: true } as MessageVerdict)
           : { ok: false, refusals: [EMPTY_RETRY] };
       }
-      const verdict = await judge(text, result, true);
+      const verdict = await judge(text, result, true, attempt);
       if (attempt === 0) {
         firstRefused = refusalsOf(verdict);
         return verdict;
@@ -307,9 +315,10 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
   if (outcome.kind === 'exhausted') {
     const marked = markedOriginal(original, firstRefused, args.askedIn ?? args.language);
     if (marked !== null) {
-      const verdict = await judge(marked, args.first, false);
+      const verdict = await judge(marked, args.first, false, 0);
       const admitted = verdict.ok ? screened(marked, args.door, verdict) : null;
       if (admitted) {
+        args.stage?.settle(0);
         logger.warn(
           { ...args.log, refusals: firstRefused },
           'conversations: no rewrite passed; the first answer goes out with its refused claims marked unverified',
@@ -321,12 +330,14 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       { ...args.log, refusals: refusalsOf(outcome.verdict) },
       'conversations: reply still failing its door screen; sending honest fallback',
     );
+    args.stage?.settle(null);
     if (args.fallback === 'none') return null;
     if (broken && args.brokenReport) return codeAuthored(args.brokenReport(broken));
     return codeAuthored(unverifiedFallbackReply(args.handleName, args.language));
   }
 
   const trimmed = repairIssueLinks(result.reply).trim();
+  args.stage?.settle(trimmed ? attempt : null);
   if (!trimmed) {
     if (args.fallback === 'none') return null;
     if (result.terminal === 'error' && args.brokenReport) {

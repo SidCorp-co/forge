@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { TurnBlockStage } from './turn-stage.js';
 
 const silences: unknown[] = [];
 
@@ -55,6 +56,7 @@ function ctxWith(abortReason: unknown) {
     abort,
     setPhase: () => undefined,
     draft: { text: '' },
+    stage: new TurnBlockStage(''),
     credential: async () => {
       throw new Error('no token in this test');
     },

@@ -1,0 +1,1 @@
+**A chat answer's charts and tables now wait for its reply.** They appear only once the reply passes its check, stay with a held reply for the asker alone, and a typed number in a title or label is refused.

@@ -214,7 +214,7 @@ describe('a Vietnamese reply', () => {
 });
 
 describe('an Agent session', () => {
-  const agent = (text: string, results: string[], calls: Call[] = []) =>
+  const agent = (text: string, results: string[], calls: Call[] = [], heldBlocks?: unknown[]) =>
     screenReplyAtDoor('web-agent-completion', {
       projectId: PID,
       segments: [text],
@@ -222,6 +222,7 @@ describe('an Agent session', () => {
       progress: null,
       question: 'How is the release going?',
       restResults: results,
+      ...(heldBlocks ? { heldBlocks } : {}),
     });
   const ran = (body: string): Call => ({
     name: 'Bash',
@@ -252,5 +253,28 @@ describe('an Agent session', () => {
     });
     const held = await agent('Drawn above.', [], [ran(body)]);
     expect(!held.ok && held.refusals.find((r) => r.rule === 'figures-grounded')?.quote).toBe('7');
+  });
+
+  it("reads a block's text from the blocks held with the reply, not from a POST the door refused", async () => {
+    const refused = JSON.stringify({
+      projectId: PID,
+      block: { kind: 'flow', nodes: [{ id: 'a', label: 'Wait 7 days' }], edges: [] },
+    });
+    const kept = { v: 1, kind: 'flow', nodes: [{ id: 'a', label: 'Wait for review' }], edges: [] };
+    expect((await agent('Drawn above.', [], [ran(refused)], [kept])).ok).toBe(true);
+    const typed = { ...kept, title: '9 days to go' };
+    const held = await agent('Drawn above.', [], [ran(refused)], [typed]);
+    expect(!held.ok && held.refusals.find((r) => r.rule === 'figures-grounded')?.quote).toBe('9');
+  });
+
+  it("does not read a held block's frame labels as typed: they are its run's", async () => {
+    const table = {
+      v: 1,
+      kind: 'table',
+      columns: ['release'],
+      source: { runId: RUN },
+      frame: { ...READINESS, fields: [{ name: 'release', type: 'ref', label: 'Done in 30 days' }] },
+    };
+    expect((await agent('Drawn above.', [REPORTED], [], [table])).ok).toBe(true);
   });
 });

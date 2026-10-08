@@ -94,8 +94,8 @@ function proseBreak(figure: StatedFigure, f: FigureFacts): RuleBreak {
 
 type Call = MessageFacts['toolCalls'][number];
 
-/** A text a block this turn drew was given: its title or a label, where it was typed. */
-interface BlockText {
+/** A text a block was given: its title or a label, where it was typed. */
+export interface BlockText {
   readonly kind: string;
   readonly key: string;
   readonly text: string;
@@ -124,38 +124,77 @@ function blockBody(c: Call): string | null {
   return BLOCK_ROUTE_RE.test(command) ? command : null;
 }
 
-/** Every title and label the turn's blocks were given, as typed. */
-export function blockTextsOf(calls: readonly Call[]): BlockText[] {
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** A block without the frame it carries: a frame's field labels are its run's, held to it by `figuresNotInRun`. */
+function frameless(block: Record<string, unknown>): Record<string, unknown> {
+  const { frame: _frame, ...rest } = block;
+  return rest;
+}
+
+/** The body as JSON without a frame, where it is JSON; an Agent's shell command is read as written. */
+function withoutFrame(body: string): string {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return body;
+  }
+  if (!isRecord(parsed)) return body;
+  return JSON.stringify(
+    isRecord(parsed.block) ? { ...parsed, block: frameless(parsed.block) } : frameless(parsed),
+  );
+}
+
+/** Every title and label one block's body was given, as typed: a block, a call's arguments or a command. */
+export function blockTextsIn(raw: string): BlockText[] {
+  const body = withoutFrame(raw);
+  const kind = KIND_RE.exec(body)?.[1] ?? 'visual';
   const out: BlockText[] = [];
-  for (const c of calls) {
-    const body = blockBody(c);
-    if (body === null) continue;
-    const kind = KIND_RE.exec(body)?.[1] ?? 'visual';
-    for (const m of body.matchAll(TEXT_KEY_RE)) {
-      let text = m[2] ?? '';
-      try {
-        text = JSON.parse(`"${text}"`) as string;
-      } catch {
-        // the label stands as written
-      }
-      out.push({ kind, key: m[1] ?? 'label', text });
+  for (const m of body.matchAll(TEXT_KEY_RE)) {
+    let text = m[2] ?? '';
+    try {
+      text = JSON.parse(`"${text}"`) as string;
+    } catch {
+      // the label stands as written
     }
+    out.push({ kind, key: m[1] ?? 'label', text });
   }
   return out;
 }
 
-function blockBreaks(calls: readonly Call[], f: FigureFacts): RuleBreak[] {
-  const breaks: RuleBreak[] = [];
-  for (const b of blockTextsOf(calls)) {
-    for (const figure of figuresIn(b.text)) {
-      if (grounded(figure, f)) continue;
-      breaks.push({
-        quote: figure.quote,
-        why: `the ${b.kind} block's ${b.key} "${b.text}" states the figure ${figure.quote}, and no report run this turn holds it — a block's text holds no figure of its own: show the figure from its run's frame, or take it out of the ${b.key}`,
-      });
-    }
-  }
-  return breaks;
+/** Every title and label the turn's blocks were given, as typed. */
+export function blockTextsOf(calls: readonly Call[]): BlockText[] {
+  return calls.flatMap((c) => {
+    const body = blockBody(c);
+    return body === null ? [] : blockTextsIn(body);
+  });
+}
+
+/**
+ * Every figure a block's title or labels state that `f` does not hold: any number typed there that
+ * the exemption table does not exempt, read without the prose grammar. The one check a block's text
+ * passes, both when the block is attached (`reports/blocks.ts`, against its own run) and when the
+ * reply it belongs to is screened (against every run of the turn).
+ */
+export function ungroundedBlockFigures(
+  texts: readonly BlockText[],
+  f: FigureFacts,
+): { readonly text: BlockText; readonly figure: StatedFigure }[] {
+  return texts.flatMap((text) =>
+    figuresIn(text.text)
+      .filter((figure) => !grounded(figure, f))
+      .map((figure) => ({ text, figure })),
+  );
+}
+
+function blockBreaks(f: MessageFacts, held: FigureFacts): RuleBreak[] {
+  const texts = f.heldBlocks ? f.heldBlocks.flatMap(blockTextsIn) : blockTextsOf(f.toolCalls);
+  return ungroundedBlockFigures(texts, held).map(({ text: b, figure }) => ({
+    quote: figure.quote,
+    why: `the ${b.kind} block's ${b.key} "${b.text}" states the figure ${figure.quote}, and no report run this turn holds it — a block's text holds no figure of its own: show the figure from its run's frame, or take it out of the ${b.key}`,
+  }));
 }
 
 export const FIGURES_GROUNDED: MessageRule = {
@@ -168,6 +207,6 @@ export const FIGURES_GROUNDED: MessageRule = {
     const held = f.figures;
     if (!held) return [];
     const said = statedFigures(blankMarkedClauses(text)).filter((fig) => !grounded(fig, held));
-    return [...said.map((fig) => proseBreak(fig, held)), ...blockBreaks(f.toolCalls, held)];
+    return [...said.map((fig) => proseBreak(fig, held)), ...blockBreaks(f, held)];
   },
 };

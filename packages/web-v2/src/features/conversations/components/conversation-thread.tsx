@@ -22,7 +22,7 @@ import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { settingsHref } from "@/features/project-settings/sections";
 import { ShareAction, shareSubjectOf } from "@/features/shares";
-import { runFactsIn, VisualBlockProvider } from "@/features/visual-blocks";
+import { runFactsIn, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import { type Correction, withoutCorrections } from "../corrections";
 import {
@@ -394,7 +394,8 @@ export function ConversationThread({
             </p>
           );
         }
-        if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
+        if (entry.kind === "agent-turn")
+          return <AgentTurnEntry key={entry.key} turn={entry.turn} projectSlug={projectSlug} />;
         if (entry.kind === "handed") {
           return (
             <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-handed-to-job">
@@ -471,7 +472,7 @@ function LiveTurn({
 /**
  * A runner-hosted turn, in whichever of its states it is in.
  */
-function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
+function AgentTurnEntry({ turn, projectSlug }: { turn: AgentTurn; projectSlug?: string | undefined }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   const failed = turn.state === "failed";
@@ -506,6 +507,17 @@ function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
         <div className="mt-2 border-t border-line pt-2" data-testid="thread-held-reply">
           <p className="fg-caption text-subtle">{t("conversations.agentTurn.heldBy", { reason: held.reason })}</p>
           <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{held.reply}</p>
+          {held.blocks && held.blocks.length > 0 && (
+            // the blocks the session drew for this reply, held with it: nobody else in the room sees them
+            <VisualBlockProvider value={{ projectSlug, sourceFacts: runFactsIn([{ blocks: held.blocks }]) }}>
+              <div className="mt-2 flex flex-col gap-3" data-testid="thread-held-blocks">
+                {held.blocks.map((b, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: the held reply's block order is fixed
+                  <VisualBlockView key={i} block={b.visual} />
+                ))}
+              </div>
+            </VisualBlockProvider>
+          )}
         </div>
       )}
     </div>

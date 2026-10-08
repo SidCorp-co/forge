@@ -323,11 +323,28 @@ ruling and is not registered.
   in the question are exempt, by the table in `figure-exemptions.ts`. It judges at the chat doors
   where the turn could run a report: a turn offered `forge_report` or `forge_template`, and an
   Agent session, whose REST runs are read from its tool results. A block whose frame differs from
-  its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`).
+  its run's is refused when it is attached (`packages/core/src/reports/figures.ts:figuresNotInRun`),
+  and so is a block whose title or labels state a number its own run does not hold, by the same
+  check the screen holds a block's text to
+  (`packages/core/src/messaging/figures-rule.ts:ungroundedBlockFigures`), so the model corrects it
+  inside the turn.
   `status-claims-rule.ts` counts the report tools as grounding every claim family but a decision;
   `creation-claims-rule.ts` refuses "I shared this", a share link, or "I saved the report" where the
   turn made no share (`POST /api/projects/:id/shares`) or status-report save, and no
   unverified mark exempts a claim to have written a record.
+- **A block waits on its reply.** A block is never written into the room when it is drawn: it is
+  staged outside `conversation_messages`, so neither the room's REST read nor its socket can show
+  it, and is posted just above the reply only once that reply passes the reply check. A chat turn
+  stages on a per-turn stage handed to `forge_show` (`packages/core/src/assistant/turn-stage.ts`);
+  each attempt is screened with the blocks it drew, the reply that goes out releases its own
+  answer's blocks through the web transport, and every other block is dropped and named under
+  `droppedBlocks` in the window's record — a rewrite keeps a block by drawing it again, as its
+  corrective instruction says. An Agent-mode turn's `POST /api/conversations/:id/blocks` answers 202
+  and stages on its session's marker (`packages/core/src/reports/rest-stage.ts`); the bridge
+  screens the reply with those blocks, releases them with a reply that passes, keeps them on a held
+  reply, where only its asker reads them under "Show the held reply", and names them under
+  `droppedBlocks` when no reply goes out. A turn token whose block cannot wait — an assistant turn's,
+  a session that is gone, another room, a reply already taken — is refused by name.
 - **Executor output is untrusted.** A frame from an execution carries `source: { executionId }`,
   is labelled as computed in the block, and never drives a write without the person's confirmation
   (REQ-30 BC-4).

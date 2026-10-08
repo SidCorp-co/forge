@@ -54,6 +54,11 @@ export interface MessageFacts {
   readonly issueLookupFailed: boolean;
   /** Null where the turn could run no report, so a figure has nothing to be held to. */
   readonly figures: FigureFacts | null;
+  /**
+   * The blocks held with this reply, as JSON, where the caller holds them: they are what would be
+   * shown with it, so a block's text is read from them. Null reads it from the turn's calls.
+   */
+  readonly heldBlocks: readonly string[] | null;
 }
 
 export const NO_FACTS: MessageFacts = {
@@ -69,6 +74,7 @@ export const NO_FACTS: MessageFacts = {
   memoryDates: new Set(),
   issueLookupFailed: false,
   figures: null,
+  heldBlocks: null,
 };
 
 export function facts(over: Partial<MessageFacts>): MessageFacts {
