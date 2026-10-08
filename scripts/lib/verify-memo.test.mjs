@@ -1,6 +1,7 @@
 // @gate-input whole-tree — its fixtures are git repositories, and the code it exercises lists a checkout whole.
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -523,6 +524,7 @@ if (process.env.IMPORT) await import(process.env.IMPORT);
 if (process.env.PROBE) existsSync(process.env.PROBE);
 if (process.env.STAT) statSync(process.env.STAT);
 if (process.env.SIZED && statSync(process.env.SIZED).size > 10) bad.push('size');
+if (process.env.EXEC && statSync(process.env.EXEC).mode & 0o111) bad.push('exec');
 if (process.env.STREAM) await new Promise((done) => createReadStream(process.env.STREAM).on('data', () => {}).on('close', done));
 if (process.env.ASYNC) await (await import('node:fs/promises')).readFile(process.env.ASYNC);
 if (process.env.SHELLED) {
@@ -665,6 +667,20 @@ describe('a check taken through the memo', () => {
     const grown = run(plan(), { SIZED: join(root, 'linked') });
     expect(grown.plan.kind).toBe('miss');
     expect(grown.status).toBe(1);
+  });
+
+  it('goes red when only the permission bits of a probed file change, through a store that holds the green', () => {
+    const file = join(root, 'docs/n.md');
+    chmodSync(file, 0o644);
+    const probed = { c: { roots: ['check.mjs', 'src'], probed: ['docs/n.md'] } };
+    const plan = () =>
+      new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: probed });
+    expect(run(plan(), { EXEC: file }).verdict.code).toBe(0);
+    expect(run(plan(), { EXEC: file }).plan.kind).toBe('hit');
+    chmodSync(file, 0o755);
+    const changed = run(plan(), { EXEC: file });
+    expect(changed.plan.kind).toBe('miss');
+    expect(changed.status).toBe(1);
   });
 
   it('refuses a module the check imports from outside its declaration', () => {
