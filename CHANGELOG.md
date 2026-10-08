@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.158] - 2026-10-08
+
+Agent chat says when the reply check held a reply
+
+### Fixed
+
+- **An Agent reply the reply check holds is no longer reported as "the session ended without an answer".** The thread says why it was held, its asker can open the reply, and the session page lists the rules.
+
 ## [0.4.0-dev.157] - 2026-10-08
 
 Sign-in works when another Forge instance's session cookie is present
