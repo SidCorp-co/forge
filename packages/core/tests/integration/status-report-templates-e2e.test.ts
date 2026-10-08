@@ -6,8 +6,9 @@ import { addProjectMember, createTestUser } from '../helpers/factories.js';
 import { type World, world } from '../helpers/forecast-world.js';
 
 // A template run is kept in the project's report history beside the project status reads: saved by a
-// person with the narrative they wrote, or stored by a schedule that names the template, with the
-// narrative slots left empty and named. It exports as Markdown, is removed by its author or a project
+// person with the narrative they wrote, or stored by a schedule that names the template, whose
+// narrative a model writes (status-report-narrative-e2e) and which, with no model configured here, is
+// kept empty with the reason named. It exports as Markdown, is removed by its author or a project
 // admin, and a share of it freezes the narrative as it was kept (REQ-32 criterion 8, B3).
 
 const code = (res: { body: Body }) => (res.body.error as Body | undefined)?.code ?? res.body.code;
@@ -154,7 +155,7 @@ describe('a schedule that names a template', () => {
     expect(detail(days)).toContain('not days');
   });
 
-  it('stores a template report for its owner on each fire, with the slots empty and named', async () => {
+  it('stores a template report for its owner on each fire; with no model configured the slots stay empty and the notice says why', async () => {
     const created = await schedule({ recipients: [w.userId, author.id], templateId: 'progress' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const fired = await api(w.token, 'POST', `/api/schedules/${created.body.id}/run`);
@@ -177,8 +178,16 @@ describe('a schedule that names a template', () => {
       SELECT body FROM notifications WHERE status_report_id = ${String(stored[0]?.id)}
     `);
     expect([...told].length).toBeGreaterThan(0);
+    expect(opened.body.narrative).toEqual({
+      path: 'not_written',
+      reason: 'no chat model is configured on this instance',
+      model: null,
+      calls: 0,
+    });
     for (const n of told)
-      expect(n.body).toContain('Narrative not written: summary, risks, recommendations.');
+      expect(n.body).toContain(
+        'Narrative (summary, risks, recommendations) not written: no chat model is configured on this instance.',
+      );
     // a period is stored once: the same slot again is refused by name and stores nothing
     const again = await api(w.token, 'POST', `/api/schedules/${created.body.id}/run`);
     expect(again.status).toBe(409);

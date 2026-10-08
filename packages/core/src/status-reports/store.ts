@@ -10,6 +10,7 @@ import {
   STATUS_REPORT_HISTORY_ROWS,
   type StatusReportDetail,
   type StatusReportMeta,
+  type StatusReportNarrative,
   statusReportDiff,
   templateTitleOf,
 } from '@forge/contracts/status-reports';
@@ -62,13 +63,15 @@ export async function storeStatusReport(args: {
 
 /**
  * Keep one template's output as it stands: the document's runs, blocks and the narrative as written
- * (empty slots stay empty, named by the document), immutable from here. It is dated by the newest run
- * it holds, since that is when its figures were read.
+ * (empty slots stay empty, named by the document), and for a schedule fire how that narrative came
+ * to be, immutable from here. It is dated by the newest run it holds, since that is when its figures
+ * were read.
  */
 export async function storeTemplateReport(args: {
   projectId: string;
   document: ReportDocument;
   producer: Producer;
+  narrative?: StatusReportNarrative;
 }): Promise<Row> {
   const read = Math.max(...args.document.runs.map((r) => Date.parse(r.asOf)));
   const [row] = await db
@@ -83,6 +86,7 @@ export async function storeTemplateReport(args: {
       templateId: args.document.templateId,
       templateVersion: args.document.version,
       document: args.document,
+      narrativeOutcome: args.narrative ?? null,
     })
     .returning();
   if (!row) throw new Error('status_reports: insert returned no row');
@@ -195,6 +199,7 @@ export async function readStatusReport(row: Row): Promise<StatusReportDetail> {
   if (row.document) {
     return {
       report,
+      narrative: (row.narrativeOutcome as StatusReportNarrative | null) ?? null,
       status: null,
       document: row.document as ReportDocument,
       previous: previous ?? null,
@@ -204,6 +209,7 @@ export async function readStatusReport(row: Row): Promise<StatusReportDetail> {
   const status = row.report as ProjectStatus;
   return {
     report,
+    narrative: null,
     status,
     document: null,
     previous: previous ?? null,

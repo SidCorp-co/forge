@@ -2,6 +2,7 @@ import { db } from '../db/client.js';
 import { usageRecords } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { extractUsageFromEvents } from './usage-from-job-events.js';
+import { estimateCost } from './usage-pricing.js';
 
 /** Just the fields needed to attribute a usage row. */
 interface MaterializeJobInput {
@@ -44,4 +45,33 @@ export async function materializeJobUsage(
   } catch (err) {
     logger.warn({ err, jobId: job.id }, 'usage-records: materialize failed');
   }
+}
+
+/**
+ * Record a model call core made itself, with no job and no session behind it (a scheduled report's
+ * narrative): source `api`, priced from the model the provider named, counted in the project's cost.
+ */
+export async function recordModelCallUsage(args: {
+  projectId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  requestCount: number;
+  recordedAt: Date;
+}): Promise<void> {
+  const tokens = {
+    inputTokens: args.inputTokens,
+    outputTokens: args.outputTokens,
+    cacheReadTokens: args.cacheReadTokens,
+  };
+  await db.insert(usageRecords).values({
+    projectId: args.projectId,
+    source: 'api',
+    model: args.model,
+    ...tokens,
+    estimatedCost: estimateCost(args.model, tokens),
+    requestCount: args.requestCount,
+    recordedAt: args.recordedAt,
+  });
 }

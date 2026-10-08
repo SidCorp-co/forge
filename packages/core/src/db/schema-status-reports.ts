@@ -1,4 +1,7 @@
-import { STATUS_REPORT_PRODUCERS } from '@forge/contracts/status-reports';
+import {
+  STATUS_REPORT_NARRATIVE_PATHS,
+  STATUS_REPORT_PRODUCERS,
+} from '@forge/contracts/status-reports';
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
@@ -44,6 +47,8 @@ export const statusReports = pgTable(
     templateId: text('template_id'),
     templateVersion: integer('template_version'),
     document: jsonb('document'),
+    /** How a schedule fire's narrative came to be (`StatusReportNarrative`); null on a saved report and a status read. */
+    narrativeOutcome: jsonb('narrative_outcome'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -63,6 +68,10 @@ export const statusReports = pgTable(
     shapeChk: check(
       'status_reports_shape_chk',
       sql`(${t.document} IS NULL) = (${t.templateId} IS NULL) AND (${t.document} IS NULL) = (${t.templateVersion} IS NULL) AND (${t.document} IS NULL) = (${t.report} IS NOT NULL) AND (${t.report} IS NULL) = (${t.days} IS NULL) AND (${t.document} IS NULL OR jsonb_typeof(${t.document}) = 'object')`,
+    ),
+    narrativeChk: check(
+      'status_reports_narrative_chk',
+      sql`${t.narrativeOutcome} IS NULL OR (${t.document} IS NOT NULL AND ${t.producerKind} = 'schedule' AND jsonb_typeof(${t.narrativeOutcome}) = 'object' AND ${t.narrativeOutcome}->>'path' IN (${inList(STATUS_REPORT_NARRATIVE_PATHS)}))`,
     ),
   }),
 );

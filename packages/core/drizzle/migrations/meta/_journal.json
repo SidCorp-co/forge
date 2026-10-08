@@ -2969,6 +2969,13 @@
       "when": 1822953600000,
       "tag": "0463_a_status_report_may_hold_a_template_run",
       "breakpoints": true
+    },
+    {
+      "idx": 464,
+      "version": "7",
+      "when": 1823040000000,
+      "tag": "0464_a_scheduled_template_report_says_how_its_narrative_was_written",
+      "breakpoints": true
     }
   ]
 }

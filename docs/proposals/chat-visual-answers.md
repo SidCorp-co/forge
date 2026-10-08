@@ -298,9 +298,17 @@ ruling and is not registered.
   (`GET .../status/reports/:reportId/export`, `reportDocumentMarkdown`: the narrative, then each
   block's `toText`, with unwritten slots named), and is removed by its author or a project admin. A
   `status_report` schedule with `params.templateId` runs the template for its owner on each fire and
-  stores the output. A fire has no model, so its narrative slots are stored empty and the notice names
-  them; the project status digest does not fill them, because it states figures read from the project
-  status and a narrative may cite only the template's own runs. The `status-report` share subject
+  stores the output with its narrative (`status-reports/narrative.ts:writeFireNarrative`): after the
+  runs are stored, one model call is given the template's slot guidance and the frames of this
+  fire's runs and nothing else from the project, and its answer is judged by `checkTemplateNarrative`.
+  A refused answer gets one retry carrying the refusal text. The call goes through
+  `integrations/llm/chat.ts:completeOnce`, the chat turn's own `openChat` path, so the deployment's
+  provider and the project's data policy apply as they do to chat: a `no_egress` project gets no call.
+  It writes in the project's content language (`readContentLanguage`), English by default. Each call's
+  model and tokens go to `usage_records` (source `api`, `agent-sessions:recordModelCallUsage`). Which
+  path ran is kept on the report (`narrative_outcome`, migration 0464; `StatusReportNarrative`:
+  `written`, `retried`, or `not_written` with the reason), and a narrative not written leaves the slots
+  empty and the notice says why (`not written: <reason>`). The `status-report` share subject
   (`status-reports/share-source.ts`) freezes the kept document, so a shared saved report carries its
   narrative; a kept project status read is refused by name.
 - **Grounding a figure.** `MessageFacts` (`packages/core/src/messaging/facts.ts:FigureFacts`) carries
@@ -380,7 +388,7 @@ Lanes are about one day. Migration indices and `when` values are assigned by the
 |---|---|---|
 | B1 two more queries | `feedback-trends`, `risk` | none |
 | B2 saved project templates | `report_templates` writer, `reports.write`, the template picker in chat | **yes: `report_templates`** |
-| B3 templates in status-reports | a stored report holds a `ReportDocument`; the `status_report` schedule takes `templateId` | **yes: `status_reports` gains template id, version and document** |
+| B3 templates in status-reports | a stored report holds a `ReportDocument`; the `status_report` schedule takes `templateId` and its fire has a model write the narrative | **yes: `status_reports` gains template id, version and document (0463), and how a fire's narrative was written (0464)** |
 | B4 export | Markdown from `toText`, CSV per `table` block, a print stylesheet for PDF | none |
 | B5 doors | external chat doors (Rocket.Chat) post `toText` with a member link | none |
 | B6 more templates | weekly delivery, requirement coverage, feedback digest | none |

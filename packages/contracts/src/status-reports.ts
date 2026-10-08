@@ -125,8 +125,33 @@ export interface StatusReportDiff {
 	moved: StatusMovedDate[];
 }
 
+/**
+ * How a schedule fire's narrative came to be: written by the model at the first call, written at the
+ * one retry that carried the refusal of the first, or not written, with the reason. A report saved by
+ * a person, or a project status read, holds none.
+ */
+export const STATUS_REPORT_NARRATIVE_PATHS = [
+	"written",
+	"retried",
+	"not_written",
+] as const;
+export type StatusReportNarrativePath =
+	(typeof STATUS_REPORT_NARRATIVE_PATHS)[number];
+
+export interface StatusReportNarrative {
+	path: StatusReportNarrativePath;
+	/** Why no narrative was kept; null when one was. */
+	reason: string | null;
+	/** The model that was asked; null where none was. */
+	model: string | null;
+	/** How many model calls the fire made: 0, 1 or 2. */
+	calls: number;
+}
+
 export interface StatusReportDetail {
 	report: StatusReportMeta;
+	/** How a schedule fire's narrative came to be; null for a saved report and a project status read. */
+	narrative: StatusReportNarrative | null;
 	/** The stored project status read; null for a template report. */
 	status: ProjectStatus | null;
 	/** The stored template output, its narrative as it was kept; null for a project status report. */

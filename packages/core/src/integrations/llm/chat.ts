@@ -9,9 +9,10 @@ import {
   type EgressSurface,
   egressAt,
 } from '../../lib/data-egress.js';
+import { isRefusal } from '../../lib/refusal.js';
 import { defaultChatProviderId } from './bootstrap.js';
 import { resolveChatProvider } from './registry.js';
-import type { ChatMessage, ChatProvider } from './types.js';
+import type { ChatMessage, ChatProvider, ChatStreamUsage } from './types.js';
 
 /** The deployment's chat model name; refuses ASSISTANT_MODEL_NOT_CONFIGURED (503) when none is. */
 export function chatModelName(): string {
@@ -62,4 +63,76 @@ function gated(
     defaultModel: provider.defaultModel,
     stream: (req) => provider.stream({ ...req, messages: req.messages.map(outbound) }),
   };
+}
+
+/**
+ * Why a one-shot completion has no answer: the project's policy withholds the request, no chat model
+ * is configured on this instance, or the call failed (the provider's own message is in `detail`).
+ */
+export type CompletionMiss = 'withheld' | 'unconfigured' | 'failed';
+
+export type CompletionAnswer =
+  | { ok: true; text: string; model: string; usage: ChatStreamUsage }
+  | { ok: false; miss: CompletionMiss; detail: string; model: string | null };
+
+/**
+ * One tool-less completion through `openChat`, so the deployment's provider and `scope`'s egress
+ * policy apply exactly as they do to a chat turn: a request the policy withholds is never sent. The
+ * stream is drained to its text and the usage it reported; nothing is thrown.
+ */
+export async function completeOnce(
+  scope: EgressScope,
+  messages: ChatMessage[],
+  opts: { temperature?: number; signal?: AbortSignal } = {},
+): Promise<CompletionAnswer> {
+  let opened: { provider: ChatProvider; model: string };
+  try {
+    opened = await openChat(scope);
+  } catch (err) {
+    if (err instanceof EgressRefused) {
+      return { ok: false, miss: 'withheld', detail: err.message, model: null };
+    }
+    if (isRefusal(err, 'ASSISTANT_MODEL_NOT_CONFIGURED')) {
+      return { ok: false, miss: 'unconfigured', detail: err.message, model: null };
+    }
+    return { ok: false, miss: 'failed', detail: String(err), model: null };
+  }
+  const { provider, model } = opened;
+  const usage: ChatStreamUsage = {};
+  let text = '';
+  try {
+    for await (const event of provider.stream({
+      model,
+      messages,
+      temperature: opts.temperature,
+      signal: opts.signal,
+    })) {
+      if (event.type === 'chunk') text += event.text;
+      else if (event.type === 'usage') {
+        for (const key of [
+          'promptTokens',
+          'completionTokens',
+          'totalTokens',
+          'cachedPromptTokens',
+        ] as const) {
+          const n = event.usage[key];
+          if (n !== undefined) usage[key] = (usage[key] ?? 0) + n;
+        }
+      } else if (event.type === 'error') {
+        return { ok: false, miss: 'failed', detail: event.message, model };
+      }
+    }
+  } catch (err) {
+    if (err instanceof EgressRefused)
+      return { ok: false, miss: 'withheld', detail: err.message, model };
+    return {
+      ok: false,
+      miss: 'failed',
+      detail: err instanceof Error ? err.message : String(err),
+      model,
+    };
+  }
+  if (!text.trim())
+    return { ok: false, miss: 'failed', detail: 'the model answered no text', model };
+  return { ok: true, text, model, usage };
 }

@@ -46,7 +46,7 @@ export {
 } from './session-transition.js';
 export { provideTerminalSessionBridge } from './terminal-effects.js';
 export { firstUserMessageText, messageRoleToTurnRole, readTranscript } from './turns-helpers.js';
-export { materializeJobUsage } from './usage-materialize.js';
+export { materializeJobUsage, recordModelCallUsage } from './usage-materialize.js';
 export {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
