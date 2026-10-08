@@ -137,6 +137,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
       const [slug] = Object.keys(await selectAttentionTotals(owner));
       expect((await selectAttentionTotals(owner))[slug as string]).toEqual({
         awaitingInput: AWAITING_INPUT_CAP + 5,
+        awaitingOutsideBlockers: 0,
         needsReview: 7,
         failedJobs: 6,
       });
@@ -147,7 +148,24 @@ describe('Needs you lists a question only where it moves the work state (real Po
       await issueAt('closed', true);
       await issueAt('in_progress', true);
       const totals = Object.values(await selectAttentionTotals(owner));
-      expect(totals).toEqual([{ awaitingInput: 1, needsReview: 0, failedJobs: 0 }]);
+      expect(totals).toEqual([
+        { awaitingInput: 1, awaitingOutsideBlockers: 1, needsReview: 0, failedJobs: 0 },
+      ]);
+    });
+
+    it("splits out the awaiting issues the health row's parked list does not hold", async () => {
+      const { selectAttentionTotals } = await import('../../src/me/attention-buckets.js');
+      await issueAt('waiting', false);
+      await issueAt('in_progress', true);
+      await issueAt('needs_info', false);
+      await issueAt('on_hold', true);
+      const [totals] = Object.values(await selectAttentionTotals(owner));
+      expect(totals).toEqual({
+        awaitingInput: 4,
+        awaitingOutsideBlockers: 2,
+        needsReview: 0,
+        failedJobs: 0,
+      });
     });
 
     it('has no entry for a project with nothing in any bucket', async () => {

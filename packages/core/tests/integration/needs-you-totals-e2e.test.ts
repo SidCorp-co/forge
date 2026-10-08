@@ -62,14 +62,18 @@ beforeEach(async () => {
   await createTestProjectMember(harness.db, { userId: viewer, projectId, role: 'admin' });
 });
 
-async function issueAt(status: string, withQuestion: boolean): Promise<void> {
+async function issueAt(
+  status: string,
+  withQuestion: boolean,
+  owner: string = viewer,
+): Promise<void> {
   seq += 1;
   const id = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, assignee_id,
                         created_at, updated_at)
-    VALUES (${id}, ${projectId}, ${seq}, ${`ISS-${seq} at ${status}`}, ${status}, ${viewer},
-            ${viewer}, now(), now())
+    VALUES (${id}, ${projectId}, ${seq}, ${`ISS-${seq} at ${status}`}, ${status}, ${owner},
+            ${owner}, now(), now())
   `);
   if (withQuestion) {
     await harness.db.execute(sql`
@@ -115,5 +119,31 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
       await get<Array<{ projectSlug: string; blockersTotal: number }>>('/api/projects/health');
     expect(attention.projectTotals).toEqual({});
     expect(health.find((h) => h.projectSlug === slug)?.blockersTotal).toBe(0);
+  });
+
+  it('lets the two responses add up to what is owed without counting an issue in both', async () => {
+    // j4's shape: the viewer's own waiting issue is in the attention response only, other people's
+    // on_hold and needs_info issues are in the health row only, and a needs_info issue the viewer
+    // owns with a question is in both.
+    const other = (await createTestUser(harness.db)).id;
+    await createTestProjectMember(harness.db, { userId: other, projectId, role: 'member' });
+    await issueAt('waiting', false);
+    await issueAt('on_hold', false, other);
+    await issueAt('needs_info', false, other);
+    await issueAt('needs_info', true);
+
+    const attention = await get<{
+      projectTotals: Record<string, { awaitingInput: number; awaitingOutsideBlockers: number }>;
+    }>('/api/me/attention');
+    const health =
+      await get<Array<{ projectSlug: string; blockersTotal: number }>>('/api/projects/health');
+
+    const totals = attention.projectTotals[slug];
+    expect(totals?.awaitingInput).toBe(2);
+    expect(totals?.awaitingOutsideBlockers).toBe(1);
+    const blockersTotal = health.find((h) => h.projectSlug === slug)?.blockersTotal ?? 0;
+    expect(blockersTotal).toBe(3);
+    // four distinct issues are owed to this viewer or parked; the two sources sum to four.
+    expect((totals?.awaitingOutsideBlockers ?? 0) + blockersTotal).toBe(4);
   });
 });

@@ -47,6 +47,7 @@ import {
 	runStatusChip,
 	statusToChip,
 	statusToTone,
+	originFromParams,
 	statusFilterFromParams,
 	transitionLabels,
 } from "./derive";
@@ -1570,3 +1571,37 @@ describe("the marker that a person owes an issue an answer", () => {
 	});
 });
 
+
+describe("originFromParams", () => {
+	it("reads the first source and returns the rest by name, once each", () => {
+		expect(originFromParams(["detector", "human", "agent", "human"])).toEqual({
+			origin: "detector",
+			dropped: ["human", "agent"],
+			first: "detector",
+			firstUnknown: false,
+		});
+	});
+
+	it("applies no source where the first is one the filter does not offer, and still names the rest", () => {
+		expect(originFromParams(["bogus", "human"])).toEqual({
+			origin: undefined,
+			dropped: ["human"],
+			first: "bogus",
+			firstUnknown: true,
+		});
+	});
+
+	it("reads an empty first value as no source, not as an unknown one", () => {
+		expect(originFromParams(["", "detector"])).toEqual({
+			origin: undefined,
+			dropped: ["detector"],
+			first: "",
+			firstUnknown: false,
+		});
+		expect(originFromParams([])).toEqual({ origin: undefined, dropped: [], first: "", firstUnknown: false });
+	});
+
+	it("drops a repeat of the first value rather than call it left out", () => {
+		expect(originFromParams(["human", "human"]).dropped).toEqual([]);
+	});
+});

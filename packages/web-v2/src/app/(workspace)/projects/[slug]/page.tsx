@@ -26,6 +26,7 @@ import { StatusDonut } from "@/features/project-dashboard/components/status-donu
 import {
   activeRuns,
   attentionCaption,
+  attentionRefusal,
   attentionCut,
   idleRuns,
   activeSpend,
@@ -120,7 +121,12 @@ export default function ProjectOverviewPage() {
   const now = Date.now();
 
   const attention = projectAttention(attentionQ.view, project.slug, health?.blockers);
-  const attentionLeftOut = attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal);
+  // A response that cannot say how much the list leaves out is refused where the tile and the list
+  // are, so the rest of the dashboard stands rather than the whole page failing.
+  const attentionRefused = attentionRefusal(attentionQ.view, project.slug);
+  const attentionLeftOut = attentionRefused
+    ? null
+    : attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal);
   const runItems = runsQ.data?.items;
   const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
@@ -161,7 +167,7 @@ export default function ProjectOverviewPage() {
                 {awaitingReleaseIssues} {WORK_STATE_LABELS.awaiting_release.toLowerCase()}
               </span>
             )}
-            {attention.length > 0 && (
+            {attention.length > 0 && !attentionRefused && (
               <span
                 className="fg-caption inline-flex items-center gap-1 font-semibold"
                 style={{ color: "var(--accent-text)" }}
@@ -186,12 +192,13 @@ export default function ProjectOverviewPage() {
           onlineRunners={runners.onlineCount}
           needsYou={attention.length}
           needsYouCaption={attentionCaption(attention, attentionLeftOut)}
+          needsYouRefusal={attentionRefused}
           openWork={donut.total}
           spendTodayUsd={health?.spend24hUsd ?? 0}
           inFlightUsd={inFlight}
         />
 
-        <AttentionQueue items={attention} cut={attentionLeftOut} slug={project.slug} now={now} />
+        <AttentionQueue items={attention} cut={attentionLeftOut} refusal={attentionRefused} slug={project.slug} now={now} />
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
           <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} />

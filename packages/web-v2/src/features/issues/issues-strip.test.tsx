@@ -158,36 +158,47 @@ describe("Findings is a Source filter, not a segment", () => {
 
   it("names a source the filter does not offer, as it names a segment the strip does not have", () => {
     mountAt("?origin=bogus");
-    expect(screen.getByTestId("unknown-origin-line")).toHaveTextContent("bogus");
-    expect(screen.getByTestId("unknown-origin-line")).toHaveTextContent("every source");
+    expect(screen.getByTestId("origin-line")).toHaveTextContent("bogus");
+    expect(screen.getByTestId("origin-line")).toHaveTextContent("every source");
   });
 
   it("says nothing for a source it offers", () => {
     mountAt("?origin=detector");
-    expect(screen.queryByTestId("unknown-origin-line")).toBeNull();
-    expect(screen.queryByTestId("dropped-origin-line")).toBeNull();
+    expect(screen.queryByTestId("origin-line")).toBeNull();
   });
 
   it("applies the first of a repeated source and names the ones it leaves out", () => {
     mountAt("?origin=detector&origin=human&origin=agent");
     expect(capturedOpts?.origin).toBe("detector");
-    const line = screen.getByTestId("dropped-origin-line");
-    expect(line).toHaveTextContent("detector");
-    expect(line).toHaveTextContent("human, agent");
-    expect(line).toHaveTextContent("are left out");
+    const line = screen.getByTestId("origin-line");
+    expect(line).toHaveTextContent("only detector is applied");
+    expect(line).toHaveTextContent("human, agent are left out");
   });
 
   it("says nothing for a source repeated as the same value", () => {
     mountAt("?origin=detector&origin=detector");
     expect(capturedOpts?.origin).toBe("detector");
-    expect(screen.queryByTestId("dropped-origin-line")).toBeNull();
+    expect(screen.queryByTestId("origin-line")).toBeNull();
   });
 
-  it("names a source dropped behind an empty one, since no source is then applied", () => {
+  it("names a source dropped behind an empty one, since every source is then shown", () => {
     mountAt("?origin=&origin=detector");
     expect(capturedOpts?.origin).toBeUndefined();
-    expect(screen.getByTestId("dropped-origin-line")).toHaveTextContent("no source");
-    expect(screen.getByTestId("dropped-origin-line")).toHaveTextContent("detector");
+    const line = screen.getByTestId("origin-line");
+    expect(line).toHaveTextContent("the first is empty");
+    expect(line).toHaveTextContent("issues from every source are shown");
+    expect(line).toHaveTextContent("detector is left out");
+  });
+
+  it("says one thing, not two that contradict, where the first source is unknown and a second is valid", () => {
+    mountAt("?origin=bogus&origin=human");
+    expect(capturedOpts?.origin).toBeUndefined();
+    expect(screen.getAllByRole("status").filter((n) => /source/u.test(n.textContent ?? ""))).toHaveLength(1);
+    const line = screen.getByTestId("origin-line");
+    expect(line).toHaveTextContent("the first, bogus, is not a source it offers");
+    expect(line).toHaveTextContent("issues from every source are shown");
+    expect(line).toHaveTextContent("human is left out");
+    expect(line).not.toHaveTextContent("only bogus is applied");
   });
 
   it("offers the source as a filter of its own", () => {

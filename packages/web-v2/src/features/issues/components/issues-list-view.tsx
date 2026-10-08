@@ -48,6 +48,7 @@ import {
   ANY_AGENT_LABEL,
   filterCount,
   groupRows,
+  originFromParams,
   priorityLabel,
   STATUS_LABELS,
   statusFilterFromParams,
@@ -63,7 +64,6 @@ import {
   type GroupBy,
   ISSUE_PRIORITIES,
   type IssueFilter,
-  type IssueOrigin,
   type IssuePriority,
   type IssueSort,
 } from "../types";
@@ -104,7 +104,6 @@ const ORIGIN_OPTIONS: SelectOption[] = [
   { value: "detector", label: "Source: machine-filed" },
   { value: "human", label: "Source: filed by a person" },
 ];
-const VALID_ORIGINS: IssueOrigin[] = ["detector", "human"];
 
 const GROUP_OPTIONS: SelectOption[] = [
   { value: "none", label: "No grouping" },
@@ -153,21 +152,8 @@ export function IssuesListView({
   const filter = VALID_FILTERS.includes(rawFilter) ? rawFilter : DEFAULT_FILTER;
   // A saved link can name a segment this strip no longer has; it shows every issue, and says so.
   const unknownFilter = VALID_FILTERS.includes(rawFilter) ? null : rawFilter;
-  const rawOrigin = sp.get("origin") ?? "";
-  // One source narrows the list, so a link naming more applies the first and names the others.
-  const droppedOrigins = [
-    ...new Set(
-      sp
-        .getAll("origin")
-        .slice(1)
-        .filter((o) => o !== rawOrigin),
-    ),
-  ];
-  const origin = (VALID_ORIGINS as string[]).includes(rawOrigin)
-    ? (rawOrigin as IssueOrigin)
-    : undefined;
-  // A source this select does not offer is dropped from the search, and the page says so.
-  const unknownOrigin = rawOrigin !== "" && origin === undefined ? rawOrigin : null;
+  const { origin, dropped: droppedOrigins, first: rawOrigin, firstUnknown: unknownOrigin } =
+    originFromParams(sp.getAll("origin"));
   const rawPriority = sp.get("priority") ?? "";
   const priority = (ISSUE_PRIORITIES as string[]).includes(rawPriority)
     ? (rawPriority as IssuePriority)
@@ -607,19 +593,30 @@ export function IssuesListView({
         </p>
       )}
 
-      {unknownOrigin !== null && (
-        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="unknown-origin-line">
-          This link names the source <code className="font-mono">{unknownOrigin}</code>, which the
-          Source filter does not offer, so issues from every source are shown.
-        </p>
-      )}
-
-      {droppedOrigins.length > 0 && (
-        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="dropped-origin-line">
-          This link names more than one source; the Source filter takes one, so only{" "}
-          <code className="font-mono">{rawOrigin === "" ? "no source" : rawOrigin}</code> is applied and{" "}
-          <code className="font-mono">{droppedOrigins.join(", ")}</code>{" "}
-          {droppedOrigins.length === 1 ? "is" : "are"} left out.
+      {(unknownOrigin || droppedOrigins.length > 0) && (
+        <p role="status" className="fg-body-sm mb-4 text-muted" data-testid="origin-line">
+          {droppedOrigins.length === 0 ? (
+            <>
+              This link names the source <code className="font-mono">{rawOrigin}</code>, which the
+              Source filter does not offer, so issues from every source are shown.
+            </>
+          ) : (
+            <>
+              This link names more than one source and the Source filter takes one,{" "}
+              {origin ? (
+                <>
+                  so only <code className="font-mono">{origin}</code> is applied
+                </>
+              ) : (
+                <>
+                  and {rawOrigin === "" ? "the first is empty" : <>the first, <code className="font-mono">{rawOrigin}</code>, is not a source it offers</>}, so issues
+                  from every source are shown
+                </>
+              )}
+              ; <code className="font-mono">{droppedOrigins.join(", ")}</code>{" "}
+              {droppedOrigins.length === 1 ? "is" : "are"} left out.
+            </>
+          )}
         </p>
       )}
 

@@ -38,6 +38,7 @@ import type {
 	IssueDependencyEdge,
 	IssueDetail,
 	IssueFilter,
+	IssueOrigin,
 	IssuePark,
 	IssuePriority,
 	IssueRow,
@@ -333,6 +334,25 @@ export function statusFilterFromParams(
 		}
 	}
 	return { statuses: statuses.length > 0 ? statuses : undefined, unknown };
+}
+
+export const VALID_ISSUE_ORIGINS: readonly IssueOrigin[] = ["detector", "human"];
+
+export interface OriginParams {
+	origin: IssueOrigin | undefined;
+	dropped: string[];
+	first: string;
+	firstUnknown: boolean;
+}
+
+/** The Source filter takes one source: a link naming several reads the first (`first`, and `origin` where it is one the filter offers) and returns the rest by name in `dropped`. */
+export function originFromParams(values: readonly string[]): OriginParams {
+	const first = values[0] ?? "";
+	const origin = (VALID_ISSUE_ORIGINS as readonly string[]).includes(first)
+		? (first as IssueOrigin)
+		: undefined;
+	const dropped = [...new Set(values.slice(1).filter((o) => o !== first))];
+	return { origin, dropped, first, firstUnknown: first !== "" && origin === undefined };
 }
 
 export interface IssueGroup {

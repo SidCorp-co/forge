@@ -46,12 +46,15 @@ function actionTone(kind: AttentionActionKind): { fg: string; bg: string } {
 export function AttentionQueue({
   items,
   cut,
+  refusal = null,
   slug,
   now,
 }: {
   items: DashboardAttentionItem[];
   /** How much of what a person has to act on the list leaves out; null where it holds it all. */
   cut: AttentionCut | null;
+  /** Said under the list where the response cannot say how much of it is left out. */
+  refusal?: string | null;
   slug: string;
   now: number;
 }) {
@@ -73,7 +76,11 @@ export function AttentionQueue({
       </div>
       <CardContent className="flex-1">
         {items.length === 0 ? (
-          <EmptyState title="All caught up" message="Nothing in this project needs you right now." mascot={false} />
+          cut || refusal ? (
+            <p className="fg-body-sm text-subtle">Nothing is listed to act on here.</p>
+          ) : (
+            <EmptyState title="All caught up" message="Nothing in this project needs you right now." mascot={false} />
+          )
         ) : (
           <ul className="flex flex-col gap-2">
             {items.map((it) => {
@@ -104,6 +111,11 @@ export function AttentionQueue({
               );
             })}
           </ul>
+        )}
+        {refusal && (
+          <p role="alert" className="fg-caption mt-3 text-subtle" data-testid="attention-refusal">
+            {refusal}
+          </p>
         )}
         {cut && (
           <p className="fg-caption mt-3 text-subtle">
