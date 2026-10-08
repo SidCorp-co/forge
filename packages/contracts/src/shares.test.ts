@@ -33,7 +33,7 @@ describe("a share", () => {
   });
   it("shows no token or hash in the list view", () => {
     const v = {
-      id: "s", projectId: "p", audience: "link", subjectKind: "message", createdBy: "u",
+      id: "s", projectId: "p", audience: "link", subjectKind: "message", title: "Progress", createdBy: "u",
       createdAt: "2026-10-08T10:00:00Z", expiresAt: "2026-10-15T10:00:00Z", revokedAt: null, revokedBy: null, viewCount: 0, lastViewedAt: null,
     };
     expect(ShareLinkViewSchema.safeParse(v).success).toBe(true);

@@ -95,6 +95,8 @@ export const ShareLinkViewSchema = z
     projectId: z.string().min(1),
     audience: z.enum(SHARE_AUDIENCES),
     subjectKind: z.enum(SHARE_SUBJECT_KINDS),
+    /** The first block title the frozen, scrubbed snapshot holds, so two links of one kind read apart; null when no block has one. */
+    title: z.string().nullable(),
     createdBy: z.string().min(1),
     createdAt: z.iso.datetime(),
     expiresAt: z.iso.datetime(),

@@ -39,6 +39,7 @@ function view(over: Partial<ShareLinkView> = {}): ShareLinkView {
     projectId: P,
     audience: "members",
     subjectKind: "message",
+    title: "Progress by requirement",
     createdBy: ME,
     createdAt: "2026-10-08T03:50:00.000Z",
     expiresAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
@@ -130,6 +131,7 @@ describe("the share dialog", () => {
     await waitFor(() => expect(createButton()).toBeEnabled());
     fireEvent.click(createButton());
     expect(await screen.findByTestId("share-link")).toHaveValue(URL_ONCE);
+    expect(screen.getByTestId("share-created-title")).toHaveTextContent("Progress by requirement");
     expect(screen.getByText(/This link is shown once/)).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(URL_ONCE)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
@@ -183,6 +185,17 @@ describe("a project's share links", () => {
     expect(within(state("s-left")).getByText("Former member")).toBeInTheDocument();
     expect(screen.getAllByTestId("share-revoke").map((b) => b.closest("tr")?.getAttribute("data-share-id"))).toEqual(["s-mine"]);
     expect(document.body.textContent).not.toMatch(/forge_share_|tokenHash/);
+  });
+
+  it("tells two links of one kind apart by the title each froze, and the dialog names the same one", async () => {
+    const shares = [view({ id: "s-a", title: "Progress by requirement" }), view({ id: "s-b", title: "Open risks" }), view({ id: "s-c", title: null })];
+    fakeCore((call) => (call.method === "GET" ? { body: { shares } } : undefined));
+    list();
+    await screen.findByTestId("share-list");
+    expect(screen.getAllByTestId("share-title").map((t) => `${t.closest("tr")?.getAttribute("data-share-id")}:${t.textContent}`)).toEqual([
+      "s-a:Progress by requirement",
+      "s-b:Open risks",
+    ]);
   });
 
   it("offers a project admin Revoke on every active link", async () => {

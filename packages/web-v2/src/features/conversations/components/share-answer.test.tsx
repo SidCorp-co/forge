@@ -63,7 +63,7 @@ function dialogCore() {
       return {
         status: 201,
         body: {
-          share: { id: "s-1", projectId: P, audience: "members", subjectKind: "template-output", createdBy: "u", createdAt: "2026-10-08T03:50:00.000Z", expiresAt: "2026-10-15T03:50:00.000Z", revokedAt: null, revokedBy: null, viewCount: 0, lastViewedAt: null },
+          share: { id: "s-1", projectId: P, audience: "members", subjectKind: "template-output", title: null, createdBy: "u", createdAt: "2026-10-08T03:50:00.000Z", expiresAt: "2026-10-15T03:50:00.000Z", revokedAt: null, revokedBy: null, viewCount: 0, lastViewedAt: null },
           url: `https://forge.test/s/forge_share_${"t".repeat(43)}`,
         },
       };

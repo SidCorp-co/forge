@@ -204,6 +204,11 @@ function CreatedLink({
   };
   return (
     <div className="flex flex-col gap-4" data-testid="share-created">
+      {share.title && (
+        <p className="fg-body-sm font-semibold text-fg" data-testid="share-created-title">
+          {share.title}
+        </p>
+      )}
       <p className="fg-body-sm text-fg">
         This link is shown once. Copy it now: Forge keeps only a fingerprint of it and cannot show it again.
       </p>

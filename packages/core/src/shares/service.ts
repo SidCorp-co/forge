@@ -41,12 +41,24 @@ const CREATED_WITH: Record<ShareAudience, ProjectPermission> = {
   link: 'shares.public',
 };
 
+/** The first block title a stored snapshot holds; it was scrubbed with the rest of the snapshot. */
+function titleOf(snapshot: unknown): string | null {
+  const blocks = (snapshot as { blocks?: unknown } | null)?.blocks;
+  if (!Array.isArray(blocks)) return null;
+  for (const block of blocks) {
+    const title = (block as { title?: unknown } | null)?.title;
+    if (typeof title === 'string' && title.trim()) return title;
+  }
+  return null;
+}
+
 export function shareView(row: Row): ShareLinkView {
   return {
     id: row.id,
     projectId: row.projectId,
     audience: row.audience,
     subjectKind: row.subjectKind,
+    title: titleOf(row.snapshot),
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt.toISOString(),

@@ -46,6 +46,7 @@ function plantedDocument(projectId: string): ReportDocument {
       {
         kind: 'table',
         v: 1,
+        title: `Progress for ${EMAIL}`,
         columns: ['requirement', 'note', 'proven'],
         source: { runId: 'run-1' },
         frame,
@@ -181,6 +182,8 @@ describe('opening a share', () => {
     const row = (listed.body.shares as Body[]).find((s) => s.id === share.id);
     expect(row?.viewCount).toBe(2);
     expect(row?.lastViewedAt).not.toBeNull();
+    expect(row?.title).toBe('Progress for [email]');
+    expect(JSON.stringify(listed.body)).not.toContain(EMAIL);
     const refused = await db
       .execute(sql`UPDATE share_links SET snapshot = '{}'::jsonb WHERE id = ${share.id as string}`)
       .then(

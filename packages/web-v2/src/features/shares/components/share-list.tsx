@@ -120,7 +120,8 @@ function ShareRow({
   return (
     <TR data-testid="share-row" data-share-id={share.id} data-state={state}>
       <TD>
-        <span title={`Share ${share.id}, created ${time.dateTime(share.createdAt)}`}>
+        <span className="flex min-w-0 flex-col items-start gap-0.5" title={`Share ${share.id}, created ${time.dateTime(share.createdAt)}`}>
+          {share.title && <span className="max-w-[24ch] truncate text-fg" data-testid="share-title">{share.title}</span>}
           <EnumBadge family="shareSubject" value={share.subjectKind} />
         </span>
       </TD>
