@@ -6,7 +6,12 @@ import {
   releaseAttempts,
 } from '../db/schema-release-ledger.js';
 
-import { type CloseVerification, closeVerification, type ReleaseChannel } from './channel.js';
+import {
+  type CloseVerification,
+  closeVerification,
+  probesOf,
+  type ReleaseChannel,
+} from './channel.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import { readLiveState } from './verify.js';
 
@@ -156,7 +161,7 @@ export async function readAttempt(
   return (row as ReleaseAttemptRow | undefined) ?? null;
 }
 
-/** Core's reading beside an attempt's account: the probes, a refused declaration, or none at all. */
+/** Core's reading beside an attempt's account: every live binding's probes, a refused declaration, or none at all. */
 export async function attemptReading(
   channels: readonly ReleaseChannel[],
 ): Promise<Omit<SettleAttemptArgs, 'runId' | 'idempotencyKey'>> {
@@ -183,7 +188,7 @@ export async function attemptReading(
         'this project declares no verification probes, so nothing was read: the attempt stands on its account alone',
     };
   }
-  const live = await readLiveState(verification.cfg);
+  const live = await readLiveState(probesOf(verification));
   return {
     health: live.health,
     identity: live.identity,

@@ -1,5 +1,5 @@
 import { collectReleaseBlockers } from './blockers.js';
-import { type CloseVerification, closeVerification } from './channel.js';
+import { type CloseVerification, closeVerification, probesOf } from './channel.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import type { VerifySource } from './plan.js';
 import { type LiveState, readLiveState } from './verify.js';
@@ -62,11 +62,9 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
     };
   }
 
-  const { cfg } = verification;
-  const channel = channels.find((c) => c.verify === cfg);
   let state: LiveState;
   try {
-    state = await readLiveState(cfg);
+    state = await readLiveState(probesOf(verification));
   } catch (err) {
     return {
       ok: false,
@@ -86,7 +84,7 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
       unidentified: state.unidentified,
       disagreement: state.disagreement,
       readAt: new Date().toISOString(),
-      verifySource: channel?.verifySource ?? 'none',
+      verifySource: verification.channels[0]?.verifySource ?? 'none',
     },
   };
 }

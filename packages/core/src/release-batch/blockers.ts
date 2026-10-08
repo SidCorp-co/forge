@@ -247,20 +247,14 @@ async function rosterBlockers(
   out.push(blocker('RELEASE_ISSUES_UNCLOSABLE', { issueIds: rest, displayIds, refused }));
 }
 
-/** The label, and how many live bindings one reading would answer for. A channel declaring no
- *  probe is no reason here: its release is recorded unverified (ISS-1321). */
+/** The label this release prefers. A channel declaring no probe is no reason here: it is named as
+ *  not read where the release is proved (ISS-1321, ISS-1282). */
 function channelBlockers(
   projectId: string,
   channels: ReleaseChannel[],
-  door: ReleaseDoor,
   out: ReleaseBlocker[],
 ): string | null {
   let label: string | null = null;
-  // The record door checks the channel COUNT first; the batch path checks it
-  // last. Each door keeps its own order (ISS-1127).
-  if (door === 'record' && channels.length > 1) {
-    out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
-  }
   try {
     // ISS-1275 — no label is no preference, which admits the pool it has.
     label = releaseRunnerLabelOf(projectId, channels);
@@ -437,12 +431,9 @@ async function gatedBlockers(
   const machinery: ReleaseBlocker[] = [];
   if (ch.failure) machinery.push(ch.failure);
   if (channels) {
-    const label = channelBlockers(projectId, channels, door, machinery);
+    const label = channelBlockers(projectId, channels, machinery);
     if (door === 'batch') {
       await poolBlockers(projectId, label, machinery, warnings);
-      if (channels.length > 1) {
-        machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
-      }
       unreadableProbeBlockers(channels, machinery);
     }
   } else if (door === 'batch') {

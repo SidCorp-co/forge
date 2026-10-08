@@ -108,7 +108,7 @@ async function seed(opts: { probes?: boolean; label?: string } = {}): Promise<Wo
   const config: Record<string, unknown> = {};
   if (opts.label) config.releaseRunnerLabel = opts.label;
   if (opts.probes !== false) {
-    config.verify = { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 };
+    config.verify = { probes: [{ url: probeUrl }], stableReads: 1 };
   }
   await harness.db.execute(sql`
     INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)

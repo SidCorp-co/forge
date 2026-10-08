@@ -14,14 +14,27 @@ export function unverifiedMarker(runId: string): string {
   return `release-verification: unverified ${runId}`;
 }
 
-export function unverifiedCloseNote(runId: string, commit: string | null): string {
+/**
+ * `unread` names the live bindings that declare no probe where others do: the release was verified
+ * at the rest, and these were deployed with nothing reading what they serve.
+ */
+export function unverifiedCloseNote(
+  runId: string,
+  commit: string | null,
+  unread: readonly string[] = [],
+): string {
   const reported = commit
     ? `The release reported shipping \`${commit}\`, and nothing checked that it is serving.`
     : 'The release reported no commit, so nothing names what it shipped.';
+  const partial = unread.length > 0;
   return [
-    '**This issue is being closed by a release that was not verified.**',
+    partial
+      ? '**This issue is being closed by a release that was verified at only some of its deploy bindings.**'
+      : '**This issue is being closed by a release that was not verified.**',
     '',
-    `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
+    partial
+      ? `Nothing read what these live deploy bindings serve, because none declares a verify probe: ${unread.join(', ')}. The bindings that do declare one were read and confirmed.`
+      : `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
     '',
     'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `environments.live.commitUrl` (with `commitPath`), or a `verify` on the live deploy binding, makes the releases after that verified.',
     '',
@@ -42,9 +55,10 @@ export async function noteUnverifiedCloses(args: {
   issueIds: readonly string[];
   actor: TransitionActor;
   commit: string | null;
+  unread?: readonly string[] | undefined;
 }): Promise<number> {
   const marker = unverifiedMarker(args.runId);
-  const body = unverifiedCloseNote(args.runId, args.commit);
+  const body = unverifiedCloseNote(args.runId, args.commit, args.unread);
   const author = authorOf(args.actor);
   let written = 0;
   for (const issueId of args.issueIds) {

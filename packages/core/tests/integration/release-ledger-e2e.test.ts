@@ -92,16 +92,17 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
     INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
     VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
   `);
-  await harness.db.execute(sql`
+  const [binding] = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
     VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true, ${JSON.stringify(
       opts.probes === false
         ? { releaseRunnerLabel: 'box' }
         : {
             releaseRunnerLabel: 'box',
-            verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
+            verify: { probes: [{ url: probeUrl }], stableReads: 1 },
           },
     )}::jsonb)
+    RETURNING id
   `);
   const runId = randomUUID();
   // The version is part of the row the real path produces (ISS-1120): `createReleaseBatch` cuts it
@@ -111,9 +112,19 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status, metadata, release_version)
     VALUES (${runId}, ${project.id}, 'system', 'running',
-            ${JSON.stringify({ source: 'release-batch', commitBefore: 'commit-before' })}::jsonb, '0.1.0')
+            ${JSON.stringify({
+              source: 'release-batch',
+              commitBeforeBy: { [String(binding?.id)]: 'commit-before' },
+            })}::jsonb, '0.1.0')
   `);
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id), runId };
+}
+
+/** The deploy lands and the agent looks at it: the reading a finish is judged on. */
+async function landed(w: World): Promise<void> {
+  served = 'commit-after';
+  const { lookAtBatch } = await import('../../src/release-batch/look.js');
+  await lookAtBatch({ runId: w.runId, takenBy: w.userId });
 }
 
 function call(path: string, token: string, init: RequestInit = {}) {
@@ -437,7 +448,7 @@ describe('a release run says what method it is working from', () => {
   it('admits a finish on a run that announced nothing', async () => {
     const w = await seed();
     await seedJob(w, 'release-flow');
-    served = 'commit-after';
+    await landed(w);
 
     const res = await finish(w);
 
@@ -448,7 +459,7 @@ describe('a release run says what method it is working from', () => {
   it('admits a finish whose announcement names another skill than its job', async () => {
     const w = await seed();
     await seedJob(w, 'release-flow');
-    served = 'commit-after';
+    await landed(w);
     await announce(w, { skill: 'issue-flow', loaded: true });
 
     const res = await finish(w);
@@ -463,7 +474,7 @@ describe('a release run says what method it is working from', () => {
   it('admits a finish once the run announces the skill its job names', async () => {
     const w = await seed();
     await seedJob(w, 'release-flow');
-    served = 'commit-after';
+    await landed(w);
     await announce(w, { skill: 'release-flow', loaded: true });
 
     const res = await finish(w);

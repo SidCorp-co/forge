@@ -62,9 +62,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 const { releaseBatchRoutes } = await import('./routes.js');
 const { ReleaseTargetUndeclaredError } = await import('./gate.js');
 const { ReleaseRunnerAmbiguousError } = await import('./channel.js');
-const { ReleaseMultiChannelUnsupportedError, ReleaseRecordMissingError } = await import(
-  './service.js'
-);
+const { ReleaseRecordMissingError } = await import('./service.js');
 const { blocker, releaseBlockerError } = await import('./blockers.js');
 const { releaseBlockerSentence } = await import('./blocker-sentences.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -152,20 +150,6 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
     expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
     expect(body.message).toContain('box-a');
     expect(body.message).toContain('box-b');
-  });
-
-  it('answers 409 RELEASE_MULTI_CHANNEL_UNSUPPORTED, saying how many were declared', async () => {
-    mockAdmin();
-    createReleaseBatchMock.mockRejectedValueOnce(new ReleaseMultiChannelUnsupportedError(2));
-
-    const res = await createReq();
-    const body = (await res.json()) as { code?: string; message?: string };
-
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
-    expect(body.message).toContain('2 live deploy bindings');
-    // The way out is carried in the refusal.
-    expect(body.message).toContain('Leave exactly one binding');
   });
 
   it('still passes an unrelated failure through as a 500 rather than a 409', async () => {

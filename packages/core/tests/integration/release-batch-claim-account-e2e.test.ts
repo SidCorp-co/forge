@@ -70,7 +70,7 @@ beforeEach(async () => {
   await harness.db.execute(sql`
     UPDATE integration_bindings
     SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 12, stableReads: 1 },
+      verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     })}::jsonb
     WHERE project_id = ${projectId} AND provider = 'coolify'
   `);
@@ -140,6 +140,7 @@ describe('the abort’s own account of a roster closed before it ran', () => {
   async function finishedBatch(n: number) {
     const { runId, ids } = await batchOf(n);
     serving = PUSHED;
+    await fx.look(runId);
     await accept(runId);
     await job.runReleaseBatchFinish(runId);
     for (const id of ids) {
@@ -240,6 +241,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     const { runId, ids } = await batchOf(2);
     await promoted(runId);
     serving = PUSHED;
+    await fx.look(runId);
     await accept(runId);
     await job.runReleaseBatchFinish(runId);
     const [shipped] = ids as [string];

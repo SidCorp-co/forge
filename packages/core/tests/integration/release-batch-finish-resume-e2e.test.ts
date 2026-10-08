@@ -82,7 +82,7 @@ beforeEach(async () => {
   await harness.db.execute(sql`
     UPDATE integration_bindings
     SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 6, stableReads: 1 },
+      verify: { probes: [{ url: probeUrl }], stableReads: 1 },
     })}::jsonb
     WHERE project_id = ${projectId} AND provider = 'coolify'
   `);
@@ -92,6 +92,12 @@ async function batch() {
   const issueId = await fx.insertIssue();
   const { runId } = await fx.claim([issueId]);
   return { runId, issueId };
+}
+
+/** The deploy lands and the agent looks at it: the reading a finish is judged on. */
+async function landed(runId: string): Promise<void> {
+  serving = PUSHED;
+  await fx.look(runId);
 }
 
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();
@@ -150,7 +156,7 @@ async function sweep(): Promise<string[]> {
 describe('the sweep takes up an attempt nobody is working', () => {
   it('resumes an attempt whose owner stopped renewing, and it reaches finished', async () => {
     const { runId, issueId } = await batch();
-    serving = PUSHED;
+    await landed(runId);
     await plant(runId, { state: 'verifying', owner: 'dead-worker', leaseUntil: iso(-1_000) });
 
     expect(await sweep()).toEqual([runId]);
@@ -208,7 +214,7 @@ describe('the sweep takes up an attempt nobody is working', () => {
 describe('a live worker keeps its attempt', () => {
   it('is not woken by the sweep, and a second worker changes nothing', async () => {
     const { runId } = await batch();
-    serving = PUSHED;
+    await landed(runId);
     const planted = await plant(runId, {
       state: 'verifying',
       owner: 'live-worker',
@@ -224,25 +230,23 @@ describe('a live worker keeps its attempt', () => {
 
   it('stops a worker whose lease was taken over before it closes anything', async () => {
     const { runId, issueId } = await batch();
+    await landed(runId);
     await plant(runId, { state: 'accepted', updatedAt: iso(0) });
+    let thief: Record<string, unknown> | null = null;
 
-    const working = job.runReleaseBatchFinish(runId);
-    const taken = await (async () => {
-      for (let i = 0; i < 40; i += 1) {
-        const r = await stored(runId);
-        if (r?.state === 'verifying' && typeof r.owner === 'string') return r;
-        await new Promise((d) => setTimeout(d, 50));
-      }
-      throw new Error('the worker never took the attempt');
-    })();
-    const thief = await plant(runId, {
-      ...taken,
-      owner: 'thief',
-      leaseUntil: iso(60_000),
-      version: (taken.version as number) + 10,
+    // The worker holds the attempt and has not yet judged the readings, which are green.
+    await job.runReleaseBatchFinish(runId, {
+      afterTaken: async () => {
+        const taken = (await stored(runId)) as Record<string, unknown>;
+        expect(taken).toMatchObject({ state: 'verifying', owner: expect.any(String) });
+        thief = await plant(runId, {
+          ...taken,
+          owner: 'thief',
+          leaseUntil: iso(60_000),
+          version: (taken.version as number) + 10,
+        });
+      },
     });
-    serving = PUSHED;
-    await working;
 
     expect(await stored(runId)).toEqual(thief);
     expect((await fx.stored(issueId)).status).toBe('releasing');
@@ -304,18 +308,18 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
           SELECT metadata -> 'finish' AS finish FROM pipeline_runs WHERE id = ${runId}
         `)
         )[0]?.finish as Record<string, unknown>;
-        let landed = false;
+        let swapped = false;
         takeover = plant(runId, {
           ...taken,
           owner: 'thief',
           leaseUntil: iso(60_000),
           version: (taken.version as number) + 10,
         }).then((r) => {
-          landed = true;
+          swapped = true;
           return r;
         });
         await new Promise((d) => setTimeout(d, 400));
-        waitedBehindTheLock = !landed;
+        waitedBehindTheLock = !swapped;
       },
     });
     const thief = await (takeover as unknown as Promise<Record<string, unknown>>);
@@ -365,7 +369,7 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
       refusal: { code: 'RELEASE_FINISH_ERRORED' },
     });
 
-    serving = PUSHED;
+    await landed(runId);
     const again = await job.acceptReleaseBatchFinish(
       runId,
       { type: 'user', id: ownerId },
@@ -382,7 +386,7 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
 
   it('keeps a finished record finished when only the run close failed, and the sweep closes the run', async () => {
     const { runId, issueId } = await batch();
-    serving = PUSHED;
+    await landed(runId);
     await plant(runId, { state: 'verifying', owner: 'dead-worker', leaseUntil: iso(-1_000) });
     closeRun.failNext = true;
 

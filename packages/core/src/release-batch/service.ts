@@ -38,7 +38,12 @@ import {
   noteShipUnverified,
   readCarried,
 } from './carried.js';
-import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
+import {
+  bindingName,
+  closeVerification,
+  type ReleaseVerification,
+  resolveReleasePlan,
+} from './channel.js';
 import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
@@ -52,6 +57,7 @@ import { RELEASE_GATE_STATUS } from './gate.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './job-start.js';
 import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
+import { judgeRecordedReadings, readCommitsBefore } from './readings.js';
 import {
   type CloseRefusal,
   closeFailureText,
@@ -60,7 +66,7 @@ import {
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
 import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
-import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
+import { claimedCommit, liveCarriesRoster, notAWholeCommit } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
@@ -142,8 +148,8 @@ export async function createReleaseBatch(
   const { baseBranch, promotePlanned } = releaseBranches(project);
   const deployPlanned = plan.channels.length > 0;
   const verification = closeVerification(plan.channels);
-  const commitBefore =
-    verification.kind === 'probed' ? await readLiveCommit(verification.cfg) : null;
+  const commitBeforeBy =
+    verification.kind === 'probed' ? await readCommitsBefore(verification.channels) : {};
 
   const issueRows = await db
     .select({
@@ -155,7 +161,7 @@ export async function createReleaseBatch(
     .from(issues)
     .where(inArray(issues.id, issueIds));
   const openedAfterRelease = liveCarriesRoster(
-    commitBefore,
+    Object.values(commitBeforeBy),
     issueRows.map((r) => r.mergedCommitSha),
   );
 
@@ -172,7 +178,7 @@ export async function createReleaseBatch(
       issueIds,
       deployPlanned,
       promotePlanned,
-      commitBefore,
+      commitBeforeBy,
       openedAfterRelease,
       verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
@@ -286,14 +292,15 @@ export interface FinishReleaseBatchResult {
 }
 
 export interface FinishReleaseBatchOptions {
-  /** The commit the release says it pushed, for the probes to match against. */
+  /** The commit the release says it pushed, for the recorded readings to be judged against. */
   commit?: string | undefined;
-  /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
+  /** An earlier worker on this same attempt already judged the readings green, so they are not judged again. */
   alreadyVerified?: boolean | undefined;
-  whileVerifying?: (() => Promise<void>) | undefined;
   /** Called once verification is green — or, with no probe declared, once it is known there is
-   *  none to read — before the first issue closes. */
-  onVerified?: ((verification: ReleaseVerification) => Promise<void>) | undefined;
+   *  none to read — before the first issue closes, with the readings it rested on. */
+  onVerified?:
+    | ((verification: ReleaseVerification, evidence: string[]) => Promise<void>)
+    | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
   onRosterClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
   /**
@@ -333,30 +340,37 @@ export async function finishReleaseBatch(
 
   if (run) {
     const verification = await assertFinishable(runId, run);
+    let evidence: string[] = [];
     if (verification.kind === 'probed' && !options.alreadyVerified) {
-      const meta = (run.metadata ?? {}) as Record<string, unknown>;
-      const outcome = await verifyDeployed({
-        cfg: verification.cfg,
-        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-        expected: options.commit ?? null,
-        checkpoint: options.whileVerifying,
+      const claim = options.commit == null ? null : claimedCommit(options.commit);
+      if (options.commit != null && claim === null) {
+        throw new ReleaseNotVerifiedError(notAWholeCommit(options.commit, null), null);
+      }
+      const judged = await judgeRecordedReadings({
+        runId,
+        metadata: run.metadata,
+        verification,
+        claim,
       });
-      if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
-      if (!outcome.moved) {
+      if (!judged.ok) throw new ReleaseNotVerifiedError(judged.reason, judged.live);
+      evidence = judged.evidence;
+      if (!judged.moved) {
         logger.warn(
-          { runId, identity: outcome.identity },
+          { runId, identity: judged.identity },
           'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
         );
       }
     }
-    await options.onVerified?.(verification.kind);
+    await options.onVerified?.(verification.kind, evidence);
     await stampRunVerification(runId, verification.kind);
-    if (verification.kind === 'unverified') {
+    const unread = verification.kind === 'probed' ? verification.unread.map(bindingName) : [];
+    if (verification.kind === 'unverified' || unread.length > 0) {
       await noteUnverifiedCloses({
         runId,
         issueIds: claimed.map((c) => c.id),
         actor,
         commit: options.commit ?? null,
+        unread,
       });
     }
   }

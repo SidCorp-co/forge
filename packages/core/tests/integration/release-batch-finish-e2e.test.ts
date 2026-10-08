@@ -158,7 +158,7 @@ describe('release batch finish E2E', () => {
       ownerId = owner.id;
       projectId = (await createTestProject(harness.db, owner.id)).id;
       await declareProduction({
-        verify: { probes: [{ url: 'http://127.0.0.1:9/never' }], timeoutSeconds: 0 },
+        verify: { probes: [{ url: 'http://127.0.0.1:9/never' }] },
       });
       await seedReleaseRunner();
       const { ReleaseNotVerifiedError, finishReleaseBatch } = await import(

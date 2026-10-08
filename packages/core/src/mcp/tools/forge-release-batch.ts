@@ -18,11 +18,13 @@ import type { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
+import { lookAtBatch } from '../../release-batch/look.js';
 import { announceMethod } from '../../release-batch/method.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL } from '../../release-batch/plan.js';
 import {
   finishedForSentence,
   finishRefusal as finishHttpRefusal,
+  lookRefusal,
   recordRefusal,
 } from '../../release-batch/refusals.js';
 import {
@@ -47,7 +49,7 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['get', 'state', 'method', 'finish', 'abort']),
+    action: z.enum(['get', 'state', 'method', 'look', 'finish', 'abort']),
     projectId: z.uuid().optional(),
     runId: z.uuid(),
     /** method: the skill the run loaded. */
@@ -56,7 +58,7 @@ const inputSchema = z
     loaded: z.boolean().optional(),
     /** method: the run's own words about what it loaded, or why it could not. */
     detail: z.string().trim().max(4_000).optional(),
-    /** finish: the SHA pushed to the production branch, for the probes to match. */
+    /** look: the SHA pushed, to judge the readings against. finish: the SHA pushed to the production branch. */
     commit: z.string().trim().max(200).optional(),
     /** abort: why. */
     reason: z.string().trim().max(2_000).optional(),
@@ -163,6 +165,18 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
         detail: input.detail,
       });
     }
+    case 'look': {
+      try {
+        return await lookAtBatch({
+          runId,
+          takenBy: principal.userId,
+          commit: input.commit,
+        });
+      } catch (err) {
+        const refused = lookRefusal(err);
+        throw refused ? fromHttp(refused) : err;
+      }
+    }
     case 'finish': {
       try {
         const accepted = await acceptReleaseBatchFinish(runId, principalActor(principal), {
@@ -190,12 +204,15 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
     'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
-    'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
+    'call it FIRST), `state` (roster, attempts, the readings recorded so far, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; a Coolify deploy is refused until this run has recorded something, and this is the ' +
-    'call that records it first), `finish` (`commit` = the SHA pushed to ' +
-    'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
-    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why; a new `finish` after a `failed` one ' +
-    'starts a new attempt), `abort` (`reason`; closes nothing and leaves closed the issues a finish already closed, answered as `alreadyClosed`; ' +
+    'call that records it first), `look` (optional `commit` = the SHA pushed; once the deploy is made, Forge reads the probes of every live ' +
+    'deploy binding that declares one and stores the reading — you decide when and how often, and its `judgement` says whether a `finish` naming ' +
+    'the same commit would close the roster on what is recorded now; it is refused where no binding declares a probe), `finish` (`commit` = the SHA ' +
+    'pushed to production; a project whose live bindings declare probes is closed only on recorded readings that show the release live, so a `finish` ' +
+    'before them is refused RELEASE_NOT_VERIFIED saying what is missing and closes nothing; accepted, it answers at once with the attempt at ' +
+    '`accepted` and the server closes every claimed issue on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` ' +
+    'says why; where no live binding declares a probe it closes the roster unverified on your account alone), `abort` (`reason`; closes nothing and leaves closed the issues a finish already closed, answered as `alreadyClosed`; ' +
     'on a run that recorded no promotion it releases every claim and moves the issues still at `releasing` back to the release gate, answered as `recovered` — ' +
     'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
     'to the release gate for `POST /release-records` to close against what production is serving). ' +

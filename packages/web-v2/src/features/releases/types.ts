@@ -54,6 +54,15 @@ export interface ReleaseLiveState {
 	disagreement: string[] | null;
 }
 
+/** One look: what every live binding's probes said, kept as the evidence a finish closes on. */
+export interface ReleaseReading {
+	id: string;
+	takenAt: string;
+	takenBy: string;
+	bindings: Array<{ bindingId: string; name: string } & ReleaseLiveState>;
+	unread: string[];
+}
+
 export interface ReleaseMethod {
 	skill: string;
 	loaded: boolean;
@@ -99,6 +108,7 @@ export interface ReleaseRunState {
 	attempts: ReleaseAttempt[];
 	/** `null` when the project declares no probes, or none that can be read. */
 	live: ReleaseLiveState | null;
+	readings: { total: number; latest: ReleaseReading[] };
 	verification: "probed" | "unverified" | null;
 	bounds: ReleaseBoundsReading;
 	/** `null` when the run never announced one. */

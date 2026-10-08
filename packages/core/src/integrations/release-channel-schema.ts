@@ -17,7 +17,18 @@ export const releaseChannelFields = {
   verify: z
     .object({
       probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
-      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
+      /**
+       * Declared once as a deadline on the finish's polling loop, which no longer exists: the agent
+       * says when to look and a finish judges what was recorded (ISS-1282). A value is refused by
+       * name rather than stripped, so nobody believes a deadline was set.
+       */
+      timeoutSeconds: z
+        .never({
+          error:
+            '`timeoutSeconds` is no longer a setting: a release finish no longer waits on a clock, because the agent says when Forge reads the probes (`look`). Remove it.',
+        })
+        .optional(),
+      /** Consecutive recorded readings that must agree before a finish believes them. */
       stableReads: z.number().int().min(1).max(10).optional(),
     })
     .nullish(),

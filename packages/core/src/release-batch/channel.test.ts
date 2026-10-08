@@ -253,10 +253,11 @@ describe('closeVerification (ISS-1321)', () => {
     verifySource: 'declared-unusable',
   };
 
-  it('answers probed with the channel probes where a binding declares them', () => {
+  it('answers probed with the binding that declares probes, and no unread binding', () => {
     expect(closeVerification([probed] as unknown as Channels)).toEqual({
       kind: 'probed',
-      cfg: readable,
+      channels: [probed],
+      unread: [],
     });
   });
 
@@ -265,11 +266,25 @@ describe('closeVerification (ISS-1321)', () => {
     expect(closeVerification([])).toEqual({ kind: 'unverified' });
   });
 
-  it('is proved by the readable probes whichever binding sorts first', () => {
+  it('reads every binding that declares probes and names the ones that declare none, whichever sorts first', () => {
     const first = closeVerification([none, probed] as unknown as Channels);
     const last = closeVerification([probed, none] as unknown as Channels);
-    expect(first).toEqual({ kind: 'probed', cfg: readable });
+    expect(first).toEqual({ kind: 'probed', channels: [probed], unread: [none] });
     expect(last).toEqual(first);
+  });
+
+  it('reads two bindings that both declare probes, each on its own, where it used to refuse them', () => {
+    const second = {
+      ...probed,
+      bindingId: 'b-d',
+      label: 'eu',
+      verify: { probes: [{ url: 'https://eu.example.test/v' }] },
+    };
+    expect(closeVerification([probed, second] as unknown as Channels)).toEqual({
+      kind: 'probed',
+      channels: [probed, second],
+      unread: [],
+    });
   });
 
   it('throws RELEASE_PROBES_UNREADABLE naming a binding whose verify was refused', () => {
@@ -303,7 +318,8 @@ describe('finishVerification (ISS-1321)', () => {
   it('answers the readable probes where every url is one', () => {
     expect(finishVerification([good] as unknown as Channels)).toEqual({
       kind: 'probed',
-      cfg: good.verify,
+      channels: [good],
+      unread: [],
     });
   });
 });
