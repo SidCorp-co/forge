@@ -2,10 +2,11 @@
 
 import type { ReportDocument, TemplateNarrativeSlot } from "@forge/contracts/report-templates";
 import type { ShareSnapshot } from "@forge/contracts/shares";
-import { blockToText, checkBlock } from "@forge/contracts/visual-blocks";
+import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/design";
 import { ApiError } from "@/lib/api/client";
+import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { openShare } from "../api";
 
 const NARRATIVE: readonly { slot: TemplateNarrativeSlot; label: string }[] = [
@@ -26,39 +27,15 @@ const REFUSED: Record<string, string> = {
 };
 
 const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
+  `${new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC`;
 
-function sourceOf(document: ReportDocument, block: unknown): string | null {
-  const runId = (block as { source?: { runId?: string } }).source?.runId;
-  const run = runId ? document.runs.find((r) => r.runId === runId) : undefined;
-  return run ? `From the ${run.queryId} report, read ${when(run.asOf)}` : null;
-}
-
-/**
- * One block of a shared answer, drawn as its text fallback (`blockToText` of the contract), since
- * the web `visual-blocks` registry holds no renderer yet. Text only: a reference reads as its key and
- * is never a link, and nothing in the block is parsed as markup. A block whose kind this build does
- * not know is named, never dropped.
- */
-function SharedBlock({ document, block }: { document: ReportDocument; block: unknown }) {
-  const checked = checkBlock(block);
-  if (!checked.ok) {
-    const kind = (block as { kind?: unknown }).kind;
-    return (
-      <p className="fg-body-sm text-subtle">
-        This answer has a {typeof kind === "string" ? kind : "unnamed"} block this page cannot show.
-      </p>
-    );
-  }
-  const source = sourceOf(document, checked.block);
-  return (
-    <figure className="m-0">
-      <pre className="fg-body-sm m-0 overflow-x-auto whitespace-pre-wrap break-words font-mono text-fg">
-        {blockToText(checked.block)}
-      </pre>
-      {source && <figcaption className="fg-caption mt-2 text-subtle">{source}</figcaption>}
-    </figure>
-  );
+/** The frozen query and read time of each run the answer holds, keyed the way a block names its source. */
+function factsOf(document: ReportDocument): (source: BlockSource) => SourceFacts | undefined {
+  return (source) => {
+    if (!("runId" in source)) return undefined;
+    const run = document.runs.find((r) => r.runId === source.runId);
+    return run ? { queryId: run.queryId, asOf: run.asOf } : undefined;
+  };
 }
 
 export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
@@ -80,15 +57,15 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
           <p className="fg-body-sm mt-1 whitespace-pre-wrap text-fg">{document.narrative[slot]}</p>
         </section>
       ))}
-      {document.blocks.map((block, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the snapshot's block order is fixed
-        <section key={i} className="border-b border-line py-5">
-          {"title" in block && block.title ? (
-            <h2 className="fg-body-sm mb-2 font-semibold text-fg">{block.title}</h2>
-          ) : null}
-          <SharedBlock document={document} block={block} />
-        </section>
-      ))}
+      {/* No projectSlug: a viewer may not be a member, so a ref reads as its key and links nowhere. */}
+      <VisualBlockProvider value={{ projectSlug: undefined, sourceFacts: factsOf(document) }}>
+        {document.blocks.map((block, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the snapshot's block order is fixed
+          <section key={i} className="border-b border-line py-5">
+            <VisualBlockView block={block} />
+          </section>
+        ))}
+      </VisualBlockProvider>
     </article>
   );
 }

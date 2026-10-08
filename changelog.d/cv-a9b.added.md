@@ -1,0 +1,1 @@
+**A shared answer now shows its charts and tables as drawn.** The link page draws each block the way the chat does, with a text alternative and the query and read time it came from; references stay plain text.
