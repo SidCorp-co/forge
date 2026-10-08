@@ -66,7 +66,7 @@ const { requestId } = await import('../middleware/request-id.js');
 
 import type { RequestIdVars } from '../middleware/request-id.js';
 
-const { signHmacSha256 } = await import('./hmac.js');
+const { signHmacSha256, SignatureVerificationError } = await import('./hmac.js');
 const { webhookInboundRoutes } = await import('./inbound-routes.js');
 
 let ingest: Server;
@@ -220,6 +220,49 @@ describe('an inbound webhook whose adapter throws', () => {
     expect(sent).not.toContain(EMAIL);
   });
 
+  it('sends the tags the call is named by when the failed query bound the binding id', async () => {
+    const driver = Object.assign(new Error('relation "integration_deliveries" does not exist'), {
+      code: '42P01',
+      severity: 'ERROR',
+    });
+    const failed = new DrizzleQueryError(
+      'insert into "integration_deliveries" ("binding_id", "actor") values ($1, $2)',
+      [BINDING_ID, EMAIL],
+      driver,
+    );
+    handleInbound.mockRejectedValue(
+      new Error(`could not record a delivery for ${BINDING_ID} from ${EMAIL}`, { cause: failed }),
+    );
+    const res = await deliver();
+    expect(res.status).toBe(500);
+
+    const [event] = sentEvents() as [SentEvent];
+    expect(event.tags).toMatchObject({
+      'webhook.provider': 'github',
+      'webhook.slug': SLUG,
+      'webhook.binding_id': BINDING_ID,
+    });
+    const { 'webhook.binding_id': _named, ...everythingElse } = event.tags ?? {};
+    const elsewhere = JSON.stringify({ ...event, tags: everythingElse });
+    expect(elsewhere).toContain('could not record a delivery for');
+    expect(elsewhere).not.toContain(BINDING_ID);
+    expect(elsewhere).not.toContain(EMAIL);
+    expect(envelopes.join('\n')).not.toContain(EMAIL);
+  });
+
+  it('withholds a bound value that is in a tag the call did not name from the server', async () => {
+    const path = `/in/${SLUG}`;
+    const driver = Object.assign(new Error('could not serialize access'), { code: '40001' });
+    const failed = new DrizzleQueryError('select $1, $2', [BINDING_ID, path], driver);
+    handleInbound.mockRejectedValue(new Error('could not record a delivery', { cause: failed }));
+    await deliver();
+
+    const [event] = sentEvents() as [SentEvent];
+    expect(event.tags?.['webhook.binding_id']).toBe(BINDING_ID);
+    expect(event.tags?.['http.path']).not.toBe(path);
+    expect(event.tags?.['http.path']).toBe('[Redacted]');
+  });
+
   it('sends a thrown value that is not an Error as an Error saying so, with the same tags', async () => {
     handleInbound.mockRejectedValue('a bare string');
     const res = await deliver();
@@ -233,10 +276,20 @@ describe('an inbound webhook whose adapter throws', () => {
 
 describe('an inbound webhook whose adapter refuses the signature', () => {
   it('answers 401 INVALID_SIGNATURE and sends nothing to Sentry', async () => {
-    handleInbound.mockRejectedValue(new Error('bad signature'));
+    handleInbound.mockRejectedValue(new SignatureVerificationError('github: bad signature'));
     const res = await deliver();
     expect(res.status).toBe(401);
     expect(await res.json()).toMatchObject({ code: 'INVALID_SIGNATURE' });
     expect(sentEvents()).toHaveLength(0);
+  });
+
+  it('does not read the word in the adapter message as a refusal', async () => {
+    handleInbound.mockRejectedValue(
+      new Error('github webhook: delivery is for acme/signature-widgets, this binding is acme/w'),
+    );
+    const res = await deliver();
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ code: 'HANDLER_FAILED', message: 'handler failed' });
+    expect(sentEvents()).toHaveLength(1);
   });
 });

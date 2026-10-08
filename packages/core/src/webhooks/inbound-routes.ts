@@ -13,7 +13,7 @@ import {
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { withSentryCause } from '../middleware/error.js';
-import { verifyHmacSignature } from './hmac.js';
+import { SignatureVerificationError, verifyHmacSignature } from './hmac.js';
 
 const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
@@ -155,8 +155,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
         ...(result.refusal ? { refusal: result.refusal } : {}),
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'unknown error';
-      if (/signature/i.test(message)) {
+      if (err instanceof SignatureVerificationError) {
         await noteTurnedAway([pair], 'INVALID_SIGNATURE', { slug, provider: map.provider });
         throw unauthorized('INVALID_SIGNATURE');
       }

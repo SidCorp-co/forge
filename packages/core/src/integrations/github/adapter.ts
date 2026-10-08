@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type BindingRole, integrationBindings } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
-import { verifyHmacSignature } from '../../webhooks/hmac.js';
+import { SignatureVerificationError, verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
 import { type IntegrationConnectionRow, updateConnection } from '../store.js';
 import {
@@ -252,7 +252,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     }
     const signature = input.headers['x-hub-signature-256'] ?? null;
     if (!verifyHmacSignature(ctx.integrationSecret, input.rawBody, signature)) {
-      throw new Error('github: signature verification failed');
+      throw new SignatureVerificationError('github: signature verification failed');
     }
 
     const payload = input.payload as Parameters<typeof handleGitHubEvent>[2] & {

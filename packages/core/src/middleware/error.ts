@@ -2,7 +2,7 @@ import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { getLogger } from '../logger.js';
-import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { holdServerTags, isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { RequestIdVars } from './request-id.js';
 
 type ErrorBody = { code: string; message: string; details?: unknown };
@@ -142,6 +142,9 @@ function captureToSentry(
     scope.setTag('error.code', code);
     const requestId = c.get('requestId');
     if (requestId) scope.setTag('request.id', requestId);
+    if (carried && typeof carried.error === 'object' && carried.error !== null) {
+      holdServerTags(carried.error, carried.tags);
+    }
     Sentry.captureException(carried ? carried.error : err);
   });
 }
