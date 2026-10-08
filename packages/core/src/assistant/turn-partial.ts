@@ -5,7 +5,7 @@
 // quoted: they are the asker's, the whole room reads this message, and JSON is not a sentence.
 
 import { partialReplyWords, type ReplyLanguage } from '../conversations/index.js';
-import type { DoneCall } from './turn-writes.js';
+import { type DoneCall, isProposalCall } from './turn-writes.js';
 
 const NAMED_WRITES = 10;
 const CLI_TOOL = 'forge';
@@ -133,7 +133,9 @@ export function readsSaid(calls: readonly DoneCall[], language: ReplyLanguage): 
       drawn.set(kind, (drawn.get(kind) ?? 0) + 1);
       continue;
     }
-    const key = READ_KIND[c.name] ?? `tool:${c.name}`;
+    const key = isProposalCall(c.name, c.arguments)
+      ? `tool:${CLI_TOOL} issue`
+      : (READ_KIND[c.name] ?? `tool:${c.name}`);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   if (counts.size === 0) return null;

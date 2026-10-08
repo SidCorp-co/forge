@@ -18,7 +18,10 @@
  *   claim under an unverified mark (`creation-claims-rule.ts`), a figure gets through on what the
  *   turn did, never on words the model put round it.
  *
- * A block's text holds no figure of its own: only a report run grounds a number in a title or label.
+ * A block's text holds no figure of its own: only a report run grounds a number in a title or label,
+ * and a number the person typed grounds none (REQ-32 BC-5). In the prose, the person's number stands
+ * only said back as theirs or declined (`figure-exemptions.ts:saidBackAt`), never stated as the
+ * project's (REQ-32 BC-6).
  *
  * A turn that could run no report (a door without the report tools, a synthesis turn) has nothing
  * to hold a figure to, and is not judged: `facts.figures` is null there.
@@ -28,7 +31,13 @@ import type { ReportFrame } from '@forge/contracts/report-queries';
 import { checkBlock, shownFrame } from '@forge/contracts/visual-blocks';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { FigureFacts, MessageFacts, ToolResultEntry } from './facts.js';
-import { askedValues, figuresIn, type StatedFigure, statedFigures } from './figure-exemptions.js';
+import {
+  askedValues,
+  askersOwn,
+  figuresIn,
+  type StatedFigure,
+  statedFigures,
+} from './figure-exemptions.js';
 import { blankMarkedClauses } from './reply-marks.js';
 
 /** The chat tools that read a frame; a turn offered none cannot ground a figure in one. */
@@ -183,14 +192,6 @@ function holds(figure: StatedFigure, sets: readonly ReadonlySet<number>[]): bool
   });
 }
 
-const askedFor = (figure: StatedFigure, f: FigureFacts): boolean =>
-  figure.readings.some((r) => f.asked.has(r.value));
-
-/** Whether a reading of the figure is a value the runs hold, or one the person typed. */
-function grounded(figure: StatedFigure, f: FigureFacts): boolean {
-  return askedFor(figure, f) || holds(figure, f.held);
-}
-
 /** What the answer's blocks show of their frames, as figures; null where the door shows no block. */
 function shownOf(heldBlocks: readonly string[] | null): readonly ReadonlySet<number>[] | null {
   if (heldBlocks === null) return null;
@@ -318,7 +319,7 @@ export function ungroundedBlockFigures(
 ): { readonly text: BlockText; readonly figure: StatedFigure }[] {
   return texts.flatMap((text) =>
     figuresIn(text.text)
-      .filter((figure) => !grounded(figure, f))
+      .filter((figure) => !holds(figure, f.held))
       .map((figure) => ({ text, figure })),
   );
 }
@@ -334,7 +335,7 @@ function blockBreaks(f: MessageFacts, held: FigureFacts): RuleBreak[] {
 export const FIGURES_GROUNDED: MessageRule = {
   id: 'figures-grounded',
   shape:
-    "state a figure only as a report run this turn returned it and a block of the answer shows it, or as a read this turn made returned it; a block holds only its run's figures; dates, ids, versions, ordinals, quoted sources and the numbers the person typed are not figures",
+    "state a figure only as a report run this turn returned it and a block of the answer shows it, or as a read this turn made returned it; a block holds only its run's figures; dates, ids, versions, ordinals and quoted sources are not figures, and a number the person typed is theirs only said back as theirs, never stated as the project's",
   example: 'The table above holds the figures, read from the report this turn ran.',
   needs: ['report-runs'],
   check: (text, f) => {
@@ -342,8 +343,9 @@ export const FIGURES_GROUNDED: MessageRule = {
     if (!held) return [];
     const shown = shownOf(f.heldBlocks);
     const breaks: RuleBreak[] = [];
-    for (const fig of statedFigures(blankMarkedClauses(text))) {
-      if (askedFor(fig, held) || holds(fig, held.read)) continue;
+    const scan = blankMarkedClauses(text).normalize('NFC');
+    for (const fig of statedFigures(scan)) {
+      if (askersOwn(scan, fig, held.asked) || holds(fig, held.read)) continue;
       if (!holds(fig, held.held)) breaks.push(proseBreak(fig, held));
       else if (shown !== null && !holds(fig, shown)) breaks.push(unshownBreak(fig));
     }

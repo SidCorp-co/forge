@@ -17,10 +17,13 @@ const LISTED_CALLS = 16;
 /** What the reply screen reads of one result: the body the model was shown, up to the tool cap. */
 const GROUNDING_CHARS = 24_000;
 
-/** The `forge` verbs that change the tracker, and the flags that make `forge issue` one of them. */
-const WRITE_VERBS: ReadonlySet<string> = new Set(['comment', 'attach']);
-const ISSUE_WRITE_FLAG =
-  /^--(status|relates|blocks|priority|assign|assignee|title|category|label|labels|module|with)(=|$)/;
+/**
+ * What `forge issue` takes that changes the tracker: `--set` (fields), `--blocks`/`--relates`/`--unlink`/`--edge`
+ * (edges) and `--redact`. Every other flag (`--status`, `--search`, `--limit`, `--fields`, `--full`, `--project`)
+ * narrows what is read. `--propose` sends a proposal and lands nothing, so it is never a write.
+ */
+const ISSUE_WRITE_FLAG = /^--(set|blocks|relates|unlink|edge|redact)(=|$)/;
+const PROPOSE_FLAG = /^--propose(=|$)/;
 const WRITE_TOOLS: ReadonlySet<string> = new Set([
   CHAT_AGREE_TOOL,
   'forge_memory_note',
@@ -103,14 +106,37 @@ export function titleKey(title: string): string {
 
 const ISSUE_KEY_RE = /\b[A-Z][A-Z0-9]{1,9}-\d{1,6}\b/g;
 
-/** Did this call change something? The `forge` verbs and flags that write, and the record and note tools. */
+/** A `forge issue` call that sends a proposal: its nature is the person's to settle, so it is told as "used", never as a write. */
+export function isProposalCall(name: string, argsJson: string): boolean {
+  const argv = name === CLI_TOOL ? argvOf(argsJson) : null;
+  return argv?.[0] === 'issue' && argv.slice(1).some((a) => PROPOSE_FLAG.test(a));
+}
+
+function hasBody(argsJson: string): boolean {
+  try {
+    const body = (JSON.parse(argsJson) as { body?: unknown }).body;
+    return typeof body === 'string' && body.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Did this call change something? The record and note tools, and the `forge` forms that write: `attach`;
+ * `comment` only with a body (without one it reads the thread); `issue` only with a write flag. A form
+ * whose nature cannot be told is not a write.
+ */
 export function isWriteCall(name: string, argsJson: string): boolean {
   if (WRITE_TOOLS.has(name)) return !isPreview(argsJson);
   if (name !== CLI_TOOL) return false;
   const argv = argvOf(argsJson);
   if (!argv?.[0]) return false;
-  if (WRITE_VERBS.has(argv[0])) return true;
-  return argv[0] === 'issue' && argv.slice(1).some((a) => ISSUE_WRITE_FLAG.test(a));
+  const rest = argv.slice(1);
+  if (argv[0] === 'attach') return true;
+  if (argv[0] === 'comment')
+    return rest.filter((a) => !a.startsWith('--')).length > 1 || hasBody(argsJson);
+  if (argv[0] !== 'issue' || isProposalCall(name, argsJson)) return false;
+  return rest.some((a) => ISSUE_WRITE_FLAG.test(a));
 }
 
 const callSaid = (name: string, argsJson: string): string => {

@@ -67,6 +67,7 @@ import {
 } from './shipped-earlier-ancestry.js';
 import type { ShippedEarlierUnsettled } from './shipped-earlier-hold.js';
 import { placeByKey, type ShippedRelease } from './shipped-earlier-keyed.js';
+import { issueIdsOf } from './versions.js';
 
 /** One issue closed against the release that shipped its commit. */
 interface ClosedEarlier {
@@ -110,13 +111,19 @@ interface ShippedEarlierArgs {
 
 const NOTHING: ShippedEarlierResult = { closed: [], unresolved: [] };
 
-/** Releases that shipped, oldest first. */
-async function shippedReleases(projectId: string): Promise<ShippedRelease[]> {
+/** A shipped release with the issues it carries (`versions.ts:issueIdsOf`). */
+export interface ShippedReleaseRun extends ShippedRelease {
+  issueIds: string[];
+}
+
+/** Releases that shipped, oldest first, each with the issues it carries. */
+export async function shippedReleaseRuns(projectId: string): Promise<ShippedReleaseRun[]> {
   const rows = await db
     .select({
       runId: pipelineRuns.id,
       version: pipelineRuns.releaseVersion,
       commit: sql<string | null>`${pipelineRuns.metadata} -> 'finish' ->> 'commit'`,
+      metadata: pipelineRuns.metadata,
     })
     .from(pipelineRuns)
     .where(
@@ -131,9 +138,24 @@ async function shippedReleases(projectId: string): Promise<ShippedRelease[]> {
     .orderBy(asc(pipelineRuns.releaseReleasedAt), asc(pipelineRuns.id));
   return rows.flatMap((r) =>
     r.version && r.commit && /^[0-9a-f]{40}$/i.test(r.commit)
-      ? [{ runId: r.runId, version: r.version, commit: r.commit.toLowerCase() }]
+      ? [
+          {
+            runId: r.runId,
+            version: r.version,
+            commit: r.commit.toLowerCase(),
+            issueIds: issueIdsOf((r.metadata ?? {}) as Record<string, unknown>),
+          },
+        ]
       : [],
   );
+}
+
+async function shippedReleases(projectId: string): Promise<ShippedRelease[]> {
+  return (await shippedReleaseRuns(projectId)).map(({ runId, version, commit }) => ({
+    runId,
+    version,
+    commit,
+  }));
 }
 
 interface Candidate {
@@ -188,7 +210,7 @@ async function candidatesOf(projectId: string, issueIds: readonly string[]): Pro
   });
 }
 
-type Source =
+export type AncestrySource =
   | { kind: 'host'; host: SourceHost; reader: AncestryReader }
   | { kind: 'box'; why: string; reader: AncestryReader }
   | { kind: 'none'; why: string };
@@ -197,7 +219,10 @@ type Source =
  * The source host, or why there is none and, where none is bound at all, the box reader that stands
  * in for it. A binding that exists and cannot serve stays its own refusal: a box never papers over it.
  */
-async function readerFor(projectId: string, deps: ShippedEarlierDeps): Promise<Source> {
+export async function ancestrySourceFor(
+  projectId: string,
+  deps: ShippedEarlierDeps = {},
+): Promise<AncestrySource> {
   try {
     const host = await (deps.host ?? ((id) => resolveSourceHost(id, 'kernel')))(projectId);
     return { kind: 'host', host, reader: hostReader(host) };
@@ -275,7 +300,7 @@ export async function closeShippedEarlier(
   const releases = await shippedReleases(projectId);
   if (releases.length === 0) return NOTHING;
 
-  const source = await readerFor(projectId, deps);
+  const source = await ancestrySourceFor(projectId, deps);
   const unavailable = (why: string) =>
     `the project's repository could not be read, so whether these issues shipped in an earlier release was not decided: ${why}`;
   const refuse = (

@@ -56,7 +56,7 @@ function ctxWith(abortReason: unknown) {
     abort,
     setPhase: () => undefined,
     draft: { text: '' },
-    stage: new TurnBlockStage(''),
+    stage: new TurnBlockStage(),
     credential: async () => {
       throw new Error('no token in this test');
     },

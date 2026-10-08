@@ -144,4 +144,19 @@ describe('a figure the person typed, said back', () => {
     expect(r[0]?.quote).toBe('87% done');
     expect(REFUSAL).toContain(r[0]?.quote as string);
   });
+
+  // REQ-32 BC-6, QA of ISS-436 on dev.193: the person's own figure, stated as the project's, is
+  // not evidence about the project, so it is held like a figure the reply invented
+  it('is held where the reply states it as the project fact', () => {
+    const stated = 'The Forge project is 87% done.';
+    expect(PROGRESS_FIGURES_MATCH.check(stated, facts({ progress: shown, asked }))).toHaveLength(1);
+    expect(PROGRESS_FIGURES_MATCH.check(stated, facts({ progress: null, asked }))).toHaveLength(1);
+    const count = 'There are 87 issues done.';
+    expect(PROGRESS_FIGURES_MATCH.check(count, facts({ progress: shown, asked }))).toHaveLength(1);
+  });
+
+  it('passes said back as theirs', () => {
+    const theirs = 'The 87% done you mentioned is not what the snapshot shows.';
+    expect(PROGRESS_FIGURES_MATCH.check(theirs, facts({ progress: shown, asked }))).toEqual([]);
+  });
 });

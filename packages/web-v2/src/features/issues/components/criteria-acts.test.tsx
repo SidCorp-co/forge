@@ -1,19 +1,23 @@
 // The live QA of ISS-419..429 (2026-10-08) could record no verdict and tie no issue to its
 // requirement's criteria from the web: the Criteria tab was read-only, so criterion_verdicts stayed
-// empty on shipped work. A person records a verdict from the row (judged at the deployed commit by
+// empty on shipped work. A person records a verdict from the row (judged at the build core names by
 // default, a note as its reason, a screenshot attached and cited), and ties a closed issue to the
 // business criteria it delivered.
+//
+// The live QA of dev.192/193 (REQ-6 BC-2..BC-4) then found the Judge offered no "could not judge"
+// (twelve such verdicts went in as Short and counted as passing), never pre-filled the live build on
+// an issue whose merge names no commit, and dead-ended on a screenshot whose name was already
+// attached.
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
-import { defaultVerdictCommit } from "../criteria";
 import type { IssueDetail } from "../types";
 import { CriteriaTab } from "./detail/issue-tabs";
 
 const LIVE = "0d91ae7c74f70295ede115463b17559e650b5207";
-const MERGED = "33637c612ef15be6f924520c0d201a0889d8ed7e";
+const SHIPPED = "33637c612ef15be6f924520c0d201a0889d8ed7e";
 
 const criterion = (n: number, latest: unknown = null) => ({
   id: `c${n}`,
@@ -24,19 +28,30 @@ const criterion = (n: number, latest: unknown = null) => ({
   latest,
 });
 
+// the shape of ISS-432 on dev.192: merged with no commit named, no promotion to read a reach from
 const issue = (over: Partial<IssueDetail> = {}) =>
   ({
     id: "i1",
     projectId: "p1",
     status: "closed",
-    mergedCommitSha: MERGED,
-    liveReach: { state: "none_waiting", baseBranch: "dev", deploysFrom: "dev", measuredAt: "2026-10-08T00:00:00Z", baseSha: MERGED, liveSha: LIVE, unowned: [] },
+    mergedCommitSha: null,
+    liveReach: null,
     ...over,
   }) as IssueDetail;
 
-function core(extra: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined) {
+const LIVE_BUILD = { sha: LIVE, source: "live", version: "0.4.0-dev.192", basis: "production serves release 0.4.0-dev.192, which shipped this issue" };
+
+const ATTACHED = [{ id: "a1", issueId: "i1", uploaderId: "u1", name: "report-1440.png", mime: "image/png", size: 3, url: "/api/attachments/a1/download", createdAt: "2026-10-08T00:00:00Z" }];
+
+function core(
+  extra: (c: Call) => { status?: number; body: unknown } | undefined = () => undefined,
+  build: unknown = LIVE_BUILD,
+  attached: unknown[] = [],
+) {
   return fakeCore((c) => {
     if (c.method === "GET" && c.path === "/issues/i1/criteria") return { body: { criteria: [criterion(1), criterion(2)] } };
+    if (c.method === "GET" && c.path === "/issues/i1/judged-build") return { body: build };
+    if (c.method === "GET" && c.path === "/issues/i1/attachments") return { body: attached };
     return extra(c);
   });
 }
@@ -47,19 +62,23 @@ async function openJudge(n: number) {
   return { user, form: await screen.findByTestId("verdict-form") };
 }
 
-describe("the commit a verdict is judged at, by default", () => {
-  it("is the live deployment's commit when core reads the issue's work on it", () => {
-    expect(defaultVerdictCommit(issue())).toEqual({ sha: LIVE, source: "live" });
+const verdictPosted = (calls: Call[]) => calls.find((c) => c.method === "POST" && c.path === "/issues/i1/verdicts")?.body;
+
+describe("the build a verdict is judged at, by default", () => {
+  it("is the live build core names, on an issue whose merge names no commit", async () => {
+    core();
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { form } = await openJudge(1);
+    expect(await within(form).findByDisplayValue(LIVE)).toBeInTheDocument();
+    expect(form).toHaveTextContent("The commit the live deployment runs (0.4.0-dev.192)");
   });
 
-  it("is the merge commit while the work is not on the live deployment", () => {
-    const notLive = issue({ liveReach: { state: "not_on_live", baseBranch: "dev", deploysFrom: "dev", measuredAt: "x", baseSha: MERGED, liveSha: LIVE, evidence: [] } });
-    expect(defaultVerdictCommit(notLive)).toEqual({ sha: MERGED, source: "merged" });
-  });
-
-  it("is none where the issue names neither, or only an abbreviation", () => {
-    expect(defaultVerdictCommit(issue({ liveReach: null, mergedCommitSha: null }))).toBeNull();
-    expect(defaultVerdictCommit(issue({ liveReach: null, mergedCommitSha: "33637c6" }))).toBeNull();
+  it("is the build that shipped the work where core cannot show the live one carries it, and says why", async () => {
+    core(undefined, { sha: SHIPPED, source: "shipped", version: "0.4.0-dev.191", basis: "release 0.4.0-dev.191 shipped this issue's work at this commit; whether production holds it could not be read" });
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { form } = await openJudge(1);
+    expect(await within(form).findByDisplayValue(SHIPPED)).toBeInTheDocument();
+    expect(form).toHaveTextContent("could not be read");
   });
 });
 
@@ -68,7 +87,7 @@ describe("recording a verdict from a criterion row", () => {
     const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined));
     renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
-    expect(within(form).getByDisplayValue(LIVE)).toBeInTheDocument();
+    expect(await within(form).findByDisplayValue(LIVE)).toBeInTheDocument();
     expect(form).toHaveTextContent("The commit the live deployment runs");
     await user.type(within(form).getByRole("textbox", { name: "Evidence note" }), "Opened the weekly report; the source line names run r-7.");
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
@@ -90,7 +109,7 @@ describe("recording a verdict from a criterion row", () => {
 
   it("attaches the screenshot to the issue first and cites it by the name core kept", async () => {
     const calls = core((c) => {
-      if (c.method === "POST" && c.path === "/issues/i1/attachments") return { status: 201, body: { id: "a1", name: "report-1440 (1).png" } };
+      if (c.method === "POST" && c.path === "/issues/i1/attachments") return { status: 201, body: { id: "a1", name: "report-1440.png" } };
       if (c.method === "POST" && c.path === "/issues/i1/verdicts") return { status: 201, body: { verdictId: "v1" } };
       return undefined;
     });
@@ -100,18 +119,18 @@ describe("recording a verdict from a criterion row", () => {
     await user.upload(within(form).getByTestId("verdict-screenshot"), new File(["png"], "report-1440.png", { type: "image/png" }));
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
     await waitFor(() => expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/issues/i1/attachments", "/issues/i1/verdicts"]));
-    const upload = calls.find((c) => c.path === "/issues/i1/attachments")?.body as FormData;
+    const upload = calls.find((c) => c.method === "POST" && c.path === "/issues/i1/attachments")?.body as FormData;
     expect((upload.get("file") as File).name).toBe("report-1440.png");
-    expect(calls.find((c) => c.path === "/issues/i1/verdicts")?.body).toMatchObject({ criterion: 2, verdict: "fail", evidence: ["report-1440 (1).png"], reason: null });
+    expect(calls.find((c) => c.path === "/issues/i1/verdicts")?.body).toMatchObject({ criterion: 2, verdict: "fail", evidence: ["report-1440.png"], reason: null });
   });
 
-  it("holds the verdict back until a whole sha is named, where the issue names no commit", async () => {
-    const calls = core();
-    renderWithQuery(<CriteriaTab issue={issue({ liveReach: null, mergedCommitSha: null })} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey={null} />);
+  it("holds the verdict back until a whole sha is named, where core names no build", async () => {
+    const calls = core(undefined, { sha: null, source: null, version: null, basis: "this issue has not merged, so no build carries its work yet" });
+    renderWithQuery(<CriteriaTab issue={issue({ status: "in_progress" })} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey={null} />);
     const { user, form } = await openJudge(1);
     const send = screen.getByRole("button", { name: "Record verdict" });
+    expect(await within(form).findByText(/this issue has not merged/)).toBeInTheDocument();
     expect(send).toBeDisabled();
-    expect(form).toHaveTextContent("names no deployed or merged commit");
     const sha = within(form).getByRole("textbox", { name: "Judged at commit" });
     await user.type(sha, "0d91ae7");
     expect(send).toBeDisabled();
@@ -133,6 +152,83 @@ describe("recording a verdict from a criterion row", () => {
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
     expect(await within(form).findByTestId("verdict-refusal")).toHaveTextContent("VERDICT_COMMIT_NOT_FULL");
     expect(screen.getByTestId("verdict-form")).toBeInTheDocument();
+  });
+
+  it("records could not judge as skipped, never as a pass, and only with a reason", async () => {
+    const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined));
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    await within(form).findByDisplayValue(LIVE);
+    await user.click(within(form).getByRole("button", { name: "Could not judge" }));
+    const send = screen.getByRole("button", { name: "Record verdict" });
+    expect(send).toBeDisabled();
+    expect(form).toHaveTextContent("never counts as a pass");
+    await user.type(within(form).getByRole("textbox", { name: /Why it could not be judged/ }), "The property is in the code, not on any screen.");
+    expect(send).toBeEnabled();
+    await user.click(send);
+    await waitFor(() =>
+      expect(verdictPosted(calls)).toEqual({
+        criterion: 1,
+        verdict: "skipped",
+        reason: "The property is in the code, not on any screen.",
+        identity: { kind: "commit", sha: LIVE },
+        evidence: [],
+      }),
+    );
+  });
+
+  it("records could not judge with no build named, where none could be", async () => {
+    const calls = core(
+      (c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined),
+      { sha: null, source: null, version: null, basis: "this issue has not merged, so no build carries its work yet" },
+    );
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    await within(form).findByText(/this issue has not merged/);
+    await user.click(within(form).getByRole("button", { name: "Could not judge" }));
+    await user.type(within(form).getByRole("textbox", { name: /Why it could not be judged/ }), "Nothing deployed carries it.");
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ verdict: "skipped", identity: null }));
+  });
+
+  it("says plainly that Short counts as a pass", async () => {
+    core();
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { form } = await openJudge(1);
+    expect(within(form).getByRole("button", { name: "Pass, short of wording" })).toBeInTheDocument();
+    expect(form).toHaveTextContent("Short counts as a pass");
+  });
+
+  it("cites an attachment the issue already holds, uploading nothing", async () => {
+    const calls = core((c) => (c.method === "POST" && c.path === "/issues/i1/verdicts" ? { status: 201, body: { verdictId: "v1" } } : undefined), LIVE_BUILD, ATTACHED);
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    await within(form).findByDisplayValue(LIVE);
+    await user.selectOptions(await within(form).findByRole("combobox", { name: "Attached to this issue" }), "report-1440.png");
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ verdict: "pass", evidence: ["report-1440.png"] }));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/issues/i1/attachments")).toBe(false);
+  });
+
+  it("uploads a screenshot whose name is already attached under a free name it shows first", async () => {
+    const calls = core(
+      (c) => {
+        if (c.method === "POST" && c.path === "/issues/i1/attachments") return { status: 201, body: { id: "a2", name: "report-1440-2.png" } };
+        if (c.method === "POST" && c.path === "/issues/i1/verdicts") return { status: 201, body: { verdictId: "v1" } };
+        return undefined;
+      },
+      LIVE_BUILD,
+      ATTACHED,
+    );
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    await within(form).findByRole("combobox", { name: "Attached to this issue" });
+    await user.upload(within(form).getByTestId("verdict-screenshot"), new File(["png"], "report-1440.png", { type: "image/png" }));
+    expect(form).toHaveTextContent("report-1440.png is already attached to this issue; this one uploads as report-1440-2.png");
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(verdictPosted(calls)).toMatchObject({ evidence: ["report-1440-2.png"] }));
+    const upload = calls.find((c) => c.path === "/issues/i1/attachments" && c.method === "POST")?.body as FormData;
+    expect((upload.get("file") as File).name).toBe("report-1440-2.png");
   });
 
   it("offers no verdict act to a reader who may not write", async () => {

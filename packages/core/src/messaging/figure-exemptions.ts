@@ -1,8 +1,10 @@
 /**
  * Which numbers in a chat reply are figures it states, for `figures-rule.ts` to hold to a report run.
  *
- * A number is NOT a figure where it is a date, a count the person typed in the question, an ordinal,
- * a version string, an id, or inside a quoted source. The table is the whole of that exemption: each
+ * A number is NOT a figure where it is a date, an ordinal, a version string, an id, inside a quoted
+ * source, or a number the person typed in the question said back as theirs (`saidBackAt`): named as
+ * the person's, or declined. Stated as the project's, the person's number is a figure like any other
+ * (REQ-32 BC-6): what someone typed is not evidence about the project. The table is the whole of that exemption: each
  * row names what it exempts, a reply whose every figure that row alone exempts, and the pattern;
  * `figure-exemptions.test.ts` reads every row both ways — its example passes with the table, and is
  * held without that row.
@@ -123,7 +125,7 @@ export const FIGURE_EXEMPTIONS: readonly FigureExemption[] = [
   },
   {
     id: 'asked',
-    why: 'a count the person typed in the question is theirs, said back',
+    why: 'a count the person typed in the question, said back as theirs or declined, is not the reply stating it',
     example: 'Here are the 5 oldest open items you asked for.',
     ask: 'Show me the 5 oldest open items.',
   },
@@ -254,4 +256,55 @@ export function askedValues(
     for (const r of readingsOf(m[0].trim().replace(/\s?%$/, ''))) out.add(r.value);
   }
   return out;
+}
+
+/** The clause around `index`: bounded by a sentence end, a comma, a semicolon, a colon or a dash. */
+function clauseAt(text: string, index: number): { before: string; whole: string } {
+  const BOUND = /[.!?,;:](?=\s|$)|[\n—–]/g;
+  let start = 0;
+  let end = text.length;
+  for (const m of text.matchAll(BOUND)) {
+    const at = m.index ?? 0;
+    if (at < index) start = at + m[0].length;
+    else {
+      end = at;
+      break;
+    }
+  }
+  return { before: text.slice(start, index), whole: text.slice(start, end) };
+}
+
+/** A clause that names the person as the number's source: "the 5 you asked for", "your 87%". */
+const NAMED_AS_THEIRS = new RegExp(
+  [
+    "\\byou(?:['’]ve|\\s+have|\\s+just)?\\s+(?:asked|typed|gave|given|said|wrote|written|mentioned|listed|named|requested|quoted|provided|suggested|guessed|expected|estimated|cited|entered|wanted|want)\\b",
+    '\\byour\\s+(?:own\\s+)?(?:figure|number|count|estimate|guess|question|request|message|list|value|claim|sentence|words?|\\d)',
+    'bạn\\s+(?:đã\\s+)?(?:hỏi|nêu|đưa|gõ|nói|yêu\\s+cầu|nhắc|muốn|cần)', // i18n-allow: the Vietnamese words that name the person as a number's source
+  ].join('|'),
+  'iu',
+);
+
+/** Before the number in its clause: the reply declining to state it ("I can't say we are 87% done"). */
+const DECLINED_BEFORE =
+  /(?:\b(?:not|never|cannot)\b|n['’]t\b|\b(?:unable|no\s+way)\s+to\b|không|chưa)/iu; // i18n-allow: the Vietnamese negations
+
+/**
+ * Whether the number at `index` is said back rather than stated: its clause names the person as its
+ * source, or declines it before it is said. The one test of the `asked` row, for every rule that lets
+ * the person's own number stand (`figures-rule.ts`, `progress-rule.ts`); a number merely equal to one
+ * the person typed is not theirs said back (QA of ISS-436 on 0.4.0-dev.193: "Forge has 4,812 open
+ * issues right now." went out because the asker had typed 4,812).
+ */
+export function saidBackAt(text: string, index: number): boolean {
+  const clause = clauseAt(text, index);
+  return NAMED_AS_THEIRS.test(clause.whole) || DECLINED_BEFORE.test(clause.before);
+}
+
+/** Whether a number of `text` is one the person typed, said back as theirs or declined. */
+export function askersOwn(
+  text: string,
+  figure: { readonly index: number; readonly readings: readonly { readonly value: number }[] },
+  asked: ReadonlySet<number>,
+): boolean {
+  return figure.readings.some((r) => asked.has(r.value)) && saidBackAt(text, figure.index);
 }

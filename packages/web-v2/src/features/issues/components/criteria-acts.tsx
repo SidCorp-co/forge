@@ -1,43 +1,86 @@
 "use client";
 
 // The acts a person takes on an issue's criteria from its Criteria tab: record a verdict on one
-// criterion (pass, fail or short, judged against a whole commit, with a note and an optional
-// screenshot), and tie the issue to business criteria of the requirement it delivers. Both are
-// taken on a closed issue too: judging shipped work is the point. Core refuses by name.
+// criterion (pass, pass short of its wording, fail, or could not judge with a reason, judged against
+// a whole commit core names by default, with a note and a screenshot new or already attached), and
+// tie the issue to business criteria of the requirement it delivers. Both are taken on a closed issue
+// too: judging shipped work is the point. Judging again records a newer verdict, which is the one
+// counted. Core refuses by name.
 
 import { useState } from "react";
-import { Button, Checkbox, ConfirmDialog, Field, Input, SegmentedControl, Textarea } from "@/design";
+import { safeAttachmentName } from "@forge/contracts/attachments";
+import type { JudgedBuild } from "@forge/contracts/verdict-identity";
+import { Button, Checkbox, ConfirmDialog, Field, Input, NativeSelect, SegmentedControl, Textarea } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy } from "@/lib/i18n/interface-language";
+import type { Copy } from "@/lib/i18n/product-copy";
 import {
   type CriterionRow,
+  freeAttachmentName,
   isWholeSha,
   type PersonVerdict,
+  useJudgedBuild,
   useRecordVerdict,
   useTraceCriteria,
-  type VerdictCommit,
+  type VerdictEvidence,
 } from "../criteria";
+import { useAttachments } from "../detail-hooks";
 import { useRequirementCriteria } from "../requirement-link";
 
-const VERDICTS: readonly PersonVerdict[] = ["pass", "fail", "short"];
+const VERDICTS: readonly PersonVerdict[] = ["pass", "short", "fail", "skipped"];
 
-export function RecordVerdict({ issueId, row, commit }: { issueId: string; row: CriterionRow; commit: VerdictCommit | null }) {
+/** What the commit field says about the build core named, before anything is typed over it. */
+function namedBuildHint(t: Copy, build: JudgedBuild): string {
+  const named = { basis: build.basis, build: build.version ?? build.sha?.slice(0, 7) ?? "" };
+  if (build.source === "live") return t("issues.verdictAct.commitLive", named);
+  if (build.source === "shipped") return t("issues.verdictAct.commitShipped", named);
+  if (build.source === "merged") return t("issues.verdictAct.commitMerged", named);
+  return t("issues.verdictAct.commitNone", named);
+}
+
+export function RecordVerdict({ issueId, row }: { issueId: string; row: CriterionRow }) {
   const t = useCopy();
   const record = useRecordVerdict(issueId);
   const [open, setOpen] = useState(false);
+  const build = useJudgedBuild(issueId, open);
+  const attachments = useAttachments(open ? issueId : undefined);
   const [verdict, setVerdict] = useState<PersonVerdict>("pass");
-  const [sha, setSha] = useState(commit?.sha ?? "");
+  const [typed, setTyped] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [cited, setCited] = useState("");
   const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [picker, setPicker] = useState(0);
+  const named = build.data?.sha ?? "";
+  const sha = typed ?? named;
+  const skipped = verdict === "skipped";
+  const taken = (attachments.data ?? []).map((a) => a.name);
+  const uploadAs = screenshot ? freeAttachmentName(screenshot.name, taken) : null;
+  const evidence: VerdictEvidence =
+    screenshot && uploadAs ? { kind: "upload", file: screenshot, as: uploadAs } : cited ? { kind: "attached", name: cited } : { kind: "none" };
   const close = () => {
     setOpen(false);
+    setTyped(null);
+    setNote("");
+    setCited("");
+    setScreenshot(null);
     record.reset();
   };
-  const shaHint = !sha.trim()
-    ? t("issues.verdictAct.commitNone")
-    : commit && sha.trim() === commit.sha
-      ? t(commit.source === "live" ? "issues.verdictAct.commitLive" : "issues.verdictAct.commitMerged")
-      : t("issues.verdictAct.commitTyped");
+  const shaHint = typed !== null && sha.trim() !== named
+    ? sha.trim()
+      ? t("issues.verdictAct.commitTyped")
+      : skipped
+        ? t("issues.verdictAct.commitSkipped")
+        : t("issues.verdictAct.commitNone", { basis: build.data?.basis ?? "" })
+    : build.isPending
+      ? t("issues.verdictAct.commitLoading")
+      : build.isError
+        ? t("issues.verdictAct.commitUnread", { error: formatApiError(build.error) })
+        : build.data
+          ? namedBuildHint(t, build.data)
+          : "";
+  const shaReady = skipped ? !sha.trim() || isWholeSha(sha) : isWholeSha(sha);
+  const ready = shaReady && (!skipped || note.trim() !== "");
   return (
     <>
       <Button size="sm" variant="ghost" onClick={() => setOpen(true)} data-testid={`criterion-${row.n}-judge`}>
@@ -48,15 +91,13 @@ export function RecordVerdict({ issueId, row, commit }: { issueId: string; row: 
         title={t("issues.verdictAct.title", { n: row.n })}
         confirmLabel={t("issues.verdictAct.submit")}
         loading={record.isPending}
-        confirmDisabled={!isWholeSha(sha)}
+        confirmDisabled={!ready}
         onClose={close}
-        onConfirm={() =>
-          record.mutate({ criterion: row.n, verdict, sha, note, screenshot }, { onSuccess: close })
-        }
+        onConfirm={() => record.mutate({ criterion: row.n, verdict, sha, note, evidence }, { onSuccess: close })}
         message={
           <div className="grid gap-4" data-testid="verdict-form">
             <p className="whitespace-pre-wrap text-13 text-muted">{row.statement}</p>
-            <Field label={t("issues.verdictAct.verdict")} hint={t("issues.verdictAct.shortHint")}>
+            <Field label={t("issues.verdictAct.verdict")} hint={t("issues.verdictAct.verdictHint")}>
               <SegmentedControl
                 value={verdict}
                 onChange={setVerdict}
@@ -64,17 +105,45 @@ export function RecordVerdict({ issueId, row, commit }: { issueId: string; row: 
               />
             </Field>
             <Field label={t("issues.verdictAct.commit")} hint={shaHint} error={sha.trim() && !isWholeSha(sha) ? t("issues.verdictAct.commitShape") : undefined}>
-              <Input value={sha} onChange={(e) => setSha(e.target.value)} className="font-mono text-12" spellCheck={false} />
+              <Input value={sha} onChange={(e) => setTyped(e.target.value)} className="font-mono text-12" spellCheck={false} />
             </Field>
-            <Field label={t("issues.verdictAct.note")} hint={t("issues.verdictAct.noteHint")}>
+            <Field
+              label={t(skipped ? "issues.verdictAct.skipNote" : "issues.verdictAct.note")}
+              hint={t(skipped ? "issues.verdictAct.skipNoteHint" : "issues.verdictAct.noteHint")}
+              required={skipped}
+            >
               <Textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} maxLength={4000} />
             </Field>
-            <Field label={t("issues.verdictAct.screenshot")} hint={t("issues.verdictAct.screenshotHint")}>
+            {taken.length > 0 ? (
+              <Field label={t("issues.verdictAct.attached")}>
+                <NativeSelect
+                  value={cited}
+                  onChange={(e) => {
+                    setCited(e.target.value);
+                    setScreenshot(null);
+                    setPicker((k) => k + 1);
+                  }}
+                  options={[{ value: "", label: t("issues.verdictAct.attachedNone") }, ...taken.map((name) => ({ value: name, label: name }))]}
+                />
+              </Field>
+            ) : null}
+            <Field
+              label={t("issues.verdictAct.screenshot")}
+              hint={
+                screenshot && uploadAs && uploadAs !== safeAttachmentName(screenshot.name)
+                  ? t("issues.verdictAct.renamed", { name: safeAttachmentName(screenshot.name), as: uploadAs })
+                  : t("issues.verdictAct.screenshotHint")
+              }
+            >
               <input
+                key={picker}
                 type="file"
                 accept="image/*"
                 className="text-12"
-                onChange={(e) => setScreenshot(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  setScreenshot(e.target.files?.[0] ?? null);
+                  setCited("");
+                }}
                 data-testid="verdict-screenshot"
               />
             </Field>

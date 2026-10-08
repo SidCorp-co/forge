@@ -1,0 +1,1 @@
+**The 90-second interim reply no longer claims a write the turn did not make.** A filtered list, search, thread read or proposal is told as a read; only a field set, edge, comment body or attachment is told as done.

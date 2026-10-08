@@ -23,7 +23,6 @@ export type RestTurn =
       kind: 'agent-turn';
       sessionId: string;
       conversationId: string;
-      question: string;
       /** The reply was already taken for delivery. */
       settled: boolean;
       /** Hold a block on the turn; false where its reply was taken for delivery meanwhile. */
