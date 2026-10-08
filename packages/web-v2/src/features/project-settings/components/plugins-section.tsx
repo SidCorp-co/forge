@@ -138,6 +138,7 @@ export function PluginsSection({
                 ? {
                     label: "Add a plugin",
                     onClick: () => setDraft([newRow()]),
+                    icon: "plus",
                   }
                 : undefined
             }

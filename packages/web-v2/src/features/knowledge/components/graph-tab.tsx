@@ -76,7 +76,7 @@ export function GraphTab({ projectId, canManage }: GraphTabProps) {
               : "Once a source is added, its relations will appear here."
           }
           action={
-            canManage ? { label: "Add source", onClick: () => setAddOpen(true) } : undefined
+            canManage ? { label: "Add source", onClick: () => setAddOpen(true), icon: "plus" } : undefined
           }
         />
       )}

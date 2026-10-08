@@ -362,7 +362,7 @@ export function NoConversationOpen({ onNew }: { onNew: () => void }) {
       <EmptyState
         title="No conversation open"
         message="Pick one from the list, or start a new one."
-        action={{ label: "New conversation", onClick: onNew }}
+        action={{ label: "New conversation", onClick: onNew, icon: "plus" }}
       />
     </div>
   );

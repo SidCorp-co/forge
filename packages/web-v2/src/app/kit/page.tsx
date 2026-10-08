@@ -684,7 +684,7 @@ export default function KitPage() {
           <Section id="states" title="Empty & loading states">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="rounded-md border border-line">
-                <EmptyState title="No issues yet" message="Create one and the triage agent takes it from here." action={{ label: "New issue" }} />
+                <EmptyState title="No issues yet" message="Create one and the triage agent takes it from here." action={{ label: "New issue", icon: "plus" }} />
               </div>
               <div className="flex items-center justify-center gap-3 rounded-md border border-line p-10">
                 <Spinner /> <span className="fg-body-sm">Loading runs…</span>

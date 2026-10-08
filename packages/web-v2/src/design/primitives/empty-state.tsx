@@ -1,11 +1,14 @@
+import type { ReactNode } from "react";
+import type { IconName } from "@/design/icons/icon";
 import { Button } from "./button";
 import { ForgeMascot } from "@/design/patterns/forge-mascot";
 
 export interface EmptyStateProps {
   title?: string;
   /** One calm line — never cute, never apologetic. */
-  message: string;
-  action?: { label: string; onClick?: () => void };
+  message: ReactNode;
+  /** `icon` is drawn only where named: a plus says "add", and most ways forward add nothing. */
+  action?: { label: string; onClick?: () => void; icon?: IconName };
   /** Lead with the mascot (default). Set false for dense inline spots. */
   mascot?: boolean;
   /** Id for the headline, which also makes it programmatically focusable. */
@@ -30,7 +33,7 @@ export function EmptyState({ title, message, action, mascot = true, titleId }: E
         <p className="fg-body-sm mx-auto mt-1 max-w-[260px]">{message}</p>
       </div>
       {action && (
-        <Button variant="primary" size="sm" icon="plus" onClick={action.onClick}>
+        <Button variant="primary" size="sm" icon={action.icon} onClick={action.onClick}>
           {action.label}
         </Button>
       )}

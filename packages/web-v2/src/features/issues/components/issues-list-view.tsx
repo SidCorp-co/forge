@@ -64,7 +64,8 @@ import {
   type IssuePriority,
   type IssueSort,
 } from "../types";
-import { issueKeyRefusalOf } from "../key-refusal";
+import { issueKeyRefusalOf, NO_ISSUE_BUCKETS } from "../key-refusal";
+import { KeyRefusalState } from "./key-refusal-state";
 import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard, IssueTableRow } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
@@ -301,7 +302,7 @@ export function IssuesListView({
   const rows = useMemo(() => issuesQ.data?.items ?? [], [issuesQ.data]);
   const now = issuesQ.dataUpdatedAt || Date.now();
   const total = issuesQ.data?.totalCount ?? 0;
-  const buckets = issuesQ.data?.extra?.buckets;
+  const buckets = keyRefusal !== null ? NO_ISSUE_BUCKETS : issuesQ.data?.extra?.buckets;
   const tabs = useMemo(() => withCounts(FILTERS, buckets), [buckets]);
   const finishedCuts = useMemo<SegmentOption<string>[]>(() => {
     const closed = buckets?.byStatus.closed;
@@ -587,12 +588,7 @@ export function IssuesListView({
       )}
 
       {issuesQ.isError && keyRefusal !== null && (
-        <EmptyState
-          title="No issue by that key here"
-          message={keyRefusal}
-          mascot={false}
-          action={{ label: "Clear search", onClick: () => setParams({ q: "", page: "" }) }}
-        />
+        <KeyRefusalState message={keyRefusal} onClear={() => setParams({ q: "", page: "" })} />
       )}
 
       {issuesQ.isError && keyRefusal === null && (
@@ -645,7 +641,7 @@ export function IssuesListView({
                     }),
                 }
               : onNewIssue
-                ? { label: "New issue", onClick: onNewIssue }
+                ? { label: "New issue", onClick: onNewIssue, icon: "plus" }
                 : undefined
           }
         />
