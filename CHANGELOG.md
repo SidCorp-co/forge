@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.170] - 2026-10-08
+
+Five standard report queries computed in one step each
+
+### Added
+
+- **Three more report queries answer from the reads the screens already use.** Release readiness, criteria coverage and workflow status each return one typed frame, with the existing read they summarise declared beside them.
+- **Report queries can be listed and run over REST.** `progress-by-requirement` and `roadmap-eta` answer as the caller, over what they may read, and each result names the query, params and read time that produced it.
+
 ## [0.4.0-dev.169] - 2026-10-08
 
 Chat answers draw tables, key figures and status lists; unknown blocks are named
