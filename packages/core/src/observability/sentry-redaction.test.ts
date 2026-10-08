@@ -15,6 +15,8 @@ const EMAIL = 'dup@example.test';
 /** Kept up here: the real client sends the source lines around each frame, the test's own among them. */
 const QUOTED = 'zq9';
 const QUOTED_REFUSAL = `invalid input syntax for type uuid: "${QUOTED}"`;
+/** A short value holding a quote, built so no source line the client sends holds it written out. */
+const ESCAPED = ['z', 'q'].join('"');
 
 /** A stand-in Sentry ingest on loopback, holding every envelope the real client sends it. */
 let ingest: Server;
@@ -63,6 +65,26 @@ describe('the Sentry client core starts', () => {
     expect(sent).toContain('users_email_unique');
     expect(sent).not.toContain(HASH);
     expect(sent).not.toContain(EMAIL);
+  });
+});
+
+describe('the Sentry client, given a wrapper that JSON-quotes a short bound value holding a quote', () => {
+  it('sends the wrapper without the value, in its message and its cause', async () => {
+    const { initSentry, Sentry } = await import('./sentry.js');
+    expect(initSentry()).toBe(true);
+    const before = envelopes.length;
+    const driver = Object.assign(new Error(`invalid input syntax for type uuid: "${ESCAPED}"`), {
+      code: '22P02',
+      severity: 'ERROR',
+    });
+    const failed = new DrizzleQueryError('select $1::uuid', [ESCAPED], driver);
+    Sentry.captureException(
+      new Error(`could not save ${JSON.stringify(ESCAPED)} (retry 2)`, { cause: failed }),
+    );
+    expect(await Sentry.flush(5000)).toBe(true);
+    const sent = envelopes.slice(before).join('\n');
+    expect(sent).toContain('retry 2');
+    expect(sent).not.toMatch(/z\\*"q/);
   });
 });
 

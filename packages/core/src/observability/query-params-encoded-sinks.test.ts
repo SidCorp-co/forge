@@ -1,4 +1,5 @@
-// ISS-1383 r5 — each sink, given text a caller re-encoded or a failed query that bound nothing.
+// ISS-1383 r5, r6 — each sink, given text a caller re-encoded, a failed query that bound nothing,
+// or a short value holding a character JSON escapes, quoted in a wrapper's own message.
 
 import { redactedMessage } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
@@ -33,7 +34,9 @@ const { classifyError } = await import('../mcp/server.js');
 
 const LONG = 'S3cr3tVal-r5-QZX';
 const SHORT = 'q9z';
-const LEAKS = new RegExp(`${LONG}|${SHORT}|private-tail`);
+/** A short value whose quote JSON escapes before it quotes the value: `x\"y`, `x\\\"y`. */
+const ESCAPED = 'x"y';
+const LEAKS = new RegExp(`${LONG}|${SHORT}|private-tail|x\\\\*"y`);
 const enc = (text: string) => JSON.stringify({ m: text });
 const refusal = (v: string) => `invalid input syntax for type uuid: "${v}"`;
 
@@ -52,6 +55,14 @@ function shortRefusal(): DrizzleQueryError {
     'select $1::uuid',
     [SHORT],
     driverError(refusal(SHORT), { code: '22P02' }),
+  );
+}
+
+function escapedRefusal(): DrizzleQueryError {
+  return new DrizzleQueryError(
+    'select $1::uuid',
+    [ESCAPED],
+    driverError(refusal(ESCAPED), { code: '22P02' }),
   );
 }
 
@@ -81,6 +92,13 @@ const WRAPPERS: [string, () => Error][] = [
     () =>
       new Error(`upstream: malformed array literal: "${SHORT}"private-tail`, {
         cause: shortRefusal(),
+      }),
+  ],
+  [
+    'a short value holding a quote, JSON-quoted in the wrapper, its error as cause',
+    () =>
+      new Error(`could not save ${JSON.stringify(ESCAPED)} (retry 2)`, {
+        cause: escapedRefusal(),
       }),
   ],
 ];
@@ -115,6 +133,18 @@ describe('the core logger, given text a caller escaped', () => {
     expect(text()).not.toMatch(LEAKS);
     expect(text()).toContain('select $1::uuid');
   });
+
+  it.each(['err', 'cause'])(
+    'writes no short value holding a quote that a wrapper JSON-quoted in its message (%s)',
+    (key) => {
+      const { log, text } = capturing();
+      const wrapper = WRAPPERS.at(-1)?.[1]() as Error;
+      log.error(key === 'err' ? { err: wrapper } : { err: new Error('outer', { cause: wrapper }) });
+      log.error({ err: wrapper }, wrapper.message);
+      expect(text()).not.toMatch(LEAKS);
+      expect(text()).toContain('retry 2');
+    },
+  );
 
   it('writes no value of a failed query logged beside one that bound nothing', () => {
     const { log, text } = capturing();
