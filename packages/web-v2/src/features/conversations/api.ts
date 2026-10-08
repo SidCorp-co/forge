@@ -1,4 +1,5 @@
 import { conversationTypeOfFile } from "@forge/contracts/attachments";
+import type { ChatProposalView } from "@forge/contracts/chat-proposals";
 import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
 import type {
@@ -178,6 +179,23 @@ export const conversationsApi = {
     apiClient<ConversationRow>(`/conversations/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ archived }),
+    }),
+
+  /** `GET /api/conversations/:id/proposals` — the writes this room's turns hold for a person's agreement. */
+  proposals: (id: string) =>
+    apiClient<{ proposals: ChatProposalView[] }>(`/conversations/${id}/proposals`),
+
+  /** `POST /api/conversations/:id/proposals/:pid/agree` — record it, as the person it waits on. */
+  agreeProposal: (id: string, proposalId: string) =>
+    apiClient<{ proposal: ChatProposalView }>(`/conversations/${id}/proposals/${proposalId}/agree`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  /** `POST /api/conversations/:id/proposals/:pid/decline` — write nothing, and say so. */
+  declineProposal: (id: string, proposalId: string) =>
+    apiClient<{ proposal: ChatProposalView }>(`/conversations/${id}/proposals/${proposalId}/decline`, {
+      method: "POST",
     }),
 
   /** `DELETE /api/conversations/:id`. */

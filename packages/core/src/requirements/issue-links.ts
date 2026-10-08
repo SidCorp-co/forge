@@ -138,6 +138,29 @@ export async function linkWorkflow(input: {
   return answer(projectId, row.id, actor, null);
 }
 
+/**
+ * The ids of the designs `names` names in the project, by flow name or id, in their order; or the
+ * names it holds no design for. Read before a write that links them, so nothing is half written.
+ */
+export async function designIdsOf(
+  projectId: string,
+  names: readonly string[],
+): Promise<{ ok: true; ids: string[] } | { ok: false; missing: string[] }> {
+  if (names.length === 0) return { ok: true, ids: [] };
+  const held = await db
+    .select({ id: projectWorkflows.id, flow: projectWorkflows.flow })
+    .from(projectWorkflows)
+    .where(eq(projectWorkflows.projectId, projectId));
+  const ids: string[] = [];
+  const missing: string[] = [];
+  for (const name of names) {
+    const hit = held.find((w) => w.id === name || w.flow === name);
+    if (hit) ids.push(hit.id);
+    else missing.push(name);
+  }
+  return missing.length > 0 ? { ok: false, missing } : { ok: true, ids: [...new Set(ids)] };
+}
+
 export async function unlinkWorkflow(input: {
   projectId: string;
   ref: string;

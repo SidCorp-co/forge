@@ -67,5 +67,5 @@ export const TOOLS_LAYER: PromptLayer = {
   redacted, say so in your reply and never answer about what you were not shown.
 - **CRITERIA FROM A DOCUMENT ARE TAKEN, NEVER RETYPED.** Draft with \`forge_requirement_draft\`
   \`criteriaFrom: { file, section }\` and \`preview: true\`, tell the person how many criteria and
-  which lines, and write once they confirm. Say the count exactly as the result states it, never your own recount, and name the lines it reports as skipped (not list items). A list item it refuses is named by number: relay it.`,
+  which lines, then call it without \`preview\`: core holds that for their agreement. Say the count exactly as the result states it, never your own recount, and name the lines it reports as skipped (not list items). A list item it refuses is named by number: relay it.`,
 };

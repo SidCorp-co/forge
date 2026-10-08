@@ -116,6 +116,40 @@ describe('a reply claiming it recorded Feedback or a Requirement', () => {
   });
 });
 
+describe('a record the person agreed to, written through the agreement (REQ-30 BC-4)', () => {
+  const agreed = (kind: string, isError = false): Call => ({
+    name: 'forge_agree',
+    arguments: JSON.stringify({ proposal: 'p-1', kind, words: 'Yes, record it.' }),
+    ...(isError ? { isError } : {}),
+  });
+  const agreeOverRest: Call = {
+    name: 'Bash',
+    arguments: JSON.stringify({
+      command: `forge-runner api conversations/c-1/proposals/p-1/agree -X POST -d '{"words":"yes","kind":"feedback"}'`,
+    }),
+  };
+
+  it('grounds the claim on the agreement whose kind is that record', async () => {
+    expect(await held('I recorded this as FB-112.', [agreed('feedback')])).toEqual([]);
+    expect(await held('I drafted REQ-31 for you.', [agreed('requirement_draft')])).toEqual([]);
+    expect(
+      await held('I proposed revision r2 of REQ-30.', [agreed('requirement_revision')]),
+    ).toEqual([]);
+    expect(
+      await held('I recorded this as FB-112.', [agreeOverRest], 'web-agent-completion'),
+    ).toEqual([]);
+  });
+
+  it('holds the claim when the write was only held, the agreement refused, or of another kind', async () => {
+    expect(await held('I recorded this as FB-112.', [{ ...FEEDBACK, isError: true }])).toHaveLength(
+      1,
+    );
+    expect(await held('I recorded this as FB-112.', [agreed('feedback', true)])).toHaveLength(1);
+    expect(await held('I recorded this as FB-112.', [agreed('requirement_draft')])).toHaveLength(1);
+    expect(await held('I drafted REQ-31 for you.', [agreed('memory_note')])).toHaveLength(1);
+  });
+});
+
 describe('a reply claiming it created an issue', () => {
   it('is held at every chat door even when the turn ran `forge new`', async () => {
     const forgeNew: Call = { name: 'forge', arguments: JSON.stringify({ argv: ['new', 'x'] }) };

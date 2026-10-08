@@ -5,6 +5,7 @@ import { sendStoredAttachment } from '../lib/attachment-headers.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, requireAuth, restActor } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
@@ -48,6 +49,7 @@ issueAttachmentRoutes.post(
     'multipart/form-data',
     'One file in the `file` field, attached to the issue; its name and media type come from the part.',
   ),
+  holdChatWrite('attachment'),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');

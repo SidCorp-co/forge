@@ -15,8 +15,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   route: '/api/projects',
   grant: 'projects:write',
   description: [
-    "File a person's report or wish as Feedback (FB-n), as the person you are talking to — only",
-    'after they confirmed what you restated, or told you to just record it.',
+    "File a person's report or wish as Feedback (FB-n), as the person you are talking to. From a",
+    'chat it is held for their agreement: core keeps it as a proposal they see as a confirm card.',
     'kind: bug (something broken or wrong), change_request (different behaviour of something that',
     'exists), idea (something new), question.',
     'Name exactly one target: `requirement` (REQ-n, the requirement it touches — find it with',

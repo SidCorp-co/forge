@@ -1,3 +1,5 @@
+export { provideAgreementReplay } from './agreement/execute.js';
+export { holdChatRestWrite } from './agreement/rest-hold.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export { drainRoomWindows, registerRoomChat } from './chat-room/room-chat.js';
 export {

@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { acceptDelivery, dropRequirement } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
@@ -74,6 +75,7 @@ requirementRoutes.post(
     z.strictObject({ title: z.string().trim().min(1).max(500), ...revisionFields }),
     '{ title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } writes REQ-n at revision 1',
   ),
+  holdChatWrite('requirement_draft'),
   async (c) => {
     const { title, ...write } = c.req.valid('json');
     return answer(

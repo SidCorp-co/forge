@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { RULES } from '../lib/rate-limits.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -25,13 +26,18 @@ memoryWriteRoutes.use(
   rateLimit(() => RULES.memoryWrite, { name: 'memory-write' }),
 );
 
-memoryWriteRoutes.post('/', zValidator('json', writeMemoryInputSchema), async (c) => {
-  const body = c.req.valid('json');
-  const userId = c.get('userId');
-  await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
+memoryWriteRoutes.post(
+  '/',
+  zValidator('json', writeMemoryInputSchema),
+  holdChatWrite('memory_note'),
+  async (c) => {
+    const body = c.req.valid('json');
+    const userId = c.get('userId');
+    await requireCan(actorFor(userId), 'project.write', projectResource(body.projectId));
 
-  return c.json(await runMemoryWrite(body, { writtenBy: userId }), 201);
-});
+    return c.json(await runMemoryWrite(body, { writtenBy: userId }), 201);
+  },
+);
 
 // Recall-feedback loop (ISS-603): where agents report the outcome of
 // verifying a memory hit against live code. Shares the memory-write rate

@@ -9,6 +9,7 @@ import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
+import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
@@ -186,6 +187,13 @@ interface IssuePorts {
     },
     prefixes: readonly string[],
   ) => Promise<object | null>;
+  /** The build a verdict on the issue defaults to (`release-batch/judged-build.ts`). */
+  judgedBuildOf: (issue: {
+    id: string;
+    projectId: string;
+    mergedAt: Date | string | null;
+    mergedCommitSha: string | null;
+  }) => Promise<JudgedBuild>;
 
   getLoopThresholds: () => { queueMs: number; heartbeatMs: number; ackMs: number };
   extractStageStatus: (payload: unknown) => string | null;
@@ -198,7 +206,9 @@ interface IssuePorts {
     boundProjectId: string | null;
   }) => Promise<string | null>;
   /** The chat door a credential was minted for, or null for any other (`agent-sessions/chat-door.ts`). */
-  chatDoorOfToken: (tokenId: string) => Promise<{ door: 'assistant-turn' | 'box-session' } | null>;
+  chatDoorOfToken: (
+    tokenId: string,
+  ) => Promise<{ door: 'assistant-turn' | 'box-session' | 'agreement' } | null>;
   issueDeleteRefusal: (issue: {
     id: string;
     projectId: string;
@@ -344,6 +354,7 @@ export const issueRefPattern = port('issueRefPattern');
 export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');
 export const liveReachOfIssue = port('liveReachForIssue');
+export const judgedBuildOf = port('judgedBuildOf');
 
 export const getLoopThresholds = port('getLoopThresholds');
 export const extractStageStatus = port('extractStageStatus');

@@ -21,6 +21,7 @@ export { createReleaseBatch } from './create.js';
 export { registerDeployWorker } from './deploy-worker.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { abortBlockedIssues } from './hold.js';
+export { judgedBuildOf } from './judged-build.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,

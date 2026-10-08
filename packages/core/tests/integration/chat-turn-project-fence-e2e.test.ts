@@ -375,17 +375,21 @@ describe("every write a turn makes is held to the asker's own role", () => {
     });
   }
 
-  it("lets the same write through for an owner's token, so the role is what refused it", async () => {
+  // an owner's chat write passes the role check and meets the hold that waits for the person to
+  // agree (ISS-439, REQ-30 BC-4): not the viewer's permission refusal, so the role is what refused it
+  it("lets the same write past the role for an owner's token, to wait for their go-ahead", async () => {
+    const before = await count('feedback', ids.home);
     for (const mode of MODES) {
-      ok(
-        await say(`asker:${mode}`, 'POST', `/api/projects/${ids.home}/feedback`, {
-          kind: 'bug',
-          title: `Owner feedback (${mode})`,
-          screen: '/board',
-        }),
-        201,
-      );
+      const r = await say(`asker:${mode}`, 'POST', `/api/projects/${ids.home}/feedback`, {
+        kind: 'bug',
+        title: `Owner feedback (${mode})`,
+        screen: '/board',
+      });
+      expect(r.status, `${mode}: ${JSON.stringify(r.json)}`).toBe(409);
+      expect(JSON.stringify(r.json), mode).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
+      expect(JSON.stringify(r.json), mode).not.toContain('project.write');
     }
+    expect(await count('feedback', ids.home)).toBe(before);
   });
 
   it('classifies every tool the Assistant is offered, so a new write cannot join unplanted', () => {

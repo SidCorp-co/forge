@@ -2,6 +2,7 @@ import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ACCEPT_REVISION_SHAPE, acceptRevisionRequestSchema } from '@forge/contracts/requirements';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { acceptRevision } from './agree.js';
 import {
@@ -23,6 +24,7 @@ revisionRoutes.post(
     z.strictObject({ baseRevision: z.number().int().min(1).nullable(), ...revisionFields }),
     '{ baseRevision, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ code?, body, form? }] } — baseRevision is the head you read',
   ),
+  holdChatWrite('requirement_revision'),
   async (c) => {
     const { id, req } = c.req.valid('param');
     const { baseRevision, ...write } = c.req.valid('json');

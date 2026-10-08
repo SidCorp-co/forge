@@ -166,6 +166,7 @@ const CHAT_DOOR_SAYS = {
   'assistant-turn': 'the assistant answering in a conversation',
   'box-session':
     'a chat session on a paired box (Agent mode, the Agents screen or a room escalation)',
+  agreement: 'the write of one record a person agreed to in a chat',
 } as const;
 
 /**

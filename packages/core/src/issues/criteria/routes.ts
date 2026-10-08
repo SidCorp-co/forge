@@ -6,6 +6,7 @@
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
  *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion
+ *   GET  /api/issues/:id/judged-build   the build a verdict on it defaults to (REQ-6 BC-2, BC-4)
  */
 
 import { Hono } from 'hono';
@@ -16,9 +17,11 @@ import {
   requireAuth,
   restActor,
 } from '../../middleware/auth.js';
-import { idParamSchema } from '../../middleware/route-errors.js';
+import { idParamSchema, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import { heldIssue } from '../issue-route-ref.js';
+import { judgedBuildOf } from '../ports.js';
+import { findIssueById } from '../read-service.js';
 import { criteriaPutSchema, criteriaTracePostSchema, verdictPostSchema } from './input-schemas.js';
 import {
   addVerdict,
@@ -32,6 +35,7 @@ export const issueCriteriaRoutes = new Hono<{ Variables: AuthVars }>();
 issueCriteriaRoutes.use('/:id/criteria', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/criteria/traces', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
+issueCriteriaRoutes.use('/:id/judged-build', requireAuth(), assertEmailVerified());
 
 /** An issue's criteria as this caller may read them: every answer passes the same egress. */
 async function criteriaShown(
@@ -106,3 +110,18 @@ issueCriteriaRoutes.post(
     return c.json({ verdictId: written.id, criterion }, 201);
   },
 );
+
+issueCriteriaRoutes.get('/:id/judged-build', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await heldIssue(id, c.get('userId'), 'project.read');
+  const issue = await findIssueById(id);
+  if (!issue) throw notFound('issue not found');
+  return c.json(
+    await judgedBuildOf({
+      id: issue.id,
+      projectId: issue.projectId,
+      mergedAt: issue.mergedAt,
+      mergedCommitSha: issue.mergedCommitSha,
+    }),
+  );
+});

@@ -123,7 +123,12 @@
     "assistant": {
       "kind": "domain",
       "context": "conversations",
-      "owns": ["assistantSpeakerLinks", "conversationPins", "rocketchatQuestionDeliveries"],
+      "owns": [
+        "assistantSpeakerLinks",
+        "chatProposals",
+        "conversationPins",
+        "rocketchatQuestionDeliveries"
+      ],
       "serves": [
         "REQ-8",
         "REQ-10",
@@ -132,7 +137,11 @@
         "project-onboarding#req-case",
         "suggestion-lifecycle#start",
         "personal-data-flow#pr-assistant",
-        "personal-data-flow#pr-chat-out"
+        "personal-data-flow#pr-chat-out",
+        "REQ-30",
+        "chat-turn#confirm",
+        "chat-turn#write",
+        "chat-turn#recorded"
       ]
     },
     "auth": {

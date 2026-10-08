@@ -312,3 +312,28 @@ export function useAcceptedMessages(id: string | undefined) {
 export function useWithdrawnDrafts(id: string | undefined) {
   return useSocketWrittenKey(["conversations", id, "withdrawn"], NO_WITHDRAWN);
 }
+
+/**
+ * The writes this room's turns hold until the person they answer agrees (REQ-30 BC-4). A turn holds
+ * one as it answers, so the list is read again whenever the thread grows.
+ */
+export function useConversationProposals(id: string | undefined, threadLength: number) {
+  return useQuery({
+    queryKey: ["conversations", id, "proposals", threadLength],
+    queryFn: () => conversationsApi.proposals(id as string),
+    enabled: !!id,
+    select: (data) => data.proposals,
+  });
+}
+
+/** Record a held write, or decline it; either way the thread gains core's line about it. */
+export function useDecideProposal(id: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { proposalId: string; decision: "agree" | "decline" }) =>
+      args.decision === "agree"
+        ? conversationsApi.agreeProposal(id as string, args.proposalId)
+        : conversationsApi.declineProposal(id as string, args.proposalId),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["conversations", id] }),
+  });
+}

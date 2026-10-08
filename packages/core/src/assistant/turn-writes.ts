@@ -1,13 +1,15 @@
-// What one turn has already done across its attempts: the calls a screen retry is told of, and the
-// record (a Feedback item, a draft Requirement) it may not make twice. A retry is the same turn asked again, so a write the first attempt
-// made stands and is named back to the model rather than made a second time.
+// What one turn has already done across its attempts: the calls a screen retry is told of. A retry
+// is the same turn asked again, so a write the first attempt made stands and is named back to the
+// model rather than made a second time; a record the turn proposes is held for the person's
+// agreement (`agreement/turn-gate.ts`), one proposal per title however often it is asked again.
 
+import { CHAT_AGREE_TOOL } from '@forge/contracts/chat-proposals';
 import type { CallToolResult } from '../lib/tool-result.js';
 import type { ToolResultEntry } from '../messaging/facts.js';
 import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
 
 const CLI_TOOL = 'forge';
-/** The tools that record a new item under a title: a retry naming the same title gets the first. */
+/** The tools that record a new item under a title: a retry naming the same title is the same record. */
 const RECORD_TOOLS: ReadonlySet<string> = new Set(['forge_feedback', 'forge_requirement_draft']);
 const RESULT_CHARS = 300;
 const ARGUMENT_CHARS = 200;
@@ -20,6 +22,7 @@ const WRITE_VERBS: ReadonlySet<string> = new Set(['comment', 'attach']);
 const ISSUE_WRITE_FLAG =
   /^--(status|relates|blocks|priority|assign|assignee|title|category|label|labels|module|with)(=|$)/;
 const WRITE_TOOLS: ReadonlySet<string> = new Set([
+  CHAT_AGREE_TOOL,
   'forge_memory_note',
   'forge_preferences',
   'forge_feedback',
@@ -115,20 +118,10 @@ const callSaid = (name: string, argsJson: string): string => {
   return argv ? `${name} ${JSON.stringify(argv)}` : `${name} ${oneLine(argsJson, ARGUMENT_CHARS)}`;
 };
 
-function refiled(title: string, earlier: CallToolResult): CallToolResult {
-  const note = `Not recorded again: this turn already recorded "${title}", and the result below is that record. Name the key it gave; do not record it a second time.`;
-  return { ...earlier, content: [{ type: 'text', text: note }, ...earlier.content] };
-}
-
-/**
- * The turn's toolset with a ledger in front: every call that lands is remembered for the retry, and
- * a second record under a title this turn already recorded is answered with that record instead of
- * a new one.
- */
+/** The turn's toolset with a ledger in front: every call that lands is remembered for the retry. */
 export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
   const done: DoneCall[] = [];
   const shown: ToolResultEntry[] = [];
-  const filings = new Map<string, Promise<CallToolResult>>();
   if (!tools) {
     return {
       tools,
@@ -154,27 +147,7 @@ export function turnWrites(tools: ChatToolset | undefined): TurnWrites {
     }
     return result;
   };
-  const ledgered: ChatToolset = {
-    ...tools,
-    async execute(name, argsJson) {
-      const title = filingTitle(name, argsJson);
-      if (title === null) return run(name, argsJson);
-      const key = titleKey(title);
-      const pending = filings.get(key);
-      let reused = false;
-      const filing = (async () => {
-        const earlier = pending ? await pending.catch(() => null) : null;
-        if (earlier && !earlier.isError) {
-          reused = true;
-          return earlier;
-        }
-        return run(name, argsJson);
-      })();
-      filings.set(key, filing);
-      const result = await filing;
-      return reused ? refiled(title, result) : result;
-    },
-  };
+  const ledgered: ChatToolset = { ...tools, execute: run };
   return {
     tools: ledgered,
     calls: () => [...done],

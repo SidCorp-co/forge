@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.195] - 2026-10-08
+
+Judge records could-not-judge, names the live build; chat writes await consent
+
+### Changed
+
+- **A chat writes nothing until you agree.** Feedback, requirements, revisions, comments, attachments and memory notes a chat proposes wait on a card you Record or Decline, or on your explicit yes next message; agreed records link their requirement or design.
+
+### Fixed
+
+- **A person can record "could not judge" on a criterion, and the Judge pre-fills the live build.** It needs a reason and never counts as a pass; Short says it counts as one; an attached file can be cited.
+
 ## [0.4.0-dev.194] - 2026-10-08
 
 Agent mode names how a turn ended; chat turns fenced and carry page context

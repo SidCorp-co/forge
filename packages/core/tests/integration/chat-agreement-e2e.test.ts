@@ -1,0 +1,483 @@
+/**
+ * REQ-30 BC-4 (workflow chat-turn r2, steps restate 	 confirm 	 write 	 recorded): a chat writes
+ * nothing until the person agrees. Before ISS-439 the agreement was an instruction to the model,
+ * and forge_feedback, the requirement tools and an Agent session's REST POST wrote the moment they
+ * were called. Here the real routes, the real toolset and the real database answer: a held write
+ * leaves no row; the person's card press or a reply core binds writes exactly the held call, once,
+ * as them, linked to what it named.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  closeWorld,
+  type Doc,
+  type Reply,
+  requester,
+  startQueue,
+  testEnv,
+} from '../helpers/ecosystem-world.js';
+import {
+  addProjectMember,
+  createTestDevice,
+  createTestProject,
+  createTestUser,
+  rows,
+} from '../helpers/factories.js';
+
+let projectId = '';
+let projectSlug = '';
+let owner = '';
+let roomId = '';
+let workflowId = '';
+let reqKey = '';
+let say: (
+  who: 'owner' | 'member' | 'agent',
+  method: string,
+  path: string,
+  body?: unknown,
+) => Promise<Reply>;
+let app: { request: (path: string, init: RequestInit) => Response | Promise<Response> };
+let tokens: Record<string, string>;
+let gateFor: (
+  message: string,
+) => Promise<import('../../src/assistant/agreement/turn-gate.js').AgreementGate>;
+let agentTurn: (question: string) => Promise<void>;
+
+const QUESTION = 'The dock loses my draft when I switch tabs. Record it, please.';
+const at = (path: string) => `/api/projects/${projectId}${path}`;
+const count = async (table: 'feedback' | 'requirements' | 'comments' | 'chat_proposals') =>
+  Number(
+    (
+      await rows<{ n: number }>(
+        table === 'comments'
+          ? sql`SELECT count(*)::int AS n FROM comments c JOIN issues i ON i.id = c.issue_id WHERE i.project_id = ${projectId}`
+          : sql`SELECT count(*)::int AS n FROM ${sql.raw(table)} WHERE project_id = ${projectId}`,
+      )
+    )[0]?.n,
+  );
+const text = (r: { content: { type: string; text?: string }[] }) =>
+  r.content.map((b) => b.text ?? '').join('\n');
+const proposals = async (who: 'owner' | 'member' = 'owner') =>
+  ((await say(who, 'GET', `/api/conversations/${roomId}/proposals`)).json.proposals ?? []) as Doc[];
+const codeOf = (r: Reply) => r.json?.error?.refusals?.[0]?.code ?? r.json?.code;
+const heldId = (said: string) => /proposal ([0-9a-f-]{36})/.exec(said)?.[1] ?? '';
+
+beforeAll(async () => {
+  testEnv();
+  const index = await import('../../src/index.js');
+  app = index.app;
+  await startQueue();
+  const { signUserToken } = await import('../../src/credentials/jwt.js');
+  const { AGENT_TURN_MENU, CHAT_TURN_MENU, mintTurnCredential } = await import(
+    '../../src/credentials/turn-credential.js'
+  );
+  const { resolveTurnAuthority } = await import('../../src/permissions/index.js');
+  const { createChatSessionRow, mintSessionCredential } = await import(
+    '../../src/agent-sessions/index.js'
+  );
+  const { buildProjectToolset } = await import('../../src/assistant/tools/registry.js');
+  const { buildChatToolContext } = await import('../../src/assistant/tools/principal.js');
+  const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
+  const { db } = await import('../../src/db/client.js');
+
+  owner = (await createTestUser({ verified: true })).id;
+  const member = (await createTestUser({ verified: true })).id;
+  const project = await createTestProject(owner);
+  projectId = project.id;
+  projectSlug = project.slug;
+  await addProjectMember(projectId, owner, 'owner');
+  await addProjectMember(projectId, member, 'member');
+  const deviceId = await createTestDevice(owner);
+  workflowId = randomUUID();
+  await db.execute(sql`
+    INSERT INTO project_workflows (id, project_id, flow, kind, revision, document, written_by_user)
+    VALUES (${workflowId}, ${projectId}, 'chat-turn', 'flow', 1, '{}'::jsonb, ${owner})`);
+
+  const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
+  if (!resolved.ok) throw new Error(resolved.refusal.message);
+  const authority = resolved.authority;
+
+  tokens = { owner: await signUserToken(owner), member: await signUserToken(member) };
+  say = requester(index.app, tokens) as typeof say;
+  const opened = await say('owner', 'POST', '/api/conversations', {
+    projectId,
+    title: 'the dock',
+    people: [member],
+  });
+  expect(opened.status, JSON.stringify(opened.json)).toBe(201);
+  roomId = String(opened.json.id);
+  reqKey = (
+    await say('owner', 'POST', at('/requirements'), {
+      title: 'The chat dock keeps a draft',
+      reason: 'People lose what they typed.',
+      criteria: [{ body: 'A draft survives a tab switch.' }],
+    })
+  ).json.key;
+
+  const credential = await mintTurnCredential({ authority, menu: CHAT_TURN_MENU, ttlMs: 600_000 });
+  gateFor = async (message) =>
+    agreementGate(
+      buildProjectToolset(
+        buildChatToolContext({
+          credential,
+          projectSlug,
+          turn: { conversationId: roomId, speakerUserId: owner, handleUserId: null },
+        }),
+      ),
+      {
+        projectId,
+        conversationId: roomId,
+        personId: owner,
+        handleUserId: null,
+        message,
+        authority,
+      },
+    );
+
+  // each room turn an Agent-mode box answers is its own session, started when the turn was
+  agentTurn = async (question) => {
+    const session = await createChatSessionRow({
+      projectId,
+      userId: owner,
+      title: 'Agent: the dock',
+      runKind: 'system',
+      metadata: {
+        conversationAgent: {
+          venue: { adapter: 'web', externalId: roomId, projectId },
+          conversationId: roomId,
+          windowId: randomUUID(),
+          deliveryKey: `window:${randomUUID()}`,
+          question,
+          asker: { userId: owner, viaTokenId: null },
+        },
+      },
+    });
+    tokens.agent = await mintSessionCredential({
+      sessionId: session.id,
+      deviceId,
+      value: { authority, menu: AGENT_TURN_MENU },
+    });
+  };
+  await agentTurn(QUESTION);
+}, 120_000);
+
+afterAll(async () => {
+  await closeWorld();
+});
+
+describe('an Assistant write is held, and the card writes it as the person', () => {
+  let held = '';
+
+  it('refuses forge_feedback by name and writes no Feedback', async () => {
+    const gate = await gateFor(QUESTION);
+    const before = await count('feedback');
+    const r = await gate.tools.execute(
+      'forge_feedback',
+      JSON.stringify({
+        kind: 'bug',
+        title: 'The dock loses a draft on a tab switch',
+        requirement: reqKey,
+      }),
+    );
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('CHAT_WRITE_AWAITS_AGREEMENT: nothing was written');
+    held = heldId(text(r));
+    expect(await count('feedback')).toBe(before);
+    expect(gate.heldThisTurn()).toBe(1);
+  });
+
+  it('shows the card to the room, with the decision only for the person it waits on', async () => {
+    const mine = (await proposals('owner')).find((p) => p.id === held);
+    expect(mine).toMatchObject({
+      kind: 'feedback',
+      status: 'pending',
+      canDecide: true,
+      summary: {
+        title: 'Feedback (bug): The dock loses a draft on a tab switch',
+        relates: [reqKey],
+      },
+      proposedTo: { userId: owner },
+    });
+    expect((await proposals('member')).find((p) => p.id === held)?.canDecide).toBe(false);
+  });
+
+  it('refuses a press by anyone else, and writes nothing', async () => {
+    const r = await say(
+      'member',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${held}/agree`,
+      {},
+    );
+    expect(r.status).toBe(403);
+    expect(codeOf(r)).toBe('CHAT_PROPOSAL_NOT_YOURS');
+    expect(await count('feedback')).toBe(0);
+  });
+
+  it("writes the held call on the person's press, linked to the requirement, and tells the thread", async () => {
+    const r = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${held}/agree`,
+      {},
+    );
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(r.json.proposal).toMatchObject({ status: 'recorded', agreedVia: 'card' });
+    const ref = r.json.proposal.record.ref as string;
+    expect(ref).toMatch(/^FB-\d+$/);
+    const fb = (await say('owner', 'GET', at(`/feedback/${ref}`))).json.feedback;
+    expect(fb.title).toBe('The dock loses a draft on a tab switch');
+    expect(fb.target).toMatchObject({ type: 'requirement', key: reqKey });
+    const thread = (await say('owner', 'GET', `/api/conversations/${roomId}`)).json
+      .messages as Doc[];
+    expect(thread.map((m) => m.content)).toContain(
+      `Recorded as ${ref}: Feedback (bug): The dock loses a draft on a tab switch.`,
+    );
+  });
+
+  it('refuses a second press by name and writes nothing more', async () => {
+    const r = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${held}/agree`,
+      {},
+    );
+    expect(r.status).toBe(409);
+    expect(codeOf(r)).toBe('CHAT_PROPOSAL_SETTLED');
+    expect(await count('feedback')).toBe(1);
+  });
+
+  it('declines a proposal, and a press after it writes nothing', async () => {
+    const gate = await gateFor(QUESTION);
+    const r = await gate.tools.execute(
+      'forge_feedback',
+      JSON.stringify({ kind: 'idea', title: 'Autosave the dock', requirement: reqKey }),
+    );
+    const id = heldId(text(r));
+    const declined = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${id}/decline`,
+    );
+    expect(declined.json.proposal).toMatchObject({ status: 'declined', canDecide: false });
+    const late = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${id}/agree`,
+      {},
+    );
+    expect(codeOf(late)).toBe('CHAT_PROPOSAL_SETTLED');
+    expect(await count('feedback')).toBe(1);
+  });
+});
+
+describe('a reply agrees only when core binds it, through forge_agree', () => {
+  let held = '';
+  const draft = {
+    title: 'The dock autosaves a draft',
+    reason: 'A tab switch loses what was typed.',
+    criteria: [{ body: 'A draft typed in the dock is there after a tab switch.' }],
+    designs: ['chat-turn'],
+  };
+
+  it('holds the draft requirement, which names its design', async () => {
+    const before = await count('requirements');
+    const r = await (await gateFor('Please draft it.')).tools.execute(
+      'forge_requirement_draft',
+      JSON.stringify(draft),
+    );
+    held = heldId(text(r));
+    expect(held).not.toBe('');
+    expect(await count('requirements')).toBe(before);
+    expect((await proposals()).find((p) => p.id === held)?.summary.relates).toEqual([
+      'design chat-turn',
+    ]);
+  });
+
+  it('refuses part of the reply, and the wrong kind, writing nothing', async () => {
+    const message = "No, don't draft it yet.";
+    const gate = await gateFor(message);
+    const before = await count('requirements');
+    for (const [kind, words] of [
+      ['requirement_draft', 'draft it'],
+      ['feedback', message],
+    ] as const) {
+      const r = await gate.tools.execute(
+        'forge_agree',
+        JSON.stringify({ proposal: held, kind, words }),
+      );
+      expect(r.isError).toBe(true);
+      expect(text(r)).toContain('CHAT_AGREEMENT_UNBOUND');
+    }
+    expect(await count('requirements')).toBe(before);
+  });
+
+  it('writes the draft as the person when their whole reply is quoted, linked to its design', async () => {
+    const message = 'Yes, draft it as you said.';
+    const gate = await gateFor(message);
+    const r = await gate.tools.execute(
+      'forge_agree',
+      JSON.stringify({ proposal: held, kind: 'requirement_draft', words: message }),
+    );
+    expect(r.isError, text(r)).toBeFalsy();
+    const ref = JSON.parse(text(r)).recorded.ref as string;
+    const req = (await say('owner', 'GET', at(`/requirements/${ref}`))).json;
+    expect(req.title).toBe(draft.title);
+    expect((req.workflows as Doc[]).map((wf) => wf.id ?? wf.workflowId)).toContain(workflowId);
+    const p = (await proposals()).find((x) => x.id === held);
+    expect(p).toMatchObject({ status: 'recorded', agreedVia: 'reply', agreedWords: message });
+  });
+});
+
+describe("an Agent-mode session's REST write is held the same way", () => {
+  it('holds a Feedback POST, and the session binds the reply to write it', async () => {
+    const before = await count('feedback');
+    const r = await say('agent', 'POST', at('/feedback'), {
+      kind: 'bug',
+      title: 'The dock drops pasted images',
+      requirement: reqKey,
+    });
+    expect(r.status, JSON.stringify(r.json)).toBe(409);
+    expect(codeOf(r)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+    expect(await count('feedback')).toBe(before);
+    const id = heldId(JSON.stringify(r.json));
+    const agree = (words: string) =>
+      say('agent', 'POST', `/api/conversations/${roomId}/proposals/${id}/agree`, {
+        words,
+        kind: 'feedback',
+      });
+    // the turn that held it cannot agree to it: the person has not seen it yet
+    expect(codeOf(await agree(QUESTION))).toBe('CHAT_AGREEMENT_UNBOUND');
+
+    await agentTurn('Yes, record both.');
+    expect(codeOf(await agree('record both'))).toBe('CHAT_AGREEMENT_UNBOUND');
+    expect(await count('feedback')).toBe(before);
+    const agreed = await say(
+      'agent',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${id}/agree`,
+      {
+        words: 'Yes, record both.',
+        kind: 'feedback',
+      },
+    );
+    expect(agreed.status, JSON.stringify(agreed.json)).toBe(200);
+    expect(agreed.json.proposal).toMatchObject({ status: 'recorded', agreedVia: 'reply' });
+    expect(await count('feedback')).toBe(before + 1);
+    expect(JSON.parse(agreed.json.answered).feedback.target).toMatchObject({ key: reqKey });
+  });
+
+  it('holds a comment and an attachment, and the card writes them as the person', async () => {
+    const issue = await say('owner', 'POST', at('/issues'), {
+      title: 'Dock draft is lost',
+      status: 'draft',
+    });
+    expect(issue.status, JSON.stringify(issue.json)).toBe(201);
+    const issueId = String(issue.json.id);
+    const comment = await say('agent', 'POST', `/api/issues/${issueId}/comments`, {
+      body: 'Seen again on a tab switch.',
+    });
+    expect(codeOf(comment)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+    const form = new FormData();
+    form.set('file', new File(['the log'], 'dock.log', { type: 'text/plain' }));
+    const attached = await app.request(`/api/issues/${issueId}/attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokens.agent}` },
+      body: form,
+    });
+    expect(attached.status).toBe(409);
+    const attachments = async () =>
+      (await say('owner', 'GET', `/api/issues/${issueId}/attachments`)).json as unknown as Doc[];
+    expect(await attachments()).toEqual([]);
+    expect(await count('comments')).toBe(0);
+
+    const waiting = (await proposals()).filter(
+      (p) => p.status === 'pending' && p.kind !== 'feedback',
+    );
+    expect(waiting.map((p) => p.summary.title).sort()).toEqual([
+      `Attach to ${issueId}`,
+      `Comment on ${issueId}`,
+    ]);
+    for (const p of waiting) {
+      const r = await say(
+        'owner',
+        'POST',
+        `/api/conversations/${roomId}/proposals/${p.id}/agree`,
+        {},
+      );
+      expect(r.json.proposal?.status, JSON.stringify(r.json)).toBe('recorded');
+    }
+    expect(await count('comments')).toBe(1);
+    expect((await attachments()).map((a) => a.name)).toEqual(['dock.log']);
+  });
+
+  it('holds a memory note and a requirement revision, and the card writes them', async () => {
+    const notes = async () =>
+      Number(
+        (
+          await rows<{ n: number }>(
+            sql`SELECT count(*)::int AS n FROM memories WHERE project_id = ${projectId} AND source_ref = 'dock-draft'`,
+          )
+        )[0]?.n,
+      );
+    const note = await say('agent', 'POST', '/api/memory', {
+      projectId,
+      source: 'note',
+      sourceRef: 'dock-draft',
+      textContent: 'The dock keeps no draft across a tab switch.',
+    });
+    expect(codeOf(note), JSON.stringify(note.json)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+    expect(await notes()).toBe(0);
+    // a revision opens on an accepted requirement: revision 1 is proposed and signed first
+    for (const step of ['propose', 'accept']) {
+      const r = await say('owner', 'POST', at(`/requirements/${reqKey}/revisions/1/${step}`), {});
+      expect(r.status, JSON.stringify(r.json)).toBe(200);
+    }
+    const revise = await say('agent', 'POST', at(`/requirements/${reqKey}/revisions`), {
+      baseRevision: 1,
+      reason: 'A draft also survives a reload.',
+      criteria: [{ body: 'A draft survives a tab switch and a reload.' }],
+    });
+    expect(codeOf(revise), JSON.stringify(revise.json)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+
+    const waiting = (await proposals()).filter(
+      (p) => p.status === 'pending' && ['memory_note', 'requirement_revision'].includes(p.kind),
+    );
+    expect(waiting.map((p) => p.kind).sort()).toEqual(['memory_note', 'requirement_revision']);
+    for (const p of waiting) {
+      const r = await say(
+        'owner',
+        'POST',
+        `/api/conversations/${roomId}/proposals/${p.id}/agree`,
+        {},
+      );
+      expect(r.json.proposal?.status, JSON.stringify(r.json)).toBe('recorded');
+    }
+    expect(await notes()).toBe(1);
+    const req = (await say('owner', 'GET', at(`/requirements/${reqKey}`))).json;
+    expect((req.revisions as Doc[]).map((rev) => rev.reason)).toContain(
+      'A draft also survives a reload.',
+    );
+  });
+
+  it('refuses the assistant turn token a record route outright', async () => {
+    const { CHAT_TURN_MENU, mintTurnCredential } = await import(
+      '../../src/credentials/turn-credential.js'
+    );
+    const { resolveTurnAuthority } = await import('../../src/permissions/index.js');
+    const resolved = await resolveTurnAuthority({ userId: owner, projectId, viaTokenId: null });
+    if (!resolved.ok) throw new Error(resolved.refusal.message);
+    const turn = await mintTurnCredential({
+      authority: resolved.authority,
+      menu: CHAT_TURN_MENU,
+      ttlMs: 60_000,
+    });
+    const r = await requester(app as never, { turn: turn.token })('turn', 'POST', at('/feedback'), {
+      kind: 'bug',
+      title: 'From the CLI',
+      requirement: reqKey,
+    });
+    expect(codeOf(r)).toBe('CHAT_WRITE_AWAITS_AGREEMENT');
+  });
+});

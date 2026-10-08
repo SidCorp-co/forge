@@ -8,7 +8,8 @@ import { forgeRequirementDraftTool, forgeRequirementReviseTool } from '../requir
 /**
  * Where a chat door records what a person reports or wishes (owner ruling 2026-10-08): Feedback, a
  * draft Requirement or a draft revision of one. No chat door files an issue — the issue kernel
- * refuses a chat credential CHAT_FILES_FEEDBACK_NOT_ISSUES — so these are the only records it makes.
+ * refuses a chat credential CHAT_FILES_FEEDBACK_NOT_ISSUES — so these are the only records it makes,
+ * and each is held for the person's agreement before it is (`assistant/agreement/turn-gate.ts`).
  * Not served on /mcp; the process entry hands them to the assistant's allowlist at boot.
  */
 export const CHAT_RECORD_TOOLS: readonly { factory: ContextScopedMcpToolFactory }[] = [

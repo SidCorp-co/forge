@@ -1,12 +1,12 @@
 // ISS-55 — an issue's criteria as rows (`GET /api/issues/:id/criteria`), each with its latest
 // verdict, folded to the criterion standing whose badge reads the same on every screen.
 
-import type { StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
+import { safeAttachmentName } from "@forge/contracts/attachments";
+import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueDetailApi } from "./detail-api";
 import { issueKeySegment } from "./derive";
-import type { IssueRow } from "./types";
 
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";
@@ -46,55 +46,79 @@ export function useCriteria(issueId: string | undefined, projectId?: string) {
   });
 }
 
-/** The identity a person's verdict names: the whole sha of the commit the judged work runs at. */
-export interface VerdictCommit {
-  sha: string;
-  /** `live`: the live deployment carries the issue's work. `merged`: where it landed, not yet live. */
-  source: "live" | "merged";
-}
-
 const WHOLE_SHA = /^[0-9a-f]{40}$/i;
 
 export const isWholeSha = (sha: string) => WHOLE_SHA.test(sha.trim());
 
 /**
- * What a verdict on this issue is judged against by default: the commit the live deployment runs
- * when core reads the issue's work on it, else the commit it merged as; null where it has neither.
+ * The build a verdict on this issue is judged at by default, as core reads it
+ * (`GET /issues/:id/judged-build`): the commit production serves where it carries the issue's work,
+ * else the build that shipped it, else its merge commit, with how core knows. Read when the Judge
+ * opens, since it may ask the live deployment and the repository.
  */
-export function defaultVerdictCommit(issue: Pick<IssueRow, "liveReach" | "mergedCommitSha">): VerdictCommit | null {
-  const reach = issue.liveReach;
-  if (reach && reach.state === "none_waiting" && isWholeSha(reach.liveSha)) return { sha: reach.liveSha, source: "live" };
-  if (issue.mergedCommitSha && isWholeSha(issue.mergedCommitSha)) return { sha: issue.mergedCommitSha, source: "merged" };
-  return null;
+export function useJudgedBuild(issueId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["issue", issueId, "judged-build"],
+    queryFn: () => apiClient<JudgedBuild>(`/issues/${issueId}/judged-build`),
+    enabled,
+    staleTime: 60_000,
+  });
 }
 
-export type PersonVerdict = "pass" | "fail" | "short";
+/** `short` counts as a pass; `skipped` is "could not judge", which needs a reason and never does. */
+export type PersonVerdict = "pass" | "short" | "fail" | "skipped";
+
+/** What a verdict cites: nothing, a file the issue already holds, or a new one uploaded as `as`. */
+export type VerdictEvidence = { kind: "none" } | { kind: "attached"; name: string } | { kind: "upload"; file: File; as: string };
 
 export interface VerdictDraft {
   criterion: number;
   verdict: PersonVerdict;
+  /** Blank only on `skipped`, which may name no build. */
   sha: string;
   note: string;
-  screenshot: File | null;
+  evidence: VerdictEvidence;
+}
+
+/** The name an upload is stored under: its own, or the first `-n` free beside the issue's files. */
+export function freeAttachmentName(name: string, taken: readonly string[]): string {
+  const safe = safeAttachmentName(name);
+  const held = new Set(taken);
+  if (!held.has(safe)) return safe;
+  const dot = safe.lastIndexOf(".");
+  const [stem, ext] = dot > 0 ? [safe.slice(0, dot), safe.slice(dot)] : [safe, ""];
+  for (let n = 2; ; n += 1) {
+    const candidate = `${stem}-${n}${ext}`;
+    if (!held.has(candidate)) return candidate;
+  }
+}
+
+async function evidenceNames(issueId: string, evidence: VerdictEvidence): Promise<string[]> {
+  if (evidence.kind === "none") return [];
+  if (evidence.kind === "attached") return [evidence.name];
+  const file = evidence.file.name === evidence.as ? evidence.file : new File([evidence.file], evidence.as, { type: evidence.file.type });
+  return [(await issueDetailApi.uploadAttachment(issueId, file)).name];
 }
 
 /**
- * Records a person's verdict on one criterion: the screenshot, when one is given, is attached to the
- * issue first and cited by its name, so the verdict's evidence resolves to a file the tracker holds;
- * the note is the verdict's reason. Core refuses a wrong verdict by name and writes nothing.
+ * Records a person's verdict on one criterion: a new screenshot is attached to the issue first and
+ * cited by the name core kept, an attached file is cited as it is, so the verdict's evidence resolves
+ * to a file the tracker holds; the note is the verdict's reason. Core refuses a wrong verdict by name
+ * and writes nothing.
  */
 export function useRecordVerdict(issueId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (d: VerdictDraft) => {
-      const evidence = d.screenshot ? [(await issueDetailApi.uploadAttachment(issueId, d.screenshot)).name] : [];
+      const evidence = await evidenceNames(issueId, d.evidence);
+      const sha = d.sha.trim();
       return apiClient<{ verdictId: string }>(`/issues/${issueId}/verdicts`, {
         method: "POST",
         body: JSON.stringify({
           criterion: d.criterion,
           verdict: d.verdict,
           reason: d.note.trim() || null,
-          identity: { kind: "commit", sha: d.sha.trim() },
+          identity: sha ? { kind: "commit", sha } : null,
           evidence,
         }),
       });

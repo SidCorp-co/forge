@@ -19,7 +19,6 @@ import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueAgentSession, IssueDetail } from "../../types";
 import { ActivityFeed } from "../activity-feed";
 import { CommentThread } from "../comment-thread";
-import { defaultVerdictCommit } from "../../criteria";
 import { TieCriteria } from "../criteria-acts";
 import { CriteriaList } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
@@ -94,7 +93,7 @@ export function CriteriaTab({
   return (
     <div data-testid="view-criteria">
       {hasCriteriaRows ? (
-        <CriteriaList issueId={issue.id} judge={canWrite ? { commit: defaultVerdictCommit(issue) } : undefined} headingAct={tie} />
+        <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} />
       ) : checklist.length > 0 ? (
         <section aria-label={t("issues.criteria.acceptance")}>
           <ViewHeading right={tie}>{t("issues.criteria.acceptance")}</ViewHeading>

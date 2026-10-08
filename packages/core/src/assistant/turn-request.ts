@@ -26,6 +26,11 @@ export interface TurnInputs {
   /** The page the person sees beside the chat, rendered above their newest message (ISS-47). */
   pageContext?: Record<string, unknown> | null;
   images?: readonly TurnImage[] | undefined;
+  /**
+   * The images a record this turn writes carries (a Feedback item, a comment's attachments), kept
+   * with a write held for the person's agreement so the agreed write carries them too.
+   */
+  recordImages?: readonly TurnImage[] | undefined;
   resolveImage?: ImageResolver | undefined;
   resolveDocument?: DocumentResolver | undefined;
 }
