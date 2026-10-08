@@ -143,8 +143,8 @@ publishes and the versions of its contracts, and a person is not handed that wor
 2. \`commitments\` are this project's promise to its consumers: the versioning scheme, the days of notice
    before a breaking change takes effect (\`deprecationNoticeDays\`), and the days it answers an RFI or a
    change request in (\`responseDays\`). Propose the windows the project can keep; the first ones are stored as you
-   wrote them. Moving commitments that are already set takes \`commitments.write\`, which a token holds
-   only where its own grant names it, so without it send them back as they stand
+   wrote them. Moving commitments that are already set takes \`commitments.write\`, which a full token
+   holds where its holder does and a named token only where its grant names it, so without it send them back as they stand
    (\`PERMISSION_FORBIDDEN\` otherwise). The read answers \`commitmentsSetBy { agency, revision }\`.
 3. Upload each version: \`POST /api/projects/:id/contracts/:contract/versions { version, kind, artifact, sourceRef }\`.
    - \`kind\` is the publication's type: \`graphql\` takes the SDL text; \`mcp-tools\` takes

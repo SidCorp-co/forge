@@ -23,6 +23,7 @@ import { coreTokenNamePrefixOf } from './pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
   PAT_EXPLICIT_PERMISSIONS,
+  PAT_FULL_NARROWING_PERMISSIONS,
   PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_NAMES,
@@ -119,18 +120,19 @@ patRoutes.post('/pat', requireFreshAuth(5), zValidator('json', createBodySchema)
       },
     });
   }
-  const routeGroups = permissions.filter(
-    (p) => !(PAT_EXPLICIT_PERMISSIONS as readonly string[]).includes(p),
+  const besideFull = permissions.filter(
+    (p) => p !== PAT_PERMISSION_ALL && !PAT_FULL_NARROWING_PERMISSIONS.includes(p),
   );
-  if (permissions.includes(PAT_PERMISSION_ALL) && routeGroups.length > 1) {
+  if (permissions.includes(PAT_PERMISSION_ALL) && besideFull.length > 0) {
     throw new HTTPException(400, {
       message:
-        `full access is the whole route grant: send ["${PAT_PERMISSION_ALL}"] with no route ` +
-        `group beside it (only ${PAT_EXPLICIT_PERMISSIONS.join(', ')} may join it), or name ` +
-        'the groups this token needs without it.',
+        `full access already holds ${besideFull.join(', ')}: "${PAT_PERMISSION_ALL}" holds ` +
+        `everything your role can do, approvals included. Send ["${PAT_PERMISSION_ALL}"] alone ` +
+        `(only ${PAT_FULL_NARROWING_PERMISSIONS.join(', ')}, which narrows it, may join it), or ` +
+        'name what this token needs without it.',
       cause: {
         code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
-        details: { sent: permissions },
+        details: { sent: permissions, alreadyHeld: besideFull },
       },
     });
   }

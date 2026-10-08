@@ -508,9 +508,10 @@ written:
 - **One vocabulary**: `<resource>.<verb>` in `packages/contracts/src/permissions.ts:PERMISSIONS`.
   A role is a permission set declared there as data (`ROLE_PERMISSIONS`, `ORG_ROLE_PERMISSIONS`);
   a membership's grant (`project_members.grants`) adds permissions on its project beyond the role;
-  a token narrows what its holder reaches, and holds a permission in `TOKEN_EXPLICIT_PERMISSIONS`
-  (every `<resource>.approve` among them) only where its own grant names it. A credential core
-  mints for an agent names the explicit permissions the agent's memberships grant
+  a token narrows what its holder reaches: a full one (`*`) holds what its holder holds, approvals
+  included, and a named one holds a permission in `TOKEN_EXPLICIT_PERMISSIONS` (every
+  `<resource>.approve` among them) only where it names it. A credential core mints for an agent is
+  full, naming beside `*` only the observer key the agent's memberships grant
   (`packages/core/src/permissions/agent-fence.ts:agentCredentialGrant`), and an agent account's credential
   expires after a year.
 - **Approval is a permission**

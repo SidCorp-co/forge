@@ -23,8 +23,16 @@ describe('an observer credential cannot write or decide the design (REQ-17 BC-20
     });
   });
 
-  it('a token not naming it writes the design and observes nothing', () => {
-    runWithPatScope(token(['*', 'workflow-designs.approve']), () => {
+  it('a Full token not naming it holds what its holder holds, observing included (REQ-27 BC-4)', () => {
+    runWithPatScope(token(['*']), () => {
+      expect(holds(facts, 'workflow-designs.write')).toBe(true);
+      expect(holds(facts, 'workflow-designs.approve')).toBe(true);
+      expect(holds(facts, 'workflow-observations.write')).toBe(true);
+    });
+  });
+
+  it('a named grant not naming it writes the design and observes nothing', () => {
+    runWithPatScope(token(['projects:write', 'workflow-designs.approve']), () => {
       expect(holds(facts, 'workflow-designs.write')).toBe(true);
       expect(holds(facts, 'workflow-designs.approve')).toBe(true);
       expect(holds(facts, 'workflow-observations.write')).toBe(false);

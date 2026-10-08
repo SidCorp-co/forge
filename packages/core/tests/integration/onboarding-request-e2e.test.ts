@@ -43,8 +43,14 @@ beforeAll(async () => {
   say = requester(app, {
     owner: await signUserToken(owner.id),
     viewer: await signUserToken(viewer),
+    // a named grant: a full one holds onboarding.request as its holder does (REQ-27 BC-4)
     master: (
-      await mintPat({ permissions: ['*'], userId: agent, name: 'master', projectIds: [projectId] })
+      await mintPat({
+        permissions: ['projects:read', 'projects:write'],
+        userId: agent,
+        name: 'master',
+        projectIds: [projectId],
+      })
     ).plaintext,
   });
 }, 120_000);
@@ -76,14 +82,14 @@ describe('a start is refused by name before anything is opened', () => {
     expect(await jobsOf(projectId)).toEqual([]);
   });
 
-  it('refuses a viewer, and an agent token whose grant does not name onboarding.request', async () => {
+  it('refuses a viewer, and an agent token whose named grant does not name onboarding.request', async () => {
     expect(refusedBy(await say('viewer', 'POST', at(projectId, '/start'), {}), 403)).toEqual([
       'PERMISSION_FORBIDDEN',
     ]);
     const agent = await say('master', 'POST', at(projectId, '/start'), { request: REQUEST });
     expect(refusedBy(agent, 403)).toEqual(['PERMISSION_FORBIDDEN']);
     expect(agent.json.detail).toMatch(
-      /A token holds onboarding\.request only where its own grant names it/,
+      /A named token grant holds onboarding\.request only where it names it/,
     );
     expect(await jobsOf(projectId)).toEqual([]);
   });

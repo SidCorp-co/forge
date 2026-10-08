@@ -1,4 +1,4 @@
-import { TOKEN_EXPLICIT_PERMISSIONS } from '@forge/contracts/permissions';
+import { TOKEN_EXPLICIT_PERMISSIONS, TOKEN_GRANT_EXCLUSIONS } from '@forge/contracts/permissions';
 import { HTTPException } from 'hono/http-exception';
 import type { scopeForMethod } from '../middleware/pat-rest-surface.js';
 
@@ -363,11 +363,19 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
 }
 
 /**
- * Permissions a grant may name beside its route groups. They open no route; the permission check
- * (`permissions/can.ts`) reads them, and a token holds them only where its grant names them, `*`
- * included.
+ * Permissions a named grant may name beside its route groups. They open no route; the permission
+ * check (`permissions/can.ts`) reads them, and a named grant holds them only where it names them. A
+ * full grant (`*`) holds them as it holds everything its holder holds.
  */
 export const PAT_EXPLICIT_PERMISSIONS = TOKEN_EXPLICIT_PERMISSIONS;
+
+/**
+ * The names that may join `*`: each narrows a full grant (`TOKEN_GRANT_EXCLUSIONS`), so naming it is
+ * not redundant. Any other name beside `*` is one `*` already holds.
+ */
+export const PAT_FULL_NARROWING_PERMISSIONS = Object.keys(
+  TOKEN_GRANT_EXCLUSIONS,
+) as readonly string[];
 
 /** Full access as a stated value: off the menu, so no named grant holds it. */
 export const PAT_PERMISSION_ALL = '*';

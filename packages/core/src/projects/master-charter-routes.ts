@@ -17,8 +17,8 @@ import {
  *
  * Two reads and one write. The reads are open to anything holding access to the
  * project, a master's own token included — reading is the whole point. The
- * write takes charter.write, which a token holds only where its grant names it,
- * so a master's own token cannot rewrite the charter that binds it.
+ * write takes charter.write, which a full token holds where its holder's role
+ * does and a named token only where its grant names it (REQ-27 BC-4).
  */
 export const masterCharterRoutes = new Hono<{ Variables: AuthVars }>();
 masterCharterRoutes.use('*', requireAuth(), assertEmailVerified());

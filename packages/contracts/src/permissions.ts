@@ -42,8 +42,8 @@ const WRITE = [
 ] as const;
 
 /**
- * Acts that once refused an agent. They are permissions a member holds, and a token holds only
- * where its grant names them (`TOKEN_EXPLICIT_PERMISSIONS`).
+ * Acts that once refused an agent. They are permissions a member holds, and a named token grant
+ * holds only where it names them (`TOKEN_EXPLICIT_PERMISSIONS`).
  */
 const PERSONAL = [
 	"questionnaires.answer",
@@ -72,14 +72,15 @@ const DEPLOY = ["deploys.run"] as const;
 
 /**
  * Open a frozen answer to anyone holding its link, outside the project. Admin's by default; a member
- * or a token holds it only where its grant names it.
+ * holds it only where the project's grant names it, and a named token grant only where it names it.
  */
 const PUBLIC_SHARE = ["shares.public"] as const;
 
 /**
  * Have the assistant run a short computation over the project's data in an isolated sandbox
- * (REQ-32 C1). Admin's by default; a member or a token holds it only where its grant names it, so an
- * external chat door's credential never does.
+ * (REQ-32 C1). Admin's by default; a member holds it only where the project's grant names it, and a
+ * named token grant only where it names it, so an external chat door's credential, whose grant names
+ * route groups alone, never does.
  */
 const EXEC = ["assistant.exec"] as const;
 
@@ -128,9 +129,11 @@ export const ORG_ROLE_PERMISSIONS: Readonly<Record<OrgRole, readonly OrgPermissi
 };
 
 /**
- * Permissions a token holds only where its grant names them: neither a full grant (`*`) nor a token
- * minted before grants existed reaches them. A session holds them by its role. Every approve
- * permission is one (ADR 0007): a token approves only where its grant names the approval.
+ * Permissions a named token grant holds only where it names them: its route groups do not reach
+ * them. A full grant (`*`) holds them as it holds everything else its holder's role and membership
+ * grant hold, and a session holds them by its role (the owner's ruling of 2026-10-08, ADR 0007
+ * amendment). Every approve permission is one: a named token approves only where it names the
+ * approval.
  */
 export const TOKEN_EXPLICIT_PERMISSIONS: readonly Permission[] = [
 	"workflow-observations.write",

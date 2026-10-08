@@ -7,7 +7,8 @@
  * A project permission is held when the actor's effective role holds it
  * (`@forge/contracts/permissions:ROLE_PERMISSIONS`) or its membership's grant names it, and the
  * token the request arrived on admits it: a write needs the token's `write` scope, and a permission
- * in `TOKEN_EXPLICIT_PERMISSIONS` (every approval among them) needs the token's grant to name it.
+ * in `TOKEN_EXPLICIT_PERMISSIONS` (every approval among them) needs the token's grant to be full
+ * (`*`) or to name it.
  * Only the resource's project decides today; its type and id are carried so that per-resource
  * permissions change no call site.
  */
@@ -28,6 +29,7 @@ import {
   TOKEN_GRANT_EXCLUSIONS,
 } from '@forge/contracts/permissions';
 import { and, eq, exists, inArray, or, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
+import { PAT_PERMISSION_ALL } from '../credentials/pat-permissions.js';
 import { currentPatScope, fencedProjectIds } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { type OrgMemberRole, organizationMembers, projectMembers } from '../db/schema.js';
@@ -74,8 +76,13 @@ function tokenAdmits(permission: Permission): boolean {
     return false;
   }
   if (TOKEN_EXPLICIT_PERMISSIONS.includes(permission))
-    return token.grant?.includes(permission) ?? false;
+    return grantNamesOrIsFull(token.grant, permission);
   return true;
+}
+
+/** A full grant holds what its holder holds (REQ-27 BC-4); a named one only what it names. */
+function grantNamesOrIsFull(grant: readonly string[] | null | undefined, permission: Permission) {
+  return (grant ?? []).some((g) => g === PAT_PERMISSION_ALL || g === permission);
 }
 
 export function holds(facts: PermissionFacts, permission: ProjectPermission): boolean {
@@ -115,8 +122,10 @@ export function permissionRefusal(
   const excluded = scope && grantExcludes(scope.grant, permission);
   const token = excluded
     ? ` This token's grant names ${scope.grant?.filter((g) => (TOKEN_GRANT_EXCLUSIONS[g as Permission] ?? []).includes(permission)).join(', ')}, and a token naming that never holds ${permission}: an observer credential cannot write or decide the design it reads.`
-    : scope && TOKEN_EXPLICIT_PERMISSIONS.includes(permission)
-      ? ` A token holds ${permission} only where its own grant names it.`
+    : scope &&
+        TOKEN_EXPLICIT_PERMISSIONS.includes(permission) &&
+        !grantNamesOrIsFull(scope.grant, permission)
+      ? ` A named token grant holds ${permission} only where it names it; mint one naming it, or one granted '${PAT_PERMISSION_ALL}', which holds everything its holder's role holds.`
       : '';
   return {
     code: 'PERMISSION_FORBIDDEN',
