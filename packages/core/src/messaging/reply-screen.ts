@@ -2,7 +2,7 @@ import type { Tx } from '../db/client.js';
 import type { DoorId, MessageVerdict } from './contract.js';
 import { doorCell } from './doors.js';
 import type { ProgressFacts, ToolResultEntry } from './facts.js';
-import { groundingTexts } from './figures-rule.js';
+import { groundingReads } from './figure-sources.js';
 import { gatherFacts } from './gather.js';
 import { withGrounding } from './grounding-rule.js';
 import { countsRead } from './progress-rule.js';
@@ -28,7 +28,8 @@ interface ReplyScreenInput {
   readonly executor?: Tx;
   /**
    * What the writer's own turn read, where the caller has it: a date or status the reply states
-   * about the tracker is then held to these (`grounding-rule.ts`).
+   * about the tracker is then held to these (`grounding-rule.ts`), and the run ids they name are the
+   * runs a figure is held to. An Agent session's are its shell's results, its report runs among them.
    */
   readonly toolResults?: readonly string[];
   /**
@@ -39,11 +40,6 @@ interface ReplyScreenInput {
    */
   readonly question?: string;
   /**
-   * An Agent session's tool results: it runs a report over REST rather than through a tool, so its
-   * figures are held to the runs these results name.
-   */
-  readonly restResults?: readonly string[];
-  /**
    * The blocks held with this reply, posted with it if it passes. Given, a block's title and labels
    * are read from them rather than from the turn's calls, which name blocks that were refused or
    * belong to an answer this reply replaced.
@@ -51,7 +47,8 @@ interface ReplyScreenInput {
   readonly heldBlocks?: readonly unknown[];
   /**
    * What each of the turn's calls returned, by the tool's name. Given, the results of the reads
-   * `figures-rule.ts:FIGURE_GROUNDING_RESULTS` declares ground a figure as a report run does.
+   * `figure-sources.ts:FIGURE_READS` declares ground a figure as a report run does, and are the
+   * reads a figure names as its source.
    */
   readonly namedResults?: readonly ToolResultEntry[];
   /** The conversation the reply is posted in: a record agreed in it grounds a claim to it. */
@@ -66,14 +63,14 @@ interface ReplyScreenInput {
 function figureInput(
   input: ReplyScreenInput,
   held: readonly string[],
-): { asked: string; texts: readonly string[]; reads: readonly string[] } | undefined {
+): { asked: string; texts: readonly string[]; reads: readonly ToolResultEntry[] } | undefined {
   if (input.question === undefined) return undefined;
   const sent = [
     ...input.toolCalls.filter((c) => c.isError !== true).map((c) => c.arguments),
     ...held,
   ];
-  const results = input.restResults ?? input.toolResults ?? [];
-  const reads = groundingTexts(input.namedResults ?? []);
+  const results = input.toolResults ?? [];
+  const reads = groundingReads(input.namedResults ?? []);
   return { asked: input.question, texts: [...results, ...sent], reads };
 }
 

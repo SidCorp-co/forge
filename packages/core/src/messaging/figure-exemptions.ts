@@ -59,10 +59,13 @@ const IDS = [
   '\\b\\d+_\\w[\\w.-]*',
 ].join('|');
 
+/** A version's prerelease or build part (`-dev.209`, `+sha.1`), read with the version it follows. */
+const PRERELEASE = '(?:[-+][0-9A-Za-z.-]+)?';
+
 const VERSIONS = [
-  '\\bv?\\d+(?:\\.\\d+){2,}(?:[-+][0-9A-Za-z.-]+)?',
-  '\\b(?:version|release)\\s+v?\\d+(?:\\.\\d+)+',
-  '(?:phiên\\s+bản|bản)\\s+v?\\d+(?:\\.\\d+)+', // i18n-allow: the Vietnamese words a version is named with
+  `\\bv?\\d+(?:\\.\\d+){2,}${PRERELEASE}`,
+  `\\b(?:version|release)\\s+v?\\d+(?:\\.\\d+)+${PRERELEASE}`,
+  `(?:phiên\\s+bản|bản)\\s+v?\\d+(?:\\.\\d+)+${PRERELEASE}`, // i18n-allow: the Vietnamese words a version is named with
 ].join('|');
 
 const DATES = [

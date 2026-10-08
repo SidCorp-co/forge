@@ -17,6 +17,7 @@ import {
   type MessageFacts,
   NO_FACTS,
   type ProgressFacts,
+  type ToolResultEntry,
 } from './facts.js';
 import { askedValues } from './figure-exemptions.js';
 import { figureFactsOf, runIdsIn } from './figures-rule.js';
@@ -43,8 +44,8 @@ interface GatherInput {
   readonly figures?: {
     readonly asked: string;
     readonly texts: readonly string[];
-    /** What the turn's grounding reads returned (`figures-rule.ts:groundingTexts`). */
-    readonly reads?: readonly string[];
+    /** What the turn's grounding reads returned, by read (`figure-sources.ts:groundingReads`). */
+    readonly reads?: readonly ToolResultEntry[];
   };
   /** What the person asked: a number they typed is theirs, said back (`facts.ts:MessageFacts`). */
   readonly question?: string;

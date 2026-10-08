@@ -24,8 +24,21 @@ export interface ToolResultEntry {
 }
 
 /**
- * What `figures-rule.ts` holds a figure to: the turn's report runs, the results of the reads it
- * declares as grounding (`FIGURE_GROUNDING_RESULTS`), and what the person asked.
+ * One read of the turn a figure can come from: the turn's report runs as one, or one declared read
+ * (`figure-sources.ts:FIGURE_READS`), with what naming it in the reply looks like (REQ-30 BC-1).
+ */
+export interface FigureSource {
+  /** `report` for the turn's runs; otherwise the read, by the name the Assistant's tool for it has. */
+  readonly read: string;
+  /** The values it returned, rounded: index `d` holds them at `d` decimals. */
+  readonly values: readonly ReadonlySet<number>[];
+  /** Whether a passage of the reply names this read. */
+  readonly namedIn: (passage: string) => boolean;
+}
+
+/**
+ * What `figures-rule.ts` holds a figure to, and `figure-sources.ts` asks it to name: the turn's
+ * report runs, the results of the reads declared as grounding, and what the person asked.
  */
 export interface FigureFacts {
   /** Every value the person's question holds; a figure equal to one is theirs, said back. */
@@ -34,8 +47,8 @@ export interface FigureFacts {
   readonly runs: number;
   /** The values the runs' frames hold, rounded: index `d` holds them at `d` decimals. */
   readonly held: readonly ReadonlySet<number>[];
-  /** The values the turn's grounding reads returned, rounded the same way; empty where it made none. */
-  readonly read: readonly ReadonlySet<number>[];
+  /** Every read the turn made that a figure can come from, the runs among them where there are any. */
+  readonly sources: readonly FigureSource[];
 }
 
 export interface MessageFacts {

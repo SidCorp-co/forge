@@ -244,7 +244,7 @@ describe('a computation an executor ran', () => {
         toolCalls: [],
         progress: null,
         question: 'What share of the work does that come to?',
-        restResults: [JSON.stringify(res.body)],
+        toolResults: [JSON.stringify(res.body)],
       });
     const figureRules = (v: Awaited<ReturnType<typeof screen>>) =>
       v.ok ? [] : v.refusals.filter((r) => r.rule === 'figures-grounded');

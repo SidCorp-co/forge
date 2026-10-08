@@ -154,12 +154,17 @@ function monthDaysNamed(text: string): Set<string> {
   return out;
 }
 
+/** Whether `text` names one of `dates` (`YYYY-MM-DD`), in any of the forms a reply writes a date in. */
+export function namesDateOf(text: string, dates: ReadonlySet<string>): boolean {
+  if (dates.size === 0) return false;
+  const named = monthDaysNamed(text);
+  for (const d of dates) if (named.has(d.slice(5))) return true;
+  return false;
+}
+
 /** Whether the reply names a date one of this turn's memory reads speaks as of. */
 function citesMemoryDate(text: string, f: MessageFacts): boolean {
-  if (f.memoryDates.size === 0) return false;
-  const named = monthDaysNamed(text);
-  for (const d of f.memoryDates) if (named.has(d.slice(5))) return true;
-  return false;
+  return namesDateOf(text, f.memoryDates);
 }
 
 /** Tools this turn read successfully. */

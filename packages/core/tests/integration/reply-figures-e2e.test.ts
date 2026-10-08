@@ -23,7 +23,7 @@ describe('a reply figure held to the stored runs', () => {
       toolCalls: [],
       progress: null,
       question: 'Where does the release stand?',
-      restResults: [JSON.stringify(run)],
+      toolResults: [JSON.stringify(run)],
     });
   const figureRules = (v: Awaited<ReturnType<typeof screen>>) =>
     v.ok ? [] : v.refusals.filter((r) => r.rule === 'figures-grounded');

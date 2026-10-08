@@ -11,12 +11,15 @@
  *   reader checks the prose against the blocks, never against the run, so a run's figure no block
  *   draws is held, and naming the run or its query in the prose does not let it through — the reader
  *   can open neither.
- * - the result of a read this file declares (`FIGURE_GROUNDING_RESULTS`), such as the project status
+ * - the result of a declared read (`figure-sources.ts:FIGURE_READS`), such as the project status
  *   or the count `forge_requirement_draft` took from an attached document (ISS-421). The list is
  *   declared, never "any tool": a tool that answers with what the model sent it would hand back a
  *   figure the model typed as its own ground, and a refused call grounds nothing. Like a creation
  *   claim under an unverified mark (`creation-claims-rule.ts`), a figure gets through on what the
- *   turn did, never on words the model put round it.
+ *   turn did, never on words the model put round it. In Agent mode the reads are the REST routes the
+ *   session called (`agent-reads.ts`).
+ *
+ * Which read a grounded figure came from, the reply has to say: that is `figure-sources.ts`'s rule.
  *
  * A block's text holds no figure of its own: only a report run grounds a number in a title or label,
  * and a number the person typed grounds none (REQ-32 BC-5). In the prose, the person's number stands
@@ -40,6 +43,8 @@ import {
   type StatedFigure,
   statedFigures,
 } from './figure-exemptions.js';
+import { figureSourcesOf, REPORT_SOURCE } from './figure-sources.js';
+import { atDecimals, frameValues, holds } from './figure-values.js';
 import { blankMarkedClauses } from './reply-marks.js';
 
 /** The chat tools that read a frame; a turn offered none cannot ground a figure in one. */
@@ -49,89 +54,8 @@ export const REPORT_TOOLS: readonly string[] = ['forge_report', 'forge_template'
 export const isReportTool = (name: string): boolean =>
   REPORT_TOOLS.some((t) => name === t || name.endsWith(`__${t}`));
 
-/**
- * The reads whose own result grounds a figure, and the part of the result that does: what code
- * computed from the project's records, or (`forge_requirement_draft`'s `preview` and `taken`) the
- * count code took from a document the person attached. The BA doors' record reads are the same
- * kind: `ba_read_requirement` is `forge_requirement` for the room's requirement, `ba_find_similar`
- * answers code's similarity scores, `ba_read_journeys` the designs onboarding drafted. Absent here on
- * purpose: `forge_show`, `forge_feedback`, `forge_requirement_revise`, `forge_memory_note` and
- * `ba_suggest`, which answer with what the model sent them; `ba_read_issue`, an issue's free text as
- * someone wrote it, as `forge_issue` is; `forge_memory`, a dated source and never a current fact
- * (MJ-5); and `forge`, the CLI, whose verbs write as well as read and whose output is no one shape.
- */
-export const FIGURE_GROUNDING_RESULTS: readonly {
-  readonly tool: string;
-  readonly keys?: readonly string[];
-}[] = [
-  { tool: 'forge_project_status' },
-  { tool: 'forge_requirements' },
-  { tool: 'forge_requirement' },
-  { tool: 'forge_releases' },
-  { tool: 'forge_release' },
-  { tool: 'forge_metrics_project_step_durations' },
-  { tool: 'forge_metrics_project_timeseries' },
-  { tool: 'forge_requirement_draft', keys: ['preview', 'taken'] },
-  { tool: 'ba_read_requirement' },
-  { tool: 'ba_find_similar' },
-  { tool: 'ba_read_journeys' },
-];
-
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   v !== null && typeof v === 'object' && !Array.isArray(v);
-
-const named = (name: string, tool: string): boolean => name === tool || name.endsWith(`__${tool}`);
-
-/** The part of each landed result a declared read returned that grounds a figure, as text. */
-export function groundingTexts(results: readonly ToolResultEntry[]): string[] {
-  const out: string[] = [];
-  for (const r of results) {
-    if (r.isError === true) continue;
-    const declared = FIGURE_GROUNDING_RESULTS.find((d) => named(r.name, d.tool));
-    if (!declared) continue;
-    if (!declared.keys) {
-      out.push(r.text);
-      continue;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(r.text);
-    } catch {
-      continue;
-    }
-    if (!isRecord(parsed)) continue;
-    for (const key of declared.keys) {
-      if (parsed[key] !== undefined) out.push(JSON.stringify(parsed[key]));
-    }
-  }
-  return out;
-}
-
-/**
- * Every value a result states: its JSON numbers, the figures its strings state and how many items
- * each of its lists holds (code counted them: "REQ-6 has 3 criteria" from a read of its three), or
- * its text read whole.
- */
-function valuesOfResult(text: string): number[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return figuresIn(text).flatMap((f) => f.readings.map((r) => r.value));
-  }
-  const out: number[] = [];
-  const walk = (v: unknown): void => {
-    if (typeof v === 'number') out.push(v);
-    else if (typeof v === 'string') {
-      for (const f of figuresIn(v)) for (const r of f.readings) out.push(r.value);
-    } else if (Array.isArray(v)) {
-      out.push(v.length);
-      v.forEach(walk);
-    } else if (isRecord(v)) Object.values(v).forEach(walk);
-  };
-  walk(parsed);
-  return out;
-}
 
 /** The most run ids one screen looks up: a turn's results name issues and sessions by uuid too. */
 const RUN_IDS_READ = 500;
@@ -149,62 +73,29 @@ export function runIdsIn(texts: readonly string[]): string[] {
   return [...ids];
 }
 
-/** The decimals a stated figure is matched to a run's value at: 41.67 is stated as 42 or 41.7. */
-const DECIMALS = [0, 1, 2, 3] as const;
-
-const UNIT_MS = [1000, 60_000, 3_600_000, 86_400_000, 604_800_000] as const;
-
-const round = (n: number, d: number): number => Math.round(Math.abs(n) * 10 ** d) / 10 ** d;
-
-const atDecimals = (values: readonly number[]): ReadonlySet<number>[] =>
-  DECIMALS.map((d) => new Set(values.map((v) => round(v, d))));
-
-/** Every number the frames hold: a duration in each unit too, a frame's row count, a string cell's figures. */
-function frameValues(frames: readonly ReportFrame[]): number[] {
-  const values: number[] = [];
-  for (const frame of frames) {
-    values.push(frame.rows.length);
-    const durations = new Set(frame.fields.filter((f) => f.type === 'duration').map((f) => f.name));
-    for (const row of frame.rows) {
-      for (const [name, cell] of Object.entries(row)) {
-        if (typeof cell === 'number') {
-          values.push(cell);
-          if (durations.has(name)) for (const unit of UNIT_MS) values.push(cell / unit);
-        } else if (typeof cell === 'string') {
-          for (const f of figuresIn(cell)) for (const r of f.readings) values.push(r.value);
-        }
-      }
-    }
-  }
-  return values;
-}
-
 /**
- * What the figures rule holds a reply to: every number the runs' frames hold, and every value the
- * turn's grounding reads returned (`groundingTexts`), each rounded at each of DECIMALS. A duration
- * (milliseconds) is held in seconds, minutes, hours, days and weeks too; a frame's row count is one
- * of its figures; a string cell gives the figures it states.
+ * What the figures rules hold a reply to: every number the runs' frames hold, and each source a
+ * figure can come from (`figure-sources.ts:figureSourcesOf`): the runs as one, and every declared
+ * read the turn made, given as `groundingReads` answered them. A duration (milliseconds) is held in
+ * seconds, minutes, hours, days and weeks too; a frame's row count is one of its figures; a string
+ * cell gives the figures it states.
  */
 export function figureFactsOf(
   asked: string,
   frames: readonly ReportFrame[],
-  reads: readonly string[] = [],
+  reads: readonly ToolResultEntry[] = [],
 ): FigureFacts {
   return {
     asked: askedValues(asked),
     runs: frames.length,
     held: atDecimals(frameValues(frames)),
-    read: atDecimals(reads.flatMap(valuesOfResult)),
+    sources: figureSourcesOf(frames, reads),
   };
 }
 
-/** Whether a reading of the figure is one of `sets`' values, at the decimals it is stated to. */
-function holds(figure: StatedFigure, sets: readonly ReadonlySet<number>[]): boolean {
-  return figure.readings.some((r) => {
-    const d = Math.min(r.decimals, DECIMALS.length - 1);
-    return sets[d]?.has(round(r.value, d)) ?? false;
-  });
-}
+/** Whether a read of this turn other than a report run holds the figure. */
+const readHolds = (figure: StatedFigure, f: FigureFacts): boolean =>
+  f.sources.some((s) => s.read !== REPORT_SOURCE && holds(figure, s.values));
 
 /** What the answer's blocks show of their frames, as figures; null where the door shows no block. */
 function shownOf(heldBlocks: readonly string[] | null): readonly ReadonlySet<number>[] | null {
@@ -374,7 +265,7 @@ export const FIGURES_GROUNDED: MessageRule = {
     const breaks: RuleBreak[] = [];
     const scan = blankMarkedClauses(text).normalize('NFC');
     for (const fig of statedFigures(scan)) {
-      if (askersOwn(scan, fig, held.asked) || holds(fig, held.read)) continue;
+      if (askersOwn(scan, fig, held.asked) || readHolds(fig, held)) continue;
       if (!holds(fig, held.held)) breaks.push(proseBreak(fig, held, f.offeredTools));
       else if (shown !== null && !holds(fig, shown)) breaks.push(unshownBreak(fig));
     }

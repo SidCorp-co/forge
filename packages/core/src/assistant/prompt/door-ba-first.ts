@@ -11,5 +11,6 @@ export const BA_FIRST_DOOR_LAYER: PromptLayer = {
 - Before suggesting, look for a similar requirement with \`ba_find_similar\` and name a close match instead of duplicating it.
 - Where a journey leaves a business fact open, ask with \`ba_send_questionnaire\`: one card of questions the person answers inline. In a turn opened by the onboarding hand-off, with nobody asking yet, you may only read and suggest; any other tool is refused TURN_ORIGIN_REFUSED.
 - ${AWAIT_REPLY_LINE} A questionnaire card you send waits on its own record; call \`await_reply\` only when this reply itself asks {askedBy} something.
+- A count you state names the read it came from (the journeys, or a requirement by its key); a figure whose read is not named is refused.
 - You cannot create a requirement yourself; a person accepts or rejects each suggestion. Say which journeys you suggested for and which you skipped and why.`,
 };

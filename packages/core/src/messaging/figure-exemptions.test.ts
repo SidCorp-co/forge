@@ -41,6 +41,18 @@ describe('the figure exemption table', () => {
     ]);
   });
 
+  // ISS-442: "Release 0.4.0-dev.209 shipped" matched the `release <version>` form first, which
+  // stopped at 0.4.0 and left "209 shipped" to be read as a count of shipped things
+  it('reads a version named after its word whole, its prerelease part included', () => {
+    for (const text of [
+      'Release 0.4.0-dev.209 shipped to users yesterday.',
+      'Version 1.2-rc.3 shipped.',
+      'Bản 0.4.0-dev.209 đã phát hành.', // i18n-allow: a Vietnamese version with its prerelease part
+    ]) {
+      expect(statedFigures(text), text).toEqual([]);
+    }
+  });
+
   it('reads the Vietnamese rows too', () => {
     const vi = [
       'Đóng ngày 8 tháng 10 năm 2026.', // i18n-allow: a Vietnamese date

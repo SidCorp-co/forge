@@ -22,6 +22,7 @@ import {
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../lib/logger.js';
 import { droppedAs, type StagedBlock } from '../lib/staged-block.js';
+import { AGENT_READS, type AgentCall, agentReadsOf } from '../messaging/agent-reads.js';
 import { refusalsOf } from '../messaging/contract.js';
 import type { ProgressFacts, ToolResultEntry } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
@@ -67,19 +68,62 @@ function readProgressFacts(metadata: unknown): ProgressFacts | null {
   };
 }
 
-function extractToolCalls(messages: unknown): Array<{ name: string; arguments: string }> {
+/** Every call the session made, as its transcript settled it: what it sent, returned, and whether it failed. */
+function transcriptCalls(messages: unknown): AgentCall[] {
   if (!Array.isArray(messages)) return [];
-  const calls: Array<{ name: string; arguments: string }> = [];
+  const calls: AgentCall[] = [];
   for (const entry of messages) {
     const toolCalls = (entry as { toolCalls?: unknown } | null)?.toolCalls;
     if (!Array.isArray(toolCalls)) continue;
     for (const tc of toolCalls) {
-      const t = tc as { name?: unknown; input?: unknown } | null;
+      const t = tc as {
+        name?: unknown;
+        input?: unknown;
+        output?: unknown;
+        isError?: unknown;
+      } | null;
       if (!t || typeof t.name !== 'string') continue;
-      calls.push({ name: t.name, arguments: JSON.stringify(t.input ?? {}) });
+      const output =
+        t.output === undefined || t.output === null
+          ? null
+          : typeof t.output === 'string'
+            ? t.output
+            : JSON.stringify(t.output);
+      calls.push({ name: t.name, input: t.input ?? {}, output, isError: t.isError === true });
     }
   }
   return calls;
+}
+
+/**
+ * What the screen judges an Agent session's turn by: its calls, with each `forge-runner api` read
+ * also named as the Assistant read it is (`messaging/agent-reads.ts`), the reads an Agent session is
+ * offered, and what every call returned. Status claims, tracker facts and figures are then held to
+ * this turn's reads as they are in Assistant mode (REQ-30 BC-1, BC-2).
+ */
+function agentTurnReads(messages: unknown) {
+  const calls = transcriptCalls(messages);
+  const reads = agentReadsOf(calls);
+  return {
+    toolCalls: [
+      ...calls.map((c) => ({
+        name: c.name,
+        arguments: JSON.stringify(c.input),
+        ...(c.isError ? { isError: true } : {}),
+      })),
+      ...reads.map((r) => ({
+        name: r.name,
+        arguments: r.arguments,
+        ...(r.isError ? { isError: true } : {}),
+      })),
+    ],
+    offeredTools: AGENT_READS,
+    toolResults: toolResultTexts(messages),
+    namedResults: [
+      ...namedToolResults(messages),
+      ...reads.map((r) => ({ name: r.name, text: r.text, isError: r.isError })),
+    ],
+  };
 }
 
 /**
@@ -196,17 +240,19 @@ async function composeOutcome(
           : `the session ended ${session.status}`,
     };
   }
+  const turn = agentTurnReads(messages);
   const verdict = await withRepairs(meta.door, [text], {
     screen: () =>
       screenReplyAtDoor(meta.door, {
         projectId: session.projectId,
         conversationId: meta.conversationId,
         segments: [text],
-        toolCalls: extractToolCalls(messages),
+        toolCalls: turn.toolCalls,
+        offeredTools: turn.offeredTools,
         progress: readProgressFacts(session.metadata),
         question: meta.question,
-        restResults: toolResultTexts(messages),
-        namedResults: namedToolResults(messages),
+        toolResults: turn.toolResults,
+        namedResults: turn.namedResults,
         heldBlocks: staged.map((b) => b.block.visual),
       }),
     rewrite: () => {

@@ -223,7 +223,7 @@ describe('an Agent session', () => {
       toolCalls: calls,
       progress: null,
       question: 'How is the release going?',
-      restResults: results,
+      toolResults: results,
       ...(heldBlocks ? { heldBlocks } : {}),
     });
   const ran = (body: string): Call => ({
@@ -236,7 +236,8 @@ describe('an Agent session', () => {
   it('holds a figure no REST run returned, and passes one that did', async () => {
     const held = await agent('The release has 42 issues left.', []);
     expect(!held.ok && held.refusals.map((r) => r.rule)).toContain('figures-grounded');
-    expect((await agent('The release has 42 issues left.', [REPORTED])).ok).toBe(true);
+    const named = 'The release-readiness report has 42 issues left.';
+    expect((await agent(named, [REPORTED])).ok).toBe(true);
   });
 
   it('passes the reply of 2026-10-08 (conversation 218168c7): its sizes are not figures', async () => {
@@ -373,10 +374,10 @@ describe('a figure a declared read of this turn returned', () => {
     expect(await read(COUNTED, [refused])).toHaveLength(1);
   });
 
-  it('grounds nothing from a tool that answers with what the model sent it, or from a memory', async () => {
+  // a memory is a read: its figure is held to its date by figure-sources.ts, not refused here
+  it('grounds nothing from a tool that answers with what the model sent it', async () => {
     const echoed = JSON.stringify({ block: { title: '11 criteria' } });
     expect(await read(COUNTED, [{ name: 'forge_show', text: echoed }])).toHaveLength(1);
-    expect(await read(COUNTED, [{ name: 'forge_memory', text: PREVIEW }])).toHaveLength(1);
   });
 
   it("grounds only a draft's preview and taken count, never the record its write echoes", async () => {

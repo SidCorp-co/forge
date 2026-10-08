@@ -10,6 +10,7 @@ import { NO_ROLE, ROLE_HOLDER, ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.
 import { ISSUE_KEYS_EXIST, ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
 import { type Audience, type CellId, type CellSpec, cellId, type Intent } from './contract.js';
 import { CREATION_CLAIMS_GROUNDED } from './creation-claims-rule.js';
+import { FIGURES_NAME_SOURCE } from './figure-sources.js';
 import { FIGURES_GROUNDED } from './figures-rule.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 import { STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
@@ -62,6 +63,7 @@ const SHIPPED: readonly CellSpec[] = [
     PROGRESS_FIGURES_MATCH,
     STATUS_CLAIMS_GROUNDED,
     FIGURES_GROUNDED,
+    FIGURES_NAME_SOURCE,
     NO_REDACTED_SECRET,
   ]),
 
@@ -85,6 +87,7 @@ const SHIPPED: readonly CellSpec[] = [
     PROGRESS_FIGURES_MATCH,
     STATUS_CLAIMS_GROUNDED,
     FIGURES_GROUNDED,
+    FIGURES_NAME_SOURCE,
   ]),
 ];
 
