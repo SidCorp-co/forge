@@ -63,6 +63,7 @@ export async function refreshMainRunnerHead(): Promise<string | null> {
   }
 }
 
+const COMPARE_DEADLINE_MS = 5_000;
 const contains = new Map<string, boolean>();
 
 /** Forgets every answer `releaseContainsRunnerHead` remembered. */
@@ -83,8 +84,11 @@ export async function releaseContainsRunnerHead(
   const known = contains.get(key);
   if (known !== undefined) return known;
   const url = `https://api.github.com/repos/${REPO}/compare/${key}?per_page=1`;
+  // A request path awaits this, so a stalled GitHub must read as unanswered, body included.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), COMPARE_DEADLINE_MS);
   try {
-    const res = await fetch(url, { headers: ghHeaders() });
+    const res = await fetch(url, { headers: ghHeaders(), signal: deadline.signal });
     if (!res.ok) throw new Error(`GitHub compare API ${res.status}`);
     const body = (await res.json()) as { status?: unknown };
     const held =
@@ -103,6 +107,8 @@ export async function releaseContainsRunnerHead(
       }`,
     );
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

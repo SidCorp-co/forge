@@ -141,6 +141,30 @@ describe('releaseContainsRunnerHead', () => {
     await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBeNull();
   });
 
+  it('cannot say where GitHub stalls, and does not keep that as an answer', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          (_url: unknown, init?: { signal?: AbortSignal }) =>
+            new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            }),
+        ),
+      );
+      const asked = releaseContainsRunnerHead(RELEASE, HEAD);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(asked).resolves.toBeNull();
+      const fetchMock = compare('ahead');
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(releaseContainsRunnerHead(RELEASE, HEAD)).resolves.toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('asks once for a pair, because the ancestry of two commits cannot change', async () => {
     const fetchMock = compare('ahead');
     vi.stubGlobal('fetch', fetchMock);
