@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
+import { jobStatuses, jobTypes } from './job-vocabulary.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -30,6 +31,12 @@ import {
 } from './session-vocabulary.js';
 import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
 
+export {
+  type JobStatus,
+  type JobType,
+  jobStatuses,
+  jobTypes,
+} from './job-vocabulary.js';
 export {
   type AgentSessionFailureReason,
   type AgentSessionKind,
@@ -579,37 +586,6 @@ export const pairingCodes = pgTable(
     expiresAtIdx: index('pairing_codes_expires_at_idx').on(t.expiresAt),
   }),
 );
-
-export const jobStatuses = [
-  'queued',
-  'dispatched',
-  'running',
-  'held',
-  'done',
-  'failed',
-  'cancelled',
-] as const;
-export type JobStatus = (typeof jobStatuses)[number];
-
-export const jobTypes = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'staging',
-  'release',
-  'fix',
-  'custom',
-  'pm',
-  'smoke',
-  'release_batch',
-  'reconcile',
-  'verify_skill',
-  'drive',
-] as const;
-export type JobType = (typeof jobTypes)[number];
 
 export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
 export type ModelTier = (typeof modelTiers)[number];
