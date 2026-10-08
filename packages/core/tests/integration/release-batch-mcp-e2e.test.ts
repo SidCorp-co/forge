@@ -310,7 +310,9 @@ describe('refuses on every action', () => {
     for (const args of actions) {
       const answer = await call(token, { ...args, runId });
       expect(answer.isError, args.action).toBe(true);
-      expect(answer.text, args.action).toMatch(/requires project member access/);
+      expect(answer.text, args.action).toMatch(
+        /requires the project member role or above to write; the role held is viewer/,
+      );
     }
     expect((await fx.stored(a)).status).toBe('releasing');
   });
