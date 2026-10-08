@@ -224,7 +224,6 @@ describe('the audit of a trace against a declaration', () => {
     parent: 'b'.repeat(40),
     baseRef: 'origin/main',
     base: `abc0000${'0'.repeat(33)}`,
-    baseTip: 'd'.repeat(40),
   };
   const faults = (lines, d = decl) =>
     audit({ root, decl: d, tree: new Tree(root), lines, git: held });
@@ -293,7 +292,6 @@ describe('the git questions a check may ask', () => {
     parent: sha('b'),
     baseRef: 'origin/main',
     base: sha('c'),
-    baseTip: sha('d'),
   };
   const asks = { git: true };
   const fault = (decl, ...argv) => gitFault(['git', ...argv], decl, state);
@@ -309,6 +307,8 @@ describe('the git questions a check may ask', () => {
 
   it('refuses a revision the key does not hold, so another branch moving cannot serve a stale verdict', () => {
     expect(fault(asks, 'show', 'origin/other:CHANGELOG.md')).toMatch(/names origin\/other/);
+    expect(fault(asks, 'show', 'origin/main:CHANGELOG.md')).toMatch(/names origin\/main/);
+    expect(fault(asks, 'diff', '--name-only', 'origin/main')).toMatch(/names origin\/main/);
     expect(fault(asks, 'diff', '--name-only', sha('e'))).toMatch(/names e+/);
     expect(fault(asks, 'log', '--first-parent', 'origin/release', '^origin/main')).toMatch(
       /names origin\/release/,
@@ -453,7 +453,7 @@ describe('the preload', () => {
     const traced = traceEnv({ PATH: process.env.PATH });
     put(
       'probe.cjs',
-      "const fs=require('node:fs');fs.readFileSync('src/a.txt');fs.readdirSync('docs');fs.existsSync('nope.txt');require('node:child_process').spawnSync('git',['ls-files']);",
+      "const fs=require('node:fs');fs.readFileSync('src/a.txt');fs.readdirSync('docs');fs.existsSync('nope.txt');fs.statSync('quiet.txt',{throwIfNoEntry:false});require('node:child_process').spawnSync('git',['ls-files']);",
     );
     const r = spawnSync('node', ['probe.cjs'], { cwd: root, env: traced.env, encoding: 'utf8' });
     const lines = readTrace(traced.dir);
@@ -461,6 +461,7 @@ describe('the preload', () => {
     expect(lines).toContain(`R ${join(root, 'src/a.txt')}`);
     expect(lines).toContain(`L ${join(root, 'docs')}`);
     expect(lines).toContain(`M ${join(root, 'nope.txt')}`);
+    expect(lines).toContain(`M ${join(root, 'quiet.txt')}`);
     expect(lines).toContain('S ["git","ls-files"]');
     expect(existsSync(traced.dir)).toBe(false);
   });
@@ -648,6 +649,7 @@ describe('a check taken through the memo', () => {
     const m = new Memo({ root, args: [], env: env(), baseRef: 'main', declarations: asks });
     const plan = m.plan(check);
     const r = spawnSync('node', ['check.mjs'], { cwd: root, encoding: 'utf8', env: plan.env });
+    put('docs/n.md', 'a commit the check never reads');
     commit('moves the head');
     m.settle(plan, r.status, r.stdout, { code: r.status });
     expect(m.unfiled[0].reason).toMatch(/head or the base moved/);

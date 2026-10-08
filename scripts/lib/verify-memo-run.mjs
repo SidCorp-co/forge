@@ -82,6 +82,7 @@ export class Memo {
       kind: 'miss',
       check,
       decl,
+      git,
       ...keyed,
       startedAt: Date.now() - 10,
       ...traceEnv(this.env),

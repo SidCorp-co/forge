@@ -65,7 +65,8 @@ if (out) {
       }
       try {
         const result = original.apply(this, args);
-        noted.add(`${name === 'existsSync' && result === false ? 'M' : kind} ${at}`);
+        const absent = result === false || (result === undefined && /^l?statSync$/.test(name));
+        noted.add(`${absent && kind === 'R' ? 'M' : kind} ${at}`);
         return result;
       } catch (err) {
         noted.add(`${err?.code === 'ENOENT' ? 'M' : kind} ${at}`);

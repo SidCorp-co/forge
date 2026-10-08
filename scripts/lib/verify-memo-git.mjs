@@ -17,12 +17,12 @@ export function listFiles(root) {
   return { tracked, untracked };
 }
 
-/** What `git: true` adds to a key: the head, its parent, the base ref and where it stands. */
+/** What `git: true` adds to a key: the head, its parent, the base ref and the merge base. */
 export function gitState(root, baseRef) {
   const rev = (name) =>
     git(root, ['rev-parse', '--verify', '--quiet', `${name}^{commit}`])?.trim() ?? null;
   const base = git(root, ['merge-base', baseRef, 'HEAD'])?.trim() ?? null;
-  return { head: rev('HEAD'), parent: rev('HEAD~1'), baseRef, base, baseTip: rev(baseRef) };
+  return { head: rev('HEAD'), parent: rev('HEAD~1'), baseRef, base };
 }
 
 /** The subcommand of a git argv, past `-c key=value`, `-C dir` and the other leading options. */
@@ -60,10 +60,11 @@ const operands = (args) => {
 };
 const literal = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
-/** The part of a revision argument the key does not hold, or null where it holds all of it. */
-function unheld(arg, state) {
-  const named = new RegExp(`^(HEAD|${literal(state.baseRef ?? 'HEAD')})([~^][0-9]*)*$`);
-  const known = [state.head, state.parent, state.base, state.baseTip].filter(Boolean);
+/** The part of a revision argument the key does not hold; the base ref's tip only reaches a merge base. */
+function unheld(arg, state, tipOk) {
+  const names = tipOk ? `HEAD|${literal(state.baseRef ?? 'HEAD')}` : 'HEAD';
+  const named = new RegExp(`^(${names})([~^][0-9]*)*$`);
+  const known = [state.head, state.parent, state.base].filter(Boolean);
   const pieces = arg
     .split(':')[0]
     .replace(/\^\{(commit|tree)\}$/, '')
@@ -120,7 +121,7 @@ export function gitFault(argv, decl, state = {}) {
   if (name === 'diff' && operands(args).length === 0)
     return refuse('which with no revision reads the index');
   const stray = operands(args)
-    .map((a) => unheld(a, state))
+    .map((a) => unheld(a, state, name === 'merge-base' || name === 'rev-parse'))
     .find(Boolean);
   return stray ? refuse(`which names ${stray}, a revision the key does not hold`) : null;
 }
