@@ -153,6 +153,14 @@ describe('a bound value under six characters', () => {
     }
   });
 
+  it('is withheld as the spelling of a bound value a sink escaped before it quoted it, which fails closed', () => {
+    const bound = 'a\n';
+    const other = JSON.stringify(json(bound));
+    expect(other).toBe(JSON.stringify('a\\n'));
+    const out = redactQueryParams(`kept ${other} kept`, failed(bound));
+    expect(out).toBe(`kept ${REDACTED} kept`);
+  });
+
   it('is left in prose where it stands bare: the trade for not rewriting ordinary words', () => {
     const text = 'build q9z finished';
     expect(redactQueryParams(text, failed('q9z'))).toBe(text);
