@@ -1,11 +1,12 @@
 "use client";
 
 // One memory on the Memory page (MJ-1, MJ-3): what it says, who wrote it and when, whether anyone
-// checked it, which records it names that no longer exist, a release's "may be outdated" flag read
+// checked it, why it needs a check (core's reasons: unchecked too long, a cited record changed since),
+// which records it names that no longer exist, a release's "may be outdated" flag read
 // as the guess it is, and every correction or retirement with its reason. Correct and Retire each
 // take a reason before they send; a mirror of an issue, comment or job offers neither.
 
-import { MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
+import { MEMORY_CHECK_AFTER_DAYS, MEMORY_MIRROR_SOURCES, type MemoryActor, type MemoryArchiveCause, type MemoryCite, type MemoryEntry, type MemoryStaleRef } from "@forge/contracts/memory";
 import Link from "next/link";
 import { Fragment, type ReactNode, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
@@ -88,6 +89,17 @@ function Cite({ cite, slug }: { cite: MemoryCite; slug: string }) {
   );
 }
 
+/** Core's reasons a memory needs a check that no other line of the row already says. */
+function needsCheckText(t: Copy, entry: MemoryEntry, slug: string): string | null {
+  const parts = [
+    entry.needsCheck.includes("unchecked") ? t("memory.check.unchecked", { days: MEMORY_CHECK_AFTER_DAYS }) : null,
+    entry.needsCheck.includes("changed") && entry.changed.length > 0
+      ? t("memory.check.changed", { refs: entry.changed.map((c) => keyLabel(c.ref, c.project, slug)).join(", ") })
+      : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? t("memory.check.lead", { why: parts.join("; ") }) : null;
+}
+
 export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetire }: MemoryEntryRowProps) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
@@ -99,6 +111,7 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetir
   const gone = entry.archivedAt !== null;
   const canAct = !mirror && !gone;
   const reasonOk = reason.trim().length >= REASON_MIN;
+  const needsCheck = needsCheckText(t, entry, slug);
   const close = () => {
     setMode("read");
     setReason("");
@@ -118,6 +131,11 @@ export function MemoryEntryRow({ entry, slug, timeZone, busy, onCorrect, onRetir
         <span>{t("memory.updated", { date: day(entry.updatedAt) })}</span>
         <span>{entry.verifiedAt ? t("memory.verified", { date: day(entry.verifiedAt) }) : t("memory.neverVerified")}</span>
       </p>
+      {needsCheck ? (
+        <p className="text-12-5 text-amber-700 dark:text-amber-300" data-testid="memory-needs-check">
+          {needsCheck}
+        </p>
+      ) : null}
       {mode === "correct" ? null : <p className="whitespace-pre-wrap text-13 text-fg">{entry.text}</p>}
       {entry.cites.length > 0 ? (
         <p className="flex flex-wrap gap-x-1.5 text-12 text-subtle" data-testid="memory-cites">

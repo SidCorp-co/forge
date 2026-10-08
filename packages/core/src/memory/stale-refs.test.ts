@@ -93,6 +93,7 @@ describe('the sources a memory cites', () => {
 });
 
 describe('resolving and linking what a memory cites', () => {
+  const CHANGED = new Date('2026-10-05T08:00:00Z');
   const text =
     'ISS-1 ISS-2 ISS-3 ISS-4 REQ-1 REQ-2 REQ-3, epod ISS-1, core ISS-7, 779e4736a, 0.2.0 and 0.9.0';
   const held = new Map([
@@ -100,13 +101,13 @@ describe('resolving and linking what a memory cites', () => {
       HOP.id,
       holdings({
         issues: new Map([
-          [1, { status: 'closed', archived: false }],
-          [2, { status: 'dropped', archived: false }],
-          [3, { status: 'open', archived: true }],
+          [1, { status: 'closed', archived: false, updatedAt: CHANGED }],
+          [2, { status: 'dropped', archived: false, updatedAt: CHANGED }],
+          [3, { status: 'open', archived: true, updatedAt: CHANGED }],
         ]),
         requirements: new Map([
-          [1, 'deferred'],
-          [2, 'dropped'],
+          [1, { status: 'deferred', updatedAt: CHANGED }],
+          [2, { status: 'dropped', updatedAt: CHANGED }],
         ]),
         releases: new Set(['0.2.0']),
         repositoryWebUrl: 'https://github.com/acme/hop',
@@ -124,6 +125,13 @@ describe('resolving and linking what a memory cites', () => {
       { ref: 'REQ-2', kind: 'requirement', why: 'dropped' },
       { ref: 'REQ-3', kind: 'requirement', why: 'missing' },
       { ref: 'ISS-1', kind: 'issue', why: 'missing', project: 'epod' },
+    ]);
+  });
+
+  it('dates each resolved issue and requirement by its last change, and no gone one', () => {
+    expect(cites.filter((c) => c.changedAt).map((c) => [c.ref, c.project, c.changedAt])).toEqual([
+      ['ISS-1', 'hop', CHANGED.toISOString()],
+      ['REQ-1', 'hop', CHANGED.toISOString()],
     ]);
   });
 

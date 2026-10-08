@@ -88,7 +88,7 @@ describe('the Memory page read and a person acts on it', () => {
     expect(byRef(await entries(w), 'gotcha/clean')?.staleRefs).toEqual([]);
   });
 
-  it('lists under stale only the rows that name a gone record or carry a release flag', async () => {
+  it('lists under stale only the rows that name a gone record or carry a release flag, of rows written today', async () => {
     const stale = await entries(w, '&state=stale');
     expect(stale.map((r) => r.sourceRef)).toEqual(['gotcha/cites']);
   });

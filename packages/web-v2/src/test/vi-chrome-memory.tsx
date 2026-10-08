@@ -28,6 +28,8 @@ const BASE: MemoryEntry = {
     { ref: "REQ-9", kind: "requirement", why: "missing" },
     { ref: "ISS-4", kind: "issue", why: "dropped", project: "epod" },
   ],
+  needsCheck: ["gone", "flagged"],
+  changed: [],
   flagged: { since: AT, by: "ISS-126", reason: "ISS-126 thay giao dien" },
   corrections: [{ by: LAN, at: AT, reason: "da doi chieu" }],
   retired: null,
