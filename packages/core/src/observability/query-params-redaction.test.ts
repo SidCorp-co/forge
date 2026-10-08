@@ -1,4 +1,4 @@
-import { REDACTED, redactedMessage, redactQueryParams } from '@forge/observability';
+import { REDACTED, redactedMessage, redactQueryParams, sealQueryError } from '@forge/observability';
 import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { stdSerializers } from 'pino';
 import { describe, expect, it } from 'vitest';
@@ -12,11 +12,19 @@ import {
 } from './query-params.fixture.js';
 
 describe('redactQueryParams', () => {
-  it('keeps the statement and the driver reason, and none of the bound values', () => {
+  it('keeps the statement, and none of the bound values or what follows them', () => {
     const err = duplicate();
     const out = redactQueryParams(stdSerializers.err(err), err);
     expect(JSON.stringify(out)).not.toContain(HASH);
     expect(JSON.stringify(out)).not.toContain(EMAIL);
+    expect(out.message).toBe(`Failed query: ${STATEMENT}\nparams: ${REDACTED}`);
+    expect(out.stack).toMatch(/^Error: Failed query: [\s\S]*params: \[Redacted\]$/);
+  });
+
+  it('keeps the driver reason and the stack of an error sealed where it was thrown', () => {
+    const err = sealQueryError(duplicate());
+    const out = redactQueryParams(stdSerializers.err(err), err);
+    expect(JSON.stringify(out)).not.toMatch(/argon2|dup@example/);
     expect(out.message).toBe(
       `Failed query: ${STATEMENT}\nparams: ${REDACTED}: duplicate key value violates unique constraint "users_email_unique"`,
     );
