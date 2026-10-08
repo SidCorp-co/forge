@@ -19812,8 +19812,7 @@
                   },
                   "language": {
                     "enum": [
-                      "python",
-                      "bash"
+                      "javascript"
                     ],
                     "type": "string"
                   },

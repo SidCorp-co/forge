@@ -27,7 +27,7 @@ call sits now.
 | install/fetch-release.ts, install/main-runner-head.ts | `packages/core/src/integrations/github/published-releases/fetch-release.ts`, `packages/core/src/integrations/github/published-releases/main-runner-head.ts`, over `packages/core/src/integrations/github/published-releases/public-releases.ts` | `api.github.com` releases and commits |
 | the download in ecosystem/contract/oasdiff.ts | `packages/core/src/integrations/github/published-releases/public-releases.ts` | a pinned binary download from `github.com` — not a remote spec |
 | lib/runtime-probe.ts, and the global `fetch` the environment-state read handed it | `packages/core/src/integrations/deploy/runtime-probe.ts` | a project's deployed app, through its declared runtime probe — found by the rule below, not by the hand list |
-| sandbox/worker-entry.ts | no port: a call of `ctx.http.fetch` is refused, naming it; `ctx.forge.get` reaches only core's own app, in-process (`sandbox/forge-read.ts`) | whatever URL a user's sandboxed script names |
+| sandbox/worker-entry.ts | no port: a call of `ctx.http.fetch` is refused, naming it; `ctx.forge.get` reaches only core's own app, in-process (`packages/core/src/sandbox/forge-read.ts`) | whatever URL a user's sandboxed script names |
 | lib/sentry.ts | `packages/core/src/integrations/sentry/own-errors.ts`, behind the error-tracking port `packages/core/src/lib/error-tracking.ts` | Forge's own crash reports, through `@sentry/node` |
 
 The dev and prod compose files name the same set from the deployment side: `SMTP_*`, `LITELLM_*`,
