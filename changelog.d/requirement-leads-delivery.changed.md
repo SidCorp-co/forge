@@ -1,1 +1,0 @@
-**Forge works requirement first.** A requirement and its workflow are made right before delivery, delivery is judged against their criteria on the running build, and old code is cleaned as the work meets it.

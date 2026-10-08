@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.188] - 2026-10-08
+
+Design revisions re-proposed under a new issue point at that issue
+
+### Changed
+
+- **A waiting design revision can be re-pointed at the issue that drew it.** Proposing again with `issue` re-names it; re-pins are never refused for naming no issue, and design refusals now read in short sentences naming the flow.
+- **Forge works requirement first.** A requirement and its workflow are made right before delivery, delivery is judged against their criteria on the running build, and old code is cleaned as the work meets it.
+
 ## [0.4.0-dev.187] - 2026-10-08
 
 Requirement draft promotion asks only signers who can admit issues
