@@ -1,7 +1,6 @@
 import type { Context } from 'hono';
-import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
-import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
+import { AUTH_COOKIE_NAME, requestCookieValues } from '../credentials/cookie.js';
 
 const BEARER = /^Bearer\s+(.+)$/i;
 
@@ -14,14 +13,24 @@ export function parseBearerHeader(c: Context): BearerHeader {
   return token ? { kind: 'token', token } : { kind: 'malformed' };
 }
 
-export function readBearerToken(c: Context): string {
+/**
+ * What the caller presented: a token in the `Authorization` header, or else every `forge_auth`
+ * session cookie the browser sent. A header token is a credential its holder typed or minted; a
+ * cookie only ever carries a session this server (or a sibling instance) wrote.
+ */
+export type PresentedCredential =
+  | { kind: 'header'; token: string }
+  | { kind: 'cookie'; sessions: string[] };
+
+export function readPresentedCredential(c: Context): PresentedCredential {
   const parsed = parseBearerHeader(c);
-  const token = (parsed.kind === 'token' ? parsed.token : '') || getCookie(c, AUTH_COOKIE_NAME);
-  if (!token) {
+  if (parsed.kind === 'token') return { kind: 'header', token: parsed.token };
+  const sessions = requestCookieValues(c, AUTH_COOKIE_NAME);
+  if (sessions.length === 0) {
     throw new HTTPException(401, {
       message: 'authentication required',
       cause: { code: 'UNAUTHENTICATED' },
     });
   }
-  return token;
+  return { kind: 'cookie', sessions };
 }

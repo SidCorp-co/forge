@@ -1,4 +1,5 @@
 import { CORE_URL } from '@/lib/utils/core-url';
+import { announceSessionEnded, isSessionEndedAnswer } from './session-ended';
 import { reportTransportFailure } from './transport-failure';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -43,6 +44,13 @@ function refusalOf(error: unknown): { message: string; code?: string } | null {
     message: details.length > 0 ? details.join('; ') : message,
     ...(typeof code === 'string' ? { code } : {}),
   };
+}
+
+/** A refusal, raised as an ApiError; a session-ended one is announced first so the app signs out. */
+async function refusalFrom(res: Response): Promise<ApiError> {
+  const { message, code, details, body } = await parseErrorBody(res);
+  if (isSessionEndedAnswer(res.status, code)) announceSessionEnded();
+  return new ApiError(res.status, message, code, details, body);
 }
 
 async function parseErrorBody(res: Response): Promise<{
@@ -93,8 +101,7 @@ async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Re
   });
 
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await refusalFrom(res);
   }
 
   return res;
@@ -119,8 +126,7 @@ export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
     headers: file.type ? { 'Content-Type': file.type } : undefined,
   });
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await refusalFrom(res);
   }
   return (await res.json()) as T;
 }
@@ -133,8 +139,7 @@ export async function apiMultipart<T>(endpoint: string, formData: FormData): Pro
     body: formData,
   });
   if (!res.ok) {
-    const { message, code, details, body } = await parseErrorBody(res);
-    throw new ApiError(res.status, message, code, details, body);
+    throw await refusalFrom(res);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

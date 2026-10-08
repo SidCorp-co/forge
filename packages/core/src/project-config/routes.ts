@@ -5,7 +5,7 @@ import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import { refused } from '../lib/refusal.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { readBearerToken } from '../middleware/bearer.js';
+import { parseBearerHeader } from '../middleware/bearer.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
@@ -108,8 +108,9 @@ projectConfigRoutes.put(
 );
 
 async function callingDevice(c: Context<{ Variables: AuthVars }>): Promise<string | null> {
-  if (c.get('principal') !== 'pat') return null;
-  const device = await verifyDeviceCredential(readBearerToken(c));
+  const presented = parseBearerHeader(c);
+  if (c.get('principal') !== 'pat' || presented.kind !== 'token') return null;
+  const device = await verifyDeviceCredential(presented.token);
   return device?.id ?? null;
 }
 

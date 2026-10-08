@@ -2,13 +2,14 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { clearSessionCookies } from '../credentials/cookie.js';
 import { verifyDeviceCredential } from '../credentials/device-credential.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
-import { readBearerToken } from './bearer.js';
+import { readPresentedCredential } from './bearer.js';
 import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
@@ -29,6 +30,8 @@ export type AuthVars = {
   patTokenId?: string;
   /** The person the token acts for (`personalAccessTokens.onBehalfOf`). */
   onBehalfOf?: string;
+  /** The caller arrived on a `forge_auth` session cookie rather than a header token. */
+  sessionCookie?: boolean;
 };
 
 /** The request's actor, with the credential it arrived on and whom that credential acts for. */
@@ -123,22 +126,62 @@ async function userClaimsOf(c: Context, token: string): Promise<UserClaims> {
   return claims;
 }
 
+const invalidToken = () =>
+  new HTTPException(401, { message: 'invalid token', cause: { code: 'INVALID_TOKEN' } });
+
+/**
+ * A session cookie that no longer opens a session — expired, signed by another instance, issued
+ * before a logout, or naming an account that is gone. Named apart from a bad header token's
+ * INVALID_TOKEN, because the remedy is the person's, not the integration's: sign in again. The
+ * answer clears both session cookies, so the dead one is not sent with every load after it.
+ */
+export function sessionEnded(c: Context): HTTPException {
+  clearSessionCookies(c);
+  return new HTTPException(401, {
+    message: 'your session has ended; sign in again',
+    cause: { code: 'SESSION_EXPIRED' },
+  });
+}
+
+/**
+ * The first presented session cookie that verifies. Every one is tried in the order the browser
+ * sent them, so a stale cookie beside a live one — a sibling instance's on the parent domain, an
+ * older path — never decides who the caller is.
+ */
+async function sessionClaimsOf(c: Context, sessions: readonly string[]): Promise<UserClaims> {
+  for (const token of sessions) {
+    try {
+      return await userClaimsOf(c, token);
+    } catch {}
+  }
+  throw sessionEnded(c);
+}
+
+async function claimsOf(c: Context, token: string): Promise<UserClaims> {
+  try {
+    return await userClaimsOf(c, token);
+  } catch {
+    throw invalidToken();
+  }
+}
+
+function admitUser(c: Context<{ Variables: AuthVars }>, claims: UserClaims): void {
+  c.set('userId', claims.sub);
+  c.set('principal', 'user');
+  c.set('agency', 'human');
+}
+
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   return declareGate('requireAuth', async (c, next) => {
-    const token = readBearerToken(c);
+    const presented = readPresentedCredential(c);
 
-    if (isPatLike(token)) return admitPat(c, token, next);
-
-    try {
-      const claims = await userClaimsOf(c, token);
-      c.set('userId', claims.sub);
-      c.set('principal', 'user');
-      c.set('agency', 'human');
-    } catch {
-      throw new HTTPException(401, {
-        message: 'invalid token',
-        cause: { code: 'INVALID_TOKEN' },
-      });
+    if (presented.kind === 'cookie') {
+      admitUser(c, await sessionClaimsOf(c, presented.sessions));
+      c.set('sessionCookie', true);
+    } else if (isPatLike(presented.token)) {
+      return admitPat(c, presented.token, next);
+    } else {
+      admitUser(c, await claimsOf(c, presented.token));
     }
 
     await next();
@@ -147,22 +190,20 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
 
 export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }> {
   return declareGate('requireUserOrDevice', async (c, next) => {
-    const token = readBearerToken(c);
+    const presented = readPresentedCredential(c);
 
+    if (presented.kind === 'cookie') {
+      admitUser(c, await sessionClaimsOf(c, presented.sessions));
+      c.set('sessionCookie', true);
+      await next();
+      return;
+    }
+
+    const { token } = presented;
     if (!isPatLike(token)) {
-      try {
-        const claims = await userClaimsOf(c, token);
-        c.set('userId', claims.sub);
-        c.set('principal', 'user');
-        c.set('agency', 'human');
-        await next();
-        return;
-      } catch {
-        throw new HTTPException(401, {
-          message: 'invalid token',
-          cause: { code: 'INVALID_TOKEN' },
-        });
-      }
+      admitUser(c, await claimsOf(c, token));
+      await next();
+      return;
     }
 
     const device = await verifyDeviceCredential(token);

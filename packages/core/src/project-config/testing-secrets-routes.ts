@@ -1,9 +1,8 @@
 import { SELF_JOB } from '@forge/contracts/project-config';
 import { type Context, Hono } from 'hono';
-import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { AUTH_COOKIE_NAME } from '../credentials/cookie-names.js';
+import { AUTH_COOKIE_NAME, requestCookieValues } from '../credentials/cookie.js';
 import { verifyUserToken } from '../credentials/jwt.js';
 import { isPatLike } from '../credentials/pat-format.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -45,8 +44,9 @@ async function jobCredential(c: Context): Promise<PatPrincipal> {
   const parsed = parseBearerHeader(c);
   if (parsed.kind === 'malformed') throw unauthenticated('invalid authorization header');
   if (parsed.kind === 'absent') {
-    const cookie = getCookie(c, AUTH_COOKIE_NAME);
-    if (cookie && (await isSession(cookie))) throw sessionRefused();
+    for (const cookie of requestCookieValues(c, AUTH_COOKIE_NAME)) {
+      if (await isSession(cookie)) throw sessionRefused();
+    }
     throw unauthenticated('authentication required: present the running job’s credential');
   }
   if (!isPatLike(parsed.token)) {

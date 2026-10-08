@@ -9,44 +9,67 @@ export { AUTH_COOKIE_NAME, REFRESH_COOKIE_NAME };
 
 const REFRESH_COOKIE_PATH = '/api/auth';
 
-export function setAuthCookie(c: Context, token: string): void {
-  setCookie(c, AUTH_COOKIE_NAME, token, {
+/**
+ * Every value a `Cookie` header carries under `name`, in the order the browser sent them.
+ *
+ * A browser keeps one cookie per (name, domain, path), so a request can carry two `forge_auth`:
+ * this host's own, and one a sibling instance scoped to the parent domain. Reading only the first
+ * let whichever was created earlier decide who the caller is, so a stale one shadowed a fresh login.
+ */
+export function cookieValues(header: string | undefined | null, name: string): string[] {
+  if (!header) return [];
+  const values: string[] = [];
+  for (const pair of header.split(';')) {
+    const eq = pair.indexOf('=');
+    if (eq === -1 || pair.slice(0, eq).trim() !== name) continue;
+    let value = pair.slice(eq + 1).trim();
+    if (value.length >= 2 && value.startsWith('"') && value.endsWith('"'))
+      value = value.slice(1, -1);
+    if (value) values.push(value);
+  }
+  return values;
+}
+
+export function requestCookieValues(c: Context, name: string): string[] {
+  return cookieValues(c.req.header('cookie'), name);
+}
+
+/**
+ * A cookie of `name` at `path` written under the configured domain, after clearing the host-only
+ * variant: that one lingers from before `AUTH_COOKIE_DOMAIN` was set, and with the same path the
+ * browser sends whichever is older first. With no domain configured the write replaces the
+ * host-only cookie itself. A parent-domain cookie this server did not set (a sibling instance's)
+ * is left alone — clearing it would sign the person out of that instance; it is outlasted by
+ * reading every value instead ({@link cookieValues}).
+ */
+function writeSessionCookie(c: Context, name: string, value: string, path: string, maxAge: number) {
+  if (env.AUTH_COOKIE_DOMAIN) deleteCookie(c, name, { path });
+  setCookie(c, name, value, {
     httpOnly: true,
     secure: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
     sameSite: 'Lax',
-    path: '/',
-    maxAge: USER_JWT_TTL_SECONDS,
+    path,
+    maxAge,
     ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
   });
+}
+
+export function setAuthCookie(c: Context, token: string): void {
+  writeSessionCookie(c, AUTH_COOKIE_NAME, token, '/', USER_JWT_TTL_SECONDS);
 }
 
 export function setRefreshCookie(c: Context, token: string): void {
-  setCookie(c, REFRESH_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
-    sameSite: 'Lax',
-    path: REFRESH_COOKIE_PATH,
-    maxAge: REFRESH_TOKEN_TTL_SECONDS,
-    ...(env.AUTH_COOKIE_DOMAIN ? { domain: env.AUTH_COOKIE_DOMAIN } : {}),
-  });
+  writeSessionCookie(c, REFRESH_COOKIE_NAME, token, REFRESH_COOKIE_PATH, REFRESH_TOKEN_TTL_SECONDS);
 }
 
-export function clearAuthCookie(c: Context): void {
-  // Always clear the host-scoped variant first — it lingers in browsers from
-  // before AUTH_COOKIE_DOMAIN was introduced and would survive a normal
-  // domain-scoped logout, leaving stale auth attached to the request host.
-  deleteCookie(c, AUTH_COOKIE_NAME, { path: '/' });
-  if (env.AUTH_COOKIE_DOMAIN) {
-    deleteCookie(c, AUTH_COOKIE_NAME, { path: '/', domain: env.AUTH_COOKIE_DOMAIN });
-  }
+/** Both variants this server can name — host-only, and the configured domain when there is one. */
+function clearSessionCookie(c: Context, name: string, path: string): void {
+  deleteCookie(c, name, { path });
+  if (env.AUTH_COOKIE_DOMAIN) deleteCookie(c, name, { path, domain: env.AUTH_COOKIE_DOMAIN });
 }
 
-export function clearRefreshCookie(c: Context): void {
-  deleteCookie(c, REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
-  if (env.AUTH_COOKIE_DOMAIN) {
-    deleteCookie(c, REFRESH_COOKIE_NAME, {
-      path: REFRESH_COOKIE_PATH,
-      domain: env.AUTH_COOKIE_DOMAIN,
-    });
-  }
+/** The session and refresh cookies cleared: on logout, and on every answer that a session ended. */
+export function clearSessionCookies(c: Context): void {
+  clearSessionCookie(c, AUTH_COOKIE_NAME, '/');
+  clearSessionCookie(c, REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH);
 }
