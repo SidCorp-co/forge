@@ -4,6 +4,7 @@ import {
   type AttentionActionKind,
   attentionCaption,
   attentionCut,
+  attentionRefusal,
   conicGradient,
   type DashboardAttentionItem,
   projectAttention,
@@ -168,6 +169,36 @@ describe("projectAttention (ISS-1156)", () => {
   });
 });
 
+describe("attentionRefusal (ISS-1156)", () => {
+  const view = (projectTotals: unknown): AttentionView =>
+    ({
+      needsReview: [],
+      awaitingInput: [],
+      mentions: [],
+      failedJobs: [],
+      pendingSkillUpdates: [],
+      unseenDrafts: [],
+      unseenDraftsTotal: 0,
+      projectTotals,
+      total: 0,
+      offlineRunners: [],
+    }) as AttentionView;
+
+  it("names the field a response lacks, so the tile can say it where the figure would be", () => {
+    expect(attentionRefusal(view(undefined), "sable")).toMatch(/no `projectTotals`.*not the release/u);
+    expect(
+      attentionRefusal(view({ sable: { needsReview: 0, awaitingInput: 1, failedJobs: 0 } }), "sable"),
+    ).toMatch(/no `awaitingOutsideBlockers`/u);
+  });
+
+  it("says nothing of a response that carries both, a project with no entry, or one not loaded yet", () => {
+    const ok = { needsReview: 0, awaitingInput: 1, awaitingOutsideBlockers: 1, failedJobs: 0 };
+    expect(attentionRefusal(view({ sable: ok }), "sable")).toBeNull();
+    expect(attentionRefusal(view({}), "sable")).toBeNull();
+    expect(attentionRefusal(undefined, "sable")).toBeNull();
+  });
+});
+
 describe("attentionCut (ISS-1156)", () => {
   const item = (actionKind: AttentionActionKind, i: number): DashboardAttentionItem => ({
     key: `${actionKind}-${i}`,
@@ -177,7 +208,12 @@ describe("attentionCut (ISS-1156)", () => {
     link: `/l/${i}`,
   });
   const many = (kind: AttentionActionKind, n: number) => Array.from({ length: n }, (_, i) => item(kind, i));
-  const viewWith = (totals: { needsReview?: number; awaitingInput?: number; failedJobs?: number }): AttentionView => ({
+  const viewWith = (totals: {
+    needsReview?: number;
+    awaitingInput?: number;
+    awaitingOutsideBlockers?: number;
+    failedJobs?: number;
+  }): AttentionView => ({
     needsReview: [],
     awaitingInput: [],
     mentions: [],
@@ -185,7 +221,9 @@ describe("attentionCut (ISS-1156)", () => {
     pendingSkillUpdates: [],
     unseenDrafts: [],
     unseenDraftsTotal: 0,
-    projectTotals: { sable: { needsReview: 0, awaitingInput: 0, failedJobs: 0, ...totals } },
+    projectTotals: {
+      sable: { needsReview: 0, awaitingInput: 0, awaitingOutsideBlockers: 0, failedJobs: 0, ...totals },
+    },
     total: 0,
     offlineRunners: [],
   });
@@ -199,16 +237,36 @@ describe("attentionCut (ISS-1156)", () => {
     // j3's seed: one issue with a question and nine at needs_info, 10 to act on. The question
     // source lists all ten (its cap is 20) but the viewer's other projects took 12 of the 20.
     const items = [...many("input", 1), ...many("parked", 7)];
-    const cut = attentionCut(items, viewWith({ awaitingInput: 10 }), "sable", 9);
+    const cut = attentionCut(items, viewWith({ awaitingInput: 10, awaitingOutsideBlockers: 1 }), "sable", 9);
     expect(cut).toEqual({ shown: 8, atLeast: 10, peopleCut: true });
     expect(attentionCaption(items, cut)).toBe(
       "to act on: 1 issue with an open question · 7 issues parked with no question — 8 of at least 10",
     );
   });
 
-  it("takes the larger of the two parked sources, since an issue can be in both and they cannot be added", () => {
+  it("does not add an issue both sources hold twice: 6 awaiting, 5 of them at a status the parked list holds, 46 parked", () => {
     const items = many("parked", 5);
-    expect(attentionCut(items, viewWith({ awaitingInput: 6 }), "sable", 46)?.atLeast).toBe(46);
+    expect(attentionCut(items, viewWith({ awaitingInput: 6, awaitingOutsideBlockers: 1 }), "sable", 46)?.atLeast).toBe(47);
+  });
+
+  it("counts the viewer's own waiting issue the cross-project list never reached, which the parked list never holds (j4's F1)", () => {
+    // pair: ISS-4 waiting (the viewer's) is owed, ISS-2 on_hold and ISS-3 needs_info are parked and
+    // listed, and the viewer's 20-item question list is all another project's, so nothing of ISS-4 is listed.
+    const items = many("parked", 3);
+    const cut = attentionCut(items, viewWith({ awaitingInput: 1, awaitingOutsideBlockers: 1 }), "sable", 3);
+    expect(cut).toEqual({ shown: 3, atLeast: 4, peopleCut: true });
+    expect(attentionCaption(items, cut)).toBe("to act on: 3 issues parked with no question — 3 of at least 4");
+  });
+
+  it("does not overstate where the unlisted question's issue is one the parked list already shows", () => {
+    // one needs_info issue the viewer owns with a question: in both sources, listed from the parked one only.
+    const items = many("parked", 1);
+    expect(attentionCut(items, viewWith({ awaitingInput: 1, awaitingOutsideBlockers: 0 }), "sable", 1)).toBeNull();
+  });
+
+  it("holds the least that is true where the parked total is not loaded yet", () => {
+    const items = many("input", 1);
+    expect(attentionCut(items, viewWith({ awaitingInput: 4, awaitingOutsideBlockers: 4 }), "sable", undefined)?.atLeast).toBe(4);
   });
 
   it("adds a cut failed-jobs or review bucket to the people it lists", () => {
@@ -229,6 +287,14 @@ describe("attentionCut (ISS-1156)", () => {
   it("refuses a response with no projectTotals, by name, rather than say the list is whole", () => {
     const old = { ...viewWith({}), projectTotals: undefined } as unknown as AttentionView;
     expect(() => attentionCut([], old, "sable", 0)).toThrow(/no `projectTotals`.*not the release/u);
+  });
+
+  it("refuses a response whose totals carry no awaitingOutsideBlockers, by name, since the two sources could then be counted twice", () => {
+    const old = {
+      ...viewWith({}),
+      projectTotals: { sable: { needsReview: 0, awaitingInput: 2, failedJobs: 0 } },
+    } as unknown as AttentionView;
+    expect(() => attentionCut([], old, "sable", 1)).toThrow(/no `awaitingOutsideBlockers`.*not the release/u);
   });
 
   it("says nothing before the attention response has loaded", () => {

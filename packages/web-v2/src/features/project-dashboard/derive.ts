@@ -276,17 +276,30 @@ const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; m
 ];
 
 /**
- * How much of what a person has to act on the list leaves out. Core caps each source (failed jobs
- * and reviews at 5 and questions at 20 across every project the viewer sees, parked issues at 5 per
- * project) and counts each whole beside it, so the listed items and the counts are from the same two
- * responses. An issue can be in both the question source and the parked one, so the two cannot be
- * added: the larger is the least that is true, and the figure says "at least".
+ * How much of what a person has to act on the list leaves out. Core caps each source and counts it
+ * whole beside it. The two sources the people come from overlap, so core splits the attention count
+ * into the part at a status the health row's parked list holds whole and the part outside it; the
+ * parked total plus that part counts no issue twice. The figure says "at least", since an issue can
+ * be on the page that no response counted.
  */
 export interface AttentionCut {
   shown: number;
   atLeast: number;
   /** The parked and question items are the part cut, so the Issues list holds the rest. */
   peopleCut: boolean;
+}
+
+/** The sentence the Needs you tile and its list say in place of a figure when the response cannot support one; null where it can. */
+export function attentionRefusal(view: AttentionView | undefined, slug: string): string | null {
+  if (!view) return null;
+  if (view.projectTotals === undefined) {
+    return "Needs you cannot say how much it leaves out: the attention response has no `projectTotals`. The server is not the release this page was built for.";
+  }
+  const totals = view.projectTotals[slug];
+  if (totals !== undefined && typeof totals.awaitingOutsideBlockers !== "number") {
+    return "Needs you cannot say how much it leaves out: the attention response's `projectTotals` have no `awaitingOutsideBlockers`. The server is not the release this page was built for.";
+  }
+  return null;
 }
 
 export function attentionCut(
@@ -296,21 +309,28 @@ export function attentionCut(
   blockersTotal: number | undefined,
 ): AttentionCut | null {
   if (!view) return null;
-  if (view.projectTotals === undefined) {
-    throw new Error(
-      "Needs you: the attention response carries no `projectTotals`, so it cannot say how much of what a person has to act on the list leaves out. The server is not the release this page was built for.",
-    );
-  }
-  const totals = view.projectTotals[slug] ?? { needsReview: 0, awaitingInput: 0, failedJobs: 0 };
+  const refusal = attentionRefusal(view, slug);
+  if (refusal !== null) throw new Error(refusal);
+  const totals = view.projectTotals[slug] ?? {
+    needsReview: 0,
+    awaitingInput: 0,
+    awaitingOutsideBlockers: 0,
+    failedJobs: 0,
+  };
   const listed = (kinds: readonly AttentionActionKind[]) =>
     items.filter((i) => kinds.includes(i.actionKind)).length;
-  const people = Math.max(totals.awaitingInput, blockersTotal ?? 0, listed(["input", "parked"]));
+  const listedPeople = listed(["input", "parked"]);
+  const people = Math.max(
+    listedPeople,
+    totals.awaitingInput,
+    (blockersTotal ?? 0) + totals.awaitingOutsideBlockers,
+  );
   const atLeast =
     Math.max(totals.failedJobs, listed(["retry"])) +
     Math.max(totals.needsReview, listed(["diff"])) +
     people;
   if (atLeast <= items.length) return null;
-  return { shown: items.length, atLeast, peopleCut: people > listed(["input", "parked"]) };
+  return { shown: items.length, atLeast, peopleCut: people > listedPeople };
 }
 
 /**

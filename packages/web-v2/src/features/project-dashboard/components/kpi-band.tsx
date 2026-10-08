@@ -26,6 +26,8 @@ export interface KpiBandProps {
   needsYou: number;
   /** What the figure counts, by kind: it counts items to act on, not issues in a state. */
   needsYouCaption: string;
+  /** Said in place of the figure where the response cannot support one: the tile refuses rather than count. */
+  needsYouRefusal?: string | null;
   /** Open work: the four open states summed, the figure the donut's centre and the nav badge show. */
   openWork: number;
   spendTodayUsd: number;
@@ -48,9 +50,9 @@ export function KpiBand(props: KpiBandProps) {
     {
       icon: "inbox",
       label: "Needs you",
-      value: String(props.needsYou),
-      caption: props.needsYouCaption,
-      accent: props.needsYou > 0,
+      value: props.needsYouRefusal ? "—" : String(props.needsYou),
+      caption: props.needsYouRefusal ?? props.needsYouCaption,
+      accent: !props.needsYouRefusal && props.needsYou > 0,
     },
     {
       icon: "board",

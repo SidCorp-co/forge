@@ -31,6 +31,7 @@ import { creatorIsAgentCondition } from '../issues/creator.js';
 import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { statusesInWorkState } from '../issues/work-state.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
+import { BLOCKED_STATUSES } from '../projects/health-aggregates.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
@@ -374,6 +375,12 @@ export function selectPendingSkillUpdates(userId: string): Promise<AttentionReco
 export interface AttentionProjectTotals {
   needsReview: number;
   awaitingInput: number;
+  /**
+   * The part of `awaitingInput` at a status the project health row's parked list (`blockers`) does
+   * not count. The rest are at statuses that list holds whole, so a screen reading both adds this to
+   * the health row's `blockersTotal` and counts no issue twice.
+   */
+  awaitingOutsideBlockers: number;
   failedJobs: number;
 }
 
@@ -394,7 +401,11 @@ export async function selectAttentionTotals(
       .where(needsReviewWhere(userId))
       .groupBy(projects.slug),
     db
-      .select({ slug: projects.slug, n: count })
+      .select({
+        slug: projects.slug,
+        n: count,
+        outside: sql<number>`(count(*) filter (where ${notInArray(issues.status, [...BLOCKED_STATUSES])}))::int`,
+      })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
       .leftJoin(
@@ -417,11 +428,19 @@ export async function selectAttentionTotals(
   ]);
   const totals: Record<string, AttentionProjectTotals> = {};
   const at = (slug: string) => {
-    totals[slug] ??= { needsReview: 0, awaitingInput: 0, failedJobs: 0 };
+    totals[slug] ??= {
+      needsReview: 0,
+      awaitingInput: 0,
+      awaitingOutsideBlockers: 0,
+      failedJobs: 0,
+    };
     return totals[slug];
   };
   for (const r of review) at(r.slug).needsReview = r.n;
-  for (const r of awaiting) at(r.slug).awaitingInput = r.n;
+  for (const r of awaiting) {
+    at(r.slug).awaitingInput = r.n;
+    at(r.slug).awaitingOutsideBlockers = r.outside;
+  }
   for (const r of failed) at(r.slug).failedJobs = r.n;
   return totals;
 }
