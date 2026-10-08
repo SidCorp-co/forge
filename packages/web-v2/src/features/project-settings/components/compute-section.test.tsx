@@ -53,8 +53,8 @@ describe("the compute setting in Advanced", () => {
     core({ declared: true, revision: 6, document: doc() });
     mount();
     expect(await screen.findByRole("switch", { name: "Computation" })).not.toBeChecked();
-    expect(screen.getByText(/run a short script over this project's data in an isolated sandbox/)).toBeInTheDocument();
-    expect(screen.getByText(/whose data leaves Forge for a third party/)).toBeInTheDocument();
+    expect(screen.getByText(/run a short script over this project's data in an isolated sandbox on your team's runner/)).toBeInTheDocument();
+    expect(screen.getByText(/whose data leaves Forge and your runners for a third party/)).toBeInTheDocument();
     expect(screen.getByText(/declares zero data retention/)).toBeInTheDocument();
     expect(toggle("Third-party sandboxes")).toHaveAttribute("aria-disabled", "true");
     expect(toggle("Zero data retention only")).toHaveAttribute("aria-disabled", "true");
