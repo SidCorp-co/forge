@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.185] - 2026-10-08
+
+Reports download as CSV or Markdown and print cleanly (REQ-32 B4)
+
+### Added
+
+- **A kept template report exports from Forge itself.** Export saves its Markdown, each table offers a CSV that Excel opens correctly, states read as words, the summary's outcome shows with its reason, and the report prints cleanly.
+
 ## [0.4.0-dev.184] - 2026-10-08
 
 Shared chat rooms show a running turn's draft and tool calls only to the asker

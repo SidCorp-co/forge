@@ -1,1 +1,0 @@
-**A kept template report exports from Forge itself.** Export saves its Markdown, each table offers a CSV that Excel opens correctly, states read as words, the summary's outcome shows with its reason, and the report prints cleanly.
