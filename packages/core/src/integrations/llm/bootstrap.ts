@@ -97,10 +97,15 @@ export function providerExecutors(settings: ExecutorSettings = env): ProviderExe
     };
   }
   if (!isClaudeApi(settings.ANTHROPIC_API_URL)) {
+    // the host stays in the operator's log: the reason is read by every asker a computation refuses
+    logger.info(
+      { executor: CODE_EXECUTOR_ID, chatHost: new URL(settings.ANTHROPIC_API_URL).host },
+      'code execution: off, the chat runs on a gateway',
+    );
     return {
       executors: [],
       unavailable: [
-        `${CODE_EXECUTOR_ID} is off: the chat's ANTHROPIC_API_URL is ${settings.ANTHROPIC_API_URL}, not the Claude API (${CLAUDE_API_ORIGIN}) that serves the Files API and the code execution tool; the operator sets CODE_EXECUTION_API_KEY to a Claude API key to enable it`,
+        `${CODE_EXECUTOR_ID} is off: the chat's ANTHROPIC_API_URL is a gateway, not the Claude API (${CLAUDE_API_ORIGIN}) that serves the Files API and the code execution tool; the operator sets CODE_EXECUTION_API_KEY to a Claude API key to enable it`,
       ],
     };
   }

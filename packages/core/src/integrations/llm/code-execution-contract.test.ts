@@ -189,9 +189,9 @@ describe('the requests the in-band executor sends, as the docs shape them', () =
   it("replays the gateway's recorded answer: the same documented upload fails as the QA saw it", async () => {
     const gateway = recorder(() => json(400, GATEWAY_UPLOAD));
     const executor = createCodeExecutor({
-      baseUrl: 'https://serp-api.musetools.com',
+      baseUrl: 'https://gateway.example',
       apiKey: 'test-key',
-      model: 'cx/gpt-5.6-terra',
+      model: 'gpt-model-behind-gateway',
       fetchImpl: gateway.fetchImpl,
     });
     await expect(executor.execute(request, scope)).rejects.toThrow(

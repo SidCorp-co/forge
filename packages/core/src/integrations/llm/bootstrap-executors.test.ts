@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { providerExecutors } from './bootstrap.js';
 import { CODE_EXECUTOR_ID } from './code-execution.js';
 
-const GATEWAY = 'https://serp-api.musetools.com';
+const GATEWAY = 'https://gateway.example';
 const settings = (over: Partial<Parameters<typeof providerExecutors>[0]> = {}) => ({
   ANTHROPIC_API_URL: 'https://api.anthropic.com',
   ANTHROPIC_API_KEY: undefined,
@@ -27,13 +27,14 @@ describe('the code execution executor', () => {
       settings({
         ANTHROPIC_API_URL: GATEWAY,
         ANTHROPIC_API_KEY: 'k',
-        ANTHROPIC_MODEL: 'cx/gpt-5.6-terra',
+        ANTHROPIC_MODEL: 'gpt-model-behind-gateway',
       }),
     );
     expect(got.executors).toEqual([]);
     expect(got.unavailable).toHaveLength(1);
     expect(got.unavailable[0]).toContain(CODE_EXECUTOR_ID);
-    expect(got.unavailable[0]).toContain(GATEWAY);
+    expect(got.unavailable[0]).toContain('not the Claude API');
+    expect(got.unavailable[0]).not.toContain('gateway.example');
     expect(got.unavailable[0]).toContain('CODE_EXECUTION_API_KEY');
   });
 
