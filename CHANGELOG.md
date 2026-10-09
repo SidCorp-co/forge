@@ -9,6 +9,26 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.217] - 2026-10-09
+
+The assistant draws a requirement's picture with its draft
+
+### Added
+
+- **A requirement page opens on its picture.** A process shows its workflow, a rule its example table, a screen its wireframe, a report its sample chart; editors draw it there, and are asked before a kind change removes it.
+- **The assistant now draws a requirement's picture with its draft.** A requirement or revision it drafts names its kind and carries a rough sketch, shown once recorded, with a text alternative written from it; anyone who can edit replaces it.
+
+### Changed
+
+- **A release is now cut only from a commit whose every test suite passed.** Without such a run the cut starts one and waits for it, and a failing run names the change that broke it.
+- **Every change into dev now runs only its own checks before it merges.** Typecheck and the direct tests of the touched files, in every package, on the change rebased onto dev, recorded on its issue; a stale branch is refused.
+
+### Fixed
+
+- **Stale criterion traces read as stale and Short reads as Short.** The issue rail names criteria traced only at an earlier wording with the re-tie act; the Criteria tab draws Short as Short, still counted as a pass.
+- **An issue that adds a new pattern can now be released.** Its catalog page is checked when the merge is marked. A returned pattern posts its reason and holds the work; the issue page lets a reviewer decide.
+- **A requirement's progress counts only verdicts it can check.** A runtime counts at its build, a design or contract only at the pinned version, others say why. Retired criteria keep their verdicts, and Stale and Not live differ.
+
 ## [0.4.0-dev.216] - 2026-10-09
 
 Line and burndown reports, template narratives, progress compared across periods
