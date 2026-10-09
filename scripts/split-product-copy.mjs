@@ -53,6 +53,7 @@ export const PREFIX_HOMES = {
   feedback: 'features/feedback/copy.json',
   forecast: 'features/forecast/copy.json',
   help: 'features/tours/copy.json',
+  intake: 'features/intake/copy.json',
   integrations: 'features/integrations/copy.json',
   issues: 'features/issues/copy.json',
   label: 'lib/i18n/copy/label.json',

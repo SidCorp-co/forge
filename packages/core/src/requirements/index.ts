@@ -12,6 +12,12 @@ export { liveTracedCodesOf, traceWordingsOf } from './criterion-trace.js';
 export { deferralOf } from './deferral-read.js';
 export { registerRequirementDelivery, sweepDeliveredRequirements } from './delivery-notice.js';
 export { provideRequirementDependents } from './dependents.js';
+export {
+  type DraftGapField,
+  type DraftGapFill,
+  type DraftGapsOutcome,
+  fillDraftGaps,
+} from './draft-gaps.js';
 export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
@@ -22,9 +28,9 @@ export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
 export { changedTracedOf } from './plan-drift.js';
 export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
+export { criteriaRefusalsAt } from './revision-criteria.js';
 export {
   createRequirementIn,
-  criteriaRefusalsAt,
   newRevisionIn,
   openRevisionOf,
   type RevisionWrite,

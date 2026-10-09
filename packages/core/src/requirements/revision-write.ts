@@ -1,6 +1,7 @@
 /**
  * The requirement writes that run inside a caller's transaction, under the project's requirement
- * lock: a revision's criteria as rows, REQ-n at revision 1, and a new revision on the head.
+ * lock: REQ-n at revision 1, and a new revision on the head; a revision's criteria as rows are
+ * `revision-criteria.ts`.
  * `service.ts` composes them into its own transactions; an accepted suggestion composes them into
  * the transaction that marks it accepted (ISS-58).
  */
@@ -16,25 +17,22 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
-  type CriterionForm,
   type RevisionState,
-  requirementCriteria,
   requirementRevisions,
   requirements,
   requirementWorkflows,
 } from '../db/schema-requirements.js';
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import { writtenLangFor } from '../lib/written-lang.js';
+import { emitEvent } from '../outbox/index.js';
 import { withAskedQuestions } from './clarity.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { drawIn, pictureFitsKind } from './picture.js';
 import type { RequirementActor } from './read.js';
+import { resetDraftCriteria, writeCriteria } from './revision-criteria.js';
 import {
   type CriterionInput,
-  type LiveCriterion,
-  liveAt,
   openRevisionRefusal,
-  planCriteria,
   type RequirementRefusal,
   staleBaseRefusal,
   stateRefusal,
@@ -71,93 +69,6 @@ export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): Re
     changeSummary: write.changeSummary == null ? write.changeSummary : text(write.changeSummary),
     criteria: write.criteria.map((c) => ({ ...c, body: text(c.body) })),
   };
-}
-
-/** Applies a revision's criteria list as rows; refusals when a code is unknown or a scenario
- *  unparseable. `ownCodes` are what a draft being rewritten held before its reset. */
-export async function writeCriteria(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-  input: readonly CriterionInput[],
-  ownCodes: ReadonlySet<string> = new Set(),
-): Promise<RequirementRefusal[] | null> {
-  const all = await tx
-    .select()
-    .from(requirementCriteria)
-    .where(eq(requirementCriteria.requirementId, requirementId));
-  const live: LiveCriterion[] = all
-    .filter((c) => c.retiredRevision === null)
-    .map((c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }));
-  const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
-  const planned = planCriteria(input, live, highest, ownCodes);
-  if (!planned.ok) return planned.refusals;
-  const { retire, insert } = planned.plan;
-  if (retire.length) {
-    await tx
-      .update(requirementCriteria)
-      .set({ retiredRevision: revision })
-      .where(inArray(requirementCriteria.id, retire));
-  }
-  if (insert.length) {
-    await tx
-      .insert(requirementCriteria)
-      .values(insert.map((c) => ({ ...c, requirementId, sinceRevision: revision })));
-  }
-  return null;
-}
-
-/**
- * What `writeCriteria` would refuse in a criteria list proposed on `baseRevision`, said where the
- * list is proposed rather than at the accept: a revision_diff suggestion naming a code that is not
- * live on its base is refused at its creation, so the turn that wrote it can correct it in the same
- * turn (REQ-30 BC-3; forge-dev 2026-10-08, REQ-32 and REQ-33, refused only at a person's Accept).
- * Nothing is written.
- */
-export async function criteriaRefusalsAt(
-  tx: Tx,
-  requirementId: string,
-  baseRevision: number | null,
-  input: readonly CriterionInput[],
-): Promise<RequirementRefusal[]> {
-  const all = await tx
-    .select()
-    .from(requirementCriteria)
-    .where(eq(requirementCriteria.requirementId, requirementId));
-  const live: LiveCriterion[] = (baseRevision === null ? [] : liveAt(all, baseRevision)).map(
-    (c) => ({ id: c.id, code: c.code, body: c.body, form: c.form as CriterionForm }),
-  );
-  const highest = all.reduce((m, c) => Math.max(m, Number(c.code.slice(3))), 0);
-  const planned = planCriteria(input, live, highest);
-  return planned.ok ? [] : planned.refusals;
-}
-
-/** Undoes what an earlier write of draft `revision` did to the criteria, so an edit re-applies
- *  whole; answers the codes that write gave, which the rewrite may name again. */
-export async function resetDraftCriteria(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-): Promise<Set<string>> {
-  const removed = await tx
-    .delete(requirementCriteria)
-    .where(
-      and(
-        eq(requirementCriteria.requirementId, requirementId),
-        eq(requirementCriteria.sinceRevision, revision),
-      ),
-    )
-    .returning({ code: requirementCriteria.code });
-  await tx
-    .update(requirementCriteria)
-    .set({ retiredRevision: null })
-    .where(
-      and(
-        eq(requirementCriteria.requirementId, requirementId),
-        eq(requirementCriteria.retiredRevision, revision),
-      ),
-    );
-  return new Set(removed.map((r) => r.code));
 }
 
 /** REQ-n at revision 1 (draft), numbered max+1 under that lock. */
@@ -241,7 +152,16 @@ export async function createRequirementIn(
       })),
     );
   }
-  return { id: row.id, refusals: await writeCriteria(tx, row.id, 1, write.criteria) };
+  const refusals = await writeCriteria(tx, row.id, 1, write.criteria);
+  // every door creates through here, so every new requirement starts the intake draft (REQ-34 BC-10)
+  if (!refusals) {
+    await emitEvent(tx, 'requirement.created', {
+      projectId,
+      requirementId: row.id,
+      key: requirementKey(next),
+    });
+  }
+  return { id: row.id, refusals };
 }
 
 /** Where a new revision lands: a draft its author proposes, or proposed already by the person whose

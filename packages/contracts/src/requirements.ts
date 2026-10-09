@@ -769,6 +769,8 @@ export interface RequirementAssumption {
 	owner: string;
 	/** How it will be confirmed, and by when if that is known. */
 	confirmBy: string;
+	/** The record it was taken from, by its intake ref (REQ-n, FB-n, workflow:<flow>, release:<version>), where one is named. */
+	source?: string | undefined;
 }
 
 export interface RequirementSpec {

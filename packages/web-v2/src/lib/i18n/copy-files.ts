@@ -11,6 +11,7 @@ import conversationsCopy from "@/features/conversations/copy.json";
 import ecosystemCopy from "@/features/ecosystem/copy.json";
 import feedbackCopy from "@/features/feedback/copy.json";
 import forecastCopy from "@/features/forecast/copy.json";
+import intakeCopy from "@/features/intake/copy.json";
 import integrationsCopy from "@/features/integrations/copy.json";
 import issuesCopy from "@/features/issues/copy.json";
 import memoryCopy from "@/features/memory/copy.json";
@@ -57,6 +58,7 @@ export const COPY_FILES = {
   "features/ecosystem/copy.json": ecosystemCopy,
   "features/feedback/copy.json": feedbackCopy,
   "features/forecast/copy.json": forecastCopy,
+  "features/intake/copy.json": intakeCopy,
   "features/integrations/copy.json": integrationsCopy,
   "features/issues/copy.json": issuesCopy,
   "features/memory/copy.json": memoryCopy,

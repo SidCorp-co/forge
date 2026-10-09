@@ -3137,6 +3137,13 @@
       "when": 1825113600000,
       "tag": "0488_a_triaged_item_names_the_criterion_it_violates",
       "breakpoints": true
+    },
+    {
+      "idx": 489,
+      "version": "7",
+      "when": 1825200000000,
+      "tag": "0489_a_new_requirement_or_feedback_item_is_drafted_by_the_intake_assistant",
+      "breakpoints": true
     }
   ]
 }

@@ -37,6 +37,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"contract.versionApproved",
 	"contract.requested",
 	"ecosystem.buildOwed",
+	"requirement.created",
 	"requirement.agreed",
 	"requirement.returned",
 	"requirement.delivered",
@@ -424,6 +425,12 @@ export interface OutboxEventPayloads {
 	};
 	/** A builder run of this project is open (a join, a push, a supersede), and its master owes it. */
 	"ecosystem.buildOwed": { projectId: string };
+	/** A requirement was created at revision 1, by any door; the intake assistant drafts it (REQ-34 BC-10). */
+	"requirement.created": {
+		projectId: string;
+		requirementId: string;
+		key: string;
+	};
 	/** A requirement was agreed, or re-agreed at a new head, and its master owes the breakdown. */
 	"requirement.agreed": {
 		projectId: string;

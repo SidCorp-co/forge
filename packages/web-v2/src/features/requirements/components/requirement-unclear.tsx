@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Button, Textarea, ToneBadge, ViewHeading } from "@/design";
 import { DecisionTarget } from "@/features/comments/components/decision-target";
+import { IntakeSource } from "@/features/intake/components/intake-draft";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { RequirementAssumption, RequirementQuestionPlace, RequirementQuestionView } from "@forge/contracts/requirements";
@@ -112,7 +113,7 @@ export function UnclearSection({
 }
 
 /** What the revision takes as true without proof: each with whose it is and how it will be confirmed. */
-export function AssumptionsSection({ assumptions, revision }: { assumptions: RequirementAssumption[]; revision: number | null }) {
+export function AssumptionsSection({ assumptions, revision, slug }: { assumptions: RequirementAssumption[]; revision: number | null; slug?: string }) {
   const t = useCopy();
   return (
     <section data-testid="requirement-assumptions">
@@ -126,6 +127,12 @@ export function AssumptionsSection({ assumptions, revision }: { assumptions: Req
               <p className="text-14 leading-snug text-fg">{a.text}</p>
               <span className="text-12 text-subtle">
                 {t("requirements.assumptions.owner", { who: a.owner })} · {t("requirements.assumptions.confirmBy", { how: a.confirmBy })}
+                {a.source && slug ? (
+                  <>
+                    {" · "}
+                    <IntakeSource slug={slug} source={a.source} />
+                  </>
+                ) : null}
               </span>
             </li>
           ))}

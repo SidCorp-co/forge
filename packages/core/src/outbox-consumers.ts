@@ -1,5 +1,6 @@
 import { registerReviewNotes } from './comments/index.js';
 import { registerSourcePushReactions } from './ecosystem/index.js';
+import { registerIntakeAssistant } from './intake/index.js';
 import {
   registerActivitySubscribers,
   registerDependencyHealth,
@@ -72,4 +73,5 @@ export function registerOutboxConsumers(): void {
   registerStaleDraftAct();
   registerQuestionSuggest();
   registerFeedbackNotifications();
+  registerIntakeAssistant();
 }

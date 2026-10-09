@@ -20,6 +20,7 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { ReproduceSection } from "@/features/previews/reproduce-section";
 import { useMockups } from "@/features/mockups/hooks";
@@ -154,6 +155,7 @@ export function FeedbackPage({
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <Proposals projectId={projectId} f={f} />
+                  <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions />
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
                     <section id="feedback-act" data-highlight="triage verify">
                       <FeedbackActions projectId={projectId} f={f} />

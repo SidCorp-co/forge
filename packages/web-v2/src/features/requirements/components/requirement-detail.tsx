@@ -26,6 +26,7 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
+import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
 import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
@@ -84,7 +85,8 @@ function Overview({ d, projectId, slug }: { d: RequirementDetail; projectId: str
         ) : null}
       </section>
       <UnclearSection questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
-      {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} /> : null}
+      {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
+      <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} />
       {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
         <section>
           <ViewHeading>{t("requirements.overview.servesAndScope")}</ViewHeading>

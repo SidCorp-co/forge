@@ -42,6 +42,7 @@ const LOCK_NAMESPACES = {
   rocketchatConnection: 28,
   issuePatterns: 29,
   issueCheckRuns: 30,
+  intakeDrafts: 31,
   releaseVersion: 1120,
 } as const;
 

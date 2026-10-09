@@ -165,11 +165,16 @@ export const requirementOpenQuestionSchema = z.strictObject({
 	questionId: z.uuid().optional(),
 });
 
-/** Something the revision takes as true without proof: whose it is, and how it will be confirmed. */
+/**
+ * Something the revision takes as true without proof: whose it is, how it will be confirmed, and
+ * the record it was taken from (REQ-34 BC-13). The intake assistant names a source on every one it
+ * fills; a person's own assumption may name none.
+ */
 export const requirementAssumptionSchema = z.strictObject({
 	text: z.string().trim().min(5).max(2_000),
 	owner: z.string().trim().min(1).max(200),
 	confirmBy: z.string().trim().min(3).max(1_000),
+	source: z.string().trim().min(1).max(200).optional(),
 });
 
 export const requirementSpecSchema = z.strictObject({

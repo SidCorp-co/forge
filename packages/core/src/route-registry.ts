@@ -57,6 +57,7 @@ import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
+import { intakeRoutes } from './intake/routes.js';
 import {
   deviceGitCredentialRoutes,
   githubCallbackRoutes,
@@ -217,6 +218,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', workflowRoutes);
   app.route('/api/projects', requirementRoutes);
   app.route('/api/projects', suggestionRoutes);
+  app.route('/api/projects', intakeRoutes);
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);
   app.route('/api/projects', feedbackRoutes);

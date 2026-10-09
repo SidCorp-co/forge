@@ -423,6 +423,19 @@
       ],
       "serves": ["REQ-22"]
     },
+    "intake": {
+      "kind": "domain",
+      "context": "conversations",
+      "owns": ["intakeDrafts"],
+      "serves": [
+        "REQ-34",
+        "feedback-triage#intake",
+        "feedback-triage#dedup",
+        "feedback-triage#suggest",
+        "requirement-lifecycle#start",
+        "requirement-lifecycle#draft"
+      ]
+    },
     "integration-door": {
       "kind": "door",
       "context": "adapters",
@@ -1250,6 +1263,9 @@
     },
     "guides": {
       "serves": ["REQ-23"]
+    },
+    "intake": {
+      "serves": ["REQ-34", "feedback-triage#suggest", "requirement-lifecycle#draft"]
     },
     "integrations": {
       "serves": ["github-merge-sequence#p-integrations"]

@@ -74,6 +74,14 @@ describe("what a requirement still leaves unclear", () => {
     expect(row).toHaveTextContent("Every referral names one referrer.");
     expect(row).toHaveTextContent("Owned by the BA · Confirmed by: a count over last month");
   });
+
+  it("links the record an assistant's assumption was taken from (REQ-34 BC-13)", () => {
+    const filled = { text: "Persona: Referral clerk", owner: "BA assistant", confirmBy: "The author corrects the draft where it is wrong" };
+    renderWithQuery(<AssumptionsSection assumptions={[{ ...filled, source: "workflow:referral" }, { ...filled, text: "Goal: one match", source: "REQ-1" }]} revision={1} slug="hop" />);
+    const sources = screen.getAllByTestId("assumption-source");
+    expect(sources.map((s) => s.textContent)).toEqual(["From referral", "From REQ-1"]);
+    expect(sources.map((s) => within(s).getByRole("link").getAttribute("href"))).toEqual(["/projects/hop/workflows/referral", "/projects/hop/requirements/REQ-1"]);
+  });
 });
 
 describe("a requirement's Decisions tab", () => {
