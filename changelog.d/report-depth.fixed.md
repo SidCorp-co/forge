@@ -1,1 +1,0 @@
-**Report templates now write their summary, risks and recommendations wherever they run.** Progress reads a chosen period against the one before, with a one-line finding per chart, and line and burndown charts draw from new issue-flow and burndown reports.

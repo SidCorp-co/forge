@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.216] - 2026-10-09
+
+Line and burndown reports, template narratives, progress compared across periods
+
+### Fixed
+
+- **Report templates now write their summary, risks and recommendations wherever they run.** Progress reads a chosen period against the one before, with a one-line finding per chart, and line and burndown charts draw from new issue-flow and burndown reports.
+
 ## [0.4.0-dev.215] - 2026-10-09
 
 Requirement coverage counts each criterion's newest live verdict; stale traces re-tie
