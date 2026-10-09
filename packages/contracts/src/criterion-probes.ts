@@ -78,7 +78,7 @@ const requestProbeSchema = z.strictObject({
 			.optional(),
 		body: z.string().max(PROBE_LIMITS.body).optional(),
 		as: z.enum(PROBE_CALLERS),
-		/** The declared service whose origin the path is on; absent, the environment's own `url`. */
+		/** The declared service that answers the path; absent, the production environment's own `url`. */
 		service: z
 			.string()
 			.regex(SERVICE_NAME, "a service the project document declares (a lowercase slug)")
@@ -134,6 +134,8 @@ export const PROBE_REFUSAL_CODES = [
 	"VERDICT_PROBE_REQUIRED",
 	/** A probe sent on a code property, which the review judges against the diff. */
 	"VERDICT_PROBE_CODE_PROPERTY",
+	/** A request the origin it would be replayed against does not answer, or one whose origin is unknown. */
+	"VERDICT_PROBE_ROUTE",
 ] as const;
 export type ProbeRefusalCode = (typeof PROBE_REFUSAL_CODES)[number];
 
@@ -173,4 +175,75 @@ export interface ProbeReplayRecord {
 	reopened: string[];
 	/** The claimed issues it kept from closing: a probe of theirs could not run. */
 	held: string[];
+}
+
+/**
+ * The production environment a request probe is replayed against, as the project document declares
+ * it: its own `url`, its `services`, and `routes`, the path prefixes each service answers. The
+ * `url` answers every path no service's prefix claims.
+ */
+export interface ProbeRouting {
+	environment: string;
+	url: string | null;
+	services: Readonly<Record<string, string>>;
+	routes: Readonly<Record<string, readonly string[]>> | null;
+}
+
+/** Whether `prefix` claims `path`: the path is the prefix, or continues it past a `/`. */
+function claims(prefix: string, path: string): boolean {
+	const bare = path.split(/[?#]/u)[0] ?? path;
+	if (prefix.endsWith("/")) return bare.startsWith(prefix) || bare === prefix.slice(0, -1);
+	return bare === prefix || bare.startsWith(`${prefix}/`);
+}
+
+/** The service whose longest prefix claims `path`, or null where the environment's `url` answers it. */
+export function serviceRouting(
+	path: string,
+	routes: Readonly<Record<string, readonly string[]>>,
+): { service: string; prefix: string } | null {
+	let best: { service: string; prefix: string } | null = null;
+	for (const [service, prefixes] of Object.entries(routes)) {
+		for (const prefix of prefixes) {
+			if (claims(prefix, path) && prefix.length > (best?.prefix.length ?? -1)) {
+				best = { service, prefix };
+			}
+		}
+	}
+	return best;
+}
+
+/**
+ * Why a request probe could not be replayed where it says, or null where the origin it resolves to
+ * answers its path (ISS-470): a service the environment does not declare, an environment with
+ * services but no `routes` (which origin answers a path is then unknown, and is never guessed from
+ * the path), a path another origin answers, and an environment with no origin at all.
+ */
+export function probeRouteFault(
+	request: { path: string; service?: string | undefined },
+	routing: ProbeRouting,
+): string | null {
+	const env = `production environment \`${routing.environment}\``;
+	const declared = Object.keys(routing.services);
+	const { service, path } = request;
+	if (service !== undefined && !declared.includes(service)) {
+		const known = declared.length > 0 ? `it declares ${declared.join(", ")}` : "it declares none";
+		return `${env} declares no service \`${service}\` (${known}); name one of those, or leave \`service\` out to use its \`url\``;
+	}
+	if (declared.length > 0 && routing.routes === null) {
+		return `${env} declares services (${declared.join(", ")}) and no \`routes\`, so which origin answers \`${path}\` is not known; declare \`environments.${routing.environment}.routes\`, the path prefixes each service answers (for example { "${declared[0]}": ["/api"] })`;
+	}
+	const owner = routing.routes === null ? null : serviceRouting(path, routing.routes);
+	if (service === undefined) {
+		if (owner !== null) {
+			return `\`${path}\` is answered by service \`${owner.service}\` (it routes \`${owner.prefix}\`), not by ${env}'s \`url\`; send \`service: "${owner.service}"\``;
+		}
+		if (routing.url === null) {
+			return `${env} declares no \`url\`, so a probe naming no service has no origin to be replayed against`;
+		}
+		return null;
+	}
+	if (owner?.service === service) return null;
+	const answeredBy =
+		owner === null ? `${env}'s \`url\`, which answers every path no service routes; leave \`service\` out` : `service \`${owner.service}\` (it routes \`${owner.prefix}\`); send \`service: "${owner.service}"\``;
+	return `service \`${service}\` does not route \`${path}\`: it is answered by ${answeredBy}`;
 }

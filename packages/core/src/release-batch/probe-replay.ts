@@ -94,7 +94,12 @@ async function originsOf(projectId: string): Promise<ReplayOrigins | string> {
     return 'the project declares no production environment a release deploys, so there is no served build to replay against';
   }
   const { name, declaration } = decl.production;
-  return { environment: name, url: declaration.url ?? null, services: declaration.services ?? {} };
+  return {
+    environment: name,
+    url: declaration.url ?? null,
+    services: declaration.services ?? {},
+    routes: declaration.routes ?? null,
+  };
 }
 
 /**

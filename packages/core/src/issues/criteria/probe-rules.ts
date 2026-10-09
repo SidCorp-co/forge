@@ -9,13 +9,18 @@
  *   a probe carries no credential, and no header that holds one   VERDICT_PROBE_SECRET
  *   a code property keeps no probe of the running build           VERDICT_PROBE_CODE_PROPERTY
  *   a pass or short on an observable criterion rests on a probe   VERDICT_PROBE_REQUIRED
- *   a request names only a service the project document declares  VERDICT_PROBE_SHAPE
+ *   a request names the origin that answers its path               VERDICT_PROBE_ROUTE
  *
  * A criterion no design classes owes no probe: the verdict's record says so (`probeNote`), so the
  * exemption is read on every verdict it covers rather than assumed.
  */
 
-import type { CriterionProbe, ProbeRefusalCode } from '@forge/contracts/criterion-probes';
+import {
+  type CriterionProbe,
+  type ProbeRefusalCode,
+  type ProbeRouting,
+  probeRouteFault,
+} from '@forge/contracts/criterion-probes';
 import type { CriterionClass } from '@forge/contracts/issue-design';
 import { containsSecret } from '@forge/observability';
 import { jsonPointer } from '../../lib/refusal.js';
@@ -68,22 +73,22 @@ export function probeSecretRefusals(probe: CriterionProbe): ProbeRefusal[] {
 }
 
 /**
- * The refusal for a request naming a service no environment of the project document declares, or
- * null: a deploy's replay joins the path to that service's origin (ISS-470), so an unknown one could
- * never be replayed.
+ * The refusal for a request the production origin it resolves to would not answer, or null: a
+ * deploy's replay sends it to the environment's `url`, or to the service it names (ISS-470), so a
+ * path another origin answers would fail there and reopen an issue that holds.
  */
-export function probeServiceRefusal(
+export function probeRouteRefusal(
   probe: CriterionProbe,
-  declared: readonly string[],
+  routing: ProbeRouting,
 ): ProbeRefusal | null {
-  const service = probe.kind === 'request' ? probe.request.service : undefined;
-  if (service === undefined || declared.includes(service)) return null;
-  const known = declared.length > 0 ? `it declares ${declared.join(', ')}` : 'it declares none';
-  return {
-    code: 'VERDICT_PROBE_SHAPE',
-    path: jsonPointer(['probe', 'request', 'service']),
-    detail: `service \`${service}\` is not one the project document declares on an environment (${known}); name one of those, or leave \`service\` out to use the environment's own \`url\``,
-  };
+  if (probe.kind !== 'request') return null;
+  const fault = probeRouteFault(probe.request, routing);
+  if (fault === null) return null;
+  const at =
+    probe.request.service === undefined
+      ? ['probe', 'request', 'path']
+      : ['probe', 'request', 'service'];
+  return { code: 'VERDICT_PROBE_ROUTE', path: jsonPointer(at), detail: fault };
 }
 
 export interface ProbeFacts {

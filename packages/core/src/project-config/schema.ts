@@ -17,6 +17,7 @@ import {
 } from '@forge/contracts/workflow-templates';
 import { z } from 'zod';
 import { agentAccessValues } from '../db/release-axes.js';
+import { routesFaults } from './environment-routes.js';
 import { releaseRuleSchema } from './release-rule-schema.js';
 import { surfacesSchema } from './surfaces-schema.js';
 
@@ -111,18 +112,31 @@ const runtimeProbeSchema = z.strictObject({
 export const DEPLOYMENT_TRIGGERS = ['on-land', 'on-request', 'provider'] as const;
 export type DeploymentTrigger = (typeof DEPLOYMENT_TRIGGERS)[number];
 
-const environmentSchema = z.strictObject({
-  tier: z.enum(['production', 'staging', 'preview', 'dev']),
-  deploysFrom: gitRef().optional(),
-  deployment: z.union([
-    z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
-    z.strictObject({ mode: z.literal('external') }),
-  ]),
-  services: sized(z.record(slug(), httpsUrl()), { max: 10 }).optional(),
-  testing: slug().optional(),
-  url: httpsUrl().optional(),
-  verification: z.strictObject({ runtime: z.array(runtimeProbeSchema).min(1).max(3) }).optional(),
-});
+// a path prefix a service answers on the environment: `/api`, `/version`, `/static/`
+const routePrefix = () =>
+  z
+    .string()
+    .max(200)
+    .regex(/^\/[^\s?#]*$/, 'a path prefix starting with `/` (no query or fragment)');
+const routeList = () => unique(z.array(routePrefix()).min(1).max(20));
+
+export const environmentSchema = z
+  .strictObject({
+    tier: z.enum(['production', 'staging', 'preview', 'dev']),
+    deploysFrom: gitRef().optional(),
+    deployment: z.union([
+      z.strictObject({ binding: uuid(), trigger: z.enum(DEPLOYMENT_TRIGGERS) }),
+      z.strictObject({ mode: z.literal('external') }),
+    ]),
+    services: sized(z.record(slug(), httpsUrl()), { max: 10 }).optional(),
+    testing: slug().optional(),
+    url: httpsUrl().optional(),
+    // which paths each declared service answers; the environment's `url` answers every other one.
+    // A kept request probe is replayed on the origin that answers its path (ISS-470).
+    routes: sized(z.record(slug(), routeList()), { max: 10 }).optional(),
+    verification: z.strictObject({ runtime: z.array(runtimeProbeSchema).min(1).max(3) }).optional(),
+  })
+  .superRefine(routesFaults);
 
 export const projectDocumentSchema = z.strictObject({
   $schema: z.literal(`${SCHEMA_BASE}/project-v1.json`),

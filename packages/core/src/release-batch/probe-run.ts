@@ -10,15 +10,13 @@ import {
   type CriterionProbe,
   criterionProbeSchema,
   type ProbeReplayOutcome,
+  type ProbeRouting,
+  probeRouteFault,
 } from '@forge/contracts/criterion-probes';
 import { sendKeptProbeRequest } from '../integrations/deploy/index.js';
 
-/** The production environment a replay runs against: its own origin and its declared services. */
-export interface ReplayOrigins {
-  environment: string;
-  url: string | null;
-  services: Readonly<Record<string, string>>;
-}
+/** The production environment a replay runs against: its origin, its services and their routes. */
+export type ReplayOrigins = ProbeRouting;
 
 /** The `Authorization` value a `replayer` request goes out with, or why there is none for `origin`. */
 export type ReplayCredential = (
@@ -51,22 +49,22 @@ function couldNotRun(detail: string, url: string | null = null): ProbeRun {
   return { outcome: 'could_not_run', detail, url };
 }
 
-/** The origin a request probe's path is joined to, or why there is none. */
+/**
+ * The origin a request probe's path is joined to, or why there is none: the same routing the verdict
+ * door holds a probe to, so one kept before the environment declared its routes is not sent to an
+ * origin that does not answer it and read as a regression.
+ */
 export function originOf(
   probe: Extract<CriterionProbe, { kind: 'request' }>,
   origins: ReplayOrigins,
 ): { ok: true; origin: string } | { ok: false; why: string } {
+  const fault = probeRouteFault(probe.request, origins);
+  if (fault !== null) return { ok: false, why: fault };
   const { service } = probe.request;
-  const declared = service === undefined ? origins.url : (origins.services[service] ?? null);
-  if (declared === null) {
-    const what =
-      service === undefined
-        ? 'declares no `url`'
-        : `declares no service \`${service}\` (it declares ${Object.keys(origins.services).join(', ') || 'none'})`;
-    return {
-      ok: false,
-      why: `production environment \`${origins.environment}\` ${what}, so the probe has no origin to be sent to`,
-    };
+  const declared = service === undefined ? origins.url : origins.services[service];
+  // probeRouteFault refuses a probe with no origin, so this holds whenever it answered null
+  if (!declared) {
+    throw new Error(`probe routing answered no fault and no origin for ${probe.request.path}`);
   }
   return { ok: true, origin: new URL(declared).origin };
 }

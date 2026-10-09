@@ -18,6 +18,7 @@
  * @direct-test-of packages/core/src/issues/criteria/probe-rules.ts
  * @direct-test-of packages/core/src/credentials/pat-format.ts
  * @direct-test-of packages/contracts/src/criterion-probes.ts
+ * @direct-test-of packages/core/src/project-config/schema.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -77,7 +78,9 @@ beforeEach(async () => {
   await seedProjectDocument(projectId, ownerId, {
     defaultBranch: 'main',
     promotions: held.document.promotions,
-    environments: { live: { ...live, url: `${APP}/`, services: { api: API } } },
+    environments: {
+      live: { ...live, url: `${APP}/`, services: { api: API }, routes: { api: ['/api/mine'] } },
+    },
   });
   answers = {};
   presented = [];
@@ -318,26 +321,68 @@ describe('what does not run, and whose credential goes where', () => {
   });
 });
 
-describe('the verdict door holds a probe to a service the document declares', () => {
-  it('refuses a request naming an undeclared service at its path', async () => {
-    const id = await fx.insertIssue('in_progress', undefined, true, ['the thing answers']);
-    await expect(
-      addVerdict({
-        issue: { id, projectId },
-        draft: {
-          criterion: 1,
-          verdict: 'pass',
-          reason: 'ran it',
-          identity: { kind: 'commit', sha: JUDGED },
-          evidence: ['judge.txt'],
-          probe: request('/api/thing', { service: 'admin' }) as never,
-        },
-        author: { userId: ownerId, deviceId: null, agency: 'human' },
-      }),
-    ).rejects.toThrow(
-      'VERDICT_PROBE_SHAPE: service `admin` is not one the project document declares on an environment (it declares api)',
+describe('the verdict door holds a request to the origin that answers its path', () => {
+  /** A forge-shaped production: the web on its `url`, the API as service `api`, routed or not. */
+  async function forgeShaped(routes: Record<string, string[]> | null): Promise<void> {
+    const [held] = await rows<{ document: ProjectDocument }>(
+      sql`SELECT document FROM project_config_documents WHERE project_id = ${projectId}`,
     );
-    expect(await verdictsOf(id)).toEqual([]);
+    const live = held?.document.environments.live;
+    if (!held || !live) throw new Error('no `live` environment to reshape');
+    const { routes: _drop, ...rest } = live;
+    await seedProjectDocument(projectId, ownerId, {
+      defaultBranch: 'main',
+      promotions: held.document.promotions,
+      environments: { live: { ...rest, ...(routes ? { routes } : {}) } },
+    });
+  }
+
+  async function passWith(probe: unknown): Promise<string> {
+    const id = await fx.insertIssue('in_progress', undefined, true, ['the thing answers']);
+    await addVerdict({
+      issue: { id, projectId },
+      draft: {
+        criterion: 1,
+        verdict: 'pass',
+        reason: 'ran it',
+        identity: { kind: 'commit', sha: JUDGED },
+        evidence: ['judge.txt'],
+        probe: probe as never,
+      },
+      author: { userId: ownerId, deviceId: null, agency: 'human' },
+    });
+    return id;
+  }
+
+  it('refuses an API path written with no service, naming the service that answers it', async () => {
+    await forgeShaped({ api: ['/api'] });
+    await expect(passWith(request('/api/issues/1'))).rejects.toThrow(
+      'VERDICT_PROBE_ROUTE: `/api/issues/1` is answered by service `api` (it routes `/api`), not by production environment `live`\'s `url`; send `service: "api"`',
+    );
+    const named = await passWith(request('/api/issues/1', { service: 'api' }));
+    expect(await verdictsOf(named)).toHaveLength(1);
+    await expect(passWith(request('/projects/x', { service: 'api' }))).rejects.toThrow(
+      'VERDICT_PROBE_ROUTE: service `api` does not route `/projects/x`',
+    );
+  });
+
+  it('refuses every request where production has services and declares no routes', async () => {
+    await forgeShaped(null);
+    await expect(passWith(request('/api/issues/1', { service: 'api' }))).rejects.toThrow(
+      'production environment `live` declares services (api) and no `routes`',
+    );
+  });
+
+  it('refuses a service the document does not declare, writing nothing', async () => {
+    await forgeShaped({ api: ['/api'] });
+    await expect(passWith(request('/api/thing', { service: 'admin' }))).rejects.toThrow(
+      'VERDICT_PROBE_ROUTE: production environment `live` declares no service `admin` (it declares api)',
+    );
+    const [count] = await rows<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM criterion_verdicts v JOIN issues i ON i.id = v.issue_id
+           WHERE i.project_id = ${projectId}`,
+    );
+    expect(count?.n).toBe(0);
   });
 });
 
