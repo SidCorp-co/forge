@@ -189,6 +189,15 @@ const CHECKS = [
     unit: 'providers',
   },
   {
+    axis: 'form',
+    label: 'skill-frontmatter',
+    layer: 'entry',
+    reads: "each shipped skill's own SKILL.md frontmatter, judged skill by skill",
+    cmd: ['node', 'scripts/check-skill-frontmatter.mjs', '--all'],
+    scanned: /^skill-frontmatter: (\d+) skill\(s\) scanned/m,
+    unit: 'skills',
+  },
+  {
     axis: 'relations',
     label: 'merged-at-writers',
     layer: 'shared',
@@ -312,6 +321,7 @@ const CI_COVERAGE = {
   'node scripts/check-lint-budget.mjs --all': 'verify',
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',
+  'node scripts/check-skill-frontmatter.mjs --all': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/check-merged-at-writers.mjs --all': 'verify',
   'node scripts/check-comment-budget.mjs --all': 'verify',

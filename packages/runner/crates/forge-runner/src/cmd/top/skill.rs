@@ -1,14 +1,16 @@
 //! Whether a master pane stands on the skill the running daemon ships.
 //!
-//! The daemon writes `assets/forge-master-skill.md` into a checkout's
-//! `.claude/skills/forge-master/SKILL.md` byte for byte at bind, at provision,
+//! The daemon writes the skill directory `assets/skills/forge-master/` into a
+//! checkout's `.claude/skills/forge-master/` byte for byte at bind, at provision,
 //! at every start and at pane placement (`daemon/master_skill.rs`), first
 //! adding `.claude/` to a checkout's exclude file where its git does not
 //! ignore that path, and refusing one where that cannot be done;
 //! `forge-runner status` reads what each write did. Its asset is an `include_str!`, so it sits verbatim in
-//! the daemon's executable: the installed file is that build's skill exactly
-//! when its bytes occur there. A copy that differs is one the daemon refused
-//! or failed to write, or one a daemon older than ISS-1357 left behind.
+//! the daemon's executable: the installed skill is that build's exactly when
+//! every file it ships, `SKILL.md` and each file it sends the model to, is
+//! there and its bytes occur in the executable. A copy that differs is one the
+//! daemon refused or failed to write, or one a daemon older than ISS-1357
+//! left behind.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -47,14 +49,58 @@ pub fn read(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Skill {
     } else {
         daemon_exe
             .as_ref()
-            .map(|exe| contains(exe, &installed))
+            .map(|exe| {
+                is_the_daemons(
+                    exe,
+                    &installed,
+                    forge_runner_core::daemon::master_skill::ASSET.as_bytes(),
+                )
+            })
             .map_err(Clone::clone)
+            .and_then(|entry| match entry {
+                true => companions_match(repo, daemon_exe),
+                false => Ok(false),
+            })
     };
     Skill::Read {
         path,
         bytes: installed.len(),
         written_ms,
         matches,
+    }
+}
+
+/// Whether every other file the skill ships is installed and is the daemon's:
+/// one that is missing or differs is drift as much as an entry file that does.
+fn companions_match(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Read<bool> {
+    let dir = forge_runner_core::daemon::master_skill::dir_in(repo);
+    let exe = daemon_exe.as_ref().map_err(Clone::clone)?;
+    for shipped in forge_runner_core::daemon::master_skill::FILES
+        .iter()
+        .filter(|f| f.path != "SKILL.md")
+    {
+        let path = shipped.path.split('/').fold(dir.clone(), |p, c| p.join(c));
+        match std::fs::read(&path) {
+            Ok(bytes) if !bytes.is_empty() && is_the_daemons(exe, &bytes, shipped.bytes) => {}
+            Ok(_) => return Ok(false),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(Unreadable::new(path.display().to_string(), e)),
+        }
+    }
+    Ok(true)
+}
+
+/// Whether `installed` is the daemon's copy of the file this build ships as
+/// `shipped`. Where the daemon carries this build's file, the installed one is
+/// that file exactly: bytes the daemon holds elsewhere, another shipped file's
+/// among them, are not it. Where it does not, the daemon is another build, whose
+/// copy this one cannot name, and the installed file is judged by whether it
+/// occurs in the daemon's executable at all.
+fn is_the_daemons(exe: &[u8], installed: &[u8], shipped: &[u8]) -> bool {
+    if contains(exe, shipped) {
+        installed == shipped
+    } else {
+        contains(exe, installed)
     }
 }
 
@@ -112,15 +158,31 @@ mod tests {
 
     const ASSET: &str = forge_runner_core::daemon::master_skill::ASSET;
 
+    /// A daemon executable carrying the entry file `asset` and every other file
+    /// the skill ships, each as its own run of rodata.
     fn exe_holding(asset: &str) -> Read<Arc<Vec<u8>>> {
         let mut bytes = b"\x7fELF padding padding ---\n".to_vec();
         bytes.extend_from_slice(asset.as_bytes());
-        bytes.extend_from_slice(b"\0more rodata");
+        bytes.extend_from_slice(b"\0more rodata\0");
+        for f in forge_runner_core::daemon::master_skill::FILES
+            .iter()
+            .filter(|f| f.path != "SKILL.md")
+        {
+            bytes.extend_from_slice(f.bytes);
+            bytes.extend_from_slice(b"\0more rodata\0");
+        }
         Ok(Arc::new(bytes))
     }
 
+    /// The whole shipped tree, with the entry file holding `text`.
     fn install(repo: &Path, text: &str) {
-        let p = forge_runner_core::daemon::master_skill::path_in(repo);
+        use forge_runner_core::daemon::master_skill::{dir_in, path_in, FILES};
+        for f in FILES.iter().filter(|f| f.path != "SKILL.md") {
+            let at = f.path.split('/').fold(dir_in(repo), |p, c| p.join(c));
+            std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+            std::fs::write(at, f.bytes).unwrap();
+        }
+        let p = path_in(repo);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
     }
@@ -146,6 +208,41 @@ mod tests {
             Ok(false),
             "a copy the daemon does not carry is drift"
         );
+    }
+
+    /// A file the skill sends the model to is part of the skill: one that is gone or
+    /// differs from the daemon's is drift though the entry file is current.
+    #[test]
+    fn a_reference_file_that_is_gone_or_differs_is_drift_though_the_entry_file_is_current() {
+        use forge_runner_core::daemon::master_skill::{dir_in, FILES};
+        let s = Scratch::new("top-skill-reference");
+        install(s.path(), ASSET);
+        let reference = FILES.iter().find(|f| f.path != "SKILL.md").unwrap();
+        let at = reference
+            .path
+            .split('/')
+            .fold(dir_in(s.path()), |p, c| p.join(c));
+        let judged = |repo: &Path| {
+            let Skill::Read { matches, .. } = read(repo, &exe_holding(ASSET)) else {
+                panic!()
+            };
+            matches
+        };
+        assert_eq!(judged(s.path()), Ok(true));
+
+        std::fs::write(&at, "an older build's reference").unwrap();
+        assert_eq!(judged(s.path()), Ok(false), "a reference that differs");
+
+        // Bytes the daemon does carry, but not as this file: the entry file's own.
+        std::fs::write(&at, ASSET).unwrap();
+        assert_eq!(
+            judged(s.path()),
+            Ok(false),
+            "a reference holding another shipped file's bytes"
+        );
+
+        std::fs::remove_file(&at).unwrap();
+        assert_eq!(judged(s.path()), Ok(false), "a reference that is gone");
     }
 
     /// Criterion 22. An unreadable daemon file is carried as unreadable, not as

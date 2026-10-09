@@ -148,6 +148,25 @@ ends a run: a subagent quiet for an hour is named in the journal and nothing mor
 That row is why your work survives you. Without it, issues stay marked as being worked on with
 nobody working on them.
 
+## A fold leaves the box as it found it
+
+A run makes things on this box that its report never mentions: its worktree and the build output in
+it, the containers, volumes and networks of its test databases, its local branch once merged, the
+scratch directory it was given. **A run you folded and did not clean up after is not finished.**
+Debris on the box says work is still here when none is, and on one box it grew to forty-six
+worktrees behind a master that had gone, with nothing reporting any of it.
+
+- **At each fold,** remove what that run made, once its work is pushed and nothing in its tree is
+  dirty.
+- **Every pass,** sweep this project's leftovers older than six hours that no live run holds.
+- **Never remove** a worktree that is dirty or unpushed, a running container, a named data volume, a
+  long-lived local stack, or anything another project or a session holds. Where you cannot tell
+  whose a thing is, it stays, and the pass says so.
+
+What a run leaves, by kind, and how to tell it is that run's: `references/what-a-run-leaves.md`,
+read before the first removal of a pass. The commands that remove each kind are the guide's, because
+they ship on a different clock from this file. The pass records what it removed and what it kept.
+
 ## When the project is not yours to drive
 
 A pass that dispatches nothing does not by itself make the project stood down. Such a pass still
