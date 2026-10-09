@@ -3,6 +3,7 @@ import type { BodyFormat } from '../body/formats.js';
 import { prepareBody } from '../body/prepare.js';
 import { db, type Tx } from '../db/client.js';
 import { comments, issues, users } from '../db/schema.js';
+import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { type CommentCursor, encodeCommentCursor } from './cursor.js';
 import { screenAgentComment, screenRecordFence } from './screen.js';
 
@@ -149,6 +150,47 @@ export async function loadCommentForAccess(commentId: string): Promise<CommentAc
   return row;
 }
 
+/** Why a reply's parent was refused: no such comment, or one that sits on another issue. */
+export class CommentParentRefused extends Error {
+  constructor(readonly reason: 'not_found' | 'other_issue') {
+    super(
+      reason === 'not_found'
+        ? 'parent comment not found'
+        : 'parent comment belongs to a different issue',
+    );
+    this.name = 'CommentParentRefused';
+  }
+}
+
+/** A reply hangs off a comment of the same issue; the database trigger bounds depth and nothing else. */
+async function assertParentOnIssue(parentId: string, issueId: string, tx: Tx): Promise<void> {
+  const [parent] = await tx
+    .select({ issueId: comments.issueId })
+    .from(comments)
+    .where(eq(comments.id, parentId))
+    .limit(1);
+  if (!parent) throw new CommentParentRefused('not_found');
+  if (parent.issueId !== issueId) throw new CommentParentRefused('other_issue');
+}
+
+/** Someone who is neither a comment's author nor an admin of its project tried to change it. */
+export class CommentChangeForbidden extends Error {
+  constructor() {
+    super('not comment author or project admin');
+    this.name = 'CommentChangeForbidden';
+  }
+}
+
+/** Editing or deleting a comment belongs to its author and to an admin of its project. */
+export async function assertMayChangeComment(
+  userId: string,
+  comment: { authorId: string; projectId: string },
+): Promise<void> {
+  if (comment.authorId === userId) return;
+  const access = await effectiveProjectRole(userId, comment.projectId);
+  if (!projectRoleAtLeast(access?.role ?? null, 'admin')) throw new CommentChangeForbidden();
+}
+
 export type NewComment = {
   issueId: string;
   authorId: string;
@@ -207,6 +249,7 @@ async function writtenByAnAgent(
 export async function insertComment(input: NewComment, tx: Tx = db): Promise<WrittenComment> {
   const prepared = prepareBody({ raw: input.body, format: input.format });
   const fence = screenRecordFence(input.body, input.declaresRecordRoute === true);
+  if (input.parentId) await assertParentOnIssue(input.parentId, input.issueId, tx);
   const context = await loadStageContext(input.issueId, tx);
   if (context && (await writtenByAnAgent(input, tx))) {
     await screenAgentComment(context.projectId, input.body, tx);

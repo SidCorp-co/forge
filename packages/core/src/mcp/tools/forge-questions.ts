@@ -5,7 +5,7 @@ import {
   optionBindings,
   optionExecutors,
   questionBlockerKinds,
-} from '../../db/schema-questions.js';
+} from '../../db/question-vocabulary.js';
 import { askAs, readQuestionFor, readQuestionsForIssue } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
 import {

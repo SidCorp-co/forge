@@ -10,6 +10,9 @@
 
 ### Security
 
+- **A viewer can no longer deploy, cancel or roll back a Coolify binding.** The web API let any project member through; it now asks for the member role, as the agent tool always did, and says which role was held.
+- **Another person's comment cannot be rewritten by an agent, and a reply cannot hang under another issue.** Agents could edit any comment and name any parent; editing now needs the author or a project admin, as in the web.
+- **A step handoff cannot overwrite another project's issue, and a viewer cannot mark feedback reviewed through an agent tool.** Both are refused by name, and the other issue's handoff is left as it was.
 - **Signing up with an email already registered says so.** It used to fail as a server error, and the failed save's values, including the typed password's hash, could reach logs, error reports and error messages; none do now.
 - **A failed save's values stay out of every error Forge reports.** They no longer reach a log line, an error report, a tool's reply or a stream's error, however the error's text is copied, re-encoded or rendered.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled

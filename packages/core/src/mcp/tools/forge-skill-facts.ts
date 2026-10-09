@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jobTypes } from '../../db/schema.js';
+import { jobTypes } from '../../db/job-vocabulary.js';
 import { getResolvedFact, listResolvedFacts } from '../../prompt/facts/resolve.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsMember, zodToMcpSchema } from './lib.js';

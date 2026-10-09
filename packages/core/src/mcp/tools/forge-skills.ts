@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { issueStatuses, skillTargets } from '../../db/schema.js';
+import { issueStatuses } from '../../db/issue-vocabulary.js';
+import { skillTargets } from '../../db/skill-vocabulary.js';
 import {
   loadProjectSkillSyncStatus,
   resolveEffectiveSkillsForProject,

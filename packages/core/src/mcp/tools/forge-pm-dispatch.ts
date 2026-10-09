@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jobTypes, modelTiers } from '../../db/schema.js';
+import { jobTypes, modelTiers } from '../../db/job-vocabulary.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { dispatchPmJob } from '../../pm/dispatch-service.js';
 

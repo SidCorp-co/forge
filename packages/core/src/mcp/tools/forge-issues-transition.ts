@@ -1,4 +1,4 @@
-import type { IssueStatus, WaitingKind } from '../../db/schema.js';
+import type { IssueStatus, WaitingKind } from '../../db/issue-vocabulary.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { principalActor } from './lib.js';
 

@@ -10,7 +10,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const SOURCES = {
   constant: 'packages/core/src/pipeline/autonomous-mode.ts',
-  schema: 'packages/core/src/db/schema.ts',
+  schema: 'packages/core/src/db/issue-vocabulary.ts',
+  jobs: 'packages/core/src/db/job-vocabulary.ts',
   steps: 'packages/core/src/pipeline/registry.ts',
 };
 
@@ -63,9 +64,9 @@ const GATE_BYPASSING_JOB_TYPES = ['pm', 'custom'];
 
 function stepVocabulary() {
   const all = arrayLiterals(
-    read(SOURCES.schema),
+    read(SOURCES.jobs),
     /export const jobTypes = \[([^\]]*)\]/,
-    SOURCES.schema,
+    SOURCES.jobs,
     'jobTypes',
   );
   const caps = read(SOURCES.steps);

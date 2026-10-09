@@ -10,9 +10,9 @@
 // and a tool the agent can call is by definition agent-written.
 
 import { z } from 'zod';
-import { phaseJournalOutcomes } from '../../db/schema-journal.js';
+import { phaseJournalOutcomes } from '../../db/journal-vocabulary.js';
 import { endPhase, resumePoint, startPhase } from '../../pipeline/phase-journal.js';
-import { findRunProjectId } from '../../pipeline/runs.js';
+import { readPipelineRun } from '../../pipeline/runs.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';
 import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 
@@ -29,10 +29,11 @@ const inputSchema = z.object({
   note: z.string().max(4000).optional(),
 });
 
-async function assertRunInProject(runId: string, projectId: string): Promise<void> {
-  const owner = await findRunProjectId(runId);
-  if (!owner) throw new Error('NOT_FOUND: pipeline run not found');
-  if (owner !== projectId) throw new Error('NOT_FOUND: pipeline run not found in project');
+async function loadRunInProject(runId: string, projectId: string) {
+  const run = await readPipelineRun(runId);
+  if (!run) throw new Error('NOT_FOUND: pipeline run not found');
+  if (run.projectId !== projectId) throw new Error('NOT_FOUND: pipeline run not found in project');
+  return run;
 }
 
 export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -43,7 +44,7 @@ export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = inputSchema.parse(args);
     await assertPrincipalIsWriter(ctx.principal, input.projectId);
-    await assertRunInProject(input.runId, input.projectId);
+    const run = await loadRunInProject(input.runId, input.projectId);
 
     if (input.action === 'resume_point') {
       const row = await resumePoint(input.runId);
@@ -59,7 +60,7 @@ export const forgePhaseTool: ContextScopedMcpToolFactory = (ctx) => ({
         projectId: input.projectId,
         runId: input.runId,
         phase: input.phase,
-        issueId: input.issueId ?? null,
+        issueId: input.issueId ?? run.issueId ?? null,
         jobId: input.jobId ?? null,
         agentSessionId: input.agentSessionId ?? null,
       });

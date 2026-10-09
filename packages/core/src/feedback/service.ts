@@ -5,7 +5,7 @@
  * slug in, so a caller reading the feed never has to resolve one itself.
  */
 
-import { and, count, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type FeedbackKind,
@@ -47,7 +47,27 @@ export async function countReportsForJob(jobId: string): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-export async function listReports(conditions: Array<SQL | undefined>, limit: number) {
+export type ReportFilters = {
+  kind?: FeedbackKind | undefined;
+  target?: FeedbackTarget | undefined;
+  severity?: FeedbackSeverity | undefined;
+  reviewed?: boolean | undefined;
+};
+
+/** What a stamp matches: one report by id, or every report sharing a signal key, inside these projects. */
+export type ReviewMatch =
+  | { projectIds: string[]; reportId: string }
+  | { projectIds: string[]; signalKey: string };
+
+export async function listReports(projectIds: string[], filters: ReportFilters, limit: number) {
+  const conditions: Array<SQL | undefined> = [
+    inArray(feedbackReports.projectId, projectIds),
+    filters.kind ? eq(feedbackReports.kind, filters.kind) : undefined,
+    filters.target ? eq(feedbackReports.target, filters.target) : undefined,
+    filters.severity ? eq(feedbackReports.severity, filters.severity) : undefined,
+    filters.reviewed === true ? isNotNull(feedbackReports.reviewedAt) : undefined,
+    filters.reviewed === false ? isNull(feedbackReports.reviewedAt) : undefined,
+  ];
   return db
     .select(reportColumns)
     .from(feedbackReports)
@@ -87,11 +107,29 @@ export async function insertReport(values: NewFeedbackReport): Promise<string | 
   return row?.id ?? null;
 }
 
-export async function stampReviewed(scope: Array<SQL | undefined>, patch: Record<string, unknown>) {
+/**
+ * Stamps `reviewedAt` on every report `match` names. `reviewed: false` clears the stamp and the
+ * link together; `reviewed: true` leaves an existing link untouched unless `linkedIssueId` names a
+ * new one.
+ */
+export async function stampReviewed(
+  match: ReviewMatch,
+  patch: { reviewed: boolean; linkedIssueId?: string | undefined },
+) {
+  const set: { reviewedAt: Date | null; linkedIssueId?: string | null } = {
+    reviewedAt: patch.reviewed ? new Date() : null,
+  };
+  if (!patch.reviewed) set.linkedIssueId = null;
+  else if (patch.linkedIssueId !== undefined) set.linkedIssueId = patch.linkedIssueId;
+
+  const target =
+    'reportId' in match
+      ? eq(feedbackReports.id, match.reportId)
+      : eq(feedbackReports.signalKey, match.signalKey);
   return db
     .update(feedbackReports)
-    .set(patch)
-    .where(and(...scope))
+    .set(set)
+    .where(and(inArray(feedbackReports.projectId, match.projectIds), target))
     .returning({
       id: feedbackReports.id,
       reviewedAt: feedbackReports.reviewedAt,

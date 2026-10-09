@@ -38,7 +38,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/run-evidence.ts': 'the seqs a run names',
   'devices/run-issue-return.ts': 'the seqs a run names',
   'devices/run-session.ts': 'the seqs a run names',
-  'feedback/routes.ts': 'the issue a feedback row links',
   'feedback/service.ts': 'by issue id',
   'integrations/github/contract-answer.ts': 'by issue id',
   'integrations/github/issue-link.ts': 'the seq a pull request names',
@@ -112,6 +111,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/driver-comparison.ts': 'per-project and per-driver counts, no issue identity',
   'pipeline/idle-issues.ts': 'reads only non-terminal statuses',
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
+  'pipeline/issue-context-store.ts': 'by issue id, a guard that the issue is in the project',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
   'pipeline/shipped-at.ts':

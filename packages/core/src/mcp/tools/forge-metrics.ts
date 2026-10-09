@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jobTypes } from '../../db/schema.js';
+import { jobTypes } from '../../db/job-vocabulary.js';
 import { BUCKETS, METRICS, runTimeseries, stepDurationsForProject } from '../../metrics/queries.js';
 import {
   buildRetryRescuesReport,

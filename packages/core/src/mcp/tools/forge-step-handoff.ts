@@ -3,6 +3,7 @@ import { stepHandoffSchema } from '../../memory/step-handoff-schema.js';
 import {
   deleteIssueContext,
   getIssueContexts,
+  IssueNotInProject,
   writeIssueContext,
 } from '../../pipeline/issue-context-store.js';
 import {
@@ -51,7 +52,16 @@ export const forgeStepHandoffWriteTool: ContextScopedMcpToolFactory = ({ princip
   handler: async (args) => {
     const input = writeInputSchema.parse(args);
     await assertPrincipalIsWriter(principal, input.projectId);
-    return writeIssueContext({ ...input, kind: 'handoff', actor: principalHookActor(principal) });
+    try {
+      return await writeIssueContext({
+        ...input,
+        kind: 'handoff',
+        actor: principalHookActor(principal),
+      });
+    } catch (err) {
+      if (err instanceof IssueNotInProject) throw new Error(`NOT_FOUND: ${err.message}`);
+      throw err;
+    }
   },
 });
 

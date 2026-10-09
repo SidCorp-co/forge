@@ -25,7 +25,13 @@ const insert = vi.fn(() => ({
   }),
 }));
 const del = vi.fn(() => ({ where: () => ({ returning: async () => deletedRows }) }));
-vi.mock('../db/client.js', () => ({ db: { insert, delete: del } }));
+let issueRows: unknown[] = [{ id: '11111111-1111-4111-8111-111111111111' }];
+const select = vi.fn(() => ({
+  from: () => ({
+    where: () => ({ limit: async () => issueRows }),
+  }),
+}));
+vi.mock('../db/client.js', () => ({ db: { insert, delete: del, select } }));
 
 const refreshModuleKnowledgeForIssue = vi.fn(async () => undefined);
 vi.mock('../labels/module-knowledge-refresh.js', () => ({
@@ -33,7 +39,9 @@ vi.mock('../labels/module-knowledge-refresh.js', () => ({
 }));
 
 const { hooks } = await import('./hooks.js');
-const { deleteIssueContext, writeIssueContext } = await import('./issue-context-store.js');
+const { deleteIssueContext, IssueNotInProject, writeIssueContext } = await import(
+  './issue-context-store.js'
+);
 
 /** Every `contractInputChanged` this suite heard, on the one bus the writer emits to. */
 const heard: { projectId: string; issueId?: string; reason: string }[] = [];
@@ -79,6 +87,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   upsertRows = [{ id: 'ctx-1', createdAt: new Date(), updatedAt: new Date() }];
   deletedRows = [{ id: 'ctx-1' }];
+  issueRows = [{ id: '11111111-1111-4111-8111-111111111111' }];
 });
 
 describe('writing a handoff', () => {
@@ -87,6 +96,15 @@ describe('writing a handoff', () => {
     expect(heard).toEqual([
       { projectId: PROJECT_ID, issueId: ISSUE_ID, reason: 'step handoff written' },
     ]);
+  });
+});
+
+describe('writing a handoff against an issue of another project', () => {
+  it('is refused by name before any row is written or announced', async () => {
+    issueRows = [];
+    await expect(writeIssueContext(handoff as never)).rejects.toBeInstanceOf(IssueNotInProject);
+    expect(insert).not.toHaveBeenCalled();
+    expect(heard).toEqual([]);
   });
 });
 

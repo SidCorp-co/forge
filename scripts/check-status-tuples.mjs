@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG_PATH = join(ROOT, '.forge', 'conformance.json');
 const VOCABULARIES = {
-  issue: { file: 'packages/core/src/db/schema.ts', symbol: 'issueStatuses' },
-  job: { file: 'packages/core/src/db/schema.ts', symbol: 'jobStatuses' },
+  issue: { file: 'packages/core/src/db/issue-vocabulary.ts', symbol: 'issueStatuses' },
+  job: { file: 'packages/core/src/db/job-vocabulary.ts', symbol: 'jobStatuses' },
   session: { file: 'packages/core/src/db/session-vocabulary.ts', symbol: 'agentSessionStatuses' },
 };
 const DISCRIMINATOR = {

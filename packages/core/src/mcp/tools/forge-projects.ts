@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type ProjectMemberRole, projectKinds } from '../../db/schema.js';
+import { type ProjectMemberRole, projectKinds } from '../../db/project-vocabulary.js';
 import {
   effectiveProjectRole,
   loadOrgRole,

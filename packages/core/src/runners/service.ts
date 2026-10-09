@@ -10,6 +10,9 @@ import { db } from '../db/client.js';
 import { type RunnerStatus, type RunnerType, runners } from '../db/schema.js';
 import { isUniqueViolation, pgConstraintName } from '../lib/db-errors.js';
 
+/** One runner row as the table holds it. */
+export type RunnerRow = typeof runners.$inferSelect;
+
 export type RunnerQuery = {
   visibleProjectIds: string[];
   projectId?: string | undefined;

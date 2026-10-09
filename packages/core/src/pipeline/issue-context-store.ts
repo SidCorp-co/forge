@@ -5,6 +5,7 @@ import {
   type IssueStepContextKind,
   issueStepContextKinds,
   issueStepContexts,
+  issues,
   type StepVerdict,
 } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
@@ -50,6 +51,28 @@ const scopeSchema = z.object({
   step: z.string().trim().min(1).max(64).optional(),
   attempt: z.number().int().positive().default(1),
 });
+/** A write named an issue that belongs to another project than the one it was authorised against. */
+export class IssueNotInProject extends Error {
+  constructor(issueId: string) {
+    super(`issue ${issueId} does not belong to the project this write was made against`);
+    this.name = 'IssueNotInProject';
+  }
+}
+
+/**
+ * The upsert key is `(issueId, step, attempt)` and carries no project, so a write authorised
+ * against project A that names an issue of project B would replace B's handoff. The caller's role
+ * is checked against `projectId`; this checks that the issue is in it.
+ */
+async function assertIssueInProject(issueId: string, projectId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: issues.id })
+    .from(issues)
+    .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
+    .limit(1);
+  if (!row) throw new IssueNotInProject(issueId);
+}
+
 export type IssueContextScope = z.infer<typeof scopeSchema>;
 
 const writeInputBaseSchema = scopeSchema.extend({
@@ -86,6 +109,7 @@ export async function writeIssueContext(
   input: WriteIssueContextInput,
 ): Promise<WriteIssueContextResult> {
   const validated = writeIssueContextInputSchema.parse(input);
+  await assertIssueInProject(validated.issueId, validated.projectId);
 
   if (validated.kind === 'handoff') {
     if (!validated.step) {
