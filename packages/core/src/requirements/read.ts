@@ -46,6 +46,7 @@ import { tracesOf } from './criterion-traces.js';
 import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
+import { listRowsOf } from './list-rows.js';
 import { dedupCheckOf } from './near-duplicate.js';
 import { pictureRowsOf } from './picture-read.js';
 import { areasOf } from './placement.js';
@@ -176,31 +177,9 @@ export async function listRequirementsAs(
   projectId: string,
 ): Promise<RequirementSummary[]> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
-  // the rows carry their areas' names and whether a runner is bound to the project, so neither is a
-  // statement of its own on a read every page load's Needs-you count makes once per project
-  const held = await db
-    .select({
-      row: requirements,
-      areaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
-                  WHERE a.id = ${requirements.areaId} AND a.project_id = ${projectId})`,
-      proposedAreaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
-                  WHERE a.id = ${requirements.proposedAreaId} AND a.project_id = ${projectId})`,
-      runnerBound: sql<boolean>`EXISTS (SELECT 1 FROM runners WHERE project_id = ${projectId})`,
-    })
-    .from(requirements)
-    .where(eq(requirements.projectId, projectId))
-    .orderBy(desc(requirements.reqSeq));
-  if (held.length === 0) return [];
-  const rows = held.map((h) => h.row);
+  const { rows, areas, runnerBound } = await listRowsOf(projectId);
+  if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const areas = new Map<string, string>();
-  for (const h of held) {
-    if (h.row.areaId && h.areaName !== null) areas.set(h.row.areaId, h.areaName);
-    if (h.row.proposedAreaId && h.proposedAreaName !== null) {
-      areas.set(h.row.proposedAreaId, h.proposedAreaName);
-    }
-  }
-  const runnerBound = held[0]?.runnerBound === true;
   const [latest, standings] = await Promise.all([
     db
       .selectDistinctOn([requirementRevisions.requirementId], {

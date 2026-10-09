@@ -288,7 +288,9 @@ export async function abandonRoom(
     );
   }
   const unreported =
-    asked === null ? '' : `; the merge into ${room.settle?.into} asked at ${asked} was never reported`;
+    asked === null
+      ? ''
+      : `; the merge into ${room.settle?.into} asked at ${asked} was never reported`;
   const why = `${reason ?? 'abandoned by a person'}${unreported}`.slice(0, PREVIEW_LIMITS.detail);
   movedRow(
     await transition(db, ROOM_MACHINE, {
@@ -305,12 +307,7 @@ export async function abandonRoom(
       source: SOURCE,
     }),
   );
-  await closeAbandoned(
-    preview,
-    actor,
-    `the POC room was abandoned: ${why}`,
-    true,
-  );
+  await closeAbandoned(preview, actor, `the POC room was abandoned: ${why}`, true);
   return readRoom(room.id, actor);
 }
 

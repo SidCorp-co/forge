@@ -195,8 +195,13 @@ const proposedSuggestionsOf = (ids: string[]) =>
  * act (FB-77); a runner briefly offline still carries its master.
  */
 const runnerBoundIn = async (projectId: string): Promise<boolean> =>
-  (await db.select({ id: runners.id }).from(runners).where(eq(runners.projectId, projectId)).limit(1))
-    .length > 0;
+  (
+    await db
+      .select({ id: runners.id })
+      .from(runners)
+      .where(eq(runners.projectId, projectId))
+      .limit(1)
+  ).length > 0;
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
