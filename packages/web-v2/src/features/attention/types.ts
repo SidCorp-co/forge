@@ -52,4 +52,3 @@ export interface AttentionView extends Omit<AttentionResponse, "total"> {
   offlineRunners: AttentionItem[];
 }
 
-export type AttentionRead = "pending" | "failed" | "read";

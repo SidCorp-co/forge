@@ -215,7 +215,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   // Rail project context — switcher glyph + the console rollup (liveRuns /
   // openIssues badges). See useRailProjectData.
-  const { projectMark, switcherProjects, railConsole, compactActiveProject, togglePin } =
+  const { projectMark, switcherProjects, openWork, compactActiveProject, togglePin } =
     useRailProjectData({ railSlug, railProject, activeOrgId });
 
   // Compact-rail tiers — derived from the shared nav model (ISS-433: never
@@ -225,8 +225,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [attentionBadge],
   );
   const compactProjectItems = useMemo<RailItem[] | null>(
-    () => (compactActiveProject ? projectRailItems(railConsole?.openIssues) : null),
-    [compactActiveProject, railConsole],
+    () => (compactActiveProject ? projectRailItems(openWork) : null),
+    [compactActiveProject, openWork],
   );
 
   function navigate(key: string) {
@@ -256,7 +256,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // project's ProjectMark glyph for parity with the desktop rail/flyout
   // (folder icon fallback when no rail project is resolved yet).
   const bottomItems: BottomTabItem[] = useMemo(() => {
-    const items = bottomTabItems(slug, attentionBadge, railConsole?.openIssues);
+    const items = bottomTabItems(slug, attentionBadge, openWork);
     if (!slug || !projectMark) return items;
     return items.map((it) =>
       it.key === "switcher"
@@ -274,7 +274,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           }
         : it,
     );
-  }, [slug, attentionBadge, railConsole, projectMark]);
+  }, [slug, attentionBadge, openWork, projectMark]);
 
   // Chat lights the "Chat" tab while the mobile chat overlay is open, taking
   // priority over the route-derived key (ISS-681).
@@ -420,7 +420,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attention={attentionBadge}
-        openIssuesBadge={railConsole?.openIssues}
+        openWork={openWork}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

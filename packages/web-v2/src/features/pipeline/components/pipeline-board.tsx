@@ -32,6 +32,7 @@ import {
   groupIssuesByLabel,
   runsByIssue,
 } from "../derive";
+import { queryRead } from "@/design/patterns/badge-read";
 import { useProjectHealth } from "@/features/projects/hooks";
 import { useProjectIssues, useProjectRuns } from "../hooks";
 import type { PipelineIssueRow } from "../types";
@@ -66,6 +67,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
   const issuesQ = useProjectIssues(projectId);
   const runsQ = useProjectRuns(projectId);
   const healthQ = useProjectHealth();
+  const healthRead = queryRead(healthQ);
   const work = healthQ.data?.find((h) => h.id === projectId)?.work;
 
   const runIndex = useMemo(() => runsByIssue(runsQ.data?.items), [runsQ.data]);
@@ -127,7 +129,7 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
         </KanbanBoard>
       ) : (
         <>
-          <BoardLeftOut leftOut={boardLeftOut(work)} figures={figures} slug={slug} />
+          <BoardLeftOut leftOut={boardLeftOut(work, healthRead)} figures={figures} slug={slug} />
         <KanbanBoard>
           {groups.map((group) => (
             <KanbanColumn

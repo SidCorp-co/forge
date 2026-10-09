@@ -7,6 +7,7 @@ import { useMemo } from "react";
 import { useProjectsConsole } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
+import { openWorkFigure } from "./nav-model";
 import type { SwitcherProject } from "./nav-rail-compact";
 
 export function useRailProjectData(opts: {
@@ -46,6 +47,7 @@ export function useRailProjectData(opts: {
             tint: g.tint,
             ink: g.ink,
             liveRuns: p.liveRuns,
+            liveRunsRead: p.healthRead,
             pinned: p.pinned,
           };
         }),
@@ -55,6 +57,13 @@ export function useRailProjectData(opts: {
     () => (railSlug ? projectsConsole.items.find((p) => p.slug === railSlug) ?? null : null),
     [projectsConsole.items, railSlug],
   );
+  // The Issues row's figure: the console's zero is a default until both reads are in.
+  const { projectsRead, healthRead } = projectsConsole;
+  const openWorkCount = railConsole?.openIssues ?? 0;
+  const openWork = useMemo(
+    () => openWorkFigure([projectsRead, healthRead], openWorkCount),
+    [projectsRead, healthRead, openWorkCount],
+  );
   const compactActiveProject = useMemo(
     () =>
       railProject && projectMark
@@ -63,16 +72,18 @@ export function useRailProjectData(opts: {
             initials: projectMark.initials,
             tint: projectMark.tint,
             ink: projectMark.ink,
-            liveRuns: railConsole?.liveRuns ?? 0,
+            liveRuns: railConsole ? railConsole.liveRuns : projectsConsole.healthRead === 'read' ? 0 : null,
+            liveRunsRead: projectsConsole.healthRead,
           }
         : null,
-    [railProject, projectMark, railConsole],
+    [railProject, projectMark, railConsole, projectsConsole.healthRead],
   );
 
   return {
     projectMark,
     switcherProjects,
     railConsole,
+    openWork,
     compactActiveProject,
     /** Pin/unpin passthrough for the compact rail's switcher flyout. */
     togglePin: projectsConsole.toggle,

@@ -3,7 +3,11 @@
 import { Stat } from '@/design';
 import { formatSpend } from '../derive';
 import type { WorkspaceTotals } from '../types';
+import { ReadFigure } from './read-figure';
 import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from '@forge/contracts/work-state';
+
+/** What the Issues figure counts: open work, in the words of the rail's row. */
+const OPEN_WORK_COUNTS = `in ${OPEN_WORK_LABEL.toLowerCase()}`;
 
 export interface StatsBandProps {
   totals: WorkspaceTotals;
@@ -20,14 +24,16 @@ export function StatsBand({ totals }: StatsBandProps) {
         title="Pipeline runs currently running or paused"
       >
         <span className="forge-pulse inline-block size-[7px] rounded-pill bg-accent" aria-hidden />
-        {totals.liveRuns} live runs
+        <ReadFigure value={totals.liveRuns} read={totals.healthRead} counts="live runs" /> live runs
       </span>
       <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
-        {totals.openIssues} {OPEN_WORK_LABEL.toLowerCase()}
+        <ReadFigure value={totals.openIssues} read={totals.healthRead} counts={OPEN_WORK_COUNTS} /> {OPEN_WORK_LABEL.toLowerCase()}
       </Stat>
-      <Stat icon="server">{totals.runners} runners</Stat>
+      <Stat icon="server">
+        <ReadFigure value={totals.runners} read={totals.healthRead} counts="runners" /> runners
+      </Stat>
       <Stat icon="dollar" title="Trailing 24h spend">
-        {formatSpend(totals.spend24hUsd)} / 24h
+        <ReadFigure value={totals.spend24hUsd} read={totals.healthRead} counts="dollars spent in 24h">{formatSpend}</ReadFigure> / 24h
       </Stat>
     </div>
   );

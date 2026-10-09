@@ -37,7 +37,7 @@ const CUT: StateFigure[] = [
 
 describe("what the board leaves out", () => {
   it("names Draft and Finished with the strip's counts, each a link to the list that holds them", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={WHOLE} slug="alpha" />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "read")} figures={WHOLE} slug="alpha" />);
     expect(screen.getByRole("link", { name: "Draft 4" })).toHaveAttribute(
       "href",
       "/projects/alpha/issues?filter=draft",
@@ -49,19 +49,26 @@ describe("what the board leaves out", () => {
     expect(screen.getByTestId("board-left-out")).toHaveTextContent("Not drawn on this board");
   });
 
-  it("names the states without a figure while the project's counts have not arrived", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(undefined)} figures={WHOLE} slug="alpha" />);
-    expect(screen.getByRole("link", { name: "Draft" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Finished" })).toBeInTheDocument();
+  it("names the states without a figure while the project's counts are on their way", () => {
+    render(<BoardLeftOut leftOut={boardLeftOut(undefined, "pending")} figures={WHOLE} slug="alpha" />);
+    expect(screen.getByLabelText("reading Draft's count")).toHaveTextContent("…");
+    expect(screen.getByLabelText("reading Finished's count")).toHaveTextContent("…");
+  });
+
+  it("says by name that the count could not be read, instead of naming the state with none", () => {
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "failed")} figures={WHOLE} slug="alpha" />);
+    expect(screen.getByLabelText("Draft's count could not be read")).toHaveTextContent("!");
+    expect(screen.getByLabelText("Finished's count could not be read")).toHaveTextContent("!");
+    expect(screen.queryByRole("link", { name: /Draft 4/ })).toBeNull();
   });
 
   it("says nothing about a cut page when every state's columns hold what the search counts", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={WHOLE} slug="alpha" />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "read")} figures={WHOLE} slug="alpha" />);
     expect(screen.queryByTestId("board-page-cut")).toBeNull();
   });
 
   it("names each state its page left short, with how many it drew of how many, and a link to them", () => {
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={CUT} slug="alpha" />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "read")} figures={CUT} slug="alpha" />);
     const cut = screen.getByTestId("board-page-cut");
     expect(cut).toHaveTextContent("The columns hold 200 of the 230 open issues");
     expect(screen.getByRole("link", { name: "In flight: 80 of 92 drawn" })).toHaveAttribute(
@@ -75,14 +82,14 @@ describe("what the board leaves out", () => {
 
   it("names only the state that is short, leaving the whole ones out", () => {
     const figures = WHOLE.map((f) => (f.state === "in_flight" ? { ...f, total: 12 } : f));
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={figures} slug="alpha" />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "read")} figures={figures} slug="alpha" />);
     expect(screen.getByRole("link", { name: "In flight: 9 of 12 drawn" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Open, not picked up:/ })).toBeNull();
   });
 
   it("says so when the columns hold more than the search counts, rather than reading it as a cut page", () => {
     const figures = WHOLE.map((f) => (f.state === "open" ? { ...f, drawn: 3 } : f));
-    render(<BoardLeftOut leftOut={boardLeftOut(WORK)} figures={figures} slug="alpha" />);
+    render(<BoardLeftOut leftOut={boardLeftOut(WORK, "read")} figures={figures} slug="alpha" />);
     expect(
       screen.getByRole("link", { name: "Open, not picked up: the board draws 3, Issues counts 2" }),
     ).toBeInTheDocument();

@@ -1,4 +1,5 @@
 import type { HealthKey } from '@/design';
+import type { QueryRead } from '@/design/patterns/badge-read';
 import type { Project, ProjectMember } from '@forge/contracts';
 import type { WorkState } from '@forge/contracts/work-state';
 
@@ -98,7 +99,9 @@ export type ProjectView = 'cards' | 'list';
 
 /**
  * One fully-hydrated console row: the list item joined with its health rollup,
- * a client-derived `health` enum, and the client-only `pinned` flag.
+ * a client-derived `health` enum, and the client-only `pinned` flag. Every figure taken from the
+ * rollup is `null`, and `health` is `null`, until `healthRead` is `read`: a zero here is a count of
+ * nothing only where the rollup was read, so a reader says pending or failed instead of drawing one.
  */
 export interface ProjectConsoleItem {
   id: string;
@@ -111,12 +114,14 @@ export interface ProjectConsoleItem {
   createdAt: string;
   description: string | null;
   repoPath: string | null;
-  health: HealthKey;
-  liveRuns: number;
-  openIssues: number;
-  runnerCount: number;
-  spend24hUsd: number;
-  memberCount: number;
+  /** What `GET /api/projects/health` answered; the rollup's figures below are stated only where `read`. */
+  healthRead: QueryRead;
+  health: HealthKey | null;
+  liveRuns: number | null;
+  openIssues: number | null;
+  runnerCount: number | null;
+  spend24hUsd: number | null;
+  memberCount: number | null;
   members: string[];
   lastActivityAt: string | null;
   pinned: boolean;
@@ -125,8 +130,9 @@ export interface ProjectConsoleItem {
 /** Workspace summary totals for the stats band. */
 export interface WorkspaceTotals {
   projects: number;
-  liveRuns: number;
-  openIssues: number;
-  runners: number;
-  spend24hUsd: number;
+  healthRead: QueryRead;
+  liveRuns: number | null;
+  openIssues: number | null;
+  runners: number | null;
+  spend24hUsd: number | null;
 }

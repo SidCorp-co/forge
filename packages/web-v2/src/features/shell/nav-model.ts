@@ -1,6 +1,6 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
 import { OPEN_WORK_LABEL } from "@forge/contracts/work-state";
-import type { BadgeFigure } from "@/design/patterns/badge-read";
+import { badgeFigure, type BadgeFigure, type QueryRead } from "@/design/patterns/badge-read";
 import type { RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
@@ -129,28 +129,33 @@ export function compactWorkspaceRailItems(attention: BadgeFigure): RailItem[] {
  *  figure's: the two rows sit side by side with two different numbers. */
 export const OPEN_WORK_COUNTS = `in ${OPEN_WORK_LABEL.toLowerCase()}`;
 
-/** Project tier with the Issues queue badge (= open issues). Agents would carry
+/** The Issues row's figure: open work where the projects list and the health rollup both came in,
+ *  else the read that did not, so a read that never landed is never drawn as a project with no open work. */
+export function openWorkFigure(reads: ReadonlyArray<QueryRead>, count: number): BadgeFigure {
+  return badgeFigure(reads, count, OPEN_WORK_COUNTS);
+}
+
+/** Project tier with the Issues queue badge (= open work). Agents would carry
  *  an active-sessions count, but the console rollup has no per-project session
  *  total yet, so it stays unbadged until that field ships. */
-export function projectRailItems(openIssues: number | undefined): RailItem[] {
+export function projectRailItems(openWork: BadgeFigure): RailItem[] {
   return PROJECT_ITEMS.map((it) => ({
     key: it.key,
     label: it.label,
     icon: it.icon,
-    badge: it.key === "proj-issues" ? openIssues : undefined,
-    badgeCounts: it.key === "proj-issues" ? OPEN_WORK_COUNTS : undefined,
+    ...(it.key === "proj-issues" ? openWork : {}),
   }));
 }
 
 export function bottomTabItems(
   slug: string | null,
   attention: BadgeFigure,
-  openIssues: number | undefined,
+  openWork: BadgeFigure,
 ): BottomTabItem[] {
   if (slug) {
     return [
       { key: "proj-overview", label: "Dashboard", icon: "grid" },
-      { key: "proj-issues", label: "Issues", icon: "list", badge: openIssues, badgeCounts: OPEN_WORK_COUNTS },
+      { key: "proj-issues", label: "Issues", icon: "list", ...openWork },
       { key: "chat", label: "Chat", icon: "chat" },
       { key: "proj-agents", label: "Agents", icon: "agent" },
       { key: "switcher", label: "Project", icon: "folder" },
