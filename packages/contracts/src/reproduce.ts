@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 import { PREVIEW_RESERVED_PATH, previewBuildSchema } from "./preview.js";
+import { REASON_PARAGRAPH_MAX } from "./reason-text.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { defineMachine } from "./state-machine.js";
 
@@ -362,7 +363,7 @@ export const fixConfirmationSchema = z.strictObject({
 	/** `git patch-id --stable` of what the fix preview served when they confirmed. */
 	patchId: z.string().regex(/^[0-9a-f]{40}$/),
 	verdict: z.enum(["fixed", "not_fixed"]),
-	note: z.string().max(2000).nullable(),
+	note: z.string().max(REASON_PARAGRAPH_MAX).nullable(),
 	by: z.uuid(),
 	at: z.iso.datetime(),
 });

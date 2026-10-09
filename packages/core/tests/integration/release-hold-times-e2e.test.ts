@@ -5,10 +5,11 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { clearReleaseHolds } from '../../src/release-batch/hold.js';
 import { sweepAutomaticReleases } from '../../src/release-batch/release-sweep.js';
+import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import { createTestProject, createTestUser, rows, truncateAll } from '../helpers/factories.js';
 import {
   fakeCoolify,
@@ -27,6 +28,16 @@ const coolify = fakeCoolify();
 const fx = releaseWorld(() => ({ projectId, ownerId }));
 const { holdOf, holdHistory } = fx;
 const sweep = () => sweepAutomaticReleases();
+
+// a commit verdict emits `verdict.recorded`, whose delivery job needs the queue the server boots
+beforeAll(async () => {
+  testEnv();
+  await startQueue();
+}, 120_000);
+
+afterAll(async () => {
+  await closeWorld();
+});
 
 beforeEach(async () => {
   await truncateAll();

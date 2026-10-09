@@ -8,7 +8,7 @@ import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/v
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { issueDetailApi } from "./detail-api";
-import { issueKeySegment } from "./derive";
+import { issueKeySegment } from "@/lib/api/ref-bridge";
 
 export interface CriterionVerdict extends StorefrontDraftVerdictView {
   verdict: "pass" | "short" | "fail" | "skipped";

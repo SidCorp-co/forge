@@ -102,7 +102,8 @@ describe("the sections the release page reads (BC-5..8)", () => {
 describe("highlights and their clip (BC-2, BC-3)", () => {
   it("fetches an in-app clip with the session's credentials and plays it from the bytes", async () => {
     stubObjectUrls();
-    const fetchMock = vi.fn(async () => new Response(new Blob(["webm"], { type: "video/webm" })));
+    // bytes as a string: Node 22's Response never finishes reading a jsdom Blob, so the clip would never arrive
+    const fetchMock = vi.fn(async () => new Response("webm", { headers: { "content-type": "video/webm" } }));
     vi.stubGlobal("fetch", fetchMock);
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
     const video = await screen.findByTestId("release-media-clip");

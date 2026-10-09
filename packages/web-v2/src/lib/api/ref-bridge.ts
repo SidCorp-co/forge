@@ -10,6 +10,24 @@ export const isUuid = (value: string): boolean => UUID_RE.test(value);
 /** What one key segment becomes once its reference is resolved, or `undefined` where it is not that reference. */
 export type Rekey = (segment: unknown) => unknown;
 
+/**
+ * The key segment an issue's own reads are cached under: its uuid, or, while a page holds only the
+ * display key off its URL, the key with the project it is scoped by (a display key alone collides
+ * across projects). The page switches to the uuid once the issue answers (`useBridgedRef`).
+ */
+export function issueKeySegment(id: string | undefined, projectId: string | undefined): unknown {
+  return !id || UUID_RE.test(id) ? id : { issue: id, project: projectId ?? null };
+}
+
+/** The provisional segment {@link issueKeySegment} wrote for `key` in `projectId`, renamed to the issue's uuid. */
+export function issueRekey(key: string, projectId: string | undefined, uuid: string): Rekey {
+  return (segment) => {
+    if (typeof segment !== "object" || segment === null) return undefined;
+    const s = segment as { issue?: unknown; project?: unknown };
+    return s.issue === key && s.project === (projectId ?? null) ? uuid : undefined;
+  };
+}
+
 function rekeyed(key: QueryKey, rekey: Rekey): QueryKey | null {
   for (let i = 0; i < key.length; i++) {
     const to = rekey(key[i]);
