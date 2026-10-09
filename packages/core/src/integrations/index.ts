@@ -140,6 +140,7 @@ export {
   declareIntegration,
   type GitCredentialMint,
   type IntegrationDeclaration,
+  NonRetryableDispatchError,
   type StorefrontDraftReading,
   type StorefrontPageReading,
   type StorefrontPublishedReading,

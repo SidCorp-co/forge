@@ -182,7 +182,12 @@ async function enqueueArmed(
     requestId: string;
     live: boolean;
   }>,
-  ctx: { runId: string; issueId: string | null; envOf: (binding: { id: string }) => string | null },
+  ctx: {
+    runId: string;
+    issueId: string | null;
+    envOf: (binding: { id: string }) => string | null;
+    targetLabels?: readonly string[] | undefined;
+  },
   dispatched: string[],
 ): Promise<void> {
   for (const { binding, requestId, live } of armed) {
@@ -199,6 +204,7 @@ async function enqueueArmed(
       issueId: ctx.issueId,
       eventName: 'release.requested',
       requestId,
+      ...targetPayload(ctx.runId, ctx.issueId, ctx.targetLabels),
     });
     dispatched.push(binding.id);
     traceStep({
@@ -208,6 +214,18 @@ async function enqueueArmed(
       data: { bindingId: binding.id, environment: ctx.envOf(binding), runId: ctx.runId },
     });
   }
+}
+
+/**
+ * The job payload naming the targets a web-only deploy reaches (`adapter.ts:dispatchOutbound` deploys
+ * those alone), or nothing, which deploys every target.
+ */
+function targetPayload(
+  runId: string | null,
+  issueId: string | null,
+  targetLabels: readonly string[] | undefined,
+): { payload?: Record<string, unknown> } {
+  return targetLabels ? { payload: { runId, issueId, targetLabels: [...targetLabels] } } : {};
 }
 
 /**
@@ -225,6 +243,8 @@ export async function tryDispatchCoolifyRelease(args: {
   allowLive?: boolean;
   /** ISS-1279 — the release path passes it; the landing auto-subscriber does not. */
   takeEnvironmentLock?: boolean;
+  /** Deploy only these targets of each binding: the fast lane's web-only deploy (REQ-39 BC-7). */
+  targetLabels?: readonly string[] | undefined;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId } = args;
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
@@ -288,7 +308,11 @@ export async function tryDispatchCoolifyRelease(args: {
       armed.push({ binding, requestId, live: reachesLive(binding) });
     }
 
-    await enqueueArmed(armed, { runId, issueId, envOf }, dispatched);
+    await enqueueArmed(
+      armed,
+      { runId, issueId, envOf, targetLabels: args.targetLabels },
+      dispatched,
+    );
   } catch (err) {
     // A placeholder whose deploy was never queued is a hold nothing can settle.
     for (const { binding, requestId } of armed) {
@@ -319,6 +343,8 @@ export async function tryDispatchCoolifyRelease(args: {
 export async function dispatchCoolifyDeployDirect(args: {
   projectId: string;
   integrationId: string;
+  /** Deploy only these targets of the binding: the fast lane's web-only deploy (REQ-39 BC-7). */
+  targetLabels?: readonly string[] | undefined;
 }): Promise<DispatchOutcome> {
   const { projectId, integrationId } = args;
   const pairs = await listActiveDeployBindingsForProvider(projectId, COOLIFY);
@@ -336,6 +362,7 @@ export async function dispatchCoolifyDeployDirect(args: {
     issueId: null,
     eventName: 'release.requested',
     requestId,
+    ...targetPayload(null, null, args.targetLabels),
   });
 
   traceStep({

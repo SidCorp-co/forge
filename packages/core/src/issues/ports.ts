@@ -6,6 +6,8 @@
 // pattern).
 
 import type { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
+import type { FastLaneRefusalCode } from '@forge/contracts/fast-lane';
+import type { MergeCheckReport } from '@forge/contracts/merge-check';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
@@ -321,6 +323,12 @@ interface IssuePorts {
     actor: Actor;
     reason: Record<string, unknown>;
   }) => Promise<{ startedAt: string }>;
+  /** Why a fast-lane merge check may not stand for this issue, or null (`fast-lane/index.ts`, REQ-39 BC-7). */
+  fastLaneMergeRefusal: (args: {
+    issueId: string;
+    projectId: string;
+    report: MergeCheckReport;
+  }) => Promise<{ code: FastLaneRefusalCode; path: string; detail: string } | null>;
 }
 
 const slot = portSlot<IssuePorts>('issues', 'provideIssuePorts');
@@ -389,3 +397,4 @@ export const readStorefrontDrafts = port('readStorefrontDrafts');
 export const handoffContextsOf = port('handoffContextsOf');
 export const closeOpenRunForIssue = port('closeOpenRunForIssue');
 export const triggerPipelineStepManual = port('triggerPipelineStepManual');
+export const fastLaneMergeRefusal = port('fastLaneMergeRefusal');

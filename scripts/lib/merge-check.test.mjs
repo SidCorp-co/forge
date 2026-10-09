@@ -1,5 +1,6 @@
 // @direct-test-of .github/workflows/ci.yml
 // @direct-test-of packages/contracts/src/merge-check.ts
+// @direct-test-of packages/contracts/src/fast-lane.ts
 // @direct-test-of scripts/merge-check.mjs
 //
 // The merge check's rules (lib/merge-check.mjs) and where dev's CI runs it (Issue to release r20
@@ -15,17 +16,23 @@ import {
   behindRefusal,
   dirtyRefusal,
   emptyRefusal,
+  FAST_LANE_CHECKS,
+  LANES,
   missingCheck,
   NOT_RUN_HERE,
+  notRunOnLane,
   passedMessage,
+  patchIdOf,
   REQUIRED_CHECKS,
   redChecks,
   reportOf,
+  requiredChecks,
 } from './merge-check.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CI = readFileSync(join(HERE, '../../.github/workflows/ci.yml'), 'utf8');
 const CONTRACT = readFileSync(join(HERE, '../../packages/contracts/src/merge-check.ts'), 'utf8');
+const FAST_CONTRACT = readFileSync(join(HERE, '../../packages/contracts/src/fast-lane.ts'), 'utf8');
 const CLI = readFileSync(join(HERE, '../merge-check.mjs'), 'utf8');
 
 const TIP = 'b'.repeat(40);
@@ -113,8 +120,58 @@ describe('what a merge needs', () => {
       touched: [{ path: 'a.ts', change: 'changed' }],
       checks: [],
     });
-    expect(Object.keys(report)).toEqual(['base', 'head', 'mode', 'touched', 'checks']);
+    expect(Object.keys(report)).toEqual(['base', 'head', 'mode', 'touched', 'checks', 'lane']);
     expect(report.base).toEqual({ branch: 'dev', sha: TIP });
+    expect(report.lane).toBe('full');
+  });
+});
+
+describe('the fast lane (REQ-39 BC-7)', () => {
+  it('names the same checks as the contract core holds a fast report to', () => {
+    const listed = /FAST_LANE_MERGE_CHECKS = \[([^\]]*)\]/.exec(FAST_CONTRACT)?.[1] ?? '';
+    const names = [...listed.matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    expect(names).toEqual(FAST_LANE_CHECKS);
+    expect(LANES).toEqual(['full', 'fast']);
+  });
+
+  it('owes the fast checks alone, and says what it leaves to the nightly suite', () => {
+    expect(requiredChecks('fast')).toEqual(FAST_LANE_CHECKS);
+    expect(requiredChecks('full')).toEqual(REQUIRED_CHECKS);
+    const fast = FAST_LANE_CHECKS.map((name) => ({ name, result: 'pass' }));
+    expect(missingCheck(fast, 'fast')).toBeNull();
+    expect(missingCheck(fast, 'full')).toBe('integration-tests');
+    expect(missingCheck(fast.slice(0, 2), 'fast')).toBe('direct-tests');
+    expect(notRunOnLane('fast').map((n) => n.name)).toEqual(['integration-tests', 'verify']);
+    expect(notRunOnLane('full')).toEqual([]);
+  });
+
+  it('reads the patch id git prints, and refuses a change it printed none for', () => {
+    const id = 'c'.repeat(40);
+    expect(patchIdOf(`${id} ${'0'.repeat(40)}\n`)).toEqual({ id });
+    expect(patchIdOf('').refusal).toContain('printed no id');
+    expect(patchIdOf('not-an-id x').refusal).toContain('printed no id');
+  });
+
+  it('writes the patch id into a fast report only', () => {
+    const at = {
+      branch: 'dev',
+      baseSha: TIP,
+      head: HEAD,
+      mode: 'pre-merge',
+      touched: [{ path: 'a.tsx', change: 'changed' }],
+      checks: [],
+    };
+    const fast = reportOf({ ...at, lane: 'fast', patchId: 'c'.repeat(40) });
+    expect(fast.lane).toBe('fast');
+    expect(fast.patchId).toBe('c'.repeat(40));
+    expect('patchId' in reportOf({ ...at, lane: 'full', patchId: 'c'.repeat(40) })).toBe(false);
+  });
+
+  it('the CLI runs no integration test and no verify on the fast lane', () => {
+    expect(CLI).toContain("runDirectTests(ROOT, { touched, integration: lane === 'full' })");
+    expect(CLI.indexOf("if (lane === 'full') {")).toBeLessThan(CLI.indexOf("['pnpm', 'verify']"));
+    expect(CLI).toContain("['patch-id', '--stable']");
+    expect(CLI).toContain("['diff', '--binary', baseSha, head]");
   });
 });
 

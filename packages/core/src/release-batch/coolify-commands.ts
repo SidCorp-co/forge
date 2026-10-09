@@ -132,8 +132,15 @@ export async function runCoolifyDeploy(input: {
   issueId?: string | undefined;
   pipelineRunId?: string | undefined;
   integrationId?: string | undefined;
+  /**
+   * The labels of the binding's targets to deploy, and no others: a web-only deploy (REQ-39 BC-7),
+   * which only the fast lane's guard sends (`fast-lane/deploy.ts:deployWebOnly`), never with a
+   * release run. Absent, every target of each binding deploys.
+   */
+  targetLabels?: readonly string[] | undefined;
 }) {
   const { projectId } = input;
+  const targetLabels = input.targetLabels ? { targetLabels: input.targetLabels } : {};
 
   if (input.pipelineRunId && !input.issueId) {
     if (!(await isOpenReleaseBatchRun(projectId, input.pipelineRunId))) {
@@ -186,6 +193,7 @@ export async function runCoolifyDeploy(input: {
         runId,
         integrationId: input.integrationId ?? null,
         allowLive,
+        ...targetLabels,
       }),
     );
   }
@@ -199,7 +207,9 @@ export async function runCoolifyDeploy(input: {
       reason: 'no-integration',
     };
   }
-  return shape(await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id }));
+  return shape(
+    await dispatchCoolifyDeployDirect({ projectId, integrationId: row.id, ...targetLabels }),
+  );
 }
 
 /**

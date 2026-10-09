@@ -1,0 +1,1 @@
+**An approved web change can take the fast lane.** Its merge check runs the typecheck and touched tests only, is refused if the change moved since approval or touches kernel, migration, permission or security files, and deploys web alone.

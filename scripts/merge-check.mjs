@@ -4,11 +4,14 @@
 // only: the typecheck, the direct tests of the touched files in every package, the direct core
 // integration tests, and `pnpm verify`. No import-graph widening, no whole-suite fallback. It writes
 // the report the tracker records on the issue — each check with its kind and duration, recorded once
-// (ISS-474) — which the merge mark then asks for.
+// (ISS-474) — which the merge mark then asks for. On the fast lane (REQ-39 BC-7: a change a person
+// approved in its live preview) it runs the typecheck and the direct tests only, and the report names
+// the change's patch id, which core holds to the one the approved preview served.
 //
 //   pnpm merge-check                     against the latest origin/<base>, fetched first
 //   pnpm merge-check --since <sha>       a landing already on its base: the change since <sha>
 //   pnpm merge-check --report <path>     where the report goes (default: the OS temp directory)
+//   pnpm merge-check --lane fast         the fast lane: no integration tests, no verify
 //
 // Exit 0: every check passed. 1: a check is red or the change is behind its base. 2: it could not run.
 
@@ -30,9 +33,12 @@ import {
   behindRefusal,
   dirtyRefusal,
   emptyRefusal,
+  LANES,
   missingCheck,
   NOT_RUN_HERE,
+  notRunOnLane,
   passedMessage,
+  patchIdOf,
   redChecks,
   reportOf,
 } from './lib/merge-check.mjs';
@@ -40,10 +46,10 @@ import {
 const die = dieAs('merge-check');
 
 const args = process.argv.slice(2);
-const takes = new Set(['--since', '--report']);
+const takes = new Set(['--since', '--report', '--lane']);
 for (const [i, a] of args.entries()) {
   if (a.startsWith('--') && !takes.has(a))
-    die(`unknown flag ${a}; takes --since <sha>, --report <path>`);
+    die(`unknown flag ${a}; takes --since <sha>, --report <path>, --lane <${LANES.join(' | ')}>`);
   if (!a.startsWith('--') && !takes.has(args[i - 1])) die(`unexpected argument ${a}`);
 }
 const flagValue = (flag) => {
@@ -54,6 +60,8 @@ const flagValue = (flag) => {
   return v;
 };
 const since = flagValue('--since');
+const lane = flagValue('--lane') ?? 'full';
+if (!LANES.includes(lane)) die(`--lane ${lane} is not a lane; the lanes are ${LANES.join(', ')}`);
 
 const git = (...a) => {
   const out = gitOut(a, ROOT);
@@ -123,29 +131,51 @@ const touched = touchedBetween(ROOT, baseSha, head);
 const empty = emptyRefusal({ branch, head, touched });
 if (empty) die(empty);
 
+let patchId;
+if (lane === 'fast') {
+  const diff = spawnSync('git', ['diff', '--binary', baseSha, head], {
+    cwd: ROOT,
+    encoding: 'utf8',
+    maxBuffer: 512 * 1024 * 1024,
+  });
+  if (diff.status !== 0) die(`git diff ${baseSha.slice(0, 12)} ${head.slice(0, 12)} failed`);
+  const printed = spawnSync('git', ['patch-id', '--stable'], {
+    cwd: ROOT,
+    input: diff.stdout,
+    encoding: 'utf8',
+  });
+  const read = patchIdOf(printed.stdout ?? '');
+  if (read.refusal) die(read.refusal);
+  patchId = read.id;
+}
+
 console.log(
-  `merge-check: ${head.slice(0, 12)} against ${branch} at ${baseSha.slice(0, 12)}${since ? ' (landed)' : ''}, ${touched.length} file(s) touched`,
+  `merge-check: ${head.slice(0, 12)} against ${branch} at ${baseSha.slice(0, 12)}${since ? ' (landed)' : ''}, ${touched.length} file(s) touched, ${lane} lane${patchId ? `, patch id ${patchId}` : ''}`,
 );
 
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));
-const direct = runDirectTests(ROOT, { touched, integration: true });
+const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
 checks.push(...direct.checks);
 
-const verify = run(['pnpm', 'verify'], ROOT, { env: { ...process.env, GITHUB_BASE_REF: branch } });
-checks.push(
-  check({
-    name: 'verify',
-    kind: 'conformance',
-    scope: 'workspace',
-    command: `GITHUB_BASE_REF=${branch} pnpm verify`,
-    files: [],
-    result: verify.ok ? 'pass' : 'fail',
-    startedAt: verify.startedAt,
-    durationMs: verify.durationMs,
-  }),
-);
+if (lane === 'full') {
+  const verify = run(['pnpm', 'verify'], ROOT, {
+    env: { ...process.env, GITHUB_BASE_REF: branch },
+  });
+  checks.push(
+    check({
+      name: 'verify',
+      kind: 'conformance',
+      scope: 'workspace',
+      command: `GITHUB_BASE_REF=${branch} pnpm verify`,
+      files: [],
+      result: verify.ok ? 'pass' : 'fail',
+      startedAt: verify.startedAt,
+      durationMs: verify.durationMs,
+    }),
+  );
+}
 
-const missing = missingCheck(checks);
+const missing = missingCheck(checks, lane);
 if (missing)
   die(
     `the run made no \`${missing}\` check, which every merge needs; this is a defect of the script`,
@@ -158,13 +188,16 @@ const report = reportOf({
   mode: since ? 'landed' : 'pre-merge',
   touched,
   checks,
+  lane,
+  patchId,
 });
 const path = flagValue('--report') ?? join(tmpdir(), `forge-merge-check-${head.slice(0, 12)}.json`);
 writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('\nmerge-check: what ran');
 for (const line of describeChecks(checks)) console.log(line);
-for (const n of NOT_RUN_HERE) console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
+for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
+  console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
 if (direct.untested.length) {
   console.log(
     `  no direct test reaches: ${direct.untested.join(', ')}\n  (a test guarding one by path declares it with \`@direct-test-of <path>\`)`,

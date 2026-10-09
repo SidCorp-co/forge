@@ -8,6 +8,10 @@
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
  * verification record naming them. The merge mark then asks for that record (`uncheckedMergeRefusal`).
  *
+ * A report on the fast lane (REQ-39 BC-7) runs fewer checks, so it stands only for the change a person
+ * approved in its live preview: the fast lane's own rule, asked through `fastLaneMergeRefusal`, holds
+ * its patch id to the approved one and its files to the lane.
+ *
  * The report is the box's word, as a mark without an observed commit is: core cannot rerun the
  * checks, so the record says what the box ran and when, and is written by core only after core's own
  * rules held.
@@ -28,7 +32,7 @@ import {
   recordFields,
 } from './merge-check-rules.js';
 import { hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
-import { readProjectDocument } from './ports.js';
+import { fastLaneMergeRefusal, readProjectDocument } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
 
 const refuse = refuser<MergeCheckRefusalCode>('MERGE_CHECK_REFUSED');
@@ -47,6 +51,14 @@ export async function recordMergeCheck(args: {
   const { issue, report } = args;
   const fault = checkRefusal(report);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
+  if (report.lane === 'fast') {
+    const lane = await fastLaneMergeRefusal({
+      issueId: issue.id,
+      projectId: issue.projectId,
+      report,
+    });
+    if (lane) throw new RefusalError([lane], 'MERGE_CHECK_REFUSED');
+  }
   const entry = await patternEntryRefusal({
     issueId: issue.id,
     projectId: issue.projectId,

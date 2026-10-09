@@ -3,6 +3,7 @@ export { approvalRequired } from './approvals.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,
+  type CoolifyIntegrationRow,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   refuseCoolify,

@@ -20,6 +20,7 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { deployWebOnly } from '../fast-lane/index.js';
 import {
   type CoolifyConfig,
   type CoolifySecrets,
@@ -52,8 +53,15 @@ const deployBodySchema = z
     issueId: z.uuid().optional(),
     pipelineRunId: z.uuid().optional(),
     integrationId: z.uuid().optional(),
+    /** The fast lane's web-only deploy (REQ-39 BC-7): only these targets, behind its guard. */
+    targets: z.array(z.string().min(1).max(100)).min(1).max(5).optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => !(b.targets && b.pipelineRunId), {
+    path: ['targets'],
+    message:
+      '`targets` is the fast lane web-only deploy, which deploys by issue or binding; a release run (pipelineRunId) deploys every target',
+  });
 
 const cancelBodySchema = z
   .object({
@@ -133,10 +141,19 @@ function registerCommandRoutes(routes: Routes): void {
     '/:projectId/integrations/coolify/deploy',
     coolifyRun('deploy'),
     zValidator('json', deployBodySchema),
-    (c) =>
-      answer(c, () =>
-        runCoolifyDeploy({ projectId: c.req.param('projectId'), ...c.req.valid('json') }),
-      ),
+    (c) => {
+      const { targets, ...body } = c.req.valid('json');
+      const projectId = c.req.param('projectId');
+      return answer(c, () =>
+        targets
+          ? deployWebOnly({
+              projectId,
+              targets,
+              ...given({ issueId: body.issueId, integrationId: body.integrationId }),
+            })
+          : runCoolifyDeploy({ projectId, ...body }),
+      );
+    },
   );
   routes.post(
     '/:projectId/integrations/coolify/cancel',

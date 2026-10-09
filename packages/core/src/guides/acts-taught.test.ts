@@ -51,6 +51,18 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       ['`<its slug> ISS-n`', 'never written as a `decision`'],
     ],
     [
+      'the fast lane is taken only for the approved change, and deploys web alone (REQ-39 BC-7)',
+      [
+        '`GET /api/issues/:id/lane`',
+        '`pnpm merge-check --lane fast`',
+        '`patchId`',
+        'FAST_LANE_CHANGED_SINCE_APPROVAL',
+        'FAST_LANE_NOT_ELIGIBLE',
+        '`{ issueId, targets }`',
+        'FAST_LANE_UNVERIFIED',
+      ],
+    ],
+    [
       'a landing names what another issue carries',
       [
         '`carriedBy',

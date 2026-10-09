@@ -1,7 +1,9 @@
 /**
  * The merge check's rules (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15, BC-17; ISS-472),
  * pure: which report a merge may rely on, the record it is kept as, and whether a mark finds one at
- * the commit it marks. `merge-check.ts` reads and writes around them.
+ * the commit it marks. A fast-lane report (REQ-39 BC-7) needs only the fast checks here; whether the
+ * change may take that lane is the fast lane's own rule (`fast-lane/rules.ts`), asked through a port.
+ * `merge-check.ts` reads and writes around them.
  */
 
 import type { CheckRun } from '@forge/contracts/check-runs';
@@ -12,6 +14,7 @@ import {
   type MergeCheckReport,
   REQUIRED_MERGE_CHECKS,
   type RequiredMergeCheck,
+  requiredMergeChecksOf,
 } from '@forge/contracts/merge-check';
 
 /** Not run by the check yet: the issues that build each name it in every record. */
@@ -34,17 +37,19 @@ const isRequired = (name: string): name is RequiredMergeCheck =>
   (REQUIRED_MERGE_CHECKS as readonly string[]).includes(name);
 
 /**
- * Why a report cannot let a merge through, or null: a required check it never ran, a required check
- * filed under another kind (its time would be counted where it does not belong), a base it is
- * behind, then any check that ended red. The first fault answers, each naming its check.
+ * Why a report cannot let a merge through, or null: a check its lane needs that it never ran, a
+ * required check filed under another kind (its time would be counted where it does not belong), a
+ * base it is behind, then any check that ended red. The first fault answers, each naming its check.
  */
 export function checkRefusal(report: MergeCheckReport): CheckRefusal | null {
-  const missing = REQUIRED_MERGE_CHECKS.filter((n) => !report.checks.some((c) => c.name === n));
+  const needed = requiredMergeChecksOf(report.lane);
+  const missing = needed.filter((n) => !report.checks.some((c) => c.name === n));
   if (missing.length) {
+    const who = report.lane === 'fast' ? 'a fast-lane merge needs' : 'every merge needs';
     return {
       code: 'MERGE_CHECK_INCOMPLETE',
       path: '/checks',
-      detail: `the report runs no ${missing.map((n) => `\`${n}\``).join(', ')} check, and every merge needs ${REQUIRED_MERGE_CHECKS.map((n) => `\`${n}\``).join(', ')}; a selection that held nothing to run reports its check with result \`none\`. Nothing was recorded`,
+      detail: `the report runs no ${missing.map((n) => `\`${n}\``).join(', ')} check, and ${who} ${needed.map((n) => `\`${n}\``).join(', ')}; a selection that held nothing to run reports its check with result \`none\`. Nothing was recorded`,
     };
   }
   const misfiled = report.checks.flatMap((c) =>
@@ -108,6 +113,8 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'check', value: MERGE_CHECK_RECORD },
     { key: 'result', value: 'pass' },
     { key: 'mode', value: report.mode },
+    { key: 'lane', value: report.lane ?? 'full' },
+    ...(report.patchId ? [{ key: 'patch-id', value: report.patchId }] : []),
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },

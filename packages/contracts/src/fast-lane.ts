@@ -174,10 +174,16 @@ export const FAST_LANE_REFUSAL_CODES = [
 	"FAST_LANE_CHANGED_SINCE_APPROVAL",
 	/** The project declares no fast lane, or no deploy target for it. */
 	"FAST_LANE_UNDECLARED",
+	/**
+	 * A web-only deploy whose range cannot be read whole: what the target serves, or the commits and
+	 * files between it and the new head. Unread is never taken as fast.
+	 */
+	"FAST_LANE_UNVERIFIED",
 ] as const;
 export type FastLaneRefusalCode = (typeof FAST_LANE_REFUSAL_CODES)[number];
 
 export const FAST_LANE_REFUSAL_STATUSES = {
 	FAST_LANE_NOT_APPROVED: 409,
 	FAST_LANE_CHANGED_SINCE_APPROVAL: 409,
+	FAST_LANE_UNVERIFIED: 503,
 } as const satisfies RefusalStatuses<FastLaneRefusalCode>;
