@@ -21,6 +21,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import { DRAWN } from '../helpers/requirement-picture-world.js';
 
 type Toolset = import('../../src/assistant/tools/mcp-adapter.js').ChatToolset;
 type Result = import('../../src/lib/tool-result.js').CallToolResult;
@@ -40,9 +41,15 @@ const call = async (tools: Toolset, name: string, args: Doc) => {
 const KEPT = { code: 'BC-1', body: 'A lane records its design before coding.' };
 const REWORDED = { code: 'BC-2', body: 'A lane runs only the checks its change touches.' };
 const ADDED = { body: 'A deploy replays the saved probes.' };
+// the BA's drafted revision names its kind and draws its picture (ISS-464, REQ-35 BC-10)
 const wish = (criteria: Doc[], extra: Doc = {}): Doc => ({
   kind: 'revision_diff',
-  payload: { reason: 'the owner asked for the draft to be improved', criteria },
+  payload: {
+    reason: 'the owner asked for the draft to be improved',
+    criteria,
+    kind: 'process',
+    picture: DRAWN.process,
+  },
   ...extra,
 });
 

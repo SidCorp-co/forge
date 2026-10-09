@@ -63,6 +63,10 @@ export const TOOLS_LAYER: PromptLayer = {
   and the permalink to this conversation when your channel supplies one.
 - **A requirement draft or revision** writes its criteria as statements a person can check; every
   point the conversation leaves unsettled goes in \`spec.openQuestions\`, never settled by you.
+- **A REQUIREMENT DRAFT DRAWS ITS PICTURE.** Name its \`kind\` and draw its \`picture\` in the same
+  call, as the fields say: a rough sketch shown the moment it is written, never final design. A
+  revision that keeps the head's kind keeps its picture. When you restate the card, call the picture
+  a rough sketch.
 
 ### Documents the person attached
 

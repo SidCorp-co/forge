@@ -2,7 +2,16 @@
 // door naming the field; a rule's blank cell passes here so core can refuse it by name.
 
 import { describe, expect, it } from "vitest";
-import { PICTURE_KIND_OF, REQUIREMENT_KINDS, writePictureRequestSchema } from "./requirement-pictures.js";
+import {
+	type DraftPicture,
+	describePicture,
+	draftPictureSchema,
+	PICTURE_KIND_OF,
+	pictureWithAlt,
+	REQUIREMENT_KINDS,
+	REQUIREMENT_PICTURE_LIMITS,
+	writePictureRequestSchema,
+} from "./requirement-pictures.js";
 
 const parse = (body: unknown) => writePictureRequestSchema.safeParse(body);
 const issuesOf = (body: unknown) => {
@@ -52,5 +61,92 @@ describe("each kind's picture", () => {
 
 	it("refuses content of another kind's shape", () => {
 		expect(parse({ kind: "example_table", alt: "x", content: { nodes: [], edges: [] } }).success).toBe(false);
+	});
+});
+
+// ISS-464 (REQ-35 BC-10, BC-12): the picture a draft carries, whose text alternative the assistant
+// leaves to be written from what the picture holds.
+const DRAWN: Record<string, DraftPicture> = {
+	flow: {
+		kind: "flow",
+		content: {
+			title: "Refund",
+			nodes: [
+				{ id: "ask", label: "Buyer asks" },
+				{ id: "ok", label: "Refund paid" },
+			],
+			edges: [{ from: "ask", to: "ok", label: "within 14 days" }],
+		},
+	},
+	example_table: {
+		kind: "example_table",
+		content: { rows: [{ input: "A cart of 3 items", expected: "Shipping is free" }] },
+	},
+	wireframe: {
+		kind: "wireframe",
+		content: {
+			board: {
+				v: "wireframe-v1",
+				title: "Checkout",
+				shapes: [
+					{ id: "t", type: "text", x: 10, y: 10, w: 200, h: 20, text: "Your cart" },
+					{ id: "b", type: "button", x: 10, y: 40, w: 80, h: 30, label: "Pay" },
+				],
+			},
+		},
+	},
+	chart: {
+		kind: "chart",
+		content: {
+			variant: "bar",
+			x: "week",
+			y: ["orders"],
+			frame: {
+				fields: [
+					{ name: "week", label: "Week", type: "string" },
+					{ name: "orders", label: "Orders", type: "number" },
+				],
+				rows: [{ week: "W1", orders: 3 }],
+			},
+		},
+	},
+};
+
+describe("the picture a draft carries", () => {
+	it("takes no text alternative, and refuses a key the picture does not hold", () => {
+		expect(draftPictureSchema.safeParse(DRAWN.flow).success).toBe(true);
+		expect(draftPictureSchema.safeParse({ ...DRAWN.flow, caption: "x" }).success).toBe(false);
+	});
+
+	it.each(Object.keys(DRAWN))("writes a %s picture's text alternative from what it holds", (kind) => {
+		const alt = describePicture(DRAWN[kind] as DraftPicture);
+		expect(alt.trim()).not.toBe("");
+		expect(alt.length).toBeLessThanOrEqual(REQUIREMENT_PICTURE_LIMITS.altChars);
+	});
+
+	it("says each picture's own words", () => {
+		expect(describePicture(DRAWN.flow as DraftPicture)).toBe("Refund: a flow of 2 steps: Buyer asks to Refund paid (within 14 days).");
+		expect(describePicture(DRAWN.example_table as DraftPicture)).toBe("An example table of 1 row: A cart of 3 items gives Shipping is free.");
+		expect(describePicture(DRAWN.wireframe as DraftPicture)).toBe('A wireframe "Checkout": "Your cart", a Pay button.');
+		expect(describePicture(DRAWN.chart as DraftPicture)).toBe("A sample bar chart of Orders by Week, from 1 sample row.");
+	});
+
+	it("counts a board of bare shapes rather than say nothing", () => {
+		const bare = { kind: "wireframe", content: { board: { v: "wireframe-v1", shapes: [{ id: "f", type: "frame", x: 1, y: 1, w: 9, h: 9 }] } } };
+		expect(describePicture(bare as DraftPicture)).toBe("A wireframe: 1 shape.");
+	});
+
+	it("cuts a long one to the alt limit", () => {
+		const rows = Array.from({ length: 40 }, (_, i) => ({ input: `input number ${i}`, expected: `result number ${i}` }));
+		const alt = describePicture({ kind: "example_table", content: { rows } });
+		expect(alt).toHaveLength(REQUIREMENT_PICTURE_LIMITS.altChars);
+		expect(alt.endsWith("…")).toBe(true);
+	});
+
+	it("keeps an alt the draft wrote, and writes one where it wrote none", () => {
+		expect(pictureWithAlt({ ...(DRAWN.flow as DraftPicture), alt: "Refunds are paid." }).alt).toBe("Refunds are paid.");
+		const written = pictureWithAlt(DRAWN.flow as DraftPicture);
+		expect(written.alt).toBe(describePicture(DRAWN.flow as DraftPicture));
+		expect(writePictureRequestSchema.safeParse(written).success).toBe(true);
 	});
 });

@@ -6,6 +6,12 @@
  */
 
 import { REASON_TEXT_MAX } from '@forge/contracts/comments';
+import {
+  DRAFT_KIND_HOW,
+  DRAFT_PICTURE_HOW,
+  draftPictureSchema,
+  revisionKindField,
+} from '@forge/contracts/requirement-pictures';
 import { requirementCriterionSchema, requirementSpecSchema } from '@forge/contracts/suggestions';
 import { z } from 'zod';
 import {
@@ -61,6 +67,8 @@ const suggestRequirementInput = z.strictObject({
   spec: requirementSpecSchema.optional(),
   tldr: z.string().max(4_000).nullable().optional(),
   criteria: z.array(requirementCriterionSchema).min(1).max(200),
+  kind: revisionKindField.describe(DRAFT_KIND_HOW),
+  picture: draftPictureSchema.optional().describe(DRAFT_PICTURE_HOW),
   designs: z
     .array(z.uuid())
     .max(20)
@@ -76,7 +84,7 @@ const suggestRequirement =
     route: '/api/projects',
     grant: 'projects:write',
     description:
-      'Suggest one first requirement for one approved journey: title, reason, business criteria (statements by default) and the other approved designs it serves. One per journey: a second is SUGGESTION_JOURNEY_SUGGESTED; a design not approved is SUGGESTION_DESIGN_NOT_APPROVED, one not in the project SUGGESTION_DESIGN_UNKNOWN. A person accepts it, which creates the requirement linked to those designs.',
+      'Suggest one first requirement for one approved journey: title, reason, business criteria (statements by default), its kind and its picture, drawn with it (kind, picture; one without is REQUIREMENT_PICTURE_NOT_DRAWN), and the other approved designs it serves. One per journey: a second is SUGGESTION_JOURNEY_SUGGESTED; a design not approved is SUGGESTION_DESIGN_NOT_APPROVED, one not in the project SUGGESTION_DESIGN_UNKNOWN. A person accepts it, which creates the requirement linked to those designs.',
     inputSchema: schema(suggestRequirementInput),
     handler: async (args) => {
       const { journey, ...payload } = suggestRequirementInput.parse(args);

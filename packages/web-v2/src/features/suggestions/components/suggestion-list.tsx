@@ -1,5 +1,6 @@
 "use client";
 
+import { describePicture, draftPictureSchema } from "@forge/contracts/requirement-pictures";
 import { useState } from "react";
 import { AcceptStep, AGENT_TINT, Button } from "@/design";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -74,10 +75,17 @@ export function acceptConsequence(s: Suggestion, language: string): string {
   }
 }
 
+/** The picture a drafted revision carries, labelled a rough sketch, read by its text alternative (REQ-35 BC-10, BC-11). */
+function pictureLine(p: Payload, t: Copy): string[] {
+  const drawn = draftPictureSchema.safeParse(p.picture);
+  if (!drawn.success) return [];
+  return [`${t("requirements.picture.roughSketch")} · ${drawn.data.alt ?? describePicture(drawn.data)}`];
+}
+
 function detailLines(s: Suggestion, t: Copy): string[] {
   const p = (s.payload ?? {}) as Payload;
   if (s.kind === "revision_diff" || s.kind === "requirement_draft") {
-    return list(p.criteria).map((c) => `${str(c.code) ?? t("requirements.suggestion.newCode")} · ${str(c.body) ?? ""}`);
+    return [...pictureLine(p, t), ...list(p.criteria).map((c) => `${str(c.code) ?? t("requirements.suggestion.newCode")} · ${str(c.body) ?? ""}`)];
   }
   if (s.kind === "readiness") {
     return list(p.checks).map(

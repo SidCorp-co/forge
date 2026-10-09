@@ -9,6 +9,7 @@
 // value`, so a field added to a write later reaches the card without anyone remembering to.
 
 import type { ChatProposalKind, ChatProposalSummary } from '@forge/contracts/chat-proposals';
+import { describePicture, draftPictureSchema } from '@forge/contracts/requirement-pictures';
 
 type Args = Record<string, unknown>;
 
@@ -114,8 +115,28 @@ function criteriaLines(args: Args): string[] {
 const designsOf = (args: Args): string[] =>
   Array.isArray(args.designs) ? args.designs.filter((d): d is string => typeof d === 'string') : [];
 
+const PICTURE_NAMED = {
+  flow: 'a flow',
+  example_table: 'an example table',
+  wireframe: 'a wireframe',
+  chart: 'a sample chart',
+} as const;
+
+/**
+ * The picture a draft carries, as the card reads it before the press (REQ-35 BC-10, BC-11, BC-12):
+ * labelled a rough sketch, with the text alternative it will be written with. Null where the call
+ * carries none, or one that does not parse, which the card then shows as the field it is.
+ */
+function pictureLine(args: Args): string | null {
+  const drawn = draftPictureSchema.safeParse(args.picture);
+  if (!drawn.success) return null;
+  const alt = drawn.data.alt ?? describePicture(drawn.data);
+  return `Picture, a rough sketch (${PICTURE_NAMED[drawn.data.kind]}): ${oneLine(alt)}`;
+}
+
 function requirementSummary(kind: ChatProposalKind, args: Args, ref: string | null) {
   const reason = str(args.reason);
+  const picture = pictureLine(args);
   const title =
     kind === 'requirement_draft'
       ? `New requirement: ${str(args.title) ?? 'untitled'}`
@@ -125,7 +146,16 @@ function requirementSummary(kind: ChatProposalKind, args: Args, ref: string | nu
     lines: [
       ...(reason ? [`Why: ${oneLine(reason)}`] : []),
       ...criteriaLines(args),
-      ...restLines(args, ['title', 'reason', 'criteria', 'criteriaFrom', 'designs', 'requirement']),
+      ...(picture ? [picture] : []),
+      ...restLines(args, [
+        'title',
+        'reason',
+        'criteria',
+        'criteriaFrom',
+        'designs',
+        'requirement',
+        ...(picture ? ['picture'] : []),
+      ]),
     ],
     relates: [...(ref ? [ref] : []), ...designsOf(args).map((d) => `design ${d}`)],
   };

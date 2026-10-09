@@ -241,3 +241,62 @@ describe("a breakdown's details, read as a person", () => {
     expect(panel).toHaveTextContent("SUGGESTION_PAYLOAD_INVALID at /payload/issues/0/criteria: required");
   });
 });
+
+// ISS-464 (REQ-35 BC-10, BC-11, BC-12): the BA's drafted revision carries its picture, which the
+// person deciding it reads before Accept, labelled a rough sketch, by its text alternative.
+describe("a drafted revision's picture, before Accept", () => {
+  const drafted = (picture: unknown): SuggestionView =>
+    ({
+      id: "s2",
+      kind: "revision_diff",
+      status: "proposed",
+      target: { type: "requirement", id: "r1" },
+      baseRevision: 1,
+      payload: {
+        reason: "the refund path",
+        kind: "process",
+        picture,
+        criteria: [{ code: "BC-1", body: "a buyer asks for a refund" }],
+      },
+      producerKind: "ba_assistant",
+      model: null,
+      createdAt: "2026-10-09T05:00:00.000Z",
+    }) as SuggestionView;
+  const flow = {
+    kind: "flow",
+    content: {
+      nodes: [
+        { id: "ask", label: "Buyer asks" },
+        { id: "paid", label: "Refund paid" },
+      ],
+      edges: [{ from: "ask", to: "paid" }],
+    },
+  };
+
+  async function lines(view: SuggestionView) {
+    fakeCore(() => ({ body: { suggestions: [view], open: 1 } }));
+    renderWithQuery(<RequirementSuggestions projectId="p1" reqKey="REQ-31" />);
+    const opener = await screen.findByText("Show details");
+    fireEvent.click(opener);
+    const panel = opener.closest("details");
+    if (!panel) throw new Error("the details panel is not drawn");
+    return within(panel).getAllByRole("listitem").map((li) => li.textContent);
+  }
+
+  it("shows it as a rough sketch, read by the text alternative written from its content", async () => {
+    expect(await lines(drafted(flow))).toEqual([
+      "Rough sketch, not final design · A flow of 2 steps: Buyer asks to Refund paid.",
+      "BC-1 · a buyer asks for a refund",
+    ]);
+  });
+
+  it("reads the text alternative the draft wrote, where it wrote one", async () => {
+    expect((await lines(drafted({ ...flow, alt: "Refunds are paid once asked." })))[0]).toBe(
+      "Rough sketch, not final design · Refunds are paid once asked.",
+    );
+  });
+
+  it("shows no picture line for a draft that carries none", async () => {
+    expect(await lines(drafted(undefined))).toEqual(["BC-1 · a buyer asks for a refund"]);
+  });
+});

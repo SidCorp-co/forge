@@ -14,6 +14,7 @@ import type { AgreementGate } from '../../src/assistant/agreement/turn-gate.js';
 import { type AgreementWorld, openAgreementWorld } from '../helpers/chat-agreement-world.js';
 import { closeWorld, type Doc, type Reply, requester } from '../helpers/ecosystem-world.js';
 import { rows } from '../helpers/factories.js';
+import { DRAWN } from '../helpers/requirement-picture-world.js';
 
 let projectId = '';
 let owner = '';
@@ -168,6 +169,9 @@ describe('a typed reply agrees to nothing; only the press writes (REQ-30 BC-4)',
     reason: 'A tab switch loses what was typed.',
     criteria: [{ body: 'A draft typed in the dock is there after a tab switch.' }],
     designs: ['chat-turn'],
+    // the assistant's draft names its kind and draws its picture (ISS-464, REQ-35 BC-10)
+    kind: 'process',
+    picture: DRAWN.process,
   };
   const press = (id: string) =>
     say('owner', 'POST', `/api/conversations/${roomId}/proposals/${id}/agree`, {});

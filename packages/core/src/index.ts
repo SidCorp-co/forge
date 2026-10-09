@@ -13,6 +13,7 @@ import {
   METHOD_LAYERS,
   provideAgreementReplay,
   provideChatTools,
+  provideHeldWriteVets,
   refuseChatToolWrite,
   registerRoomBridges,
   registerRoomChat,
@@ -75,7 +76,12 @@ import { env } from './lib/env.js';
 import { provideEphemeralPublisher } from './lib/ephemeral.js';
 import { logger } from './lib/logger.js';
 import { provideWrittenLangPorts } from './lib/written-lang.js';
-import { CHAT_READ_MODEL_TOOLS, CHAT_RECORD_TOOLS, CHAT_REPORT_TOOLS } from './mcp/index.js';
+import {
+  CHAT_READ_MODEL_TOOLS,
+  CHAT_RECORD_TOOLS,
+  CHAT_RECORD_VETS,
+  CHAT_REPORT_TOOLS,
+} from './mcp/index.js';
 import {
   provideMemoryIssueReads,
   registerMemoryReconcileWorker,
@@ -252,6 +258,7 @@ provideProjectConfigPorts({
 registerReportQueries();
 provideReportPorts();
 provideChatTools([...CHAT_READ_MODEL_TOOLS, ...CHAT_RECORD_TOOLS, ...CHAT_REPORT_TOOLS]);
+provideHeldWriteVets(CHAT_RECORD_VETS);
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
 );

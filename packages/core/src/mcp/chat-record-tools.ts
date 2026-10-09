@@ -3,7 +3,11 @@
 
 import { forgeFeedbackTool } from '../feedback/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
-import { forgeRequirementDraftTool, forgeRequirementReviseTool } from '../requirements/tool.js';
+import {
+  forgeRequirementDraftTool,
+  forgeRequirementReviseTool,
+  REQUIREMENT_RECORD_VETS,
+} from '../requirements/tool.js';
 
 /**
  * Where a chat door records what a person reports or wishes (owner ruling 2026-10-08): Feedback, a
@@ -17,3 +21,6 @@ export const CHAT_RECORD_TOOLS: readonly { factory: ContextScopedMcpToolFactory 
   { factory: forgeRequirementDraftTool },
   { factory: forgeRequirementReviseTool },
 ];
+
+/** The record tools' own checks, which the agreement gate runs before it holds a call (REQ-35 BC-10). */
+export const CHAT_RECORD_VETS = REQUIREMENT_RECORD_VETS;

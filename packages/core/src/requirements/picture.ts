@@ -5,6 +5,7 @@
  * a status, a baseline or a plan. Each write runs in one transaction under the project's requirement lock.
  */
 
+import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
   PICTURE_KIND_OF,
   type PictureKind,
@@ -84,6 +85,42 @@ async function followerOf(tx: Tx, requirementId: string, picture: PictureKind) {
 }
 
 /**
+ * The one write of a picture (REQ-35): a new history row drawn for `revision`, which the revision
+ * then shows. The page's draw or replace (`writePicture`) and a draft's own picture
+ * (`revision-write.ts`) both write through it, in the caller's transaction; the caller judged it.
+ */
+export async function drawIn(
+  tx: Tx,
+  input: {
+    requirementId: string;
+    revision: number;
+    picture: WritePictureRequest;
+    author: RequirementActor;
+    level: SensitiveDataLevel;
+  },
+): Promise<string> {
+  const { picture, level } = input;
+  const [drawn] = await tx
+    .insert(requirementPictures)
+    .values({
+      requirementId: input.requirementId,
+      drawnFor: input.revision,
+      kind: picture.kind,
+      content: storedDeep(level, picture.content),
+      alt: storedText(level, picture.alt.trim()).text,
+      writtenBy: input.author.userId,
+      writtenAgency: input.author.agency,
+    })
+    .returning({ id: requirementPictures.id });
+  if (!drawn) throw new Error('requirements: the picture insert returned no row');
+  await tx
+    .update(requirementRevisions)
+    .set({ pictureId: drawn.id })
+    .where(revisionWhere(input.requirementId, input.revision));
+  return drawn.id;
+}
+
+/**
  * Draws or replaces revision `revision`'s picture; the one it showed stays in the history. Drawn on
  * the head, it is shown by the open revision that follows the head too (`followerOf`).
  */
@@ -123,29 +160,19 @@ export async function writePicture(input: {
         body.kind,
       );
     if (refused) return [refused];
-    const [drawn] = await tx
-      .insert(requirementPictures)
-      .values({
-        requirementId: row.id,
-        drawnFor: target.revision,
-        kind: body.kind,
-        content: storedDeep(level, body.content),
-        alt: storedText(level, body.alt.trim()).text,
-        writtenBy: actor.userId,
-        writtenAgency: actor.agency,
-      })
-      .returning({ id: requirementPictures.id });
-    if (!drawn) throw new Error('requirements: the picture insert returned no row');
-    await tx
-      .update(requirementRevisions)
-      .set({ pictureId: drawn.id })
-      .where(revisionWhere(row.id, target.revision));
+    const drawn = await drawIn(tx, {
+      requirementId: row.id,
+      revision: target.revision,
+      picture: body,
+      author: actor,
+      level,
+    });
     if (target.state === 'current') {
       const follower = await followerOf(tx, row.id, body.kind);
       if (follower !== null) {
         await tx
           .update(requirementRevisions)
-          .set({ pictureId: drawn.id })
+          .set({ pictureId: drawn })
           .where(revisionWhere(row.id, follower));
       }
     }

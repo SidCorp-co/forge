@@ -26,6 +26,7 @@ import {
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { DRAWN } from '../helpers/requirement-picture-world.js';
 
 type Who =
   | 'person'
@@ -268,6 +269,8 @@ describe("the assistant's own toolset records, and offers no way to file an issu
         title: 'Ask Agent panel width',
         reason: 'The owner asked for a wider default.',
         criteria: [{ body: 'The panel opens at its maximum width.' }],
+        kind: 'screen',
+        picture: DRAWN.screen,
       }),
     );
     expect(draft.isError, toolResultText(draft)).toBeFalsy();

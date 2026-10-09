@@ -20,6 +20,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import { DRAWN } from '../helpers/requirement-picture-world.js';
 
 interface Step {
   tool?: { name: string; args: unknown };
@@ -238,6 +239,8 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
       reason: 'The owner listed the parity criteria in criteria-120.md.',
       criteria: [],
       criteriaFrom: { file: 'criteria-120.md', section: 'Acceptance criteria' },
+      kind: 'screen',
+      picture: DRAWN.screen,
     };
     script.seen = [];
     script.steps = [
@@ -382,6 +385,8 @@ describe('a criteria document the draft cannot take whole', () => {
         reason: 'From broken.md.',
         criteria: [],
         criteriaFrom: { file: 'broken.md' },
+        kind: 'screen',
+        picture: DRAWN.screen,
       }),
     );
     expect(r.isError).toBe(true);
@@ -397,7 +402,14 @@ describe('a criteria document the draft cannot take whole', () => {
     ok(await attach(room, 'criteria-120.md', 'text/markdown', Buffer.from(SPEC)), 201);
     const r = await (await tools(room)).execute(
       'forge_requirement_draft',
-      JSON.stringify({ title: 'X', reason: 'Y', criteria: [], criteriaFrom: { file: 'spec.md' } }),
+      JSON.stringify({
+        title: 'X',
+        reason: 'Y',
+        criteria: [],
+        criteriaFrom: { file: 'spec.md' },
+        kind: 'screen',
+        picture: DRAWN.screen,
+      }),
     );
     expect(r.isError).toBe(true);
     expect(toolResultText(r)).toContain(

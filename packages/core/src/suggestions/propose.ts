@@ -37,7 +37,7 @@ import {
   suggestionKernelActor,
   targetOfRow,
 } from './read.js';
-import { revisionDiffRefusalsIn } from './revision-diff.js';
+import { draftPictureRefusalsIn, revisionDiffRefusalsIn } from './revision-diff.js';
 import {
   baseStaleRefusal,
   breakdownOpenRefusal,
@@ -104,17 +104,17 @@ async function proposeIn(
     if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'revision_diff' && p.target.type === 'requirement') {
-    const wrong = await revisionDiffRefusalsIn(tx, p.target.id, p.baseRevision, p.payload);
+    const wrong = [
+      ...(await revisionDiffRefusalsIn(tx, p.target.id, p.baseRevision, p.payload)),
+      ...(await draftPictureRefusalsIn(tx, { ...p, kind: p.kind }, head)),
+    ];
     if (wrong.length) return { refusals: wrong };
   }
   if (p.kind === 'requirement_draft') {
-    const wrong = await firstRequirementRefusalsIn(
-      tx,
-      p.projectId,
-      p.target,
-      p.payload,
-      p.revisesId,
-    );
+    const wrong = [
+      ...(await firstRequirementRefusalsIn(tx, p.projectId, p.target, p.payload, p.revisesId)),
+      ...(await draftPictureRefusalsIn(tx, { ...p, kind: p.kind }, head)),
+    ];
     if (wrong.length) return { refusals: wrong };
   }
   const open = await tx

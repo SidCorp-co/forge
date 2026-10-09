@@ -19,6 +19,7 @@ import type { TurnImage } from '../vision.js';
 import { requireRoleFor } from './roles.js';
 import { type ChatProposalRow, recordProposal, restateProposal } from './store.js';
 import { imagesLine, summaryOfToolCall } from './summary.js';
+import { vetHeld } from './vet.js';
 import { decideToolCall, refusedWriteText } from './write-rule.js';
 
 /** The turn the gate holds writes for. */
@@ -104,6 +105,8 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
   ): Promise<CallToolResult> => {
     const refused = await roleRefusal(turn, kind);
     if (refused) return refused;
+    const unfit = await vetHeld(name, argsJson, turn.projectId);
+    if (unfit) return unfit;
     const images = imagesOf(turn);
     const shown = summaryOfToolCall(kind, name, argsJson);
     const attaching = imagesLine(kind, name, argsJson, attachedOnPress(turn, kind));

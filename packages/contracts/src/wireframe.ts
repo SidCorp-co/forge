@@ -230,11 +230,3 @@ export function applyWireframePatch(doc: WireframeDoc, opsInput: unknown): Wiref
   }
   return parseWireframe({ ...doc, shapes });
 }
-
-/** The board as the one line the person and the model read: its title and what it holds. */
-export function describeWireframe(doc: WireframeDoc): string {
-  const counts = new Map<string, number>();
-  for (const s of doc.shapes) counts.set(s.type, (counts.get(s.type) ?? 0) + 1);
-  const what = [...counts].map(([t, n]) => `${n} ${t}`).join(', ');
-  return `${doc.title ? `"${doc.title}" ` : ''}board (${what || 'empty'})`;
-}

@@ -6,8 +6,12 @@
  */
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
-import type { RequirementKind } from '@forge/contracts/requirement-pictures';
-import type { RequirementSpec } from '@forge/contracts/requirements';
+import {
+  type DraftPicture,
+  pictureWithAlt,
+  type RequirementKind,
+} from '@forge/contracts/requirement-pictures';
+import { type RequirementSpec, requirementKey } from '@forge/contracts/requirements';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -22,7 +26,8 @@ import {
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { withAskedQuestions } from './clarity.js';
-import { pictureFitsKind } from './picture.js';
+import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
+import { drawIn, pictureFitsKind } from './picture.js';
 import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
@@ -46,6 +51,8 @@ export interface RevisionWrite {
   writtenLang?: WrittenLang | undefined;
   /** What the requirement is (REQ-35): absent keeps what is there (the head's, on a new revision), null clears it. */
   kind?: RequirementKind | null | undefined;
+  /** The picture drawn with this draft (REQ-35 BC-10), shown the moment the revision is written. */
+  picture?: DraftPicture | undefined;
 }
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
@@ -174,6 +181,12 @@ export async function createRequirementIn(
     .select({ next: sql<number>`coalesce(max(${requirements.reqSeq}), 0)::int + 1` })
     .from(requirements)
     .where(eq(requirements.projectId, projectId));
+  const unfit = draftPictureRefusals(
+    { ...NEW_REQUIREMENT, key: requirementKey(next) },
+    write,
+    false,
+  );
+  if (unfit.length) return { id: '', refusals: unfit };
   const [row] = await tx
     .insert(requirements)
     .values({
@@ -209,6 +222,15 @@ export async function createRequirementIn(
       [write.reason, write.changeSummary, write.tldr].join('\n'),
     ),
   });
+  if (write.picture) {
+    await drawIn(tx, {
+      requirementId: row.id,
+      revision: 1,
+      picture: pictureWithAlt(write.picture),
+      author: input.author ?? actor,
+      level,
+    });
+  }
   if (input.designs?.length) {
     await tx.insert(requirementWorkflows).values(
       input.designs.map((workflowId) => ({
@@ -276,11 +298,18 @@ export async function newRevisionIn(
     .from(requirements)
     .where(eq(requirements.id, requirementId));
   if (!owner) throw new Error(`requirements: ${requirementId} has no row`);
-  const write = storedWrite(await dataPolicyOf(owner.projectId), input.write);
+  const level = await dataPolicyOf(owner.projectId);
+  const write = storedWrite(level, input.write);
   const refusal =
     openRevisionRefusal(await openRevisionOf(tx, requirementId)) ??
     staleBaseRefusal(input.baseRevision, input.head);
   if (refusal) return [refusal];
+  const unfit = draftPictureRefusals(
+    await landingIn(tx, requirementId, { head: input.head }),
+    write,
+    false,
+  );
+  if (unfit.length) return unfit;
   const asked = await withAskedQuestions(tx, {
     projectId: owner.projectId,
     requirementId,
@@ -327,6 +356,15 @@ export async function newRevisionIn(
       [write.reason, write.changeSummary, write.tldr].join('\n'),
     ),
   });
+  if (write.picture) {
+    await drawIn(tx, {
+      requirementId,
+      revision: next,
+      picture: pictureWithAlt(write.picture),
+      author: input.actor,
+      level,
+    });
+  }
   return writeCriteria(tx, requirementId, next, write.criteria);
 }
 
@@ -348,7 +386,14 @@ export async function rewriteRevisionIn(
   },
 ): Promise<RequirementRefusal[] | null> {
   const { projectId, requirementId, revision, actor } = input;
-  const stored = storedWrite(await dataPolicyOf(projectId), input.write);
+  const level = await dataPolicyOf(projectId);
+  const stored = storedWrite(level, input.write);
+  const unfit = draftPictureRefusals(
+    await landingIn(tx, requirementId, { revision }),
+    stored,
+    false,
+  );
+  if (unfit.length) return unfit;
   const asked = await withAskedQuestions(tx, {
     projectId,
     requirementId,
@@ -386,6 +431,15 @@ export async function rewriteRevisionIn(
         eq(requirementRevisions.revision, revision),
       ),
     );
+  if (stored.picture) {
+    await drawIn(tx, {
+      requirementId,
+      revision,
+      picture: pictureWithAlt(stored.picture),
+      author: actor,
+      level,
+    });
+  }
   const own = await resetDraftCriteria(tx, requirementId, revision);
   return writeCriteria(tx, requirementId, revision, stored.criteria, own);
 }

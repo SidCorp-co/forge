@@ -1,10 +1,19 @@
+import {
+  DRAFT_KIND_HOW,
+  DRAFT_PICTURE_HOW,
+  draftPictureSchema,
+  revisionKindField,
+} from '@forge/contracts/requirement-pictures';
 import { z } from 'zod';
+import { db } from '../db/client.js';
 import { principalAgency } from '../issues/index.js';
 import { MCP_DOOR } from '../lib/data-egress.js';
 import { type ContextScopedMcpToolFactory, refusedAnswer, zodToMcpSchema } from '../lib/tool.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { criteriaFromDocument } from './document-criteria.js';
 import { designsNamed, draftLinked } from './draft-linked.js';
-import { listRequirementsAs, readRequirementAs } from './read.js';
+import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
+import { listRequirementsAs, readRequirementAs, rowIn } from './read.js';
 import { revisionFields } from './route-kit.js';
 import { writeRevision } from './service.js';
 import type { RequirementOutcome } from './write-tx.js';
@@ -127,10 +136,18 @@ const criteriaFrom = z
   .describe(
     'Take the criteria from a document attached in this conversation, each list item verbatim, instead of writing `criteria`: a prose line is reported as skipped with its number, and a list item that cannot be taken is refused by its number. Send `criteria: []` with it.',
   );
+// The assistant's draft names its kind and draws (REQ-35 BC-10): the shapes are said on the fields,
+// where the model reads them, since a tool's description is cut at the chat adapter's cap.
+const drawnFields = {
+  kind: revisionKindField.describe(DRAFT_KIND_HOW),
+  picture: draftPictureSchema.optional().describe(DRAFT_PICTURE_HOW),
+};
+
 const draftInput = z.strictObject({
   projectId: z.uuid(),
   title: z.string().trim().min(1).max(500),
   ...revisionFields,
+  ...drawnFields,
   criteria: revisionFields.criteria.default([]),
   criteriaFrom: criteriaFrom.optional(),
   designs: z
@@ -157,6 +174,7 @@ const reviseInput = z.strictObject({
     .nullable()
     .describe('the head revision you read with forge_requirement (currentRevision)'),
   ...revisionFields,
+  ...drawnFields,
 });
 
 function drafted(outcome: RequirementOutcome) {
@@ -171,15 +189,56 @@ function drafted(outcome: RequirementOutcome) {
 const WRITE_RULE =
   "From a chat this call is held for the person's agreement: core keeps it as a proposal they see as a confirm card, and writes it as them once they agree. Criteria are statements a person can check; what the input leaves unsettled goes in spec.openQuestions, never settled by you.";
 
+const DRAWS =
+  'Name its kind and draw its picture in the same call (kind, picture): it shows as a rough sketch the moment it is written.';
+
+/**
+ * The assistant's draft leaves its revision showing a picture (REQ-35 BC-10): a new requirement names
+ * its kind and draws, and a revision draws unless it keeps the head's kind and picture. Refusals, or
+ * none; nothing is written. A criteria preview writes nothing, so it draws nothing.
+ */
+async function undrawn(
+  name: 'forge_requirement_draft' | 'forge_requirement_revise',
+  args: Record<string, unknown>,
+) {
+  if (name === 'forge_requirement_draft') {
+    const draft = draftInput.parse(args);
+    return draft.preview ? [] : draftPictureRefusals(NEW_REQUIREMENT, draft, true);
+  }
+  const revise = reviseInput.parse(args);
+  const row = await rowIn(db, revise.projectId, revise.requirement);
+  const landing = await landingIn(db, row.id, { head: row.currentRevision });
+  return draftPictureRefusals(landing, revise, true);
+}
+
+/**
+ * Each record tool's check, made before the agreement gate holds its call (`assistant/agreement/
+ * vet.ts`): the answer the call would be refused with, or null to hold it. Handed over at boot.
+ */
+const vetOf =
+  (name: 'forge_requirement_draft' | 'forge_requirement_revise') =>
+  async (args: Record<string, unknown>) => {
+    const refusals = await undrawn(name, args);
+    return refusals.length ? refusedAnswer(refusals, 'REQUIREMENT_REFUSED') : null;
+  };
+export const REQUIREMENT_RECORD_VETS = {
+  forge_requirement_draft: vetOf('forge_requirement_draft'),
+  forge_requirement_revise: vetOf('forge_requirement_revise'),
+};
+
 export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_requirement_draft',
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, then call it without preview.`,
+  description: `Draft a NEW requirement (REQ-n at revision 1, draft) for a wish about how the product should behave that no existing requirement covers — look with forge_requirements first, and revise the one that covers it instead. ${DRAWS} ${WRITE_RULE} Where the criteria are an attached document's list, take them with criteriaFrom, never retyped: call with preview: true first, tell the person the count and the lines, then call it without preview.`,
   inputSchema: zodToMcpSchema(draftInput),
   handler: async (args) => {
     const { projectId, title, criteriaFrom, preview, designs, ...write } = draftInput.parse(args);
+    // the caller is refused for the right it lacks before anything is said of what it drew
+    await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
+    const unfit = await undrawn('forge_requirement_draft', args);
+    if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     const linked = await designsNamed(projectId, designs ?? []);
     if (!linked.ok) return refusedAnswer([linked.refusal], 'REQUIREMENT_REFUSED');
     const draft = (criteria: typeof write.criteria) =>
@@ -292,10 +351,13 @@ export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => 
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change. ${WRITE_RULE}`,
+  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change. Kind left out keeps the head's, and with it the head's picture; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
   inputSchema: zodToMcpSchema(reviseInput),
   handler: async (args) => {
     const { projectId, requirement, baseRevision, ...write } = reviseInput.parse(args);
+    await requireCan(actorFor(ctx.principal.userId), 'project.write', projectResource(projectId));
+    const unfit = await undrawn('forge_requirement_revise', args);
+    if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     return drafted(
       await writeRevision({
         projectId,

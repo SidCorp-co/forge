@@ -56,6 +56,42 @@ describe('the card names what a held Assistant call would record, and what it li
     ).toEqual(['Criteria from spec.md, section "Acceptance"']);
   });
 
+  // ISS-464 (REQ-35 BC-10, BC-11, BC-12): the assistant's draft carries its picture, which the card
+  // shows before the press as a rough sketch, read by the text alternative it will be written with
+  it("a draft's picture: labelled a rough sketch, with its text alternative", () => {
+    const picture = {
+      kind: 'flow',
+      content: {
+        nodes: [
+          { id: 'ask', label: 'Buyer asks' },
+          { id: 'paid', label: 'Refund paid' },
+        ],
+        edges: [{ from: 'ask', to: 'paid' }],
+      },
+    };
+    const drawn = card('forge_requirement_draft', {
+      title: 'Refunds',
+      reason: 'Buyers ask by email.',
+      kind: 'process',
+      picture,
+      criteria: [{ body: 'A buyer asks from the order page.' }],
+    });
+    expect(drawn.lines).toEqual([
+      'Why: Buyers ask by email.',
+      '1. A buyer asks from the order page.',
+      'Picture, a rough sketch (a flow): A flow of 2 steps: Buyer asks to Refund paid.',
+      'kind: process',
+    ]);
+    const revised = card('forge_requirement_revise', {
+      requirement: 'REQ-30',
+      reason: 'r',
+      picture: { ...picture, alt: 'Refunds are paid once asked.' },
+    });
+    expect(revised.lines).toContain(
+      'Picture, a rough sketch (a flow): Refunds are paid once asked.',
+    );
+  });
+
   it('a revision links its requirement; a comment and an attachment their issue', () => {
     expect(
       card('forge_requirement_revise', { requirement: 'REQ-30', reason: 'r' }).relates,

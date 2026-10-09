@@ -19398,6 +19398,326 @@
                       }
                     ]
                   },
+                  "picture": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edges": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              },
+                              "nodes": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 60,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "nodes",
+                              "edges"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "flow",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "rows": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "expected": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    },
+                                    "input": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "maxItems": 50,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "rows"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "example_table",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "board": {}
+                            },
+                            "required": [
+                              "board"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "wireframe",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "frame": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "fields": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "label": {
+                                          "maxLength": 80,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "string",
+                                            "number",
+                                            "date",
+                                            "duration",
+                                            "status",
+                                            "ref"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "maxLength": 24,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "vocabulary": {
+                                          "enum": [
+                                            "requirement",
+                                            "releaseState",
+                                            "bcVerdict"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "type",
+                                        "label"
+                                      ],
+                                      "type": "object",
+                                      "x-forge-refinements": [
+                                        "a refinement with no fixed message, whose rule this contract cannot state"
+                                      ]
+                                    },
+                                    "maxItems": 64,
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "rows": {
+                                    "items": {
+                                      "additionalProperties": {
+                                        "type": [
+                                          "string",
+                                          "number",
+                                          "null"
+                                        ]
+                                      },
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "type": "object"
+                                    },
+                                    "maxItems": 5000,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "fields",
+                                  "rows"
+                                ],
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "a refinement with no fixed message, whose rule this contract cannot state"
+                                ]
+                              },
+                              "series": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "variant": {
+                                "enum": [
+                                  "bar",
+                                  "line",
+                                  "burndown"
+                                ],
+                                "type": "string"
+                              },
+                              "x": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "y": {
+                                "items": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 6,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "variant",
+                              "x",
+                              "y",
+                              "frame"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "chart",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "reason": {
                     "maxLength": 4000,
                     "type": "string"
@@ -27494,6 +27814,326 @@
                       }
                     ]
                   },
+                  "picture": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edges": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              },
+                              "nodes": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 60,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "nodes",
+                              "edges"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "flow",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "rows": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "expected": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    },
+                                    "input": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "maxItems": 50,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "rows"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "example_table",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "board": {}
+                            },
+                            "required": [
+                              "board"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "wireframe",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "frame": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "fields": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "label": {
+                                          "maxLength": 80,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "string",
+                                            "number",
+                                            "date",
+                                            "duration",
+                                            "status",
+                                            "ref"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "maxLength": 24,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "vocabulary": {
+                                          "enum": [
+                                            "requirement",
+                                            "releaseState",
+                                            "bcVerdict"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "type",
+                                        "label"
+                                      ],
+                                      "type": "object",
+                                      "x-forge-refinements": [
+                                        "a refinement with no fixed message, whose rule this contract cannot state"
+                                      ]
+                                    },
+                                    "maxItems": 64,
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "rows": {
+                                    "items": {
+                                      "additionalProperties": {
+                                        "type": [
+                                          "string",
+                                          "number",
+                                          "null"
+                                        ]
+                                      },
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "type": "object"
+                                    },
+                                    "maxItems": 5000,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "fields",
+                                  "rows"
+                                ],
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "a refinement with no fixed message, whose rule this contract cannot state"
+                                ]
+                              },
+                              "series": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "variant": {
+                                "enum": [
+                                  "bar",
+                                  "line",
+                                  "burndown"
+                                ],
+                                "type": "string"
+                              },
+                              "x": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "y": {
+                                "items": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 6,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "variant",
+                              "x",
+                              "y",
+                              "frame"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "chart",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "reason": {
                     "maxLength": 4000,
                     "type": "string"
@@ -29222,6 +29862,326 @@
                       }
                     ]
                   },
+                  "picture": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edges": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              },
+                              "nodes": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 60,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "nodes",
+                              "edges"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "flow",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "rows": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "expected": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    },
+                                    "input": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "maxItems": 50,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "rows"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "example_table",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "board": {}
+                            },
+                            "required": [
+                              "board"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "wireframe",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "frame": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "fields": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "label": {
+                                          "maxLength": 80,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "string",
+                                            "number",
+                                            "date",
+                                            "duration",
+                                            "status",
+                                            "ref"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "maxLength": 24,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "vocabulary": {
+                                          "enum": [
+                                            "requirement",
+                                            "releaseState",
+                                            "bcVerdict"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "type",
+                                        "label"
+                                      ],
+                                      "type": "object",
+                                      "x-forge-refinements": [
+                                        "a refinement with no fixed message, whose rule this contract cannot state"
+                                      ]
+                                    },
+                                    "maxItems": 64,
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "rows": {
+                                    "items": {
+                                      "additionalProperties": {
+                                        "type": [
+                                          "string",
+                                          "number",
+                                          "null"
+                                        ]
+                                      },
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "type": "object"
+                                    },
+                                    "maxItems": 5000,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "fields",
+                                  "rows"
+                                ],
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "a refinement with no fixed message, whose rule this contract cannot state"
+                                ]
+                              },
+                              "series": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "variant": {
+                                "enum": [
+                                  "bar",
+                                  "line",
+                                  "burndown"
+                                ],
+                                "type": "string"
+                              },
+                              "x": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "y": {
+                                "items": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 6,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "variant",
+                              "x",
+                              "y",
+                              "frame"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "chart",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "reason": {
                     "maxLength": 4000,
                     "type": "string"
@@ -29467,6 +30427,326 @@
                       },
                       {
                         "type": "null"
+                      }
+                    ]
+                  },
+                  "picture": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "edges": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "from": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "to": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 200,
+                                "type": "array"
+                              },
+                              "nodes": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "id": {
+                                      "pattern": "^[A-Za-z0-9_-]{1,40}$",
+                                      "type": "string"
+                                    },
+                                    "label": {
+                                      "maxLength": 80,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "label"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 60,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "nodes",
+                              "edges"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "flow",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "rows": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "expected": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    },
+                                    "input": {
+                                      "maxLength": 500,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "maxItems": 50,
+                                "type": "array"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "rows"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "const": "example_table",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "board": {}
+                            },
+                            "required": [
+                              "board"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "wireframe",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alt": {
+                            "maxLength": 300,
+                            "type": "string"
+                          },
+                          "content": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "frame": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "fields": {
+                                    "items": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "label": {
+                                          "maxLength": 80,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "name": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "type": {
+                                          "enum": [
+                                            "string",
+                                            "number",
+                                            "date",
+                                            "duration",
+                                            "status",
+                                            "ref"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "unit": {
+                                          "maxLength": 24,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "vocabulary": {
+                                          "enum": [
+                                            "requirement",
+                                            "releaseState",
+                                            "bcVerdict"
+                                          ],
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "name",
+                                        "type",
+                                        "label"
+                                      ],
+                                      "type": "object",
+                                      "x-forge-refinements": [
+                                        "a refinement with no fixed message, whose rule this contract cannot state"
+                                      ]
+                                    },
+                                    "maxItems": 64,
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "rows": {
+                                    "items": {
+                                      "additionalProperties": {
+                                        "type": [
+                                          "string",
+                                          "number",
+                                          "null"
+                                        ]
+                                      },
+                                      "propertyNames": {
+                                        "type": "string"
+                                      },
+                                      "type": "object"
+                                    },
+                                    "maxItems": 5000,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "fields",
+                                  "rows"
+                                ],
+                                "type": "object",
+                                "x-forge-refinements": [
+                                  "a refinement with no fixed message, whose rule this contract cannot state"
+                                ]
+                              },
+                              "series": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "title": {
+                                "maxLength": 120,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "variant": {
+                                "enum": [
+                                  "bar",
+                                  "line",
+                                  "burndown"
+                                ],
+                                "type": "string"
+                              },
+                              "x": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "y": {
+                                "items": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "maxItems": 6,
+                                "minItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "variant",
+                              "x",
+                              "y",
+                              "frame"
+                            ],
+                            "type": "object",
+                            "x-forge-refinements": [
+                              "a refinement with no fixed message, whose rule this contract cannot state"
+                            ]
+                          },
+                          "kind": {
+                            "const": "chart",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "content"
+                        ],
+                        "type": "object"
                       }
                     ]
                   },

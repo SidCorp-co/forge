@@ -20,6 +20,10 @@ import {
 } from "./pipeline-registry.js";
 import { ANSWER_VIEWS, pickFields } from "./projection.js";
 import { REASON_TEXT_MAX } from "./reason-text.js";
+import {
+	draftPictureSchema,
+	revisionKindField,
+} from "./requirement-pictures.js";
 import type { ProblemBody, RefusalStatuses } from "./refusal.js";
 import {
 	designChangePayloadSchema,
@@ -189,12 +193,15 @@ export const requirementCriterionSchema = z.strictObject({
 	form: z.enum(REQUIREMENT_CRITERION_FORMS).optional(),
 });
 
+/** A revision as a suggestion proposes it: the draft's kind and its picture ride with it (REQ-35 BC-10). */
 const revisionWrite = {
 	reason: z.string().trim().min(1).max(REASON_TEXT_MAX),
 	spec: requirementSpecSchema.optional(),
 	tldr: z.string().max(4_000).nullable().optional(),
 	changeSummary: z.string().max(4_000).nullable().optional(),
 	criteria: z.array(requirementCriterionSchema).max(200),
+	kind: revisionKindField,
+	picture: draftPictureSchema.optional(),
 };
 
 const bcCode = z.string().regex(/^BC-[1-9][0-9]*$/);

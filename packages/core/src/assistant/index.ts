@@ -5,6 +5,7 @@ export {
   refuseChatToolWrite,
 } from './agreement/rest-hold.js';
 export { recordedIn as agreedRecordsIn } from './agreement/store.js';
+export { provideHeldWriteVets } from './agreement/vet.js';
 export { drainRoomQuestions, registerRoomBridges } from './chat-room/drains.js';
 export { drainRoomWindows, registerRoomChat } from './chat-room/room-chat.js';
 export {

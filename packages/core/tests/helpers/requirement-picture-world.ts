@@ -56,6 +56,14 @@ export const PICTURES = {
   report: { kind: 'chart', alt: 'Orders rise from 3 to 5.', content: CHART },
 } as const;
 
+/** Each kind's picture as a draft carries it (ISS-464): no alt, which core writes from the content. */
+export const DRAWN = {
+  process: { kind: 'flow', content: FLOW },
+  rule: { kind: 'example_table', content: TABLE },
+  screen: { kind: 'wireframe', content: { board: BOARD } },
+  report: { kind: 'chart', content: CHART },
+} as const;
+
 export interface PictureWorld {
   projectId: string;
   ownerId: string;
