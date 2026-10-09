@@ -29,6 +29,8 @@ interface Decoration {
   selectedEdge: string | null;
   relNodes: Set<string> | null;
   relEdges: Set<string> | null;
+  /** The steps a page highlights (`CanvasHighlight`), marked whatever else is lit. */
+  traced: ReadonlySet<string> | null;
   hits: Set<string>;
   visited: Set<string>;
   contract: boolean;
@@ -57,6 +59,7 @@ function stepData(c: Canvas, n: View["nodes"][number], d: Decoration): StepNodeD
     contract: d.contract,
     on: d.selected === n.id,
     rel: !d.relNodes || d.relNodes.has(n.id),
+    traced: d.traced?.has(n.id) ?? false,
     hit: d.hits.has(n.id),
     visited: d.visited.has(n.id),
     mark: d.diff?.steps.get(n.id) ?? null,
@@ -187,8 +190,8 @@ export function useCanvasLayout(input: {
   direction: "down" | "right";
   onToggleBand: (band: string) => void;
   openBands: ReadonlySet<string>;
-  /** Called once each layout lands; `first` for the very first one, which sets the opening view. */
-  onLaidOut: (first: boolean, size: { width: number; height: number }) => void;
+  /** Called once each layout lands; `first` for the very first one, which sets the opening view, with where each node was placed. */
+  onLaidOut: (first: boolean, size: { width: number; height: number }, positions: ReadonlyMap<string, Box>) => void;
 }) {
   const { c, view, structure, decoration, direction } = input;
   const rf = useReactFlow();
@@ -288,7 +291,7 @@ export function useCanvasLayout(input: {
       const vp = rf.getViewport();
       const a = anchor.current;
       anchor.current = null;
-      laidOut.current(first.current, { width, height });
+      laidOut.current(first.current, { width, height }, positions);
       first.current = false;
       if (a) {
         const keys = [...new Set(a.ids.map((id) => view.keyOf.get(id) ?? id))];

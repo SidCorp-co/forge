@@ -1,6 +1,7 @@
 "use client";
 
 import type { DecisionMaker } from "@forge/contracts/comments";
+import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions/api";
 import { requirementsApi } from "./api";
@@ -103,5 +104,35 @@ export function useAnswerRequirementQuestion(projectId: string, req: string) {
       qc.invalidateQueries({ queryKey: ["requirement-decisions", projectId, req] });
       qc.invalidateQueries({ queryKey: ["entity-decisions", projectId, "requirement", req] });
     },
+  });
+}
+
+/** The requirement core answers a picture or kind write with, shown at once; the list's rows re-read. */
+function useShowWritten(projectId: string, req: string) {
+  const qc = useQueryClient();
+  return {
+    onSuccess: (d: RequirementDetail) => qc.setQueryData(["requirement", projectId, req], d),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      qc.invalidateQueries({ queryKey: ["requirement", projectId, req] });
+    },
+  };
+}
+
+/** Sets or corrects a revision's kind (REQ-35). */
+export function useWriteRequirementKind(projectId: string, req: string) {
+  const shown = useShowWritten(projectId, req);
+  return useMutation({
+    mutationFn: (a: { revision: number; kind: RequirementKind | null }) => requirementsApi.writeKind(projectId, req, a.revision, a.kind),
+    ...shown,
+  });
+}
+
+/** Draws or replaces a revision's picture (REQ-35). */
+export function useWriteRequirementPicture(projectId: string, req: string) {
+  const shown = useShowWritten(projectId, req);
+  return useMutation({
+    mutationFn: (a: { revision: number; body: WritePictureRequest }) => requirementsApi.writePicture(projectId, req, a.revision, a.body),
+    ...shown,
   });
 }

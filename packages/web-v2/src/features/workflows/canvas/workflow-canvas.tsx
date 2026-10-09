@@ -31,6 +31,16 @@ export interface CanvasFocus {
   onToggle: () => void;
 }
 
+/**
+ * Steps and lines a page names to stand out with nothing clicked, the rest dimmed: a requirement's
+ * page lights what its criteria trace (REQ-35 BC-3). Edges are named `from>to`, as the canvas keys
+ * them. A selection made on the canvas still takes the light while it stands.
+ */
+export interface CanvasHighlight {
+  steps: ReadonlySet<string>;
+  edges: ReadonlySet<string>;
+}
+
 /** The switch that marks, on the canvas, what changed since the approved revision. */
 export interface CanvasChanges {
   on: boolean;
@@ -52,6 +62,7 @@ export interface WorkflowCanvasProps {
   /** Absent on a compact pane: focus mode is the design page's. */
   focus?: CanvasFocus | null;
   changes?: CanvasChanges | null;
+  highlight?: CanvasHighlight | null;
 }
 
 /**

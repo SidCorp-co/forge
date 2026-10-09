@@ -26,6 +26,8 @@ export interface StepNodeData extends Record<string, unknown> {
   contract: boolean;
   on: boolean;
   rel: boolean;
+  /** A step the page highlights (`CanvasHighlight`). */
+  traced: boolean;
   hit: boolean;
   visited: boolean;
   mark: StepMark | null;
@@ -107,6 +109,7 @@ function StepCard({ data }: NodeProps & { data: StepNodeData }) {
       data-compact={!full}
       data-on={data.on}
       data-rel={data.rel}
+      data-traced={data.traced}
       data-hit={data.hit}
       data-visited={data.visited}
       data-mark={data.mark ?? undefined}

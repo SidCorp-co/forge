@@ -4,7 +4,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { SearchBox, WalkBar } from "./controls";
 import { type Canvas, pathOf, searchSteps, walkOrder } from "./model";
 import { DetailPanel, type Selection } from "./panel";
-import type { CanvasFocus, CanvasHealth } from "./workflow-canvas";
+import type { CanvasFocus, CanvasHealth, CanvasHighlight } from "./workflow-canvas";
 
 /** What both canvases share about attention: the selection and the path it lights, the search hits, and the walk through the design in reading order. */
 export function useStepFocus(c: Canvas) {
@@ -70,10 +70,35 @@ export function useStepFocus(c: Canvas) {
 
 export type StepFocus = ReturnType<typeof useStepFocus>;
 
+/** What the canvas lights and leaves undimmed: a step or line, its two ends among them. */
+export interface Lit {
+  nodes: Set<string>;
+  edges: Set<string>;
+}
+
+/**
+ * What the canvas lights: the selection's path while one stands, else the page's highlight (a
+ * highlighted line keeps its two ends undimmed), else nothing, which dims nothing.
+ */
+export function litOf(focus: Lit | null, highlight: CanvasHighlight | null | undefined): Lit | null {
+  if (focus) return focus;
+  if (!highlight) return null;
+  const ends = [...highlight.edges].flatMap((e) => e.split(">"));
+  return { nodes: new Set([...highlight.steps, ...ends]), edges: new Set(highlight.edges) };
+}
+
 /** The parts of a canvas's frame that answer to the focus: walking, search, the side panel and the keys; a compact canvas has none of the chrome. */
 export function focusChrome(
   f: StepFocus,
-  o: { c: Canvas; reveal: (id: string) => void; decision: ReactNode; compact?: boolean; health?: CanvasHealth | null; focus?: CanvasFocus | null },
+  o: {
+    c: Canvas;
+    reveal: (id: string) => void;
+    decision: ReactNode;
+    compact?: boolean;
+    health?: CanvasHealth | null;
+    focus?: CanvasFocus | null;
+    highlight?: CanvasHighlight | null;
+  },
 ) {
   const walkTo = (i: number) => {
     const id = f.advance(i);
@@ -82,7 +107,7 @@ export function focusChrome(
   const full = !o.compact;
   return {
     walkTo,
-    dim: Boolean(f.focus),
+    dim: Boolean(f.focus) || Boolean(o.highlight),
     onPaneClick: () => f.setSelection(null),
     onEscape: f.dismiss,
     focus: full ? (o.focus ?? null) : null,

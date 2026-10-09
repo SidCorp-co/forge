@@ -85,6 +85,8 @@ const revision = (n: number, state: string, over: Record<string, unknown> = {}) 
   returnReason: null,
   acceptReason: null,
   fromSuggestionId: null,
+  kind: null,
+  picture: null,
   criteria: [criterion("BC-1", "Tieu chi mot", 1), criterion("BC-2", n === 2 ? "Tieu chi hai moi" : "Tieu chi hai", n), criterion("BC-3", "Tieu chi ba", 1)],
   ...over,
 });
@@ -92,9 +94,23 @@ const revision = (n: number, state: string, over: Record<string, unknown> = {}) 
 export const reqSummary = (key: string, over: Partial<RequirementSummary> = {}): RequirementSummary =>
   ({ id: `id-${key}`, key, title: `Muc ${key}`, status: "agreed", currentRevision: 1, latestRevision: { revision: 2, state: "proposed" }, delivery: standing.delivery, createdAt: at, updatedAt: at, standing, ...over }) as RequirementSummary;
 
+// a rule's picture (REQ-35, ISS-460): its example table, drawn by hand and named for a screen reader
+const rulePicture = {
+  id: "pic1",
+  kind: "example_table",
+  content: { rows: [{ input: "Don hang 120", expected: "Mien phi giao" }] },
+  alt: "Don tren 100 duoc mien phi giao",
+  roughSketch: true,
+  drawnFor: 1,
+  writtenBy: "u1",
+  writtenByName: "Lan",
+  writtenAgency: "human",
+  writtenAt: at,
+};
+
 export const reqDetail: RequirementDetail = {
   ...reqSummary("REQ-1"),
-  revisions: [revision(2, "proposed"), revision(1, "current", { returnReason: "Chua ro" })],
+  revisions: [revision(2, "proposed"), revision(1, "current", { returnReason: "Chua ro", kind: "rule", picture: rulePicture })],
   criteria: [criterion("BC-1", "Tieu chi mot", 1), criterion("BC-2", "Tieu chi hai moi", 2), criterion("BC-3", "Tieu chi ba", 1)],
   workflows: [
     { workflowId: "w1", flow: "thanh-toan", title: "Thanh toan", designStatus: "approved", approvedRevision: 3 },

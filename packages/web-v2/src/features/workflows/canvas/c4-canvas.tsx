@@ -18,7 +18,7 @@ import { HealthBar, PageBar } from "./controls";
 import { Frame } from "./frame";
 import { useCanvasModel } from "./model";
 import { hue } from "./style";
-import { focusChrome, useStepFocus } from "./step-focus";
+import { focusChrome, type Lit, litOf, useStepFocus } from "./step-focus";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
 
 const MAX_ZOOM = 2.5;
@@ -40,14 +40,15 @@ const nodeStroke = (n: Node) => (n.type === "c4box" && (n.data as C4BoxData).on 
  * edges here. It opens on Every system when that reads at 12px in the view, else on Boundaries.
  */
 export function C4Canvas(props: WorkflowCanvasProps) {
-  const { doc, template, diff = null, compact = false, health = null } = props;
+  const { doc, template, diff = null, compact = false, health = null, highlight = null } = props;
   const rf = useReactFlow();
   const wrap = useRef<HTMLDivElement>(null);
   const read = useSystemGraph(props.graph ?? null);
   const graph = read.data ?? null;
   const c = useCanvasModel(doc, template);
   const f = useStepFocus(c);
-  const { step, edge, focus, hits, setSelection } = f;
+  const { step, edge, hits, setSelection } = f;
+  const focus = useMemo(() => litOf(f.focus, highlight), [f.focus, highlight]);
   const canFold = useMemo(() => (graph ? foldable(graph) : false), [graph]);
   const [param, setParam] = useQueryParam("level");
   const level: Level = !compact && param === "containers" ? "containers" : "context";
@@ -108,7 +109,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
     if (b) void rf.setCenter(b.x + b.w / 2, b.y + b.h / 2, { zoom: rf.getViewport().zoom, duration: 320 });
   };
 
-  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact, focus: props.focus });
+  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact, focus: props.focus, highlight });
 
   const relayout = (next: () => void) => {
     pendingFit.current = true;
@@ -205,7 +206,7 @@ export function C4Canvas(props: WorkflowCanvasProps) {
   );
 }
 
-type Focus = ReturnType<typeof useStepFocus>["focus"];
+type Focus = Lit | null;
 
 function c4Nodes(
   diagram: Diagram,

@@ -10,7 +10,7 @@ import { useCanvasModel } from "./model";
 import { type BandRowData, NODE_TYPES, type StepNodeData } from "./nodes";
 import { hue, tint } from "./style";
 import { useCanvasLayout } from "./use-canvas-layout";
-import { focusChrome, useStepFocus } from "./step-focus";
+import { focusChrome, litOf, useStepFocus } from "./step-focus";
 import { buildView, type Lod, lodOf } from "./view";
 import type { WorkflowCanvasProps } from "./workflow-canvas";
 
@@ -42,14 +42,35 @@ function nodeStroke(n: Node) {
   return d.on ? "var(--accent)" : d.hit ? "var(--wf-hit)" : "transparent";
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * Where the canvas opens: on a page's highlight, the lit steps fitted and centred, never past their
+ * own size; else the design from its top, fitted to the width and no smaller than 0.85.
+ */
+function openingView(el: HTMLElement, size: { width: number; height: number }, lit: readonly Box[]): Viewport {
+  if (lit.length > 0) {
+    const x0 = Math.min(...lit.map((p) => p.x));
+    const y0 = Math.min(...lit.map((p) => p.y));
+    const w = Math.max(...lit.map((p) => p.x + p.width)) - x0;
+    const h = Math.max(...lit.map((p) => p.y + p.height)) - y0;
+    const k = Math.max(0.4, Math.min((el.clientWidth - 80) / w, (el.clientHeight - 120) / h, 1));
+    return { x: el.clientWidth / 2 - (x0 + w / 2) * k, y: el.clientHeight / 2 - (y0 + h / 2) * k, zoom: k };
+  }
+  const fitK = Math.min((el.clientWidth - 40) / size.width, (el.clientHeight - 40) / size.height, 1);
+  const k = Math.min(1, Math.max(fitK, 0.85));
+  return { x: (el.clientWidth - size.width * k) / 2, y: 64, zoom: k };
+}
+
 /** A design laid out by ELK from its template: bands, stages and steps, levels of detail by zoom. */
 export function FlowCanvas(props: WorkflowCanvasProps) {
-  const { doc, template, diff = null, health = null } = props;
+  const { doc, template, diff = null, health = null, highlight = null } = props;
   const rf = useReactFlow();
   const c = useCanvasModel(doc, template);
   const banded = c.bands.length > 0;
   const f = useStepFocus(c);
   const { focus, hits, walk } = f;
+  const lit = useMemo(() => litOf(focus, highlight), [focus, highlight]);
   const [language, setLanguage] = useState<Language>("business");
   const [lod, setLod] = useState<Lod>(1);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -66,15 +87,16 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     () => ({
       selected: f.step,
       selectedEdge: f.edge,
-      relNodes: focus?.nodes ?? null,
-      relEdges: focus?.edges ?? null,
+      relNodes: lit?.nodes ?? null,
+      relEdges: lit?.edges ?? null,
+      traced: highlight?.steps ?? null,
       hits,
       visited: walk === null ? new Set<string>() : new Set(f.visited),
       contract: language === "contract",
       diff,
       health,
     }),
-    [f.step, f.edge, focus, hits, walk, f.visited, language, diff, health],
+    [f.step, f.edge, lit, highlight, hits, walk, f.visited, language, diff, health],
   );
 
   const layout = useCanvasLayout({
@@ -85,14 +107,11 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     direction: template?.layout.direction ?? (doc.kind === "state" ? "down" : "right"),
     openBands: expanded,
     onToggleBand: toggleBand,
-    onLaidOut: (first, size) => {
-      if (!first) return;
-      const el = wrap.current;
-      if (!el) return;
-      const fitK = Math.min((el.clientWidth - 40) / size.width, (el.clientHeight - 40) / size.height, 1);
-      const k = Math.min(1, Math.max(fitK, 0.85));
-      void rf.setViewport({ x: (el.clientWidth - size.width * k) / 2, y: 64, zoom: k });
-      setZoom(k);
+    onLaidOut: (first, size, positions) => {
+      if (!first || !wrap.current) return;
+      const vp = openingView(wrap.current, size, [...(highlight?.steps ?? [])].flatMap((id) => positions.get(view.keyOf.get(id) ?? id) ?? []));
+      void rf.setViewport(vp);
+      setZoom(vp.zoom);
     },
   });
 
@@ -140,7 +159,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
     layout.center(id, needBand || needOpen);
   };
 
-  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, health, focus: props.focus });
+  const { walkTo, ...frameFocus } = focusChrome(f, { c, reveal, decision: props.decision, compact: props.compact ?? false, health, focus: props.focus, highlight });
 
   const clickStep = (id: string) => {
     if (f.step === id && lod < 2 && open.has(id)) {
@@ -212,6 +231,7 @@ export function FlowCanvas(props: WorkflowCanvasProps) {
   return (
     <Frame
       layout="flow"
+      compact={props.compact ?? false}
       wrap={wrap}
       template={template}
       nodes={layout.nodes}

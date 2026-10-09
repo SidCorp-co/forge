@@ -26,6 +26,7 @@
 .wfc-card:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 .wfc-card[data-compact="true"] { padding: 8px 11px; gap: 4px; }
 .wfc-card[data-on="true"] { border-color: var(--tc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tc) 22%, transparent), var(--shadow-sm); }
+.wfc-card[data-traced="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow-sm); }
 .wfc-card[data-hit="true"] { outline: 2px solid var(--wf-hit); outline-offset: 3px; }
 .wfc-card[data-visited="true"]::after { content: ""; position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--green-500); }
 .wfc-card[data-mark="added"] { border-color: var(--green-500); }

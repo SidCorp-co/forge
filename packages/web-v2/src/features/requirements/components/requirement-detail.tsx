@@ -2,7 +2,8 @@
 
 // A requirement's full page: a main column for reading and acting, beside a sticky rail of the
 // at-a-glance facts. The column opens on one strip (whose turn, lifecycle step and what is next,
-// k/n verified), then seven views by tabs (Overview with what is still unclear, Criteria, Revisions,
+// k/n verified), then the requirement's picture above any text (REQ-35 BC-1, `requirement-picture.tsx`),
+// then seven views by tabs (Overview with what is still unclear, Criteria, Revisions,
 // Mockups, Decisions, Memory, Activity); in Revisions, Decisions and Activity the long reading stays
 // folded until opened (REQ-35 BC-5, BC-6, BC-7). Each fact and each act appears once: Accept / Reject
 // only beside the diff. Everything derived (whose turn, coverage, history) comes from core's read model.
@@ -38,6 +39,7 @@ import { RequirementFacts } from "./requirement-facts";
 import { CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
+import { RequirementPicture } from "./requirement-picture";
 import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
 import { RequirementProgress } from "./standing-bits";
 
@@ -266,8 +268,8 @@ export function RequirementPage({
             }
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
-            {/* the strip stays first; a picture (ISS-460) goes between it and the tabs */}
             <RequirementProgress standing={s} slug={slug} inset="px-8 max-md:px-4" />
+            <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
               {tab === "overview" ? <Overview d={d} projectId={projectId} slug={slug} /> : null}

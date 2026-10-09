@@ -1,4 +1,5 @@
 import type { DecisionMaker } from "@forge/contracts/comments";
+import type { RequirementKind, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import type { PromoteDraftsAnswer, RequirementDecisionsResponse } from "@forge/contracts/requirements";
 import { apiClient } from "@/lib/api/client";
 import type {
@@ -11,6 +12,7 @@ import type {
 const base = (projectId: string) => `/projects/${projectId}/requirements`;
 const one = (projectId: string, req: string) => `${base(projectId)}/${encodeURIComponent(req)}`;
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
+const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringify(body) });
 
 function actionPath(projectId: string, req: string, a: RequirementAction): string {
   if (a.kind === "accept-delivery") return `${one(projectId, req)}/accept`;
@@ -49,6 +51,12 @@ export const requirementsApi = {
     apiClient<RequirementDetail>(`${one(projectId, req)}/issues`, post({ issue, ...(adoptPlan ? { adoptPlan: true } : {}) })),
   unlinkIssue: (projectId: string, req: string, issue: string) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/issues/${encodeURIComponent(issue)}`, { method: "DELETE" }),
+  /** Sets or corrects a revision's kind (REQ-35); null clears it, and a picture drawn for another kind leaves with it. */
+  writeKind: (projectId: string, req: string, revision: number, kind: RequirementKind | null) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/kind`, put({ kind })),
+  /** Draws or replaces a revision's one picture, shown at once with no accept (REQ-35). */
+  writePicture: (projectId: string, req: string, revision: number, body: WritePictureRequest) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/picture`, put(body)),
   /** Opens (or hands back) the viewer's BA assistant room about one requirement (ISS-58). */
   openAssistant: (projectId: string, req: string) =>
     apiClient<{ conversation: { id: string }; reused: boolean }>(`${one(projectId, req)}/assistant`, post({})),

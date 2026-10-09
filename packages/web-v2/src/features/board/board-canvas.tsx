@@ -47,8 +47,8 @@ function boxData(s: WireframeShape): Record<string, unknown> {
   return { wf: type, ...rest };
 }
 
-/** wireframe-v1 as Excalidraw elements, each under its shape's id; button, input and list are labelled rectangles. */
-function toScene(doc: WireframeDoc) {
+/** wireframe-v1 as Excalidraw elements, each under its shape's id; button, input and list are labelled rectangles. `scene-to-wireframe.ts` reads them back. */
+export function toScene(doc: WireframeDoc) {
   const skeletons: ExcalidrawElementSkeleton[] = [];
   const pens: Record<string, unknown>[] = [];
   for (const s of doc.shapes) {
