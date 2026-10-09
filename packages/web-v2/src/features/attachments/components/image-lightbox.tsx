@@ -15,6 +15,8 @@ import { useCopy } from "@/lib/i18n/interface-language";
 export interface LightboxImage {
   id: string;
   name: string;
+  /** What a screen reader reads for it where its name says nothing; absent, the name. */
+  alt?: string;
   /** Resolved, fetchable URL (already passed through `coreFileUrl`). */
   href: string;
 }
@@ -277,7 +279,7 @@ function Thumbnails({ images, index, onPick }: { images: LightboxImage[]; index:
           {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img
             src={img.href}
-            alt={img.name}
+            alt={img.alt ?? img.name}
             className="size-11 object-cover sm:size-14"
           />
         </button>
@@ -380,7 +382,7 @@ export function ImageLightbox({
           {/* biome-ignore lint/performance/noImgElement: an attachment served from the API by an authenticated URL the Next image optimizer cannot fetch */}
           <img
             src={current.href}
-            alt={current.name}
+            alt={current.alt ?? current.name}
             draggable={false}
             className="max-h-full max-w-full object-contain will-change-transform"
             style={{

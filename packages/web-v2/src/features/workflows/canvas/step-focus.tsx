@@ -76,6 +76,26 @@ export interface Lit {
   edges: Set<string>;
 }
 
+/** What a page traces on a workflow (a requirement's criteria, the step a feedback item hits), read against its current design: what still lights, and the traced steps that left it. */
+export interface PresentTrace {
+  steps: Set<string>;
+  edges: Set<string>;
+  /** Traced steps the design no longer has, in the order the traces name them. */
+  gone: string[];
+}
+
+/**
+ * The part of a trace a workflow's current design still holds. Core keeps a trace as it was
+ * written (`criterion-traces.ts:tracesOf`, `feedback.step_id`), so a step since removed from the workflow is still
+ * named: it lights nothing, and a line lights only while both its ends are steps of the design.
+ */
+export function presentTrace(w: { steps: ReadonlySet<string>; edges: ReadonlySet<string> }, designSteps: readonly string[]): PresentTrace {
+  const design = new Set(designSteps);
+  const steps = new Set([...w.steps].filter((s) => design.has(s)));
+  const edges = new Set([...w.edges].filter((e) => e.split(">").every((end) => design.has(end))));
+  return { steps, edges, gone: [...w.steps].filter((s) => !design.has(s)) };
+}
+
 /**
  * What the canvas lights: the selection's path while one stands, else the page's highlight (a
  * highlighted line keeps its two ends undimmed), else nothing, which dims nothing.

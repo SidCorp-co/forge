@@ -1,49 +1,56 @@
 "use client";
 
-// What a reproduce recorded for this item, on the item's page (REQ-41 BC-18, BC-21): beside the
-// Reproduce entry and the fix's confirm (`previews/reproduce-section.tsx`), every recording as a flat
-// row, its timeline as a table of what was done and what the page logged, and a replay of its
-// scrubbed events with rrweb's own player while they are kept. Members only: core refuses anyone
-// else by name, RECORDING_FORBIDDEN, and that refusal is what this draws.
+// An item's recordings as one list (REQ-35 BC-8, REQ-41 BC-18, BC-21; Feedback lifecycle step
+// `evidence`): a video someone attached and a recording a reproduce made are rows of the same table,
+// newest first, each naming who made it, with one player below. An attached video plays in the page;
+// a reproduce recording reads as its timeline, the text a screen reader reads for it, and replays its
+// scrubbed events with rrweb's own player while they are kept. Reproduce recordings are for members
+// only: core refuses anyone else by name, RECORDING_FORBIDDEN, and that refusal is what this draws.
 
 import type { RecordingRecord } from "@forge/contracts/reproduce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Button, ViewHeading } from "@/design";
 import { reproduceApi } from "@/features/previews/reproduce-api";
-import { ReproduceSection, recordingsKey } from "@/features/previews/reproduce-section";
+import { recordingsKey } from "@/features/previews/reproduce-section";
 import { TimelineTable } from "@/features/previews/reproduce-timeline";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
+import { coreFileUrl } from "@/lib/utils/core-url";
+import { useItemRecordings } from "../hooks";
 import type { FeedbackView } from "../types";
 
-/** While a recording is still taking batches its row is read again on this clock. */
-const RECORDING_POLL_MS = 10_000;
+type Attachment = FeedbackView["attachments"][number];
 
-/** The Reproduce entry, the fix's confirm and the recordings, as one section of the item's overview. */
-export function FeedbackRecordings({ projectId, f }: { projectId: string; f: FeedbackView }) {
-  const carriers =
-    f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : [];
-  return (
-    <div className="grid gap-6">
-      <ReproduceSection projectId={projectId} fbKey={f.key} carriers={carriers} redacted={f.redacted} />
-      <Recordings projectId={projectId} f={f} />
-    </div>
-  );
+/** One row of the list: a video attached to the item, or a recording a reproduce made. */
+type RecordingRow =
+  | { kind: "upload"; id: string; at: string; by: string; file: Attachment }
+  | { kind: "reproduce"; id: string; at: string; by: string; recording: RecordingRecord };
+
+/** The videos attached to an item, which are its recordings as much as a reproduce's are. */
+export const uploadedRecordings = (f: FeedbackView): Attachment[] => f.attachments.filter((a) => a.mime.startsWith("video/"));
+
+/** Both kinds in one list, newest first. */
+function rowsOf(f: FeedbackView, recordings: readonly RecordingRecord[]): RecordingRow[] {
+  const rows: RecordingRow[] = [
+    ...uploadedRecordings(f).map((file): RecordingRow => ({ kind: "upload", id: file.id, at: file.createdAt, by: file.uploadedBy, file })),
+    ...recordings.map((recording): RecordingRow => ({ kind: "reproduce", id: recording.id, at: recording.startedAt, by: recording.recordedBy, recording })),
+  ];
+  return rows.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
 export function Recordings({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   const time = useTimeFormat();
-  const q = useQuery({
-    queryKey: recordingsKey(projectId, f.key),
-    queryFn: () => reproduceApi.recordings(projectId, f.key),
-    refetchInterval: (query) => (query.state.data?.some((r) => r.state === "recording") ? RECORDING_POLL_MS : false),
-  });
+  const q = useItemRecordings(projectId, f.key);
   const [openId, setOpenId] = useState<string | null>(null);
-  const recordings = q.data ?? [];
-  const open = recordings.find((r) => r.id === openId) ?? recordings[0] ?? null;
-  const by = (r: RecordingRecord) => (r.recordedBy === f.reporter.id ? (f.reporter.name ?? t("previews.recordings.reporter")) : t("previews.recordings.member"));
+  const rows = rowsOf(f, q.data ?? []);
+  const open = rows.find((r) => r.id === openId) ?? rows[0] ?? null;
+  const by = (r: RecordingRow) => {
+    if (r.by === f.reporter.id) return f.reporter.name ?? t("previews.recordings.reporter");
+    return (r.kind === "upload" ? r.file.uploadedByName : null) ?? t("previews.recordings.member");
+  };
+  const alt = (r: RecordingRow) => t("feedback.evidence.recordingAlt", { n: rows.indexOf(r) + 1, of: rows.length, key: f.key, title: f.title });
 
   return (
     <section aria-label={t("previews.recordings.title")} data-testid="recordings" className="grid gap-3">
@@ -53,29 +60,34 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
           {t("previews.recordings.loadFailed")}: {formatApiError(q.error)}
         </p>
       ) : null}
-      {q.isSuccess && recordings.length === 0 ? <p className="fg-body-sm text-muted">{t("previews.recordings.none", { fb: f.key })}</p> : null}
-      {recordings.length > 0 ? (
+      {rows.length > 0 ? (
         <table className="w-full border-collapse text-13" data-testid="recordings-table">
           <thead>
             <tr className="border-b border-line text-left text-muted">
               <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.started")}</th>
               <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.by")}</th>
-              <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.build")}</th>
+              <th className="py-1.5 pr-3 font-medium max-md:hidden">{t("previews.recordings.col.build")}</th>
               <th className="py-1.5 pr-3 font-medium">{t("previews.recordings.col.state")}</th>
               <th className="py-1.5 font-medium" />
             </tr>
           </thead>
           <tbody>
-            {recordings.map((r) => (
-              <tr key={r.id} className="border-b border-line-subtle" data-testid="recording-row" data-state={r.state} aria-current={open?.id === r.id ? "true" : undefined}>
-                <td className="py-1.5 pr-3" title={time.dateTime(r.startedAt)}>
-                  {time.relative(r.startedAt)}
+            {rows.map((r) => (
+              <tr
+                key={r.id}
+                className="border-b border-line-subtle"
+                data-testid="recording-row"
+                data-kind={r.kind}
+                data-state={r.kind === "reproduce" ? r.recording.state : undefined}
+                aria-current={open?.id === r.id ? "true" : undefined}
+              >
+                <td className="py-1.5 pr-3" title={time.dateTime(r.at)}>
+                  {time.relative(r.at)}
                 </td>
                 <td className="py-1.5 pr-3">{by(r)}</td>
-                <td className="py-1.5 pr-3 font-mono">{r.build.release ?? r.build.sha.slice(0, 12)}</td>
+                <td className="py-1.5 pr-3 font-mono max-md:hidden">{r.kind === "reproduce" ? (r.recording.build.release ?? r.recording.build.sha.slice(0, 12)) : null}</td>
                 <td className="py-1.5 pr-3">
-                  {t(`previews.recordings.state.${r.state}`)}
-                  {r.reason ? <span className="text-muted"> · {t(`previews.recordings.reason.${r.reason}`)}</span> : null}
+                  {r.kind === "upload" ? t("previews.recordings.uploaded") : <ReproduceState recording={r.recording} />}
                 </td>
                 <td className="py-1.5 text-right">
                   {open?.id === r.id ? null : (
@@ -89,14 +101,43 @@ export function Recordings({ projectId, f }: { projectId: string; f: FeedbackVie
           </tbody>
         </table>
       ) : null}
-      {open ? <RecordingDetail recording={open} projectId={projectId} fbKey={f.key} /> : null}
+      {open?.kind === "upload" ? <UploadedVideo file={open.file} alt={alt(open)} /> : null}
+      {open?.kind === "reproduce" ? <RecordingDetail recording={open.recording} projectId={projectId} fbKey={f.key} /> : null}
     </section>
+  );
+}
+
+function ReproduceState({ recording }: { recording: RecordingRecord }) {
+  const t = useCopy();
+  return (
+    <>
+      {t(`previews.recordings.state.${recording.state}`)}
+      {recording.reason ? <span className="text-muted"> · {t(`previews.recordings.reason.${recording.reason}`)}</span> : null}
+    </>
+  );
+}
+
+/** A video attached to the item, played in the page and read by its text alternative. */
+function UploadedVideo({ file, alt }: { file: Attachment; alt: string }) {
+  return (
+    <div className="grid gap-3" data-testid="recording-detail" data-recording={file.id}>
+      {/* biome-ignore lint/a11y/useMediaCaption: a screen recording someone attached comes with no captions file; its text alternative is its label */}
+      <video
+        src={coreFileUrl(file.url)}
+        controls
+        preload="metadata"
+        aria-label={alt}
+        className="max-h-[420px] w-full max-w-[720px] rounded-md border border-line bg-black"
+        data-testid="recording-video"
+      />
+    </div>
   );
 }
 
 function RecordingDetail({ recording, projectId, fbKey }: { recording: RecordingRecord; projectId: string; fbKey: string }) {
   const t = useCopy();
   const qc = useQueryClient();
+  const timelineId = useId();
   const stop = useMutation({
     mutationFn: () => reproduceApi.stop(recording.id),
     onSettled: () => qc.invalidateQueries({ queryKey: recordingsKey(projectId, fbKey) }),
@@ -118,23 +159,25 @@ function RecordingDetail({ recording, projectId, fbKey }: { recording: Recording
           {t("previews.recordings.stopFailed")}: {formatApiError(stop.error)}
         </p>
       ) : null}
-      {recording.timeline.length === 0 ? (
-        <p className="fg-body-sm text-muted">{t("previews.recordings.timelineEmpty")}</p>
-      ) : (
-        <TimelineTable entries={recording.timeline} />
-      )}
+      <div id={timelineId}>
+        {recording.timeline.length === 0 ? (
+          <p className="fg-body-sm text-muted">{t("previews.recordings.timelineEmpty")}</p>
+        ) : (
+          <TimelineTable entries={recording.timeline} />
+        )}
+      </div>
       {recording.state === "expired" ? <p className="fg-caption text-muted">{t("previews.recordings.expired")}</p> : null}
       {recording.state === "redacted" ? <p className="fg-caption text-muted">{t("previews.recordings.redacted")}</p> : null}
-      {replayable && recording.events > 0 ? <Replay recordingId={recording.id} /> : null}
+      {replayable && recording.events > 0 ? <Replay recordingId={recording.id} describedBy={timelineId} /> : null}
     </div>
   );
 }
 
 /** rrweb's own player over the scrubbed events (buy before build): it replays in a sandboxed frame of its own, scripts off. */
-function Replay({ recordingId }: { recordingId: string }) {
+function Replay({ recordingId, describedBy }: { recordingId: string; describedBy: string }) {
   const t = useCopy();
   const [asked, setAsked] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLElement>(null);
   const eventsQ = useQuery({
     queryKey: ["recordings", "events", recordingId],
     queryFn: () => reproduceApi.events(recordingId),
@@ -183,8 +226,12 @@ function Replay({ recordingId }: { recordingId: string }) {
         </p>
       ) : null}
       {eventsQ.isLoading ? <p role="status" className="fg-body-sm text-muted">{t("previews.recordings.replayLoading")}</p> : null}
-      <div ref={root} className="max-w-full overflow-auto rounded-md border border-line bg-surface" />
+      <figure
+        ref={root}
+        aria-label={t("previews.recordings.replayAlt")}
+        aria-describedby={describedBy}
+        className="m-0 max-w-full overflow-auto rounded-md border border-line bg-surface"
+      />
     </div>
   );
 }
-

@@ -79,7 +79,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
       { decision: "verified", route: null, carrier: null, ...noted(say("feedback.notice.autoVerified", { n: 14 })), decidedBy: null, decidedByName: null, decidedAgency: "system", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
       { decision: "snoozed", route: null, carrier: null, reason: null, says: { reason: null }, decidedBy: "a1", decidedByName: "Tro ly", decidedAgency: "agent", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
     ],
-    attachments: [{ id: "a1", from: "Lan", name: "anh.png", mime: "image/png", size: 4096, flagged: true, createdAt: AT, url: "/api/projects/p/feedback/FB-2/attachments/a1" }],
+    attachments: [{ id: "a1", from: "Lan", name: "anh.png", mime: "image/png", size: 4096, flagged: true, uploadedBy: "u1", uploadedByName: "Lan", createdAt: AT, url: "/api/projects/p/feedback/FB-2/attachments/a1" }],
     reporters: [
       { id: "u1", name: "Lan", agency: "human", from: null },
       { id: "u3", name: null, agency: "human", from: "FB-9" },

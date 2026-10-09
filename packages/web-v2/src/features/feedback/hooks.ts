@@ -2,8 +2,22 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast/hooks";
+import { reproduceApi } from "@/features/previews/reproduce-api";
+import { recordingsKey } from "@/features/previews/reproduce-section";
 import { feedbackApi } from "./api";
 import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, FeedbackResponse, PromoteAgentReportRequest } from "./types";
+
+/** While a reproduce recording is still taking batches the list is read again on this clock. */
+const RECORDING_POLL_MS = 10_000;
+
+/** The reproduce recordings of one item, newest first: members only, core refusing anyone else as RECORDING_FORBIDDEN. */
+export function useItemRecordings(projectId: string, fbKey: string) {
+  return useQuery({
+    queryKey: recordingsKey(projectId, fbKey),
+    queryFn: () => reproduceApi.recordings(projectId, fbKey),
+    refetchInterval: (query) => (query.state.data?.some((r) => r.state === "recording") ? RECORDING_POLL_MS : false),
+  });
+}
 
 export function useFeedbackList(projectId: string | undefined) {
   return useQuery({

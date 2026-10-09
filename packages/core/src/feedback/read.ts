@@ -1,4 +1,5 @@
 import {
+  type FeedbackAttachmentView,
   type FeedbackDecisionView,
   type FeedbackMessageView,
   type FeedbackPhase,
@@ -150,6 +151,27 @@ function messageViewsOf(
   }));
 }
 
+type AttachmentRow = typeof feedbackAttachments.$inferSelect;
+
+/** The item's files, its own and those of the duplicates merged into it, each naming who attached it. */
+function attachmentViewsOf(
+  rows: readonly { a: AttachmentRow; from: string | null }[],
+  o: { names: Map<string, string>; withhold: boolean; base: string },
+): FeedbackAttachmentView[] {
+  return rows.map(({ a, from }) => ({
+    id: a.id,
+    from,
+    name: o.withhold ? 'withheld' : a.name,
+    mime: a.mime,
+    size: a.size,
+    flagged: a.flagged,
+    uploadedBy: a.uploadedBy,
+    uploadedByName: o.names.get(a.uploadedBy) ?? null,
+    createdAt: a.createdAt.toISOString(),
+    url: `${o.base}/attachments/${a.id}`,
+  }));
+}
+
 // The one decision reason Forge writes itself (`auto-verify.ts`), stored as its English: read back
 // to its key so a reader in another language gets its own words. `read.test.ts` holds the writer's
 // sentence to this pattern, so a reworded template is red there rather than English on screen.
@@ -264,6 +286,8 @@ export async function detailAs(
     ...decisions.map((d) => d.decidedBy),
     ...reporters.map((r) => r.id),
     ...shownMessages.flatMap((m) => [m.sentBy, ...m.recipients]),
+    ...attachments.map((a) => a.uploadedBy),
+    ...mergedAttachments.map((m) => m.a.uploadedBy),
   ]);
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
   const q = questions[0];
@@ -307,19 +331,17 @@ export async function detailAs(
           says: { reason: withhold ? null : decisionReasonSaid(d.reason, d.decidedAgency) },
         }),
       ),
-      attachments: [
-        ...attachments.map((a) => ({ a, from: null as string | null })),
-        ...mergedAttachments.map((m) => ({ a: m.a, from: feedbackKey(m.seq) as string | null })),
-      ].map(({ a, from }) => ({
-        id: a.id,
-        from,
-        name: withhold ? 'withheld' : a.name,
-        mime: a.mime,
-        size: a.size,
-        flagged: a.flagged,
-        createdAt: a.createdAt.toISOString(),
-        url: `/api/projects/${projectId}/feedback/${feedbackKey(row.fbSeq)}/attachments/${a.id}`,
-      })),
+      attachments: attachmentViewsOf(
+        [
+          ...attachments.map((a) => ({ a, from: null })),
+          ...mergedAttachments.map((m) => ({ a: m.a, from: feedbackKey(m.seq) })),
+        ],
+        {
+          names: deciders,
+          withhold,
+          base: `/api/projects/${projectId}/feedback/${feedbackKey(row.fbSeq)}`,
+        },
+      ),
       reporters: reporters.map((r) => ({
         id: r.id,
         name: deciders.get(r.id) ?? null,

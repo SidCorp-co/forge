@@ -20,7 +20,7 @@
 // browser binary is `WITNESS_CHROME`, else `google-chrome`.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -55,27 +55,33 @@ function load(name) {
 
 async function buildPage(entry, out) {
   const esbuild = load("esbuild");
+  // the stylesheets components import themselves (the workflow canvas, the board) are bundled beside
+  // app.js and kept as components.css, so a canvas is drawn as the app draws it; nothing an earlier run
+  // left in `<out>` is read as this one's
+  for (const old of ["app.css", "components.css"]) rmSync(resolve(out, old), { force: true });
   await esbuild.build({
     entryPoints: [entry],
     outfile: resolve(out, "app.js"),
     bundle: true,
     format: "iife",
     jsx: "automatic",
-    loader: { ".css": "empty" },
+    loader: { ".woff": "dataurl", ".woff2": "dataurl", ".ttf": "dataurl", ".png": "dataurl", ".svg": "dataurl" },
     tsconfig: resolve(WEB, "tsconfig.json"),
     define: { "process.env.NODE_ENV": '"production"' },
     // a package that exports its files per build (excalidraw's css) resolves the production one, as the define says
     conditions: ["production"],
     logLevel: "error",
   });
+  if (existsSync(resolve(out, "app.css"))) renameSync(resolve(out, "app.css"), resolve(out, "components.css"));
   const postcss = load("postcss");
   const tailwind = load("@tailwindcss/postcss");
   const from = resolve(WEB, "src/app/globals.css");
   const css = await postcss([tailwind({ base: WEB })]).process(readFileSync(from, "utf8"), { from });
   writeFileSync(resolve(out, "app.css"), css.css);
+  const components = existsSync(resolve(out, "components.css")) ? '<link rel="stylesheet" href="components.css">' : "";
   writeFileSync(
     resolve(out, "index.html"),
-    '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css"></head>' +
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="app.css">${components}</head>` +
       '<body><div id="root"></div><script>window.process={env:{NODE_ENV:"production"}}</script><script src="app.js"></script></body></html>',
   );
   return pathToFileURL(resolve(out, "index.html")).href;

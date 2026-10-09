@@ -67,7 +67,8 @@ pnpm --filter web-v2 dev      # http://localhost:3100  → Overview dashboard
 ## Screen witness
 
 jsdom lays nothing out, so the vitest suite cannot see a defect only a window width shows.
-`witness/run.mjs` mounts a real component with the app's compiled CSS in headless Chrome at
+`witness/run.mjs` mounts a real component with the app's compiled CSS, and the stylesheets its
+components import (the workflow canvas, the board), in headless Chrome at
 each width its entry names and fails on every probe the entry reports:
 
 ```bash
@@ -78,6 +79,7 @@ An entry (`witness/*.witness.tsx`) stubs core's reads, mounts the component and 
 `window.__witness` — its cases, when it is ready, and its probe. An entry whose component has to be
 used rather than only looked at declares `stages` in place of the probe: each acts on the same load
 in order and is shot as `<case>-<stage>.png` (`witness/chat-dock.witness.tsx` clicks and drags the
-Ask Agent panel). Chrome is `WITNESS_CHROME`,
+Ask Agent panel). The page is a `file://` page in `<dir>`, so a file the component shows is put there
+before the run (`witness/feedback-evidence.witness.tsx` names the two it reads). Chrome is `WITNESS_CHROME`,
 else `google-chrome`. No CI job runs it: a screen change that can break at a width runs it and
 attaches what it printed.

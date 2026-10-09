@@ -1,8 +1,9 @@
 "use client";
 
-// A feedback item's attachments: an image reads as a preview that opens the lightbox, any other file
-// as a link, the way an issue comment shows its files; and, to whoever core says may, Attach — files
-// staged by pick, drop or paste under the limits core's feedback attachment route keeps.
+// A feedback item's attachments: every file the evidence above does not draw (a screenshot or a
+// recording is shown there, once) as a link, the way an issue comment shows its files; and, to whoever
+// core says may, Attach — screenshots, recordings and documents staged by pick, drop or paste under
+// the limits core's feedback attachment route keeps.
 
 import { FEEDBACK_LIMITS } from "@forge/contracts/feedback";
 import { Button, LEGEND } from "@/design";
@@ -13,14 +14,15 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { AttachFailed } from "../api";
 import { useAttachFeedback } from "../hooks";
 import type { FeedbackView } from "../types";
+import { isEvidenceMedia } from "./feedback-evidence";
 
 const MB = FEEDBACK_LIMITS.attachmentBytes / 1024 / 1024;
 
-/** The staging an item or a filing uses: the bytes and the count core's feedback route keeps. */
+/** The staging an item or a filing uses: the types, the bytes and the count core's feedback route keeps. */
 export function useFeedbackStaging(held: number) {
   return useStagedFiles({
     unit: "feedback",
-    video: false,
+    video: true,
     uniqueNames: false,
     maxBytes: FEEDBACK_LIMITS.attachmentBytes,
     maxFiles: FEEDBACK_LIMITS.attachmentsPerItem - held,
@@ -34,12 +36,13 @@ export function FeedbackAttachments({ projectId, f }: { projectId: string; f: Fe
   const staged = useFeedbackStaging(held);
   const attach = useAttachFeedback(projectId);
   const notes = f.attachments.filter((a) => a.from || a.flagged);
+  const files = f.attachments.filter((a) => !isEvidenceMedia(a.mime));
   const full = held >= FEEDBACK_LIMITS.attachmentsPerItem;
   const send = () =>
     attach.mutate({ key: f.key, files: staged.files }, { onSuccess: staged.reset });
   return (
     <div className="mt-4 grid gap-2" data-testid="feedback-attachments" onPaste={f.can.attach ? staged.onPaste : undefined}>
-      {f.attachments.length > 0 ? <AttachmentList rows={f.attachments} /> : null}
+      {files.length > 0 ? <AttachmentList rows={files} /> : null}
       {notes.length > 0 ? (
         <ul className="grid gap-0.5 text-12">
           {notes.map((a) => (

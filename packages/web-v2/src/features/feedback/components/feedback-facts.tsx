@@ -289,6 +289,11 @@ export function FeedbackFacts({
           {t.type === "screen" ? <span>“{t.key}”</span> : <KeyLink type={t.type} k={t.key} slug={slug} />}
           {t.title ? <span className="min-w-0 truncate text-muted">{t.title}</span> : null}
         </div>
+        {t.node ? (
+          <p className="mt-1.5 text-12-5 text-muted" data-testid="facts-node">
+            {"step" in t.node ? tr("feedback.fact.step", { step: t.node.step }) : tr("feedback.fact.link", { from: t.node.edge.from, to: t.node.edge.to })}
+          </p>
+        ) : null}
         {f.whereSeen && t.type !== "screen" ? <p className="mt-1.5 text-12-5 text-muted">{tr("feedback.fact.seenAt", { where: f.whereSeen })}</p> : null}
       </FactsGroup>
 

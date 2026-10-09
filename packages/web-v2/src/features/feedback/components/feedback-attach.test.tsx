@@ -14,6 +14,8 @@ afterEach(() => vi.unstubAllGlobals());
 
 const png = (name = "board.png") => new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], name, { type: "image/png" });
 const PNG_BASE64 = "iVBORw0KGgo=";
+const mp4 = (name = "spinner.mp4") => new File([new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112])], name, { type: "video/mp4" });
+const MP4_BASE64 = "AAAAGGZ0eXA=";
 
 const ATTACHED = {
   id: "a1",
@@ -22,9 +24,12 @@ const ATTACHED = {
   mime: "image/png",
   size: 8,
   flagged: false,
+  uploadedBy: "u1",
+  uploadedByName: "Ann",
   createdAt: "2026-10-07T00:00:00.000Z",
   url: "/api/projects/p1/feedback/FB-4/attachments/a1",
 };
+const PDF = { ...ATTACHED, id: "a2", name: "steps.pdf", mime: "application/pdf", url: "/api/projects/p1/feedback/FB-4/attachments/a2" };
 const view = (over: Partial<FeedbackView> = {}) =>
   ({ key: "FB-4", redacted: false, attachments: [], can: { attach: true }, ...over }) as unknown as FeedbackView;
 
@@ -53,11 +58,25 @@ describe("attaching to a feedback item that exists", () => {
     expect(calls).toEqual([]);
   });
 
-  it("offers no Attach where core says the viewer may not, and still shows what is attached", () => {
+  it("stages a picked MP4 recording and sends it as a video (REQ-35 BC-8)", async () => {
+    const calls = fakeCore((c) => (c.method === "POST" ? { status: 201, body: { feedback: view() } } : undefined));
+    const { container } = renderWithQuery(<FeedbackAttachments projectId="p1" f={view()} />);
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.accept.split(",")).toEqual(expect.arrayContaining(["video/mp4", "video/webm", "video/quicktime"]));
+    fireEvent.change(input, { target: { files: [mp4()] } });
+    expect(screen.queryByText(/File type not allowed/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Attach 1 file" }));
+    await waitFor(() =>
+      expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ name: "spinner.mp4", mime: "video/mp4", contentBase64: MP4_BASE64 }]),
+    );
+  });
+
+  it("offers no Attach where core says the viewer may not, and lists the files the evidence above does not show", () => {
     fakeCore(() => undefined);
-    renderWithQuery(<FeedbackAttachments projectId="p1" f={view({ attachments: [ATTACHED], can: { attach: false } as FeedbackView["can"] })} />);
+    renderWithQuery(<FeedbackAttachments projectId="p1" f={view({ attachments: [ATTACHED, PDF], can: { attach: false } as FeedbackView["can"] })} />);
     expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();
-    expect(screen.getByRole("img", { name: "board.png" }).getAttribute("src")).toBe("/api/projects/p1/feedback/FB-4/attachments/a1");
+    expect(screen.getByRole("link", { name: /steps\.pdf/ }).getAttribute("href")).toBe(PDF.url);
+    expect(screen.queryByRole("img"), "a screenshot is shown once, in the evidence").toBeNull();
   });
 });
 
@@ -79,11 +98,18 @@ describe("attaching while filing", () => {
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
-    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [png()] } });
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [png(), mp4()] } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith("FB-9"));
-    expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/projects/p1/feedback", "/projects/p1/feedback/FB-9/attachments"]);
-    expect(calls.at(-1)?.body).toEqual({ name: "board.png", mime: "image/png", contentBase64: PNG_BASE64 });
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual([
+      "/projects/p1/feedback",
+      "/projects/p1/feedback/FB-9/attachments",
+      "/projects/p1/feedback/FB-9/attachments",
+    ]);
+    expect(calls.slice(-2).map((c) => c.body)).toEqual([
+      { name: "board.png", mime: "image/png", contentBase64: PNG_BASE64 },
+      { name: "spinner.mp4", mime: "video/mp4", contentBase64: MP4_BASE64 },
+    ]);
   });
 
   it("says which file core refused, that the item is filed, and opens it to attach again", async () => {
