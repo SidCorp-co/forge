@@ -4583,6 +4583,78 @@
                         },
                         "type": "object"
                       },
+                      "highlight": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "section": {
+                                "enum": [
+                                  "waiting",
+                                  "question",
+                                  "criteria",
+                                  "plan",
+                                  "preview",
+                                  "picture",
+                                  "delivery",
+                                  "history",
+                                  "evidence",
+                                  "triage",
+                                  "route",
+                                  "verify"
+                                ],
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "section",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "section"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "step": {
+                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "step",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "step"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "target": {
+                                "const": "row",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "target",
+                              "key"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "item": {
                         "oneOf": [
                           {
@@ -4659,6 +4731,221 @@
                           }
                         ]
                       },
+                      "listFilter": {
+                        "oneOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "state": {
+                                    "items": {
+                                      "enum": [
+                                        "draft",
+                                        "agreed",
+                                        "in_delivery",
+                                        "delivered",
+                                        "accepted",
+                                        "deferred",
+                                        "dropped"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "waitingOn": {
+                                    "enum": [
+                                      "you",
+                                      "agent",
+                                      "running"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "requirements",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "items": {
+                                      "enum": [
+                                        "bug",
+                                        "change_request",
+                                        "question",
+                                        "idea",
+                                        "contract_change"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "phase": {
+                                    "items": {
+                                      "enum": [
+                                        "new",
+                                        "triaged",
+                                        "planned",
+                                        "resolved",
+                                        "reopened",
+                                        "verified",
+                                        "declined"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "severity": {
+                                    "enum": [
+                                      "low",
+                                      "medium",
+                                      "high",
+                                      "critical"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "since": {
+                                    "enum": [
+                                      "1d",
+                                      "7d",
+                                      "30d"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "waitingOn": {
+                                    "enum": [
+                                      "you",
+                                      "agent",
+                                      "running"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "feedback",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "waitingOn": {
+                                    "enum": [
+                                      "you",
+                                      "agent",
+                                      "running"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "workflows",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "filter": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "state": {
+                                    "items": {
+                                      "enum": [
+                                        "draft",
+                                        "in_progress",
+                                        "awaiting_approval",
+                                        "returned",
+                                        "shipped",
+                                        "failed",
+                                        "aborted"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "minItems": 1,
+                                    "type": "array"
+                                  },
+                                  "text": {
+                                    "maxLength": 200,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "waitingOn": {
+                                    "enum": [
+                                      "you",
+                                      "agent",
+                                      "running"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "list": {
+                                "const": "releases",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "list",
+                              "filter"
+                            ],
+                            "type": "object"
+                          }
+                        ]
+                      },
                       "path": {
                         "maxLength": 500,
                         "type": "string"
@@ -4675,9 +4962,10 @@
                           "schedules",
                           "improvements",
                           "settings",
+                          "requirements",
+                          "feedback",
                           "issue",
                           "requirement",
-                          "feedback",
                           "workflow",
                           "other"
                         ],
@@ -4689,6 +4977,15 @@
                           "type": "string"
                         },
                         "maxItems": 100,
+                        "type": "array"
+                      },
+                      "shown": {
+                        "items": {
+                          "maxLength": 200,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "maxItems": 50,
                         "type": "array"
                       },
                       "v": {
