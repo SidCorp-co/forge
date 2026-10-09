@@ -1,1 +1,0 @@
-**Asking what waits on you answers with only your decisions.** Each shows its question, a recommended answer and a button to answer it; a reply the check holds now shows the part it could check, never nothing.
