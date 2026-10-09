@@ -13,10 +13,9 @@ import {
   ProjectLoader,
   ProjectMark,
 } from "@/design";
-import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
-import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
+import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "@/features/project-dashboard/ba-derive";
 import { BaFigures } from "@/features/project-dashboard/components/ba-figures";
-import { LandsThisWeek, LateItems } from "@/features/project-dashboard/components/plan-sections";
+import { LandsThisWeek } from "@/features/project-dashboard/components/plan-sections";
 import { ProjectMemory } from "@/features/memory/components/project-memory";
 import { ProjectOrientation } from "@/features/project-dashboard/components/project-orientation";
 import { useModuleRollup } from "@/features/modules/hooks";
@@ -26,8 +25,8 @@ import { etaInline, etaOfScope } from "@/features/forecast/eta";
 import { useFeedbackList } from "@/features/feedback/hooks";
 import { useReleases } from "@/features/releases/hooks";
 import { useRequirements } from "@/features/requirements/hooks";
-import { useNeedsYou } from "@/features/needs-you/hooks";
-import { asksOf } from "@forge/contracts/needs-you";
+import { useNeedsYouDecisions } from "@/features/needs-you/hooks";
+import { ProjectHome } from "@/features/project-home/components/project-home";
 import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding/components/onboarding-hint";
@@ -57,7 +56,7 @@ export default function ProjectOverviewPage() {
 
   // A BA or PM's page: what needs them, how requirements and feedback stand, what lands this week and
   // what is late. Every figure is a read core answers; Development's own figures live on Development.
-  const needsYouQ = useNeedsYou(projectId);
+  const decisionsQ = useNeedsYouDecisions(projectId);
   const statusQ = useProjectStatus(projectId);
   const requirementsQ = useRequirements(projectId);
   const feedbackQ = useFeedbackList(projectId);
@@ -102,8 +101,8 @@ export default function ProjectOverviewPage() {
   const production = releasesQ.data?.production;
   const productionHost = production?.ok && production.url ? production.url.replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
   const live = releasesQ.data?.releases.find((r) => r.current && r.state === "shipped");
-  // the member's asks core marked (`NEEDS_YOU_AREA_SPACE`): the same set /attention lists for this project
-  const attention = asksOf(needsYouQ.data?.items ?? []);
+  // the decisions only this member can make: the read the home's Needs you table and the chat share
+  const decisionCount = decisionsQ.data?.total ?? 0;
   const draft = releasesQ.data?.releases.find((r) => r.state === "draft");
   const rows = planRows(
     {
@@ -128,10 +127,10 @@ export default function ProjectOverviewPage() {
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <MonoTag>{project.slug}</MonoTag>
             <Badge tone={project.role === "admin" ? "accent" : "neutral"}>{t(project.role === "admin" ? "common.role.admin" : project.role === "member" ? "common.role.member" : project.role === "viewer" ? "common.role.viewer" : "common.role.org")}</Badge>
-            {attention.length > 0 && (
+            {decisionCount > 0 && (
               <span className="fg-caption inline-flex items-center gap-1 font-semibold" style={{ color: "var(--accent-text)" }}>
                 <Icon name="inbox" size={13} />
-                {t("dash.needsAttention", { count: attention.length })}
+                {t("dash.needsAttention", { count: decisionCount })}
               </span>
             )}
           </div>
@@ -140,6 +139,9 @@ export default function ProjectOverviewPage() {
       </header>
 
       <div className="space-y-6">
+        {/* the home opens on the conversation, with what needs you, what is running and what is at risk beside it */}
+        <ProjectHome projectId={project.id} slug={project.slug} />
+
         {/* what the project is and where it stands comes first; the system map follows, the asks below it */}
         <ProjectOrientation
           slug={project.slug}
@@ -172,12 +174,7 @@ export default function ProjectOverviewPage() {
           clock={clock}
         />
 
-        <AttentionQueue items={attention} slug={project.slug} />
-
-        <div className="grid grid-cols-1 gap-x-10 gap-y-6 lg:grid-cols-2">
-          <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
-          <LateItems rows={lateRows(rows)} clock={clock} />
-        </div>
+        <LandsThisWeek rows={landsThisWeek(rows, clock)} clock={clock} slug={project.slug} />
 
         <ShippedRecently shipped={statusQ.data?.shipped} slug={project.slug} clock={clock} />
 

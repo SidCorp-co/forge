@@ -129,7 +129,3 @@ export function landsThisWeek(rows: readonly PlanRow[], clock: EtaClock): PlanRo
     .filter((r) => r.eta?.kind === "range" && weekStart(Date.parse(r.eta.p50At), clock.timeZone) === thisWeek)
     .sort((a, b) => Date.parse((a.eta as Extract<Eta, { kind: "range" }>).p50At) - Date.parse((b.eta as Extract<Eta, { kind: "range" }>).p50At));
 }
-
-/** Rows core calls late, the latest-running first. */
-export const lateRows = (rows: readonly PlanRow[]): PlanRow[] =>
-  rows.filter((r) => r.late !== null).sort((a, b) => (b.late?.byMinutes ?? 0) - (a.late?.byMinutes ?? 0));

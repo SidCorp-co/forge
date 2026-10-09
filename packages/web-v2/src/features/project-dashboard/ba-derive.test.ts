@@ -1,7 +1,7 @@
 import { forecastWait, RULE, say } from "@/test/said";
 import type { ForecastBasis, ForecastLate, ForecastPaused, ForecastRange, RequirementForecasts, ScopeForecast } from "@forge/contracts/forecast";
 import { describe, expect, it } from "vitest";
-import { feedbackFigures, landsThisWeek, lateRows, planRows, requirementsByState } from "./ba-derive";
+import { feedbackFigures, landsThisWeek, planRows, requirementsByState } from "./ba-derive";
 
 // Wednesday 7 Oct 2026, 12:00 UTC
 const NOW = Date.parse("2026-10-07T12:00:00Z");
@@ -32,11 +32,11 @@ describe("the BA dashboard", () => {
     expect(landsThisWeek(rows, tz).map((r) => r.key)).toEqual(["REQ-1"]);
   });
 
-  it("leaves a paused item out of the week (no time) but shows it late, with who it waits on", () => {
+  it("leaves a paused item out of the week (no time), with who it waits on", () => {
     const late: ForecastLate = { reason: "waiting_over_day", since: "2026-10-06T00:00:00Z", byMinutes: 360 };
     const rows = planRows(inputs(reqs(scope("REQ-3", paused(late)), scope("REQ-4", range("2026-10-08T10:00:00Z", { reason: "p85_passed", since: "x", byMinutes: 90 })))), clock);
     expect(landsThisWeek(rows, clock).map((r) => r.key)).toEqual(["REQ-4"]);
-    expect(lateRows(rows).map((r) => [r.key, r.late?.byMinutes])).toEqual([["REQ-3", 360], ["REQ-4", 90]]);
+    expect(rows.map((r) => [r.key, r.late?.byMinutes])).toEqual([["REQ-3", 360], ["REQ-4", 90]]);
     expect(rows.find((r) => r.key === "REQ-3")?.eta).toMatchObject({ kind: "waits", who: say("standing.who.holderOf", { perm: "project.write" }) });
   });
 
@@ -53,7 +53,7 @@ describe("the BA dashboard", () => {
   });
 
   it("calls nothing late that core did not", () => {
-    expect(lateRows(planRows(inputs(reqs(scope("REQ-1", range("2026-10-08T10:00:00Z")))), clock))).toEqual([]);
+    expect(planRows(inputs(reqs(scope("REQ-1", range("2026-10-08T10:00:00Z")))), clock).map((r) => r.late)).toEqual([null]);
   });
 
   it("counts requirements by state in lifecycle order, and feedback open, untriaged and aging", () => {

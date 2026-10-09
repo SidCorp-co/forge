@@ -1,0 +1,19 @@
+{
+  "en": {
+    "home.aria": "The project at a glance",
+    "home.chat.aria": "Chat",
+    "home.needsYou": "Needs you",
+    "home.running": "Running",
+    "home.runningEmpty": "No run is on an issue right now.",
+    "home.runningMore": "{shown} of {total} shown.",
+    "home.atRisk": "At risk",
+    "home.atRiskEmpty": "Nothing is late, and every delivered requirement holds its criteria.",
+    "home.col.key": "Key",
+    "home.col.title": "Title",
+    "home.col.waiting": "Waiting on",
+    "home.col.why": "Why",
+    "home.why.past": "{by} past the latest similar work took",
+    "home.why.waiting": "Waiting on a person, {by} over a day",
+    "home.why.short": "{proven} of {total} criteria proven on the running build"
+  }
+}
