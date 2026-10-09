@@ -9,7 +9,7 @@
  * queued job names it as its dispatch gate. A returned pattern no later one answers holds the work
  * out of build and the issue out of awaiting_release (PATTERN_RETURNED), and its reason is posted on
  * the issue. The rules are `pattern-rules.ts`, the run a call is `pattern-runs.ts`, and the catalog
- * entry the merge check asks for `pattern-entry.ts`.
+ * entry an approved one owes in the issue's change `pattern-entry.ts`.
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
@@ -34,6 +34,7 @@ import { emitEvents } from '../outbox/index.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import { issueDisplayIds } from './display-ids.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { approvalEntryRefusal } from './pattern-entry.js';
 import {
   type CatalogReading,
   catalogReadingOf,
@@ -410,8 +411,10 @@ async function postReturn(tx: Tx, row: IssuePatternRow, actor: PatternActor, rea
 
 /**
  * One reviewer's decision on a new pattern. The route has asked for patterns.approve; the rule
- * here refuses the run that named it, or the person who did. A return posts its reason on the issue.
- * Null when the issue holds no such pattern.
+ * here refuses the run that named it, or the person who did. An approval on an issue whose merge is
+ * already marked is refused PATTERN_ENTRY_MISSING while the marked change holds no page for it
+ * (`pattern-entry.ts`), read before the lock. A return posts its reason on the issue. Null when the
+ * issue holds no such pattern.
  */
 export async function decidePattern(args: {
   issueId: string;
@@ -424,12 +427,21 @@ export async function decidePattern(args: {
   const { actor } = args;
   const run = await runOfCall({ projectId: args.projectId, issueId: args.issueId, ...actor });
   if (!run.ok) return run;
+  const entry =
+    args.decision === 'approved'
+      ? await approvalEntryRefusal({
+          issueId: args.issueId,
+          projectId: args.projectId,
+          patternId: args.patternId,
+        })
+      : null;
   return db.transaction(async (tx) => {
     const row = await lockedRow(tx, args.issueId, args.patternId);
     if (!row) return null;
     const decider = await deciderOf(actor.userId, run.value, factsOf(row));
     const refusals = decideRefusals(await issueRefOf(args.issueId, tx), factsOf(row), decider);
     if (refusals.length > 0) return { ok: false as const, refusals };
+    if (entry) return { ok: false as const, refusals: [entry] };
     const [decided] = await tx
       .update(issuePatterns)
       .set({
@@ -481,7 +493,8 @@ export async function patternFactsIn(
 /**
  * What the move to awaiting_release (and to closed) asks of the issue's patterns under its lock: no
  * new pattern waits on its reviewer, and no return stands unanswered (`pattern-rules.ts:releaseFaults`).
- * The catalog entry is the merge check's to ask (`pattern-entry.ts`). The first fault, or null.
+ * The catalog entry is asked after these, against the change the merge mark names
+ * (`pattern-entry.ts:moveEntryRefusal`). The first fault, or null.
  */
 export async function patternReleaseRefusal(
   executor: Pick<Tx, 'select'>,

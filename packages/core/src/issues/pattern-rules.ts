@@ -2,8 +2,7 @@
  * The pattern rules (REQ-36 BC-2, BC-3; Issue lifecycle r14 `design-check`), pure over what the
  * service read: which catalog a project reads, what naming a pattern records, who may decide a new
  * one, what a return holds until it is answered, and what the move to awaiting_release asks. The
- * catalog entry is asked by the merge check, which reads the change (`pattern-entry.ts`). Each
- * returns its refusals.
+ * catalog entry is asked against the change itself (`pattern-entry.ts`). Each returns its refusals.
  */
 
 import { PATTERN_CATALOG } from '@forge/contracts/pattern-catalog';
@@ -234,8 +233,8 @@ export function pendingDetail(issueRef: string, patterns: readonly string[]): st
 
 /**
  * What the move to awaiting_release asks of the issue's patterns: none waits on its reviewer, and no
- * return stands unanswered. The catalog entry is not asked here: it is in the change, which the merge
- * check reads (`pattern-entry.ts`), and the running build holds it only after a release.
+ * return stands unanswered. The catalog entry is not asked here: it is in the change the merge mark
+ * names, which `pattern-entry.ts` reads, and the running build holds it only after a release.
  */
 export function releaseFaults(
   issueRef: string,

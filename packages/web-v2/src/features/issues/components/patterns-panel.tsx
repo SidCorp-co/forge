@@ -1,6 +1,6 @@
 "use client";
 
-import type { IssuePatternView, PatternDecision } from "@forge/contracts/patterns";
+import { type IssuePatternView, PATTERN_LIMITS, type PatternDecision } from "@forge/contracts/patterns";
 import { useState } from "react";
 import { Banner, Button, Field, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -11,17 +11,41 @@ import { useDecidePattern, useIssuePatterns } from "../patterns-api";
  * The issue's new patterns and their one review (REQ-36 BC-2; Issue lifecycle r14 `design-check`).
  * Each new pattern shows its summary and where its review stands. A pending one the reader may
  * decide (core says which, `decidable`) is approved or returned here with a reason. A catalogued
- * pattern needs no review and is not shown.
+ * pattern needs no review and is not shown. A read that failed says so, since a held issue would
+ * otherwise show no reason for the hold.
  */
 export function PatternsPanel({ issueId, projectId }: { issueId: string; projectId: string }) {
+  const t = useCopy();
   const q = useIssuePatterns(issueId, projectId);
+  if (q.isError) {
+    return (
+      <div data-testid="issue-patterns-failed">
+        <Banner
+          tone="danger"
+          action={
+            <Button size="sm" onClick={() => void q.refetch()}>
+              {t("issues.patterns.retry")}
+            </Button>
+          }
+        >
+          {t("issues.patterns.readFailed")}
+        </Banner>
+      </div>
+    );
+  }
   const shown = (q.data?.patterns ?? []).filter((p) => p.kind === "new" && p.retractedAt === null);
   if (shown.length === 0) return null;
   const decidable = new Set(q.data?.decidable ?? []);
   return (
     <div className="grid gap-2" data-testid="issue-patterns">
       {shown.map((p) => (
-        <PatternRow key={p.id} issueId={issueId} pattern={p} canDecide={decidable.has(p.id)} />
+        <PatternRow
+          key={p.id}
+          issueId={issueId}
+          projectId={projectId}
+          pattern={p}
+          canDecide={decidable.has(p.id)}
+        />
       ))}
     </div>
   );
@@ -35,10 +59,12 @@ function toneOf(p: IssuePatternView): "info" | "attention" | "danger" | "success
 
 function PatternRow({
   issueId,
+  projectId,
   pattern,
   canDecide,
 }: {
   issueId: string;
+  projectId: string;
   pattern: IssuePatternView;
   canDecide: boolean;
 }) {
@@ -67,32 +93,50 @@ function PatternRow({
         {state}
         {pattern.summary ? <span className="mt-1 block">{pattern.summary}</span> : null}
       </Banner>
-      {open ? <DecideForm issueId={issueId} pattern={pattern} onClose={() => setOpen(false)} /> : null}
+      {/* a decision taken elsewhere (a 409 here) reloads the line, and the form goes with the pending state */}
+      {open && pattern.pending ? (
+        <DecideForm
+          issueId={issueId}
+          projectId={projectId}
+          pattern={pattern}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
 function DecideForm({
   issueId,
+  projectId,
   pattern,
   onClose,
 }: {
   issueId: string;
+  projectId: string;
   pattern: IssuePatternView;
   onClose: () => void;
 }) {
   const t = useCopy();
   const [reason, setReason] = useState("");
-  const decide = useDecidePattern(issueId);
+  const decide = useDecidePattern(issueId, projectId);
   const send = (decision: PatternDecision) =>
     decide.mutate({ patternId: pattern.id, decision, reason: reason.trim() }, { onSuccess: onClose });
-  const blocked = decide.isPending || reason.trim() === "";
+  const length = reason.trim().length;
+  const limit = PATTERN_LIMITS.reason;
+  const tooLong = length > limit;
+  const blocked = decide.isPending || length === 0 || tooLong;
+  const error = tooLong
+    ? t("issues.patterns.reasonTooLong", { count: String(length), limit: String(limit) })
+    : decide.error
+      ? `${t("issues.patterns.failed")}: ${formatApiError(decide.error)}`
+      : undefined;
   return (
     <div className="grid gap-2 rounded-lg border border-line px-4 py-3" data-testid="pattern-decide">
       <Field
         label={t("issues.patterns.reason")}
-        hint={t("issues.patterns.reasonHint")}
-        error={decide.error ? `${t("issues.patterns.failed")}: ${formatApiError(decide.error)}` : undefined}
+        hint={t("issues.patterns.reasonHint", { limit: String(limit) })}
+        error={error}
         required
       >
         <Textarea value={reason} rows={3} onChange={(e) => setReason(e.target.value)} />

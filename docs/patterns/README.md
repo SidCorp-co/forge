@@ -69,9 +69,19 @@ Naming a pattern on any other project is refused `PATTERN_CATALOG_UNDECLARED`, s
   cannot be retracted. The issue stays dispatchable, because a run has to take it to answer.
 - **The entry lands in the same change.** The approved pattern's page is added here, with its three
   sections and `**Introduced by:**` naming the issue, in the change that introduces the pattern. The
-  merge check's record (`POST /api/issues/:id/merge-check`) reads that change: the files its report
-  says the change touches, or the repository at its head. It refuses `PATTERN_ENTRY_MISSING` until the
-  page is in the change (`packages/core/src/issues/pattern-entry.ts`), and the merge mark of an issue
-  with an approved new pattern is refused `MERGE_CHECK_MISSING` until a passing check is recorded at
-  the commit it marks (`packages/core/src/issues/merge-check.ts`). The move to
-  `awaiting_release` does not read the catalog: the running build holds a page only after a release.
+  page is asked for wherever an approved pattern and the change meet, since either can come first
+  (`packages/core/src/issues/pattern-entry.ts`), and each refuses `PATTERN_ENTRY_MISSING` naming
+  the page and what was read:
+  - the merge check's record (`POST /api/issues/:id/merge-check`), over the files its report says
+    the change touches, or the repository at its head. It records the catalog pages the change
+    carried. The merge mark of an issue with an approved new pattern is refused
+    `MERGE_CHECK_MISSING` until a passing check is recorded at the commit it marks
+    (`packages/core/src/issues/merge-check.ts`);
+  - an approval on an issue whose merge is already marked, over the change the mark names;
+  - the move to `awaiting_release`, over the change the mark names, for every pattern approved by
+    then.
+
+  The change the mark names is read from the paths the box read at the marked commit, the catalog
+  pages a merge check passing at that commit recorded, then the repository at that commit, whose
+  host's own answer is in the refusal. The running build's catalog is never read: it holds a page
+  only after a release, and holding it there does not put it in this issue's change.
