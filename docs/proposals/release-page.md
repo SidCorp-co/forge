@@ -129,3 +129,14 @@ qa-clips (BC-4), release-page (core read model, highlights, share; BC-1..3, 5..9
 13; migration 0478), release-page-web (the page, both views, share render, export; BC-11 export),
 release-reach (What's new; BC-10). Each owns its files outright; they merge in that order after
 qa-clips, which merges whenever it is ready.
+
+## Honest costs
+
+- **QA takes longer.** Recording one clip per judged criterion adds seconds of capture and up to
+  10 MiB of storage per clip, and a QA run that skips it leaves a highlight without media.
+- **Strict truth hides real progress.** Under BC-13 a criterion passed on a merged commit but not
+  re-judged on the release commit reads "not judged on this build" until QA judges the served build.
+- **A model call at every cut.** Highlights are drafted through the gateway and redrafted when a
+  verdict lands on the release commit; each draft costs a call and can fail, leaving the page
+  without highlights until the next attempt.
+- **One more table and one more read model** to keep in step with the release record.
