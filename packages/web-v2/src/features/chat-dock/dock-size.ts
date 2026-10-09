@@ -48,14 +48,6 @@ export function sizeAt(width: number, room: number): "large" | "half" | null {
   return null;
 }
 
-/** Where the size control moves the panel from `width`: large and half swap, a dragged width snaps to the nearer. */
-export function nextSize(width: number, room: number): "large" | "half" {
-  const { large, half } = dockSizes(room);
-  const at = sizeAt(width, room);
-  if (at) return at === "large" ? "half" : "large";
-  return width - half < large - width ? "half" : "large";
-}
-
 const isDockSize = (v: unknown): v is DockSize =>
   v === "large" || v === "half" || (typeof v === "number" && Number.isFinite(v) && v > 0);
 

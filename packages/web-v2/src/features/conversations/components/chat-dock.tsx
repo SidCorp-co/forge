@@ -9,7 +9,7 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { type ChatDockApi, usePageRoom } from "@/features/chat-dock/dock";
 import { DockPreview } from "./dock-preview";
-import { type DockSize, dockSizes, dockWidth, nextSize, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
+import { type DockSize, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
 import { useBoard } from "@/features/board/board-store";
@@ -182,13 +182,13 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
             </button>
           </div>
         )}
-        {/* under a 24rem panel the header takes two rows: the title with pin and close, then the rest,
-            so the title and every control stay inside the narrowest panel (half of the 360px floor) */}
-        <header data-testid="chat-dock-header" className="flex flex-none flex-wrap items-center gap-1 border-b border-line bg-surface px-3 py-2">
+        {/* the header wraps in its own order, so the title and every control stay inside the narrowest
+            panel (half of the 360px floor) and Tab reads the rows as they are drawn */}
+        <header data-testid="chat-dock-header" className="flex flex-none flex-wrap items-center justify-end gap-1 border-b border-line bg-surface px-3 py-2">
           <h2 className="fg-body-sm min-w-0 flex-[1_0_auto] truncate font-semibold text-fg">
             {listing ? t("shell.dock.conversations") : title}
           </h2>
-          <div className="ml-auto flex min-w-0 flex-none items-center gap-1 @max-sm:order-last @max-sm:basis-full @max-sm:flex-wrap @max-sm:justify-end">
+          <div className="flex flex-none items-center gap-1">
             <IconButton
               icon="history"
               size="sm"
@@ -204,9 +204,9 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
               title={t("shell.dock.newConversation")}
               onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
             />
-            {!fullScreen && sizeControl}
           </div>
-          <div className="ml-auto flex flex-none items-center gap-1">
+          {!fullScreen && sizeControl}
+          <div className="flex flex-none items-center gap-1">
             {!fullScreen && (
               <IconButton
                 icon="pin"
@@ -243,54 +243,53 @@ function BoardForProject({ projectId, slug }: { projectId: string; slug: string 
   return <BoardPanel projectId={projectId} issueKey={snapshot.item?.kind === "issue" ? snapshot.item.key : undefined} />;
 }
 
-function Segment({ on, size, children }: { on: boolean; size: string; children: React.ReactNode }) {
+const segment = (on: boolean) => `whitespace-nowrap rounded px-1.5 py-0.5 ${on ? "bg-surface text-fg shadow-sm" : "text-muted"}`;
+
+/** One of the two sizes on the switch: a click on it moves the panel to the size it names, and keeps it. */
+function SizeTarget({ size, at, onSize }: { size: "half" | "large"; at: "half" | "large" | null; onSize: (size: DockSize) => void }) {
+  const t = useCopy();
+  const on = at === size;
   return (
-    <span
-      aria-hidden
+    <button
+      type="button"
       data-segment={size}
       data-on={on || undefined}
-      className={`whitespace-nowrap rounded px-1.5 py-0.5 ${on ? "bg-surface text-fg shadow-sm" : "text-muted"}`}
+      aria-pressed={on}
+      onClick={() => onSize(size)}
+      className={`${segment(on)} cursor-pointer hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]`}
     >
-      {children}
-    </span>
+      {t(size === "half" ? "shell.dock.size.half" : "shell.dock.size.large")}
+    </button>
   );
 }
 
 /**
- * One switch between the two sizes, both on it and the one the panel is at marked; a width between them
- * is marked between them, named for what set it. A click moves it to the other size, or snaps a width
- * between to the nearer (REQ-31 BC-2, BC-6). `byBoard`: the width is the one an open board widened it to.
+ * The switch between the two sizes: Half and Large are each a target that moves the panel to the size
+ * it names, the one the panel is at pressed. A width between them is marked between them, named for
+ * what set it, and is not a target (REQ-31 BC-2, BC-6). `byBoard`: the width an open board widened it to.
  */
 function SizeControl({ width, room, byBoard, onSize }: { width: number; room: number; byBoard: boolean; onSize: (size: DockSize) => void }) {
   const t = useCopy();
   const at = sizeAt(width, room);
-  const next = nextSize(width, room);
   const between = byBoard ? t("shell.dock.size.board", { width }) : t("shell.dock.size.custom", { width });
   const shown = at === "large" ? t("shell.dock.size.large") : at === "half" ? t("shell.dock.size.half") : between;
-  const label = t(next === "half" ? "shell.dock.size.toHalf" : "shell.dock.size.toLarge", { size: shown });
   return (
-    <button
-      type="button"
+    <fieldset
       data-testid="chat-dock-size"
       data-size={at ?? (byBoard ? "board" : "custom")}
-      aria-label={label}
-      title={label}
-      onClick={() => onSize(next)}
-      className="fg-caption inline-flex h-7 min-w-0 flex-none cursor-pointer items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5 font-semibold hover:border-[color:var(--link)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
+      aria-label={t("shell.dock.size.label", { size: shown })}
+      title={t("shell.dock.size.label", { size: shown })}
+      className="fg-caption inline-flex h-7 min-w-0 flex-none items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5 font-semibold"
     >
-      <Segment on={at === "half"} size="half">
-        {t("shell.dock.size.half")}
-      </Segment>
+      <SizeTarget size="half" at={at} onSize={onSize} />
       {at === null && (
-        <Segment on size={byBoard ? "board" : "custom"}>
+        <span aria-hidden data-segment={byBoard ? "board" : "custom"} data-on className={segment(true)}>
           <span className="@max-md:hidden">{between}</span>
           <span className="hidden @max-md:inline">{byBoard ? t("shell.dock.size.boardShort") : t("shell.dock.size.customShort")}</span>
-        </Segment>
+        </span>
       )}
-      <Segment on={at === "large"} size="large">
-        {t("shell.dock.size.large")}
-      </Segment>
-    </button>
+      <SizeTarget size="large" at={at} onSize={onSize} />
+    </fieldset>
   );
 }
 
