@@ -5,6 +5,8 @@
 import {
   confirmFixRequestSchema,
   issuePreviewResponseSchema,
+  keepPreviewRequestSchema,
+  keepPreviewResponseSchema,
   openPreviewRequestSchema,
   PREVIEW_LIMITS,
   previewApproveResponseSchema,
@@ -26,6 +28,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { confirmFix } from './confirm.js';
+import { keepIdea } from './keep.js';
 import {
   readRecording,
   recordingEvents,
@@ -120,6 +123,7 @@ for (const at of [
   '/:id/abandon',
   '/:id/messages',
   '/:id/confirm',
+  '/:id/keep',
 ]) {
   previewRoutes.use(at, requireAuth(), assertEmailVerified());
 }
@@ -191,6 +195,27 @@ previewRoutes.post(
       confirmFixResponseSchema.parse({
         confirmations: await confirmFix(c.req.valid('param').id, actorOf(c), c.req.valid('json')),
       }),
+      201,
+    ),
+);
+
+// Keeping an idea (REQ-41 BC-16): the page the person sees, as rrweb's snapshot of it, and what it shows.
+previewRoutes.post(
+  '/:id/keep',
+  zValidator('param', previewParam, PATH),
+  zValidator(
+    'json',
+    keepPreviewRequestSchema,
+    invalid(
+      "invalid body: { alt: what the page shows, snapshot: [rrweb's Meta event, then its FullSnapshot event] }",
+      'PREVIEW_KEEP_SNAPSHOT_INVALID',
+    ),
+  ),
+  async (c) =>
+    c.json(
+      keepPreviewResponseSchema.parse(
+        await keepIdea(c.req.valid('param').id, c.req.valid('json'), actorOf(c)),
+      ),
       201,
     ),
 );

@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	confirmFixRequestSchema,
+	keepPreviewRequestSchema,
 	keptPreviewContentSchema,
 	openPreviewRequestSchema,
-	PREVIEW_KEEP_REFUSAL_CODES,
-	PREVIEW_KEEP_ROUTE,
 	PREVIEW_REFUSAL_CODES,
 	PREVIEW_ROUTES,
 	previewDemoSettingsSchema,
@@ -102,23 +101,68 @@ describe("opening one from chat or a feedback item", () => {
 });
 
 describe("keeping an idea as the requirement's picture (BC-16)", () => {
+	const snapshot = [
+		{
+			type: 4,
+			timestamp: 1,
+			data: { href: "https://x.invalid/", width: 800, height: 600 },
+		},
+		{
+			type: 2,
+			timestamp: 2,
+			data: { node: {}, initialOffset: { top: 0, left: 0 } },
+		},
+	];
 	const kept = {
 		previewId: UUID,
+		branch: "sketch/req-41-abcdef",
+		head: SHA,
 		base: SHA,
 		patchId: SHA,
 		files: ["packages/web-v2/src/app/page.tsx"],
-		shots: [{ upload: UUID, alt: "The home with a larger chat box" }],
 		asked: ["Make the chat box larger"],
+		snapshot,
 	};
 
-	it("holds the change, its screenshots and what was asked", () => {
+	it("holds the branch head, the patch id, what was asked and the page's one snapshot", () => {
 		expect(keptPreviewContentSchema.safeParse(kept).success).toBe(true);
 	});
 
-	it("refuses a kept preview with no screenshot: a picture shows something", () => {
+	it("refuses a kept preview with no snapshot or one that is not Meta then FullSnapshot: a picture shows something", () => {
 		expect(
-			keptPreviewContentSchema.safeParse({ ...kept, shots: [] }).success,
+			keptPreviewContentSchema.safeParse({ ...kept, snapshot: [] }).success,
 		).toBe(false);
+		expect(
+			keptPreviewContentSchema.safeParse({
+				...kept,
+				snapshot: [...snapshot].reverse(),
+			}).success,
+		).toBe(false);
+		expect(
+			keepPreviewRequestSchema.safeParse({
+				alt: "The home",
+				snapshot: snapshot.slice(0, 1),
+			}).success,
+		).toBe(false);
+	});
+
+	it("refuses a head that is not a whole sha, and a branch that could be pushed as work", () => {
+		expect(
+			keptPreviewContentSchema.safeParse({ ...kept, head: "abc123" }).success,
+		).toBe(false);
+		expect(
+			keptPreviewContentSchema.safeParse({ ...kept, branch: "main" }).success,
+		).toBe(false);
+	});
+
+	it("names its route and its refusal in the registry", () => {
+		expect(PREVIEW_ROUTES.keep).toBe("/api/previews/:id/keep");
+		expect(PREVIEW_REFUSAL_CODES as readonly string[]).toContain(
+			"PREVIEW_KEEP_NOT_IDEA",
+		);
+		expect(PREVIEW_REFUSAL_CODES as readonly string[]).toContain(
+			"PREVIEW_KEEP_SNAPSHOT_INVALID",
+		);
 	});
 });
 
@@ -171,12 +215,6 @@ describe("REQ-41's names live in REQ-39's registry", () => {
 			"PREVIEW_CONFIRM_REASON_REQUIRED",
 		])
 			expect(PREVIEW_REFUSAL_CODES as readonly string[]).toContain(c);
-	});
-
-	it("keeps keeping beside the registry until its route lands, and names nothing twice", () => {
-		for (const c of PREVIEW_KEEP_REFUSAL_CODES)
-			expect(PREVIEW_REFUSAL_CODES as readonly string[]).not.toContain(c);
-		expect(Object.values(PREVIEW_ROUTES)).not.toContain(PREVIEW_KEEP_ROUTE);
 	});
 
 	it("reads demo data from the project's preview setting (BC-22)", () => {

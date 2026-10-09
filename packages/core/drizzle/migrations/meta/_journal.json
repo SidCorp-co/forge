@@ -3074,6 +3074,13 @@
       "when": 1824336000000,
       "tag": "0479_a_preview_serves_an_idea_or_a_reported_build_and_records_it",
       "breakpoints": true
+    },
+    {
+      "idx": 480,
+      "version": "7",
+      "when": 1824422400000,
+      "tag": "0480_a_kept_idea_preview_is_a_requirements_picture",
+      "breakpoints": true
     }
   ]
 }

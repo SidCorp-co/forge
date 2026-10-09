@@ -158,14 +158,28 @@ The preview serves that worktree.
 (`messages`): a sketch run still working takes it as a `session.send` inject, an idle one as its
 next turn. The run edits, and the dev server's hot reload shows the change.
 
-**Keep (BC-16).** Keeping an idea snapshots its patch, base and files, takes screenshots, and writes
-a `preview` picture (`keptPreviewContentSchema`):
-- on the requirement's head revision, for an idea about a requirement;
-- on the item's new requirement draft (triage route `new_requirement`), for an idea about feedback.
+**Keep (BC-16).** Keeping an idea writes a `preview` picture (`keptPreviewContentSchema`) holding:
+- the sketch branch and its head: the box commits what the run left in the worktree to the branch,
+  pins that commit under `refs/forge/kept/<preview id>` and reports it with the base, the patch id
+  and the files (`preview.snapshot.read` with `keep: true`);
+- one still of the page. The idea page carries rrweb's recorder script (served by core on the
+  preview's own origin, recording nothing and sending nothing), which answers one `postMessage` from
+  Forge's own origin and the frame's parent with a fresh `takeFullSnapshot` (Meta then FullSnapshot).
+  The browser sends that pair with the keep, core scrubs it as it scrubs a recording's batches, and
+  the requirement page draws it with rrweb's own replayer paused on it, in the sandboxed frame the
+  replayer makes (no scripts). No screenshot tool exists on the runner or in the browser.
 
-The assistant then drafts criteria from what was asked and what changed, as a `revision_diff`
-suggestion, or into the draft itself while it is a draft. Reopening a kept picture starts a new idea
-`from` its patch.
+It is written:
+- on the requirement's head revision, for an idea about a requirement (the open draft where none is
+  current); only a screen takes it, so another kind is refused `REQUIREMENT_PICTURE_KIND_MISMATCH`;
+- on a new screen requirement draft started from the item (`Started from FB-n`), for an idea about
+  feedback.
+
+The criteria are drafted as an assistant `revision_diff` suggestion on that requirement, one per thing
+asked, after the criteria it already holds; its reason opens "Recommended: accept", and a person
+accepts or rejects it. Where the suggestions path refuses it the keep still stands and the answer
+names that refusal. "Reopen live" starts a new idea `from` the kept preview: the sketch is cut at the
+stored head.
 
 **ISS-458's question** is what a requirement picture is. For a screen it is, at best, a kept preview:
 the real build, labelled a rough sketch, with no accept. No baseline pins it, as Requirement
@@ -237,7 +251,7 @@ lifecycle r14 already says of every picture.
 | Ask a person a question | the asking door's | `QUESTION_RECOMMENDATION_REQUIRED` |
 | Page action | the asker's turn | `UI_ACTION_UNKNOWN`, `UI_ACTION_INVALID`, `UI_ACTION_NOT_ON_PAGE`, `UI_ACTION_UNAVAILABLE` (browser) |
 | Open an idea | `project.write` | `PREVIEW_ITEM_UNKNOWN`, `PREVIEW_RUNNER_UNSUPPORTED`, `PREVIEW_DOMAIN_UNCONFIGURED` |
-| Keep an idea | `requirements.write` | `PREVIEW_KEEP_NOT_IDEA`, `PREVIEW_SNAPSHOT_UNAVAILABLE` |
+| Keep an idea | `project.write` | `PREVIEW_KEEP_NOT_IDEA`, `PREVIEW_KEEP_SNAPSHOT_INVALID`, `PREVIEW_SNAPSHOT_UNAVAILABLE`, and the picture's own `REQUIREMENT_PICTURE_KIND_MISMATCH` |
 | Open a reproduce | `project.read` | `PREVIEW_ITEM_UNKNOWN`, `PREVIEW_BUILD_UNKNOWN`, `PREVIEW_PRODUCTION_ENVIRONMENT` |
 | Send a recording batch | the viewer cookie of that preview | `RECORDING_CLOSED`, `RECORDING_SEQ_GAP`, `RECORDING_BATCH_INVALID`, `RECORDING_BATCH_TOO_LARGE`, `RECORDING_TOO_LARGE` |
 | Read a recording | `project.read` | `RECORDING_NOT_FOUND`, `RECORDING_FORBIDDEN`, `RECORDING_EXPIRED` (events), `RECORDING_REDACTED` |

@@ -11,13 +11,14 @@
 // picture here (BC-10); a linked process's picture is its workflow, so nothing is drawn for it. A
 // keyboard user skips past the picture in one step, and the read-only board holds nothing to reach.
 
-import { type ExampleTableContent, PICTURE_KIND_OF, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
+import { type ExampleTableContent, type KeptPreviewContent, PICTURE_KIND_OF, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
 import { parseWireframe } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { type ReactNode, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
+import { KeptPreviewPicture } from "@/features/previews/idea-kept-picture";
 import { BLOCK_RENDERERS } from "@/features/visual-blocks";
 import { namedRefusals } from "@/lib/api/refusals";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -42,7 +43,7 @@ function DrawnBy({ p }: { p: RequirementPictureView }) {
 }
 
 /** The stored picture, drawn by the renderer of its kind. */
-function StoredPicture({ p }: { p: RequirementPictureView }) {
+function StoredPicture({ p, projectId, reqKey, slug, canWrite }: { p: RequirementPictureView; projectId: string; reqKey: string; slug: string; canWrite: boolean }) {
   const t = useCopy();
   const by = <DrawnBy p={p} />;
   if (p.kind === "example_table") {
@@ -67,6 +68,13 @@ function StoredPicture({ p }: { p: RequirementPictureView }) {
         <div aria-hidden inert className="h-[380px] border border-line-subtle max-md:h-[300px]" data-testid="picture-board">
           {read.ok ? <BoardCanvas doc={read.doc} fit /> : <p className="p-4 text-13 text-muted">{read.message}</p>}
         </div>
+      </Figure>
+    );
+  }
+  if (p.kind === "preview") {
+    return (
+      <Figure alt={p.alt} kind={p.kind} by={by}>
+        <KeptPreviewPicture content={p.content as KeptPreviewContent} alt={p.alt} projectId={projectId} reqKey={reqKey} slug={slug} canWrite={canWrite} />
       </Figure>
     );
   }
@@ -104,7 +112,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
 
   let body: ReactNode;
   if (linked) body = <WorkflowPicture projectId={projectId} slug={slug} traced={traced} />;
-  else if (picture) body = <StoredPicture p={picture} />;
+  else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
   else {
     body = (
       <p className="max-w-[80ch] border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">

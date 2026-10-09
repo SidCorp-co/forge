@@ -6,6 +6,7 @@ import {
 	type DraftPicture,
 	describePicture,
 	draftPictureSchema,
+	kindTakesPicture,
 	PICTURE_KIND_OF,
 	pictureWithAlt,
 	REQUIREMENT_KINDS,
@@ -148,5 +149,21 @@ describe("the picture a draft carries", () => {
 		const written = pictureWithAlt(DRAWN.flow as DraftPicture);
 		expect(written.alt).toBe(describePicture(DRAWN.flow as DraftPicture));
 		expect(writePictureRequestSchema.safeParse(written).success).toBe(true);
+	});
+});
+
+describe("a kept preview is a screen's picture beside its wireframe (REQ-41 BC-16)", () => {
+	it("is taken by a screen and by no other kind, and no kind loses the picture it already takes", () => {
+		for (const kind of REQUIREMENT_KINDS) {
+			expect(kindTakesPicture(kind, PICTURE_KIND_OF[kind])).toBe(true);
+			expect(kindTakesPicture(kind, "preview")).toBe(kind === "screen");
+		}
+		expect(kindTakesPicture("screen", "flow")).toBe(false);
+	});
+
+	it("is never written by the picture route: only the keep of an idea preview draws one", () => {
+		const forged = { kind: "preview", alt: "x", content: {} };
+		expect(parse(forged).success).toBe(false);
+		expect(draftPictureSchema.safeParse(forged).success).toBe(false);
 	});
 });

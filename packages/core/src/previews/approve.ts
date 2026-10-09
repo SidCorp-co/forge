@@ -46,7 +46,7 @@ export function settleSnapshot(
 }
 
 /** What the box serves now: the patch id and files of the checkout's change against its base. */
-export async function askSnapshot(row: PreviewRow) {
+export async function askSnapshot(row: PreviewRow, keep = false) {
   const answered = new Promise<Extract<PreviewReport, { kind: 'snapshot' }>>((resolve, reject) => {
     const timer = setTimeout(() => {
       snapshots.delete(row.id);
@@ -64,7 +64,10 @@ export async function askSnapshot(row: PreviewRow) {
     });
   });
   await db.transaction((tx) =>
-    pushBox(tx, row.deviceId, 'preview.snapshot.read', { previewId: row.id }),
+    pushBox(tx, row.deviceId, 'preview.snapshot.read', {
+      previewId: row.id,
+      ...(keep ? { keep: true } : {}),
+    }),
   );
   return answered;
 }

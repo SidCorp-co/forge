@@ -155,6 +155,7 @@
     "conversations.silenceRow.screen-refused": "The agent's answer failed its checks, so it was not sent.",
     "conversations.silenceRow.tool-not-called": "The agent chose not to post in this room.",
     "conversations.stage.doing.act": "Preparing a button for you",
+    "conversations.stage.doing.idea": "Preparing a preview button for you",
     "conversations.stage.doing.filing": "Writing to the tracker: {what}",
     "conversations.stage.doing.knowledge": "Reading project knowledge",
     "conversations.stage.doing.memory": "Searching project memory",

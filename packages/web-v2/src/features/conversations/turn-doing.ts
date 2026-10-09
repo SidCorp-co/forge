@@ -2,6 +2,7 @@
 // tool it is waiting on, or that it is reading the project before its first call.
 
 import { CHAT_ACT_TOOL } from "@forge/contracts/chat-acts";
+import { IDEA_OFFER_TOOL } from "@forge/contracts/idea-offer";
 import { getToolLabel, type RenderBlock } from "@/features/session/types";
 import type { Copy } from "@/lib/i18n/product-copy";
 
@@ -25,5 +26,6 @@ export function turnDoing(blocks: readonly RenderBlock[] | undefined, t: Copy): 
   if (name === "forge_knowledge") return t("conversations.stage.doing.knowledge");
   if (name === "forge_memory") return t("conversations.stage.doing.memory");
   if (name === CHAT_ACT_TOOL) return t("conversations.stage.doing.act");
+  if (name === IDEA_OFFER_TOOL) return t("conversations.stage.doing.idea");
   return t("conversations.stage.doing.other", { what: clip(getToolLabel(last.tool)) });
 }

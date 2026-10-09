@@ -5,11 +5,13 @@
 // nothing, so a pressed or overtaken offer cannot be pressed twice.
 
 import { CHAT_ACT_TOOL, type ChatActOffer, readChatActOffer } from "@forge/contracts/chat-acts";
+import type { IdeaOffer } from "@forge/contracts/idea-offer";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
 import type { CanonicalBlock } from "@/features/session/types";
 import { issuesApi, releaseBatchApi } from "@/features/issues/api";
+import { IdeaOfferCard, ideaOffersOf } from "./components/idea-offers";
 import { useIssue } from "@/features/issues/detail-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
@@ -48,15 +50,14 @@ export function useActOffers(args: {
   progress: ConversationProgressEntry | null | undefined;
 }) {
   const byEntry = useMemo(() => {
-    const map = new Map<string, ChatActOffer[]>();
-    for (const m of args.messages) {
-      const offers = actOffersOf(m.blocks);
-      if (offers.length > 0) map.set(m.id, offers);
-    }
-    if (args.progress) {
-      const offers = actOffersOf(args.progress.entry.blocks as CanonicalBlock[]);
-      if (offers.length > 0) map.set(args.progress.entry.id ?? "live", offers);
-    }
+    const map = new Map<string, { acts: ChatActOffer[]; ideas: IdeaOffer[] }>();
+    const note = (id: string, blocks: readonly CanonicalBlock[] | null | undefined) => {
+      const acts = actOffersOf(blocks);
+      const ideas = ideaOffersOf(blocks);
+      if (acts.length + ideas.length > 0) map.set(id, { acts, ideas });
+    };
+    for (const m of args.messages) note(m.id, m.blocks);
+    if (args.progress) note(args.progress.entry.id ?? "live", args.progress.entry.blocks as CanonicalBlock[]);
     return map;
   }, [args.messages, args.progress]);
 
@@ -66,8 +67,11 @@ export function useActOffers(args: {
       if (!offers) return null;
       return (
         <div className="mt-2 flex flex-col gap-2">
-          {offers.map((o) => (
+          {offers.acts.map((o) => (
             <ActOfferCard key={`${o.issueId}:${o.act}`} offer={o} />
+          ))}
+          {offers.ideas.map((o) => (
+            <IdeaOfferCard key={`${o.about}:${o.brief}`} offer={o} />
           ))}
         </div>
       );

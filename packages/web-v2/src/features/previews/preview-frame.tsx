@@ -6,7 +6,7 @@
 // the preview host answers `frame-ancestors` for Forge's origin itself (core).
 
 import type { PreviewRecord } from "@forge/contracts/preview";
-import { useCallback, useEffect, useState } from "react";
+import { type Ref, useCallback, useEffect, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -18,7 +18,7 @@ export const PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allo
 /** A framed page that has not loaded by now is probably held back by the browser, not slow. */
 export const FRAME_SLOW_MS = 12_000;
 
-export function PreviewFrame({ preview, issueLabel, height = 520 }: { preview: PreviewRecord; issueLabel: string; height?: number }) {
+export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { preview: PreviewRecord; issueLabel: string; height?: number; frameRef?: Ref<HTMLIFrameElement> }) {
   const t = useCopy();
   const [src, setSrc] = useState<string | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
@@ -89,6 +89,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520 }: { preview: P
       {src ? (
         <iframe
           key={src}
+          ref={frameRef}
           src={src}
           title={t("previews.frame.title", { issue: issueLabel })}
           sandbox={PREVIEW_SANDBOX}

@@ -115,6 +115,8 @@ export class StandInBox {
   private readonly streams = new Map<number, { sock: Socket; credit: number; got: number }>();
   /** What the box reports when asked to start; replaced by a test to plant a failure. */
   onStart: (frame: Record<string, unknown>) => Record<string, unknown> | null = () => null;
+  /** What the box reports when asked to read what it serves (an approval, or a keep with `keep: true`). */
+  onSnapshot: (frame: Record<string, unknown>) => Record<string, unknown> | null = () => null;
   devPort = 0;
 
   constructor(
@@ -154,6 +156,10 @@ export class StandInBox {
     if (frame.event === 'preview.start') {
       await this.openTunnel();
       const answer = this.onStart(frame.data);
+      if (answer) await this.report(String(frame.data.previewId), answer);
+    }
+    if (frame.event === 'preview.snapshot.read') {
+      const answer = this.onSnapshot(frame.data);
       if (answer) await this.report(String(frame.data.previewId), answer);
     }
   }

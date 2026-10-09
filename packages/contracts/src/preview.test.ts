@@ -351,6 +351,8 @@ describe("the preview refusals", () => {
 			PREVIEW_ITEM_UNKNOWN: 404,
 			PREVIEW_BUILD_UNKNOWN: 422,
 			PREVIEW_CONFIRM_NOT_FIX: 409,
+			PREVIEW_KEEP_NOT_IDEA: 409,
+			PREVIEW_KEEP_SNAPSHOT_INVALID: 400,
 			PREVIEW_CONFIRM_REASON_REQUIRED: 400,
 		});
 	});
@@ -385,6 +387,13 @@ describe("what the runner reports", () => {
 		expect(
 			issuesOf(previewReportSchema, { ...snapshot, base: "abc1234" }),
 		).toEqual(["base: base is a whole git sha: 40 hex characters"]);
+		// a keep's report names the sketch branch head, which is a whole sha too
+		expect(
+			issuesOf(previewReportSchema, { ...snapshot, head: "c".repeat(40) }),
+		).toEqual([]);
+		expect(
+			issuesOf(previewReportSchema, { ...snapshot, head: "abc1234" }),
+		).toEqual(["head: head is a whole git sha: 40 hex characters"]);
 	});
 
 	it("refuses a kind it does not hold", () => {

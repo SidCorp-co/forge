@@ -13,6 +13,8 @@ pub struct Snapshot {
     pub base: String,
     pub patch_id: String,
     pub files: Vec<String>,
+    /// The branch head after a keep committed the edits; `None` for an approval's read.
+    pub head: Option<String>,
 }
 
 async fn git(dir: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
@@ -110,7 +112,50 @@ pub async fn read(dir: &Path) -> Result<Snapshot, String> {
         base,
         patch_id,
         files: names.lines().map(str::to_string).collect(),
+        head: None,
     })
+}
+
+/// Where a kept sketch's head is pinned, so the branch being deleted or its worktree pruned never
+/// leaves "Reopen live" with a commit git may collect.
+pub fn kept_ref(preview_id: &str) -> String {
+    format!("refs/forge/kept/{preview_id}")
+}
+
+/// Keep a sketch (REQ-41 BC-16): commit everything the run left in the worktree to its sketch branch
+/// (nothing, where it is already committed), pin the head under [`kept_ref`], and read the change
+/// the head now holds. The commit hooks are not run: this is a snapshot, not the run's work.
+pub async fn keep(dir: &Path, preview_id: &str) -> Result<Snapshot, String> {
+    git(dir, None, &["add", "-A"]).await?;
+    let staged = git(dir, None, &["diff", "--cached", "--name-only"]).await?;
+    if !staged.trim().is_empty() {
+        git(
+            dir,
+            None,
+            &[
+                "-c",
+                "user.name=Forge sketch",
+                "-c",
+                "user.email=sketch@forge.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "--no-verify",
+                "-q",
+                "-m",
+                &format!("Forge sketch kept as preview {preview_id}"),
+            ],
+        )
+        .await?;
+    }
+    let head = git(dir, None, &["rev-parse", "HEAD"])
+        .await?
+        .trim()
+        .to_string();
+    git(dir, None, &["update-ref", &kept_ref(preview_id), &head]).await?;
+    let mut snapshot = read(dir).await?;
+    snapshot.head = Some(head);
+    Ok(snapshot)
 }
 
 #[cfg(test)]
@@ -165,6 +210,65 @@ mod tests {
         );
         sh(&work, "echo c >> a.txt").await;
         assert_ne!(read(&work).await.unwrap().patch_id, first.patch_id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_keep_commits_what_the_run_left_pins_the_head_and_reports_it() {
+        let root = std::env::temp_dir().join(format!("forge-keep-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        sh(&root, "git init -q -b main origin && cd origin && git -c user.email=a@b -c user.name=a commit -q --allow-empty -m base && echo a > a.txt && git add a.txt && git -c user.email=a@b -c user.name=a commit -q -m a").await;
+        sh(
+            &root,
+            "git clone -q origin work && cd work && git checkout -q -b sketch/req-1-abcdef origin/main",
+        )
+        .await;
+        let work = root.join("work");
+        sh(
+            &work,
+            "echo b >> a.txt && mkdir -p web && echo new > web/new.tsx",
+        )
+        .await;
+        let before = read(&work).await.expect("a read of the edits");
+        let kept = keep(&work, "p1").await.expect("a keep");
+        let head = kept.head.clone().expect("a keep reports the head");
+        assert_eq!(head.len(), 40);
+        assert_eq!(
+            kept.patch_id, before.patch_id,
+            "committing the edits does not change the change that was seen"
+        );
+        assert_eq!(
+            git(&work, None, &["status", "--porcelain"]).await.unwrap(),
+            "",
+            "nothing is left uncommitted"
+        );
+        assert_eq!(
+            git(&work, None, &["rev-parse", &kept_ref("p1")])
+                .await
+                .unwrap()
+                .trim(),
+            head,
+            "the head is pinned"
+        );
+        let again = keep(&work, "p1")
+            .await
+            .expect("a second keep with nothing new");
+        assert_eq!(
+            again.head,
+            Some(head),
+            "a clean worktree keeps at the same head"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_keep_of_a_sketch_with_no_change_is_refused_by_name() {
+        let root = std::env::temp_dir().join(format!("forge-keep-none-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        sh(&root, "git init -q -b main origin && cd origin && git -c user.email=a@b -c user.name=a commit -q --allow-empty -m base").await;
+        sh(&root, "git clone -q origin work && cd work && git checkout -q -b sketch/req-1-abcdef origin/main").await;
+        let err = keep(&root.join("work"), "p2").await.unwrap_err();
+        assert!(err.contains("no change"), "{err}");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

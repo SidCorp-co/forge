@@ -40,7 +40,13 @@ import {
   tunnelDownPage,
 } from './pages.js';
 import { previewBySlug } from './read.js';
-import { decoded, recorderScript, withRecorderTag } from './recorder.js';
+import {
+  decoded,
+  recorderScript,
+  snapshotScript,
+  takesSnapshots,
+  withRecorderTag,
+} from './recorder.js';
 import { ingestBatch, recordingFor, records } from './recordings.js';
 import { serves } from './rules.js';
 import { noteViewed, reopenForViewer } from './service.js';
@@ -120,7 +126,9 @@ async function admit(
   // the recorder's paths answer a member of a recording preview only, whatever its state: a batch
   // after the preview closed is refused by the recording, by name
   if (recorder) {
-    return records(row)
+    // an idea's page carries only the script that answers Forge's snapshot ask: it records nothing
+    const taken = records(row) || (takesSnapshots(row) && url.pathname === RECORDER_PATHS.script);
+    return taken
       ? { ok: 'recorder', row, userId: grant.userId }
       : { ok: false, page: notFoundPage() };
   }
@@ -238,8 +246,9 @@ function bodyOf(req: IncomingMessage, limit: number): Promise<Buffer> {
 async function serveRecorder(req: IncomingMessage, res: ServerResponse, at: RecorderAdmission) {
   const url = new URL(req.url ?? '/', 'http://preview.invalid');
   if (url.pathname === RECORDER_PATHS.script) {
-    const recording = await recordingFor(at.row, at.userId);
-    const script = recorderScript(recording.id);
+    const script = records(at.row)
+      ? recorderScript((await recordingFor(at.row, at.userId)).id)
+      : snapshotScript(new URL(env.APP_BASE_URL).origin);
     res.writeHead(200, {
       'content-type': 'text/javascript; charset=utf-8',
       'content-length': Buffer.byteLength(script),
@@ -316,9 +325,10 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
     const origin = previewOrigin(site, row.slug);
     const port = row.port ?? 0;
     const recording = records(row);
+    const injecting = recording || takesSnapshots(row);
     const headers = upstreamHeaders(req, port, origin, false);
-    // a recording preview's HTML is rewritten, so it is asked for unencoded (BC-18)
-    if (recording) headers['accept-encoding'] = 'identity';
+    // a recording or idea preview's HTML is rewritten, so it is asked for unencoded (BC-18, BC-16)
+    if (injecting) headers['accept-encoding'] = 'identity';
     const upstream = httpRequest({
       method: req.method,
       path: req.url,
@@ -328,8 +338,12 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
     upstream.on('response', (answer) => {
       const status = answer.statusCode ?? 502;
       const out = downstreamHeaders(answer.headers, port, origin);
-      if (recording && isHtml(answer.headers)) {
+      if (injecting && isHtml(answer.headers)) {
         delete out['content-length'];
+        if (!recording) {
+          injectRecorder(answer, res, out, status);
+          return;
+        }
         void recordingFor(row, admitted.userId).then(
           () => injectRecorder(answer, res, out, status),
           (err: unknown) => {

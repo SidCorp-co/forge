@@ -41,7 +41,7 @@ export function read<S extends z.ZodType>(where: string, schema: S, body: unknow
   return parsed.data;
 }
 
-const post = (route: string, params: Record<string, string>, body?: unknown) =>
+export const post = (route: string, params: Record<string, string>, body?: unknown) =>
   apiClient<unknown>(routeOf(route, params), { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 /** `GET /api/issues/:id/lane` (fast-lane): the lane the issue's approved change takes, and why not the fast one. */

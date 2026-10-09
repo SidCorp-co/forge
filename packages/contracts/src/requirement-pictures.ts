@@ -5,6 +5,7 @@
 // Core's CHECKs, REST and the web import the kinds, the content schemas and the view from here.
 
 import { z } from "zod";
+import { type KeptPreviewContent, keptPreviewContentSchema } from "./preview.js";
 import { ReportFrameSchema } from "./report-queries.js";
 import { ChartSpecSchema, checkBlockSpec, FlowSpecSchema } from "./visual-blocks.js";
 import { parseWireframe } from "./wireframe.js";
@@ -13,8 +14,11 @@ import { parseWireframe } from "./wireframe.js";
 export const REQUIREMENT_KINDS = ["process", "rule", "screen", "report"] as const;
 export type RequirementKind = (typeof REQUIREMENT_KINDS)[number];
 
-/** What a picture is drawn as. */
-export const PICTURE_KINDS = ["flow", "example_table", "wireframe", "chart"] as const;
+/**
+ * What a picture is drawn as. `preview` is a kept idea preview (REQ-41 BC-16): written by the keep of
+ * an idea preview only, never by the picture route, and taken by a screen beside its wireframe.
+ */
+export const PICTURE_KINDS = ["flow", "example_table", "wireframe", "chart", "preview"] as const;
 export type PictureKind = (typeof PICTURE_KINDS)[number];
 
 /** The one picture each kind gets (r14 `picture`): process a flow (BC-3), rule an example table (BC-4), screen a wireframe, report a sample chart. */
@@ -24,6 +28,11 @@ export const PICTURE_KIND_OF = {
 	screen: "wireframe",
 	report: "chart",
 } as const satisfies Record<RequirementKind, PictureKind>;
+
+/** Whether a revision of `kind` takes a picture drawn as `picture`: its own, and a screen's kept preview. */
+export function kindTakesPicture(kind: RequirementKind, picture: PictureKind): boolean {
+	return PICTURE_KIND_OF[kind] === picture || (kind === "screen" && picture === "preview");
+}
 
 export const REQUIREMENT_PICTURE_LIMITS = {
 	altChars: 300,
@@ -87,7 +96,17 @@ const pictureOf = <A extends z.ZodType<string | undefined>>(alt: A) =>
 /** `PUT /api/projects/:id/requirements/:req/revisions/:n/picture`: the revision's one picture, written or replaced whole. */
 export const writePictureRequestSchema = pictureOf(ALT);
 export type WritePictureRequest = z.infer<typeof writePictureRequestSchema>;
-export type PictureContent = WritePictureRequest["content"];
+/** A kept idea preview as the keep writes it: the picture route never takes this kind. */
+export const keptPreviewPictureSchema = z.strictObject({
+	kind: z.literal("preview"),
+	alt: ALT,
+	content: keptPreviewContentSchema,
+});
+export type KeptPreviewPicture = z.infer<typeof keptPreviewPictureSchema>;
+/** A picture as it is stored and drawn: what the picture route takes, or a kept preview. */
+export type DrawnPicture = WritePictureRequest | KeptPreviewPicture;
+export type PictureContent = DrawnPicture["content"];
+export type { KeptPreviewContent };
 export type ExampleTableContent = z.infer<typeof exampleTableContent>;
 export const WRITE_PICTURE_SHAPE =
 	'{ kind: flow | example_table | wireframe | chart (process, rule, screen and report take one each), alt: a short text alternative, content: flow { title?, nodes: [{ id, label }], edges: [{ from, to, label? }] } | example_table { title?, rows: [{ input, expected }] } | wireframe { board: a wireframe-v1 board } | chart { variant, x, y: [...], series?, title?, frame: { fields: [{ name, label, type }], rows } of sample figures } }';

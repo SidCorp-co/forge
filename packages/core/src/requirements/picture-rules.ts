@@ -8,6 +8,7 @@
 
 import {
   type ExampleTableContent,
+  kindTakesPicture,
   PICTURE_KIND_OF,
   type PictureKind,
   type RequirementKind,
@@ -20,6 +21,7 @@ const KIND_NAMED: Record<PictureKind, string> = {
   example_table: 'an example table',
   wireframe: 'a wireframe',
   chart: 'a sample chart',
+  preview: 'a kept preview',
 };
 
 /**
@@ -41,11 +43,11 @@ export function kindMismatchRefusal(
     };
   }
   const wanted = PICTURE_KIND_OF[kind];
-  if (wanted === picture) return null;
+  if (kindTakesPicture(kind, picture)) return null;
   return {
     code: 'REQUIREMENT_PICTURE_KIND_MISMATCH',
     path: '/kind',
-    detail: `${key} r${revision} is a ${kind} requirement, whose picture is ${KIND_NAMED[wanted]}, not ${KIND_NAMED[picture]}; draw ${KIND_NAMED[wanted]}, or correct its kind first.`,
+    detail: `${key} r${revision} is a ${kind} requirement, whose picture is ${KIND_NAMED[wanted]}${kind === 'screen' ? ' or a kept preview' : ''}, not ${KIND_NAMED[picture]}; draw ${KIND_NAMED[wanted]}, or correct its kind first.`,
   };
 }
 

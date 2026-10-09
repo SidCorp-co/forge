@@ -38,6 +38,7 @@ import { buildBaFirstRequirementsToolset } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildOfferActToolset } from './tools/offer-act-tool.js';
+import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
@@ -307,6 +308,7 @@ async function prepareWebTurn(
         userId: authority.userId,
         language: await askerLineLanguage(args),
       }),
+      buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
     ),
   };
 }
