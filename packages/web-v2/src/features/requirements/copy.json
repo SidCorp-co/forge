@@ -72,7 +72,7 @@
     "requirements.criteria.nOfM": "{a} of {b}",
     "requirements.criteria.noTrace": "No issue traces here yet",
     "requirements.criteria.notBrokenDown": "Not broken down into issues yet",
-    "requirements.criteria.notInLiveBuild": " · judged at a commit the live build does not hold, so it does not count",
+    "requirements.criteria.notCounted": " · does not count: {reason}",
     "requirements.criteria.notJudged": "Not judged yet",
     "requirements.criteria.since": "Since r{r}",
     "requirements.criteria.tracesEarlier": " · traces to an earlier wording",

@@ -24,11 +24,14 @@ const MASTER = say('standing.who.master');
 
 const JUDGED = new Set(['pass', 'short', 'fail']);
 const keysOf = (keys: readonly string[]) => [...new Set(keys)].join(', ');
-/** The issues a verdict can still count on: those tracing the current wording that hold no judgement. */
+/** The issues a verdict can still count on: those tracing the current wording that hold no
+ *  judgement, or only one that does not count (on another build, or at an identity nothing checks). */
 const unjudgedKeys = (rows: readonly RequirementCoverage[]) =>
   keysOf(
     rows.flatMap((c) =>
-      c.issues.filter((l) => !l.stale && !JUDGED.has(l.verdict ?? '')).map((l) => l.displayId),
+      c.issues
+        .filter((l) => !l.stale && (!JUDGED.has(l.verdict ?? '') || l.notCounted !== null))
+        .map((l) => l.displayId),
     ),
   );
 /** The issues whose trace sits on an earlier wording, where no verdict can count until it is tied again. */
@@ -56,7 +59,9 @@ export function proofTurn(
   if (live.length === 0 || !live.every((i) => i.status === 'closed') || unproven.length === 0) {
     return null;
   }
-  const unjudged = unproven.filter((c) => c.verdict === 'not_judged' || c.verdict === 'stale');
+  const unjudged = unproven.filter(
+    (c) => c.verdict === 'not_judged' || c.verdict === 'stale' || c.verdict === 'not_live',
+  );
   const judgeable = unjudged.filter((c) => unjudgedKeys([c]) !== '');
   const retie = unjudged.filter((c) => unjudgedKeys([c]) === '' && staleKeys([c]) !== '');
   const failing = unproven.filter((c) => c.verdict === 'failing');

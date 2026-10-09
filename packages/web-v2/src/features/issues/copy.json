@@ -120,6 +120,8 @@
     "issues.criteria.acceptance": "Acceptance criteria",
     "issues.criteria.empty": "No criteria yet; the plan step writes them.",
     "issues.criteria.emptyTie": "No criteria yet. Tie this issue to its requirement's criteria to judge it against them.",
+    "issues.criteria.retired": "Retired criteria · {n}",
+    "issues.criteria.retiredMark": "Retired {at}",
     "issues.deps.anIssue": "an issue",
     "issues.deps.blockedBy": "Blocked by {n}",
     "issues.deps.blockedByOne": "Blocked by {key}",

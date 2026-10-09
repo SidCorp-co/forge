@@ -10,6 +10,7 @@
  * Postgres.
  */
 
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -35,7 +36,7 @@ beforeEach(async () => {
   token = await userToken(ownerId);
 });
 
-const onProject = (method: 'GET' | 'POST', path: string, body?: unknown) =>
+const onProject = (method: 'GET' | 'POST' | 'PUT', path: string, body?: unknown) =>
   api(token, method, `/api/projects/${projectId}${path}`, body);
 
 async function ok(r: Promise<{ status: number; body: Record<string, unknown> }>) {
@@ -44,7 +45,7 @@ async function ok(r: Promise<{ status: number; body: Record<string, unknown> }>)
   return res.body;
 }
 
-async function agreedRequirement(): Promise<string> {
+async function agreedRequirement(linkWorkflow?: string): Promise<string> {
   const created = await ok(
     onProject('POST', '/requirements', {
       title: 'Reminders',
@@ -53,6 +54,9 @@ async function agreedRequirement(): Promise<string> {
     }),
   );
   const key = String(created.key);
+  if (linkWorkflow) {
+    await ok(onProject('POST', `/requirements/${key}/workflows`, { workflowId: linkWorkflow }));
+  }
   await ok(onProject('POST', `/requirements/${key}/revisions/1/propose`, {}));
   await ok(onProject('POST', `/requirements/${key}/revisions/1/accept`, {}));
   await ok(onProject('POST', `/requirements/${key}/agree`, { revision: 1 }));
@@ -71,12 +75,12 @@ async function closedIssueTracing(req: string, seq: number, codes: string[]): Pr
   return id;
 }
 
-/** A verdict on criterion `n` of `issueId` at `commit`, recorded as judged at `at`. */
+/** A verdict on criterion `n` of `issueId` at `commit` (or the identity named), recorded as judged at `at`. */
 async function judge(
   issueId: string,
   n: number,
   verdict: 'pass' | 'short' | 'fail',
-  commit: string,
+  commit: string | Record<string, unknown>,
   at: string,
 ) {
   const r = await ok(
@@ -84,24 +88,33 @@ async function judge(
       criterion: n,
       verdict,
       reason: `${verdict} on the running build`,
-      identity: { kind: 'commit', sha: commit },
+      identity: typeof commit === 'string' ? { kind: 'commit', sha: commit } : commit,
       evidence: ['shot.png'],
     }),
   );
   await db.execute(sql`UPDATE criterion_verdicts SET created_at = ${at} WHERE id = ${r.verdictId}`);
 }
 
-type Link = { displayId: string; criterion: number; verdict: string | null; stale: boolean };
+type Link = {
+  displayId: string;
+  criterion: number;
+  verdict: string | null;
+  identity: string | null;
+  notCounted: string | null;
+  stale: boolean;
+};
 type Bc = {
   code: string;
   body: string;
   verdict: string;
   issues: Link[];
+  why: string | null;
   counts: {
     displayId: string;
     criterion: number;
     verdict: string;
     at: string;
+    identity: string;
     commit: string | null;
   } | null;
 };
@@ -134,6 +147,7 @@ describe('the newest verdict across the rows tracing a BC is the one that counts
       criterion: 1,
       verdict: 'pass',
       at: '2026-10-05T10:00:00.000Z',
+      identity: `commit ${NEW.slice(0, 12)}`,
       commit: NEW,
       inLiveBuild: null,
     });
@@ -211,6 +225,19 @@ describe('a trace left on a reworded BC is refreshed to the current wording', ()
          WHERE v.issue_id = ${issue}`)),
     ];
     expect(kept).toEqual([{ retired: true, verdict: 'pass' }]);
+    // ISS-489 r2: the retired row and the verdict it earned read back, beside the live row
+    const read = await ok(api(token, 'GET', `/api/issues/${issue}/criteria`));
+    expect(read.retired).toEqual([
+      expect.objectContaining({
+        n: 1,
+        statement: `(${req} BC-1) A nurse sees the reminder`,
+        retiredAt: expect.any(String),
+        verdicts: [
+          expect.objectContaining({ verdict: 'pass', identityKind: 'commit', commitSha: OLD }),
+        ],
+      }),
+    ]);
+    expect(read.criteria).toEqual([expect.objectContaining({ n: 1, latest: null })]);
     const refreshed = await bc(req, 'BC-1');
     expect(refreshed.verdict).toBe('not_judged');
     expect(refreshed.issues).toEqual([
@@ -261,5 +288,129 @@ describe('a trace left on a reworded BC is refreshed to the current wording', ()
     expect(again.status).toBe(422);
     expect(JSON.stringify(again.body)).toContain('CRITERIA_TRACE_DUPLICATE');
     expect(JSON.stringify(again.body)).toContain('already traced by criterion 1');
+  });
+});
+
+// ISS-489 r2: a verdict whose identity was not a commit reached coverage with no commit, so nothing
+// checked it and a pass counted. A runtime resolves to the commit its build served or does not count;
+// a design or contract counts only at what the requirement's latest baseline pins.
+describe('every verdict identity is checked by a rule or named as not counting', () => {
+  async function approvedDesign(
+    flow: string,
+  ): Promise<{ id: string; doc: Record<string, unknown> }> {
+    const doc = JSON.parse(
+      readFileSync(
+        new URL('../fixtures/workflows/post-discharge.design.json', import.meta.url),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+    doc.project = projectId;
+    doc.flow = flow;
+    const made = (await ok(
+      onProject('POST', '/workflows', { baseRevision: null, document: doc }),
+    )) as {
+      document: Record<string, unknown> & { id: string };
+    };
+    const id = made.document.id;
+    await ok(onProject('POST', `/workflows/${id}/design/propose`, { revision: 1 }));
+    await ok(
+      onProject('POST', `/workflows/${id}/design/decision`, { revision: 1, decision: 'approve' }),
+    );
+    return { id, doc: made.document };
+  }
+
+  it('a runtime counts at the commit it names; one nothing resolves to a build does not, and says why', async () => {
+    const req = await agreedRequirement();
+    const a = await closedIssueTracing(req, 1, ['BC-1']);
+    const b = await closedIssueTracing(req, 2, ['BC-2']);
+    await judge(a, 1, 'pass', { kind: 'runtime', ref: NEW }, '2026-10-05T10:00:00Z');
+    const digest = 'd'.repeat(64);
+    await judge(b, 1, 'pass', { kind: 'runtime', ref: digest }, '2026-10-05T10:00:00Z');
+
+    expect(await bc(req, 'BC-1')).toMatchObject({
+      verdict: 'passing',
+      counts: { identity: `runtime ${NEW.slice(0, 12)}`, commit: NEW },
+    });
+    const unresolved = await bc(req, 'BC-2');
+    expect(unresolved).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(unresolved.issues[0]?.notCounted).toBe(
+      `runtime ${digest.slice(0, 12)} is not a commit and no release Forge verified served it, so nothing says which build it was`,
+    );
+    expect(unresolved.why).toContain(
+      'no verdict counts yet: ISS-2 criterion 1: runtime dddddddddddd',
+    );
+  });
+
+  it('a design counts at the revision the baseline pins, not at a later approved one', async () => {
+    const { id, doc } = await approvedDesign('reminders-flow');
+    const req = await agreedRequirement(id);
+    await ok(
+      onProject('PUT', `/workflows/${id}`, {
+        baseRevision: 1,
+        document: { ...doc, summary: 'revision two' },
+      }),
+    );
+    await ok(
+      onProject('POST', `/workflows/${id}/design/decision`, { revision: 2, decision: 'approve' }),
+    );
+    const a = await closedIssueTracing(req, 1, ['BC-1']);
+    const b = await closedIssueTracing(req, 2, ['BC-2']);
+    await judge(
+      a,
+      1,
+      'pass',
+      { kind: 'design', workflow: 'reminders-flow', revision: 1 },
+      '2026-10-05T10:00:00Z',
+    );
+    await judge(
+      b,
+      1,
+      'pass',
+      { kind: 'design', workflow: 'reminders-flow', revision: 2 },
+      '2026-10-05T10:00:00Z',
+    );
+
+    expect(await bc(req, 'BC-1')).toMatchObject({
+      verdict: 'passing',
+      counts: { identity: 'design reminders-flow rev 1', commit: null },
+    });
+    const later = await bc(req, 'BC-2');
+    expect(later).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(later.issues[0]?.notCounted).toBe(
+      "judged against design reminders-flow rev 2, and the requirement's latest baseline pins rev 1",
+    );
+  });
+
+  it('a contract counts at the version the baseline pins, and not at another', async () => {
+    const req = await agreedRequirement();
+    const [project] = [
+      ...(await db.execute(sql`SELECT slug FROM projects WHERE id = ${projectId}`)),
+    ] as { slug: string }[];
+    for (const version of ['1.1.0', '1.2.0']) {
+      await db.execute(sql`
+        INSERT INTO contract_versions (provider_project_id, contract_slug, version, contract_type, document, classification)
+        VALUES (${projectId}, 'api', ${version}, 'openapi', '{}'::jsonb, 'initial')`);
+    }
+    await db.execute(sql`
+      INSERT INTO requirement_baseline_pins (requirement_id, revision, baseline_seq, provider_project_id, contract_slug, contract_version)
+      SELECT b.requirement_id, b.revision, b.seq, ${projectId}, 'api', '1.2.0'
+        FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
+       WHERE r.project_id = ${projectId}
+       ORDER BY b.revision DESC, b.seq DESC LIMIT 1`);
+    const a = await closedIssueTracing(req, 1, ['BC-1']);
+    const b = await closedIssueTracing(req, 2, ['BC-2']);
+    const ref = `${project?.slug}/api`;
+    await judge(a, 1, 'pass', { kind: 'contract', ref, version: '1.2.0' }, '2026-10-05T10:00:00Z');
+    await judge(b, 1, 'pass', { kind: 'contract', ref, version: '1.1.0' }, '2026-10-05T10:00:00Z');
+
+    expect(await bc(req, 'BC-1')).toMatchObject({
+      verdict: 'passing',
+      counts: { identity: `contract ${ref}@1.2.0` },
+    });
+    const other = await bc(req, 'BC-2');
+    expect(other).toMatchObject({ verdict: 'not_judged', counts: null });
+    expect(other.issues[0]?.notCounted).toBe(
+      `judged against contract ${ref}@1.1.0, and the requirement's latest baseline pins 1.2.0`,
+    );
   });
 });

@@ -2,7 +2,7 @@
  * ISS-55 — an issue's criteria and the verdicts on them, over REST. Transport only: the rules are
  * `store.ts` and `verdict-input.ts`, which every door calls.
  *
- *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict
+ *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict, and the retired ones with all their verdicts
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
  *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion
@@ -26,6 +26,7 @@ import { criteriaPutSchema, criteriaTracePostSchema, verdictPostSchema } from '.
 import {
   addVerdict,
   readCriteriaWithDrafts as readCriteria,
+  readCriteriaAndRetired,
   replaceCriteria,
   traceCriteria,
 } from './service.js';
@@ -37,7 +38,7 @@ issueCriteriaRoutes.use('/:id/criteria/traces', requireAuth(), assertEmailVerifi
 issueCriteriaRoutes.use('/:id/verdicts', requireAuth(), assertEmailVerified());
 issueCriteriaRoutes.use('/:id/judged-build', requireAuth(), assertEmailVerified());
 
-/** An issue's criteria as this caller may read them: every answer passes the same egress. */
+/** An issue's criteria, live and retired, as this caller may read them: every answer passes the same egress. */
 async function criteriaShown(
   agency: Parameters<typeof egressForRequest>[0],
   issue: Parameters<typeof readCriteria>[0] & { projectId: string; id: string },
@@ -46,7 +47,7 @@ async function criteriaShown(
     agency,
     issue.projectId,
     'issue.criteria',
-    await readCriteria(issue),
+    await readCriteriaAndRetired(issue),
     `the criteria of ${issue.id}`,
   );
 }
@@ -54,7 +55,7 @@ async function criteriaShown(
 issueCriteriaRoutes.get('/:id/criteria', zValidator('param', idParamSchema), async (c) => {
   const { id } = c.req.valid('param');
   const issue = await heldIssue(id, c.get('userId'), 'project.read');
-  return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
+  return c.json(await criteriaShown(c.get('agency'), issue));
 });
 
 issueCriteriaRoutes.put(
@@ -66,7 +67,7 @@ issueCriteriaRoutes.put(
     const { criteria } = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
     await replaceCriteria(id, criteria);
-    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) });
+    return c.json(await criteriaShown(c.get('agency'), issue));
   },
 );
 
@@ -79,7 +80,7 @@ issueCriteriaRoutes.post(
     const { codes } = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
     await traceCriteria(issue.id, codes);
-    return c.json({ criteria: await criteriaShown(c.get('agency'), issue) }, 201);
+    return c.json(await criteriaShown(c.get('agency'), issue), 201);
   },
 );
 

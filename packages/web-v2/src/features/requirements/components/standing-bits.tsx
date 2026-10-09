@@ -25,7 +25,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
 
-/** One verdict as a dot carrying the verdict's glyph (✓ × ↻ ○ !), so its shape tells it apart where its colour does not. */
+/** One verdict as a dot carrying the verdict's glyph (✓ × ↻ ⇣ ○ !), so its shape tells it apart where its colour does not. */
 export function VerdictDot({ verdict }: { verdict: BcVerdict }) {
   const r = statusReading("bcVerdict", verdict, useInterfaceLanguage());
   const c = LEGEND[r.tone];

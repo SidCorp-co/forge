@@ -1,5 +1,6 @@
 // ISS-55 — an issue's criteria as rows (`GET /api/issues/:id/criteria`), each with its latest
-// verdict, folded to the criterion standing whose badge reads the same on every screen.
+// verdict, folded to the criterion standing whose badge reads the same on every screen, and beside
+// them the retired rows with every verdict each earned (ISS-489).
 
 import { safeAttachmentName } from "@forge/contracts/attachments";
 import type { JudgedBuild, StorefrontDraftVerdictView } from "@forge/contracts/verdict-identity";
@@ -34,12 +35,22 @@ export interface CriterionRow {
   latest: CriterionVerdict | null;
 }
 
+/** A criterion a reword, a removal or a re-tie retired, with every verdict on it, newest first; none counts. */
+export interface RetiredCriterionRow {
+  id: string;
+  n: number;
+  statement: string;
+  requirementCriterionId: string | null;
+  retiredAt: string;
+  verdicts: CriterionVerdict[];
+}
+
 /** `issueId` is the uuid, or the display key with the `projectId` it is scoped by. */
 export function useCriteria(issueId: string | undefined, projectId?: string) {
   return useQuery({
     queryKey: ["issue", issueKeySegment(issueId, projectId), "criteria"],
     queryFn: () =>
-      apiClient<{ criteria: CriterionRow[] }>(
+      apiClient<{ criteria: CriterionRow[]; retired: RetiredCriterionRow[] }>(
         `/issues/${issueId}/criteria${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ""}`,
       ),
     enabled: !!issueId,

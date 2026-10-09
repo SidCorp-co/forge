@@ -258,6 +258,7 @@ export const BC_VERDICTS = [
 	"passing",
 	"failing",
 	"stale",
+	"not_live",
 	"not_judged",
 	"gap",
 ] as const;
@@ -267,6 +268,7 @@ export const BC_VERDICT_LABELS: Record<BcVerdict, string> = {
 	passing: "Passing",
 	failing: "Failing",
 	stale: "Stale",
+	not_live: "Not live",
 	not_judged: "Not judged",
 	gap: "Gap",
 };
@@ -275,6 +277,7 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 	passing: "ready",
 	failing: "err",
 	stale: "neutral",
+	not_live: "neutral",
 	not_judged: "neutral",
 	gap: "you",
 };
@@ -285,9 +288,11 @@ export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	failing:
 		"failing: the newest verdict on an issue criterion tracing to this wording is a fail",
 	stale:
-		"stale: issue criteria trace only to an earlier wording of this criterion, or were judged only at commits the live build does not hold",
+		"stale: issue criteria trace only to an earlier wording of this criterion; tie it again from the issue's Criteria tab, then judge it",
+	not_live:
+		"not_live: issue criteria tracing this wording were judged only at builds the live one does not hold; judge it again on the live build",
 	not_judged:
-		"not_judged: no issue criterion tracing to this wording has a pass or fail verdict yet",
+		"not_judged: no verdict on an issue criterion tracing to this wording counts yet",
 	gap: "gap: no issue criterion traces to this criterion",
 };
 
@@ -357,11 +362,18 @@ export interface CoverageIssue {
 	verdict: "pass" | "short" | "fail" | "skipped" | null;
 	/** When that verdict was recorded (ISO); null while there is none. */
 	verdictAt: string | null;
-	/** The commit that verdict was judged at; null where it names none. */
+	/** What that verdict names as the thing it was judged against, in words (`commit 1a2b…`,
+	 *  `runtime 3c4d…`, `design issue-lifecycle rev 14`, `contract forge/api@1.2.0`); null with no verdict. */
+	identity: string | null;
+	/** The commit that verdict was judged at, or the commit its runtime served; null where it names
+	 *  none or its runtime resolves to none. */
 	commit: string | null;
 	/** Whether the live build holds that commit; null where it was not read (no commit, no probe,
-	 *  no answer). A verdict at a commit the live build does not hold is stale and never counts. */
+	 *  no answer). A verdict at a commit the live build does not hold never counts. */
 	inLiveBuild: boolean | null;
+	/** Why this pass, short or fail does not count toward the criterion; null where it counts or is
+	 *  no judgement (none yet, or could not judge). */
+	notCounted: string | null;
 	stale: boolean;
 }
 
@@ -374,6 +386,8 @@ export interface CoverageCount {
 	verdict: "pass" | "short" | "fail";
 	/** When it was recorded (ISO). */
 	at: string;
+	/** What it was judged against, in words (`CoverageIssue.identity`). */
+	identity: string;
 	commit: string | null;
 	inLiveBuild: boolean | null;
 }
@@ -385,6 +399,9 @@ export interface RequirementCoverage {
 	issues: CoverageIssue[];
 	/** The verdict the coverage reads, so a person sees why it reads as it does; null where none counts. */
 	counts: CoverageCount | null;
+	/** Why the criterion reads as it does where no verdict counts (stale, not live, not judged with
+	 *  judgements that do not count), in one sentence shown beside its word; null where one counts. */
+	why: string | null;
 	/** On a gap, why the newest accepted breakdown naming this criterion left it without an issue
 	 *  (its `uncovered[]` reason); null where no accepted breakdown says. */
 	uncoveredReason: string | null;

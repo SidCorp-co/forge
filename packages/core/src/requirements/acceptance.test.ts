@@ -169,7 +169,7 @@ describe('the delivery phase the accept reads', () => {
       requirementCriterionId: 'c1',
       verdict: v,
       verdictAt: v ? at : null,
-      commit: null,
+      identity: v ? ({ kind: 'commit', sha: 'f'.repeat(40) } as const) : null,
     },
   ];
 

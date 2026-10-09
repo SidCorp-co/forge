@@ -56,7 +56,7 @@ export const VERDICT_IDENTITY_KINDS = [
 	"storefront_draft",
 	"commit_unresolved",
 ] as const;
-type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
+export type VerdictIdentityKindName = (typeof VERDICT_IDENTITY_KINDS)[number];
 
 interface VerdictReading extends StorefrontDraftVerdictView {
 	verdict: VerdictValueName;

@@ -137,7 +137,7 @@ const CONTRACT_FAMILIES = {
   bcVerdict: {
     labels: BC_VERDICT_LABELS,
     tones: BC_VERDICT_TONES,
-    glyphs: { passing: "✓", failing: "×", stale: "↻", not_judged: "○", gap: "!" },
+    glyphs: { passing: "✓", failing: "×", stale: "↻", not_live: "⇣", not_judged: "○", gap: "!" },
     hints: BC_VERDICT_HINTS,
   },
   criterion: { labels: CRITERION_STANDING_LABELS, tones: CRITERION_STANDING_TONES, glyphs: CRITERION_STANDING_GLYPHS, hints: CRITERION_STANDING_HINTS },

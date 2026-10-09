@@ -27,8 +27,11 @@ export interface RequirementDependents {
   proposeDuplicate: ProposeDuplicate;
   /** What follows a landing on the project as `userId` reads it (`forecast/release.ts:releaseLegFor`): the release on its own, or the act a person owes. */
   releaseLeg(projectId: string, userId: string | null): Promise<ReleaseLeg>;
-  /** What the project's live build holds of verdict commits (`release-batch/judged-build.ts:liveBuildHolds`); null where it cannot be read. */
-  liveBuildHolds(projectId: string, commits: readonly string[]): Promise<LiveBuildHolds | null>;
+  /** What the project's live build holds of verdict commits, and the commit each verdict runtime served (`release-batch/judged-build.ts:liveBuildHolds`); null where nothing was asked. */
+  liveBuildHolds(
+    projectId: string,
+    asked: { commits: readonly string[]; runtimes: readonly string[] },
+  ): Promise<LiveBuildHolds | null>;
 }
 
 const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');

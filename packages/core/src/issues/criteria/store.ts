@@ -447,6 +447,56 @@ export async function listCriteria(
   return [...rows].map(criterionOf);
 }
 
+/** A criterion a reword, a removal or a re-tie retired, with every verdict it earned, newest first. */
+export interface RetiredCriterion {
+  readonly id: string;
+  readonly n: number;
+  readonly statement: string;
+  readonly requirementCriterionId: string | null;
+  readonly retiredAt: string;
+  readonly verdicts: readonly LatestVerdict[];
+}
+
+/**
+ * Every retired criterion of an issue, most recently retired first, each with all its verdicts: what
+ * an earlier judge found stays readable after the criterion it judged was reworded or tied again.
+ * Nothing counts them; the gate and coverage read live criteria only.
+ */
+export async function listRetiredCriteria(
+  executor: Pick<Tx, 'execute'>,
+  issueId: string,
+): Promise<RetiredCriterion[]> {
+  const rows = (await executor.execute(sql`
+    SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id, c.retired_at,
+           v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
+           v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
+           v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
+           v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence,
+           v.author_agency, v.backfilled, v.created_at AS v_created_at
+      FROM issue_criteria c
+      LEFT JOIN criterion_verdicts v ON v.criterion_id = c.id
+      LEFT JOIN project_workflows w ON w.id = v.design_workflow_id
+     WHERE c.issue_id = ${issueId}::uuid AND c.retired_at IS NOT NULL
+     ORDER BY c.retired_at DESC, c.n, c.id, v.created_at DESC, v.id DESC`)) as unknown as (ListRow & {
+    retired_at: Date | string;
+  })[];
+  const out = new Map<string, RetiredCriterion & { verdicts: LatestVerdict[] }>();
+  for (const row of rows) {
+    const held = out.get(row.id) ?? {
+      id: row.id,
+      n: row.n,
+      statement: row.statement,
+      requirementCriterionId: row.requirement_criterion_id,
+      retiredAt: new Date(row.retired_at).toISOString(),
+      verdicts: [],
+    };
+    const verdict = latestOf(row);
+    if (verdict) held.verdicts.push(verdict);
+    out.set(row.id, held);
+  }
+  return [...out.values()];
+}
+
 export async function listCriteriaOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],

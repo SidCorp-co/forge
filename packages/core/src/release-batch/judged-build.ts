@@ -157,24 +157,44 @@ export async function judgedBuildOf(
 }
 
 /**
- * What the live build holds of `commits` (the commits verdicts were judged at), for a requirement's
- * coverage (`requirements/standing.ts:coverageOf`): the commit production serves now, and per commit,
- * lower case, whether it is that commit or an ancestor of it, read by the same reader and kept in the
- * same cache as `judgedBuildOf`'s. A commit nobody could answer is left out, and so judged neither
- * way; null where the live build itself cannot be read, so nothing is judged against it.
+ * What the live build holds of the commits verdicts were judged at, for a requirement's coverage
+ * (`requirements/standing-coverage.ts:coverageOf`). `runtimes` are the runtimes verdicts were judged
+ * at: each resolves to the commit that build served the way production's own answer does
+ * (`liveCommitOf`: a whole commit as it reads, else the one release Forge verified whose commit it
+ * names), or to null where neither holds, and the commits it resolves to are asked beside `commits`.
+ * Per asked commit, lower case, whether it is the commit production serves now or an ancestor of it,
+ * read by the same reader and kept in the same cache as `judgedBuildOf`'s; a commit nobody could
+ * answer is left out, and so judged neither way. `sha` is null, and `holds` empty, where the live
+ * build itself cannot be read; the whole answer is null where nothing was asked.
  */
 export async function liveBuildHolds(
   projectId: string,
-  commits: readonly string[],
+  asked: { commits: readonly string[]; runtimes?: readonly string[] },
   deps: JudgedBuildDeps = LIVE_DEPS,
-): Promise<{ sha: string; holds: Map<string, boolean> } | null> {
-  const asked = [...new Set(commits.map((c) => c.trim().toLowerCase()).filter((c) => c !== ''))];
-  if (asked.length === 0) return null;
-  const live = await liveCommitFor(projectId, deps);
-  if (!live) return null;
+): Promise<{
+  sha: string | null;
+  holds: Map<string, boolean>;
+  runtimes: Map<string, string | null>;
+} | null> {
+  const clean = (xs: readonly string[]) => [
+    ...new Set(xs.map((c) => c.trim().toLowerCase()).filter((c) => c !== '')),
+  ];
+  const refs = clean(asked.runtimes ?? []);
+  const runtimes = new Map<string, string | null>();
+  if (refs.length > 0) {
+    const releases = await deps.releases(projectId);
+    for (const ref of refs) runtimes.set(ref, liveCommitOf(ref, releases));
+  }
+  const commits = clean([
+    ...asked.commits,
+    ...[...runtimes.values()].filter((c): c is string => c !== null),
+  ]);
+  if (commits.length === 0 && refs.length === 0) return null;
   const holds = new Map<string, boolean>();
+  const live = commits.length > 0 ? await liveCommitFor(projectId, deps) : null;
+  if (!live) return { sha: null, holds, runtimes };
   const open: AncestryPair[] = [];
-  for (const commit of asked) {
+  for (const commit of commits) {
     const same = commit.length >= 7 && live.startsWith(commit);
     const held = same ? true : ANSWERED.get(pairKey({ commit, release: live }));
     if (held !== undefined) holds.set(commit, held);
@@ -185,7 +205,7 @@ export async function liveBuildHolds(
     const answer = ANSWERED.get(pairKey(pair));
     if (answer !== undefined) holds.set(pair.commit, answer);
   }
-  return { sha: live, holds };
+  return { sha: live, holds, runtimes };
 }
 
 // A list of requirements reads its coverage on every load, so the commit production serves is read

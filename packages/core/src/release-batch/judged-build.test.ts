@@ -148,7 +148,7 @@ describe('what the live build holds of verdict commits', () => {
     const r = reader({ [`${sha('1')}@${live}`]: true, [`${sha('2')}@${live}`]: false });
     const read = await liveBuildHolds(
       'p-holds',
-      [live, sha('1'), sha('2').toUpperCase(), sha('3')],
+      { commits: [live, sha('1'), sha('2').toUpperCase(), sha('3')] },
       deps(live, [], r.source),
     );
     expect(read?.sha).toBe(live);
@@ -160,16 +160,57 @@ describe('what the live build holds of verdict commits', () => {
     expect(r.asked).not.toContain(`${live}@${live}`);
   });
 
-  it('reads nothing where no commit is asked, and is null where production cannot be read', async () => {
-    expect(await liveBuildHolds('p-none', [], deps(sha('9'), []))).toBeNull();
-    expect(await liveBuildHolds('p-down', [sha('1')], deps({ why: 'no probe' }, []))).toBeNull();
+  it('reads nothing where nothing is asked, and holds nothing where production cannot be read', async () => {
+    expect(await liveBuildHolds('p-none', { commits: [] }, deps(sha('9'), []))).toBeNull();
+    const down = await liveBuildHolds(
+      'p-down',
+      { commits: [sha('1')] },
+      deps({ why: 'no probe' }, []),
+    );
+    expect(down?.sha).toBeNull();
+    expect([...(down?.holds ?? [])]).toEqual([]);
+  });
+
+  // ISS-489 r2: a runtime-identity verdict reached coverage with no commit, so it was never checked
+  // against the live build and a pass counted; each runtime now resolves to the commit it served
+  it('resolves each runtime to the commit that build served and asks the live build about it', async () => {
+    const live = sha('7');
+    const r = reader({ [`${sha('5')}@${live}`]: false });
+    const digest = 'd'.repeat(64);
+    const read = await liveBuildHolds(
+      'p-runtime',
+      { commits: [], runtimes: [live.toUpperCase(), sha('5'), digest] },
+      deps(live, [DEV_192], r.source),
+    );
+    expect([...(read?.runtimes ?? [])]).toEqual([
+      [live, live],
+      [sha('5'), sha('5')],
+      [digest, null],
+    ]);
+    expect([...(read?.holds ?? [])]).toEqual([
+      [live, true],
+      [sha('5'), false],
+    ]);
+  });
+
+  it('resolves runtimes from the verified releases even where production cannot be read', async () => {
+    const read = await liveBuildHolds(
+      'p-runtime-down',
+      { commits: [], runtimes: [DEV_192.commit] },
+      deps({ why: 'no probe' }, [DEV_192]),
+    );
+    expect(read).toEqual({
+      sha: null,
+      holds: new Map(),
+      runtimes: new Map([[DEV_192.commit, DEV_192.commit]]),
+    });
   });
 
   it('keeps an answer, so the same pair is not asked twice', async () => {
     const live = sha('8');
     const r = reader({ [`${sha('4')}@${live}`]: true });
-    await liveBuildHolds('p-kept', [sha('4')], deps(live, [], r.source));
-    await liveBuildHolds('p-kept', [sha('4')], deps(live, [], r.source));
+    await liveBuildHolds('p-kept', { commits: [sha('4')] }, deps(live, [], r.source));
+    await liveBuildHolds('p-kept', { commits: [sha('4')] }, deps(live, [], r.source));
     expect(r.asked).toEqual([`${sha('4')}@${live}`]);
   });
 });

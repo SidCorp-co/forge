@@ -28,9 +28,15 @@ it lives in numbered revisions, and each revision carries business criteria unde
   linked issue starts, then \`in_delivery\`, and \`delivered\` only when every live linked issue is
   closed **and** every current BC is covered by a passing verdict. A closed set with one unproven BC
   still reads \`in_delivery\`; the fix is a verdict, not a status move. A BC's coverage is the newest
-  pass, short or fail on any issue criterion tracing its current wording (an unjudged one masks
-  nothing; a verdict at a commit the live build does not hold never counts), and the BC names it. A
-  trace left on an earlier wording is refreshed by tying the BC again from the issue's Criteria tab.
+  pass, short or fail on any issue criterion tracing its current wording that its identity lets
+  count, and the BC names it. An unjudged one masks nothing. A commit, or the commit a runtime
+  served, counts unless the live build does not hold it; a runtime that resolves to no commit, a
+  design revision or contract version other than the one the requirement's latest baseline pins, a
+  storefront draft and a backfilled abbreviated commit never count, and each says why on its line. A
+  BC traced only at an earlier wording reads \`stale\`, one judged only at builds the live one does
+  not hold \`not_live\`, each with its reason (\`why\`). A trace left on an earlier wording is
+  refreshed by tying the BC again from the issue's Criteria tab; the retired row keeps its verdicts,
+  read back as \`retired\` beside \`criteria\` from \`GET /api/issues/:id/criteria\`.
 
 ### The order of the work
 1. **create** \`{ title, reason, criteria }\` writes REQ-n at revision 1, a draft. Any member of the
