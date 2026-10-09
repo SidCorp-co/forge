@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
+import { BOSS_SCHEMA } from '../../src/queue/boss.js';
 import { CLAIM_MIN_RUNNER } from '../../src/runners/device-cap.js';
 
 export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
@@ -11,16 +12,27 @@ export async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
 /** Tables whose rows a migration seeds as part of the schema (`schema-outbox.ts:outboxEventTypes`). */
 const SEEDED_BY_MIGRATIONS = ['outbox_event_types'];
 
-/** Empties every table the migrations made, keeping the schema, its seeded rows and drizzle's journal. */
+/**
+ * Empties every table the migrations made, keeping the schema, its seeded rows and drizzle's journal.
+ * The outbox's seq restarts with it, and a delivery's job id is built from that seq
+ * (`outbox/queues.ts:deliveryJobId`), so the outbox jobs an earlier test left go too: kept, they hold
+ * the ids the next test's deliveries are given, and those are dropped as duplicates without a word.
+ */
 export async function truncateAll(): Promise<void> {
   const tables = await rows<{ name: string }>(sql`
     SELECT format('%I.%I', schemaname, tablename) AS name FROM pg_tables
      WHERE schemaname = 'public' AND tablename NOT IN ${SEEDED_BY_MIGRATIONS}
   `);
-  if (tables.length === 0) return;
-  await db.execute(
-    sql.raw(`TRUNCATE ${tables.map((t) => t.name).join(', ')} RESTART IDENTITY CASCADE`),
+  if (tables.length > 0) {
+    await db.execute(
+      sql.raw(`TRUNCATE ${tables.map((t) => t.name).join(', ')} RESTART IDENTITY CASCADE`),
+    );
+  }
+  const [jobs] = await rows<{ present: boolean }>(
+    sql`SELECT to_regclass(${`${BOSS_SCHEMA}.job`}) IS NOT NULL AS present`,
   );
+  if (jobs?.present)
+    await db.execute(sql.raw(`DELETE FROM ${BOSS_SCHEMA}.job WHERE name LIKE 'outbox.%'`));
 }
 
 export interface TestUser {

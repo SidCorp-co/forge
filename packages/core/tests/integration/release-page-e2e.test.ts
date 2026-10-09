@@ -407,9 +407,6 @@ describe('the highlights the assistant drafts from the requirements it advances'
   });
 
   it('is redrafted through the outbox when a verdict is recorded on an issue it carries', async () => {
-    // truncation restarts the outbox's seq, and a delivery's job id is built from it: the jobs an
-    // earlier test of this file left would stand in for this test's own and swallow them
-    await db.execute(sql`DELETE FROM pgboss_v12.job WHERE name LIKE 'outbox.%'`);
     const w = await releaseWorldOfFour();
     await startQueue();
     try {

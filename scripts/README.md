@@ -674,6 +674,13 @@ each naming the branches, the tags and the numbers:
 every entry distinct and every index ascending with its `when`, and is still unorderable: whichever
 lands first raises the high-water past the other's remainder.
 
+**A branch cut from another carries its migration, not a second one.** Where two branches hold the
+same tag at the same index and `when` (`lib/migration-order.mjs:sameEntry`), that is one migration
+landing with whichever branch merges first; the other then reads it as already landed. No rule fires
+on that pair, and `interleaved` measures only what each branch adds of its own. What a stacked
+branch adds still meets every rule. Born when release-page-web, cut from release-page, held its 0478
+and the check read it as a `when` spent twice (`scripts/lib/migration-order.test.mjs`).
+
 **The unit is the branch.** A sibling already at or below the floor is STRANDED — it cannot land in
 any order until it renumbers — so it is reported on its own and counted against nobody. Refusing
 this tree for it would be refusing a branch for damage it cannot repair. Our own below-floor entries
