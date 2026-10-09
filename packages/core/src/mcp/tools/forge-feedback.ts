@@ -186,7 +186,7 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           limit = input.limit ?? 25;
         }
 
-        const rows = await listReports(projectIds, filters, overfetch(limit));
+        const rows = await listReports(projectIds, {}, overfetch(limit));
 
         return buildListEnvelope({
           key: 'reports',

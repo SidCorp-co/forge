@@ -5,7 +5,8 @@
  * and refuses a viewer; `forge_feedback action=review` is the same capability and answered any
  * non-null role. This file drives both doors as a viewer, a member and an admin, so a door that
  * admits a role the other refuses goes red naming itself. A refused stamp leaves the report
- * unreviewed.
+ * unreviewed. The list is the other half: both doors answer from one service function, so the
+ * same project, filters and limit return the same report ids in the same order.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -130,4 +131,54 @@ describe.each(Object.entries(doors))('%s', (_name, stamp) => {
       expect(await reviewedAt(id)).not.toBeNull();
     },
   );
+});
+
+describe('the feed', () => {
+  async function seed(n: number): Promise<void> {
+    for (let i = 0; i < n; i += 1) {
+      await harness.db.execute(sql`
+        INSERT INTO feedback_reports (project_id, kind, target, summary, signal_key, created_at)
+        VALUES (${projectId}, 'friction', 'skill', ${`report ${i}`}, ${`k${i}`},
+                now() - (${i} * interval '1 minute'))`);
+    }
+  }
+
+  async function viaRest(limit: number, reviewed: boolean): Promise<string[]> {
+    const res = await fetch(
+      `${server.baseUrl}/api/feedback-reports?projectId=${projectId}&limit=${limit}&reviewed=${reviewed}`,
+      { headers: { Authorization: `Bearer ${callers.member.jwt}` } },
+    );
+    return ((await res.json()) as Array<{ id: string }>).map((r) => r.id);
+  }
+
+  async function viaTool(limit: number, reviewed: boolean): Promise<string[]> {
+    const ctx = await connectClientAsPat(callers.member.pat);
+    try {
+      const res = (await ctx.client.callTool({
+        name: 'forge_feedback',
+        arguments: { action: 'list', projectId, limit, filters: { reviewed } },
+      })) as { content: Array<{ type: string; text: string }> };
+      const body = parseToolResult(res) as { reports: Array<{ id: string }> };
+      return body.reports.map((r) => r.id);
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  it('lists the same report ids in the same order through both doors for one limit and filter', async () => {
+    await seed(7);
+    const rest = await viaRest(5, false);
+    expect(rest).toHaveLength(5);
+    expect(await viaTool(5, false)).toEqual(rest);
+  });
+
+  it('answers the reviewed filter the same way through both doors', async () => {
+    await seed(3);
+    const [first] = await viaRest(1, false);
+    await harness.db.execute(
+      sql`UPDATE feedback_reports SET reviewed_at = now() WHERE id = ${first}`,
+    );
+    expect(await viaTool(10, true)).toEqual(await viaRest(10, true));
+    expect(await viaTool(10, true)).toEqual([first]);
+  });
 });
