@@ -23,11 +23,17 @@ import {
   type QuestionSuggestionCode,
 } from '@forge/contracts/question-suggestion';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { comments } from '../db/schema-comments.js';
 import { feedback } from '../db/schema-feedback.js';
-import { agentQuestions, type FreeTextStep, isChoiceStep } from '../db/schema-questions.js';
+import {
+  agentQuestions,
+  isChoiceStep,
+  type QuestionOption,
+  type QuestionStep,
+} from '../db/schema-questions.js';
 import {
   requirementCriteria,
   requirementRevisions,
@@ -49,6 +55,7 @@ const CALL_TIMEOUT_MS = 60_000;
 const SWEEP_BATCH = 3;
 const FACT_MAX = 1200;
 const CRITERIA_MAX = 25;
+const DECISIONS_MAX = 8;
 
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -102,6 +109,28 @@ async function requirementLines(requirementId: string, out: ProductRecord): Prom
   if (rev?.tldr) out.lines.push(`  In short: ${clip(rev.tldr, FACT_MAX)}`);
   if (typeof goal === 'string' && goal.trim()) out.lines.push(`  Goal: ${clip(goal, FACT_MAX)}`);
   for (const c of criteria) out.lines.push(`  ${c.code}: ${clip(c.body, 300)}`);
+  const issueIds = (
+    await db.select({ id: issues.id }).from(issues).where(eq(issues.requirementId, requirementId))
+  ).map((i) => i.id);
+  const decisions = await db
+    .select({ body: comments.body, decision: comments.decision })
+    .from(comments)
+    .where(
+      and(
+        eq(comments.intent, 'decision'),
+        issueIds.length > 0
+          ? or(eq(comments.requirementId, requirementId), inArray(comments.issueId, issueIds))
+          : eq(comments.requirementId, requirementId),
+      ),
+    )
+    .orderBy(desc(comments.createdAt), desc(comments.id))
+    .limit(DECISIONS_MAX);
+  for (const d of decisions) {
+    const said = d.decision
+      ? `${d.decision.decision.trim()} (because ${d.decision.reason.trim()})`
+      : d.body.trim();
+    out.lines.push(`  Decision recorded: ${clip(said, 400)}`);
+  }
 }
 
 /** The records a question stands on: its issue, the requirement either names, the feedback item. */
@@ -145,14 +174,19 @@ async function readRecord(row: typeof agentQuestions.$inferSelect): Promise<Prod
   return out;
 }
 
-function systemPrompt(language: Parameters<typeof contentLanguageBlock>[0]): string {
+function systemPrompt(
+  language: Parameters<typeof contentLanguageBlock>[0],
+  choice: boolean,
+): string {
   return [
     'A run of the Forge pipeline stopped to ask a person one question and gave no answer of its own. You draft the answer the person is most likely to want, so they can send it with one click.',
     'Your only input is the question and the product record it stands on, below: the issue, the requirement and its criteria, the feedback item. You have not seen the code, so state nothing the record does not hold. Where the record does not settle the question, decline instead of guessing.',
     '',
     'Rules:',
     '- Answer with one JSON object and nothing else.',
-    `- To answer: {"answer": "<the answer, written as the person would send it, at most ${QUESTION_SUGGESTION_TEXT_MAX} characters>", "why": "<one line naming the record it rests on, at most ${QUESTION_SUGGESTION_WHY_MAX} characters>"}.`,
+    choice
+      ? `- To answer: {"option": "<the id of ONE of the offered options, exactly as listed>", "why": "<one line naming the record it rests on, at most ${QUESTION_SUGGESTION_WHY_MAX} characters>"}. You may only pick an offered option; never write one of your own.`
+      : `- To answer: {"answer": "<the answer, written as the person would send it, at most ${QUESTION_SUGGESTION_TEXT_MAX} characters>", "why": "<one line naming the record it rests on, at most ${QUESTION_SUGGESTION_WHY_MAX} characters>"}.`,
     '- To decline: {"decline": "<one line saying what the record lacks>"}.',
     '- The answer is for the person to send as it stands; it makes no promise and takes no action by itself.',
     '',
@@ -163,13 +197,16 @@ function systemPrompt(language: Parameters<typeof contentLanguageBlock>[0]): str
 const SHAPE =
   'the answer is not one JSON object {"answer": string, "why": string} or {"decline": string}, within the length limits';
 
-type Drafted = { answer: string; why: string } | { decline: string } | string;
+const SHAPE_CHOICE =
+  'the answer is not one JSON object {"option": <an offered option id>, "why": string} or {"decline": string}';
 
-function parseAnswer(text: string): Drafted {
+type Drafted = { answer: string; why: string; optionId?: string } | { decline: string } | string;
+
+function parseAnswer(text: string, options: readonly QuestionOption[] | null): Drafted {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return SHAPE;
-  let parsed: { answer?: unknown; why?: unknown; decline?: unknown } | null;
+  let parsed: { answer?: unknown; option?: unknown; why?: unknown; decline?: unknown } | null;
   try {
     parsed = JSON.parse(text.slice(start, end + 1));
   } catch {
@@ -177,6 +214,16 @@ function parseAnswer(text: string): Drafted {
   }
   if (typeof parsed?.decline === 'string' && parsed.decline.trim()) {
     return { decline: clip(parsed.decline.trim(), QUESTION_SUGGESTION_WHY_MAX) };
+  }
+  if (options) {
+    const picked = options.find((o) => o.id === parsed?.option);
+    if (!picked || typeof parsed?.why !== 'string' || !parsed.why.trim()) {
+      return `${SHAPE_CHOICE} (offered ids: ${options.map((o) => o.id).join(', ')})`;
+    }
+    const why = parsed.why.trim().replace(/\s+/g, ' ');
+    if (why.length > QUESTION_SUGGESTION_WHY_MAX)
+      return `${SHAPE_CHOICE} (the why was ${why.length} characters)`;
+    return { answer: picked.label, why, optionId: picked.id };
   }
   if (typeof parsed?.answer !== 'string' || typeof parsed.why !== 'string') return SHAPE;
   const answer = parsed.answer.trim();
@@ -234,14 +281,18 @@ async function recordSpend(
   }
 }
 
-/** The free-text round a question owes a suggestion for, or why it owes none. */
-function owedRound(row: typeof agentQuestions.$inferSelect): FreeTextStep | string {
+/** The round (free text, or a choice whose recommended option is not offered) a question owes a suggestion for, or why it owes none. */
+function owedRound(row: typeof agentQuestions.$inferSelect): QuestionStep | string {
   if (row.status !== 'open') return `it is ${row.status}`;
   if (row.blockerKind !== 'human') return 'it is not a person question';
   if (row.batchId) return 'a questionnaire item carries its own inferred default';
   const step = row.steps.at(-1);
   if (!step) return 'it holds no round';
-  if (isChoiceStep(step)) return 'its round offers options, each with a recommendation';
+  if (isChoiceStep(step)) {
+    return step.options.some((o) => o.id === step.recommendedOptionId)
+      ? 'the asker recommended one of the offered options, which wins'
+      : step;
+  }
   if (step.recommended?.trim()) return 'the asker gave a recommended answer, which wins';
   return step;
 }
@@ -342,12 +393,14 @@ export async function suggestAnswerFor(questionId: string): Promise<SuggestResul
   const from = [...new Set(record.from)];
   const language = await readContentLanguage(row.projectId);
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt(language) },
+    { role: 'system', content: systemPrompt(language, isChoiceStep(step)) },
     {
       role: 'user',
       content: [
         `Question the run asked: ${step.prompt}`,
-        `What would settle it: ${step.needed}`,
+        ...(isChoiceStep(step)
+          ? ['Offered options:', ...step.options.map((o) => `- ${o.id}: ${o.label}`)]
+          : [`What would settle it: ${step.needed}`]),
         '',
         'Product record:',
         ...record.lines,
@@ -373,7 +426,7 @@ export async function suggestAnswerFor(questionId: string): Promise<SuggestResul
         return await miss(m.code, m.detail, from, model);
       }
       spent.push({ model: answer.model, usage: answer.usage });
-      const drafted = parseAnswer(answer.text);
+      const drafted = parseAnswer(answer.text, isChoiceStep(step) ? step.options : null);
       if (typeof drafted === 'string') {
         if (attempt === 2) return await miss('QUESTION_SUGGESTION_SHAPE', drafted, from, model);
         messages.push(
@@ -398,6 +451,7 @@ export async function suggestAnswerFor(questionId: string): Promise<SuggestResul
         outcome: 'suggested',
         text: drafted.answer,
         why: drafted.why,
+        ...(drafted.optionId ? { optionId: drafted.optionId } : {}),
       });
       return kept
         ? { kind: 'suggested' }
@@ -436,8 +490,14 @@ export async function sweepQuestionSuggestions(
         eq(agentQuestions.status, 'open'),
         eq(agentQuestions.blockerKind, 'human'),
         isNull(agentQuestions.batchId),
-        sql`${agentQuestions.steps} -> -1 ->> 'answerShape' = 'free_text'`,
-        sql`coalesce(${agentQuestions.steps} -> -1 ->> 'recommended', '') = ''`,
+        sql`(
+          (${agentQuestions.steps} -> -1 ->> 'answerShape' = 'free_text'
+            and coalesce(${agentQuestions.steps} -> -1 ->> 'recommended', '') = '')
+          or (${agentQuestions.steps} -> -1 ->> 'answerShape' = 'choice'
+            and not exists (
+              select 1 from jsonb_array_elements(${agentQuestions.steps} -> -1 -> 'options') o
+              where o ->> 'id' = ${agentQuestions.steps} -> -1 ->> 'recommendedOptionId'))
+        )`,
         sql`(
           ${agentQuestions.suggestion} is null
           or (${agentQuestions.suggestion} ->> 'round')::int <> (${agentQuestions.steps} -> -1 ->> 'round')::int

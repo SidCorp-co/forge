@@ -40,7 +40,13 @@ export type QuestionSuggestion = {
 	model: string | null;
 	attempts: number;
 } & (
-	| { outcome: "suggested"; text: string; why: string }
+	| {
+			outcome: "suggested";
+			text: string;
+			why: string;
+			/** On a choice round, the offered option the suggestion picks; its label is `text`. */
+			optionId?: string;
+	  }
 	| { outcome: "failed"; code: QuestionSuggestionCode; detail: string }
 );
 

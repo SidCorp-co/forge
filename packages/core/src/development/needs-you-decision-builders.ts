@@ -104,9 +104,17 @@ function staleDraftDecision(
   };
 }
 
+/** The one line a suggestion shows: the text, why, and the records it read. */
+function suggestionWhy(text: string, why: string, from: readonly string[]): string {
+  return clip(`"${clip(text, 320)}" ${why}${from.length ? ` (read ${from.join(', ')})` : ''}`, 600);
+}
+
 /** Why a round with no recommendation from its asker shows none, naming what the assistant's draft came to. */
-function noRecommendationOf(suggestion: QuestionSuggestion | null, round: number): string {
-  const asked = 'The run that asked gave no recommended answer';
+function noRecommendationOf(
+  suggestion: QuestionSuggestion | null,
+  round: number,
+  asked = 'The run that asked gave no recommended answer',
+): string {
   if (!suggestion || suggestion.round !== round) {
     return `${asked}, and the assistant has not drafted one yet.`;
   }
@@ -150,10 +158,7 @@ function unrecommendedDecision(
       ...base,
       recommended: {
         answerId: 'suggested',
-        why: clip(
-          `"${clip(suggested.text, 320)}" ${suggested.why}${suggested.from.length ? ` (read ${suggested.from.join(', ')})` : ''}`,
-          600,
-        ),
+        why: suggestionWhy(suggested.text, suggested.why, suggested.from),
         by: 'assistant',
       },
       noRecommendation: null,
@@ -196,23 +201,38 @@ export function questionDecision(
     return staleDraftDecision(base, q, step, path);
   }
   if (isChoiceStep(step)) {
-    const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
-    const rest = step.options.filter((o) => o.id !== step.recommendedOptionId);
+    const asked = step.options.find((o) => o.id === step.recommendedOptionId);
+    const suggested = asked ? null : suggestionFor(q.suggestion, step.round);
+    const suggestedOption = suggested?.optionId
+      ? step.options.find((o) => o.id === suggested.optionId)
+      : undefined;
+    const recommended = asked ?? suggestedOption;
+    const rest = step.options.filter((o) => o.id !== recommended?.id);
     const shown = [...(recommended ? [recommended] : []), ...rest].slice(0, 8);
     return {
       questionId: q.id,
       decision: {
         ...base,
         recommended: recommended
-          ? {
-              answerId: recommended.id,
-              why: `Whoever asked recommends "${clip(recommended.label, 200)}".`,
-              by: 'asker',
-            }
+          ? asked
+            ? {
+                answerId: recommended.id,
+                why: `Whoever asked recommends "${clip(recommended.label, 200)}".`,
+                by: 'asker',
+              }
+            : {
+                answerId: recommended.id,
+                why: suggestionWhy(recommended.label, suggested?.why ?? '', suggested?.from ?? []),
+                by: 'assistant',
+              }
           : null,
         noRecommendation: recommended
           ? null
-          : 'The run that asked named a recommended option it did not offer.',
+          : noRecommendationOf(
+              q.suggestion,
+              step.round,
+              'The run that asked named a recommended option it did not offer',
+            ),
         answers: shown.map((o) =>
           answer({
             id: o.id,

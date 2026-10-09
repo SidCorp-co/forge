@@ -7,6 +7,7 @@
 // them BECAUSE it is shared: whoever mounts it supplies only a way to send and a
 // pending flag, so neither caller can reconstruct a round or re-derive a lock.
 
+import { suggestionFor } from "@forge/contracts/question-suggestion";
 import type { AnswerHold, AnswerResume } from "@forge/contracts/questions";
 import { useState } from "react";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -71,6 +72,7 @@ function OptionMeaning({ option, id }: { option: VisibleOption; id: string }) {
 function OptionRow({
   option,
   recommended,
+  suggested,
   answerable,
   pending,
   first,
@@ -78,6 +80,8 @@ function OptionRow({
 }: {
   option: VisibleOption;
   recommended: boolean;
+  /** The recommendation is the assistant's, not the asker's. */
+  suggested: boolean;
   answerable: boolean;
   pending: boolean;
   first: boolean;
@@ -89,7 +93,9 @@ function OptionRow({
     <div className="border-t border-line-subtle py-2.5">
       <div className="flex flex-wrap items-start gap-2">
         <span className="fg-body-sm min-w-0 flex-1 text-fg">{option.label}</span>
-        {recommended && <Badge tone="accent">{t("agents.question.recommended")}</Badge>}
+        {recommended && (
+          <Badge tone="accent">{t(suggested ? "agents.question.suggested" : "agents.question.recommended")}</Badge>
+        )}
         {answerable && (
           <Button
             variant={recommended ? "primary" : "secondary"}
@@ -151,13 +157,27 @@ function RoundHistory({ step }: { step: QuestionStep }) {
   );
 }
 
+type SuggestedAnswer = { text: string; why: string; optionId: string | undefined };
+
+/** The assistant's suggestion for the round on screen, with the records it read; null for another round's or a miss. */
+function suggestedAnswerOf(question: AgentQuestion, current: QuestionStep | undefined): SuggestedAnswer | null {
+  const s = current ? suggestionFor(question.suggestion, current.round) : null;
+  if (!s) return null;
+  const read = s.from.length ? ` (read ${s.from.join(", ")})` : "";
+  return { text: s.text, why: `${s.why}${read}`, optionId: s.optionId };
+}
+
 function FreeTextAnswer({
   needed,
+  recommended,
+  suggested,
   locked,
   pending,
   onAnswer,
 }: {
   needed: string;
+  recommended: string | undefined;
+  suggested: SuggestedAnswer | null;
   locked: boolean;
   pending: boolean;
   onAnswer: (text: string) => void;
@@ -174,6 +194,12 @@ function FreeTextAnswer({
     );
   }
 
+  const offered = recommended?.trim()
+    ? { by: "asker" as const, text: recommended.trim(), why: null }
+    : suggested
+      ? { by: "assistant" as const, text: suggested.text, why: suggested.why }
+      : null;
+
   return (
     <form
       className="space-y-2"
@@ -187,6 +213,20 @@ function FreeTextAnswer({
         onAnswer(text.trim());
       }}
     >
+      {offered && (
+        <div className="space-y-1.5" data-testid="question-offered-answer" data-by={offered.by}>
+          <p className="fg-caption text-muted">
+            <span className="font-semibold text-fg">
+              {t(offered.by === "assistant" ? "agents.question.suggestedBy" : "agents.question.recommendedBy")}:
+            </span>{" "}
+            {offered.text}
+            {offered.why ? ` ${offered.why}` : ""}
+          </p>
+          <Button type="button" variant="primary" size="sm" loading={pending} onClick={() => onAnswer(offered.text)}>
+            {t(offered.by === "assistant" ? "agents.question.sendSuggested" : "agents.question.sendRecommended")}
+          </Button>
+        </div>
+      )}
       <Field label={t("agents.question.yourAnswer")} hint={needed ? t("agents.question.needed", { what: needed }) : undefined} error={fault ?? undefined}>
         <Textarea
           value={text}
@@ -349,6 +389,8 @@ export function QuestionCard({
   const t = useCopy();
   const language = useInterfaceLanguage();
   const current = currentRoundOf(question);
+  const askedOption = question.options.find((o) => o.id === question.recommendedOptionId)?.id;
+  const suggested = suggestedAnswerOf(question, current);
   const answerable = isAnswerable(question);
   const outcome = outcomeOf(question, language);
   const earlier = earlierRoundsOf(question);
@@ -428,7 +470,8 @@ export function QuestionCard({
                 <OptionRow
                   key={option.id}
                   option={option}
-                  recommended={option.id === question.recommendedOptionId}
+                  recommended={option.id === (askedOption ?? suggested?.optionId)}
+                  suggested={askedOption === undefined && option.id === suggested?.optionId}
                   answerable={answerable}
                   pending={pending}
                   first={option.id === firstEnabledId}
@@ -438,6 +481,8 @@ export function QuestionCard({
             ) : answerable ? (
               <FreeTextAnswer
                 key={current.round}
+                recommended={!isChoiceStep(current) ? current.recommended : undefined}
+                suggested={suggested}
                 needed={question.needed}
                 locked={question.locked}
                 pending={pending}

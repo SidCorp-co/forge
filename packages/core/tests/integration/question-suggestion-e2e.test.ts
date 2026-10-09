@@ -22,7 +22,7 @@ import {
   rows,
 } from '../helpers/factories.js';
 
-type Mode = 'answer' | 'down' | 'decline' | 'prose' | 'long';
+type Mode = 'answer' | 'down' | 'decline' | 'prose' | 'long' | 'option' | 'invented';
 let mode: Mode = 'answer';
 const seen: { system: string; user: string }[] = [];
 let gateway: Server;
@@ -35,6 +35,13 @@ const ANSWER = {
 function reply(mode: Mode): string {
   if (mode === 'decline')
     return JSON.stringify({ decline: 'The record does not say which account.' });
+  if (mode === 'option')
+    return JSON.stringify({
+      option: 'move',
+      why: 'REQ-1 says referrals match by clinic code, which the new format carries.',
+    });
+  if (mode === 'invented')
+    return JSON.stringify({ option: 'rewrite-it-all', why: 'a better idea' });
   if (mode === 'prose') return 'I think you should probably use the clinic code.';
   if (mode === 'long') return JSON.stringify({ answer: 'x'.repeat(2000), why: 'too long' });
   return JSON.stringify(ANSWER);
@@ -82,6 +89,7 @@ let projectId: string;
 let ownerId: string;
 let token: string;
 let issueId: string;
+let reqId: string;
 let ask: typeof import('../../src/questions/index.js').askQuestion;
 let sweep: typeof import('../../src/questions/index.js').sweepQuestionSuggestions;
 
@@ -148,7 +156,7 @@ beforeAll(async () => {
   await addProjectMember(projectId, ownerId, 'admin').catch(() => undefined);
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   const { db } = await import('../../src/db/client.js');
-  const reqId = randomUUID();
+  reqId = randomUUID();
   await withKernelMarker(db, async (tx) => {
     await tx.execute(
       sql`INSERT INTO requirements (id, project_id, req_seq, title, status) VALUES (${reqId}, ${projectId}, 1, 'Referral import', 'draft')`,
@@ -379,5 +387,120 @@ describe('a question the assistant cannot draft an answer for (REQ-41 BC-2)', ()
     expect(await sweep(3)).toEqual({ suggested: 0, failed: 0 });
     expect(seen.length - calls).toBe(5);
     await voidQuestions(...ids);
+  });
+});
+
+describe('a choice round with no offered recommendation, and the decisions record (REQ-41 BC-2)', () => {
+  const option = (id: string, label: string) => ({
+    id,
+    label,
+    authority: 'writer' as const,
+    bindsTo: 'session' as const,
+    executedBy: 'agent' as const,
+  });
+  async function unrecommendedChoice() {
+    const id = randomUUID();
+    await ask({
+      id,
+      projectId,
+      issueId,
+      prompt: 'Keep the old import format or move to the new one?',
+      blockerKind: 'human',
+      answer: {
+        shape: 'choice',
+        options: [option('keep', 'Keep the old format'), option('move', 'Move to the new one')],
+        recommendedOptionId: 'keep',
+      },
+    });
+    await settleOutbox();
+    // a row older than the rule: its recommended option is not one it offers
+    await rows(
+      sql`UPDATE agent_questions SET steps = jsonb_set(steps, '{0,recommendedOptionId}', '"gone"') WHERE id = ${id}`,
+    );
+    return id;
+  }
+
+  it('picks one of the offered options with a why, and the one click sends that option', async () => {
+    mode = 'option';
+    const id = await unrecommendedChoice();
+    expect(await sweep(1)).toEqual({ suggested: 1, failed: 0 });
+    expect(await suggestionOf(id)).toMatchObject({
+      outcome: 'suggested',
+      optionId: 'move',
+      text: 'Move to the new one',
+    });
+    const card = await cardOf(id);
+    expect(card?.recommended).toMatchObject({ answerId: 'move', by: 'assistant' });
+    expect(card?.recommended?.why).toContain('REQ-1 says referrals match');
+    expect(card?.answers.map((a) => [a.id, a.recommended])).toEqual([
+      ['move', true],
+      ['keep', false],
+    ]);
+    const button = card?.answers[0];
+    expect(button?.body).toEqual({ round: 1, optionId: 'move' });
+    const res = await api(token, 'POST', button?.path ?? '', button?.body ?? {});
+    expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBeLessThan(300);
+  });
+
+  it('never invents an option: an id the round does not offer is refused by name and nothing is shown', async () => {
+    mode = 'invented';
+    const id = await unrecommendedChoice();
+    expect(await sweep(1)).toEqual({ suggested: 0, failed: 1 });
+    expect(await suggestionOf(id)).toMatchObject({
+      outcome: 'failed',
+      code: 'QUESTION_SUGGESTION_SHAPE',
+    });
+    const card = await cardOf(id);
+    expect(card?.recommended).toBeNull();
+    expect(card?.noRecommendation).toContain('QUESTION_SUGGESTION_SHAPE');
+    expect(card?.answers.map((a) => a.id).sort()).toEqual(['keep', 'move']);
+    await voidQuestions(id);
+  });
+
+  it('an asker’s offered recommendation on a choice round is never redrafted', async () => {
+    mode = 'option';
+    const calls = seen.length;
+    const id = randomUUID();
+    await ask({
+      id,
+      projectId,
+      issueId,
+      prompt: 'Keep or move?',
+      blockerKind: 'human',
+      answer: {
+        shape: 'choice',
+        options: [option('keep', 'Keep'), option('move', 'Move')],
+        recommendedOptionId: 'keep',
+      },
+    });
+    await settleOutbox();
+    expect(await sweep()).toEqual({ suggested: 0, failed: 0 });
+    expect(seen.length).toBe(calls);
+    await voidQuestions(id);
+  });
+
+  it('reads the requirement’s decisions record, those on the requirement and on its issues', async () => {
+    mode = 'answer';
+    await rows(
+      sql`INSERT INTO comments (requirement_id, author_id, body, intent, decision) VALUES (${reqId}, ${ownerId}, 'Decision recorded.', 'decision', ${JSON.stringify({ decision: 'clinic codes are always written in capitals', reason: 'the letters are printed that way' })}::jsonb)`,
+    );
+    await rows(
+      sql`INSERT INTO comments (issue_id, author_id, body, intent, decision) VALUES (${issueId}, ${ownerId}, 'Decision recorded.', 'decision', ${JSON.stringify({ decision: 'the import skips referrals older than a year', reason: 'older ones are archived' })}::jsonb)`,
+    );
+    await rows(
+      sql`INSERT INTO comments (requirement_id, author_id, body, intent) VALUES (${reqId}, ${ownerId}, 'Just a note, not a decision.', 'note')`,
+    );
+    const id = randomUUID();
+    await bare(id, { issueId });
+    await settleOutbox();
+    const read = seen.at(-1)?.user ?? '';
+    expect(read).toContain(
+      'Decision recorded: clinic codes are always written in capitals (because the letters are printed that way)',
+    );
+    expect(read).toContain(
+      'Decision recorded: the import skips referrals older than a year (because older ones are archived)',
+    );
+    expect(read).not.toContain('Just a note');
+    await voidQuestions(id);
   });
 });
