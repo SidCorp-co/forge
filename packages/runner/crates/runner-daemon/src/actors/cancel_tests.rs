@@ -116,14 +116,32 @@ fn which_tmux() -> bool {
 
 fn frame_ctx(client: CoreClient, pool: pool_jobs::PoolPanes) -> FrameCtx {
     let base = client.base().to_string();
+    let client_for_previews = Arc::new(client);
     FrameCtx {
-        client: Arc::new(client),
-        runner: Arc::new(ClaudeCodeRunner::new(base, "device-token", 1)),
+        client: client_for_previews.clone(),
+        runner: Arc::new(ClaudeCodeRunner::new(base.clone(), "device-token", 1)),
         masters: Arc::new(master::Masters::new()),
         inflight: Arc::new(AtomicUsize::new(0)),
         cfg: Arc::new(Config::default()),
         wake_tx: master::wake_channel().0,
         pool,
+        previews: runner_preview::Previews::start(
+            (*client_for_previews).clone(),
+            &base,
+            "device-token",
+            Arc::new(NoWorktrees),
+            None,
+            watch::channel(false).1,
+        ),
+    }
+}
+
+/// No run holds a worktree here: these tests send no preview frame.
+struct NoWorktrees;
+
+impl runner_preview::Worktrees for NoWorktrees {
+    fn of_session(&self, _session_id: &str) -> Option<PathBuf> {
+        None
     }
 }
 

@@ -35,11 +35,13 @@ const AUDIENCE_HINT: Record<ShareAudience, string> = {
 const SUBJECT_TITLE: Record<ShareSubject["kind"], string> = {
   message: "Share this answer",
   "status-report": "Share this status report",
+  release: "Share this release page",
 };
 
 const SUBJECT_LEAD: Record<ShareSubject["kind"], string> = {
   message: "A frozen copy of the whole answer: the question, the reply and every block it drew, with the runs they were read from, as you can read them now.",
   "status-report": "A frozen copy of this status report, as you can read it now.",
+  release: "A frozen copy of this release page as the people using the product read it, with its clips and pictures.",
 };
 
 /** The days field read as a share's expiry, or the sentence saying what a valid one is. */

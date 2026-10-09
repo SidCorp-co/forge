@@ -4,15 +4,25 @@
 // Everything else it says is a known issue. Design: docs/proposals/release-page.md.
 
 import { z } from "zod";
-import type { CriterionStanding } from "./issue-vocabulary.js";
+import {
+	CRITERION_STANDINGS,
+	type CriterionStanding,
+} from "./issue-vocabulary.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
-import type {
-	ReleaseChanges,
-	ReleasePerson,
-	ReleaseState,
-	ReleaseVerified,
+import {
+	RELEASE_STATES,
+	RELEASE_VERIFICATIONS,
+	RELEASE_VERIFIED_LEVELS,
+	type ReleaseChanges,
+	type ReleasePerson,
+	type ReleaseState,
+	type ReleaseVerified,
 } from "./releases.js";
-import { digestWordCount, type WhatsNewKind } from "./whats-new.js";
+import {
+	digestWordCount,
+	WHATS_NEW_KINDS,
+	type WhatsNewKind,
+} from "./whats-new.js";
 
 /** `user` reads what changed for them; `developer` adds the technical notes (BC-9). */
 export const RELEASE_PAGE_VIEWS = ["user", "developer"] as const;
@@ -64,6 +74,8 @@ export const ReleaseMediaRefSchema = z.strictObject({
 		bc: z.string().nullable(),
 	}),
 	commitSha: z.string().regex(COMMIT, "a full 40-hex commit"),
+	/** Where a reader fetches the file: set when the page is served or a share is opened, never stored. */
+	url: z.string().min(1).optional(),
 });
 export type ReleaseMediaRef = z.infer<typeof ReleaseMediaRefSchema>;
 
@@ -166,6 +178,14 @@ export const ReleaseHighlightSchema = z
 		path: ["mediaGap"],
 	});
 export type ReleaseHighlight = z.infer<typeof ReleaseHighlightSchema>;
+
+export const RELEASE_HIGHLIGHTS_STATES = [
+	"drafted",
+	"none",
+	"pending",
+	"failed",
+] as const;
+export type ReleaseHighlightsState = (typeof RELEASE_HIGHLIGHTS_STATES)[number];
 
 /**
  * The release's highlights as stored and refreshed: `drafted` at the cut and again whenever a verdict
@@ -385,6 +405,16 @@ export interface ReleaseTechnicalNotes {
 	changes: ReleaseChanges;
 }
 
+/**
+ * An issue the release carries whose user-facing line the page does not show, named rather than
+ * invented: `no_note` where it has none, `held` where its line names what a reader cannot follow.
+ */
+export interface ReleasePageUnnoted {
+	issueKey: string;
+	title: string;
+	why: "no_note" | "held";
+}
+
 export interface ReleasePage {
 	view: ReleasePageViewKind;
 	projectId: string;
@@ -393,6 +423,7 @@ export interface ReleasePage {
 	requirements: ReleasePageRequirement[];
 	improvements: ReleasePageChange[];
 	fixes: ReleasePageChange[];
+	withoutNotes: ReleasePageUnnoted[];
 	actionRequired: ReleaseActionItem[];
 	knownIssues: ReleaseKnownIssue[];
 	/** Null on the user view. */
@@ -400,7 +431,109 @@ export interface ReleasePage {
 	can: { share: boolean; export: boolean; approve: boolean };
 }
 
-/** What a release page exports as (BC-11): the Markdown text, and a message a person sends. */
+const ISO = z.iso.datetime({ offset: true });
+const PersonSchema = z.strictObject({
+	id: z.string().min(1),
+	name: z.string(),
+	kind: z.enum(["human", "agent"]),
+});
+const ChangeSchema = z.strictObject({
+	issueKey: z.string().min(1),
+	kind: z.enum(WHATS_NEW_KINDS),
+	line: z.string().min(1),
+});
+
+/**
+ * The user view of a release page as a share freezes it (BC-11): every section a reader sees, no
+ * technical notes, and nothing a reader of the link may act on. A frozen page that does not parse is
+ * refused, never stored half-readable.
+ */
+export const ReleasePageSnapshotSchema = z.strictObject({
+	view: z.literal("user"),
+	projectId: z.uuid(),
+	header: z.strictObject({
+		version: z.string().min(1),
+		state: z.enum(RELEASE_STATES),
+		releasedAt: ISO.nullable(),
+		environment: z
+			.strictObject({ name: z.string().nullable(), url: z.string().nullable() })
+			.nullable(),
+		build: z.string().regex(COMMIT, "a full 40-hex commit").nullable(),
+		verified: z.strictObject({
+			level: z.enum(RELEASE_VERIFIED_LEVELS),
+			proven: z.number().int().min(0),
+			total: z.number().int().min(0),
+			check: z.enum(RELEASE_VERIFICATIONS).nullable(),
+			provider: z.string().nullable(),
+		}),
+		approval: z.strictObject({
+			required: z.boolean(),
+			state: z.enum(["not_asked", "pending", "approved", "returned"]),
+			by: PersonSchema.nullable(),
+			at: ISO.nullable(),
+		}),
+	}),
+	highlights: ReleaseHighlightsSchema,
+	requirements: z.array(
+		z.strictObject({
+			key: z.string().min(1),
+			title: z.string().min(1),
+			completes: z.boolean(),
+			proven: z.array(
+				z.strictObject({ code: z.string().min(1), statement: z.string() }),
+			),
+			unproven: z.number().int().min(0),
+		}),
+	),
+	improvements: z.array(ChangeSchema),
+	fixes: z.array(ChangeSchema),
+	withoutNotes: z.array(
+		z.strictObject({
+			issueKey: z.string().min(1),
+			title: z.string(),
+			why: z.enum(["no_note", "held"]),
+		}),
+	),
+	actionRequired: z.array(
+		z.strictObject({
+			kind: z.enum(RELEASE_ACTION_KINDS),
+			sentence: z.string().min(1),
+			ref: z.string().min(1),
+			issues: z.array(z.string().min(1)),
+		}),
+	),
+	knownIssues: z.array(
+		z.strictObject({
+			issueKey: z.string().min(1),
+			requirementKey: z.string().nullable(),
+			bc: z.string().nullable(),
+			statement: z.string(),
+			standing: z.enum(RELEASE_KNOWN_ISSUE_STANDINGS),
+			reason: z.string().nullable(),
+			elsewhere: z
+				.strictObject({
+					verdict: z.enum(CRITERION_STANDINGS),
+					commitSha: z.string().nullable(),
+				})
+				.nullable(),
+		}),
+	),
+	technical: z.null(),
+	can: z.strictObject({
+		share: z.boolean(),
+		export: z.boolean(),
+		approve: z.boolean(),
+	}),
+});
+export type ReleasePageSnapshot = z.infer<typeof ReleasePageSnapshotSchema>;
+
+/** A frozen page is a page: what reads one reads the other. */
+export function releasePageOfSnapshot(
+	snapshot: ReleasePageSnapshot,
+): ReleasePage {
+	return snapshot;
+}
+
 /** Where a reader's client reads one release page. */
 export function releasePagePath(
 	projectId: string,
@@ -410,6 +543,7 @@ export function releasePagePath(
 	return `/api/projects/${projectId}/releases/${encodeURIComponent(version)}/page?view=${view}`;
 }
 
+/** What a release page exports as (BC-11): the Markdown text, and a message a person sends. */
 export const RELEASE_PAGE_EXPORT_FORMATS = ["markdown", "email"] as const;
 export type ReleasePageExportFormat =
 	(typeof RELEASE_PAGE_EXPORT_FORMATS)[number];
@@ -446,6 +580,8 @@ export const RELEASE_PAGE_REFUSAL_CODES = [
 	"RELEASE_PAGE_NOT_FOUND",
 	"RELEASE_PAGE_VIEW_UNKNOWN",
 	"RELEASE_PAGE_EXPORT_FORMAT_UNKNOWN",
+	/** A drafted answer that is not the highlights' JSON shape, or a highlight its schema refuses. */
+	"RELEASE_HIGHLIGHT_SHAPE",
 	"RELEASE_HIGHLIGHT_COUNT",
 	"RELEASE_HIGHLIGHT_REQUIREMENT_FOREIGN",
 	"RELEASE_HIGHLIGHT_REPEATED",
@@ -455,6 +591,10 @@ export const RELEASE_PAGE_REFUSAL_CODES = [
 	"RELEASE_HIGHLIGHT_MEDIA_MISSED",
 	/** No gateway model is configured, so no highlight can be drafted; never a direct provider key. */
 	"RELEASE_HIGHLIGHTS_MODEL_UNCONFIGURED",
+	/** The project's data policy keeps its requirements from a model, so nothing was drafted. */
+	"RELEASE_HIGHLIGHTS_WITHHELD",
+	/** The gateway call failed; the next refresh drafts again. */
+	"RELEASE_HIGHLIGHTS_MODEL_FAILED",
 	/** A seen mark for a version the environment does not serve. */
 	"RELEASE_SEEN_NOT_SERVING",
 	/** The running instance declares no environment name to count a seen mark against. */

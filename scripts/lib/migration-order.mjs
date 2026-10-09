@@ -47,6 +47,11 @@ function rangeOf(entries) {
   return [Math.min(...entries.map((e) => e.when)), Math.max(...entries.map((e) => e.when))];
 }
 
+/** The same journal entry: a branch cut from another holds it unchanged. */
+function sameEntry(a, b) {
+  return a.tag === b.tag && a.idx === b.idx && a.when === b.when;
+}
+
 function name(entry) {
   return `${entry.tag} (idx ${entry.idx}, when ${entry.when})`;
 }
@@ -74,6 +79,8 @@ export function betweenBranches(self, sibling) {
   const shared = [];
   for (const mine of self.entries) {
     for (const theirs of sibling.entries) {
+      // a branch stacked on another carries the other's entry itself: one migration, landing once
+      if (sameEntry(mine, theirs)) continue;
       if (mine.when === theirs.when) {
         shared.push([mine, theirs]);
         refusals.push({
@@ -107,8 +114,11 @@ export function betweenBranches(self, sibling) {
     }
   }
 
-  const [mineLow, mineHigh] = rangeOf(self.entries);
-  const [theirLow, theirHigh] = rangeOf(sibling.entries);
+  const mineOwn = self.entries.filter((m) => !sibling.entries.some((t) => sameEntry(m, t)));
+  const theirOwn = sibling.entries.filter((t) => !self.entries.some((m) => sameEntry(m, t)));
+  if (mineOwn.length === 0 || theirOwn.length === 0) return refusals;
+  const [mineLow, mineHigh] = rangeOf(mineOwn);
+  const [theirLow, theirHigh] = rangeOf(theirOwn);
   const overlaps = mineLow <= theirHigh && theirLow <= mineHigh;
   // `duplicate-when` already named a shared `when`; reporting the straddle too double-charges it.
   const onlyShared = shared.length > 0 && mineLow === mineHigh && theirLow === theirHigh;

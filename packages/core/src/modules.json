@@ -874,6 +874,12 @@
       "owns": ["preferenceChanges", "productTourEvents", "userPreferences", "userProductState"],
       "serves": ["REQ-19"]
     },
+    "previews": {
+      "kind": "domain",
+      "context": "execution",
+      "owns": ["previews"],
+      "serves": ["REQ-39"]
+    },
     "project-config": {
       "kind": "domain",
       "context": "project-config",
@@ -943,6 +949,12 @@
         "requirement-to-delivery#release-requested",
         "requirement-to-delivery#release-gate"
       ]
+    },
+    "release-page": {
+      "kind": "domain",
+      "context": "release",
+      "owns": ["releaseHighlights"],
+      "serves": ["issue-delivery#act-release", "issue-delivery#out-release"]
     },
     "report-queries": {
       "kind": "read-model",
@@ -1389,6 +1401,9 @@
     },
     "crates/runner-agent": {
       "serves": ["issue-delivery#act-build", "design-reconciliation#build"]
+    },
+    "crates/runner-preview": {
+      "serves": ["REQ-39"]
     },
     "crates/runner-daemon": {
       "serves": [

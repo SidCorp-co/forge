@@ -1,0 +1,1 @@
+**A branch cut from another no longer reads as a migration collision.** The order check treats the identical journal entry on both as one migration. Integration tests clear leftover outbox jobs, so later deliveries are no longer dropped.

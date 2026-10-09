@@ -115,6 +115,7 @@ import {
   stepHandoffRoutes,
 } from './pipeline/routes.js';
 import { preferenceRoutes, productStateRoutes } from './preferences/routes.js';
+import { issuePreviewRoutes, previewRoutes } from './previews/routes.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
@@ -132,6 +133,7 @@ import {
 import { questionnaireRoutes } from './questionnaires/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
+import { releasePageRoutes } from './release-page/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
 import { reportRoutes } from './reports/routes.js';
 import { requirementRoutes } from './requirements/routes.js';
@@ -279,6 +281,8 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
   app.route('/api/issues', issueLaneRoutes);
+  app.route('/api/issues', issuePreviewRoutes);
+  app.route('/api/previews', previewRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
@@ -334,6 +338,7 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
 function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/pipeline', pipelineAnalyticsRoutes);
   app.route('/api/projects', releaseBatchRoutes);
+  app.route('/api/projects', releasePageRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/agent-reports', agentReportRoutes);
   app.route('/api/shares', shareOpenRoutes);

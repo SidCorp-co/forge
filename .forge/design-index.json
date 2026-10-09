@@ -111,7 +111,7 @@
   },
   "REQ-27": {
    "title": "People sign in with a password or Google and agents act with personal access tokens, and invitations and notices reach people by mail",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-28": {
    "title": "Every design template carries structured cross-design refs, checked to resolve to an approved revision step",
@@ -127,7 +127,7 @@
   },
   "REQ-31": {
    "title": "The Ask Agent panel opens at its largest width, toggles to half of it, and the page beside it stays usable at either size",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-32": {
    "title": "Chat answers visually: reports, diagrams, templates, share links",
@@ -151,6 +151,22 @@
   },
   "REQ-37": {
    "title": "Scripts read Forge with GET only, under a short-lived token of their owner",
+   "status": "agreed"
+  },
+  "REQ-38": {
+   "title": "QA probe 209: a person can see the build version in the footer",
+   "status": "dropped"
+  },
+  "REQ-39": {
+   "title": "See a change live before it ships",
+   "status": "agreed"
+  },
+  "REQ-40": {
+   "title": "Every release is a readable page, led by the Product",
+   "status": "agreed"
+  },
+  "REQ-41": {
+   "title": "Chat is the way in: it answers what needs you and drives the page beside it",
    "status": "agreed"
   }
  },
@@ -324,6 +340,7 @@
    "title": "Feedback lifecycle",
    "steps": [
     "declined",
+    "evidence",
     "loop-check",
     "new",
     "planned",
@@ -390,6 +407,7 @@
    "title": "Issue to release",
    "steps": [
     "act-build",
+    "act-qa",
     "act-release",
     "admissible",
     "box",
@@ -538,6 +556,9 @@
     "draft",
     "dropped",
     "in_delivery",
+    "picture",
+    "picture_none",
+    "picture_shown",
     "ready_check",
     "release_check",
     "rev_check",

@@ -26,6 +26,18 @@ const EnvSchema = z.object({
   PUBLIC_API_BASE_URL: z.url().optional(),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   AUTH_COOKIE_DOMAIN: z.string().optional(),
+  /**
+   * The wildcard site live previews are served under (REQ-39): `<label>.<PREVIEW_DOMAIN>`. Another
+   * site from Forge's, so no Forge cookie reaches project code. Unset, previews are refused
+   * PREVIEW_DOMAIN_UNCONFIGURED. `host:port` (served over http) only in development and test.
+   */
+  PREVIEW_DOMAIN: z
+    .string()
+    .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+(:[0-9]{2,5})?$/, {
+      error:
+        'PREVIEW_DOMAIN is a lower-case host of two or more labels, such as preview.example.dev (a port only in development or test)',
+    })
+    .optional(),
   PORT: z.coerce.number().int().positive().default(8080),
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   RATE_LIMIT_AUTH_LOCAL_MAX: z.coerce.number().int().positive().optional(),
@@ -118,6 +130,38 @@ export const LEGACY_PAT_PEPPER = 'dev-pat-pepper-replace-in-production-012345678
 
 const DEPLOYED_ENVS: ReadonlySet<string> = new Set(['production', 'staging']);
 
+/** The registrable site of a host as previews judge it: its last two labels, or an IP or a
+ *  single-label host itself. A public suffix of two labels (co.uk) makes it wider than the browser's,
+ *  which refuses more, never less. */
+export function siteOf(host: string): string {
+  const name = host.toLowerCase().replace(/:\d+$/, '').replace(/^\./, '');
+  if (/^[0-9.]+$/.test(name)) return name;
+  return name.split('.').slice(-2).join('.');
+}
+
+/**
+ * Why PREVIEW_DOMAIN cannot serve previews, or null: it shares Forge's site or sits under the
+ * session cookie's domain, so project code would ride a Forge session as a same-site request, or it
+ * carries a port outside development and test.
+ */
+export function previewDomainIssue(parsed: Env): string | null {
+  const domain = parsed.PREVIEW_DOMAIN;
+  if (domain === undefined) return null;
+  const host = domain.replace(/:\d+$/, '');
+  if (host !== domain && DEPLOYED_ENVS.has(parsed.NODE_ENV)) {
+    return `PREVIEW_DOMAIN ${domain} names a port, which is served over http; NODE_ENV=${parsed.NODE_ENV} serves previews only at an https host without one`;
+  }
+  const cookie = parsed.AUTH_COOKIE_DOMAIN?.toLowerCase().replace(/^\./, '');
+  if (cookie && (host === cookie || host.endsWith(`.${cookie}`))) {
+    return `PREVIEW_DOMAIN ${domain} sits under AUTH_COOKIE_DOMAIN ${parsed.AUTH_COOKIE_DOMAIN}, so every preview would be sent Forge's session cookie; serve previews from another site`;
+  }
+  const web = new URL(parsed.APP_BASE_URL).hostname;
+  if (siteOf(host) === siteOf(web)) {
+    return `PREVIEW_DOMAIN ${domain} is the same site (${siteOf(web)}) as the web origin ${parsed.APP_BASE_URL}, so project code could call Forge as a same-site request with the viewer's session; serve previews from another site`;
+  }
+  return null;
+}
+
 /** What the schema cannot say alone: the settings a deployed core refuses to boot without. */
 function deployedEnvIssues(parsed: Env): string[] {
   if (!DEPLOYED_ENVS.has(parsed.NODE_ENV)) return [];
@@ -167,7 +211,11 @@ function loadEnv(): Env {
       .join('\n');
     throw new Error(`[@forge/core] Invalid environment:\n${issues}`);
   }
-  const deployed = deployedEnvIssues(parsed.data);
+  const preview = previewDomainIssue(parsed.data);
+  const deployed = [
+    ...(preview === null ? [] : [`  - PREVIEW_DOMAIN: ${preview}.`]),
+    ...deployedEnvIssues(parsed.data),
+  ];
   if (deployed.length > 0) {
     throw new Error(`[@forge/core] Invalid environment:\n${deployed.join('\n')}`);
   }

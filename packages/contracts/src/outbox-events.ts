@@ -47,6 +47,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.reporterTold",
 	"release.shipped",
 	"release.approvalDecided",
+	"verdict.recorded",
 	"credential.tokenChanged",
 	"runner.changed",
 	"job.changed",
@@ -55,6 +56,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"session.pushed",
 	"issue.pushed",
 	"conversation.pushed",
+	"preview.transitioned",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -124,6 +126,7 @@ export const TRANSITION_EVENTS = {
 	job: ["done", "failed"],
 	run: "every",
 	question: ["answered", "void", "expired"],
+	preview: "every",
 } as const satisfies {
 	readonly [E in MachineEntity]?: "every" | readonly StateOf<E>[];
 };
@@ -219,6 +222,8 @@ export interface OutboxEventPayloads {
 	"job.transitioned": TransitionEvent<"job">;
 	"run.transitioned": TransitionEvent<"run">;
 	"question.transitioned": TransitionEvent<"question">;
+	/** A preview moved (REQ-39); a failure's `reason` is its `PreviewFailureReason`. */
+	"preview.transitioned": TransitionEvent<"preview">;
 	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */
 	"question.asked": {
 		questionId: string;
@@ -483,6 +488,16 @@ export interface OutboxEventPayloads {
 		reason: string | null;
 		decidedBy: string;
 		decidedAt: string;
+	};
+	/**
+	 * A verdict was recorded on an issue criterion against a commit: what a release page claims
+	 * changes for every release carrying the issue whose build is that commit (REQ-40 BC-13).
+	 */
+	"verdict.recorded": {
+		projectId: string;
+		issueId: string;
+		verdictId: string;
+		commitSha: string;
 	};
 	/**
 	 * The requirement read delivered at `revision`, after a linked issue's move or on a later sweep; its
