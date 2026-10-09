@@ -16,7 +16,7 @@ export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
           eta.kind === "range" && !late && "font-semibold text-fg",
           late && "font-semibold text-danger",
           (eta.kind === "waits" || eta.kind === "landed") && "text-muted",
-          (eta.kind === "done" || eta.kind === "none") && "text-subtle",
+          (eta.kind === "done" || eta.kind === "none" || eta.kind === "shipped") && "text-subtle",
         )}
         data-testid="eta-line"
       >

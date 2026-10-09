@@ -1,0 +1,1 @@
+**Requirements read as one line each, by area, with a Map view.** The assistant proposes areas and short names; a person accepts. The Map shows stages and Now, Next, Later. Shipped work no longer shows a date as an ETA.

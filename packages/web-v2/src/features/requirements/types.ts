@@ -2,6 +2,7 @@
 import type { RequirementSpec, RequirementSummary } from '@forge/contracts/requirements';
 
 export type {
+  RequirementAreaRef,
   DeliveryPhase,
   RequirementBaseline,
   RequirementCriterion,

@@ -48,6 +48,7 @@ import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
 import { dedupCheckOf } from './near-duplicate.js';
 import { pictureRowsOf } from './picture-read.js';
+import { areasOf } from './placement.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { criterionView, revisionView } from './revision-view.js';
@@ -133,8 +134,18 @@ export function summaryOf(
   row: Row,
   latest: { revision: number; state: RevisionState } | null,
   delivery: RequirementStanding['delivery'],
+  areas: ReadonlyMap<string, string> = new Map(),
 ): Omit<RequirementSummary, 'standing'> {
+  const ref = (id: string | null) =>
+    id && areas.has(id) ? { id, name: areas.get(id) as string } : null;
+  const proposal =
+    row.proposedAreaId || row.proposedShortName
+      ? { area: ref(row.proposedAreaId), shortName: row.proposedShortName }
+      : null;
   return {
+    area: ref(row.areaId),
+    shortName: row.shortName,
+    placementProposal: proposal,
     id: row.id,
     key: requirementKey(row.reqSeq),
     title: row.title,
@@ -170,6 +181,7 @@ export async function listRequirementsAs(
     .orderBy(desc(requirements.reqSeq));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
+  const areas = new Map((await areasOf(projectId)).map((a) => [a.id, a.name]));
   const [latest, standings] = await Promise.all([
     db
       .selectDistinctOn([requirementRevisions.requirementId], {
@@ -197,6 +209,7 @@ export async function listRequirementsAs(
         r,
         l ? { revision: l.revision, state: l.state as RevisionState } : null,
         standing.delivery,
+        areas,
       ),
       standing,
     };
@@ -429,6 +442,7 @@ export async function detailOf(
       row,
       latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
       standing.delivery,
+      new Map((await areasOf(row.projectId)).map((a) => [a.id, a.name])),
     ),
     revisions: revisions.map((r) => revisionView(r, criteria, people, pictures)),
     criteria:

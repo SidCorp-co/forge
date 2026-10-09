@@ -1,4 +1,4 @@
-import { ROADMAP_HORIZON_OF } from '@forge/contracts/project-status';
+import { roadmapHorizonOf, type StageInput } from '@forge/contracts/requirement-roadmap';
 import type { RequirementState } from '@forge/contracts/requirements';
 import { UTC_READING } from '@forge/contracts/visual-blocks';
 import { sql } from 'drizzle-orm';
@@ -115,7 +115,7 @@ function expectSameFigures(views: Awaited<ReturnType<typeof bothViews>>) {
     const scope = forecasts.find((f) => f.key === r.key);
     const coverage = (r.delivery as Body).criteriaCoverage as Body;
     expect(row.state, String(r.key)).toBe(state);
-    expect(row.lane, String(r.key)).toBe(ROADMAP_HORIZON_OF[state]);
+    expect(row.lane, String(r.key)).toBe(roadmapHorizonOf((r.standing as unknown) as StageInput));
     expect([row.criteriaProven, row.criteriaTotal], String(r.key)).toEqual([
       coverage.passing,
       coverage.criteria,

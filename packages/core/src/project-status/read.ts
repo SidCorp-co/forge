@@ -20,7 +20,6 @@ import {
   PROJECT_STATUS_ROWS,
   type ProjectStatus,
   provenInFull,
-  ROADMAP_HORIZON_OF,
   type RoadmapHorizon,
   type RoadmapItem,
   type StatusInFlight,
@@ -35,6 +34,7 @@ import {
   type StatusWaits,
 } from '@forge/contracts/project-status';
 import type { ReleaseListResponse, ReleaseState, ReleaseSummary } from '@forge/contracts/releases';
+import { roadmapHorizonOf, type StageInput } from '@forge/contracts/requirement-roadmap';
 import {
   REQUIREMENT_STATES,
   type RequirementState,
@@ -385,12 +385,12 @@ function lateOf(
   return { asOf, items };
 }
 
-/** The requirements on one roadmap lane, by the one lane rule (`ROADMAP_HORIZON_OF`, REQ-33 BC-3). */
-export function onLane<R extends { standing: { state: RequirementState } }>(
+/** The requirements on one roadmap lane, by the one lane rule (`roadmapHorizonOf`, REQ-29 BC-8). */
+export function onLane<R extends { standing: StageInput }>(
   list: readonly R[],
   lane: RoadmapHorizon,
 ): R[] {
-  return list.filter((r) => ROADMAP_HORIZON_OF[r.standing.state] === lane);
+  return list.filter((r) => roadmapHorizonOf(r.standing) === lane);
 }
 
 async function roadmapOf(

@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api/client";
 import type {
   CreateRequirementBody,
   RequirementAction,
+  RequirementAreaRef,
   RequirementDetail,
   RequirementList,
   RequirementSpec,
@@ -34,7 +35,17 @@ function actionBody(a: RequirementAction): unknown {
   return {};
 }
 
+const areasPath = (projectId: string) => `/projects/${projectId}/requirement-areas`;
+
 export const requirementsApi = {
+  areas: (projectId: string) => apiClient<{ areas: RequirementAreaRef[] }>(areasPath(projectId)),
+  setAreas: (projectId: string, names: string[]) => apiClient<{ areas: RequirementAreaRef[] }>(areasPath(projectId), put({ names })),
+  /** Asks the assistant for an area and short name for every requirement that has none; they arrive as proposals. */
+  proposePlacements: (projectId: string) => apiClient<{ asked: number }>(`${areasPath(projectId)}/propose`, post({})),
+  setPlacement: (projectId: string, req: string, body: { areaId?: string | null; shortName?: string | null }) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/placement`, put(body)),
+  acceptPlacement: (projectId: string, req: string) =>
+    apiClient<RequirementDetail>(`${one(projectId, req)}/placement/accept`, post({})),
   list: (projectId: string) => apiClient<RequirementList>(base(projectId)),
   get: (projectId: string, req: string) => apiClient<RequirementDetail>(one(projectId, req)),
   create: (projectId: string, body: CreateRequirementBody) =>
