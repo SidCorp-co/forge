@@ -249,8 +249,8 @@ interface RequirementSlaTask {
 
 /**
  * Step `delivery`, opened by `impact`: one re-plan per flagged issue and revision, the master's.
- * The design gives it no SLA, so it carries no due date; the flag refuses at the awaiting_release
- * gate (REQUIREMENT_CHANGED_SINCE_PLAN) until the issue is re-planned.
+ * The design gives it no SLA, so it carries no due date; the flag (REQUIREMENT_CHANGED_SINCE_PLAN)
+ * stands on the issue and in its run's context until the issue is re-planned.
  */
 interface RequirementReplanTask {
 	kind: "re-plan";

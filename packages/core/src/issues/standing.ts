@@ -59,6 +59,8 @@ export interface IssueStandingInput {
   status: IssueStatus;
   /** The status a park left (`issue_work_state.left_status`), which its return move goes to. */
   leftStatus: IssueStatus | null;
+  /** The merge mark names design artifacts alone (`design-delivery.ts:designOnlyMarkSql`). */
+  designOnly: boolean;
   /** This issue holds its dependents (`blocked-by.ts:blockerUnsettledSql`). */
   holdsDependents: boolean;
   waitingKind: string | null;
@@ -479,7 +481,7 @@ export function deriveIssueStanding(
     state: input.status,
     step: input.step,
     stepStartedAt: input.stepStartedAt?.toISOString() ?? null,
-    moves: issueMovesFrom(input.status, input.leftStatus),
+    moves: issueMovesFrom(input.status, input.leftStatus, input.designOnly),
     tone: issueStatusToneOn(input.status, input.releaseApproval),
     attentionGroup: group,
     waitingOn,

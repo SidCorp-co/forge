@@ -1,8 +1,8 @@
 /**
  * Whether an issue's requirement changed since its plan was written (workflow
- * requirement-to-delivery, step `impact`): read for the issue reads and for the awaiting_release
- * guard alike, so the flag a reader sees is the one the gate refuses on. Only a later revision that
- * changed a BC the issue traces flags it.
+ * requirement-to-delivery, step `impact`): read for the issue reads and the run's context, which
+ * tells the run to re-plan. No status move refuses on it: `awaiting_release` asks only for the merge
+ * (REQ-45 BC-1). Only a later revision that changed a BC the issue traces flags it.
  */
 
 import { type ChangedTrace, changedSincePlan } from '@forge/contracts/requirements';

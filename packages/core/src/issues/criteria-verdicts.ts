@@ -1,6 +1,6 @@
 // ISS-1117 / ISS-55 — the release hold's reading of every criterion's latest verdict, off
-// `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`), the same rows the
-// `awaiting_release` gate reads (`release-evidence.ts`), so the two never disagree about a verdict.
+// `issue_criteria` and `criterion_verdicts` (`criteria/store.ts`), read against the issue's move
+// history (`release-evidence.ts`). Verdicts are judged here, on the release (REQ-45 BC-2).
 
 import { verdictsRequiredOf } from '@forge/contracts/delivery-policy';
 import type { ServingReading } from '@forge/contracts/releases';
@@ -138,8 +138,7 @@ async function heldAttachmentNames(issueId: string): Promise<Set<string>> {
 
 const NEVER_JUDGED = 'no verdict was recorded for it';
 
-// a storefront draft nothing could read back is not earned, unlike a runtime: the
-// awaiting_release guard refuses it (VERDICT_UNCORROBORATED), and the hold reads it alike (FB-56)
+// a storefront draft nothing could read back is not earned, unlike a runtime (FB-56)
 const unconfirmedDraft = (pair: CriterionVerdict, standing: VerdictStanding) =>
   pair.at?.kind === 'storefront_draft' && standing === 'uncorroborated';
 
@@ -290,7 +289,7 @@ async function reportFor(
 /**
  * Every criterion these issues cannot be shown to have earned, and why each one is not earned.
  * A project whose document says `delivery.verdictsRequired: false` owes none: its issues report
- * nothing unearned, as the `awaiting_release` guard lets them through alike.
+ * nothing unearned.
  *
  * `serving` is ONE reading the caller took, shared by every issue here: one project, one answer
  * about it, one moment. It is required rather than defaulted, because a missing reading earns every

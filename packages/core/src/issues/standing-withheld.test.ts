@@ -9,6 +9,7 @@ const now = new Date('2026-10-05T10:00:00Z');
 const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandingInput => ({
   status,
   leftStatus: null,
+  designOnly: false,
   holdsDependents: false,
   waitingKind: null,
   merged: false,
