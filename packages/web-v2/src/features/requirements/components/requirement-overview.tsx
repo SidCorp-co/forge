@@ -1,9 +1,11 @@
 "use client";
 
-// A requirement's Overview tab: its summary, what is still unclear, what it assumes and the intake
-// assistant's draft of it (REQ-34), whom it serves and its scope, and the suggestions waiting on it.
+// A requirement's Overview tab: its summary, its checklists' answers and gaps (REQ-34 r2 BC-5, BC-26),
+// what is still unclear, what it assumes and the intake assistant's draft of it, whom it serves and
+// its scope, and the suggestions waiting on it.
 
 import { FieldLabel, ViewHeading } from "@/design";
+import { RequirementChecklists } from "@/features/checklists/components/item-checklists";
 import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
@@ -25,7 +27,7 @@ function Bullets({ items }: { items: string[] }) {
 
 const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
 
-export function RequirementOverview({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
+export function RequirementOverview({ d, projectId, slug, onRevise }: { d: RequirementDetail; projectId: string; slug: string; onRevise?: (() => void) | undefined }) {
   const t = useCopy();
   const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
   const spec = shown?.spec ?? {};
@@ -47,6 +49,7 @@ export function RequirementOverview({ d, projectId, slug }: { d: RequirementDeta
           </details>
         ) : null}
       </section>
+      <RequirementChecklists projectId={projectId} reqKey={d.key} onRevise={d.standing.attentionGroup !== "done" ? onRevise : undefined} />
       <UnclearSection questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
       {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
       <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} />

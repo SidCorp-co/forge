@@ -4,7 +4,7 @@
 // revisions and the diff a proposal carries, and the history by source.
 
 import { Written } from "@/lib/i18n/written";
-import type { CoverageIssue, HistorySource, RequirementHistoryEntry } from "@forge/contracts/requirements";
+import type { CoverageIssue, HistorySource, RequirementCriteriaChanges, RequirementHistoryEntry } from "@forge/contracts/requirements";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import { ActorChip, AGENT_TINT, LEGEND, SegmentedControl, StatusBadge, VerdictEvidence, WhoMark } from "@/design";
@@ -97,6 +97,15 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
         </p>
       </div>
     ) : null,
+    base?.kind !== next.kind ? (
+      <div key="kind" data-testid="revision-diff-kind">
+        <h4 className="mb-1 mt-3 text-12-5 font-medium text-muted">{t("requirements.picture.edit.kind")}</h4>
+        <p className="flex flex-wrap gap-2 text-14">
+          <Del>{base?.kind ? t(`requirements.picture.kind.${base.kind}`) : t("requirements.picture.edit.kindNone")}</Del>
+          <Ins>{next.kind ? t(`requirements.picture.kind.${next.kind}`) : t("requirements.picture.edit.kindNone")}</Ins>
+        </p>
+      </div>
+    ) : null,
     listDiff(t("requirements.overview.persona"), a.personas, b.personas),
     listDiff(t("requirements.overview.inScope"), a.scopeIn, b.scopeIn),
     listDiff(t("requirements.overview.outOfScope"), a.scopeOut, b.scopeOut),
@@ -104,6 +113,29 @@ export function RevisionDiff({ base, next }: { base: RequirementRevision | undef
   ].filter(Boolean);
   if (parts.length === 0) return <p className="text-12-5 text-subtle">{t("requirements.diff.unchanged")}</p>;
   return <div data-testid="revision-diff">{parts}</div>;
+}
+
+/** What a revision did to the criteria of the one it was written against, as core computed it (BC-7). */
+export function CriteriaChanges({ changes }: { changes: RequirementCriteriaChanges | null }) {
+  const t = useCopy();
+  if (!changes) return null;
+  const groups = (
+    [
+      ["added", changes.added],
+      ["changed", changes.changed],
+      ["removed", changes.removed],
+    ] as const
+  ).filter(([, codes]) => codes.length > 0);
+  if (groups.length === 0) return null;
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-12-5 text-muted" data-testid="criteria-changes">
+      {groups.map(([kind, codes]) => (
+        <span key={kind} data-change={kind}>
+          {t(`label.artifactChange.${kind}`)} <span className="font-mono text-12 text-fg">{codes.join(", ")}</span>
+        </span>
+      ))}
+    </p>
+  );
 }
 
 const VERDICT_WORD: Record<NonNullable<CoverageIssue["verdict"]>, ProductCopyKey> = {
@@ -222,9 +254,10 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
 type Check = { check?: unknown; passed?: unknown; detail?: unknown };
 
 /**
- * The newest readiness check the BA assistant proposed, as one line: met of total, one mark per check,
- * led by its own separator. Nothing schedules a check, so a requirement it was never run on says
- * nothing rather than a line that reads as work somebody owes.
+ * The newest readiness check the BA assistant proposed, as one line of advice: met of total, one mark
+ * per check, led by its own separator. It gates nothing: the agree is judged by the ready checklist
+ * (ISS-453). Nothing schedules a check, so a requirement it was never run on says nothing rather than
+ * a line that reads as work somebody owes.
  */
 export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
   const t = useCopy();
@@ -237,10 +270,8 @@ export function Readiness({ suggestions }: { suggestions: Suggestion[] }) {
     <>
     <span aria-hidden>·</span>
     <span className="inline-flex flex-wrap items-center gap-2" data-testid="readiness">
-      <span
-        title={[t("requirements.readiness.title"), ...checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: String(c.check ?? "") }))].join("\n")}
-      >
-        {t("requirements.readiness.lead")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: met, b: checks.length })}</b> {t("requirements.readiness.met")}
+      <span title={checks.map((c) => t(c.passed === true ? "requirements.readiness.checkMet" : "requirements.readiness.checkNotMet", { check: String(c.check ?? "") })).join("\n")}>
+        {t("checklist.readinessAdvice")} <b className="font-semibold text-fg">{t("requirements.criteria.nOfM", { a: met, b: checks.length })}</b> {t("requirements.readiness.met")}
       </span>
       <span className="inline-flex gap-0.5">
         {checks.map((c) => (
@@ -285,6 +316,7 @@ export function RevisionList({ d }: { d: RequirementDetail }) {
                 </span>
               </div>
               <Written className="mt-1 block text-13-5" text={r.changeSummary ?? r.reason} lang={r.writtenLang} />
+              <CriteriaChanges changes={r.criteriaChanges} />
               {r.returnReason ? <p className="mt-0.5 text-12-5 text-muted">{t("requirements.revision.returned", { reason: r.returnReason })}</p> : null}
             </div>
             <span className="whitespace-nowrap pt-0.5 text-12 text-subtle" title={time.dateTime(at)}>

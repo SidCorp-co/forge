@@ -50,6 +50,8 @@ describe("what a requirement still leaves unclear", () => {
     expect(section).toHaveTextContent("2 open");
     const [first, second, third] = screen.getAllByTestId("unclear-question");
     expect(first).toHaveTextContent("Blocks the agree");
+    // the retired REQUIREMENT_OPEN_QUESTIONS is named nowhere: a blocking question is the ready checklist's gap
+    expect(within(first as HTMLElement).getByText("Blocks the agree").closest("[title]")?.getAttribute("title")).toBe("Blocks the agree");
     expect(first).toHaveTextContent("Answered by the clinic owner");
     expect(first).toHaveTextContent("Asked on this requirement");
     expect(within(second as HTMLElement).queryByText("Blocks the agree")).toBeNull();

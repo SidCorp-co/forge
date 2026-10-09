@@ -34,7 +34,7 @@ import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { RequirementFacts } from "./requirement-facts";
-import { CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
+import { CriteriaChanges, CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { RequirementOverview } from "./requirement-overview";
@@ -95,6 +95,9 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
       </ViewHeading>
       <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
       {open.changeSummary && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
+      <div className="mt-1.5">
+        <CriteriaChanges changes={open.criteriaChanges} />
+      </div>
       <div className="mt-3" data-testid="open-revision-diff">
         <Collapsible title={t("requirements.revision.changesAgainst", { r: base?.revision ?? "—" })}>
           <RevisionDiff base={base} next={open} />
@@ -203,7 +206,7 @@ export function RequirementPage({
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
-              {tab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} /> : null}
+              {tab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} /> : null}
               {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}

@@ -41,6 +41,7 @@ const OLD_REL = 'packages/web-v2/src/lib/i18n/product-copy.json';
 export const PREFIX_HOMES = {
   agents: 'features/agents/copy.json',
   automation: 'features/automation/copy.json',
+  checklist: 'features/checklists/copy.json',
   common: 'lib/i18n/copy/common.json',
   contracts: 'features/contracts/copy.json',
   conversations: 'features/conversations/copy.json',

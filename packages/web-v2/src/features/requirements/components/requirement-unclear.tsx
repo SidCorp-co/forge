@@ -60,7 +60,7 @@ function QuestionRow({ q, projectId, reqKey, slug }: { q: RequirementQuestionVie
     <li className="grid gap-1 border-t border-line-subtle py-3 first:border-t-0 first:pt-0" data-testid="unclear-question" data-status={q.status}>
       <p className={`text-14 leading-snug ${open ? "font-medium text-fg" : "text-muted"}`}>{q.prompt}</p>
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-12 text-subtle">
-        {open && q.blocking ? <ToneBadge tone="you" label={t("requirements.unclear.blocksAgree")} title={t("requirements.unclear.blocksAgreeHint")} /> : null}
+        {open && q.blocking ? <ToneBadge tone="you" label={t("requirements.unclear.blocksAgree")} title={t("requirements.unclear.blocksAgree")} /> : null}
         {q.whoAnswers ? <span>{t("requirements.unclear.whoAnswers", { who: q.whoAnswers })}</span> : null}
         {q.whoAnswers ? <span aria-hidden>·</span> : null}
         <Place place={q.place} slug={slug} />

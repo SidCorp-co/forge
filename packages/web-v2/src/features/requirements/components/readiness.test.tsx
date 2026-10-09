@@ -1,5 +1,6 @@
 // Nothing schedules a readiness check, so a requirement it never ran on says nothing: no line that
-// reads as owed work. Where the BA assistant did check, the line says so and counts what was met.
+// reads as owed work. Where the BA assistant did check, the line counts what was met, as advice: the
+// agree is judged by the ready checklist (ISS-453), so the line never says it gated the agree.
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -20,9 +21,11 @@ describe("the readiness line", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("counts the checks met where the BA assistant checked", () => {
+  it("counts the checks met where the BA assistant checked, as advice that gates nothing", () => {
     render(<Readiness suggestions={[suggestion([{ check: "has scope", passed: true }, { check: "has a persona", passed: false }])]} />);
-    expect(screen.getByTestId("readiness")).toHaveTextContent("Readiness 1 of 2 checks met");
-    expect(screen.getByTestId("readiness").querySelector("[title^='Checked by the BA assistant']")).not.toBeNull();
+    const line = screen.getByTestId("readiness");
+    expect(line).toHaveTextContent("Readiness advice 1 of 2 checks met");
+    expect(line.querySelector("[title^='Met · has scope']")).not.toBeNull();
+    expect(line.innerHTML).not.toMatch(/before the requirement was agreed/);
   });
 });

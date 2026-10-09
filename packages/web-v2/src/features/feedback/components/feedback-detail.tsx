@@ -1,7 +1,7 @@
 "use client";
 
-// A feedback item's full page: its screenshots, recordings and the step it hits, then the acts a
-// person can take and what the reporter said (Overview), the mockups proposed about it (Mockups), and
+// A feedback item's full page: its screenshots, recordings and the step it hits, then its triage
+// checklist's answers and gaps (REQ-34 r2 BC-5), the acts a person can take and what the reporter said (Overview), the mockups proposed about it (Mockups), and
 // every decision on it (History), as tabs beside the sticky facts rail. The page leads with the
 // reporter's answer (where it stands, when, the release that shipped it); the phase, whose turn and
 // what carries it live in the rail.
@@ -20,6 +20,7 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { FeedbackChecklists } from "@/features/checklists/components/item-checklists";
 import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { ReproduceSection } from "@/features/previews/reproduce-section";
@@ -156,6 +157,7 @@ export function FeedbackPage({
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <Proposals projectId={projectId} f={f} />
                   <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions />
+                  <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} />
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
                     <section id="feedback-act" data-highlight="triage verify">
                       <FeedbackActions projectId={projectId} f={f} />

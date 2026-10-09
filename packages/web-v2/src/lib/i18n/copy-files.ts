@@ -5,6 +5,7 @@
 import agentAccountsCopy from "@/features/agent-accounts/copy.json";
 import agentsCopy from "@/features/agents/copy.json";
 import automationCopy from "@/features/automation/copy.json";
+import checklistsCopy from "@/features/checklists/copy.json";
 import commentsCopy from "@/features/comments/copy.json";
 import contractsCopy from "@/features/contracts/copy.json";
 import conversationsCopy from "@/features/conversations/copy.json";
@@ -52,6 +53,7 @@ export const COPY_FILES = {
   "features/agent-accounts/copy.json": agentAccountsCopy,
   "features/agents/copy.json": agentsCopy,
   "features/automation/copy.json": automationCopy,
+  "features/checklists/copy.json": checklistsCopy,
   "features/comments/copy.json": commentsCopy,
   "features/contracts/copy.json": contractsCopy,
   "features/conversations/copy.json": conversationsCopy,
