@@ -348,13 +348,15 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
 }
 
 /**
- * The session row a turn writes: heartbeat, checkout and device, the metadata a cold start
- * records, and a title derived from the first message of an untitled chat.
+ * The session row a turn writes: heartbeat, checkout and device, the metadata keys a cold start
+ * records, and a title derived from the first message of an untitled chat. The keys are merged into
+ * the row's metadata as it stands when the turn writes, never over the copy the turn was handed:
+ * a sketch's `asked` appended while the turn was being planned survives it.
  */
 function sessionPatch(
   args: DispatchChatTurnArgs,
   plan: TurnPlan,
-): { patch: AgentSessionPatch; fallbackTitle: string | null } {
+): { patch: AgentSessionPatch; metadata: Record<string, unknown>; fallbackTitle: string | null } {
   const { session } = args;
   const { deviceId, now, language } = plan;
   const patch: AgentSessionPatch = {
@@ -367,10 +369,7 @@ function sessionPatch(
   if (session.deviceId !== deviceId) patch.deviceId = deviceId;
   if (plan.migrated) patch.claudeSessionId = null;
 
-  const metadata: Record<string, unknown> = {
-    ...((session.metadata ?? {}) as Record<string, unknown>),
-    deviceId,
-  };
+  const metadata: Record<string, unknown> = { deviceId };
   if (args.model !== undefined) metadata.model = args.model ?? 'default';
   if (language) {
     metadata[CONTENT_LANGUAGE_KEY] = contentLanguageRecord(language, 'chat', language.revision);
@@ -379,14 +378,13 @@ function sessionPatch(
     metadata.pendingSkillName = args.skillName;
     metadata.pendingSkillBaselineCount = plan.prevMessages.length + 1;
   }
-  patch.metadata = metadata;
 
   const fallbackTitle =
     plan.prevMessages.length === 0 && isPlaceholderTitle(session.title)
       ? deriveChatTitle(stripSystemNoise(args.message)) || null
       : null;
   if (fallbackTitle) patch.title = fallbackTitle;
-  return { patch, fallbackTitle };
+  return { patch, metadata, fallbackTitle };
 }
 
 /** The turn's one transaction: the row under a live run, its move to `running`, and the user entry. */
@@ -395,12 +393,17 @@ async function writeTurn(
   actor: KernelActor | undefined,
   plan: TurnPlan,
   patch: AgentSessionPatch,
+  metadata: Record<string, unknown>,
 ) {
   return db.transaction(async (tx) => {
     const pipelineRunId = await liveRunFor(tx, session);
     const [written] = await tx
       .update(agentSessions)
-      .set({ ...patch, pipelineRunId })
+      .set({
+        ...patch,
+        pipelineRunId,
+        metadata: sql`coalesce(${agentSessions.metadata}, '{}'::jsonb) || ${JSON.stringify(metadata)}::jsonb`,
+      })
       .where(eq(agentSessions.id, session.id))
       .returning();
     if (!written) throw new Error('agent_sessions: update returned no row');
@@ -483,12 +486,13 @@ async function failUndelivered(sessionId: string): Promise<never> {
 
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const plan = await planTurn(args);
-  const { patch, fallbackTitle } = sessionPatch(args, plan);
+  const { patch, metadata, fallbackTitle } = sessionPatch(args, plan);
   const { updated, appended, eventSeqBase } = await writeTurn(
     args.session,
     args.actor,
     plan,
     patch,
+    metadata,
   );
   for (const t of appended) broadcastTurnAppended(updated, t);
 

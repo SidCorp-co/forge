@@ -233,7 +233,7 @@ agentSessionRoutes.post('/:id/ack', zValidator('param', idParamSchema), async (c
   assertDeviceOwnsSession(c, existing);
   const meta = (existing.metadata ?? {}) as Record<string, unknown>;
   const already = meta.acked === true;
-  if (existing.status === 'running' && !already) await markSessionAcked(id, meta);
+  if (existing.status === 'running' && !already) await markSessionAcked(id);
   return c.json({ sessionId: id, acked: existing.status === 'running', already });
 });
 

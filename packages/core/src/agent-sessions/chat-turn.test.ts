@@ -145,7 +145,13 @@ function sessionOf(over: Record<string, unknown> = {}) {
 const project = { id: PROJECT_ID, slug: 'forge' };
 const frame = () => state.frames[0]?.envelope;
 const refused = (code: string) => ({ refusals: [expect.objectContaining({ code })] });
-const metaWritten = () => state.set[0]?.metadata as Record<string, unknown>;
+/** The keys a turn merges into the row's metadata: the one JSON parameter of its `||` merge. */
+const metaWritten = () => {
+  const merge = state.set[0]?.metadata as { queryChunks: unknown[] } | undefined;
+  const json = merge?.queryChunks.find((c): c is string => typeof c === 'string');
+  if (json === undefined) throw new Error('the turn wrote no metadata merge');
+  return JSON.parse(json) as Record<string, unknown>;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -180,10 +186,11 @@ describe('dispatchChatTurn: a follow-up on the same box resumes', () => {
         startedAt: new Date(0),
         failureReason: null,
         repoPath: '/r',
-        metadata: { deviceId: 'd-1' },
+        metadata: expect.anything(),
         pipelineRunId: 'run-1',
       },
     ]);
+    expect(metaWritten()).toEqual({ deviceId: 'd-1' });
     expect(state.transitions).toEqual([
       expect.objectContaining({
         to: 'running',
@@ -298,6 +305,16 @@ describe('dispatchChatTurn: a cold start writes the prompt', () => {
       fallbackTitle: 'first question',
     });
     expect(broadcastSession).toHaveBeenCalledWith(out, 'agent-session.created');
+  });
+
+  it('merges only its own keys, so a key written while the turn was planned is not reverted', async () => {
+    await dispatchChatTurn({
+      session: sessionOf({ metadata: { deviceId: 'd-1', sketch: { asked: ['the brief'] } } }),
+      project,
+      client: { deviceId: 'd-1' },
+      message: 'hello',
+    });
+    expect(metaWritten()).toEqual({ deviceId: 'd-1' });
   });
 
   it('a migrated turn re-resolves the checkout, drops claudeSessionId and replays history', async () => {

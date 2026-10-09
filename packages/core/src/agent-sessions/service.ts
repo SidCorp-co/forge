@@ -1,5 +1,5 @@
 import { LIVE_SESSION_STATUSES } from '@forge/contracts/session-machine';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { type AgentSessionStatus, agentSessions, agentSessionTurns } from '../db/schema.js';
@@ -21,14 +21,17 @@ import {
 type SessionRow = typeof agentSessions.$inferSelect;
 type TurnSync = TranscriptWrite;
 
-/** Stamp a runner's ack onto a still-running session; a terminal one is left as it is. */
-export async function markSessionAcked(
-  sessionId: string,
-  metadata: Record<string, unknown>,
-): Promise<void> {
+/**
+ * Stamp a runner's ack onto a still-running session; a terminal one is left as it is. Merged into
+ * the metadata the row holds now, so a key written since the caller read the row survives the ack.
+ */
+export async function markSessionAcked(sessionId: string): Promise<void> {
+  const ack = { acked: true, ackedAt: new Date().toISOString() };
   await db
     .update(agentSessions)
-    .set({ metadata: { ...metadata, acked: true, ackedAt: new Date().toISOString() } })
+    .set({
+      metadata: sql`coalesce(${agentSessions.metadata}, '{}'::jsonb) || ${JSON.stringify(ack)}::jsonb`,
+    })
     .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.status, 'running')));
 }
 
