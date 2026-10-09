@@ -13231,13 +13231,10 @@
                   "head",
                   "mode",
                   "touched",
-                  "checks"
+                  "checks",
+                  "patchId"
                 ],
-                "type": "object",
-                "x-forge-refinements": [
-                  "a fast-lane report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`): core holds it to the patch id the approved preview served",
-                  "patchId is read only on the fast lane; a full-lane report sends none, or sends `lane: \"fast\"`"
-                ]
+                "type": "object"
               }
             }
           },
@@ -23792,6 +23789,32 @@
                         "type": "string"
                       }
                     },
+                    "type": "object"
+                  },
+                  "diagnosis": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cause": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "fix": {
+                        "maxLength": 1000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "recording": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "recording",
+                      "cause",
+                      "fix"
+                    ],
                     "type": "object"
                   },
                   "duplicateOf": {

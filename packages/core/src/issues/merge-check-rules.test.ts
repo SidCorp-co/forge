@@ -37,6 +37,7 @@ const report = (checks = REQUIRED_MERGE_CHECKS.map((n) => run(n))): MergeCheckRe
   mode: 'pre-merge',
   touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
   checks,
+  patchId: '7'.repeat(40),
 });
 
 describe('which report a merge may rely on', () => {
@@ -115,12 +116,12 @@ describe('a report on the fast lane (REQ-39 BC-7)', () => {
     expect(out?.detail).toContain('`integration-tests`, `verify`');
   });
 
-  it('records the lane and the patch id it checked', () => {
+  it('records the lane and the patch id it checked, on either lane', () => {
     const fields = recordFields(fast());
     expect(fields.find((f) => f.key === 'lane')?.value).toBe('fast');
     expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(PATCH);
     expect(recordFields(report()).find((f) => f.key === 'lane')?.value).toBe('full');
-    expect(recordFields(report()).some((f) => f.key === 'patch-id')).toBe(false);
+    expect(recordFields(report()).find((f) => f.key === 'patch-id')?.value).toBe('7'.repeat(40));
   });
 });
 

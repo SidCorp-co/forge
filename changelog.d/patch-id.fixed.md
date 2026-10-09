@@ -1,0 +1,1 @@
+**A fix landed on the full merge-check lane now closes its feedback item.** Every merge-check report carries the change's patch id, so a reporter's confirm matches on either lane; a report without one is refused by name.

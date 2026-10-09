@@ -295,7 +295,7 @@ describe('a merge check on the fast lane (BC-7)', () => {
     const shape = await check(issue, noPatch);
     expect(shape.status).toBe(400);
     expect(JSON.stringify(shape.body)).toContain('patchId');
-    const { lane: _lane, patchId: _p, ...full } = fastReport();
+    const { lane: _lane, ...full } = fastReport();
     const res = await check(issue, full);
     expect([res.status, codes(res)]).toEqual([422, ['MERGE_CHECK_INCOMPLETE']]);
     expect(detail(res)).toContain('`integration-tests`, `verify`');
@@ -303,11 +303,7 @@ describe('a merge check on the fast lane (BC-7)', () => {
 
   it('still takes a full report with every check, as before the fast lane', async () => {
     const issue = await issueIn(declared);
-    const {
-      lane: _lane,
-      patchId: _p,
-      ...full
-    } = fastReport({
+    const { lane: _lane, ...full } = fastReport({
       checks: REQUIRED_MERGE_CHECKS.map((n) => passingCheck(n)),
       touched: [{ path: KERNEL_FILE, change: 'changed' }],
     });

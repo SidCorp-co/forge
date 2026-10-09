@@ -145,6 +145,16 @@ describe('a report the merge check refuses, recording nothing', () => {
     expect(await verifications(issue)).toEqual([]);
   });
 
+  it('refuses a full-lane report with no patch id, naming it, recording nothing', async () => {
+    const issue = await issueIn(declared);
+    const { patchId: _dropped, ...old } = report();
+    const res = await check(issue, old);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('patchId');
+    expect(JSON.stringify(res.body)).toContain('patch id of what it checked');
+    expect(await verifications(issue)).toEqual([]);
+  });
+
   it('refuses one missing a check every merge needs', async () => {
     const issue = await issueIn(declared);
     const res = await check(issue, report({ checks: [run('typecheck')] }));
@@ -210,6 +220,7 @@ describe('a passing check is recorded on its issue', () => {
     const field = (key: string) => fields.find((f) => f.key === key)?.value;
     expect([field('check'), field('result'), field('head')]).toEqual(['merge', 'pass', HEAD]);
     expect(field('checks')).toContain('direct-tests (workspace)');
+    expect([field('lane'), field('patch-id')]).toEqual(['full', sent.patchId]);
     expect(fields.some((f) => /\d+\.\ds\b/.test(String(f.value)))).toBe(false);
 
     const read = (await call('GET', `/api/issues/${issue}/checks`)).body;

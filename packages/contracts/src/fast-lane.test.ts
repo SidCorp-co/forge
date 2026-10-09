@@ -168,6 +168,7 @@ describe("a merge check report on the fast lane (BC-7)", () => {
 				startedAt: "2026-10-09T06:00:00.000Z",
 			},
 		],
+		patchId: "c".repeat(40),
 		...over,
 	});
 	const paths = (over: Record<string, unknown>) => {
@@ -183,17 +184,14 @@ describe("a merge check report on the fast lane (BC-7)", () => {
 		expect(requiredMergeChecksOf(undefined)).toEqual(REQUIRED_MERGE_CHECKS);
 	});
 
-	it("names the patch id of what it checked, and only there", () => {
-		expect(paths({ lane: "fast", patchId: "c".repeat(40) })).toEqual([]);
-		expect(paths({ lane: "fast" })).toEqual(["patchId"]);
-		expect(paths({ lane: "full", patchId: "c".repeat(40) })).toEqual([
-			"patchId",
-		]);
-		expect(paths({ patchId: "c".repeat(40) })).toEqual(["patchId"]);
-		expect(paths({ lane: "fast", patchId: "C".repeat(40) })).toEqual([
-			"patchId",
-		]);
+	it("names the patch id of what it checked, on every lane (REQ-41 BC-20)", () => {
+		expect(paths({ lane: "fast" })).toEqual([]);
+		expect(paths({ lane: "full" })).toEqual([]);
 		expect(paths({})).toEqual([]);
+		expect(paths({ patchId: undefined })).toEqual(["patchId"]);
+		expect(paths({ lane: "full", patchId: undefined })).toEqual(["patchId"]);
+		expect(paths({ lane: "fast", patchId: undefined })).toEqual(["patchId"]);
+		expect(paths({ patchId: "C".repeat(40) })).toEqual(["patchId"]);
 	});
 
 	it("refuses a lane that is not one", () => {

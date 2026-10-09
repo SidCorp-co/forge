@@ -114,7 +114,7 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'result', value: 'pass' },
     { key: 'mode', value: report.mode },
     { key: 'lane', value: report.lane ?? 'full' },
-    ...(report.patchId ? [{ key: 'patch-id', value: report.patchId }] : []),
+    { key: 'patch-id', value: report.patchId },
     { key: 'base', value: `${report.base.branch}@${report.base.sha}` },
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },
