@@ -43,7 +43,7 @@ function DrawnBy({ p }: { p: RequirementPictureView }) {
 }
 
 /** The stored picture, drawn by the renderer of its kind. */
-function StoredPicture({ p, projectId, reqKey }: { p: RequirementPictureView; projectId: string; reqKey: string }) {
+function StoredPicture({ p, projectId, reqKey, slug, canWrite }: { p: RequirementPictureView; projectId: string; reqKey: string; slug: string; canWrite: boolean }) {
   const t = useCopy();
   const by = <DrawnBy p={p} />;
   if (p.kind === "example_table") {
@@ -74,7 +74,7 @@ function StoredPicture({ p, projectId, reqKey }: { p: RequirementPictureView; pr
   if (p.kind === "preview") {
     return (
       <Figure alt={p.alt} kind={p.kind} by={by}>
-        <KeptPreviewPicture content={p.content as KeptPreviewContent} alt={p.alt} projectId={projectId} reqKey={reqKey} />
+        <KeptPreviewPicture content={p.content as KeptPreviewContent} alt={p.alt} projectId={projectId} reqKey={reqKey} slug={slug} canWrite={canWrite} />
       </Figure>
     );
   }
@@ -112,7 +112,7 @@ export function RequirementPicture({ d, projectId, slug, inset }: { d: Requireme
 
   let body: ReactNode;
   if (linked) body = <WorkflowPicture projectId={projectId} slug={slug} traced={traced} />;
-  else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} />;
+  else if (picture) body = <StoredPicture p={picture} projectId={projectId} reqKey={d.key} slug={slug} canWrite={writer} />;
   else {
     body = (
       <p className="max-w-[80ch] border border-dashed border-line-strong px-4 py-6 text-13 text-muted" data-testid="picture-empty">

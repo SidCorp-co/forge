@@ -11,8 +11,10 @@ import { Button } from "@/design";
 import type { CanonicalBlock } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { ideaApi } from "./idea-api";
-import { IdeaPanel } from "./idea-panel";
+import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
+import { ideaApi } from "@/features/previews/idea-api";
+import { IdeaPanel } from "@/features/previews/idea-panel";
 
 /** The text a tool result carries, whatever shape the thread stored it in. */
 function textOf(output: unknown): string {
@@ -41,6 +43,7 @@ export function ideaOffersOf(blocks: readonly CanonicalBlock[] | null | undefine
 
 export function IdeaOfferCard({ offer }: { offer: IdeaOffer }) {
   const t = useCopy();
+  const project = useProjects().data?.find((p) => p.id === offer.projectId);
   const open = useMutation<PreviewRecord>({ mutationFn: () => ideaApi.open(offer.projectId, { about: offer.about, brief: offer.brief }) });
   return (
     <div data-testid="idea-offer" data-about={offer.about} className="flex flex-col gap-1.5 border-l-2 border-line py-1 pl-3">
@@ -50,7 +53,7 @@ export function IdeaOfferCard({ offer }: { offer: IdeaOffer }) {
       </p>
       <p className="fg-caption text-subtle">“{offer.brief}”</p>
       {open.data ? (
-        <IdeaPanel preview={open.data} projectId={offer.projectId} about={offer.about} />
+        <IdeaPanel preview={open.data} about={offer.about} canWrite={canWriteProject(project?.role)} slug={project?.slug} />
       ) : (
         <>
           <p className="fg-caption text-muted">{t("previews.idea.offer.what")}</p>

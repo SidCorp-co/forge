@@ -10,8 +10,6 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
 import { useMutation } from "@tanstack/react-query";
 import { ideaApi } from "./idea-api";
 import { IdeaPanel } from "./idea-panel";
@@ -29,12 +27,10 @@ export async function drawStill(root: HTMLElement, events: KeptPreviewContent["s
   return () => replayer.destroy();
 }
 
-export function KeptPreviewPicture({ content, alt, projectId, reqKey }: { content: KeptPreviewContent; alt: string; projectId: string; reqKey: string }) {
+export function KeptPreviewPicture({ content, alt, projectId, reqKey, slug, canWrite }: { content: KeptPreviewContent; alt: string; projectId: string; reqKey: string; slug: string; canWrite: boolean }) {
   const t = useCopy();
   const stage = useRef<HTMLDivElement>(null);
   const [drawn, setDrawn] = useState<"drawing" | "drawn" | "failed">("drawing");
-  const role = useProjects().data?.find((p) => p.id === projectId)?.role;
-  const writer = canWriteProject(role);
   const reopen = useMutation({
     mutationFn: () => ideaApi.open(projectId, { about: reqKey, brief: t("previews.idea.reopen.brief", { alt }), from: content.previewId }),
   });
@@ -80,7 +76,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey }: { conten
       <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-12 text-muted">
         <span>{t("previews.idea.kept.built", { branch: content.branch, files: content.files.length })}</span>
         <span className="font-mono">{content.head.slice(0, 9)}</span>
-        {writer && !reopen.data ? (
+        {canWrite && !reopen.data ? (
           <Button type="button" size="sm" variant="secondary" loading={reopen.isPending} onClick={() => reopen.mutate()}>
             {t("previews.idea.reopen.button")}
           </Button>
@@ -91,7 +87,7 @@ export function KeptPreviewPicture({ content, alt, projectId, reqKey }: { conten
           {t("previews.idea.reopen.failed")}: {formatApiError(reopen.error)}
         </p>
       ) : null}
-      {reopen.data ? <IdeaPanel preview={reopen.data} projectId={projectId} about={reqKey} /> : null}
+      {reopen.data ? <IdeaPanel preview={reopen.data} about={reqKey} canWrite={canWrite} slug={slug} /> : null}
     </div>
   );
 }

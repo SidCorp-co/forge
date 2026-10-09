@@ -11,7 +11,7 @@ import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
 import type { CanonicalBlock } from "@/features/session/types";
 import { issuesApi, releaseBatchApi } from "@/features/issues/api";
-import { IdeaOfferCard, ideaOffersOf } from "@/features/previews/idea-offers";
+import { IdeaOfferCard, ideaOffersOf } from "./components/idea-offers";
 import { useIssue } from "@/features/issues/detail-hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";

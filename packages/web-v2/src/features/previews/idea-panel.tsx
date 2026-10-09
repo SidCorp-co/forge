@@ -10,8 +10,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { Button, Field, Input } from "@/design";
-import { useProjects } from "@/features/projects/hooks";
-import { canWriteProject } from "@/features/projects/write-access";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -54,11 +52,10 @@ function useKeepIdea(preview: PreviewRecord, frame: React.RefObject<HTMLIFrameEl
   });
 }
 
-export function IdeaPanel({ preview: initial, projectId, about }: { preview: PreviewRecord; projectId: string; about: string }) {
+/** `canWrite` and `slug` come from the page that mounts the panel, which reads the project; no feature above this one is imported here. */
+export function IdeaPanel({ preview: initial, about, canWrite, slug }: { preview: PreviewRecord; about: string; canWrite: boolean; slug: string | undefined }) {
   const t = useCopy();
   const preview = useIdeaPreview(initial).data;
-  const project = useProjects().data?.find((p) => p.id === projectId);
-  const canWrite = canWriteProject(project?.role);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const [alt, setAlt] = useState("");
   const keep = useKeepIdea(preview, frame);
@@ -112,8 +109,8 @@ export function IdeaPanel({ preview: initial, projectId, about }: { preview: Pre
         <div role="status" data-testid="idea-kept" className="grid gap-1">
           <p className="fg-body-sm text-fg">
             {kept.startedFrom ? t("previews.idea.kept.started", { key: kept.requirement, from: kept.startedFrom }) : t("previews.idea.kept.drawn", { key: kept.requirement })}{" "}
-            {project ? (
-              <Link className="text-link hover:underline" href={requirementHref(project.slug, kept.requirement)}>
+            {slug ? (
+              <Link className="text-link hover:underline" href={requirementHref(slug, kept.requirement)}>
                 {t("previews.idea.kept.open")}
               </Link>
             ) : null}
