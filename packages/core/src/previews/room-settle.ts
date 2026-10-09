@@ -6,11 +6,7 @@
 // stands, the settled items become the requirement's criteria and the page its picture, and a
 // follow-up issue verifies, reviews and cleans the merge after the fact.
 
-import {
-  ROOM_MACHINE,
-  type Room,
-  type SettleRoomRequest,
-} from '@forge/contracts/poc-room';
+import { ROOM_MACHINE, type Room, type SettleRoomRequest } from '@forge/contracts/poc-room';
 import {
   type KeptPreviewContent,
   PREVIEW_IDEA_LIMITS,
@@ -36,8 +32,8 @@ import { roomSettleWriter } from './room-port.js';
 import { inRoomOrder, insertTurn, readRoom, refuseRoom, roomRow } from './rooms.js';
 import { roomLanding } from './rules.js';
 import { closeAbandoned } from './service.js';
-import { deliverToSketch } from './subjects.js';
 import { itemOf } from './subject-reads.js';
+import { deliverToSketch } from './subjects.js';
 
 const SOURCE = 'poc-rooms.settle';
 
@@ -73,10 +69,16 @@ export async function settleRoom(
   const room = await roomRow(roomId);
   const viewed = await readRoom(room.id, actor);
   if (!viewed.canWrite) {
-    throw refuseRoom('ROOM_FORBIDDEN', 'project.write on this project is needed to settle the POC room');
+    throw refuseRoom(
+      'ROOM_FORBIDDEN',
+      'project.write on this project is needed to settle the POC room',
+    );
   }
   if (room.state !== 'open') {
-    throw refuseRoom('ROOM_CLOSED', `POC room ${room.id} is ${room.state}: only an open room is settled`);
+    throw refuseRoom(
+      'ROOM_CLOSED',
+      `POC room ${room.id} is ${room.state}: only an open room is settled`,
+    );
   }
   const items = viewed.items;
   if (items.length === 0) {
@@ -96,7 +98,11 @@ export async function settleRoom(
   if (!landing.ok) throw refuseRoom(landing.code, landing.detail);
   const about = await aboutOf(room);
   const unfit = await roomSettleWriter().refusal({ projectId: room.projectId, about });
-  if (unfit) throw new RefusalError([{ code: unfit.code, path: '', detail: unfit.detail }], 'ROOM_FORBIDDEN');
+  if (unfit)
+    throw new RefusalError(
+      [{ code: unfit.code, path: '', detail: unfit.detail }],
+      'ROOM_FORBIDDEN',
+    );
   const bytes = Buffer.byteLength(JSON.stringify(request.snapshot));
   if (bytes > PREVIEW_SNAPSHOT_LIMITS.bytes) {
     throw refuse(

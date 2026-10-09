@@ -115,7 +115,7 @@ function expectSameFigures(views: Awaited<ReturnType<typeof bothViews>>) {
     const scope = forecasts.find((f) => f.key === r.key);
     const coverage = (r.delivery as Body).criteriaCoverage as Body;
     expect(row.state, String(r.key)).toBe(state);
-    expect(row.lane, String(r.key)).toBe(roadmapHorizonOf((r.standing as unknown) as StageInput));
+    expect(row.lane, String(r.key)).toBe(roadmapHorizonOf(r.standing as unknown as StageInput));
     expect([row.criteriaProven, row.criteriaTotal], String(r.key)).toEqual([
       coverage.passing,
       coverage.criteria,

@@ -51,6 +51,7 @@ import { formatIssueRef } from './lib/issue-ref.js';
 import { provideMastersPorts } from './masters/index.js';
 import { foreignScriptChars } from './memory/index.js';
 import { emitNotification } from './notifications/index.js';
+import { registerRoomBridge } from './previews/index.js';
 import {
   dispatchStateOf,
   policyGapOf,
@@ -86,7 +87,6 @@ import {
   warnedReleaseNotes,
 } from './release-batch/index.js';
 import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
-import { registerRoomBridge } from './previews/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,

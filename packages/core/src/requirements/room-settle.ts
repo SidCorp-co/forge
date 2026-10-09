@@ -167,7 +167,10 @@ const write: RoomSettleWriter['write'] = async (input) => {
     const cause = (err as { cause?: { message?: string } }).cause?.message;
     refusals.push({
       code: 'ROOM_FOLLOW_UP_NOT_FILED',
-      detail: `the follow-up issue could not be filed: ${cause ?? (err as Error).message}`.slice(0, 2000),
+      detail: `the follow-up issue could not be filed: ${cause ?? (err as Error).message}`.slice(
+        0,
+        2000,
+      ),
     });
   }
   if (issue && key !== null) {

@@ -301,7 +301,8 @@ async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
   if (rows[0]?.release_batch_run_id) return null;
   const design = await readDesignDelivery(ctx);
-  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0) return null;
+  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
+    return null;
   return {
     code: 'CLOSE_ONLY_BY_RELEASE',
     detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
@@ -331,15 +332,25 @@ async function readDesignDelivery(ctx: GuardContext): Promise<DesignDelivery> {
                       WHERE d.design_issue_id = i.id AND d.decision = 'approve'), '{}') AS approved,
            ${designHeldSql(sql`i.id`)} AS held
       FROM issues i WHERE i.id = ${ctx.issue.id}
-  `)) as unknown as Array<{ design_only: boolean; marked: string[]; approved: string[]; held: boolean }>;
+  `)) as unknown as Array<{
+    design_only: boolean;
+    marked: string[];
+    approved: string[];
+    held: boolean;
+  }>;
   const row = rows[0];
   if (!row) return { designOnly: false, marked: [], approved: [], unapproved: [] };
   const unapproved = row.held
-    ? (((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
+    ? ((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
         (h) => `${h.flow} rev ${h.revision}`,
-      ))
+      )
     : [];
-  return { designOnly: row.design_only === true, marked: row.marked, approved: row.approved, unapproved };
+  return {
+    designOnly: row.design_only === true,
+    marked: row.marked,
+    approved: row.approved,
+    unapproved,
+  };
 }
 
 function designShortfall(d: DesignDelivery): string {
@@ -357,7 +368,14 @@ async function designDeliveredGuard(ctx: GuardContext): Promise<GuardFault | nul
   return {
     code: 'DESIGN_NOT_DELIVERED',
     detail: `${quote(ctx.from)} → \`closed\` is the close of an issue whose only deliverable is a design, once its design revisions are approved, and ${why}. An issue that ships code moves to \`awaiting_release\` and closes through its release.`,
-    details: { from: ctx.from, to: ctx.to, designOnly: d.designOnly, marked: d.marked, approved: d.approved, unapproved: d.unapproved },
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      designOnly: d.designOnly,
+      marked: d.marked,
+      approved: d.approved,
+      unapproved: d.unapproved,
+    },
   };
 }
 

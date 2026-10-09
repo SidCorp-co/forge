@@ -53,19 +53,14 @@ projectRoomRoutes.post(
     invalid('invalid body: { about: REQ-n | FB-n, brief: what to build first }'),
   ),
   async (c) =>
-    c.json(
-      envelope(await openRoom(c.req.valid('param').id, c.req.valid('json'), actorOf(c))),
-      201,
-    ),
+    c.json(envelope(await openRoom(c.req.valid('param').id, c.req.valid('json'), actorOf(c))), 201),
 );
 
 projectRoomRoutes.get(
   '/:id/rooms',
   zValidator('param', roomParam, invalid('invalid path: /api/projects/<project id>/rooms')),
   async (c) =>
-    c.json(
-      roomListSchema.parse({ rooms: await listRooms(c.req.valid('param').id, actorOf(c)) }),
-    ),
+    c.json(roomListSchema.parse({ rooms: await listRooms(c.req.valid('param').id, actorOf(c)) })),
 );
 
 /** One room, under `/api/rooms`. */
@@ -153,8 +148,6 @@ roomRoutes.post(
   zValidator('json', abandonRoomRequestSchema, invalid('invalid body: { reason?: string }')),
   async (c) =>
     c.json(
-      envelope(
-        await abandonRoom(c.req.valid('param').id, actorOf(c), c.req.valid('json').reason),
-      ),
+      envelope(await abandonRoom(c.req.valid('param').id, actorOf(c), c.req.valid('json').reason)),
     ),
 );

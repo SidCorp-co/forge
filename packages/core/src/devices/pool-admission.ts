@@ -43,7 +43,8 @@ const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {
   runner_unbound: 'this device has no runner on the project',
   device_disabled: 'this device is disabled',
   runner_withdrawn: "this device's runner on the project is disabled or draining",
-  token_cannot_reach: "this device's credential does not reach the project, so an onboarding job there could not write a design",
+  token_cannot_reach:
+    "this device's credential does not reach the project, so an onboarding job there could not write a design",
 };
 
 /** Refused before anything is written, so the box is told why rather than shown fewer rows. */

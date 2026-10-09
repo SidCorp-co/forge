@@ -2,6 +2,8 @@
 // through, and when the sweep moves it. Each answers a refusal or a decision; none touches the
 // database.
 
+import { BUILT_IN_FULL_GATE_PATHS, globToRegExp } from '@forge/contracts/fast-lane';
+import { ROOM_NEVER_MERGES_INTO, type RoomRefusalCode } from '@forge/contracts/poc-room';
 import {
   PREVIEW_LIMITS,
   PREVIEW_MACHINE,
@@ -14,8 +16,6 @@ import {
   previewEnvironmentProblem,
   reproduceDataOf,
 } from '@forge/contracts/preview';
-import { BUILT_IN_FULL_GATE_PATHS, globToRegExp } from '@forge/contracts/fast-lane';
-import { ROOM_NEVER_MERGES_INTO, type RoomRefusalCode } from '@forge/contracts/poc-room';
 import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import type { Refusal } from '../lib/refusal.js';
 import type { ProjectDocument } from '../project-config/index.js';
@@ -281,10 +281,7 @@ export function roomLanding(
 }
 
 /** The files of a change that alter the schema: the migration globs every lane holds, and the project's own. */
-export function schemaFilesOf(
-  files: readonly string[],
-  extra: readonly string[] = [],
-): string[] {
+export function schemaFilesOf(files: readonly string[], extra: readonly string[] = []): string[] {
   const globs = [...BUILT_IN_FULL_GATE_PATHS.migrations, ...extra].map(globToRegExp);
   return files.filter((f) => globs.some((re) => re.test(f)));
 }

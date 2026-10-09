@@ -168,7 +168,12 @@ export async function openIdeaPreview(
   actor: PreviewActor,
   room?: { id: string },
 ): Promise<{ row: PreviewRow; plan: PreviewPlan; item: Item }> {
-  await accessFor(projectId, actor, 'project.write', room ? 'open a POC room' : 'open an idea preview');
+  await accessFor(
+    projectId,
+    actor,
+    'project.write',
+    room ? 'open a POC room' : 'open an idea preview',
+  );
   const item = await itemOrRefuse(projectId, request.about);
   const kept = request.from === undefined ? null : await keptOf(projectId, request.from);
   const plan = await planOf(projectId, 'idea', room !== undefined);

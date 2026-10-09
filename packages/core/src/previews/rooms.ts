@@ -61,11 +61,13 @@ async function roomAccess(
   permission: 'project.read' | 'project.write',
   act: string,
 ) {
-  const access = await loadProjectAccess(room.projectId, actor.userId, `no POC room ${room.id}`).catch(
-    () => {
-      throw refuseRoom('ROOM_NOT_FOUND', `no POC room ${room.id}`);
-    },
-  );
+  const access = await loadProjectAccess(
+    room.projectId,
+    actor.userId,
+    `no POC room ${room.id}`,
+  ).catch(() => {
+    throw refuseRoom('ROOM_NOT_FOUND', `no POC room ${room.id}`);
+  });
   try {
     requireHeld(access, 'project.read', act);
   } catch {
@@ -248,7 +250,8 @@ export async function unsettleItem(
     .delete(pocRoomItems)
     .where(and(eq(pocRoomItems.id, itemId), eq(pocRoomItems.roomId, room.id)))
     .returning({ id: pocRoomItems.id });
-  if (gone.length === 0) throw refuseRoom('ROOM_NOT_FOUND', `no item ${itemId} in POC room ${room.id}`);
+  if (gone.length === 0)
+    throw refuseRoom('ROOM_NOT_FOUND', `no item ${itemId} in POC room ${room.id}`);
   return readRoom(room.id, actor);
 }
 
@@ -278,7 +281,12 @@ export async function abandonRoom(
       source: SOURCE,
     }),
   );
-  await closeAbandoned(await rowOf(room.previewId), actor, `the POC room was abandoned: ${why}`, true);
+  await closeAbandoned(
+    await rowOf(room.previewId),
+    actor,
+    `the POC room was abandoned: ${why}`,
+    true,
+  );
   return readRoom(room.id, actor);
 }
 
@@ -378,7 +386,9 @@ export async function roomView(room: PocRoomRow, canWrite: boolean): Promise<Roo
           mergeSha: settle.mergeSha,
           requirement: settle.requirement,
           revision: settle.revision,
-          issue: settle.issueId ? { id: settle.issueId, displayId: await displayIdOf(settle.issueId) } : null,
+          issue: settle.issueId
+            ? { id: settle.issueId, displayId: await displayIdOf(settle.issueId) }
+            : null,
           refusals: settle.refusals,
         }
       : null,
