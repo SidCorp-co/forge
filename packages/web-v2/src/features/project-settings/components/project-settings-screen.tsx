@@ -22,6 +22,7 @@ import { IntegrationsTab } from "./integrations-tab";
 import { LabelsTab } from "./labels-tab";
 import { MembersTab } from "./members-tab";
 import { ModulesTab } from "./modules-tab";
+import { PreviewSection } from "./preview-section";
 import { SharesSection } from "./shares-section";
 
 const LABEL: Record<SettingsSection, ProductCopyKey> = {
@@ -29,6 +30,7 @@ const LABEL: Record<SettingsSection, ProductCopyKey> = {
 	people: "settings.project.section.people",
 	work: "settings.project.section.work",
 	delivery: "settings.project.section.delivery",
+	preview: "previews.settings.section",
 	connections: "settings.project.section.connections",
 	advanced: "settings.project.section.advanced",
 };
@@ -114,6 +116,7 @@ export function ProjectSettingsScreen({ slug }: { slug: string }) {
 						</>
 					)}
 					{tab === "delivery" && <DeliverySection project={project} canEdit={canEdit} />}
+					{tab === "preview" && <PreviewSection projectId={project.id} slug={project.slug} canEdit={canEdit} />}
 					{tab === "connections" && (
 						<>
 							<div id="integrations" className="scroll-mt-24">

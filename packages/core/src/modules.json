@@ -1296,6 +1296,9 @@
     "preferences": {
       "serves": ["REQ-27"]
     },
+    "previews": {
+      "serves": ["REQ-39"]
+    },
     "project-config": {
       "serves": ["via:project-settings"]
     },

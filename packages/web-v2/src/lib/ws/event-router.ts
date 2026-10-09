@@ -107,6 +107,11 @@ export function routeEvent(env: WsFrame, qc: QueryClient): void {
 			}
 			return;
 		}
+		// A live preview moved (REQ-39): the issue's panel reads it again, and the lane read after an approval.
+		case "preview.changed": {
+			if (data?.issueId) scheduleInvalidation(qc, ["preview", data.issueId]);
+			return;
+		}
 		// ISS-197 — recoveryStats refresh on the sessions panel.
 		case "session.recoveryChanged": {
 			scheduleInvalidation(qc, ["agent-sessions"]);

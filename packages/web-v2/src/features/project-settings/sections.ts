@@ -1,7 +1,7 @@
 // The sections of project settings, in the order a person comes to them: what the project is, who is
-// on it, how its work is organised, how it ships, what it connects to, and the technical view.
+// on it, how its work is organised, how it ships, how a change is previewed, what it connects to, and the technical view.
 
-export const SETTINGS_SECTIONS = ["general", "people", "work", "delivery", "connections", "advanced"] as const;
+export const SETTINGS_SECTIONS = ["general", "people", "work", "delivery", "preview", "connections", "advanced"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 /** Every tab the page had before it was grouped, and where that content now stands, so a link

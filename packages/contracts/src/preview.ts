@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { wholeShaSchema } from "./check-runs.js";
+import { LANES } from "./fast-lane.js";
 import type { RefusalStatuses } from "./refusal.js";
 import { defineMachine, fromEach } from "./state-machine.js";
 
@@ -438,6 +439,51 @@ export const previewRecordSchema = z.strictObject({
 	closedAt: z.iso.datetime().nullable(),
 });
 export type PreviewRecord = z.infer<typeof previewRecordSchema>;
+
+/** `{ preview }`: what open, abandon, the box's report and GET of one preview answer. */
+export const previewEnvelopeSchema = z.strictObject({
+	preview: previewRecordSchema,
+});
+export type PreviewEnvelope = z.infer<typeof previewEnvelopeSchema>;
+
+/** `GET /api/issues/:issueId/preview`: the issue's latest preview, or `null` where it has had none. */
+export const issuePreviewResponseSchema = z.strictObject({
+	preview: previewRecordSchema.nullable(),
+});
+export type IssuePreviewResponse = z.infer<typeof issuePreviewResponseSchema>;
+
+/**
+ * `POST /api/previews/:id/ticket`: the address that spends the one-time ticket on the preview host
+ * (it already carries `?ticket=`), and when the ticket stops working.
+ */
+export const previewTicketResponseSchema = z.strictObject({
+	url: z.url(),
+	expiresAt: z.iso.datetime(),
+});
+export type PreviewTicketResponse = z.infer<typeof previewTicketResponseSchema>;
+
+/**
+ * `POST /api/previews/:id/approve`: the approved preview, the lane its files take (the fast-lane
+ * contract's `LaneDecision`, read there), the patch id approved, and whether the run was told.
+ */
+export const previewApproveResponseSchema = z.strictObject({
+	preview: previewRecordSchema,
+	lane: z.looseObject({ lane: z.enum(LANES) }),
+	patchId: z.string(),
+	runTold: z.boolean(),
+});
+export type PreviewApproveResponse = z.infer<
+	typeof previewApproveResponseSchema
+>;
+
+/** `POST /api/previews/:id/messages` (202): the message reached the run's session. */
+export const previewMessageResponseSchema = z.strictObject({
+	sent: z.literal(true),
+	seq: z.int(),
+});
+export type PreviewMessageResponse = z.infer<
+	typeof previewMessageResponseSchema
+>;
 
 /**
  * What the runner reports about a preview (`POST /api/previews/:id/report`, device credential):

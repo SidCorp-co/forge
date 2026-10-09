@@ -1,0 +1,1 @@
+**A live preview shows inside the issue and beside chat.** Members see the run's change in a frame or tab, read why a preview did not start, ask for changes, approve it, and set previews up in settings.

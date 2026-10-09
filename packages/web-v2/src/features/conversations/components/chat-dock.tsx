@@ -8,6 +8,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { type ChatDockApi, usePageRoom } from "@/features/chat-dock/dock";
+import { DockPreview } from "./dock-preview";
 import { type DockSize, dockSizes, dockWidth, nextSize, sizeAt, sizeFromDrag } from "@/features/chat-dock/dock-size";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock/dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
@@ -230,6 +231,7 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
             onAskProject={() => pick({ kind: "draft", projectId: target.projectId })}
           />
         )}
+        {!listing && <DockPreview pathname={pathname} projectId={dock.projectId} />}
         <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
       </div>
     </SecondaryRegion>
