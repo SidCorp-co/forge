@@ -210,6 +210,7 @@ describe('a passing check is recorded on its issue', () => {
     const field = (key: string) => fields.find((f) => f.key === key)?.value;
     expect([field('check'), field('result'), field('head')]).toEqual(['merge', 'pass', HEAD]);
     expect(field('checks')).toContain('direct-tests (workspace)');
+    expect([field('lane'), field('patch-id')]).toEqual(['full', sent.patchId]);
     expect(fields.some((f) => /\d+\.\ds\b/.test(String(f.value)))).toBe(false);
 
     const read = (await call('GET', `/api/issues/${issue}/checks`)).body;
@@ -229,6 +230,27 @@ describe('a passing check is recorded on its issue', () => {
       WHERE issue_id = ${issue} AND type = 'issue.updated' AND payload->'fields' ? 'checks'
     `);
     expect(events).toEqual([{ fields: ['checks'] }]);
+  });
+});
+
+describe('a full-lane report from a script that predates patch ids (priced amnesty)', () => {
+  it('is recorded with the absent marker and says so in the response, never silently', async () => {
+    const issue = await issueIn(declared);
+    const { patchId: _old, ...old } = report();
+    const res = await check(issue, old);
+    expect(res.status).toBe(201);
+    expect(res.body.warnings).toHaveLength(1);
+    expect(res.body.warnings[0]).toContain('PATCH_ID_ABSENT');
+    const [record] = await verifications(issue);
+    const fields = (record?.fields ?? []) as Doc[];
+    expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(
+      'absent (script predates patch ids)',
+    );
+  });
+
+  it('a whole report carries no warning', async () => {
+    const issue = await issueIn(declared);
+    expect((await check(issue, report())).body.warnings).toEqual([]);
   });
 });
 

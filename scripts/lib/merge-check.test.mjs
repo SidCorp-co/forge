@@ -119,8 +119,17 @@ describe('what a merge needs', () => {
       mode: 'pre-merge',
       touched: [{ path: 'a.ts', change: 'changed' }],
       checks: [],
+      patchId: 'c'.repeat(40),
     });
-    expect(Object.keys(report)).toEqual(['base', 'head', 'mode', 'touched', 'checks', 'lane']);
+    expect(Object.keys(report)).toEqual([
+      'base',
+      'head',
+      'mode',
+      'touched',
+      'checks',
+      'lane',
+      'patchId',
+    ]);
     expect(report.base).toEqual({ branch: 'dev', sha: TIP });
     expect(report.lane).toBe('full');
   });
@@ -152,7 +161,7 @@ describe('the fast lane (REQ-39 BC-7)', () => {
     expect(patchIdOf('not-an-id x').refusal).toContain('printed no id');
   });
 
-  it('writes the patch id into a fast report only', () => {
+  it('writes the patch id into a report on every lane', () => {
     const at = {
       branch: 'dev',
       baseSha: TIP,
@@ -164,13 +173,16 @@ describe('the fast lane (REQ-39 BC-7)', () => {
     const fast = reportOf({ ...at, lane: 'fast', patchId: 'c'.repeat(40) });
     expect(fast.lane).toBe('fast');
     expect(fast.patchId).toBe('c'.repeat(40));
-    expect('patchId' in reportOf({ ...at, lane: 'full', patchId: 'c'.repeat(40) })).toBe(false);
+    expect(reportOf({ ...at, lane: 'full', patchId: 'c'.repeat(40) }).patchId).toBe('c'.repeat(40));
   });
 
   it('the CLI runs no integration test and no verify on the fast lane', () => {
     expect(CLI).toContain("runDirectTests(ROOT, { touched, integration: lane === 'full' })");
     expect(CLI.indexOf("if (lane === 'full') {")).toBeLessThan(CLI.indexOf("['pnpm', 'verify']"));
     expect(CLI).toContain("['patch-id', '--stable']");
+    expect(CLI, 'the patch id is read on every lane, not behind the fast one').not.toMatch(
+      /if \(lane === 'fast'\) \{\s*const diff/,
+    );
     expect(CLI).toContain("['diff', '--binary', baseSha, head]");
   });
 });

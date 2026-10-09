@@ -35,9 +35,12 @@ export function passingChecks(): CheckRun[] {
   return REQUIRED_MERGE_CHECKS.map((name) => passingCheck(name));
 }
 
+/** The patch id a report names unless a test names its own: any 40-hex id will do. */
+export const DEFAULT_PATCH_ID = '9'.repeat(40);
+
 /** A report whose every required check passed, over `touched`, at `head` on `base`. */
 export function passingReport(
   at: Pick<MergeCheckReport, 'base' | 'head' | 'touched'> & Partial<MergeCheckReport>,
 ): MergeCheckReport {
-  return { mode: 'pre-merge', checks: passingChecks(), ...at };
+  return { mode: 'pre-merge', checks: passingChecks(), patchId: DEFAULT_PATCH_ID, ...at };
 }

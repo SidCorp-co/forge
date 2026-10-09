@@ -131,26 +131,23 @@ const touched = touchedBetween(ROOT, baseSha, head);
 const empty = emptyRefusal({ branch, head, touched });
 if (empty) die(empty);
 
-let patchId;
-if (lane === 'fast') {
-  const diff = spawnSync('git', ['diff', '--binary', baseSha, head], {
-    cwd: ROOT,
-    encoding: 'utf8',
-    maxBuffer: 512 * 1024 * 1024,
-  });
-  if (diff.status !== 0) die(`git diff ${baseSha.slice(0, 12)} ${head.slice(0, 12)} failed`);
-  const printed = spawnSync('git', ['patch-id', '--stable'], {
-    cwd: ROOT,
-    input: diff.stdout,
-    encoding: 'utf8',
-  });
-  const read = patchIdOf(printed.stdout ?? '');
-  if (read.refusal) die(read.refusal);
-  patchId = read.id;
-}
+const diff = spawnSync('git', ['diff', '--binary', baseSha, head], {
+  cwd: ROOT,
+  encoding: 'utf8',
+  maxBuffer: 512 * 1024 * 1024,
+});
+if (diff.status !== 0) die(`git diff ${baseSha.slice(0, 12)} ${head.slice(0, 12)} failed`);
+const printed = spawnSync('git', ['patch-id', '--stable'], {
+  cwd: ROOT,
+  input: diff.stdout,
+  encoding: 'utf8',
+});
+const read = patchIdOf(printed.stdout ?? '');
+if (read.refusal) die(read.refusal);
+const patchId = read.id;
 
 console.log(
-  `merge-check: ${head.slice(0, 12)} against ${branch} at ${baseSha.slice(0, 12)}${since ? ' (landed)' : ''}, ${touched.length} file(s) touched, ${lane} lane${patchId ? `, patch id ${patchId}` : ''}`,
+  `merge-check: ${head.slice(0, 12)} against ${branch} at ${baseSha.slice(0, 12)}${since ? ' (landed)' : ''}, ${touched.length} file(s) touched, ${lane} lane, patch id ${patchId}`,
 );
 
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));

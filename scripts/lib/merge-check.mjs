@@ -38,15 +38,17 @@ export function notRunOnLane(lane) {
 
 /**
  * The patch id `git patch-id --stable` printed for the change, or the refusal naming why there is
- * none. It is what core holds to the patch id the approved preview served.
+ * none. Every report carries it: core holds a fast one to the patch id the approved preview served,
+ * and matches a reporter's confirm to it on either lane (REQ-41 BC-20); a full-lane report
+ * without one is still taken by core, under a priced amnesty (scripts/README.md, merge-check row).
  */
 export function patchIdOf(printed) {
   const id = printed.trim().split(/\s+/)[0] ?? '';
   if (/^[0-9a-f]{40}$/.test(id)) return { id };
   return {
     refusal:
-      '`git patch-id --stable` printed no id for the change, so the fast lane has nothing to hold to ' +
-      'the approved preview; a change with no diff has nothing to merge',
+      '`git patch-id --stable` printed no id for the change, so core has nothing to match a ' +
+      "reporter's confirm or an approved preview to; a change with no diff has nothing to merge",
   };
 }
 
@@ -121,7 +123,7 @@ export function reportOf({ branch, baseSha, head, mode, touched, checks, lane = 
     touched,
     checks,
     lane,
-    ...(lane === 'fast' ? { patchId } : {}),
+    patchId,
   };
 }
 

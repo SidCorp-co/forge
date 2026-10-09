@@ -13,6 +13,7 @@ import {
   missingCheckDetail,
   passingHeads,
   recordFields,
+  warningsOf,
 } from './merge-check-rules.js';
 
 const HEAD = 'a'.repeat(40);
@@ -37,6 +38,7 @@ const report = (checks = REQUIRED_MERGE_CHECKS.map((n) => run(n))): MergeCheckRe
   mode: 'pre-merge',
   touched: [{ path: 'packages/core/src/issues/x.ts', change: 'changed' }],
   checks,
+  patchId: '7'.repeat(40),
 });
 
 describe('which report a merge may rely on', () => {
@@ -115,12 +117,21 @@ describe('a report on the fast lane (REQ-39 BC-7)', () => {
     expect(out?.detail).toContain('`integration-tests`, `verify`');
   });
 
-  it('records the lane and the patch id it checked', () => {
+  it('records the lane and the patch id it checked, on either lane', () => {
     const fields = recordFields(fast());
     expect(fields.find((f) => f.key === 'lane')?.value).toBe('fast');
     expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(PATCH);
     expect(recordFields(report()).find((f) => f.key === 'lane')?.value).toBe('full');
-    expect(recordFields(report()).some((f) => f.key === 'patch-id')).toBe(false);
+    expect(recordFields(report()).find((f) => f.key === 'patch-id')?.value).toBe('7'.repeat(40));
+    expect(warningsOf(report())).toEqual([]);
+  });
+
+  it('records an old-shape full report as absent and warns by name', () => {
+    const { patchId: _old, ...old } = report();
+    expect(recordFields(old).find((f) => f.key === 'patch-id')?.value).toBe(
+      'absent (script predates patch ids)',
+    );
+    expect(warningsOf(old)[0]).toContain('PATCH_ID_ABSENT');
   });
 });
 

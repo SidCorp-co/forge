@@ -127,7 +127,9 @@ async function shippedWithConfirm(args: {
     base: { branch: 'main', sha: 'e'.repeat(40) },
     head: MERGED,
     touched: [{ path: 'web/orders.tsx', change: 'changed' }],
-    ...(args.shipped ? { lane: 'fast' as const, patchId: args.shipped } : {}),
+    lane: 'full',
+    // `shipped: null` is an old-shape full-lane report: it sent no patch id, so the record says absent
+    patchId: args.shipped ?? undefined,
   });
   await writeCoreRecord(db, {
     issueId: issue.id,
@@ -266,7 +268,7 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
 });
 
 describe("the reporter's confirm in the fix preview is the item's loop close (BC-20)", () => {
-  it('verifies the item as the reporter when the change that shipped is the one they confirmed', async () => {
+  it('verifies the item as the reporter when the change a full-lane merge check shipped is the one they confirmed', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await shippedWithConfirm({ patch: P, shipped: P, verdict: 'fixed' });
     expect((await read(fb)).phase).toBe('resolved');
@@ -296,7 +298,7 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
     expect((out.decisions as Doc[]).at(-1)?.reason).toContain('on behalf of the reporter');
   });
 
-  it('asks again as today when what shipped is not what they confirmed', async () => {
+  it('asks again as today when what a full-lane check shipped is not what they confirmed', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await shippedWithConfirm({ patch: P, shipped: Q, verdict: 'fixed' });
     await sweepResolvedFeedback();
@@ -311,7 +313,7 @@ describe("the reporter's confirm in the fix preview is the item's loop close (BC
     });
   });
 
-  it('asks again when the merge check that shipped it names no patch (full lane)', async () => {
+  it('asks again when the merge check record that shipped it names no patch (an old-shape full-lane report: the absent marker)', async () => {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     const fb = await shippedWithConfirm({ patch: P, shipped: null, verdict: 'fixed' });
     await sweepResolvedFeedback();

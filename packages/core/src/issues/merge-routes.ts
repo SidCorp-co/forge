@@ -31,6 +31,7 @@ import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { heldIssue } from './issue-route-ref.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
+import { warningsOf } from './merge-check-rules.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -116,6 +117,9 @@ issueMergeRoutes.post(
       actor: { type: actor.type, id: actor.id, agency: actor.agency },
       box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
     });
-    return c.json({ id: scope.id, allowed: true, head: report.head, record }, 201);
+    return c.json(
+      { id: scope.id, allowed: true, head: report.head, record, warnings: warningsOf(report) },
+      201,
+    );
   },
 );
