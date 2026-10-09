@@ -42,6 +42,7 @@ const FINDINGS = [
   'No status held any hours.',
   'No closed work served a requirement.',
   'No requirement stands on the roadmap.',
+  'No gated move was made.',
 ];
 const CLEAN = { ...SLOTS, findings: FINDINGS };
 const INVENTED = { ...CLEAN, summary: 'There are 98765 requirements.' };

@@ -2,8 +2,9 @@
  * The kernel's own guard on an edge naming a checklist (`@forge/contracts/checklists:CHECKLIST_GUARD`),
  * which `transition.ts:transition` runs under the row lock whatever door the move came through: the
  * mover's answers are parsed, the item's own record is read through the move's transaction, and a
- * blocking gap refuses the move naming its question. A refused move is recorded here, in
- * `kernel_refused_moves`; a passed one is recorded with its answers on `kernel_transitions`.
+ * blocking gap refuses the move naming its question. A move a gate refused, the checklist or a move
+ * check (`@forge/contracts/move-gates`), is recorded here, in `kernel_refused_moves`; a passed one is
+ * recorded with its answers and its gates on `kernel_transitions`.
  */
 
 import { CHECKLISTS, type ChecklistId, isChecklistId } from '@forge/contracts/checklist-registry';
@@ -16,6 +17,7 @@ import {
 } from '@forge/contracts/checklists';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
+import type { Gate } from '@forge/contracts/move-gates';
 import type { MachineEdge } from '@forge/contracts/state-machine';
 import { db } from '../db/client.js';
 import { kernelRefusedMoves } from '../db/schema.js';
@@ -32,11 +34,11 @@ export interface MoveChecklist<E extends MachineEntity> {
   record: (input: { tx: Tx; row: PriorRow<E>; checklist: ChecklistId }) => Promise<RecordAnswers>;
 }
 
-/** A move refused along an edge naming a checklist, with every refusal it answered. */
+/** A move a gate refused, with every refusal it answered. */
 export interface RefusedMove {
   entityId: string;
   from: string;
-  checklist: ChecklistId;
+  gate: Pick<Gate, 'id' | 'version'>;
   refusals: Refusal[];
 }
 
@@ -59,8 +61,8 @@ export async function recordRefusedMoves<E extends MachineEntity>(
       fromStatus: m.from,
       toStatus: to,
       machineVersion: machine.version,
-      checklist: m.checklist,
-      checklistVersion: CHECKLISTS[m.checklist].version,
+      gate: m.gate.id,
+      gateVersion: m.gate.version,
       refusals: m.refusals,
       ...mover,
     })),

@@ -1,7 +1,8 @@
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
-import { checklistFormOf, countsAsPassed, evaluateChecklist } from '@forge/contracts/checklists';
+import { checklistFormOf, evaluateChecklist } from '@forge/contracts/checklists';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { triageAnswersInput } from '@forge/contracts/feedback-triage';
+import { countsAsPassed } from '@forge/contracts/move-gates';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -52,7 +53,7 @@ feedbackChecklistRoutes.get(
           input: triageAnswersInput(),
           now: evaluateChecklist(checklist, { given: {}, record }),
           moves: moves
-            .filter((m) => m.to === checklist.gates.to)
+            .filter((m) => m.gate === checklist.id)
             .map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) })),
         },
       ],

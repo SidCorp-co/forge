@@ -2,6 +2,7 @@
 // its `reads` declared, reviewed like any read model.
 
 import { burndown } from './burndown.js';
+import { gatedMoves } from './gated-moves.js';
 import { issueFlow } from './issue-flow.js';
 import { closedByRequirement, periodFlow, statusTime } from './period-progress.js';
 import { A3_REPORT_QUERIES } from './phase-a-queries.js';
@@ -19,4 +20,6 @@ export function registerReportQueries(): void {
   registerReportQuery(periodFlow);
   registerReportQuery(statusTime);
   registerReportQuery(closedByRequirement);
+  // gated moves by how they stood, the progress template's compliance block (REQ-34 BC-8, BC-9)
+  registerReportQuery(gatedMoves);
 }

@@ -30,20 +30,34 @@ const ENTITY_IS_TERMINAL = sql`
   END
 `;
 
-export const kernelTransitionsRetention: TableStatements = {
-  deleteBatch: (days, limit) => sql`
-    DELETE FROM kernel_transitions
-    WHERE id IN (
-      SELECT k.id FROM kernel_transitions k
+/**
+ * A kernel record of a move goes once it is past the window and the item it records has ended;
+ * while the item is live it stays, whatever its age. `kernel_refused_moves` keeps the rule
+ * `kernel_transitions` keeps, so a period's passed and refused moves are reaped alike.
+ */
+function kernelRecordRetention(
+  table: 'kernel_transitions' | 'kernel_refused_moves',
+): TableStatements {
+  const name = sql.raw(table);
+  return {
+    deleteBatch: (days, limit) => sql`
+      DELETE FROM ${name}
+      WHERE id IN (
+        SELECT k.id FROM ${name} k
+        WHERE ${olderThan(sql`k.created_at`, days)}
+          AND ${ENTITY_IS_TERMINAL}
+        LIMIT ${limit}
+      )
+      RETURNING id
+    `,
+    heldBack: (days) => sql`
+      SELECT count(*)::int AS n FROM ${name} k
       WHERE ${olderThan(sql`k.created_at`, days)}
-        AND ${ENTITY_IS_TERMINAL}
-      LIMIT ${limit}
-    )
-    RETURNING id
-  `,
-  heldBack: (days) => sql`
-    SELECT count(*)::int AS n FROM kernel_transitions k
-    WHERE ${olderThan(sql`k.created_at`, days)}
-      AND NOT ${ENTITY_IS_TERMINAL}
-  `,
-};
+        AND NOT ${ENTITY_IS_TERMINAL}
+    `,
+  };
+}
+
+export const kernelTransitionsRetention = kernelRecordRetention('kernel_transitions');
+
+export const kernelRefusedMovesRetention = kernelRecordRetention('kernel_refused_moves');

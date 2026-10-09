@@ -133,18 +133,18 @@ describe('an incomplete issue-ready checklist', () => {
 
     const refused = await rows<{
       actor_agency: string;
-      checklist: string;
-      checklist_version: number;
+      gate: string;
+      gate_version: number;
       n: number;
     }>(sql`
-      SELECT actor_agency, checklist, checklist_version, jsonb_array_length(refusals) AS n
+      SELECT actor_agency, gate, gate_version, jsonb_array_length(refusals) AS n
         FROM kernel_refused_moves WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
     expect(refused).toEqual([
-      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 2, n: 2 },
-      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 2, n: 2 },
-      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 2, n: 2 },
-      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 2, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 2, n: 2 },
+      { actor_agency: 'human', gate: 'issue_ready', gate_version: 2, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 2, n: 2 },
+      { actor_agency: 'agent', gate: 'issue_ready', gate_version: 2, n: 2 },
     ]);
   });
 
@@ -278,21 +278,21 @@ describe('a wrong answer is refused by name at every door', () => {
     ]);
     const recorded = await rows<{
       actor_type: string;
-      checklist_version: number;
+      gate_version: number;
       refusals: unknown;
     }>(sql`
-      SELECT actor_type, checklist_version, refusals FROM kernel_refused_moves
+      SELECT actor_type, gate_version, refusals FROM kernel_refused_moves
        WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
     expect(recorded).toEqual([
       {
         actor_type: 'user',
-        checklist_version: 2,
+        gate_version: 2,
         refusals: (res.body.error as { refusals: unknown }).refusals,
       },
       {
         actor_type: 'runner',
-        checklist_version: 2,
+        gate_version: 2,
         refusals: (lane.error as { refusals: unknown }).refusals,
       },
     ]);

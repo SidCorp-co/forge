@@ -9,6 +9,7 @@
  *
  * @direct-test-of packages/core/src/feedback/triage.ts
  * @direct-test-of packages/core/src/feedback/auto-verify.ts
+ * @direct-test-of packages/core/src/feedback/checklist-routes.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -85,12 +86,10 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     expect(refusals[0]?.detail).toMatch(/^Which business criterion does it violate, or none\?/);
     expect(await statusOf(fb), 'a refused triage leaves the item new').toBe('new');
     const kept = (await db.execute(sql`
-      SELECT checklist, from_status, to_status FROM kernel_refused_moves
-       WHERE entity = 'feedback' AND checklist = 'feedback_triage'
+      SELECT gate, from_status, to_status FROM kernel_refused_moves
+       WHERE entity = 'feedback' AND gate = 'feedback_triage'
     `)) as unknown as Doc[];
-    expect(kept).toEqual([
-      { checklist: 'feedback_triage', from_status: 'new', to_status: 'triaged' },
-    ]);
+    expect(kept).toEqual([{ gate: 'feedback_triage', from_status: 'new', to_status: 'triaged' }]);
   });
 
   it('names the route as a question when neither the triage nor the short form gives one', async () => {

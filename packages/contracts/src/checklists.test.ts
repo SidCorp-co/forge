@@ -7,11 +7,9 @@ import {
 	checklistInputOf,
 	checklistRefusals,
 	checklistShape,
-	countsAsPassed,
 	fieldKeyShownIn,
 	defineChecklist,
 	evaluateChecklist,
-	gatedMoveStanding,
 	parseAnswers,
 	QUESTION_KEY_ECHOED,
 	sentAs,
@@ -329,16 +327,6 @@ describe("the registered issue-ready checklist", () => {
 			source: "recommended",
 			open: "0769f177-2941-42db-81a6-5346b00252bb",
 		});
-	});
-});
-
-describe("gated move standing", () => {
-	it("reads a move recorded before checklists as no checklist, never counted as passing", () => {
-		const before = gatedMoveStanding({ refused: false, checklistVersion: null });
-		expect(before).toBe("no_checklist");
-		expect(countsAsPassed(before)).toBe(false);
-		expect(countsAsPassed(gatedMoveStanding({ refused: false, checklistVersion: 1 }))).toBe(true);
-		expect(countsAsPassed(gatedMoveStanding({ refused: true, checklistVersion: 1 }))).toBe(false);
 	});
 });
 

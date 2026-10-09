@@ -6,7 +6,7 @@ import {
   type TableStatements,
 } from '../../db/retention-shape.js';
 import { TRANSCRIPT_ATTEMPTED_KEY, TRANSCRIPT_FINALIZED_KEY } from '../../db/transcript-marker.js';
-import { kernelTransitionsRetention } from '../../lifecycle/index.js';
+import { kernelRefusedMovesRetention, kernelTransitionsRetention } from '../../lifecycle/index.js';
 import { retentionStatements } from '../ports.js';
 
 const queueSnapshots: TableStatements = {
@@ -31,6 +31,7 @@ export function retentionStatementsByTable(): RetentionStatements {
     ...retentionStatements(),
     queue_snapshots: queueSnapshots,
     kernel_transitions: kernelTransitionsRetention,
+    kernel_refused_moves: kernelRefusedMovesRetention,
   };
 }
 

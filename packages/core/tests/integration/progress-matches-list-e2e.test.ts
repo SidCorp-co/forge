@@ -165,13 +165,14 @@ describe('the progress report and the Requirements list at one moment', () => {
     expect(String(now.basis)).toMatch(/^lands by then; then .+ to /);
   });
 
-  it('carries the Later lane: a linked draft with its forecast, a bare one and a deferred one with "no forecast"', async () => {
+  // a draft stands in Next and only deferred work in Later (`@forge/contracts/requirement-roadmap:roadmapHorizonOf`)
+  it('carries a linked draft with its forecast and a bare one with "no forecast" in Next, and a deferred one in Later', async () => {
     const { rows } = await bothViews(auto);
     const row = (key: string) => rows.find((r) => r.key === key) as Body;
-    expect(row(autoSeeds.laterLinked)).toMatchObject({ lane: 'later', state: 'draft' });
+    expect(row(autoSeeds.laterLinked)).toMatchObject({ lane: 'next', state: 'draft' });
     expect(row(autoSeeds.laterLinked).p50At).toEqual(expect.any(String));
     expect(row(autoSeeds.laterBare)).toMatchObject({
-      lane: 'later',
+      lane: 'next',
       p50At: null,
       p85At: null,
       basis: 'no forecast: nothing is linked to it yet',

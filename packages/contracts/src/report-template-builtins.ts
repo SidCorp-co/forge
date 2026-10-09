@@ -15,10 +15,11 @@ const slots = (summary: string, risks: string, recommendations: string): ReportT
 // Progress is an analysis of a period against the one before it, not a copy of what the Requirements
 // pages list (REQ-32 BC-15): what the work did over the chosen days, where its hours went, and which
 // requirements the closed work served and proved. It still says where each requirement stands on the
-// roadmap, which REQ-33 BC-3 reads in the progress report. Every block carries a one-line finding.
+// roadmap, which REQ-33 BC-3 reads in the progress report, and how the period's gated moves stood
+// against their checklists (REQ-34 BC-8, BC-9). Every block carries a one-line finding.
 const PROGRESS = {
   id: "progress",
-  version: 2,
+  version: 3,
   title: "Progress",
   params: { days: { type: "number", label: "Period, in days (compared with the period before)", default: 14 } },
   queries: [
@@ -27,6 +28,7 @@ const PROGRESS = {
     { as: "hours", query: "status-time", params: { days: { param: "days" } } },
     { as: "byRequirement", query: "closed-by-requirement", params: { days: { param: "days" } } },
     { as: "roadmap", query: "progress-by-requirement", params: {} },
+    { as: "gated", query: "gated-moves", params: { days: { param: "days" } } },
   ],
   layout: [
     {
@@ -51,10 +53,11 @@ const PROGRESS = {
       columns: ["requirement", "title", "closed", "previousClosed", "proven", "sentBack"],
     },
     { kind: "table", as: "roadmap", title: "Where each requirement stands on the roadmap", columns: ["key", "title", "lane", "p50At", "p85At", "basis"] },
+    { kind: "table", as: "gated", title: "Gated moves", columns: ["gate", "passed", "refused", "exception", "noChecklist"] },
   ],
   narrative: slots(
     "Say how this period went against the one before: work closed, verified and filed, and the change in each.",
-    "Name what slipped: work sent back, hours piling up in one status, closed work not linked to a requirement or not proven.",
+    "Name what slipped: work sent back, hours piling up in one status, closed work not linked to a requirement or not proven, moves refused or sent through by exception.",
     "Say what to change in the next period, from where the hours went and what was sent back.",
   ),
 } satisfies ReportTemplate;

@@ -3151,6 +3151,13 @@
       "when": 1825286400000,
       "tag": "0490_a_verdict_keeps_the_probe_it_rests_on",
       "breakpoints": true
+    },
+    {
+      "idx": 491,
+      "version": "7",
+      "when": 1825372800000,
+      "tag": "0491_a_gated_move_records_the_gates_it_passed_and_the_gate_that_refused_it",
+      "breakpoints": true
     }
   ]
 }

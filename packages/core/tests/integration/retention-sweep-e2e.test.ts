@@ -8,6 +8,10 @@
  * that takes a runner's carry-in event and a live job's transition audit with
  * it. So every table gets a fresh row too, and the predicated tables get an
  * over-age row their rule protects.
+ *
+ * @direct-test-of packages/core/src/lifecycle/retention.ts
+ * @direct-test-of packages/core/src/pipeline/retention/policy.ts
+ * @direct-test-of packages/core/src/pipeline/retention/statements.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -66,6 +70,7 @@ describe('retention sweep: the window (ISS-1027)', () => {
       queue_snapshots: 90,
       runner_events: 90,
       kernel_transitions: 90,
+      kernel_refused_moves: 90,
       agent_session_events: 30,
     });
   });
@@ -183,6 +188,28 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     const swept = await sweptBy('kernel_transitions');
 
     expect(await idsIn('kernel_transitions')).toEqual([open]);
+    expect(swept).toMatchObject({ deleted: 1, heldBack: 1 });
+  });
+
+  it('keeps the refused moves of an issue still in flight, and lets an over-age one of a dropped issue go', async () => {
+    const refused = async (issue: string, ageDays: number) =>
+      (
+        await rows<{ id: string }>(sql`
+          INSERT INTO kernel_refused_moves (entity, entity_id, from_status, to_status, machine_version, gate, gate_version, refusals, actor_type, actor_agency, source, created_at)
+          VALUES ('issue', ${issue}, 'draft', 'open', 5, 'issue_ready', 2,
+                  '[{"code":"CHECKLIST_INCOMPLETE","path":"/answers/criteria","detail":"x"}]'::jsonb,
+                  'user', 'human', 'issues', now() - make_interval(days => ${ageDays}))
+          RETURNING id::text AS id
+        `)
+      )[0]?.id as string;
+    const live = await refused(fx.ids.issueId, 200);
+    const dropped = await insertIssueAt('dropped');
+    await refused(dropped, 200);
+    const fresh = await refused(dropped, 1);
+
+    const swept = await sweptBy('kernel_refused_moves');
+
+    expect(await idsIn('kernel_refused_moves')).toEqual([live, fresh].sort());
     expect(swept).toMatchObject({ deleted: 1, heldBack: 1 });
   });
 

@@ -123,6 +123,7 @@ describe('running a template', () => {
       ['status-time', { days: 7 }],
       ['closed-by-requirement', { days: 7 }],
       ['progress-by-requirement', {}],
+      ['gated-moves', { days: 7 }],
     ]);
     expect(runReport.mock.calls[0]?.[0]).toMatchObject({ surface: 'chat', asker });
   });

@@ -57,7 +57,7 @@ describe('saving a template run', () => {
     reportId = String(saved.body.id);
     expect(saved.body).toMatchObject({
       days: null,
-      template: { id: 'progress', version: 2, title: expect.any(String) },
+      template: { id: 'progress', version: 3, title: expect.any(String) },
       producer: { kind: 'person', user: { id: author.id } },
     });
     const history = await list();
@@ -141,12 +141,12 @@ describe('saving a template run', () => {
       api(w.token, 'GET', `${base()}/status/reports/${reportId}/export?${query}`);
     const none = await at('format=csv');
     expect(code(none)).toBe('STATUS_REPORT_REFUSED');
-    expect(detail(none)).toContain("this report's table blocks are 3, 4");
+    expect(detail(none)).toContain("this report's table blocks are 3, 4, 5");
     const chart = await at('format=csv&block=1');
     expect(code(chart)).toBe('STATUS_REPORT_REFUSED');
     expect(detail(chart)).toContain('block 1 is a chart, not a table');
     const missing = await at('format=csv&block=9');
-    expect(detail(missing)).toContain('block 9 is not in this report, which holds 5 block(s)');
+    expect(detail(missing)).toContain('block 9 is not in this report, which holds 6 block(s)');
     const markdownBlock = await at('block=2');
     expect(detail(markdownBlock)).toContain('only ?format=csv exports');
     const unknown = await at('format=xlsx');

@@ -984,7 +984,7 @@
       "kind": "read-model",
       "context": "operations",
       "reads": [],
-      "serves": ["REQ-32"]
+      "serves": ["REQ-32", "REQ-34"]
     },
     "reports": {
       "kind": "domain",

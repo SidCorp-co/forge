@@ -1,11 +1,7 @@
 import { checklistsOn } from '@forge/contracts/checklist-registry';
-import {
-  checklistFormOf,
-  checklistInputOf,
-  countsAsPassed,
-  evaluateChecklist,
-} from '@forge/contracts/checklists';
+import { checklistFormOf, checklistInputOf, evaluateChecklist } from '@forge/contracts/checklists';
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
+import { countsAsPassed } from '@forge/contracts/move-gates';
 import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
@@ -32,7 +28,7 @@ issueChecklistRoutes.get('/:id/checklist', zValidator('param', idParamSchema), a
   const checklists = await Promise.all(
     checklistsOn(ISSUE_MACHINE).map(async (checklist) => {
       const record = await issueChecklistRecord(db, checklist.id, id);
-      const onEdge = moves.filter((m) => m.to === checklist.gates.to);
+      const onEdge = moves.filter((m) => m.gate === checklist.id);
       return {
         id: checklist.id,
         version: checklist.version,

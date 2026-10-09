@@ -554,20 +554,3 @@ export function checklistRefusals(evaluation: ChecklistEvaluation): ChecklistRef
 		field: gap.field,
 	}));
 }
-
-/**
- * How a gated move stands: passed its checklist, refused, or recorded before its edge had one. Only
- * `passed` counts as passing (BC-9).
- */
-export const GATED_MOVE_STANDINGS = ["passed", "refused", "no_checklist"] as const;
-export type GatedMoveStanding = (typeof GATED_MOVE_STANDINGS)[number];
-
-export function gatedMoveStanding(move: {
-	readonly refused: boolean;
-	readonly checklistVersion: number | null;
-}): GatedMoveStanding {
-	if (move.refused) return "refused";
-	return move.checklistVersion === null ? "no_checklist" : "passed";
-}
-
-export const countsAsPassed = (standing: GatedMoveStanding): boolean => standing === "passed";

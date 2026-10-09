@@ -415,8 +415,17 @@ written:
   non-blocking gap takes its recommended answer, recorded as assumed. A checklist is versioned by
   its own `shapes`, like a machine. The move's `kernel_transitions` row records `checklist`,
   `checklist_version` and `checklist_answers` (null on a move recorded before, which reads
-  `no_checklist` and never counts as passed); a refused one is a `kernel_refused_moves` row,
-  written on a connection of its own so the caller's rollback keeps it.
+  `no_checklist` and never counts as passed).
+- **A gate is a checklist or a move check, and the kernel records each.** A move check is one of an
+  edge's guards whose refusal codes are its own, declared in
+  `packages/contracts/src/move-gates.ts:MOVE_CHECKS` (`defineMoveChecks` refuses at load one naming an
+  edge or a guard its machine lacks). A passed move records every gate its edge asked in
+  `kernel_transitions.gates` (`edgeGates`; null on a row recorded before). A move a gate refused is a
+  `kernel_refused_moves` row naming that gate (`refusingGate`), written on a connection of its own so
+  the caller's rollback keeps it; a refusal by any other guard is no gate's and is not kept, and a
+  read that evaluates a gate without moving writes nothing. One rule reads how each stands
+  (`passedMoveStanding`, `birthStanding`), and `packages/core/src/lifecycle/gated-moves.ts` answers
+  both an item's moves and a project's counts over a period from it.
 - **A lost compare-and-set is a 409.** A caller that read a status moves with `expect: <status>`;
   a row that left it first is refused `STALE_TRANSITION` with `expected` and `actual`
   (`packages/contracts/src/state-machine.ts:staleTransitionRefusal`), and a read status with no edge

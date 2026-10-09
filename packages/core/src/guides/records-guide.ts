@@ -34,7 +34,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | A run's own record — a review, a decision, a baseline, a correction, a finding | ${route('review')} → \`activity_log\` | a typed record event of one kind in the closed set; a kind outside it is refused \`EVENT_KIND_UNKNOWN\` |
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
-| Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.park\` (plus \`record.transition\` for a move that waived its verdicts) on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
+| Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.park\` on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
 | A lesson a *different* issue would reuse | project memory (\`POST /api/memory\`) | one entry, natural key, refined not duplicated |
 | Project prose — a rule, a build command, a guide | \`knowledge_entries\` | one slug, \`injection\` decides reach |
 

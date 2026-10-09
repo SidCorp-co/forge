@@ -37,6 +37,9 @@ export const kernelTransitions = pgTable(
     checklist: text('checklist'),
     checklistVersion: integer('checklist_version'),
     checklistAnswers: jsonb('checklist_answers').$type<ChecklistAnswer[]>(),
+    /** Every gate the edge taken asked and the move passed (`@forge/contracts/move-gates:edgeGates`),
+     *  empty on an edge asking none; null on a row recorded before gates were recorded. */
+    gates: text('gates').array(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -47,11 +50,17 @@ export const kernelTransitions = pgTable(
       'kernel_transitions_checklist_chk',
       sql`(${t.checklist} IS NULL AND ${t.checklistVersion} IS NULL AND ${t.checklistAnswers} IS NULL) OR (${t.checklist} IS NOT NULL AND ${t.checklistVersion} >= 1 AND jsonb_typeof(${t.checklistAnswers}) = 'array')`,
     ),
+    gatesChk: check(
+      'kernel_transitions_gates_chk',
+      sql`${t.checklist} IS NULL OR ${t.gates} IS NULL OR ${t.checklist} = ANY(${t.gates})`,
+    ),
   }),
 );
 
-// One row per move refused along an edge that names a checklist (REQ-34 BC-8), written by the
-// kernel transition on its own connection, so a caller rolling its transaction back keeps it.
+// One row per move a gate refused (REQ-34 BC-8): a checklist, or a move check
+// (`@forge/contracts/move-gates:refusingGate`); a refusal by any other guard is no gate's and is not
+// kept. Written by the kernel transition on its own connection, so a caller rolling its transaction
+// back keeps it; only a move that ran writes one, never a read that evaluates a gate.
 export const kernelRefusedMoves = pgTable(
   'kernel_refused_moves',
   {
@@ -61,8 +70,8 @@ export const kernelRefusedMoves = pgTable(
     fromStatus: text('from_status').notNull(),
     toStatus: text('to_status').notNull(),
     machineVersion: integer('machine_version').notNull(),
-    checklist: text('checklist').notNull(),
-    checklistVersion: integer('checklist_version').notNull(),
+    gate: text('gate').notNull(),
+    gateVersion: integer('gate_version').notNull(),
     refusals: jsonb('refusals')
       .$type<Array<ChecklistRefusal | { code: string; path: string; detail: string }>>()
       .notNull(),

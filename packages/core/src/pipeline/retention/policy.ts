@@ -49,6 +49,13 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     why: 'The audit of every terminal kernel flip, and of every issue status transition. A row is never deleted while the job, session, run or issue it records is still non-terminal, whatever its age. A month is the shortest span over which this table still answers an incident question.',
   },
   {
+    table: 'kernel_refused_moves',
+    days: 90,
+    env: 'RETENTION_KERNEL_REFUSED_MOVES_DAYS',
+    floorDays: 30,
+    why: 'One row per move a gate refused (REQ-34 BC-8), read by the gated-moves report beside kernel_transitions, so it keeps the same rule: never deleted while the item it records is live. The report counts at most 90 days back, so the default window answers its longest period whole; a shorter override undercounts refusals of ended items in the oldest days of that period.',
+  },
+  {
     table: 'mcp_audit_log',
     days: null,
     env: null,

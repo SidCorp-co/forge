@@ -12,6 +12,7 @@ describe('registerReportQueries', () => {
       'burndown',
       'closed-by-requirement',
       'criteria-coverage',
+      'gated-moves',
       'issue-flow',
       'period-flow',
       'progress-by-requirement',

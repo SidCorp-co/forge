@@ -176,7 +176,7 @@ describe('BC-3: a line chart and a burndown chart are drawn from registered repo
   });
 });
 
-/** A clean narrative for the progress template's five blocks, every figure one its block shows. */
+/** A clean narrative for the progress template's six blocks, every figure one its block shows. */
 const PROGRESS_NARRATIVE = {
   summary: 'Closed work rose by 1 on the period before.',
   risks: 'Work was sent back after it closed.',
@@ -187,6 +187,7 @@ const PROGRESS_NARRATIVE = {
     'In progress held the most hours.',
     'REQ-1 is the only requirement whose work closed.',
     'REQ-1 is still a draft, so it has no forecast.',
+    'Each gate shows its moves by how they stood.',
   ],
 };
 const { findings: FINDINGS, ...SLOTS } = PROGRESS_NARRATIVE;
@@ -311,6 +312,7 @@ describe('BC-15: the progress report reads a chosen period against the one befor
       'status-time',
       'closed-by-requirement',
       'progress-by-requirement',
+      'gated-moves',
     ]);
     expect(document.params).toEqual({ days: 7 });
     const [kpi, line, bar, table, roadmap] = document.blocks as [Body, Body, Body, Body, Body];
@@ -373,6 +375,7 @@ describe('BC-15: the progress report reads a chosen period against the one befor
         'In progress held 98765 hours.',
         'Fine.',
         'Fine.',
+        'Fine.',
       ],
     };
     answers = [JSON.stringify(stray), JSON.stringify(PROGRESS_NARRATIVE)];
@@ -399,7 +402,7 @@ describe('BC-15: the progress report reads a chosen period against the one befor
     );
     expect(res.body.narrative).toMatchObject({ path: 'not_written', calls: 2 });
     expect(String((res.body.narrative as Body).reason)).toContain(
-      '"findings" holds 0 finding(s), and the report draws 5 block(s)',
+      '"findings" holds 0 finding(s), and the report draws 6 block(s)',
     );
   });
 });
