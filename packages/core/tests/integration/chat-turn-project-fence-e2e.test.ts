@@ -290,6 +290,7 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_release: 'a read',
   forge_decisions: 'a read',
   forge_needs_you: 'a read',
+  forge_recording: 'a read: a diagnosis it is given is checked and answered, never written',
   forge_metrics_project_step_durations: 'a read',
   forge_metrics_project_timeseries: 'a read',
   forge_report: "a run of a query, kept as the asker's own read",
