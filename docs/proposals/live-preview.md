@@ -154,7 +154,8 @@ The failure reasons (`PREVIEW_FAILURE_REASONS`) are the three BC-10 names first 
 - **The viewer cookie.** `forge_preview` is a JWT for the viewer and the preview that lives eight
   hours. It is host-only, `Secure; HttpOnly; SameSite=None; Partitioned`. `Partitioned` (CHIPS) keeps
   it inside Forge's iframe where third-party cookies are blocked (not in Safari: see below). A
-  development domain on plain http keeps `SameSite=Lax` unless it is under `localhost`.
+  development domain on plain http gets `SameSite=Lax`, which a frame on another site never holds:
+  there the gate below ends at "Open in tab".
 - **Each request** re-checks the membership, cached for 60 s, and the preview's state.
 - **No Forge session reaches project code.**
   - `PREVIEW_DOMAIN` must be a different site from Forge's. Core refuses to serve previews with

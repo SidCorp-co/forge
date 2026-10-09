@@ -77,8 +77,6 @@ it('starts from the repository when unset, and is seen live by a member through 
   const cookie = cookieOf(entered.headers['set-cookie']);
   expect(cookie).toMatch(/^forge_preview=/);
   expect(String(entered.headers['set-cookie'])).toContain('HttpOnly');
-  // the one cookie a frame on another site is sent: a development host under localhost is secure
-  expect(String(entered.headers['set-cookie'])).toContain('Secure; SameSite=None; Partitioned');
 
   const page = await atPreview(core, preview.url, '/', {
     cookie: `${cookie}; app_session=keep-me`,

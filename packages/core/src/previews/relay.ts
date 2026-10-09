@@ -27,7 +27,6 @@ import { logger } from '../lib/logger.js';
 import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
 import {
-  framableCookie,
   isHostUnderSite,
   labelOfHost,
   type PreviewSite,
@@ -160,7 +159,8 @@ async function enter(req: IncomingMessage, res: ServerResponse, url: URL): Promi
     return sendPage(res, enterRefusedPage());
   }
   const viewer = await signViewer(grant);
-  const secure = framableCookie(site) ? '; Secure; SameSite=None; Partitioned' : '; SameSite=Lax';
+  const secure =
+    site.scheme === 'https:' ? '; Secure; SameSite=None; Partitioned' : '; SameSite=Lax';
   res.writeHead(303, {
     location: '/',
     'cache-control': 'no-store',
