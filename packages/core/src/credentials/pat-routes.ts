@@ -254,7 +254,17 @@ patRoutes.patch(
       throw badRequest('boundProjectId and projectIds are mutually exclusive');
     }
     const row = (await listPatsOf(userId)).find((t) => t.id === id);
-    if (!row || row.deviceId) throw notFound();
+    if (!row) throw notFound();
+    // a box's token and the tokens core mints (a workspace, a script read, an agreement) have the
+    // reach core set for them: widening one would let it reach what it was minted not to
+    const reserved = coreTokenNamePrefixOf(row.name);
+    if (row.deviceId || reserved) {
+      throw refuse(
+        'PAT_REFUSED',
+        `token ${row.name} is ${row.deviceId ? "a box's, whose reach follows its pairing" : `one core minted (${reserved}…)`}: only a personal token you minted has its project list edited`,
+        '/id',
+      );
+    }
     if (row.revokedAt) {
       throw refuse('PAT_REFUSED', 'this token is revoked; mint a new one', '/id');
     }

@@ -8,6 +8,7 @@ import type {
   RequirementAreaRef,
   RequirementDetail,
   RequirementList,
+  RequirementRevision,
   RequirementSpec,
 } from "./types";
 
@@ -69,22 +70,28 @@ export const requirementsApi = {
   /** Draws or replaces a revision's one picture, shown at once with no accept (REQ-35). */
   writePicture: (projectId: string, req: string, revision: number, body: WritePictureRequest) =>
     apiClient<RequirementDetail>(`${one(projectId, req)}/revisions/${revision}/picture`, put(body)),
-  /** Rewrites a draft revision whole: its summary and one criterion per line; the spec it holds is kept. */
+  /**
+   * Rewrites a draft revision whole: its summary and one criterion per line. The write replaces the
+   * revision, so everything the editor does not change goes back as it is held: its spec, reason,
+   * change summary and language, and each kept criterion's code and form.
+   */
   writeDraft: (
     projectId: string,
     req: string,
-    revision: { revision: number; spec: RequirementSpec; tldr: string | null; criteria: { code: string; body: string; form: string }[] },
+    revision: Pick<RequirementRevision, "revision" | "spec" | "reason" | "changeSummary" | "writtenLang" | "criteria">,
     write: { tldr: string; criteria: string[] },
   ) =>
     apiClient<RequirementDetail>(
       `${one(projectId, req)}/revisions/${revision.revision}`,
       put({
-        reason: "Written on the draft",
+        reason: revision.reason,
         spec: revision.spec,
         tldr: write.tldr,
+        changeSummary: revision.changeSummary,
+        ...(revision.writtenLang ? { writtenLang: revision.writtenLang } : {}),
         criteria: write.criteria.map((body) => {
           const held = revision.criteria.find((c) => c.body === body);
-          return held ? { code: held.code, body } : { body };
+          return held ? { code: held.code, body, form: held.form } : { body };
         }),
       }),
     ),
