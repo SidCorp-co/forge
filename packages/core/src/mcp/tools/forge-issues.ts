@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { BODY_FORMATS } from '../../body/formats.js';
 import { bodyText } from '../../body/prepare.js';
@@ -8,7 +7,7 @@ import {
   issueStatuses,
   taskStatuses,
   waitingKinds,
-} from '../../db/schema.js';
+} from '../../db/issue-vocabulary.js';
 import { actorAgency } from '../../issues/actor-agency.js';
 import { issueArchiveFilterSchema } from '../../issues/archive.js';
 import { listIssueAttachments } from '../../issues/attachment-service.js';
@@ -735,7 +734,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
 
         if (willWriteFields) {
-          updates.updatedAt = sql`now()`;
+          updates.updatedAt = new Date();
           try {
             await updateIssueFields({
               issueId: issue.id,

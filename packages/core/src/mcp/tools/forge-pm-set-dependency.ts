@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { issueDependencyHolds, issueDependencyKinds } from '../../db/schema.js';
+import { issueDependencyHolds, issueDependencyKinds } from '../../db/issue-vocabulary.js';
 import { GATES_DISPATCH_NOTE, WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 import { IssueDependencyError, setIssueDependency } from '../../issues/dependency-service.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';

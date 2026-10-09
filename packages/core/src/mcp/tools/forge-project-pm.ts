@@ -15,12 +15,8 @@
  */
 
 import { z } from 'zod';
-import {
-  issueDependencyHolds,
-  issueDependencyKinds,
-  jobTypes,
-  modelTiers,
-} from '../../db/schema.js';
+import { issueDependencyHolds, issueDependencyKinds } from '../../db/issue-vocabulary.js';
+import { jobTypes, modelTiers } from '../../db/job-vocabulary.js';
 import { WORK_EVIDENCE_WAIVER_NOTE } from '../../issues/dependency-effects.js';
 import { PM_DECISION_CAUSES } from '../../pm/decisions-service.js';
 import { PM_GRAPH_MAX_DEPTH } from '../../pm/graph-service.js';

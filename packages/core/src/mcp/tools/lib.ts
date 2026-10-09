@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
-import { loadVisibleProjectIds, projectWriteRefusal } from '../../lib/authz.js';
+import {
+  loadVisibleProjectIds,
+  maxProjectRole,
+  orgDerivedProjectRole,
+  projectRoleAtLeast,
+  projectWriteRefusal,
+} from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import type { Actor } from '../../pipeline/activity.js';
 import {
@@ -171,6 +177,18 @@ export async function loadVisibleProjectsWithRoleForPrincipal(
   if (allow === null) return rows;
   const allowSet = new Set(allow);
   return rows.filter((r) => allowSet.has(r.id));
+}
+
+/** The visible projects in which the principal may write: a project writer, or an org admin. */
+export async function loadWritableProjectIdsForPrincipal(
+  principal: McpPrincipal,
+): Promise<string[]> {
+  const rows = await loadVisibleProjectsWithRoleForPrincipal(principal);
+  return rows
+    .filter((r) =>
+      projectRoleAtLeast(maxProjectRole(r.memberRole, orgDerivedProjectRole(r.orgRole)), 'member'),
+    )
+    .map((r) => r.id);
 }
 
 export async function resolveEffectiveProjectId(

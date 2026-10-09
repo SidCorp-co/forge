@@ -3,9 +3,8 @@ import {
   type RunnerStatus,
   type RunnerType,
   runnerStatuses,
-  type runners,
   runnerTypes,
-} from '../../db/schema.js';
+} from '../../db/runner-vocabulary.js';
 import { readRunnerPoolRead } from '../../devices/pool-read-report.js';
 import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
 import { setRunnerStatus as auditedSetRunnerStatus } from '../../runners/runner-events.js';
@@ -15,6 +14,7 @@ import {
   insertRunner,
   listRunners,
   RunnerAlreadyBoundError,
+  type RunnerRow,
   setRunnerCapabilities,
 } from '../../runners/service.js';
 import { runnerCapabilitiesSchema } from '../../runners/types.js';
@@ -51,7 +51,7 @@ const inputSchema = z
   })
   .strict();
 
-function publicRunnerRow(r: typeof runners.$inferSelect) {
+function publicRunnerRow(r: RunnerRow) {
   const cfg = { ...((r.config ?? {}) as Record<string, unknown>) };
   if ('apiKey' in cfg) cfg.apiKey = '***';
   if ('callbackSecret' in cfg) cfg.callbackSecret = '***';

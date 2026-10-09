@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { modelTiers } from '../../db/schema.js';
+import { modelTiers } from '../../db/job-vocabulary.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_DECISION_CAUSES, writePmDecision } from '../../pm/decisions-service.js';
 import { assertPmActor } from './project-authz.js';

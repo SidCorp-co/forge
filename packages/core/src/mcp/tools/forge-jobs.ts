@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { jobStatuses, jobTypes } from '../../db/schema.js';
+import { jobStatuses, jobTypes } from '../../db/job-vocabulary.js';
 import { cancelJob, JobCancelError } from '../../jobs/cancel-job.js';
 import { listJobEvents, listJobs, readJob } from '../../jobs/job-queries.js';
 import { assertDispatchable, gateReasonsForQueuedJobs } from '../../jobs/queued-gates.js';

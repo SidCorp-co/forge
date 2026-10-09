@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { pipelineRunStatuses } from '../../db/schema.js';
+import { pipelineRunStatuses } from '../../db/job-vocabulary.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { countRunJobsByStatus, listPipelineRuns, readPipelineRun } from '../../pipeline/runs.js';
 import {

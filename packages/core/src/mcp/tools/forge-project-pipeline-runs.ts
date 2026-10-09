@@ -12,7 +12,7 @@
  */
 
 import { z } from 'zod';
-import { pipelineRunStatuses } from '../../db/schema.js';
+import { pipelineRunStatuses } from '../../db/job-vocabulary.js';
 import {
   pipelineRunsCancelHandler,
   pipelineRunsGetHandler,

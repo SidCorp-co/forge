@@ -22,8 +22,28 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
-import { issueComplexities, issueCreationChannels, issuePriorities } from './issue-vocabulary.js';
+import { feedbackKinds, feedbackSeverities, feedbackTargets } from './feedback-vocabulary.js';
+import {
+  issueComplexities,
+  issueCreationChannels,
+  issueDependencyHolds,
+  issueDependencyKinds,
+  issuePriorities,
+  issueStatuses,
+  taskStatuses,
+  waitingKinds,
+} from './issue-vocabulary.js';
 import { jobEventKinds } from './job-event-vocabulary.js';
+import {
+  jobStatuses,
+  jobTypes,
+  modelTiers,
+  pipelineRunKinds,
+  pipelineRunStatuses,
+} from './job-vocabulary.js';
+import { memorySources } from './memory-vocabulary.js';
+import { projectMemberRoles } from './project-vocabulary.js';
+import { runnerStatuses, runnerTypes } from './runner-vocabulary.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -31,6 +51,7 @@ import {
   sessionRuntimeStates,
 } from './session-vocabulary.js';
 import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
+import { skillSources, skillTargets } from './skill-vocabulary.js';
 
 export { type JobEventKind, jobEventKinds } from './job-event-vocabulary.js';
 export {
@@ -389,18 +410,10 @@ export const projects = pgTable(
   }),
 );
 
-/** ISS-387 — allowed project kinds. `standard` = code repo project; `website`
- *  = Epodsystem storefront project (git repo optional). */
-export const projectKinds = ['standard', 'website'] as const;
-export type ProjectKind = (typeof projectKinds)[number];
-
 /** `git`: the work lands as commits. `outside_git`: it lands as a live resource, a CMS entry, a
  *  storefront change — the repository, where there is one, holds none of it. */
 export const landingShapes = ['git', 'outside_git'] as const;
 export type LandingShape = (typeof landingShapes)[number];
-
-export const projectMemberRoles = ['admin', 'member', 'viewer'] as const;
-export type ProjectMemberRole = (typeof projectMemberRoles)[number];
 
 export const projectMembers = pgTable(
   'project_members',
@@ -472,7 +485,13 @@ export const projectInvitationsRelations = relations(projectInvitations, ({ one 
 }));
 
 export * from './device-vocabulary.js';
+export * from './feedback-vocabulary.js';
 export * from './issue-vocabulary.js';
+export * from './job-vocabulary.js';
+export * from './memory-vocabulary.js';
+export * from './project-vocabulary.js';
+export * from './runner-vocabulary.js';
+export * from './skill-vocabulary.js';
 
 export const devices = pgTable(
   'devices',
@@ -583,52 +602,6 @@ export const pairingCodes = pgTable(
     expiresAtIdx: index('pairing_codes_expires_at_idx').on(t.expiresAt),
   }),
 );
-
-export const jobStatuses = [
-  'queued',
-  'dispatched',
-  'running',
-  'held',
-  'done',
-  'failed',
-  'cancelled',
-] as const;
-export type JobStatus = (typeof jobStatuses)[number];
-
-export const jobTypes = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'staging',
-  'release',
-  'fix',
-  'custom',
-  'pm',
-  'smoke',
-  'release_batch',
-  'reconcile',
-  'verify_skill',
-  'drive',
-] as const;
-export type JobType = (typeof jobTypes)[number];
-
-export const modelTiers = ['haiku', 'sonnet', 'opus'] as const;
-export type ModelTier = (typeof modelTiers)[number];
-
-export const pipelineRunKinds = ['issue', 'pm', 'interactive', 'system'] as const;
-export type PipelineRunKind = (typeof pipelineRunKinds)[number];
-
-export const pipelineRunStatuses = [
-  'running',
-  'paused',
-  'completed',
-  'failed',
-  'cancelled',
-] as const;
-export type PipelineRunStatus = (typeof pipelineRunStatuses)[number];
 
 export const pipelineRuns = pgTable(
   'pipeline_runs',
@@ -868,16 +841,6 @@ export const jobEventsRelations = relations(jobEvents, ({ one }) => ({
   job: one(jobs, { fields: [jobEvents.jobId], references: [jobs.id] }),
 }));
 
-// EPIC 2 (ISS-271) — Runner framework.
-// A `runner` is a capability handle the dispatcher targets; concrete behaviour
-// lives in a `RunnerAdapter` registered by `bootstrapRunnerAdapters()`.
-// EPIC 2 owns the schema. EPIC 3 Phase B (ISS-272 follow-up) layers admin
-// dashboard reads on top — do not redesign these columns there.
-export const runnerTypes = ['claude-code'] as const;
-export type RunnerType = (typeof runnerTypes)[number];
-
-export const runnerStatuses = ['online', 'offline', 'draining', 'disabled'] as const;
-
 export const runnerLimitReasons = ['usage_limit', 'rate_limit', 'auth'] as const;
 export type RunnerLimitReason = (typeof runnerLimitReasons)[number];
 
@@ -895,7 +858,6 @@ export const runnerProvisionStatuses = [
   'failed',
 ] as const;
 export type RunnerProvisionStatus = (typeof runnerProvisionStatuses)[number];
-export type RunnerStatus = (typeof runnerStatuses)[number];
 
 export const runners = pgTable(
   'runners',
@@ -961,30 +923,6 @@ export const runnersRelations = relations(runners, ({ one, many }) => ({
   device: one(devices, { fields: [runners.deviceId], references: [devices.id] }),
   jobs: many(jobs),
 }));
-
-export const waitingKinds = ['needs_decision', 'needs_resource'] as const;
-export type WaitingKind = (typeof waitingKinds)[number];
-
-export const issueStatuses = [
-  'open',
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'in_progress',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'releasing',
-  'closed',
-  'reopen',
-  'on_hold',
-  'needs_info',
-  'draft',
-  'dropped',
-] as const;
-export type IssueStatus = (typeof issueStatuses)[number];
 
 export const issueSources = ['manual', 'github', 'sentry'] as const;
 export type IssueSource = (typeof issueSources)[number];
@@ -1346,12 +1284,6 @@ export const issueLabelsRelations = relations(issueLabels, ({ one }) => ({
 export const skillScopes = ['global', 'project'] as const;
 export type SkillScope = (typeof skillScopes)[number];
 
-export const skillSources = ['builtin', 'user'] as const;
-export type SkillSource = (typeof skillSources)[number];
-
-export const skillTargets = ['dev', 'cloud', 'all'] as const;
-export type SkillTarget = (typeof skillTargets)[number];
-
 export const skills = pgTable(
   'skills',
   {
@@ -1508,17 +1440,6 @@ export const updatePackets = pgTable(
   }),
 );
 
-export const memorySources = [
-  'issue',
-  'comment',
-  'job',
-  'note',
-  'knowledge',
-  'decision',
-  'policy',
-] as const;
-export type MemorySource = (typeof memorySources)[number];
-
 export const memories = pgTable(
   'memories',
   {
@@ -1674,9 +1595,6 @@ export const knowledgeEntries = pgTable(
 export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) => ({
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
-
-export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
-export type TaskStatus = (typeof taskStatuses)[number];
 
 export const taskAgentStatuses = ['idle', 'running', 'completed', 'failed'] as const;
 export type TaskAgentStatus = (typeof taskAgentStatuses)[number];
@@ -2189,18 +2107,6 @@ export const retrievalAnalytics = pgTable(
 export const retrievalAnalyticsRelations = relations(retrievalAnalytics, ({ one }) => ({
   project: one(projects, { fields: [retrievalAnalytics.projectId], references: [projects.id] }),
 }));
-
-export const issueDependencyKinds = [
-  'blocks',
-  'relates',
-  'duplicates',
-  'parent',
-  'decomposes',
-] as const;
-export type IssueDependencyKind = (typeof issueDependencyKinds)[number];
-
-export const issueDependencyHolds = ['settled', 'shipped'] as const;
-export type IssueDependencyHold = (typeof issueDependencyHolds)[number];
 
 export const issueDependencies = pgTable(
   'issue_dependencies',
@@ -2763,31 +2669,6 @@ export const runnerEvents = pgTable(
     projectTsIdx: index('runner_events_project_ts_idx').on(t.projectId, t.ts),
   }),
 );
-
-export const feedbackKinds = [
-  'friction',
-  'bug',
-  'skill_gap',
-  'unclear_step',
-  'redundant_step',
-  'learning',
-  'suggestion',
-] as const;
-export type FeedbackKind = (typeof feedbackKinds)[number];
-
-export const feedbackSeverities = ['low', 'medium', 'high'] as const;
-export type FeedbackSeverity = (typeof feedbackSeverities)[number];
-
-export const feedbackTargets = [
-  'skill',
-  'prompt',
-  'tool',
-  'doc',
-  'orientation',
-  'pipeline',
-  'other',
-] as const;
-export type FeedbackTarget = (typeof feedbackTargets)[number];
 
 export const feedbackReports = pgTable(
   'feedback_reports',

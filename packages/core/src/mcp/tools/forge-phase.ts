@@ -10,7 +10,7 @@
 // and a tool the agent can call is by definition agent-written.
 
 import { z } from 'zod';
-import { phaseJournalOutcomes } from '../../db/schema-journal.js';
+import { phaseJournalOutcomes } from '../../db/journal-vocabulary.js';
 import { endPhase, resumePoint, startPhase } from '../../pipeline/phase-journal.js';
 import { findRunProjectId } from '../../pipeline/runs.js';
 import type { ContextScopedMcpToolFactory } from './lib.js';

@@ -1,4 +1,4 @@
-import type { ProjectMemberRole } from '../../db/schema.js';
+import type { ProjectMemberRole } from '../../db/project-vocabulary.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { PM_ACTIONS } from './pm-actions.js';

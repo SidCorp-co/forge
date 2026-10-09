@@ -1,12 +1,10 @@
-import { eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import {
   feedbackKinds,
-  feedbackReports,
   feedbackSeverities,
   feedbackTargets,
-} from '../../db/schema.js';
+} from '../../db/feedback-vocabulary.js';
 import {
   countReportsForJob,
   insertReport,
@@ -19,8 +17,10 @@ import { resolvePipelineContext } from '../../jobs/active-job-context.js';
 import { markUntrusted, sanitizeUntrusted, stripFrameTokens } from '../../prompt/sanitize.js';
 import {
   assertPrincipalIsMember,
+  assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
   loadVisibleProjectIdsForPrincipal,
+  loadWritableProjectIdsForPrincipal,
   resolveEffectiveProjectId,
   zodToMcpSchema,
 } from './lib.js';
@@ -171,39 +171,22 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'list': {
         const filters = input.filters ?? {};
-        const kindCondition = filters.kind ? eq(feedbackReports.kind, filters.kind) : undefined;
-        const targetCondition = filters.target
-          ? eq(feedbackReports.target, filters.target)
-          : undefined;
-        const severityCondition = filters.severity
-          ? eq(feedbackReports.severity, filters.severity)
-          : undefined;
-        const reviewedCondition =
-          filters.reviewed === true
-            ? isNotNull(feedbackReports.reviewedAt)
-            : filters.reviewed === false
-              ? isNull(feedbackReports.reviewedAt)
-              : undefined;
 
-        let scopeCondition: ReturnType<typeof eq> | ReturnType<typeof inArray>;
+        let projectIds: string[];
         let limit: number;
         if (input.scope === 'all') {
-          const visibleIds = await loadVisibleProjectIdsForPrincipal(principal);
-          if (visibleIds.length === 0)
+          projectIds = await loadVisibleProjectIdsForPrincipal(principal);
+          if (projectIds.length === 0)
             return { reports: [], returned: 0, limit: input.limit ?? 50, hasMore: false };
-          scopeCondition = inArray(feedbackReports.projectId, visibleIds);
           limit = input.limit ?? 50;
         } else {
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
           await assertPrincipalIsMember(principal, projectId);
-          scopeCondition = eq(feedbackReports.projectId, projectId);
+          projectIds = [projectId];
           limit = input.limit ?? 25;
         }
 
-        const rows = await listReports(
-          [scopeCondition, kindCondition, targetCondition, severityCondition, reviewedCondition],
-          overfetch(limit),
-        );
+        const rows = await listReports(projectIds, filters, overfetch(limit));
 
         return buildListEnvelope({
           key: 'reports',
@@ -245,25 +228,19 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
           return linkedIssueId;
         };
-        const linkPatch = async (): Promise<{ linkedIssueId?: string | null }> => {
-          if (!reviewed) return { linkedIssueId: null };
-          if (!input.linkedIssueId) return {};
-          return { linkedIssueId: await resolveLinkedIssue(input.linkedIssueId) };
-        };
+        const linkedIssue = async (): Promise<string | undefined> =>
+          reviewed && input.linkedIssueId ? resolveLinkedIssue(input.linkedIssueId) : undefined;
 
         if (input.signalKey) {
           // Bulk stamp: every report carrying this signalKey, within scope.
           if (input.scope === 'all') {
-            const ids = await visibleIds();
+            const ids = await loadWritableProjectIdsForPrincipal(principal);
             if (ids.length === 0) {
               return { ok: true, count: 0, scope: 'all', linkedIssueId: null };
             }
             const updated = await stampReviewed(
-              [
-                inArray(feedbackReports.projectId, ids),
-                eq(feedbackReports.signalKey, input.signalKey),
-              ],
-              { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+              { projectIds: ids, signalKey: input.signalKey },
+              { reviewed, linkedIssueId: await linkedIssue() },
             );
             return {
               ok: true,
@@ -274,13 +251,10 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
           }
 
           const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-          await assertPrincipalIsMember(principal, projectId);
+          await assertPrincipalIsWriter(principal, projectId);
           const updated = await stampReviewed(
-            [
-              eq(feedbackReports.projectId, projectId),
-              eq(feedbackReports.signalKey, input.signalKey),
-            ],
-            { reviewedAt: reviewed ? new Date() : null, ...(await linkPatch()) },
+            { projectIds: [projectId], signalKey: input.signalKey },
+            { reviewed, linkedIssueId: await linkedIssue() },
           );
           return {
             ok: true,
@@ -298,14 +272,12 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
         // member of project A can never stamp a report belonging to project
         // B by guessing its id.
         const projectId = await resolveEffectiveProjectId(ctx, input.projectId);
-        await assertPrincipalIsMember(principal, projectId);
+        await assertPrincipalIsWriter(principal, projectId);
         if (!input.reportId) throw new Error('BAD_REQUEST: reportId is required for review');
 
-        const patch = await linkPatch();
-
         const [updated] = await stampReviewed(
-          [eq(feedbackReports.id, input.reportId), eq(feedbackReports.projectId, projectId)],
-          { reviewedAt: reviewed ? new Date() : null, ...patch },
+          { projectIds: [projectId], reportId: input.reportId },
+          { reviewed, linkedIssueId: await linkedIssue() },
         );
 
         if (!updated) throw new Error('NOT_FOUND: feedback report not found in this project');

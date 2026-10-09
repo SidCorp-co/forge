@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { memorySources } from '../../db/schema.js';
+import { memorySources } from '../../db/memory-vocabulary.js';
 import { EmbeddingUnavailableError } from '../../embeddings/index.js';
 import {
   MemoryFeedbackValidationError,

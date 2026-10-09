@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { listAgentSessionsForMcp, readAgentSession } from '../../agent-sessions/service.js';
-import { agentSessionStatuses } from '../../db/schema.js';
+import { agentSessionStatuses } from '../../db/session-vocabulary.js';
 import {
   assertPrincipalIsMember,
   type ContextScopedMcpToolFactory,

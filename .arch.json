@@ -44,6 +44,9 @@
     "core-db": [
       "packages/core/src/db/**"
     ],
+    "core-db-vocabulary": [
+      "packages/core/src/db/*-vocabulary.ts"
+    ],
     "core-devices": [
       "packages/core/src/devices/**"
     ],
@@ -269,6 +272,14 @@
       "description": "plugin registry resolves by name only Measured: 0 outgoing cross-module edges today."
     },
     {
+      "id": "mcp-holds-no-database",
+      "type": "forbidden",
+      "from": "core-mcp",
+      "to": "core-db",
+      "status": "locked",
+      "description": "an MCP tool is a wrapper over the service its route calls, so it reaches no table and no database handle: a query that lives in a tool is a second data plane the REST side cannot see, and the two drift on validation, permission and audit. The closed value lists a tool validates against are the one thing it may import from db, and they live in the db/*-vocabulary modules, which are carved out as core-db-vocabulary so this edge stays readable. Measured: 0 edges, with 0 frozen. Tests are relaxed, since a test imports the table it seeds."
+    },
+    {
       "id": "no-coordinator-blob",
       "type": "fan-out",
       "scope": "file",
@@ -290,7 +301,7 @@
       "from": "web-design",
       "to": "web-lib-api",
       "status": "locked",
-      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23: 0 edges, once `coreFileUrl` moved out of lib/api/client.ts to lib/utils/core-url.ts \u2014 it is a string function over one env value and was never part of the client."
+      "description": "a kit component renders what it is handed; resolving a URL against the API client makes the kit depend on a deploy's origin. Measured 2026-08-23: 0 edges, once `coreFileUrl` moved out of lib/api/client.ts to lib/utils/core-url.ts — it is a string function over one env value and was never part of the client."
     },
     {
       "id": "web-features-do-not-reach-into-routes",
