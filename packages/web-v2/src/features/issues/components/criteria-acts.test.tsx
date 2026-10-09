@@ -9,7 +9,7 @@
 // an issue whose merge names no commit, and dead-ended on a screenshot whose name was already
 // attached.
 
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
@@ -245,6 +245,52 @@ const coverage = [
   { code: "BC-7", body: "A template run can be saved", verdict: "gap", issues: [], uncoveredReason: null },
   { code: "BC-8", body: "A template can be scheduled", verdict: "gap", issues: [{ issueId: "other" }], uncoveredReason: null },
 ];
+
+describe("recording a clip as a verdict's evidence (REQ-40 BC-4)", () => {
+  it("attaches a clip the way a screenshot is, and cites it by the name core kept (REQ-40 BC-4)", async () => {
+    const calls = core((c) => {
+      if (c.method === "POST" && c.path === "/issues/i1/attachments") return { status: 201, body: { id: "a2", name: "bc-1.webm" } };
+      if (c.method === "POST" && c.path === "/issues/i1/verdicts") return { status: 201, body: { verdictId: "v1" } };
+      return undefined;
+    });
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    const input = within(form).getByTestId("verdict-screenshot") as HTMLInputElement;
+    expect(input.accept).toContain("video/webm");
+    expect(input.accept).toContain("video/mp4");
+    await user.upload(input, new File([new Uint8Array(2048)], "bc-1.webm", { type: "video/webm" }));
+    expect(await within(form).findByTestId("verdict-clip-chosen")).toHaveTextContent("bc-1.webm");
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST").map((c) => c.path)).toEqual(["/issues/i1/attachments", "/issues/i1/verdicts"]));
+    const upload = calls.find((c) => c.method === "POST" && c.path === "/issues/i1/attachments")?.body as FormData;
+    expect((upload.get("file") as File).type).toBe("video/webm");
+    expect(calls.find((c) => c.path === "/issues/i1/verdicts")?.body).toMatchObject({ criterion: 1, verdict: "pass", evidence: ["bc-1.webm"] });
+  });
+
+  it("refuses a clip over the cap before any upload, naming the cap, and sends nothing", async () => {
+    const calls = core();
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { user, form } = await openJudge(1);
+    // userEvent.upload applies `accept`, so the oversize case is dropped past it, as a drag would
+    const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "long-tour.webm", { type: "video/webm" });
+    await user.upload(within(form).getByTestId("verdict-screenshot"), big);
+    expect(await within(form).findByTestId("verdict-evidence-refusal")).toHaveTextContent("long-tour.webm is over the 10 MB cap for a clip");
+    expect(within(form).queryByTestId("verdict-clip-chosen")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Record verdict" }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/issues/i1/verdicts")).toBe(true));
+    expect(calls.some((c) => c.method === "POST" && c.path === "/issues/i1/attachments")).toBe(false);
+    expect(calls.find((c) => c.path === "/issues/i1/verdicts")?.body).toMatchObject({ evidence: [] });
+  });
+
+  it("refuses a file that is neither a clip nor a picture, naming what is valid", async () => {
+    core();
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-32" />);
+    const { form } = await openJudge(1);
+    // a drag past `accept`, which userEvent.upload would filter out
+    fireEvent.change(within(form).getByTestId("verdict-screenshot"), { target: { files: [new File(["x"], "run.log", { type: "text/plain" })] } });
+    expect(await within(form).findByTestId("verdict-evidence-refusal")).toHaveTextContent("run.log is not a picture or a webm or mp4 clip");
+  });
+});
 
 describe("tying a closed issue to its requirement's criteria", () => {
   it("lists the BCs, keeps the ones already tied fixed, and sends the codes picked", async () => {
