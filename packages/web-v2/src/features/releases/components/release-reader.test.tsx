@@ -54,6 +54,9 @@ describe("the sections the release page reads (BC-5..8)", () => {
     const r = screen.getByTestId("page-requirement");
     expect(r).toHaveTextContent("REQ-40");
     expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-1Each release has a page.");
+    // a criterion met but short of its wording is proven and says so, beside it
+    expect(within(r).getAllByTestId("page-proven-short")).toHaveLength(1);
+    expect(within(r).getByTestId("page-proven")).toHaveTextContent("BC-2Each release opens on highlights.short of its wording");
     expect(within(r).getByTestId("page-unproven")).toHaveTextContent("1 not yet proven on this build");
     expect(within(r).getByRole("link", { name: "REQ-40" })).toHaveAttribute("href", "/projects/forge/requirements/REQ-40");
   });

@@ -171,6 +171,7 @@
     "releases.page.requirements.completes": "Completes it",
     "releases.page.requirements.none": "This release completes or advances no requirement.",
     "releases.page.requirements.noneProven": "No criterion is proven on this build yet.",
+    "releases.page.requirements.short": "short of its wording",
     "releases.page.requirements.title": "What this release proves",
     "releases.page.requirements.unproven": "{n} not yet proven on this build",
     "releases.page.shared.lead": "Shared release page · read-only snapshot",

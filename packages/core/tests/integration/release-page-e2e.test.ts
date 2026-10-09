@@ -115,7 +115,7 @@ type Page = {
   };
   requirements: Array<{
     key: string;
-    proven: Array<{ code: string; statement: string }>;
+    proven: Array<{ code: string; statement: string; short: boolean }>;
     unproven: number;
   }>;
   improvements: Array<{ issueKey: string; kind: string; line: string }>;
@@ -147,8 +147,11 @@ describe('a release page claims a criterion only with a pass verdict on the buil
         key: 'REQ-1',
         title: 'Visit reminders',
         completes: false,
-        proven: [{ code: 'BC-1', statement: 'A nurse sees the reminder' }],
-        unproven: 3,
+        proven: [
+          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false },
+          { code: 'BC-2', statement: 'A nurse sees it on a phone', short: true },
+        ],
+        unproven: 2,
       },
     ]);
     // the user view says the criterion and its state; QA's reasons and the other build are the developer view's
@@ -170,7 +173,7 @@ describe('a release page claims a criterion only with a pass verdict on the buil
     const w = await releaseWorldOfFour();
     await judge(w.a, 1, 'fail', BUILD, { reason: 'the reminder came late' });
     const p = await page('member');
-    expect(p.requirements[0]?.proven).toEqual([]);
+    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-2']);
     expect(p.knownIssues.find((k) => k.bc === 'BC-1')).toMatchObject({ standing: 'fail' });
   });
 });
@@ -310,7 +313,7 @@ describe('the highlights the assistant drafts from the requirements it advances'
     const [row] = await rows(sql`SELECT state FROM release_highlights WHERE run_id = ${w.runId}`);
     expect((row as { state: string }).state).toBe('drafted');
     const p = await page('member');
-    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-1', 'BC-3']);
+    expect(p.requirements[0]?.proven.map((x) => x.code)).toEqual(['BC-1', 'BC-2', 'BC-3']);
   });
 });
 

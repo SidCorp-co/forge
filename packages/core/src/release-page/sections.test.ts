@@ -1,7 +1,7 @@
 import type { ReleaseShipped } from '@forge/contracts/release-page';
 import type { ReleaseApprovalView, ReleaseDetail } from '@forge/contracts/releases';
 import { describe, expect, it } from 'vitest';
-import { actionsOf, approvalOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
+import { actionsOf, approvalOf, buildOf, changesOf, technicalOf } from './sections.js';
 
 const HEAD = 'c'.repeat(40);
 const UNREAD: ReleaseShipped = { state: 'unread', why: 'planted' };
@@ -301,20 +301,5 @@ describe('what the commit range ships adds to what the issues named (BC-7, BC-9)
   it('claims nothing from a range it did not read', () => {
     expect(actionsOf(none, UNREAD)).toEqual([]);
     expect(technicalOf(detail({ changes: none }), UNREAD).migrations).toEqual([]);
-  });
-});
-
-describe('the header proves what the page proves (BC-5)', () => {
-  it('states the page count, not the record count that takes a short as a pass', () => {
-    const d = detail({
-      verified: { level: 'criteria', proven: 9, total: 9, check: null, provider: null },
-    });
-    const h = headerOf(d, { proven: 6, total: 9 });
-    expect(h.verified).toMatchObject({ proven: 6, total: 9, level: 'some_criteria' });
-  });
-
-  it('reads criteria level only where every criterion is proven', () => {
-    const verified = { level: 'none' as const, proven: 0, total: 0, check: null, provider: null };
-    expect(headerOf(detail({ verified }), { proven: 4, total: 4 }).verified.level).toBe('criteria');
   });
 });

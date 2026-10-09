@@ -106,7 +106,7 @@ function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 			items: page.requirements.map((r) => ({
 				text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${
 					r.proven.length > 0
-						? `: ${r.proven.map((p) => p.statement).join("; ")}`
+						? `: ${r.proven.map((p) => (p.short ? `${p.statement} (short of its wording)` : p.statement)).join("; ")}`
 						: ""
 				}${r.unproven > 0 ? ` (${r.unproven} not yet proven on this build)` : ""}`,
 			})),

@@ -64,7 +64,10 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				key: "REQ-40",
 				title: "Release page",
 				completes: true,
-				proven: [{ code: "BC-1", statement: "Each release has a page." }],
+				proven: [
+					{ code: "BC-1", statement: "Each release has a page.", short: false },
+					{ code: "BC-2", statement: "Highlights open it.", short: true },
+				],
 				unproven: 1,
 			},
 		],
@@ -120,7 +123,7 @@ describe("a release page as Markdown (BC-11)", () => {
 		expect(md).toContain("## Improvements\n- Releases read as pages.");
 		expect(md).toContain("## Fixes\n- Dates show correctly.");
 		expect(md).toContain(
-			"- Release page (complete): Each release has a page. (1 not yet proven on this build)",
+			"- Release page (complete): Each release has a page.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
 		);
 		expect(md).toContain("- Known issues are listed. (Falls short)");
 	});

@@ -16,11 +16,7 @@ import type {
   ReleaseShipped,
   ReleaseTechnicalNotes,
 } from '@forge/contracts/release-page';
-import {
-  type ReleaseDetail,
-  type ReleaseNoteSection,
-  releaseVerifiedLevel,
-} from '@forge/contracts/releases';
+import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
 import {
   WHATS_NEW_KIND_OF_SECTION,
   WHATS_NEW_SECTIONS,
@@ -50,26 +46,14 @@ export function buildOf(detail: ReleaseDetail): string | null {
   return COMMIT.test(detail.head) ? detail.head : null;
 }
 
-/**
- * The header. What it says was proven is the page's own count (`claims.ts:provenTotals`), not the
- * release record's, which counts a short as a pass: the header and the requirements list read one.
- */
-export function headerOf(
-  detail: ReleaseDetail,
-  proof: { proven: number; total: number },
-): ReleasePageHeader {
+export function headerOf(detail: ReleaseDetail): ReleasePageHeader {
   return {
     version: detail.version,
     state: detail.state,
     releasedAt: detail.releasedAt,
     environment: detail.production,
     build: buildOf(detail),
-    verified: {
-      ...detail.verified,
-      proven: proof.proven,
-      total: proof.total,
-      level: releaseVerifiedLevel(proof, detail.verified.check),
-    },
+    verified: detail.verified,
     approval: approvalOf(detail),
   };
 }

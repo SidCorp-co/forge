@@ -16,14 +16,7 @@ import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
 import { readRelease, readShipped, type ViewerFacts } from '../release-batch/index.js';
-import {
-  type ClaimReading,
-  knownIssuesOf,
-  mediaOf,
-  provenTotals,
-  readClaims,
-  requirementsOf,
-} from './claims.js';
+import { type ClaimReading, knownIssuesOf, mediaOf, readClaims, requirementsOf } from './claims.js';
 import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
@@ -133,7 +126,7 @@ export async function readReleasePage(args: {
   return {
     view,
     projectId,
-    header: headerOf(detail, provenTotals(page.claims)),
+    header: headerOf(detail),
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
     improvements: changes.improvements,

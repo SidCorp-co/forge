@@ -356,8 +356,8 @@ export interface ReleasePageRequirement {
 	key: string;
 	title: string;
 	completes: boolean;
-	/** Criteria claimed under the truth rule: a pass on `header.build`. */
-	proven: { code: string; statement: string }[];
+	/** Criteria proven on `header.build` by `criterionCountsAsPass`; `short` marks one met but short of its wording. */
+	proven: { code: string; statement: string; short: boolean }[];
 	/** How many of its carried criteria are known issues instead. */
 	unproven: number;
 }
@@ -506,7 +506,11 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			title: z.string().min(1),
 			completes: z.boolean(),
 			proven: z.array(
-				z.strictObject({ code: z.string().min(1), statement: z.string() }),
+				z.strictObject({
+					code: z.string().min(1),
+					statement: z.string(),
+					short: z.boolean().default(false),
+				}),
 			),
 			unproven: z.number().int().min(0),
 		}),

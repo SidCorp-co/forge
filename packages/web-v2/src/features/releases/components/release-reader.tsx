@@ -82,6 +82,11 @@ function Requirements({ page, slug }: { page: ReleasePage; slug?: string | undef
                     <li key={p.code}>
                       <span className="mr-2 font-mono text-12 text-subtle">{p.code}</span>
                       {p.statement}
+                      {p.short ? (
+                        <span className="ml-2 text-12 text-muted" data-testid="page-proven-short">
+                          {t("releases.page.requirements.short")}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
