@@ -6,7 +6,7 @@
  * refuses a report a merge may not rely on, asks the issue's approved new patterns for their catalog
  * pages in the change, and records a passing check on the issue: each of its checks once, with its
  * kind and duration, as a check run of the run that sent it (`check-runs.ts`, ISS-474), and the
- * verification record naming them. The merge mark then asks for that record (`uncheckedMergeRefusal`).
+ * verification record naming them and the catalog pages the change carried (`pattern-entry.ts`). The merge mark then asks for that record (`uncheckedMergeRefusal`).
  *
  * A report on the fast lane (REQ-39 BC-7) runs fewer checks, so it stands only for the change a person
  * approved in its live preview: the fast lane's own rule, asked through `fastLaneMergeRefusal`, holds
@@ -31,7 +31,7 @@ import {
   passingHeads,
   recordFields,
 } from './merge-check-rules.js';
-import { hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
+import { catalogPageFields, hasApprovedNewPattern, patternEntryRefusal } from './pattern-entry.js';
 import { fastLaneMergeRefusal, readProjectDocument } from './ports.js';
 import { listRecordEvents, type RecordEvent, writeCoreRecord } from './record-events/store.js';
 
@@ -82,7 +82,9 @@ export async function recordMergeCheck(args: {
       issueId: issue.id,
       actor: args.actor,
       kind: 'verification',
-      fields: recordFields(report),
+      // the catalog pages the change carried, whatever is approved now: a pattern approved after
+      // this check, or a mark made before it, is asked against them at awaiting_release
+      fields: [...recordFields(report), ...catalogPageFields(report.touched)],
     });
   });
 }
@@ -97,7 +99,7 @@ async function checkOwedBy(issueId: string, projectId: string): Promise<CheckOwe
 /**
  * The merge mark's refusal where a merge check is owed and none passed at the commit marked, or
  * null. A check is owed where the project declares `validation.mergeCheck: required`, or where the
- * issue introduces an approved new pattern, whose catalog page only the check asks for. A merge the
+ * issue introduces an approved new pattern, whose catalog page the check asks for. A merge the
  * source host's webhook records is not asked: it has already happened, and its CI gated it.
  */
 export async function uncheckedMergeRefusal(args: {

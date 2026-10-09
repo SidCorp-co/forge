@@ -83,7 +83,9 @@ like any other repeat.
 Before the stamp, `refuseUncheckedMerge` (`packages/core/src/issues/merge-marker.ts`) asks
 `uncheckedMergeRefusal` (`packages/core/src/issues/merge-check.ts`) whether this mark owes a merge
 check: on the `git` shape, where the project document declares `validation.mergeCheck: required`,
-or where the issue introduces an approved new pattern, whose catalog page only the check asks for.
+or where the issue introduces an approved new pattern, whose catalog page the check asks for. A
+pattern approved after the mark, or after the check, is asked again against the change this mark names,
+at its approval and at the move to `awaiting_release` (`packages/core/src/issues/pattern-entry.ts`).
 Where one is owed, the commit the mark names — else the one the row or the issue's work evidence
 records — must be the head of a passing check recorded by `POST /api/issues/:id/merge-check`, read
 from core's own `verification` records, never a caller's post of the same kind. Otherwise the mark

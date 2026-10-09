@@ -164,7 +164,7 @@ export function missingCheckDetail(args: {
   const why =
     args.owedBy === 'project'
       ? 'this project declares `validation.mergeCheck: required`'
-      : `${args.issueRef} introduces an approved new pattern, whose catalog page only the merge check asks for`;
+      : `${args.issueRef} introduces an approved new pattern, whose catalog page the merge check asks for`;
   const at = args.commit
     ? `no passing merge check is recorded at ${args.commit}`
     : 'the mark names no commit and the issue records none, so no merge check can be matched to it';

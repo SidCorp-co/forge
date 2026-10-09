@@ -29,13 +29,15 @@ export function useIssuePatterns(issueId: string | undefined, projectId?: string
   });
 }
 
-export function useDecidePattern(issueId: string) {
+export function useDecidePattern(issueId: string, projectId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (args: { patternId: string; decision: PatternDecision; reason: string }) =>
       patternsApi.decide(issueId, args.patternId, args.decision, args.reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+    // settled, not only succeeded: a decision refused because another reviewer already decided
+    // (409) leaves the line showing a pending pattern until the patterns are read again
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueKeySegment(issueId, projectId)] });
       // a return posts its reason on the issue
       qc.invalidateQueries({ queryKey: ["comments", issueId] });
     },

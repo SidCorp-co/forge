@@ -18,8 +18,9 @@
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
  *                      no new pattern waits on its reviewer, and no returned      PATTERN_REVIEW_PENDING,
- *                      one stands unanswered (its catalog entry is the merge      PATTERN_RETURNED
- *                      check's to ask, `pattern-entry.ts`)
+ *                      one stands unanswered; each approved new pattern's         PATTERN_RETURNED,
+ *                      catalog page is in the change the merge mark names        PATTERN_ENTRY_MISSING
+ *                      (`pattern-entry.ts`, read before the lock)
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move
@@ -61,6 +62,7 @@ import {
 import { refuseHeldTake } from './blocked-by.js';
 import type { CurrentDrafts } from './criteria/storefront-draft.js';
 import { mergeNotRecorded } from './merged-at.js';
+import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
 import { patternReleaseRefusal } from './patterns.js';
 import { planDriftOf, readProjectDocument } from './ports.js';
 import {
@@ -122,6 +124,8 @@ interface IssueMoveFacts {
   callerDeviceId: string | null;
   /** The permission that lets the mover make a move another run's hold reserves, or null. */
   holdOverride: HoldOverride | null;
+  /** The move to awaiting_release: the issue's approved new patterns and the change its mark names. */
+  patternEntry: MoveEntryFacts | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -174,7 +178,21 @@ export async function readIssueMoveFacts(args: {
     source: document?.source.type ?? null,
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     drafts: await readMoveDrafts(issue, args.to),
+    patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
   };
+}
+
+/**
+ * Each approved new pattern's page is in the change the merge mark names. Asked only where the facts
+ * were read for this move (awaiting_release); `closed` follows awaiting_release, which asked it.
+ */
+async function patternEntryGuard(
+  tx: Pick<Tx, 'select' | 'execute'>,
+  issueId: string,
+  facts: MoveEntryFacts | null,
+): Promise<Refusal | null> {
+  if (!facts) return null;
+  return moveEntryRefusal(tx, issueId, facts);
 }
 
 // a person's move is refused as an agent's: issue-lifecycle rev 3 puts the condition on the edge, not the actor (ISS-104 decision)
@@ -469,7 +487,8 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
             detail: missing.detail,
             details: missing.details,
           } as Refusal)
-        : patternReleaseRefusal(input.tx, input.row.id);
+        : ((await patternReleaseRefusal(input.tx, input.row.id)) ??
+            (await patternEntryGuard(input.tx, input.row.id, base.facts.patternEntry)));
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     verdicts: async (input) => {
