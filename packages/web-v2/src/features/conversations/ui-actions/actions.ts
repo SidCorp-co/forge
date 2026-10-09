@@ -7,7 +7,7 @@ import { enumLabel, statusReading } from "@/design/vocabulary";
 import { highlightOnPage, highlightStore } from "@/design/hooks/use-highlight";
 import {
   highlightTargetOf,
-  parseUiAction,
+  parseForwardedUiAction,
   UI_ACTION_VERSION,
   UI_PRODUCT_LISTS,
   UI_ROUTES,
@@ -460,7 +460,7 @@ export function readUiCall(call: {
     return { kind: "refused", name: uiActionNamed(call.name) ?? call.name, code, message };
   }
   const forwarded = body.action as { name?: unknown; params?: unknown } | undefined;
-  const parsed = parseUiAction(typeof forwarded?.name === "string" ? forwarded.name : call.name, forwarded?.params);
+  const parsed = parseForwardedUiAction(typeof forwarded?.name === "string" ? forwarded.name : call.name, forwarded?.params);
   if (!parsed.ok) return { kind: "refused", name: parsed.name, code: parsed.code, message: parsed.message };
   return { kind: "action", action: parsed.action };
 }

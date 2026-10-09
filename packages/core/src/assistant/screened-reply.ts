@@ -34,6 +34,7 @@ import { withRepairs } from '../messaging/repairs.js';
 import { cutClauses, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
+import { UI_ACTS_GROUNDED } from '../messaging/ui-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import type { TurnBlockStage } from './turn-stage.js';
 
@@ -188,6 +189,7 @@ function heldClaimOf(r: MessageRefusal): HeldClaim | null {
   if (r.rule === FIGURES_GROUNDED.id || r.rule === PROGRESS_FIGURES_MATCH.id) return 'figure';
   if (r.rule === CREATION_CLAIMS_GROUNDED.id) return 'record';
   if (r.rule === STATUS_CLAIMS_GROUNDED.id) return 'status';
+  if (r.rule === UI_ACTS_GROUNDED.id) return 'page';
   const kind = claimRefused(r);
   return kind === 'date' || kind === 'issue' ? kind : null;
 }

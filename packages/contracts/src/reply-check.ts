@@ -12,6 +12,7 @@ export const HELD_CLAIMS = [
 	"issue",
 	"status",
 	"record",
+	"page",
 ] as const;
 export type HeldClaimKind = (typeof HELD_CLAIMS)[number];
 
@@ -30,6 +31,10 @@ const HELD_WORDS: Record<HeldClaimKind, [one: string, many: string]> = {
 	record: [
 		"a claim to have saved or shared something",
 		"claims to have saved or shared something",
+	],
+	page: [
+		"a claim to have moved the page that no accepted page action backs",
+		"claims to have moved the page that no accepted page action backs",
 	],
 };
 

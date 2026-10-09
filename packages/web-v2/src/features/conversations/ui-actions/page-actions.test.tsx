@@ -4,6 +4,8 @@
 // ui.open took an issue key alone, no list filtered by whom a row waits on, and the page told the
 // chat nothing of what the list showed.
 
+import { REAL_UI_CALLS } from "@forge/contracts/ui-actions-real-calls";
+import { parseUiAction } from "@forge/contracts/ui-actions";
 import type { WaitingKind } from "@forge/contracts/standing";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,7 +122,10 @@ const turn = (...calls: { name: string; args: Record<string, unknown> }[]): Conv
     content: "",
     blocks: calls.map((c, i) => {
       const id = `call-${n}-${i}`;
-      return { type: "tool", toolCall: { id, name: c.name, input: c.args, output: JSON.stringify({ deferred: "browser", action: { name: c.name, params: c.args } }) } };
+      // what core's tool answers (`ui-actions-tool.ts`): the action in its PARSED form, or the refusal it gave
+      const parsed = parseUiAction(c.name, c.args);
+      const output = parsed.ok ? JSON.stringify({ deferred: "browser", action: parsed.action }) : JSON.stringify({ error: parsed.message });
+      return { type: "tool", toolCall: { id, name: c.name, input: c.args, output } };
     }),
   },
 });
@@ -186,6 +191,24 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
     // the person picked the assistant's old value by hand: it is theirs now, not the assistant's
     expect(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" })).not.toHaveAttribute("data-assistant");
+  });
+
+  // ISS-495 (BC-4, BC-7): the filter as a map of only the fields asked, and the list the model sent,
+  // each land and mark their chip, read back the way core forwards them.
+  it("sets and marks the filter for an object map of only the field asked, and for the list the model sent", async () => {
+    const p = page(<RequirementsScreen projectId="p1" slug="demo" />, "/projects/demo/requirements");
+    await waitFor(() => expect(shownRows()).toEqual(["REQ-34", "REQ-35", "REQ-36"]));
+    p.send(turn());
+    p.send(turn({ name: "ui_requirements_filter", args: { mode: "replace", set: { waitingOn: "agent" } } }));
+    await waitFor(() => expect(shownRows()).toEqual(["REQ-35"]));
+    expect(screen.queryByTestId("ui-action-refused")).toBeNull();
+    const agent = within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "An agent" });
+    expect(agent).toHaveAttribute("data-assistant", "true");
+    const [real] = REAL_UI_CALLS.filter((c) => c.name === "ui_requirements_filter" && c.expect === "ok");
+    p.send(turn({ name: "ui_requirements_filter", args: (real as { input: Record<string, unknown> }).input }));
+    await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
+    expect(window.location.search).toBe("?waiting=you");
+    expect(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" })).toHaveAttribute("data-assistant", "true");
   });
 
   it("navigates to Feedback and filters it by running and phase, each field a chip", async () => {
@@ -298,6 +321,28 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     expect(screen.queryByTestId("ui-action-refused")).toBeNull();
     expect(screen.getByTestId("issue-plan")).toHaveAttribute("data-highlighted", "true");
     await waitFor(() => expect(snapshot().highlight).toEqual({ target: "section", section: "plan", of: "ISS-493" }));
+  });
+
+  // ISS-495, QA of dev.220: the model filled every slot (`step: "x"` beside the section), and the
+  // browser read back what core forwarded with the input schema and refused it. The real calls, in the
+  // form core forwards them, land on the page.
+  it("marks the plan for the real calls the model made, a placeholder step beside the section included", async () => {
+    const real = REAL_UI_CALLS.filter((c) => c.name === "ui_highlight" && c.expect === "ok" && JSON.stringify(c.input).includes('"section":"plan"'));
+    expect(real.length).toBeGreaterThanOrEqual(3);
+    for (const call of real) {
+      const p = page(
+        <section data-testid="view-overview">
+          <div data-highlight="plan" data-testid="issue-plan" />
+        </section>,
+        `/projects/demo/issues/${(call.input.target as { key: string }).key}`,
+      );
+      p.send(turn());
+      p.send(turn({ name: call.name, args: call.input }));
+      expect(screen.queryByTestId("ui-action-refused"), JSON.stringify(call.input)).toBeNull();
+      expect(screen.getByTestId("issue-plan")).toHaveAttribute("data-highlighted", "true");
+      p.unmount();
+      highlightStore.clear();
+    }
   });
 
   it("refuses a key that is not the record open beside the chat, naming both", () => {

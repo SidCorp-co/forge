@@ -27,6 +27,7 @@ import {
   NON_EMPTY,
   SINGLE_LINE,
 } from './text-rules.js';
+import { UI_ACTS_GROUNDED } from './ui-claims-rule.js';
 
 function cell(audience: Audience, intent: Intent, rules: CellSpec['rules']): CellSpec {
   return { id: cellId(audience, intent), audience, intent, rules };
@@ -59,6 +60,7 @@ const SHIPPED: readonly CellSpec[] = [
     ISSUE_KEYS_EXIST,
     ISSUE_LINK_SHAPE,
     CREATION_CLAIMS_GROUNDED,
+    UI_ACTS_GROUNDED,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
     STATUS_CLAIMS_GROUNDED,
