@@ -421,7 +421,7 @@ impl Config {
     /// so one rename took the other's file away and failed naming no path.
     /// Here the file is read again under an OS lock beside it, so `change`
     /// sees what the last writer left, and the write lands through a temp file
-    /// only this call owns. The lock is the OS's, so a process that dies holding
+    /// that no other writer can be using. The lock is the OS's, so a process that dies holding
     /// it leaves none behind.
     ///
     /// `change` runs under the lock and must not wait on anything: it
@@ -469,22 +469,18 @@ fn take_turn(lock: &std::path::Path) -> Result<std::fs::File> {
     Ok(file)
 }
 
-/// Write `body` to a temp file only this call can have made, beside `file`,
-/// and rename it over `file`: a reader sees the old config or the new and
-/// never a half-written one, and a failure leaves no temp file behind.
+/// Write `body` to a temp file beside `file`, then rename it over `file`: a
+/// reader sees the old config or the new and never a half-written one.
+///
+/// Only the holder of [`CONFIG_LOCK`] gets here, so the one temp name is its
+/// own for as long as it holds the lock. A file under that name is what a
+/// process that died mid-write left, and it is overwritten rather than refused:
+/// a temp name made unique per process would leave that file for ever, or
+/// collide with it when the process id came round again.
 fn write_beside(file: &std::path::Path, body: &str) -> Result<()> {
     use std::io::Write;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let tmp = file.with_extension(format!(
-        "toml.{}.{}.tmp",
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    let written = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&tmp)
+    let tmp = file.with_extension("toml.tmp");
+    let written = std::fs::File::create(&tmp)
         .map_err(|e| io_step("create", &tmp, &e))
         .and_then(|mut f| {
             f.write_all(body.as_bytes())
@@ -1699,6 +1695,27 @@ mod tests {
         let now = Config::load().unwrap();
         assert_eq!(now.device_id.as_deref(), Some("dev-1"));
         assert_eq!(now.core_url.as_deref(), Some("https://core.example.com"));
+    }
+
+    /// ISS-1330. A temp file a dead process left under the temp name does not
+    /// fail the next save, and is not left behind by it.
+    #[test]
+    fn a_temp_file_a_dead_writer_left_is_overwritten_by_the_next_save() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-leftover");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", own.path());
+        let dir = own.path().join("forge-runner");
+        std::fs::create_dir_all(&dir).unwrap();
+        let abandoned = dir.join("config.toml.tmp");
+        std::fs::write(&abandoned, "half a config from a writer that died").unwrap();
+        Config::update(|cfg| {
+            cfg.device_id = Some("dev-1".into());
+            Ok(())
+        })
+        .expect("an abandoned temp file must not fail the save");
+        assert_eq!(Config::load().unwrap().device_id.as_deref(), Some("dev-1"));
+        assert!(!abandoned.exists(), "the temp file was left behind");
     }
 
     /// ISS-1330. A change that fails writes nothing, and one that leaves the
