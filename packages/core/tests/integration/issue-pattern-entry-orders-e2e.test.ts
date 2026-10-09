@@ -20,17 +20,17 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { THIS_REPOSITORY } from '../../src/lib/this-repository.js';
-import { api, userToken } from '../helpers/api.js';
+import { userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
-import {
-  addProjectMember,
-  createTestIssue,
-  createTestProject,
-  createTestUser,
-  rows,
-} from '../helpers/factories.js';
+import { addProjectMember, createTestIssue, createTestUser, rows } from '../helpers/factories.js';
 import { passingReport } from '../helpers/merge-check-report.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import {
+  callerFor,
+  refusalCodes as codes,
+  ok,
+  projectBuiltFrom,
+  statusOf,
+} from '../helpers/pattern-world.js';
 
 /** What the stand-in host answers for `<ref>:<path>`; anything unset is missing at that ref. */
 const host = vi.hoisted(() => ({
@@ -55,6 +55,7 @@ vi.mock('../../src/integrations/source-host/index.js', async (original) => ({
 }));
 
 const tokens = { reviewer: '', author: '' };
+const call = callerFor(tokens);
 let reviewerId = '';
 let forge = '';
 let seq = 0;
@@ -70,17 +71,7 @@ beforeAll(async () => {
   const reviewer = await createTestUser({ verified: true });
   const author = await createTestUser({ kind: 'agent' });
   reviewerId = reviewer.id;
-  const { id } = await createTestProject(reviewer.id);
-  await seedProjectDocument(id, reviewer.id, {
-    environments: {
-      dev: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
-    },
-    source: {
-      type: 'git',
-      git: { repository: THIS_REPOSITORY, defaultBranch: 'main', branches: ['main'] },
-    },
-  });
-  forge = id;
+  forge = await projectBuiltFrom(reviewer.id, THIS_REPOSITORY);
   await addProjectMember(forge, reviewer.id, 'admin');
   await addProjectMember(forge, author.id, 'member');
   tokens.reviewer = await userToken(reviewer.id);
@@ -96,23 +87,6 @@ beforeEach(() => {
   host.reads.length = 0;
 });
 
-async function call(
-  who: keyof typeof tokens,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: Doc }> {
-  const res = await api(tokens[who], method, path, body);
-  return { status: res.status, body: res.body as Doc };
-}
-
-function ok(res: { status: number; body: Doc }, status = 200): Doc {
-  expect([res.status, res.body]).toEqual([status, expect.anything()]);
-  return res.body;
-}
-
-const codes = (res: { body: Doc }): string[] =>
-  (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
 const detail = (res: { body: Doc }): string => res.body.error?.refusals?.[0]?.detail ?? '';
 
 async function inProgress(): Promise<string> {
@@ -184,9 +158,6 @@ async function judged(issue: string): Promise<void> {
 
 const toAwaitingRelease = (issue: string) =>
   call('reviewer', 'POST', `/api/issues/${issue}/transition`, { toStatus: 'awaiting_release' });
-
-const statusOf = async (issue: string) =>
-  (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${issue}`))[0]?.status;
 
 const decisionOf = async (patternId: string) =>
   (

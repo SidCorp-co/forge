@@ -20,39 +20,34 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { THIS_REPOSITORY } from '../../src/lib/this-repository.js';
-import { api, userToken } from '../helpers/api.js';
+import { userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
   createTestIssue,
   createTestModule,
-  createTestProject,
   createTestUser,
   rows,
   seedIssueStatus,
 } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import {
+  callerFor,
+  ok,
+  projectBuiltFrom,
+  type Res,
+  refusalCodes as refused,
+} from '../helpers/pattern-world.js';
 
 const tokens = { admin: '', author: '', viewer: '' };
+const call = callerFor(tokens);
 let adminId = '';
 let forge = '';
 let other = '';
 let seq = 0;
 
-const environments = {
-  dev: {
-    tier: 'production' as const,
-    deploysFrom: 'main',
-    deployment: { mode: 'external' as const },
-  },
-};
-
-async function projectBuiltFrom(ownerId: string, repository: string): Promise<string> {
-  const { id } = await createTestProject(ownerId);
-  await seedProjectDocument(id, ownerId, {
-    environments,
-    source: { type: 'git', git: { repository, defaultBranch: 'main', branches: ['main'] } },
-  });
+/** A project built from `repository`, holding the modules and the label a design names. */
+async function designedProject(ownerId: string, repository: string): Promise<string> {
+  const id = await projectBuiltFrom(ownerId, repository);
   await createTestModule(id, 'issues');
   await createTestModule(id, 'db');
   await db.execute(
@@ -69,8 +64,8 @@ beforeAll(async () => {
   const author = await createTestUser({ kind: 'agent' });
   const viewer = await createTestUser({ verified: true });
   adminId = admin.id;
-  forge = await projectBuiltFrom(admin.id, THIS_REPOSITORY);
-  other = await projectBuiltFrom(admin.id, 'github.com/acme/shop');
+  forge = await designedProject(admin.id, THIS_REPOSITORY);
+  other = await designedProject(admin.id, 'github.com/acme/shop');
   for (const p of [forge, other]) {
     await addProjectMember(p, admin.id, 'admin');
     await addProjectMember(p, author.id, 'member');
@@ -85,26 +80,7 @@ afterAll(async () => {
   await closeWorld();
 });
 
-async function call(
-  who: keyof typeof tokens,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: Doc }> {
-  const res = await api(tokens[who], method, path, body);
-  return { status: res.status, body: res.body as Doc };
-}
-
-function ok(res: { status: number; body: Doc }, status = 200): Doc {
-  expect([res.status, res.body]).toEqual([status, expect.anything()]);
-  return res.body;
-}
-
-function refused(res: { status: number; body: Doc }): string[] {
-  return (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
-}
-
-function detailOf(res: { status: number; body: Doc }): string {
+function detailOf(res: Res): string {
   return (res.body.error?.refusals ?? []).map((r: Doc) => r.detail).join(' | ');
 }
 

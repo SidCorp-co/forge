@@ -26,13 +26,16 @@ import {
   createTestDevice,
   createTestIssue,
   createTestModule,
-  createTestProject,
   createTestUser,
   rows,
 } from '../helpers/factories.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import {
+  refusalCodes as codes,
+  projectBuiltFrom,
+  type Res,
+  statusOf,
+} from '../helpers/pattern-world.js';
 
-type Res = { status: number; body: Doc };
 interface World {
   id: string;
   box: string;
@@ -49,19 +52,6 @@ let adminId = '';
 let adminToken = '';
 let authorToken = '';
 let seq = 0;
-
-async function projectBuiltFrom(ownerId: string, repository: string | null): Promise<string> {
-  const { id } = await createTestProject(ownerId);
-  if (repository) {
-    await seedProjectDocument(id, ownerId, {
-      environments: {
-        dev: { tier: 'production', deploysFrom: 'main', deployment: { mode: 'external' } },
-      },
-      source: { type: 'git', git: { repository, defaultBranch: 'main', branches: ['main'] } },
-    });
-  }
-  return id;
-}
 
 beforeAll(async () => {
   testEnv();
@@ -110,7 +100,6 @@ async function call(
 }
 const asBox = (w: World, method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown) =>
   call(w.pat, method, path, body);
-const codes = (r: Res): string[] => (r.body?.error?.refusals ?? []).map((x: Doc) => x.code);
 const patterns = (issue: string) => `/api/issues/${issue}/patterns`;
 
 async function issueAt(w: World, status: string): Promise<{ id: string; key: string }> {
@@ -118,9 +107,6 @@ async function issueAt(w: World, status: string): Promise<{ id: string; key: str
   const row = await createTestIssue(w.id, adminId, seq, { status, createdAt: new Date() });
   return { id: row.id, key: `ISS-${seq}` };
 }
-
-const statusOf = async (id: string) =>
-  (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${id}`))[0]?.status;
 
 /** A run session the box opens over `key`, which takes the issue's lease: the box's run id. */
 async function openRun(w: World, key: string): Promise<string> {

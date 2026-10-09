@@ -580,6 +580,7 @@
     "label.threadStatus.waiting_on_you": "Waiting on you",
     "label.workStep.build": "Build",
     "label.workStep.clarify": "Clarify",
+    "label.workStep.design": "Design",
     "label.workStep.plan": "Plan",
     "label.workStep.release": "Release",
     "label.workStep.test": "Test",

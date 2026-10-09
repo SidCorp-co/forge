@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { THIS_REPOSITORY } from '../../src/lib/this-repository.js';
-import { api, userToken } from '../helpers/api.js';
+import { userToken } from '../helpers/api.js';
 import { closeWorld, type Doc, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
@@ -24,39 +24,27 @@ import {
   createTestDevice,
   createTestIssue,
   createTestModule,
-  createTestProject,
   createTestUser,
-  rows,
   seedIssueStatus,
 } from '../helpers/factories.js';
 import { passingReport } from '../helpers/merge-check-report.js';
-import { seedProjectDocument } from '../helpers/release-world.js';
+import {
+  callerFor,
+  ok,
+  projectBuiltFrom,
+  refusalCodes as refused,
+  statusOf,
+} from '../helpers/pattern-world.js';
 
 let readAdmissibleIssues: typeof import('../../src/devices/admissible.js').readAdmissibleIssues;
 
 const tokens = { reviewer: '', author: '', viewer: '' };
+const call = callerFor(tokens);
 let reviewerId = '';
 let forge = '';
 let other = '';
 let box = '';
 let seq = 0;
-
-const environments = {
-  dev: {
-    tier: 'production' as const,
-    deploysFrom: 'main',
-    deployment: { mode: 'external' as const },
-  },
-};
-
-async function projectBuiltFrom(ownerId: string, repository: string): Promise<string> {
-  const { id } = await createTestProject(ownerId);
-  await seedProjectDocument(id, ownerId, {
-    environments,
-    source: { type: 'git', git: { repository, defaultBranch: 'main', branches: ['main'] } },
-  });
-  return id;
-}
 
 beforeAll(async () => {
   testEnv();
@@ -89,25 +77,6 @@ afterAll(async () => {
 async function issueAt(projectId: string, status: string): Promise<string> {
   seq += 1;
   return (await createTestIssue(projectId, reviewerId, seq, { status, createdAt: new Date() })).id;
-}
-
-async function call(
-  who: keyof typeof tokens,
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
-  path: string,
-  body?: unknown,
-): Promise<{ status: number; body: Doc }> {
-  const res = await api(tokens[who], method, path, body);
-  return { status: res.status, body: res.body as Doc };
-}
-
-function ok(res: { status: number; body: Doc }, status = 200): Doc {
-  expect([res.status, res.body]).toEqual([status, expect.anything()]);
-  return res.body;
-}
-
-function refused(res: { status: number; body: Doc }): string[] {
-  return (res.body.error?.refusals ?? []).map((r: Doc) => r.code);
 }
 
 const patterns = (issue: string) => `/api/issues/${issue}/patterns`;
@@ -162,9 +131,6 @@ const checked = (issue: string, touched: Parameters<typeof mark>[1]) =>
     `/api/issues/${issue}/merge-check`,
     passingReport({ base: { branch: 'main', sha: 'b'.repeat(40) }, head: SHA, touched }),
   );
-
-const statusOf = async (issue: string) =>
-  (await rows<{ status: string }>(sql`SELECT status FROM issues WHERE id = ${issue}`))[0]?.status;
 
 const ids = { reuse: '', held: '', pattern: '' };
 
