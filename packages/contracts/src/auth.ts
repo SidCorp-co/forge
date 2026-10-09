@@ -6,6 +6,8 @@ export const AUTH_REFUSAL_CODES = [
 	"AGENT_CANNOT_LOGIN",
 	"EMAIL_ALREADY_REGISTERED",
 	"PREFERENCE_CHANGE_SUPERSEDED",
+	"DEMO_MODE_OFF",
+	"DEMO_MEMBER_MISSING",
 ] as const;
 
 export type AuthRefusalCode = (typeof AUTH_REFUSAL_CODES)[number];
@@ -22,10 +24,15 @@ export const TURN_AUTHORITY_REFUSAL_CODES = [
 	"TURN_ORIGIN_REFUSED",
 ] as const;
 
-export type TurnAuthorityRefusalCode = (typeof TURN_AUTHORITY_REFUSAL_CODES)[number];
+export type TurnAuthorityRefusalCode =
+	(typeof TURN_AUTHORITY_REFUSAL_CODES)[number];
 export const AUTH_REFUSAL_STATUSES = {
 	PREFERENCE_CHANGE_SUPERSEDED: 409,
+	DEMO_MODE_OFF: 404,
+	DEMO_MEMBER_MISSING: 409,
 	TURN_NO_ROLE: 403,
 	TURN_DEVICE_NO_ROLE: 403,
 	TURN_ORIGIN_REFUSED: 403,
-} as const satisfies RefusalStatuses<AuthRefusalCode | TurnAuthorityRefusalCode>;
+} as const satisfies RefusalStatuses<
+	AuthRefusalCode | TurnAuthorityRefusalCode
+>;

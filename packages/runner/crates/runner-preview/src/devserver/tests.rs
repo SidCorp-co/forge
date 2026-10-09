@@ -118,6 +118,32 @@ async fn a_server_that_never_answers_is_not_listening_and_is_stopped() {
     stop(server.child).await;
 }
 
+/// A command that starts a stack of its own (a database container) removes it when told to stop.
+/// The leader here dies on the signal at once, as a shell does; the process it left behind needs a
+/// second to finish, and the group is not killed until it has had it.
+#[cfg(unix)]
+#[tokio::test]
+async fn stopping_waits_for_the_whole_group_not_only_its_leader() {
+    let dir = std::env::temp_dir().join(format!("forge-stop-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    let done = dir.join("torn-down");
+    let command = format!(
+        "(trap 'sleep 1; echo done > {}; exit 0' TERM; sleep 30 & wait) & echo started; exec sleep 30",
+        done.display()
+    );
+    let mut server = spawn(&dir, &command, 1, &no_env()).expect("spawned");
+    // let the background half install its trap before the signal arrives
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let _ = server.child.try_wait();
+    stop(server.child).await;
+    let torn_down = done.exists();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(
+        torn_down,
+        "the process the leader left behind finished its teardown before the group was killed"
+    );
+}
+
 #[test]
 fn a_detail_keeps_the_last_characters() {
     let long = "x".repeat(DETAIL_LIMIT) + "the end";
