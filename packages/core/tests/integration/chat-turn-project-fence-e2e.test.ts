@@ -297,7 +297,6 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_show: 'draws a block of a run this turn made into the room',
   forge_template: "a template run, kept as the asker's own read",
 };
-
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
   ['forge_feedback', { kind: 'bug', title: 'Viewer feedback', screen: '/board' }, 'project.write'],
