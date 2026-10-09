@@ -21,6 +21,7 @@
 
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
+import { RECORD_REVIEW_SHAPE, recordReviewRequestSchema } from '@forge/contracts/issue-review';
 import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
 import { MERGE_CHECK_SHAPE, mergeCheckReportSchema } from '@forge/contracts/merge-check';
 import { type Context, Hono } from 'hono';
@@ -33,6 +34,7 @@ import { mergedLandingSchema } from './landing-evidence.js';
 import { recordMergeCheck } from './merge-check.js';
 import { warningsOf } from './merge-check-rules.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
+import { issueReviewOf, recordReview } from './review.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -121,5 +123,32 @@ issueMergeRoutes.post(
       { id: scope.id, allowed: true, head: report.head, record, warnings: warningsOf(report) },
       201,
     );
+  },
+);
+
+// The review (Issue to release r20 `rule-merge`, REQ-36 BC-8, ISS-473): what a review of the issue
+// owes and those recorded, and the record of one, refused by name or kept for the mark to ask for.
+issueMergeRoutes.get('/:id/review', zValidator('param', idParamSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  const scope = await heldIssue(id, c.get('userId'), 'project.read');
+  return c.json(await issueReviewOf({ id: scope.id, projectId: scope.projectId }));
+});
+
+issueMergeRoutes.post(
+  '/:id/review',
+  zValidator('param', idParamSchema),
+  strictBody(recordReviewRequestSchema, RECORD_REVIEW_SHAPE),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const scope = await heldIssue(id, c.get('userId'), 'project.write');
+    const actor = restActor(c);
+    const { review } = await recordReview({
+      issue: { id: scope.id, projectId: scope.projectId, status: scope.status },
+      body: c.req.valid('json'),
+      actor: { type: actor.type, id: actor.id, agency: actor.agency },
+      author: { userId: actor.id, agency: actor.agency },
+      box: c.get('patDeviceId') ?? c.get('deviceId') ?? null,
+    });
+    return c.json({ id: scope.id, review }, 201);
   },
 );

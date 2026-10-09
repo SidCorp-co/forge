@@ -266,11 +266,12 @@ export async function writeKernelRecord(executor: Tx, input: KernelRecordInput):
 }
 
 /** The kinds core writes on its own account although a caller may post one too. */
-type CoreWrittenKind = Extract<RecordEventKind, 'verification'>;
+type CoreWrittenKind = Extract<RecordEventKind, 'verification' | 'review'>;
 
 /**
- * A record core writes from a check it decided itself (the merge check's `verification`), marked as
- * core's so a reader asking `kernelOnly` never takes a caller's post of the same kind for it.
+ * A record core writes from a check it decided itself (the merge check's `verification`, a review's
+ * `review`), marked as core's so a reader asking `kernelOnly` never takes a caller's post of the same
+ * kind for it.
  */
 export async function writeCoreRecord(
   executor: Tx,

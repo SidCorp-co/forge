@@ -17,7 +17,7 @@ import { FAST_LANE_MERGE_CHECKS, LANES, type Lane } from "./fast-lane.js";
 import { ARTIFACT_CHANGES } from "./landing-artifacts.js";
 import { PATTERN_ENTRY_MISSING } from "./patterns.js";
 
-/** Every check a merge needs, by name. Replaying kept probes at merge (REQ-36 BC-9) and the review (ISS-473) join here. */
+/** Every check a merge needs, by name. Replaying kept probes at merge (REQ-36 BC-9) joins here; the review is its own record, which the mark asks (`./issue-review.ts`). */
 export const REQUIRED_MERGE_CHECKS = [
 	"rebased-on-base",
 	"typecheck",

@@ -45,6 +45,7 @@ const readCommitLanding = vi.fn();
 vi.mock('./commit-landing.js', () => ({ readCommitLanding }));
 // the project declares no merge check and the issue no approved new pattern, so none is owed
 vi.mock('./merge-check.js', () => ({ uncheckedMergeRefusal: async () => null }));
+vi.mock('./review.js', () => ({ unreviewedMergeRefusal: async () => null }));
 vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,

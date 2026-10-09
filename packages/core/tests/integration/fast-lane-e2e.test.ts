@@ -230,7 +230,7 @@ describe('a merge check on the fast lane (BC-7)', () => {
     provideFastLanePorts({ approvedPreviewOf: async (id) => approvals.get(id) ?? null });
   });
 
-  it('records the approved web change with the fast checks alone, and the mark then lands it', async () => {
+  it('records the approved web change with the fast checks alone, and the mark then asks only its review', async () => {
     const issue = await issueIn(declared);
     approve(issue);
     const res = await check(issue, fastReport());
@@ -244,7 +244,8 @@ describe('a merge check on the fast lane (BC-7)', () => {
       note: 'landed on the fast lane',
       changedPaths: { commit: HEAD, changes: [{ path: WEB_FILE, change: 'changed' }] },
     });
-    expect(mark.status).toBe(200);
+    // the fast check stands for the merge check; the review is asked on either lane (issue-review-e2e)
+    expect(codes(mark)).toEqual(['MERGE_REVIEW_MISSING']);
   });
 
   it('refuses one whose patch moved after approval, naming both patches', async () => {

@@ -63,8 +63,8 @@ export const NOT_RUN_HERE = [
   },
   {
     name: 'review',
-    owner: 'ISS-473',
-    why: 'a review is recorded on the issue, not run by this check',
+    owner: 'POST /api/issues/:id/review',
+    why: 'another run reviews the diff against its patterns, rerunning nothing, and the mark asks it',
   },
 ];
 

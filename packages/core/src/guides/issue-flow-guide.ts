@@ -180,6 +180,19 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
   \`fastLane\`), \`FAST_LANE_NOT_APPROVED\`, \`FAST_LANE_CHANGED_SINCE_APPROVAL\` (the change moved
   after approval: have it approved again) and \`FAST_LANE_NOT_ELIGIBLE\` (a kernel, migration,
   permissions or security file, or one outside the fast paths). Each of those means the full check.
+- **The review.** Where the project declares \`validation.mergeCheck: required\`, on either lane,
+  a run other than the one that built the change reviews it before the mark, rerunning nothing.
+  \`GET /api/issues/:id/review\` lists what it owes: each checklist line of every pattern the
+  design chose, and each criterion the design classes a code property (on a project that reads no
+  catalog, those criteria alone). \`POST /api/issues/:id/review\`
+  \`{ base, head, checklist: [{ pattern, line, result, note }], criteria: [{ criterion, result, reason, evidence }], run? }\`
+  records it, \`result\` being \`pass\`, \`fail\` or (a line only) \`not_applicable\`, and writes each
+  criterion's result as the review's verdict at \`head\`. It is refused \`REVIEW_BY_BUILDER\` from
+  the building run, \`REVIEW_RUN_UNNAMED\` from a box call naming no run while that run is live
+  there (send \`run\`, the reviewing run's id), and \`REVIEW_LINE_MISSING\`,
+  \`REVIEW_LINE_REPEATED\` or \`REVIEW_LINE_UNKNOWN\` for a line left out, sent twice or not owed.
+  A body carrying checks, tests or probes is refused as an unknown key: the record cites what is
+  recorded at \`head\` instead.
 
 ### 5. Prove it, one criterion at a time
 Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges, so
@@ -221,6 +234,8 @@ naming its own rule before the green counts.
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
    Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
    recorded at the commit it marks (the commit named, else the one the issue records).
+   Where the project declares the merge check, it is then refused \`MERGE_REVIEW_MISSING\` until a
+   passing review by a reviewer other than the building run stands at that commit.
    On the fast lane the deploy that follows is web only:
    \`POST /api/projects/:projectId/integrations/coolify/deploy\` \`{ issueId, targets }\`, the labels
    \`fastLane.deployTargets\` declares (\`forge_coolify_deploy\` takes the same \`targets\`). It is

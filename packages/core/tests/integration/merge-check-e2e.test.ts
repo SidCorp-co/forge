@@ -286,12 +286,12 @@ describe('the mark asks for a passing check where one is owed', () => {
     expect(res.body.error.refusals[0].detail).toContain(HEAD.slice(0, 12));
   });
 
-  it('marks the commit a passing check is recorded at', async () => {
+  it('takes the passing check at the commit, and then asks its review (issue-review-e2e marks it)', async () => {
     const issue = await issueIn(declared);
     expect((await check(issue, report())).status).toBe(201);
     const res = await mark(issue, HEAD);
-    expect([res.status, res.body.action]).toEqual([200, 'merged']);
-    expect(await mergedAt(issue)).not.toBeNull();
+    expect([res.status, codes(res)]).toEqual([422, ['MERGE_REVIEW_MISSING']]);
+    expect(await mergedAt(issue)).toBeNull();
   });
 
   it('asks nothing on a project that declares no check, for an issue with no new pattern', async () => {

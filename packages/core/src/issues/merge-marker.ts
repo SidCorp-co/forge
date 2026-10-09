@@ -37,6 +37,7 @@ import { refuseUnmarkOnClosed } from './merged-at.js';
 import { markEntryRefusal } from './pattern-entry.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { unreviewedMergeRefusal } from './review.js';
 import { findMissingWorkEvidence, latestHandoffCommit } from './work-evidence.js';
 
 type AuditComment = { id: string; body: string; parentId: string | null };
@@ -410,7 +411,8 @@ async function writeMarkTrail(
  * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
  * the one the row or the issue's work evidence already records. Before that, each approved new
  * pattern's catalog page must be in the change at that commit (`pattern-entry.ts`): a check that ran
- * while the pattern waited on its reviewer did not ask for it.
+ * while the pattern waited on its reviewer did not ask for it. After it, a project that declares the
+ * merge check asks a passing review at that commit by another than the building run (`review.ts`).
  */
 async function refuseUncheckedMerge(
   args: MergeMarkArgs,
@@ -433,6 +435,12 @@ async function refuseUncheckedMerge(
     commit,
   });
   if (detail) throw refuse('MERGE_CHECK_MISSING', detail, '/commit');
+  const review = await unreviewedMergeRefusal({
+    issueId: prior.id,
+    projectId: prior.projectId,
+    commit,
+  });
+  if (review) throw refuse('MERGE_REVIEW_MISSING', review, '/commit');
 }
 
 /** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */

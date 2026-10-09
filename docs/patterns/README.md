@@ -35,6 +35,17 @@ generates from these pages; `pnpm verify` refuses it when it disagrees with them
 enforced by `scripts/check-module-boundaries.mjs` and `scripts/check-module-shape.mjs` (the
 relations axis); the Core module entry points at them and restates none of their rules.
 
+## Reviewing a change against its entries
+
+A review checks the diff against the **Review checklist** of every entry the issue's design chose,
+one result per line, and judges each criterion the design classes a code property. It reruns
+nothing: it cites the checks and verdicts recorded at the head it reviewed. It is recorded with
+`POST /api/issues/:id/review`, by a run other than the one that built the change, and
+`GET /api/issues/:id/review` lists the lines it owes. The lines are read from this build's catalog,
+so an approved new pattern owes none until a release carries its page. On a project that declares
+the merge check, the merge mark is refused `MERGE_REVIEW_MISSING` until a passing review stands at
+the commit it marks (`packages/core/src/issues/review.ts`).
+
 ## Naming a pattern on an issue
 
 `POST /api/issues/:id/patterns` `{ pattern: '<slug>', summary?, run? }`, the slug being an entry's

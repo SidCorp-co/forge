@@ -94,7 +94,7 @@ describe('what a merge needs', () => {
   it('says probes and review are not run here, each with what owns it', () => {
     expect(NOT_RUN_HERE.map((n) => [n.name, n.owner])).toEqual([
       ['probes', 'REQ-36 BC-9'],
-      ['review', 'ISS-473'],
+      ['review', 'POST /api/issues/:id/review'],
     ]);
   });
 
