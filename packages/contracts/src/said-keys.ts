@@ -527,6 +527,7 @@ export const SAID = {
 	"standing.acts": { en: "{acts}", vars: { acts: "saidList" } },
 	"standing.effect.designAt": { en: "{title} revision {r}", vars: { title: "name", r: "count" } },
 	"standing.effect.contractAt": { en: "{contract} {v}", vars: { contract: "name", v: "version" } },
+	"requirements.rule.noRunner": { en: "no runner is bound to this project, so no master takes what it owes; a person acts instead, or binds a runner" },
 	"requirements.rule.draftAuthor": { en: "an open draft revision waits on its author to propose it" },
 	"requirements.rule.agentReturned": { en: "its signer returned this agent-written revision with a reason, so the master that runs that agent revises it: core wakes it on the return and its box carries the return to every pass until it is proposed or dropped" },
 	"requirements.rule.agentDraft": { en: "an agent wrote this draft, under whichever account it is paired with, so the master that runs it proposes or drops it" },

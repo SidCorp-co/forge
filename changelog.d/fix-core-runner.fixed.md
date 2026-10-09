@@ -1,1 +1,1 @@
-**Core and runner:** releases queue ahead of onboarding, which goes only to boxes reaching its project; waits name who can act without a runner; token project lists are editable; install.sh checks sha256; no provider key asked.
+**Core and runner:** waits name who can act where no runner is bound; token project lists are editable; install.sh checks sha256; no provider key asked.

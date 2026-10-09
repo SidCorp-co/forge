@@ -190,13 +190,12 @@ const proposedSuggestionsOf = (ids: string[]) =>
     .from(suggestions)
     .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed')));
 
-/** One online runner of the project, if any: where none is online no master can act (FB-77). */
-const onlineRunnerOf = (projectId: string) =>
-  db
-    .select({ id: runners.id })
-    .from(runners)
-    .where(and(eq(runners.projectId, projectId), eq(runners.status, 'online')))
-    .limit(1);
+/**
+ * One runner bound to the project, if any, whatever its status: where none is bound no master can
+ * act (FB-77); a runner briefly offline still carries its master.
+ */
+const boundRunnerOf = (projectId: string) =>
+  db.select({ id: runners.id }).from(runners).where(eq(runners.projectId, projectId)).limit(1);
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
@@ -221,7 +220,7 @@ export async function standingsOf(
     contractPins,
     unapproved,
     policy,
-    onlineRunners,
+    boundRunners,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -284,7 +283,7 @@ export async function standingsOf(
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
-    onlineRunnerOf(projectId),
+    boundRunnerOf(projectId),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -357,7 +356,7 @@ export async function standingsOf(
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         judge: policy?.document.qa ?? null,
-        runnerOnline: onlineRunners.length > 0,
+        runnerBound: boundRunners.length > 0,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,

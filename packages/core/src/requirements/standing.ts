@@ -109,10 +109,10 @@ export interface StandingInput {
   /** Who judges an issue's criteria: its own runs (`self`) or a judge apart from them (`independent`), the policy's `qa`; null where no policy is declared. */
   judge: PolicyQaMode | null;
   /**
-   * Whether the project has a runner online, so a master can act (FB-77). False reads a wait on
-   * "Master" as a wait on a person; absent reads as live.
+   * Whether a runner is bound to the project, so a master can act (FB-77). False reads a wait on
+   * "Master" as the signer's, naming why; absent reads as bound.
    */
-  runnerOnline?: boolean;
+  runnerBound?: boolean;
   /** When the current revision was first agreed: its first baseline. */
   agreedAt: Date | null;
   /**
@@ -426,6 +426,29 @@ export function deliveryAt<I extends ProofIssue>(input: ProofInput<I>, revision:
   return { live, coverage, delivery: deliveryOf(input.status, live, coverage) };
 }
 
+/**
+ * A master's wait on a project no runner is bound to: no master can take it, so the signer owes it
+ * (the viewer, where they can sign off), under the rule that says why, still about what it was about
+ * (FB-77).
+ */
+function signerInsteadOfMaster(
+  viewer: StandingInput['viewer'],
+  was: RequirementWaitingOn,
+): { group: 'needs_you' | 'waiting'; waitingOn: RequirementWaitingOn } {
+  const signer = signerWait(viewer, was.says.act, say('requirements.rule.noRunner'));
+  return {
+    group: signer.group,
+    waitingOn: {
+      ...waitingOn(
+        signer.waitingOn.kind,
+        { ...signer.waitingOn.says, ...(was.says.effect ? { effect: was.says.effect } : {}) },
+        { ref: was.ref, dueAt: was.dueAt },
+      ),
+      ...(was.refers ? { refers: was.refers } : {}),
+    },
+  };
+}
+
 /** The same wait under another rule, still about what it was about. */
 const waitingOn_ = (w: RequirementWaitingOn, rule: Said): RequirementWaitingOn => ({
   ...waitingOn(w.kind, { ...w.says, rule }, { ref: w.ref, dueAt: w.dueAt }),
@@ -438,11 +461,8 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
   const input = { ...raw, phase: delivery.phase };
   const touched = touchedAt(input);
   let { group, waitingOn } = turnOf(input, live, coverage);
-  if (input.runnerOnline === false && waitingOn.says.who.key === MASTER.key) {
-    // no runner can carry a master here, so the wait names who actually can act (FB-77)
-    waitingOn = wait('person', SIGNER, waitingOn.says.act, waitingOn.says.rule, {
-      ...(waitingOn.dueAt ? { dueAt: waitingOn.dueAt } : {}),
-    });
+  if (input.runnerBound === false && waitingOn.says.who.key === MASTER.key) {
+    ({ group, waitingOn } = signerInsteadOfMaster(input.viewer, waitingOn));
   }
   if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
     if (input.owner === null) {

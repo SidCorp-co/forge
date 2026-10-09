@@ -36,4 +36,11 @@ describe('the onboarding prompt', () => {
     expect(prompt).not.toContain('git worktree add');
     expect(prompt).not.toContain(BEFORE_LAST_ACT);
   });
+
+  // an observation is written only on a design with an approved revision and a requirement
+  // (`workflows/rooted.ts:rootGapsOf`); the designs this job proposes have neither, so the write is
+  // always refused WORKFLOW_OBSERVATION_UNROOTED and is never ordered here
+  it('orders no observation write on the designs it has just proposed', () => {
+    expect(analysePrompt(ctx)).not.toMatch(/observations -X POST/);
+  });
 });

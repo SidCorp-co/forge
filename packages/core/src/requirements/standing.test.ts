@@ -136,6 +136,25 @@ describe('whose turn an open draft revision is', () => {
     expect(s.waitingOn).toMatchObject({ kind: 'agent', who: 'Master', act: 'propose or drop r1' });
   });
 
+  // FB-77: with no runner bound no master can take it, so the signer owes it, told why
+  it('waits on you, naming why, when no runner is bound to carry the master', () => {
+    const s = deriveStanding({ ...draftBy('agent'), runnerBound: false });
+    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose or drop r1' });
+    expect(s.waitingOn.says.rule.key).toBe('requirements.rule.noRunner');
+  });
+
+  it('waits on the signer, not on you, when you cannot sign off and no runner is bound', () => {
+    const base = draftBy('agent');
+    const s = deriveStanding({
+      ...base,
+      runnerBound: false,
+      viewer: { userId: 'u2', canSignOff: false, canAdmit: false },
+    });
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({ kind: 'person', who: 'BA or owner' });
+  });
+
   // F32: a returned revision says it was returned, and its master is the one woken to revise it
   it('names a returned agent revision as the master revising it, carried to its passes', () => {
     const base = draftBy('agent');
