@@ -1,6 +1,7 @@
 import { contentLanguageProblem } from '@forge/contracts/content-language';
 import { hostOf } from '@forge/contracts/git-repository';
 import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
+import { previewEnvironmentProblem } from '@forge/contracts/preview';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
 import type { PolicyDocument } from './policy-schema.js';
@@ -257,6 +258,21 @@ function checkTrigger(
   ];
 }
 
+/** A preview's environment is one the project declares and never production (REQ-39 BC-13). */
+function checkPreviewEnvironment(doc: ProjectDocument): ConfigRefusal[] {
+  const named = [
+    { name: doc.preview?.environment, path: pointer('preview', 'environment') },
+    { name: doc.preview?.demo?.environment, path: pointer('preview', 'demo', 'environment') },
+  ];
+  const out: ConfigRefusal[] = [];
+  for (const { name, path } of named) {
+    if (name === undefined) continue;
+    const problem = previewEnvironmentProblem(name, doc.environments, path);
+    if (problem) out.push({ code: problem.code, path, detail: problem.detail });
+  }
+  return out;
+}
+
 function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): ConfigRefusal[] {
   const out: ConfigRefusal[] = [];
   const envs = Object.entries(doc.environments);
@@ -381,6 +397,7 @@ export function checkProjectConfig(
   }
   out.push(...checkStorefrontProvider(doc, ctx));
   out.push(...checkEnvironments(doc, ctx));
+  out.push(...checkPreviewEnvironment(doc));
   out.push(...checkGitlessBindings(doc, ctx));
   out.push(...checkWorkflowTemplates(doc, ctx));
   out.push(...checkContentLanguage(doc));

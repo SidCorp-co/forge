@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	detectPreviewSettings,
+	isPreviewHost,
 	PREVIEW_MACHINE,
 	PREVIEW_REFUSAL_CODES,
+	previewEnvironmentProblem,
 	previewLabelOf,
 	previewRecordSchema,
 	previewReportSchema,
@@ -113,6 +115,17 @@ describe("the preview setting (BC-11)", () => {
 			issuesOf(previewSettingsSchema, { command: "pnpm run dev" }),
 		).toEqual([
 			"port: preview.port is required when the command does not hold {port}: the preview has to know where the dev server listens",
+		]);
+	});
+
+	it("leaves the command empty for the repository to fill, with idle or environment set", () => {
+		expect(issuesOf(previewSettingsSchema, {})).toEqual([]);
+		expect(
+			issuesOf(previewSettingsSchema, { idleMinutes: 45, environment: "dev" }),
+		).toEqual([]);
+		expect(issuesOf(previewSettingsSchema, { idleMinutes: 3 })).toHaveLength(1);
+		expect(issuesOf(previewSettingsSchema, { port: 3000 })).toEqual([
+			"port: preview.port is set and preview.command is not: the port belongs to a command; set preview.command, or clear preview.port so Forge reads both from the repository",
 		]);
 	});
 
@@ -326,6 +339,42 @@ describe("the preview host (BC-4)", () => {
 			previewLabelOf("p-abcdefghijkmnop2.preview.example.dev.evil.co", domain),
 		).toBeNull();
 		expect(previewLabelOf("preview.example.dev", domain)).toBeNull();
+	});
+});
+
+describe("a host under the preview domain, whatever its label (BC-9)", () => {
+	const domain = "preview.example.dev";
+	it("is under the domain for a malformed label too, and for no other host", () => {
+		expect(isPreviewHost("nosuch-qa218.preview.example.dev", domain)).toBe(
+			true,
+		);
+		expect(isPreviewHost("A.B.Preview.Example.Dev:443", domain)).toBe(true);
+		expect(isPreviewHost("preview.example.dev", domain)).toBe(false);
+		expect(isPreviewHost("forge-dev-api.sidcorp.co", domain)).toBe(false);
+		expect(isPreviewHost("x.preview.example.dev.evil.co", domain)).toBe(false);
+	});
+});
+
+describe("the environment a preview names (BC-13)", () => {
+	const environments = { dev: { tier: "dev" }, live: { tier: "production" } };
+	it("is refused by name when production or undeclared, and passes a dev one", () => {
+		expect(
+			previewEnvironmentProblem("dev", environments, "/preview/environment"),
+		).toBeNull();
+		expect(
+			previewEnvironmentProblem("live", environments, "/preview/environment"),
+		).toMatchObject({
+			code: "PREVIEW_PRODUCTION_ENVIRONMENT",
+			detail: expect.stringContaining(
+				"preview.environment names live, whose tier is production",
+			),
+		});
+		expect(
+			previewEnvironmentProblem("x", environments, "/preview/environment"),
+		).toMatchObject({
+			code: "PREVIEW_SETTINGS_INVALID",
+			detail: expect.stringContaining("name one of: dev, live"),
+		});
 	});
 });
 

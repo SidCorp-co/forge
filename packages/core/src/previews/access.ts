@@ -73,7 +73,8 @@ export async function pushStart(tx: Tx, row: PreviewRow, plan: PreviewPlan): Pro
     sessionId: row.sessionId,
     checkout: row.checkout ?? null,
     seed: plan.seed,
-    settings: plan.settings,
+    // a setting with no command is the repository's to fill: the box reports its facts first
+    settings: plan.settings?.command === undefined ? null : plan.settings,
     env: plan.env,
     readyTimeoutSeconds: PREVIEW_LIMITS.readyTimeoutSeconds,
   });

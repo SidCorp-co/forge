@@ -139,6 +139,8 @@
     "previews.settings.idle": "Close after idle minutes",
     "previews.settings.idleEffect": "A preview nobody views for this long stops its dev server. {min} to {max}, {default} when empty.",
     "previews.settings.environment": "Environment",
+    "previews.settings.environmentNone": "The project's dev environment",
+    "previews.settings.environmentRefused": "production: refused",
     "previews.settings.environmentEffect": "The project environment whose variables the dev server gets. Never one whose tier is production.",
     "previews.settings.fastTitle": "Fast lane",
     "previews.settings.fastLead": "Which changes may ship from an approved preview without the full gates. Kernel, migrations, permissions and security files never do, whatever is listed here.",

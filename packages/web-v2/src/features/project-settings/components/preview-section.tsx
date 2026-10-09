@@ -9,7 +9,7 @@
 
 import { useId } from "react";
 import { PREVIEW_LIMITS } from "@forge/contracts/preview";
-import { Input, Skeleton } from "@/design";
+import { Input, Select, type SelectOption, Skeleton } from "@/design";
 import type { DocumentDraft } from "@/features/project-config/use-document-draft";
 import { sectionOf } from "@/features/project-config/use-document-draft";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -49,6 +49,45 @@ function TextField({ draft, root, field, label, effect, placeholder, mono, disab
 					disabled={disabled}
 					className={mono ? "font-mono" : undefined}
 					onChange={(e) => setKey(draft, root, field, e.target.value.trim() === "" ? undefined : e.target.value)}
+				/>
+			}
+		/>
+	);
+}
+
+const PROJECT_DEV = "__project-dev__";
+
+/**
+ * The environment a preview talks to, picked from the ones the project document declares. A
+ * production-tier one is never offered (BC-13); one already saved shows as refused, not as blank.
+ */
+function EnvironmentField({ draft, label, effect, none, refused, disabled }: Omit<FieldProps, "root" | "field"> & { none: string; refused: string }) {
+	const id = useId();
+	const current = obj(draft.get(["preview"])).environment;
+	const declared = obj(draft.get(["environments"]));
+	const options: SelectOption[] = [{ value: PROJECT_DEV, label: none }];
+	for (const [name, env] of Object.entries(declared)) {
+		if (obj(env).tier === "production") {
+			if (name === current) options.push({ value: name, label: `${name} (${refused})`, disabled: true });
+			continue;
+		}
+		options.push({ value: name, label: name });
+	}
+	return (
+		<SettingRow
+			label={label}
+			effect={effect}
+			htmlFor={id}
+			refusals={draft.refusedAt(["preview", "environment"])}
+			control={
+				<Select
+					id={id}
+					aria-label={label}
+					options={options}
+					value={typeof current === "string" ? current : PROJECT_DEV}
+					disabled={disabled}
+					invalid={draft.refusedAt(["preview", "environment"]).length > 0}
+					onChange={(v) => setKey(draft, "preview", "environment", v === PROJECT_DEV ? undefined : v)}
 				/>
 			}
 		/>
@@ -150,7 +189,7 @@ export function PreviewSection({ projectId, slug, canEdit }: { projectId: string
 					placeholder={String(idle.default)}
 					disabled={off}
 				/>
-				<TextField draft={draft} root="preview" field="environment" label={t("previews.settings.environment")} effect={t("previews.settings.environmentEffect")} mono disabled={off} />
+				<EnvironmentField draft={draft} label={t("previews.settings.environment")} effect={t("previews.settings.environmentEffect")} none={t("previews.settings.environmentNone")} refused={t("previews.settings.environmentRefused")} disabled={off} />
 			</SettingGroup>
 			<SettingGroup id="fast-lane" title={t("previews.settings.fastTitle")} lead={t("previews.settings.fastLead")}>
 				<ListField draft={draft} root="fastLane" field="paths" label={t("previews.settings.fastPaths")} effect={t("previews.settings.fastPathsEffect")} placeholder={t("previews.settings.listPlaceholder")} disabled={off} />

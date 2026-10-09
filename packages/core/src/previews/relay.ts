@@ -26,7 +26,13 @@ import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { RefusalError, refusalEnvelope } from '../lib/refusal.js';
 import { actorFor, can, projectResource } from '../permissions/index.js';
-import { labelOfHost, type PreviewSite, previewOrigin, previewSite } from './domain.js';
+import {
+  isHostUnderSite,
+  labelOfHost,
+  type PreviewSite,
+  previewOrigin,
+  previewSite,
+} from './domain.js';
 import {
   closedPage,
   devServerErrorPage,
@@ -55,7 +61,7 @@ import { openTunnelStream, streamEndOf } from './tunnel.js';
 
 /** Whether a request names a preview host: it is answered here, never by the API. */
 export function isPreviewRequest(req: IncomingMessage): boolean {
-  return labelOfHost(req.headers.host, previewSite()) !== null;
+  return isHostUnderSite(req.headers.host, previewSite());
 }
 
 /** The server's listener with preview hosts answered by the relay before `api` sees them. */

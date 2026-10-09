@@ -11,6 +11,7 @@ import {
   type PreviewSettings,
   type PreviewState,
   type PreviewSubjectKind,
+  previewEnvironmentProblem,
   reproduceDataOf,
 } from '@forge/contracts/preview';
 import type { Refusal } from '../lib/refusal.js';
@@ -58,27 +59,9 @@ function environmentOf(
   path: string,
 ): { ok: true; env: Record<string, string> } | { ok: false; refusal: Refusal } {
   if (named !== undefined) {
-    const environment = environments[named];
-    if (!environment) {
-      return {
-        ok: false,
-        refusal: refusal(
-          'PREVIEW_SETTINGS_INVALID',
-          `${path.slice(1).replace(/\//g, '.')} names ${named}, which the project document does not declare; name one of: ${Object.keys(environments).join(', ') || 'none is declared'}`,
-          path,
-        ),
-      };
-    }
-    if (environment.tier === 'production') {
-      return {
-        ok: false,
-        refusal: refusal(
-          'PREVIEW_PRODUCTION_ENVIRONMENT',
-          `${path.slice(1).replace(/\//g, '.')} names ${named}, whose tier is production: a preview talks to a dev environment or demo data, never production (REQ-39 BC-13, REQ-41 BC-22)`,
-          path,
-        ),
-      };
-    }
+    const problem = previewEnvironmentProblem(named, environments, path);
+    if (problem) return { ok: false, refusal: refusal(problem.code, problem.detail, path) };
+    const environment = environments[named] as EnvironmentDeclaration;
     return { ok: true, env: variablesOf(named, environment) };
   }
   const dev = Object.entries(environments).filter(([, e]) => e.tier === 'dev');
