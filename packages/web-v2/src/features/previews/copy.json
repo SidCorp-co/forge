@@ -90,6 +90,26 @@
     "previews.settings.fastPermissions": "Extra permission paths",
     "previews.settings.fastSecurity": "Extra security paths",
     "previews.settings.fastAreaEffect": "Added to the built-in globs for this area. Comma separated.",
-    "previews.settings.listPlaceholder": "packages/web/src/**, packages/web/public/**"
+    "previews.settings.listPlaceholder": "packages/web/src/**, packages/web/public/**",
+    "previews.idea.starting": "Cutting a sketch branch on the box and starting its dev server.",
+    "previews.idea.closed": "This idea preview is closed. Keep it from a live preview, or reopen a kept one from its requirement.",
+    "previews.idea.keep.label": "Keep this idea",
+    "previews.idea.keep.alt": "What this page shows",
+    "previews.idea.keep.altHint": "One sentence a screen reader reads in the picture's place",
+    "previews.idea.keep.button": "Keep as the picture",
+    "previews.idea.keep.failed": "Couldn't keep the preview",
+    "previews.idea.kept.drawn": "Kept as the picture of {key}.",
+    "previews.idea.kept.started": "Started {key} from {from} and kept the preview as its picture.",
+    "previews.idea.kept.open": "Open it",
+    "previews.idea.kept.criteria": "Criteria drafted from what you asked are waiting on the requirement, with a recommendation to accept them.",
+    "previews.idea.kept.noCriteria": "No criteria draft was offered:",
+    "previews.idea.kept.stillFailed": "The kept page could not be drawn here.",
+    "previews.idea.kept.built": "Built on {branch}, {files} files changed.",
+    "previews.idea.offer.title": "Preview an idea for {key}",
+    "previews.idea.offer.what": "Builds the idea on a throwaway branch and shows it live beside this chat. It runs with your own access.",
+    "previews.idea.offer.build": "Build the preview",
+    "previews.idea.reopen.button": "Reopen live",
+    "previews.idea.reopen.failed": "Couldn't reopen the preview",
+    "previews.idea.reopen.brief": "Continue from the kept preview: {alt}"
   }
 }

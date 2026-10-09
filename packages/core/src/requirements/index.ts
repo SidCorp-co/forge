@@ -16,6 +16,7 @@ export { draftPictureRefusals, type Landing, landingIn, NEW_REQUIREMENT } from '
 export { embedRequirementHead, similarRequirements } from './embeddings.js';
 export { feedbackLinksOf } from './feedback-links.js';
 export { plannedRevisionFor, requirementOfIssue } from './issue-links.js';
+export { drawKeptPreview, type KeptPreviewAbout, liveCriteriaOf } from './kept-preview.js';
 export type { ProposeDuplicate } from './near-duplicate.js';
 export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';

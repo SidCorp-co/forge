@@ -115,7 +115,7 @@ import { registerOutboxConsumers } from './outbox-consumers.js';
 import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import { providePreferencesPorts } from './preferences/index.js';
-import { approvedPreviewOf, withPreviewHosts } from './previews/index.js';
+import { approvedPreviewOf, provideKeptPreviewWriter, withPreviewHosts } from './previews/index.js';
 import {
   encryptPlaintextBindingSecrets,
   provideProjectConfigPorts,
@@ -173,6 +173,7 @@ import {
   proposeRequirementDuplicate,
   redactFeedbackSuggestions,
   staleOnTargetRevised,
+  writeKeptPreview,
 } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { readServing } from './whats-new/index.js';
@@ -321,6 +322,7 @@ provideRequirementDependents({
   releaseLeg: releaseLegFor,
   liveBuildHolds,
 });
+provideKeptPreviewWriter({ write: writeKeptPreview });
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,
   deleteMockups: deleteFeedbackMockups,

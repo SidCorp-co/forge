@@ -17,6 +17,7 @@ import { eq, sql } from 'drizzle-orm';
 import {
   createChatSessionRow,
   dispatchInteractiveTurn,
+  mergeSessionMetadata,
   readBoxAuthority,
   refusalError,
   requestSessionSend,
@@ -155,13 +156,7 @@ async function openIdea(
 ): Promise<PreviewRow> {
   await accessFor(projectId, actor, 'project.write', 'open an idea preview');
   const item = await itemOrRefuse(projectId, request.about);
-  if (request.from !== undefined) {
-    // a kept idea's patch is what `from` names; nothing is kept until the keep route lands (BC-16)
-    throw refuse(
-      'PREVIEW_NOT_FOUND',
-      `no kept idea preview ${request.from}: an idea starts from a kept preview's patch, and this one holds none`,
-    );
-  }
+  const kept = request.from === undefined ? null : await keptOf(projectId, request.from);
   const plan = await planOf(projectId, 'idea');
   const placed = await placeOn(projectId, CONFINES_A_CHAT);
   const branch = `sketch/${item.kind === 'requirement' ? 'req' : 'fb'}-${item.key.split('-')[1]}-${suffix(6)}`;
@@ -176,19 +171,50 @@ async function openIdea(
     title: `Sketch of ${item.key}: ${request.brief.slice(0, 60)}`,
     metadata: {
       deviceId: placed.deviceId,
-      sketch: { about: item.key, branch, brief: request.brief },
+      sketch: {
+        about: item.key,
+        branch,
+        brief: request.brief,
+        asked: [...(kept?.asked ?? []), request.brief],
+      },
     },
   });
   return insertSubjectPreview({
     projectId,
     deviceId: placed.deviceId,
     subject: { kind: 'idea', about: { kind: item.kind, key: item.key } as never, branch },
-    checkout: { kind: 'sketch', repoPath: placed.repoPath, path, branch, base: null },
+    // from a kept preview, the sketch is cut at the head the keep committed: the edit continues it
+    checkout: { kind: 'sketch', repoPath: placed.repoPath, path, branch, base: kept?.head ?? null },
     sessionId: session.id,
     feedbackId: null,
     plan,
     createdBy: actor.userId,
   });
+}
+
+/**
+ * The kept preview `from` names: a `preview` picture of this project whose content holds that
+ * preview's id. A box that never held its branch (another box, a pruned repository) fails the start
+ * REF_NOT_FOUND-style at the checkout, by name; nothing here guesses another base.
+ */
+async function keptOf(
+  projectId: string,
+  from: string,
+): Promise<{ head: string; asked: string[] } | null> {
+  const rows = (await db.execute(sql`
+    SELECT p.content FROM requirement_pictures p
+      JOIN requirements r ON r.id = p.requirement_id
+     WHERE r.project_id = ${projectId}::uuid AND p.kind = 'preview' AND p.content->>'previewId' = ${from}
+     ORDER BY p.written_at DESC LIMIT 1
+  `)) as unknown as { content: { head: string; asked: string[] } }[];
+  const content = rows[0]?.content;
+  if (!content) {
+    throw refuse(
+      'PREVIEW_NOT_FOUND',
+      `no kept idea preview ${from} in this project: "from" names a preview that was kept as a requirement's picture`,
+    );
+  }
+  return { head: content.head, asked: content.asked };
 }
 
 /** What a sketch run is told: the item, the ask, and that its branch goes nowhere. */
@@ -233,6 +259,13 @@ async function projectSlug(projectId: string): Promise<string> {
   const slug = rows[0]?.slug;
   if (!slug) throw new Error(`previews: project ${projectId} has no slug`);
   return slug;
+}
+
+/** What the sketch was built from, oldest first: the brief, then each change asked in the preview. */
+export async function askedOf(row: PreviewRow): Promise<string[]> {
+  const session = row.sessionId === null ? null : await sessionOf(row.sessionId);
+  const asked = (session?.metadata as { sketch?: { asked?: string[] } } | null)?.sketch?.asked;
+  return asked ?? [];
 }
 
 /** A person's message as a turn of the sketch session, under a token minted for them. */
@@ -293,6 +326,11 @@ export async function sendIdeaMessage(
 ): Promise<{ sent: true; seq: number }> {
   const session = row.sessionId === null ? null : await sessionOf(row.sessionId);
   if (!session) throw refuse('PREVIEW_NO_RUN', `preview ${row.id}'s sketch run is gone`);
+  // what the sketch is built from is kept on its session, so a keep can say it
+  const sketch = (session.metadata as { sketch?: { asked?: string[] } } | null)?.sketch ?? {};
+  await mergeSessionMetadata(session.id, {
+    sketch: { ...sketch, asked: [...(sketch.asked ?? []), text] },
+  });
   const body = `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
   if (session.status === 'running' || session.status === 'queued') {
     const sent = await requestSessionSend({

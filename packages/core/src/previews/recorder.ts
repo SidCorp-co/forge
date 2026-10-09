@@ -8,12 +8,14 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
+import { SNAPSHOT_ANSWER, SNAPSHOT_ASK } from '@forge/contracts/preview';
 import {
   RECORDER_EVENTS,
   RECORDER_OPTIONS,
   RECORDER_PATHS,
   RECORDING_LIMITS,
 } from '@forge/contracts/reproduce';
+import type { PreviewRow } from '../db/schema-previews.js';
 
 const require = createRequire(import.meta.url);
 
@@ -96,6 +98,42 @@ window.addEventListener('popstate',route);
 setInterval(send,C.flushMs);
 window.addEventListener('pagehide',function(){send(true);});
 })();`;
+}
+
+/** rrweb alone, as a global: the page only answers a snapshot ask, with no plugin to run. */
+function rrwebOnly(): string {
+  return `(function(){var exports,module,define;\n${bundleOf('rrweb', 'rrweb.umd.min.cjs').replace(/\/\/# sourceMappingURL=\S+\s*$/, '')}\n}).call(window);`;
+}
+
+/** Whether the preview's pages answer Forge's ask for one snapshot (an idea, kept as a picture; BC-16). */
+export const takesSnapshots = (row: PreviewRow) => row.subjectKind === 'idea';
+
+/**
+ * What an idea preview's pages carry: rrweb, with its record options from core (inputs masked), keeping
+ * only the latest Meta and FullSnapshot pair, and a listener that answers ONE ask, from Forge's own
+ * origin and the frame's parent only, by taking a fresh full snapshot and posting the pair back to
+ * that origin. It sends nothing anywhere else and keeps no recording.
+ */
+export function snapshotScript(parentOrigin: string): string {
+  const config = {
+    parent: parentOrigin,
+    options: RECORDER_OPTIONS.record,
+    ask: SNAPSHOT_ASK,
+    answer: SNAPSHOT_ANSWER,
+  };
+  const boot = `(function(){
+var C=${JSON.stringify(config)};
+var R=window.rrweb;if(!R||!R.record||window.parent===window)return;
+var meta=null,full=null;
+R.record(Object.assign({},C.options,{emit:function(e){if(e.type===4)meta=e;else if(e.type===2)full=e;}}));
+window.addEventListener('message',function(ev){
+  if(ev.origin!==C.parent||ev.source!==window.parent||!ev.data||ev.data.type!==C.ask)return;
+  var id=ev.data.id,ok=false;
+  try{meta=null;full=null;R.record.takeFullSnapshot(true);ok=!!(meta&&full);}catch(_){}
+  ev.source.postMessage({type:C.answer,id:id,events:ok?[meta,full]:null},C.parent);
+});
+})();`;
+  return `${rrwebOnly()}\n${boot}\n`;
 }
 
 /** The whole recorder for one viewer's recording. */

@@ -198,7 +198,7 @@ function LaneRead({ issueId }: { issueId: string }) {
 }
 
 /** BC-6: a person asks for a change here and sees it in the same preview; writes no record, so there is nothing to refresh. */
-function MessageBox({ preview, canWrite }: { preview: PreviewRecord; canWrite: boolean }) {
+export function MessageBox({ preview, canWrite }: { preview: PreviewRecord; canWrite: boolean }) {
   const t = useCopy();
   const [text, setText] = useState("");
   const send = useSendPreviewMessage();

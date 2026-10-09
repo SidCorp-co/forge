@@ -579,6 +579,8 @@ export const previewReportSchema = z.discriminatedUnion("kind", [
 		/** `git patch-id --stable` of the worktree's diff against `base`, uncommitted edits included. */
 		patchId: z.string().regex(/^[0-9a-f]{40}$/),
 		files: z.array(z.string().max(1000)).max(2000),
+		/** Where the sketch branch stands after a keep committed its edits (`keep` frame); absent for an approval's read. */
+		head: wholeShaSchema("head").optional(),
 	}),
 ]);
 export type PreviewReport = z.infer<typeof previewReportSchema>;
@@ -606,8 +608,12 @@ export interface PreviewControlFrames {
 		previewId: string;
 		why: "idle" | "approved" | "abandoned" | "failed";
 	};
-	/** Asked at approval; answered by a `snapshot` report. */
-	"preview.snapshot.read": { previewId: string };
+	/**
+	 * Asked at approval, or at a keep (`keep: true`, REQ-41 BC-16): answered by a `snapshot` report.
+	 * A keep has the box commit a sketch checkout's edits to its branch, pin that commit under
+	 * `refs/forge/kept/<previewId>` and report it as `head`; an approval reads and writes nothing.
+	 */
+	"preview.snapshot.read": { previewId: string; keep?: boolean };
 }
 
 /**
@@ -657,6 +663,10 @@ export const PREVIEW_REFUSAL_CODES = [
 	"PREVIEW_CONFIRM_NOT_FIX",
 	/** "Not fixed" says what is still wrong. */
 	"PREVIEW_CONFIRM_REASON_REQUIRED",
+	/** Only an idea preview is kept as a picture; an issue's preview is approved, a reproduce is not kept. */
+	"PREVIEW_KEEP_NOT_IDEA",
+	/** What the page sent was not one page's snapshot: the refusal names what was wrong with it. */
+	"PREVIEW_KEEP_SNAPSHOT_INVALID",
 ] as const;
 export type PreviewRefusalCode = (typeof PREVIEW_REFUSAL_CODES)[number];
 
@@ -675,6 +685,8 @@ export const PREVIEW_REFUSAL_STATUSES = {
 	PREVIEW_ITEM_UNKNOWN: 404,
 	PREVIEW_CONFIRM_NOT_FIX: 409,
 	PREVIEW_CONFIRM_REASON_REQUIRED: 400,
+	PREVIEW_KEEP_NOT_IDEA: 409,
+	PREVIEW_KEEP_SNAPSHOT_INVALID: 400,
 } as const satisfies RefusalStatuses<PreviewRefusalCode>;
 
 /** The REST surface the build lanes implement and call. `:id` is a preview, `:issueId` an issue. */
@@ -695,17 +707,16 @@ export const PREVIEW_ROUTES = {
 	ofProject: "/api/projects/:id/previews",
 	/** POST: the reporter's word on a fix preview (REQ-41 BC-20, `confirmFixRequestSchema`). */
 	confirm: "/api/previews/:id/confirm",
+	/** POST: keep an idea preview as its requirement's picture (REQ-41 BC-16, `keepPreviewRequestSchema`). */
+	keep: "/api/previews/:id/keep",
 } as const;
 
 // ---- REQ-41 (docs/proposals/chat-first.md, "Idea preview" and "Reproduce"): the requests a preview
-// of something other than an issue's run answers. Keeping an idea is the idea lane's (BC-16): its code
-// and route stay beside the registry until the route that answers them lands with it.
+// of something other than an issue's run answers.
 
 export const PREVIEW_IDEA_LIMITS = {
 	/** What the person asked for, as the sketch run is briefed with it. */
 	brief: 4000,
-	/** The screenshots a kept preview holds as the requirement's picture. */
-	shots: 6,
 	/** A kept patch, in bytes: a sketch is a sketch. */
 	patchBytes: 512 * 1024,
 } as const;
@@ -739,31 +750,78 @@ export const openPreviewRequestSchema = z.discriminatedUnion("kind", [
 export type OpenPreviewRequest = z.infer<typeof openPreviewRequestSchema>;
 
 /**
+ * One page as rrweb snapshots it: the Meta event, then the FullSnapshot event `takeFullSnapshot`
+ * emits. The page is drawn from them as a still, by rrweb's own replayer paused on the snapshot;
+ * nothing here is a screenshot, so no capture tool exists on the runner or in the browser.
+ */
+export const PREVIEW_SNAPSHOT_LIMITS = {
+	/** The serialized events, in bytes: a sketch's page, scrubbed. */
+	bytes: 2 * 1024 * 1024,
+} as const;
+
+/** The two messages between Forge's page and an idea preview's frame: the ask, and the pair of events that answers it (`id` pairs them). */
+export const SNAPSHOT_ASK = "forge.preview.snapshot.ask";
+export const SNAPSHOT_ANSWER = "forge.preview.snapshot.answer";
+
+export const pageSnapshotSchema = z
+	.array(
+		z.looseObject({
+			type: z.int().min(0).max(6),
+			timestamp: z.number().nonnegative(),
+			data: z.unknown(),
+		}),
+	)
+	.length(2)
+	.refine((e) => e[0]?.type === 4 && e[1]?.type === 2, {
+		message: "PREVIEW_KEEP_SNAPSHOT_INVALID: a page snapshot is rrweb's Meta event then its FullSnapshot event",
+	});
+export type PageSnapshot = z.infer<typeof pageSnapshotSchema>;
+
+/**
  * `POST /api/previews/:id/keep`: an idea preview kept as its requirement's picture (BC-16). About a
  * requirement, it becomes that requirement's head revision's picture; about a feedback item, it
- * goes to the item's new requirement draft (triage route `new_requirement`), whose criteria the
- * assistant drafts from the preview's conversation and change.
+ * goes to a new requirement started from the item. The page the person sees is sent as its rrweb
+ * snapshot, taken in their browser by the page's own recorder; core scrubs it, asks the box for the
+ * branch head and the patch id, and writes the picture and the criteria suggestion.
  */
 export const keepPreviewRequestSchema = z.strictObject({
 	/** What the picture shows, in a sentence a screen reader reads (`RequirementPictureView.alt`). */
 	alt: z.string().trim().min(1).max(300),
+	snapshot: pageSnapshotSchema,
 });
+export type KeepPreviewRequest = z.infer<typeof keepPreviewRequestSchema>;
 
-/** A kept preview as a requirement picture holds it: what was served, and what it looked like. */
+/**
+ * A kept preview as a requirement picture holds it: the sketch branch and its head (what "Reopen
+ * live" starts from), the patch id the box reported, and the page's one still.
+ */
 export const keptPreviewContentSchema = z.strictObject({
 	previewId: z.uuid(),
+	/** The sketch branch, on the box that cut it, never pushed. */
+	branch: z.string().regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
+	/** The branch's head after the keep committed the sketch's edits. */
+	head: wholeShaSchema("head"),
 	base: wholeShaSchema("base"),
 	patchId: z.string().regex(/^[0-9a-f]{40}$/),
 	files: z.array(z.string().max(1000)).max(2000),
-	/** Screenshots taken at keep, each an upload of the requirement with its own text alternative. */
-	shots: z
-		.array(z.strictObject({ upload: z.uuid(), alt: z.string().trim().min(1).max(300) }))
-		.min(1)
-		.max(PREVIEW_IDEA_LIMITS.shots),
 	/** The briefs and chat edits the sketch was built from, oldest first. */
 	asked: z.array(z.string().max(PREVIEW_IDEA_LIMITS.brief)).min(1).max(50),
+	snapshot: pageSnapshotSchema,
 });
 export type KeptPreviewContent = z.infer<typeof keptPreviewContentSchema>;
+
+/** What `POST /api/previews/:id/keep` answers: where the picture was drawn, and the criteria suggestion offered. */
+export const keepPreviewResponseSchema = z.strictObject({
+	requirement: z.string(),
+	revision: z.int().positive(),
+	pictureId: z.uuid(),
+	/** The feedback item a new requirement was started from; null where the idea was about a requirement. */
+	startedFrom: z.string().nullable(),
+	suggestionId: z.uuid().nullable(),
+	/** Why no criteria draft was offered where the suggestions path refused one, by its own code; null otherwise. */
+	suggestionRefusal: z.strictObject({ code: z.string(), detail: z.string() }).nullable(),
+});
+export type KeepPreviewResponse = z.infer<typeof keepPreviewResponseSchema>;
 
 /** Where a reproduce preview's data comes from, before the production check core makes on the tier. */
 export function reproduceDataOf(
@@ -781,17 +839,6 @@ export function reproduceDataOf(
 	}
 	return { kind: "environment", environment: settings.environment ?? null };
 }
-
-/** Only an idea preview is kept as a picture; an issue's preview is approved, a reproduce is not kept. */
-export const PREVIEW_KEEP_REFUSAL_CODES = ["PREVIEW_KEEP_NOT_IDEA"] as const;
-export type PreviewKeepRefusalCode = (typeof PREVIEW_KEEP_REFUSAL_CODES)[number];
-
-export const PREVIEW_KEEP_REFUSAL_STATUSES = {
-	PREVIEW_KEEP_NOT_IDEA: 409,
-} as const satisfies RefusalStatuses<PreviewKeepRefusalCode>;
-
-/** POST: keep an idea preview as its requirement's picture (BC-16, `keepPreviewRequestSchema`). */
-export const PREVIEW_KEEP_ROUTE = "/api/previews/:id/keep";
 
 /** `POST /api/previews/:id/confirm`: whoever reported it, or anyone on the project for them, says whether the fix preview fixes it (BC-20). */
 export const confirmFixRequestSchema = z

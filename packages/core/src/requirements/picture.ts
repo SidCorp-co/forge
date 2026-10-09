@@ -7,10 +7,10 @@
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
 import {
-  PICTURE_KIND_OF,
+  type DrawnPicture,
+  kindTakesPicture,
   type PictureKind,
   type RequirementKind,
-  type WritePictureRequest,
 } from '@forge/contracts/requirement-pictures';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -55,7 +55,8 @@ export async function pictureFitsKind(
   kind: RequirementKind | null,
 ): Promise<boolean> {
   if (pictureId === null || kind === null) return false;
-  return (await pictureKindOf(tx, pictureId)) === PICTURE_KIND_OF[kind];
+  const drawn = await pictureKindOf(tx, pictureId);
+  return drawn !== null && kindTakesPicture(kind, drawn);
 }
 
 /**
@@ -80,7 +81,7 @@ async function followerOf(tx: Tx, requirementId: string, picture: PictureKind) {
       ),
     );
   if (!open || open.kind === null) return null;
-  if (PICTURE_KIND_OF[open.kind as RequirementKind] !== picture) return null;
+  if (!kindTakesPicture(open.kind as RequirementKind, picture)) return null;
   return open.drawnFor === open.revision ? null : open.revision;
 }
 
@@ -94,7 +95,7 @@ export async function drawIn(
   input: {
     requirementId: string;
     revision: number;
-    picture: WritePictureRequest;
+    picture: DrawnPicture;
     author: RequirementActor;
     level: SensitiveDataLevel;
   },
@@ -129,7 +130,7 @@ export async function writePicture(input: {
   ref: string;
   actor: RequirementActor;
   revision: number;
-  body: WritePictureRequest;
+  body: DrawnPicture;
 }): Promise<RequirementOutcome> {
   const { projectId, actor, body } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));

@@ -7,7 +7,7 @@
 // field is held while the picture editor is open, so what was typed there is never lost to it, and a
 // refusal of the kind, from this write or from a picture write, shows on it in plain words.
 
-import { PICTURE_KIND_OF, type RequirementKind, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
+import { kindTakesPicture, type RequirementKind, type RequirementPictureView } from "@forge/contracts/requirement-pictures";
 import { useState } from "react";
 import { ConfirmDialog, Field, NativeSelect } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -25,7 +25,7 @@ export function plainRefusal(err: unknown): string | undefined {
 
 /** Whether core drops `picture` when the kind becomes `next`, as `picture.ts:writeKind` decides it. */
 export const dropsPicture = (picture: RequirementPictureView | null, next: RequirementKind | null): boolean =>
-  picture !== null && (next === null || PICTURE_KIND_OF[next] !== picture.kind);
+  picture !== null && (next === null || !kindTakesPicture(next, picture.kind));
 
 export function KindField({
   projectId,

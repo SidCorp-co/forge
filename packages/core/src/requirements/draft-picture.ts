@@ -10,6 +10,7 @@
 import {
   type DraftPicture,
   describePicture,
+  kindTakesPicture,
   PICTURE_KIND_OF,
   type PictureKind,
   type RequirementKind,
@@ -48,6 +49,7 @@ const DRAWN_AS: Record<PictureKind, string> = {
   example_table: 'an example table',
   wireframe: 'a wireframe',
   chart: 'a sample chart',
+  preview: 'a kept preview',
 };
 
 const KINDS_TAKE =
@@ -90,7 +92,7 @@ export function draftPictureRefusals(
   const kind = write.kind === undefined ? landing.kind : write.kind;
   const { picture } = write;
   if (!picture) {
-    const shown = kind !== null && landing.shows === PICTURE_KIND_OF[kind];
+    const shown = kind !== null && landing.shows !== null && kindTakesPicture(kind, landing.shows);
     return mustDraw && !shown ? [notDrawnRefusal(landing, kind)] : [];
   }
   const mismatch =

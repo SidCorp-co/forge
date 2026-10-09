@@ -17,7 +17,7 @@ import {
 import type { z } from "zod";
 import { apiClient } from "@/lib/api/client";
 
-const routeOf = (route: string, params: Record<string, string>): string => {
+export const routeOf = (route: string, params: Record<string, string>): string => {
   const path = route.replace(/:(\w+)/g, (_, name: string) => {
     const value = params[name];
     if (value === undefined) throw new Error(`previews/api: ${route} needs :${name}`);
@@ -35,13 +35,13 @@ export class PreviewRecordRefused extends Error {
 }
 
 /** A body read through the contract's own schema; a body that is not it is refused by name, never drawn from. */
-function read<S extends z.ZodType>(where: string, schema: S, body: unknown): z.infer<S> {
+export function read<S extends z.ZodType>(where: string, schema: S, body: unknown): z.infer<S> {
   const parsed = schema.safeParse(body);
   if (!parsed.success) throw new PreviewRecordRefused(where, parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"} ${i.message}`).join("; "));
   return parsed.data;
 }
 
-const post = (route: string, params: Record<string, string>, body?: unknown) =>
+export const post = (route: string, params: Record<string, string>, body?: unknown) =>
   apiClient<unknown>(routeOf(route, params), { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 /** `GET /api/issues/:id/lane` (fast-lane): the lane the issue's approved change takes, and why not the fast one. */

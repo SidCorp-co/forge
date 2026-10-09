@@ -21,6 +21,7 @@
 
 import { CHAT_ACT_TOOL } from '@forge/contracts/chat-acts';
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
+import { IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
 import { UI_ACTION_NAMES, UI_ACTIONS } from '@forge/contracts/ui-actions';
 import type { ToolGrantEntry } from '../../lib/tool.js';
 import { HISTORY_TOOL_NAME, QUOTE_CONTEXT_TOOL_NAME } from '../chat-room/context.js';
@@ -109,7 +110,7 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
   {
     why: "it moves the person's own screen, or offers them a button they press as themselves; it writes nothing",
     rest: [],
-    tools: [...UI_ACTION_NAMES.map((n) => UI_ACTIONS[n].wire), CHAT_ACT_TOOL],
+    tools: [...UI_ACTION_NAMES.map((n) => UI_ACTIONS[n].wire), CHAT_ACT_TOOL, IDEA_OFFER_TOOL],
   },
   {
     why: "a read of this room's own past",

@@ -9,7 +9,7 @@
 // read from the board only once the board has reported its scene, and an empty board is refused
 // here, so a drawn wireframe is never replaced by a board that had not loaded.
 
-import type { ExampleTableContent, PictureKind, RequirementPictureView, WritePictureRequest } from "@forge/contracts/requirement-pictures";
+import type { ExampleTableContent, RequirementPictureView, WritePictureRequest } from "@forge/contracts/requirement-pictures";
 import { parseWireframe, type WireframeDoc } from "@forge/contracts/wireframe";
 import dynamic from "next/dynamic";
 import { type ReactNode, useRef, useState } from "react";
@@ -34,7 +34,7 @@ import { plainRefusal } from "./requirement-kind-field";
 
 const BoardEditor = dynamic(() => import("@/features/board/board-editor"), { ssr: false });
 
-type Content<K extends PictureKind> = Extract<WritePictureRequest, { kind: K }>["content"];
+type Content<K extends WritePictureRequest["kind"]> = Extract<WritePictureRequest, { kind: K }>["content"];
 type Built = { ok: true; body: WritePictureRequest } | { ok: false; field: PictureField; text: string };
 
 function flowFaultText(f: FlowFault, t: Copy): string {
@@ -76,7 +76,7 @@ export function PictureEditor({
   onDone,
 }: {
   revision: number;
-  kind: PictureKind;
+  kind: WritePictureRequest["kind"];
   /** The picture it replaces, which the editor opens on; null draws a first one. */
   picture: RequirementPictureView | null;
   /** The picture write, held by the region so a refusal of the kind shows on the kind field. */

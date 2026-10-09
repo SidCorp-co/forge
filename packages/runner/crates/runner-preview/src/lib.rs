@@ -60,6 +60,9 @@ struct Named {
     /// `preview.stop`'s reason: an idle stop keeps the worktree, so an approval can still read it.
     #[serde(default)]
     why: Option<String>,
+    /// `preview.snapshot.read`: a keep (REQ-41 BC-16) commits and pins the sketch's head too.
+    #[serde(default)]
+    keep: bool,
 }
 
 /// One preview this box holds: the worktree it serves and, while it runs, its dev server.
@@ -149,7 +152,7 @@ impl Previews {
             },
             "preview.snapshot.read" => match serde_json::from_value::<Named>(data) {
                 Ok(n) => {
-                    tokio::spawn(async move { this.snapshot(&n.preview_id).await });
+                    tokio::spawn(async move { this.snapshot(&n.preview_id, n.keep).await });
                 }
                 Err(e) => tracing::warn!("[preview] preview.snapshot.read refused: {e}"),
             },
@@ -414,17 +417,35 @@ impl Previews {
             .await;
     }
 
-    async fn snapshot(&self, id: &str) {
-        let worktree = self.held().get(id).map(|h| h.worktree.clone());
-        let Some(worktree) = worktree else {
+    async fn snapshot(&self, id: &str, keep: bool) {
+        let held = self.held().get(id).map(|h| {
+            (
+                h.worktree.clone(),
+                matches!(h.checkout, Some(Checkout::Sketch { .. })),
+            )
+        });
+        let Some((worktree, sketch)) = held else {
             tracing::warn!(
                 "[preview] {id}: a snapshot was asked of a preview this box does not hold"
             );
             return;
         };
-        match snapshot::read(&worktree).await {
+        if keep && !sketch {
+            // only a sketch this box cut is committed to: core answers its keep "unavailable" by name
+            tracing::warn!("[preview] {id}: a keep was asked of a preview that is not a sketch");
+            return;
+        }
+        let read = if keep {
+            snapshot::keep(&worktree, id).await
+        } else {
+            snapshot::read(&worktree).await
+        };
+        match read {
             Ok(s) => {
-                let body = serde_json::json!({ "kind": "snapshot", "base": s.base, "patchId": s.patch_id, "files": s.files });
+                let mut body = serde_json::json!({ "kind": "snapshot", "base": s.base, "patchId": s.patch_id, "files": s.files });
+                if let Some(head) = s.head {
+                    body["head"] = serde_json::Value::String(head);
+                }
                 self.report(id, body).await;
             }
             Err(e) => tracing::warn!("[preview] {id}: no snapshot: {e}"),
