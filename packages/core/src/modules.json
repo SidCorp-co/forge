@@ -1268,6 +1268,9 @@
     "notifications": {
       "serves": ["REQ-11", "REQ-14"]
     },
+    "project-home": {
+      "serves": ["REQ-41"]
+    },
     "onboarding": {
       "serves": [
         "REQ-10",

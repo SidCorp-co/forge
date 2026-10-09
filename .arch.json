@@ -272,6 +272,9 @@
     "web-feature-needs-you": [
       "packages/web-v2/src/features/needs-you/**"
     ],
+    "web-feature-project-home": [
+      "packages/web-v2/src/features/project-home/**"
+    ],
     "web-feature-notifications": [
       "packages/web-v2/src/features/notifications/**"
     ],
@@ -458,6 +461,7 @@
       "type": "layers",
       "order": [
         "web-app",
+        "web-feature-project-home",
         "web-feature-settings",
         "web-feature-shell",
         "web-feature-version",
