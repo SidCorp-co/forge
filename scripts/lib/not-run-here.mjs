@@ -1,5 +1,5 @@
 const GATED_HEADER =
-  'A green here does not cover these — CI runs them, and ci-passed gates the merge:';
+  'A green here does not cover these — CI runs them, and ci-passed gates a merge into main on them (a merge into dev is gated by pnpm merge-check instead):';
 const AFTER_MERGE_HEADER =
   'Nor these — CI runs them after the merge, on main, nightly and on a dispatch, and ci-passed does not gate them:';
 const WHOLE_SUITE_HEADER =
