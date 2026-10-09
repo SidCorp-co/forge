@@ -179,6 +179,7 @@
     "feedback.proposal.consequence": "Accepting routes the item: {route}.",
     "feedback.proposal.head": "Suggested triage · {who}",
     "feedback.proposal.nearest": "Nearest item: {key}",
+    "feedback.proposal.willFile": "Accepting files this",
     "feedback.proposal.noDedup": "Triage without dedup",
     "feedback.proposal.noSimilar": "No similar item found",
     "feedback.proposal.reject": "Reject",
