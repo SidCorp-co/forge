@@ -8,6 +8,9 @@
  *   which the REST door reads as every project), are offered it.
  * - While no box serving the project reaches it, the job's gate reason is `token_cannot_reach`
  *   rather than none.
+ *
+ * @direct-test-of packages/core/src/devices/pool.ts
+ * @direct-test-of packages/core/src/credentials/device-credential.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -100,7 +103,9 @@ async function offered(fence: Fence, jobId: string): Promise<boolean> {
 async function serving(...fences: Fence[]): Promise<void> {
   await db.execute(sql`UPDATE runners SET last_seen_at = NULL WHERE project_id = ${projectId}`);
   for (const fence of fences) {
-    await db.execute(sql`UPDATE runners SET last_seen_at = now() WHERE id = ${boxes[fence].runner}`);
+    await db.execute(
+      sql`UPDATE runners SET last_seen_at = now() WHERE id = ${boxes[fence].runner}`,
+    );
   }
 }
 

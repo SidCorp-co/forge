@@ -1,5 +1,10 @@
 import { type SQL, sql } from 'drizzle-orm';
-import { deviceReach, fenceReaches, fenceWhere, type TokenFence } from '../credentials/token-fence.js';
+import {
+  deviceReach,
+  fenceReaches,
+  fenceWhere,
+  type TokenFence,
+} from '../credentials/token-fence.js';
 import { db } from '../db/client.js';
 import type { RefusalError } from '../lib/refusal.js';
 import { refuseDevice } from './refusals.js';

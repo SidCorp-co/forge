@@ -192,9 +192,7 @@ async function runnersWhoseBoxReaches(projectIds: readonly string[]): Promise<st
     )})
   `);
   const reachOf = await deviceReach(rows.map((r) => r.device_id));
-  return rows
-    .filter((r) => fenceReaches(reachOf(r.device_id), r.project_id))
-    .map((r) => r.id);
+  return rows.filter((r) => fenceReaches(reachOf(r.device_id), r.project_id)).map((r) => r.id);
 }
 
 export async function gateReasonsForQueuedJobsIn(
