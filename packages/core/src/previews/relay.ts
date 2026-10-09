@@ -38,7 +38,7 @@ import { previewBySlug } from './read.js';
 import { serves } from './rules.js';
 import { noteViewed, reopenForViewer } from './service.js';
 import { readViewer, signViewer, spendTicket } from './ticket.js';
-import { openTunnelStream, TunnelStreamError } from './tunnel.js';
+import { openTunnelStream, streamEndOf } from './tunnel.js';
 
 /** Whether a request names a preview host: it is answered here, never by the API. */
 export function isPreviewRequest(req: IncomingMessage): boolean {
@@ -184,8 +184,7 @@ function streamFor(row: PreviewRow): { ok: true; stream: Duplex } | { ok: false;
   return opened.ok ? opened : { ok: false, page: tunnelDownPage(opened.why) };
 }
 
-const failureCode = (err: unknown) =>
-  err instanceof TunnelStreamError ? err.code : (err as Error).message;
+const failureCode = (err: unknown) => streamEndOf(err) ?? (err as Error).message;
 
 /** One HTTP request to a preview host. */
 export async function relayPreviewRequest(req: IncomingMessage, res: ServerResponse) {

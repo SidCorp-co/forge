@@ -8,6 +8,7 @@ vi.hoisted(() => {
 });
 
 import { db } from '../../src/db/client.js';
+import { approvedPreviewOf } from '../../src/previews/index.js';
 import { sweepPreviews } from '../../src/previews/service.js';
 import { signViewer } from '../../src/previews/ticket.js';
 import { api } from '../helpers/api.js';
@@ -30,6 +31,7 @@ import { seedProjectDocument } from '../helpers/release-world.js';
 const poll = <T>(read: () => Promise<T>) => expect.poll(read, { timeout: 15_000, interval: 100 });
 
 const world = new PreviewWorld();
+const lane = (id: string) => api(owner, 'GET', `/api/issues/${id}/lane`);
 let core: Served;
 let box: StandInBox;
 let projectId = '';
@@ -107,6 +109,39 @@ it('closes approved with what the approver saw, and its link says so (BC-9)', as
   expect((await api(owner, 'POST', `/api/previews/${preview.id}/ticket`)).body).toMatchObject({
     code: 'PREVIEW_CLOSED',
   });
+});
+
+it('hands the fast lane the patch id its approver saw, through the port core provides at boot (BC-7)', async () => {
+  await seedProjectDocument(projectId, ownerId, {
+    environments: PREVIEW_ENVIRONMENTS,
+    extra: { fastLane: { paths: ['packages/web-v2/**'], deployTargets: ['web'] } },
+  });
+  world.serveVite();
+  const fresh = await issueWithRun();
+  const preview = await livePreview(fresh);
+  const before = (await lane(fresh)).body;
+  expect(before).toMatchObject({
+    lane: 'full',
+    approved: null,
+    refusal: { code: 'FAST_LANE_NOT_APPROVED' },
+  });
+  const approving = api(owner, 'POST', `/api/previews/${preview.id}/approve`);
+  await settleOutbox();
+  await box.until('preview.snapshot.read', box.heardOf('preview.snapshot.read').length + 1);
+  const patchId = 'c'.repeat(40);
+  const files = ['packages/web-v2/src/app/buy-button.tsx'];
+  await box.report(preview.id, { kind: 'snapshot', base: 'd'.repeat(40), patchId, files });
+  expect((await approving).body).toMatchObject({ patchId, lane: { lane: 'fast' } });
+
+  expect(await approvedPreviewOf(fresh)).toMatchObject({ previewId: preview.id, patchId, files });
+  const after = await lane(fresh);
+  expect(after.status, JSON.stringify(after.body)).toBe(200);
+  expect(after.body).toMatchObject({
+    lane: 'fast',
+    approved: { previewId: preview.id, patchId, files, approvedBy: ownerId },
+    refusal: null,
+  });
+  await seedProjectDocument(projectId, ownerId, { environments: PREVIEW_ENVIRONMENTS });
 });
 
 it('closes abandoned by a person, and idle when nobody views it; idle reopens at the same link (BC-9)', async () => {

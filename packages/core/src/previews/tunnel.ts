@@ -17,12 +17,16 @@ import {
 import { type WebSocket, WebSocketServer } from 'ws';
 import { logger } from '../lib/logger.js';
 
-/** Why a stream ended early: the box's reset code, or the tunnel itself going away. */
-export class TunnelStreamError extends Error {
-  constructor(readonly code: TunnelResetCode | 'TUNNEL_DOWN') {
-    super(`preview tunnel stream ${code}`);
-    this.name = 'TunnelStreamError';
-  }
+type StreamEnd = TunnelResetCode | 'TUNNEL_DOWN';
+
+/** A stream ended early: a plain Error whose `cause` is the box's reset code or `TUNNEL_DOWN`. */
+const streamEnded = (code: StreamEnd) =>
+  new Error(`preview tunnel stream ${code}`, { cause: code });
+
+/** Why `err` ended a stream, where a tunnel stream ended it; null for any other error. */
+export function streamEndOf(err: unknown): StreamEnd | null {
+  if (!(err instanceof Error) || typeof err.cause !== 'string') return null;
+  return err.message === `preview tunnel stream ${err.cause}` ? (err.cause as StreamEnd) : null;
 }
 
 export class TunnelStream extends Duplex {
@@ -94,7 +98,7 @@ export class TunnelStream extends Duplex {
   private async sendAll(chunk: Buffer): Promise<void> {
     let at = 0;
     while (at < chunk.byteLength) {
-      if (this.gone) throw new TunnelStreamError('CANCELLED');
+      if (this.gone) throw streamEnded('CANCELLED');
       if (this.sendWindow === 0) {
         await new Promise<void>((resolve) => {
           this.wake = resolve;
@@ -129,7 +133,7 @@ export class TunnelStream extends Duplex {
     if (this.gone) return;
     this.gone = true;
     this.tunnel.send({ type: 'reset', streamId: this.id, code });
-    this.destroy(new TunnelStreamError(code));
+    this.destroy(streamEnded(code));
   }
 
   /** A frame the box sent for this stream. */
@@ -155,7 +159,7 @@ export class TunnelStream extends Duplex {
         return;
       case 'reset':
         this.gone = true;
-        this.destroy(new TunnelStreamError(frame.code));
+        this.destroy(streamEnded(frame.code));
         return;
       case 'open':
         this.resetWith('PROTOCOL');
@@ -236,7 +240,7 @@ export class Tunnel {
   dropAll(): void {
     for (const stream of [...this.streams.values()]) {
       stream.gone = true;
-      stream.destroy(new TunnelStreamError('TUNNEL_DOWN'));
+      stream.destroy(streamEnded('TUNNEL_DOWN'));
     }
     this.streams.clear();
   }
