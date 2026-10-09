@@ -268,6 +268,8 @@ export const FEEDBACK_LIMITS = {
 	body: 20_000,
 	whereSeen: 500,
 	reason: 4_000,
+	/** A recording's cause or fix, as a triage carries it (REQ-41 BC-19): a short form, not an essay. */
+	diagnosis: 1_000,
 	answer: 10_000,
 	/** The issues one issue route names at most. */
 	carriers: 50,
@@ -310,6 +312,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	"FEEDBACK_ATTACHMENT_INVALID",
+	/** A diagnosis rides only the issue route, and names a recording of this item (REQ-41 BC-19). */
+	"FEEDBACK_DIAGNOSIS_INVALID",
 	...PERMISSION_REFUSAL_CODES,
 	"FEEDBACK_SEARCH_WITHHELD",
 	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
@@ -393,14 +397,30 @@ const carrierFields = {
  * suggestion; new_requirement: `requirement` names a draft, `title` starts one; answer: `answer`.
  * duplicate names its root (`duplicateOf`), and decline its reason (`note`).
  */
+/**
+ * What a reproduce recording shows went wrong, and the fix it points to (REQ-41 BC-19), read from the
+ * recording's timeline (`./reproduce.ts:timelineOf`), never its raw events. It rides the issue route:
+ * the issue it files carries the cause and the fix, and its run builds the fix the reporter then
+ * confirms in that issue's preview (BC-20).
+ */
+export const recordingDiagnosisSchema = z.strictObject({
+	/** The recording of this item the cause was read from: the reproduction evidence. */
+	recording: z.uuid(),
+	cause: z.string().trim().min(1).max(FEEDBACK_LIMITS.diagnosis),
+	fix: z.string().trim().min(1).max(FEEDBACK_LIMITS.diagnosis),
+});
+export type RecordingDiagnosis = z.infer<typeof recordingDiagnosisSchema>;
+
 export const feedbackTriageSchema = z.strictObject({
 	route: z.enum(FEEDBACK_TRIAGE_ROUTES),
 	...carrierFields,
 	kind: z.enum(FEEDBACK_KINDS).optional(),
 	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
+	/** Route issue only (FEEDBACK_DIAGNOSIS_INVALID otherwise). */
+	diagnosis: recordingDiagnosisSchema.optional(),
 });
 export type FeedbackTriage = z.infer<typeof feedbackTriageSchema>;
-export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason) }`;
+export const FEEDBACK_TRIAGE_SHAPE = `{ route: ${FEEDBACK_TRIAGE_ROUTES.join(" | ")}, issue?: ISS-n | [ISS-n, …] | createIssue?: { title?, description?, complexity?, category?, priority? } | suggestion? | requirement? | title? | answer? | duplicateOf?, kind?, severity?, note? (decline: the reason), diagnosis?: { recording, cause, fix } (issue only) }`;
 
 /** Stamped by core on a `feedback_triage` suggestion: the nearest item, or why dedup did not run. */
 export const feedbackDedupSchema = z.strictObject({

@@ -7,6 +7,7 @@ export { embedFeedback, embedFeedbackLater, nearestFeedbackOf } from './embeddin
 export { listFeedbackAs } from './list-read.js';
 export { owedTriages } from './owed-triage.js';
 export { rowIn } from './read.js';
+export { forgeRecordingTool } from './recording-tool.js';
 export { feedbackRefIn, issueRefIn, requirementRefIn } from './refs.js';
 export { feedbackAnsweredBy } from './release-feedback.js';
 export { noticeCopy, reporterLanguageOf, reporterLanguagesOf } from './reporter-language.js';

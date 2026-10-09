@@ -263,8 +263,17 @@ async function fileIssueIn(tx: Tx, input: RouteInput): Promise<CarrierIssue> {
     { title: row.title, body: row.body ?? '' },
     key,
   );
+  // a reproduce's diagnosis (REQ-41 BC-19) is read from the reporter's session, so it travels as the
+  // item's own words do: copied where the policy lets them out, kept in Forge where it does not
+  const diagnosis = w.diagnosis
+    ? [
+        `**Cause** (from recording ${w.diagnosis.recording} of ${key}): ${w.diagnosis.cause}`,
+        `**Fix**: ${w.diagnosis.fix}`,
+        `Once the fix serves in this issue's live preview, ${key}'s page shows it to its reporter, who confirms Fixed or Not fixed there.`,
+      ]
+    : [];
   const carried = copied.ok
-    ? [`Carries ${key}: ${copied.value.title}`, copied.value.body]
+    ? [`Carries ${key}: ${copied.value.title}`, ...diagnosis, copied.value.body]
     : [
         `Carries ${key}. Its content stays in Forge under this project's no_egress policy; read it on the Feedback page.`,
       ];

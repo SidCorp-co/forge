@@ -32,6 +32,7 @@ import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackBanner, FeedbackFacts } from "./feedback-facts";
 import { Messages } from "./feedback-messages";
+import { FeedbackRecordings } from "./recordings";
 
 const FEEDBACK_TABS = ["overview", "mockups", "history"] as const;
 type FeedbackTab = (typeof FEEDBACK_TABS)[number];
@@ -155,6 +156,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <Body projectId={projectId} f={f} />
+                  <FeedbackRecordings projectId={projectId} f={f} />
                   <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}
