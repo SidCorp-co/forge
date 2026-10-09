@@ -6,6 +6,10 @@
  * authorised against project A that names an issue of project B replaced B's handoff. Both
  * `POST /api/issue-step-contexts` and `forge_step_handoff.write` call the one store; this file
  * names a foreign issue through each and reads B's row back.
+ *
+ * The phase journal is the other half of the same surface: `POST /api/pipeline-runs/:id/phases`
+ * files a phase under the run's own issue when the caller names none, and `forge_phase` start
+ * filed it under no issue at all, which a read of the journal by issue then missed.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -26,6 +30,7 @@ let harness: TestDatabase;
 let server: TestServer;
 let projectId: string;
 let ownIssue: string;
+let ownerId: string;
 let foreignIssue: string;
 let runId: string;
 let member: Caller;
@@ -58,6 +63,7 @@ beforeEach(async () => {
   const seeded = await seedRoles(harness.db);
   projectId = seeded.projectId;
   member = seeded.callers.member;
+  ownerId = seeded.ownerId;
 
   const stranger = await createTestUser(harness.db);
   const otherProject = (await createTestProject(harness.db, stranger.id)).id;
@@ -117,4 +123,47 @@ describe.each(Object.entries(writes))('a handoff write through %s', (_name, writ
   it('admits an issue of its own project', async () => {
     expect(await write(ownIssue)).not.toHaveProperty('refused');
   });
+});
+
+describe('a phase started without naming an issue', () => {
+  const issueOfRun = randomUUID();
+  const run = randomUUID();
+
+  beforeEach(async () => {
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${issueOfRun}, ${projectId}, 2, 'the run issue', 'open', ${ownerId})`);
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+      VALUES (${run}, ${projectId}, ${issueOfRun}, 'issue', 'running')`);
+  });
+
+  async function journalIssue(): Promise<string | null | undefined> {
+    const rows = (await harness.db.execute(
+      sql`SELECT issue_id FROM phase_journal WHERE run_id = ${run}`,
+    )) as unknown as Array<{ issue_id: string | null }>;
+    return rows[0] ? rows[0].issue_id : undefined;
+  }
+
+  const starts: Record<string, () => Promise<Door>> = {
+    'REST POST /api/pipeline-runs/:id/phases': () =>
+      callRest(server.baseUrl, member.jwt, 'POST', `/api/pipeline-runs/${run}/phases`, {
+        phase: 'plan',
+      }),
+    'forge_phase start': () =>
+      callTool(member.pat, 'forge_phase', {
+        action: 'start',
+        projectId,
+        runId: run,
+        phase: 'plan',
+      }),
+  };
+
+  it.each(Object.entries(starts))(
+    'is filed under the issue of its run by %s',
+    async (_name, start) => {
+      expect(await start()).not.toHaveProperty('refused');
+      expect(await journalIssue()).toBe(issueOfRun);
+    },
+  );
 });
