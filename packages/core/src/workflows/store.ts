@@ -162,6 +162,8 @@ export interface StoredDesign {
   proposedAt: Date;
   decision: DesignDecision | null;
   decidedByUser: string | null;
+  /** Who decided: a person names their user, Forge's kernel names none. */
+  decidedKind: 'person' | 'kernel' | null;
   decidedAt: Date | null;
   reason: string | null;
   /** `reason` as said where Forge composed it; null where the decider wrote it. */
@@ -177,6 +179,7 @@ const designColumns = {
   proposedAt: projectWorkflowDesigns.proposedAt,
   decision: sql<DesignDecision | null>`${projectWorkflowDesigns.decision}`,
   decidedByUser: projectWorkflowDesigns.decidedByUser,
+  decidedKind: projectWorkflowDesigns.decidedKind,
   decidedAt: projectWorkflowDesigns.decidedAt,
   reason: projectWorkflowDesigns.reason,
   reasonSays: projectWorkflowDesigns.reasonSays,
@@ -359,7 +362,9 @@ export async function decideDesign(
     workflowId: string;
     revision: number;
     decision: DesignDecision;
-    userId: string;
+    /** The deciding person; null where `kernel` decides. */
+    userId: string | null;
+    kernel?: boolean;
     reason: string | null;
     /** `reason` as said where Forge composed it; null where the decider wrote it. */
     reasonSays?: Said | null;
@@ -369,7 +374,8 @@ export async function decideDesign(
     .update(projectWorkflowDesigns)
     .set({
       decision: input.decision,
-      decidedByUser: input.userId,
+      decidedByUser: input.kernel ? null : input.userId,
+      decidedKind: input.kernel ? 'kernel' : 'person',
       decidedAt: sql`now()`,
       reason: input.reason,
       reasonSays: input.reasonSays ?? null,

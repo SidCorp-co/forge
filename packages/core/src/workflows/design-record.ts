@@ -35,6 +35,7 @@ export async function recordDecision(
     revision,
     decision,
     userId: decider.userId,
+    kernel: input.kernel === true,
     reason,
     reasonSays: input.reasonSays ?? null,
   });

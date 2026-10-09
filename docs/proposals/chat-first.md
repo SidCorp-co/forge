@@ -150,8 +150,9 @@ the canonical design, never a text diff) and approves it through `design-record.
 `workflow.designDecided` event, the design issue's mark and BC-10's requirement re-pin follow as for any
 approval. It runs inside the project's workflow lock where a design is proposed (`proposeDesign`, a write that
 proposes) and where an approval can unblock a dependent resting on that base, and at boot over rows already
-waiting (`design-pin-only-boot.ts`). The ledger names the kernel (`sweeper`); `decided_by_user` is the revision's
-proposer, since the column is a user and names no kernel. The reason is `designs.reason.pinOnlyKernel`, naming
+waiting (`design-pin-only-boot.ts`). The ledger names the kernel (`sweeper`) and the decision row says
+`decided_kind = 'kernel'` with no user (migration 0483; a CHECK refuses a kernel decision that names a user and a
+person decision that names none), so every reader shows "Forge (pin-only)", never the proposer. The reason is `designs.reason.pinOnlyKernel`, naming
 each pin moved. Any other change, or a base not yet approved, leaves it a person's approval; a design that
 cannot be compared is refused `WORKFLOW_DESIGN_UNCOMPARABLE`, never approved.
 

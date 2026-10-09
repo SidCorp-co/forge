@@ -177,6 +177,9 @@ export interface RevisionChanges {
 	edges: { added: number; removed: number; changed: number };
 }
 
+/** What a kernel decision shows as its decider. */
+export const KERNEL_DECIDER_NAME = "Forge (pin-only)";
+
 export interface DesignRevisionSummary {
 	revision: number;
 	designIssueId: string | null;
@@ -185,6 +188,8 @@ export interface DesignRevisionSummary {
 	proposedAt: string;
 	decision: string | null;
 	decidedBy: string | null;
+	/** `person` names `decidedBy`; `kernel` is Forge's own approval and names no user. */
+	decidedKind: "person" | "kernel" | null;
 	decidedByName: string | null;
 	decidedAt: string | null;
 	reason: string | null;

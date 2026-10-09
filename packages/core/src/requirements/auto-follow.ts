@@ -271,11 +271,15 @@ export type FollowOutcome =
   | 'no_approver'
   | 'refused';
 
-/** Who the follow is recorded as: whoever approved the newest of the designs it follows. */
+/** Who the follow is recorded as: whoever approved the newest of the designs it follows; where Forge's kernel approved it (BC-23), whoever proposed it, since a baseline names a user and its reason says it followed by itself. */
 async function approverOf(tx: Tx, pins: readonly StaleDesignPin[]): Promise<string | null> {
   for (const p of [...pins].sort((a, b) => b.approved - a.approved)) {
     const [row] = await tx
-      .select({ by: projectWorkflowDesigns.decidedByUser })
+      .select({
+        by: projectWorkflowDesigns.decidedByUser,
+        kind: projectWorkflowDesigns.decidedKind,
+        proposer: projectWorkflowDesigns.proposedByUser,
+      })
       .from(projectWorkflowDesigns)
       .where(
         and(
@@ -284,6 +288,7 @@ async function approverOf(tx: Tx, pins: readonly StaleDesignPin[]): Promise<stri
         ),
       );
     if (row?.by) return row.by;
+    if (row?.kind === 'kernel') return row.proposer;
   }
   return null;
 }

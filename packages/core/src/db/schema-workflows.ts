@@ -71,6 +71,8 @@ export const projectWorkflowDesigns = pgTable(
     proposedAt: timestamp('proposed_at', { withTimezone: true }).notNull().defaultNow(),
     decision: text('decision'),
     decidedByUser: uuid('decided_by_user').references(() => users.id, { onDelete: 'restrict' }),
+    // who decided: a person names their user, Forge's kernel names none (REQ-41 BC-23)
+    decidedKind: text('decided_kind', { enum: ['person', 'kernel'] }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
     // `reason` as said (`@forge/contracts/said`) where Forge composed it, so a reader reads it in their
@@ -88,7 +90,7 @@ export const projectWorkflowDesigns = pgTable(
     ),
     decidedChk: check(
       'project_workflow_designs_decided_chk',
-      sql`(${t.decision} IS NULL) = (${t.decidedByUser} IS NULL) AND (${t.decision} IS NULL) = (${t.decidedAt} IS NULL)`,
+      sql`(${t.decision} IS NULL) = (${t.decidedAt} IS NULL) AND ((${t.decision} IS NULL AND ${t.decidedKind} IS NULL AND ${t.decidedByUser} IS NULL) OR (${t.decision} IS NOT NULL AND ((${t.decidedKind} = 'person' AND ${t.decidedByUser} IS NOT NULL) OR (${t.decidedKind} = 'kernel' AND ${t.decidedByUser} IS NULL))))`,
     ),
     reasonChk: check(
       'project_workflow_designs_reason_chk',

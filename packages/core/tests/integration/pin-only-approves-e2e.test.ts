@@ -148,6 +148,29 @@ afterAll(async () => {
   await closeWorld();
 });
 
+describe('BC-23: a decision names who made it', () => {
+  const insertDecided = (kind: string, user: string | null) =>
+    db.execute(sql`
+      INSERT INTO project_workflow_designs
+        (workflow_id, revision, document, proposed_by_user, decision, decided_by_user, decided_kind, decided_at)
+      VALUES (${ids.get('access')}, 99, '{}'::jsonb, ${ownerId}, 'approve', ${user}, ${kind}, now())`);
+
+  it('refuses a kernel decision that names a user, and a person decision that names none', async () => {
+    await expect(insertDecided('kernel', ownerId)).rejects.toThrow();
+    await expect(insertDecided('person', null)).rejects.toThrow();
+    await expect(insertDecided('kernel', null)).resolves.toBeDefined();
+    await db.execute(sql`DELETE FROM project_workflow_designs WHERE revision = 99`);
+    await expect(insertDecided('person', ownerId)).resolves.toBeDefined();
+    await db.execute(sql`DELETE FROM project_workflow_designs WHERE revision = 99`);
+  });
+
+  it('shows a person decision as that person', async () => {
+    const [first] = (await read('access')).revisions.slice(-1);
+    expect(first).toMatchObject({ decidedBy: ownerId, decidedKind: 'person' });
+    expect(first.decidedByName).not.toBe('Forge (pin-only)');
+  });
+});
+
 describe('BC-23: a revision whose only change is its pins approves by itself', () => {
   it('approves a proposal that only moves its pin, naming the pin, recorded as Forge and never a row for a person', async () => {
     const key = await agreedTracing(ids.get('ux') as string, 'case');
@@ -162,7 +185,14 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     expect(d.status).toBe('approved');
     expect(d.approvedRevision).toBe(2);
     const [latest] = d.revisions;
-    expect(latest).toMatchObject({ revision: 2, decision: 'approve', decidedBy: ownerId });
+    expect(latest).toMatchObject({
+      revision: 2,
+      decision: 'approve',
+      decidedBy: null,
+      decidedKind: 'kernel',
+      decidedByName: 'Forge (pin-only)',
+    });
+    expect(latest.proposedBy, 'the proposer is the proposer, not the decider').toBe(ownerId);
     expect(latest.reason).toContain(`access r1 → r${r2}`);
     expect(latest.reason).toContain('Approved by Forge itself');
     expect(latest.says.reason.key).toBe('designs.reason.pinOnlyKernel');
@@ -224,7 +254,7 @@ describe('BC-23: a revision whose only change is its pins approves by itself', (
     // put the row back as dev held it: proposed, undecided, the approved revision the one before
     await rows(sql`
       UPDATE project_workflow_designs
-         SET decision = NULL, decided_by_user = NULL, decided_at = NULL, reason = NULL, reason_says = NULL
+         SET decision = NULL, decided_by_user = NULL, decided_kind = NULL, decided_at = NULL, reason = NULL, reason_says = NULL
        WHERE workflow_id = ${id} AND revision = 2`);
     await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);

@@ -1,7 +1,7 @@
 import { approvalPermission } from '@forge/contracts/permissions';
 import { verbatim } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import type { PinOnlyChange } from '@forge/contracts/workflows';
+import { KERNEL_DECIDER_NAME, type PinOnlyChange } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -159,7 +159,9 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       proposedAt: d.proposedAt.toISOString(),
       decision: d.decision,
       decidedBy: d.decidedByUser,
-      decidedByName: name(d.decidedByUser),
+      decidedKind: d.decidedKind,
+      // a kernel decision names Forge, never a person (VISION: state-never-lies)
+      decidedByName: d.decidedKind === 'kernel' ? KERNEL_DECIDER_NAME : name(d.decidedByUser),
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
       // Forge's own sentence by key; a decider's words as they wrote them
