@@ -12,7 +12,7 @@ import {
   projectScopeQuerySchema,
   resolveIssueRouteRef,
 } from '../issues/issue-route-ref.js';
-import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -41,6 +41,9 @@ import { CommentCursorInvalidError, decodeCommentCursor } from './cursor.js';
 import { parseMentions, resolveMentions } from './mentions.js';
 import { messageRefusalHttp } from './screen.js';
 import {
+  assertMayChangeComment,
+  CommentChangeForbidden,
+  CommentParentRefused,
   commentThreadColumns,
   insertComment,
   listIssueCommentPage,
@@ -73,6 +76,11 @@ export async function loadIssue(issueId: string) {
     .limit(1);
   if (!row) throw notFound('issue not found');
   return row;
+}
+
+function rethrowChangeForbidden(err: unknown): never {
+  if (err instanceof CommentChangeForbidden) throw forbidden(err.message);
+  throw err;
 }
 
 async function loadComment(commentId: string) {
@@ -110,21 +118,6 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       const access = await loadProjectAccess(issue.projectId, userId);
       assertProjectRole(access, 'member');
 
-      if (parentId) {
-        const [parent] = await db
-          .select({ id: comments.id, issueId: comments.issueId })
-          .from(comments)
-          .where(eq(comments.id, parentId))
-          .limit(1);
-        if (!parent) throw notFound('parent comment not found');
-        if (parent.issueId !== issueId) {
-          throw new HTTPException(400, {
-            message: 'parent comment belongs to a different issue',
-            cause: { code: 'PARENT_MISMATCH' },
-          });
-        }
-      }
-
       let written: Awaited<ReturnType<typeof insertComment>> | undefined;
       try {
         written = await insertComment({
@@ -139,6 +132,14 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
       } catch (err) {
         const refusal = bodyRefusalHttp(err) ?? messageRefusalHttp(err);
         if (refusal) throw refusal;
+        if (err instanceof CommentParentRefused) {
+          throw err.reason === 'not_found'
+            ? notFound(err.message)
+            : new HTTPException(400, {
+                message: err.message,
+                cause: { code: 'PARENT_MISMATCH' },
+              });
+        }
         const pgCode = pgErrorCode(err);
         if (pgCode === '23514') {
           throw new HTTPException(400, {
@@ -333,12 +334,7 @@ commentRoutes.patch(
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
-    if (comment.authorId !== userId) {
-      const access = await loadProjectAccess(comment.projectId, userId);
-      if (!projectRoleAtLeast(access.role, 'admin')) {
-        throw forbidden('not comment author or project admin');
-      }
-    }
+    await assertMayChangeComment(userId, comment).catch(rethrowChangeForbidden);
 
     let written: Awaited<ReturnType<typeof updateCommentBody>>;
     try {
@@ -379,12 +375,7 @@ commentRoutes.delete(
     const userId = c.get('userId');
 
     const comment = await loadComment(id);
-    if (comment.authorId !== userId) {
-      const access = await loadProjectAccess(comment.projectId, userId);
-      if (!projectRoleAtLeast(access.role, 'admin')) {
-        throw forbidden('not comment author or project admin');
-      }
-    }
+    await assertMayChangeComment(userId, comment).catch(rethrowChangeForbidden);
 
     await db.delete(comments).where(eq(comments.id, id));
     await hooks.emit('commentDeleted', {

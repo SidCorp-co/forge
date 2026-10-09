@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -9,6 +9,7 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { runMemoryGet } from './get-service.js';
+import { deleteMemory } from './indexer.js';
 import { memoryRevisionsInputSchema, runMemoryRevisions } from './revisions-service.js';
 
 const listQuerySchema = paginationSchema.extend({
@@ -95,18 +96,7 @@ memoryListRoutes.delete(
     const userId = c.get('userId');
     await assertProjectAccess(projectId, userId);
 
-    const result = await db
-      .delete(memories)
-      .where(
-        and(
-          eq(memories.projectId, projectId),
-          eq(memories.source, source),
-          eq(memories.sourceRef, sourceRef),
-        ),
-      )
-      .returning({ id: memories.id });
-
-    return c.json({ deleted: result.length });
+    return c.json({ deleted: await deleteMemory(projectId, source, sourceRef) });
   },
 );
 

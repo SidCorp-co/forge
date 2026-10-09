@@ -25,6 +25,7 @@ import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   assertAdmin,
   assertProjectMember,
+  assertProjectWriter,
   broadcastIntegrationChanged,
   notFound,
 } from '../route-helpers.js';
@@ -136,7 +137,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post('/:projectId/integrations/coolify/deploy', async (c) => {
     const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
+    await assertProjectWriter(projectId, c.get('userId'));
 
     const raw = await c.req.json().catch(() => ({}));
     const parsed = deployBodySchema.safeParse(raw ?? {});
@@ -156,7 +157,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post('/:projectId/integrations/coolify/cancel', async (c) => {
     const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
+    await assertProjectWriter(projectId, c.get('userId'));
     const raw = await c.req.json().catch(() => ({}));
     const parsed = cancelBodySchema.safeParse(raw ?? {});
     if (!parsed.success) {
@@ -210,7 +211,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
   routes.post('/:projectId/integrations/coolify/rollback', async (c) => {
     const projectId = c.req.param('projectId');
-    await assertProjectMember(projectId, c.get('userId'));
+    await assertProjectWriter(projectId, c.get('userId'));
     const raw = await c.req.json().catch(() => ({}));
     const parsed = rollbackBodySchema.safeParse(raw ?? {});
     if (!parsed.success) {

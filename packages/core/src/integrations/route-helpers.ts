@@ -1,7 +1,7 @@
 import type { ConnectionAccess } from '@forge/contracts';
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
-import { effectiveProjectRole } from '../lib/authz.js';
+import { effectiveProjectRole, projectWriteRefusal } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import type { AgentAccess } from './agent-access.js';
@@ -119,6 +119,21 @@ export async function assertProjectMember(
   if (!access) throw notFound('project');
   if (!access.role) throw forbidden();
   return access.role;
+}
+
+/** A write on a project's integrations needs the member role; a viewer reads and is refused here by name. */
+export async function assertProjectWriter(
+  projectId: string,
+  userId: string,
+): Promise<'admin' | 'member'> {
+  const role = await assertProjectMember(projectId, userId);
+  if (role === 'viewer') {
+    throw new HTTPException(403, {
+      message: projectWriteRefusal(role),
+      cause: { code: 'FORBIDDEN' },
+    });
+  }
+  return role;
 }
 
 export function assertAdmin(role: 'admin' | 'member' | 'viewer'): void {

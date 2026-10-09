@@ -7,7 +7,12 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveActor } from './activity.js';
-import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
+import {
+  deleteIssueContext,
+  getIssueContexts,
+  IssueNotInProject,
+  writeIssueContext,
+} from './issue-context-store.js';
 
 /**
  * REST surface for step-handoff persistence (proposal Y). 1-to-1 with the
@@ -67,8 +72,15 @@ stepHandoffRoutes.post(
     const body = c.req.valid('json');
     const userId = c.get('userId');
     await assertProjectAccess(body.projectId, userId);
-    const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
-    return c.json(r, 201);
+    try {
+      const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
+      return c.json(r, 201);
+    } catch (err) {
+      if (err instanceof IssueNotInProject) {
+        throw new HTTPException(404, { message: err.message, cause: { code: 'NOT_FOUND' } });
+      }
+      throw err;
+    }
   },
 );
 

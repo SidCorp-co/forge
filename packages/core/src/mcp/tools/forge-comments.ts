@@ -14,6 +14,9 @@ import {
 } from '../../comments/cursor.js';
 import { messageRefused } from '../../comments/screen.js';
 import {
+  assertMayChangeComment,
+  CommentChangeForbidden,
+  CommentParentRefused,
   type CommentThreadRow,
   deleteComment,
   insertComment,
@@ -24,7 +27,6 @@ import {
 } from '../../comments/service.js';
 import type { CommentAttachmentLite } from '../../comments/tree.js';
 import { env } from '../../config/env.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../../lib/authz.js';
 import { pgConstraintName, pgErrorCode } from '../../lib/db-errors.js';
 import { hooks } from '../../pipeline/hooks.js';
 import { markUntrusted } from '../../prompt/sanitize.js';
@@ -212,6 +214,13 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         inserted = written.row;
         bodyWarnings = written.warnings;
       } catch (err) {
+        if (err instanceof CommentParentRefused) {
+          throw new Error(
+            err.reason === 'not_found'
+              ? `NOT_FOUND: ${err.message}`
+              : `BAD_REQUEST: PARENT_MISMATCH: ${err.message}`,
+          );
+        }
         if (
           pgErrorCode(err) === '23503' &&
           pgConstraintName(err) === 'comments_author_device_id_devices_id_fk'
@@ -256,9 +265,7 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       const comment = await loadCommentForAccess(input.documentId);
 
       await assertPrincipalIsWriter(principal, comment.projectId);
-      if (comment.authorId !== principal.userId) {
-        await assertCommentDeletePermission(principal.userId, comment.projectId);
-      }
+      await assertMayChange(principal.userId, comment, 'delete');
 
       await deleteComment(input.documentId);
       await hooks.emit('commentDeleted', {
@@ -349,6 +356,7 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
 
   const comment = await loadCommentForAccess(input.documentId);
   await assertPrincipalIsWriter(principal, comment.projectId);
+  await assertMayChange(principal.userId, comment, 'edit');
 
   const written = await updateCommentBody(input.documentId, {
     body,
@@ -362,10 +370,17 @@ async function updateAction(principal: Principal, input: ToolInput): Promise<unk
   return result;
 }
 
-async function assertCommentDeletePermission(userId: string, projectId: string): Promise<void> {
-  const access = await effectiveProjectRole(userId, projectId);
-  if (!access) throw new Error('FORBIDDEN: project not found or not accessible');
-  if (!projectRoleAtLeast(access.role, 'admin')) {
-    throw new Error('FORBIDDEN: only the comment author or a project admin can delete');
+async function assertMayChange(
+  userId: string,
+  comment: { authorId: string; projectId: string },
+  verb: 'edit' | 'delete',
+): Promise<void> {
+  try {
+    await assertMayChangeComment(userId, comment);
+  } catch (err) {
+    if (err instanceof CommentChangeForbidden) {
+      throw new Error(`FORBIDDEN: only the comment author or a project admin can ${verb}`);
+    }
+    throw err;
   }
 }
