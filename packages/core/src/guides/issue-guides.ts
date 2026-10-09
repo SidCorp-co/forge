@@ -148,7 +148,7 @@ But \`draft\` is not a notepad either. Apply the test before you create anything
 | Decided against it; the work will not happen | \`dropped\` with a reason | Terminal, and does NOT stamp \`merged_at\` — this is the discard \`closed\` should not be used for |
 | Looked at it, not doing it now | leave \`draft\` | Costs nothing, dispatches nothing |
 
-How far the work got is never a status: it is \`workState\` — the run's \`step\` (triage, clarify, plan, build, test, release), the \`branch\` it builds on and the \`headSha\` it pushed. Write those with \`PATCH /api/issues/:id\` \`{ workState }\`.
+How far the work got is never a status: it is \`workState\` — the run's \`step\` (triage, clarify, plan, design, build, test, release; a move into build, test or release asks the design check), the \`branch\` it builds on and the \`headSha\` it pushed. Write those with \`PATCH /api/issues/:id\` \`{ workState }\`.
 
 ### A status says WHO the issue waits on, never WHAT exists
 Every status answers one question — whose move is next. It is declared per status in \`pipeline/status-assertions.ts\`, and a run's progress inside \`in_progress\` is its step on \`issue_work_state\`, not a rung of its own. So do not read a status as a promise that code was written, pushed or merged.
