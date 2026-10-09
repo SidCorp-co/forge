@@ -106,6 +106,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const act = useFeedbackAction(projectId, f.key);
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState("");
+  const [evidence, setEvidence] = useState("");
   return (
     <section className="grid gap-2" data-testid="feedback-verify">
       <h3 className="text-12 font-semibold text-muted">{t("feedback.act.confirmFix")}</h3>
@@ -114,6 +115,9 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
         {f.autoVerify ? t("feedback.verify.byDate", { at: time.dateTime(f.autoVerify.at), n: f.autoVerify.windowDays }) : t("feedback.verify.byWindow")}
       </p>
       {f.can.askVerify ? <p className="text-12 text-muted">{t("feedback.verify.asking")}</p> : null}
+      {!reopening && f.can.verify ? (
+        <Input value={evidence} onChange={(e) => setEvidence(e.target.value)} maxLength={500} aria-label={t("feedback.verify.evidence")} placeholder={t("feedback.verify.evidence")} />
+      ) : null}
       {reopening ? (
         <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder={t("feedback.verify.reopenPlaceholder")} />
       ) : null}
@@ -126,7 +130,7 @@ function VerifyBar({ projectId, f }: { projectId: string; f: FeedbackView }) {
         ) : (
           <>
             {f.can.verify ? (
-              <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify" })}>
+              <Button type="button" size="sm" variant="primary" loading={act.isPending} onClick={() => act.mutate({ kind: "verify", ...(evidence.trim() ? { note: evidence.trim() } : {}) })}>
                 {t("feedback.verify.mark")}
               </Button>
             ) : null}

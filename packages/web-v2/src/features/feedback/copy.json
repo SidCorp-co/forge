@@ -243,6 +243,7 @@
     "feedback.verify.byDate": " If nobody does by {at}, Forge verifies it after {n} days with no reply.",
     "feedback.verify.byWindow": " If nobody does within the project’s verify window, Forge verifies it.",
     "feedback.verify.copy": "Anyone on the project, or the reporter, may confirm the fix, and the record keeps who and when.",
+    "feedback.verify.evidence": "What you did and saw, on which version",
     "feedback.verify.mark": "Mark verified",
     "feedback.verify.reopen": "Reopen",
     "feedback.verify.reopenPlaceholder": "What the fix does not answer"
