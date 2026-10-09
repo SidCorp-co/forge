@@ -3067,6 +3067,13 @@
       "when": 1824249600000,
       "tag": "0478_a_release_page_opens_on_highlights_and_can_be_shared",
       "breakpoints": true
+    },
+    {
+      "idx": 481,
+      "version": "7",
+      "when": 1824508800000,
+      "tag": "0481_a_stale_draft_revision_can_be_withdrawn",
+      "breakpoints": true
     }
   ]
 }

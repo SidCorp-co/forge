@@ -6,7 +6,7 @@
 import type { RequirementDeferral } from '@forge/contracts/requirements';
 import { and, desc, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { requirementDeferrals } from '../db/schema-requirements.js';
+import { requirementDeferrals } from '../db/schema-requirement-acts.js';
 
 /** The defer a deferred requirement stands on: from where, why and until when. */
 export async function latestDeferOf(tx: Tx, requirementId: string) {

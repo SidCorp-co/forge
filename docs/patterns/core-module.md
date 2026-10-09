@@ -637,6 +637,9 @@ numbered 1..n.
   current becomes `superseded` in the same write.
 - Approve, return and accept are **decisions**, not states. A return sends `proposed` back to
   `draft`, with its reason and decider recorded.
+- A `draft` may end as `withdrawn` instead, terminal, with its reason, who and when (migration
+  0481): it is no longer the open revision, and its criteria writes are undone so they never read
+  as live at a later revision.
 - The reference is `packages/core/src/db/schema-requirements.ts:REVISION_STATES`, enforced by
   `requirement_revision_guard()`. A workflow design moves onto revision rows.
 - A contract version is *recorded*, not authored, so it keeps `proposed`, `approved` and

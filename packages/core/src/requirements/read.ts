@@ -10,7 +10,7 @@ import {
   type RequirementSummary,
   requirementKey,
 } from '@forge/contracts/requirements';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import {
@@ -177,7 +177,13 @@ export async function listRequirementsAs(
         state: requirementRevisions.state,
       })
       .from(requirementRevisions)
-      .where(inArray(requirementRevisions.requirementId, ids))
+      // a withdrawn draft is not the revision that stands, so the newest one is the one before it
+      .where(
+        and(
+          inArray(requirementRevisions.requirementId, ids),
+          ne(requirementRevisions.state, 'withdrawn'),
+        ),
+      )
       .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
     standingViewer(viewer, projectId).then((v) => standingsOf(projectId, rows, v)),
   ]);
@@ -415,7 +421,7 @@ export async function detailOf(
   ]);
   const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
-  const latest = revisions[0];
+  const latest = revisions.find((r) => r.state !== 'withdrawn');
   return {
     ...summaryOf(
       row,

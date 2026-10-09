@@ -37,7 +37,12 @@ import { consume } from '../outbox/index.js';
 import { recordAnswerResume } from '../questions/index.js';
 import { dropIn } from './acceptance.js';
 import { type RequirementActor, type Row, rowIn, signerRefusal } from './read.js';
-import { newRevisionIn, type RevisionWrite } from './revision-write.js';
+import {
+  newRevisionIn,
+  openRevisionOf,
+  type RevisionWrite,
+  withdrawRevisionIn,
+} from './revision-write.js';
 import { type CriterionInput, liveAt } from './rules.js';
 import { lockRequirements } from './write-tx.js';
 
@@ -232,7 +237,10 @@ async function latestRevision(tx: Tx, requirementId: string): Promise<number> {
   return Number(row?.n ?? 0);
 }
 
-/** Drop or merge a stale draft requirement; a draft revision of a requirement past draft is refused. */
+/**
+ * Drop or merge a stale draft requirement. A stale draft revision of a requirement past draft is
+ * withdrawn on a drop (the requirement keeps what was agreed), and refused on a merge.
+ */
 async function actOnRequirement(
   a: StaleDraftAnswered,
   requirementId: string,
@@ -241,15 +249,11 @@ async function actOnRequirement(
   if (draft.status === 'dropped') return null;
   const key = requirementKey(draft.reqSeq);
   if (draft.status !== 'draft') {
-    return a.answer === 'drop'
-      ? ruled(
-          'STALE_DRAFT_REVISION_DROP',
-          `${key} is ${draft.status}: the stale draft is a revision of it, and dropping the requirement would end what was agreed. A requirement keeps its draft revision until it is proposed or edited.`,
-        )
-      : ruled(
-          'STALE_DRAFT_MERGE_REVISION',
-          `${key} is ${draft.status}: the stale draft is a revision of it, and merging it elsewhere would drop what was agreed.`,
-        );
+    if (a.answer === 'drop') return withdrawStaleRevision(a, draft);
+    return ruled(
+      'STALE_DRAFT_MERGE_REVISION',
+      `${key} is ${draft.status}: the stale draft is a revision of it, and merging it elsewhere would drop what was agreed.`,
+    );
   }
   const actor = await requirementActor(a.answeredBy);
   const signer = await signerRefusal(actor, a.projectId, 'dropping a requirement', draft);
@@ -271,6 +275,33 @@ async function actOnRequirement(
               (await dropIn(tx, a.projectId, draft.id, `Dropped on ${said(a)}.`, actor)) ?? [],
             );
       // a refusal rolls back whatever the act wrote before it: only the refusal is recorded
+      if (outcome) throw new RefusalError([{ ...outcome, path: '' }], outcome.code);
+    });
+    return null;
+  } catch (err) {
+    if (!isRefusal(err)) throw err;
+    return firstOf(err.refusals) ?? refused(err.fallbackCode, err.message);
+  }
+}
+
+/** Withdraw the open draft revision a drop names; none open means it was already acted on. */
+async function withdrawStaleRevision(
+  a: StaleDraftAnswered,
+  draft: Row,
+): Promise<StaleDraftRefused | null> {
+  const actor = await requirementActor(a.answeredBy);
+  try {
+    await db.transaction(async (tx) => {
+      await lockRequirements(tx, a.projectId);
+      const open = await openRevisionOf(tx, draft.id);
+      if (!open) return;
+      const refusals = await withdrawRevisionIn(tx, {
+        requirementId: draft.id,
+        revision: open.revision,
+        reason: `Withdrawn on ${said(a)}.`,
+        actor,
+      });
+      const outcome = firstOf(refusals ?? []);
       if (outcome) throw new RefusalError([{ ...outcome, path: '' }], outcome.code);
     });
     return null;

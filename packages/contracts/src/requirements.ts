@@ -3,10 +3,12 @@
 // decide it, and the coverage of each business criterion. Core writes the shapes; web-v2 reads the
 // labels, so one value keeps one badge on every screen.
 
-import type { Said } from "./said.js";
 import { z } from "zod";
-import type { WrittenLang } from "./written-lang.js";
-import { type DecisionMaker, type EntityCommentView, REASON_TEXT_MAX } from "./comments.js";
+import {
+	type DecisionMaker,
+	type EntityCommentView,
+	REASON_TEXT_MAX,
+} from "./comments.js";
 import type {
 	FeedbackKind,
 	FeedbackPhase,
@@ -15,8 +17,12 @@ import type {
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import type { RequirementKind, RequirementPictureView } from "./requirement-pictures.js";
 import type { RefusalStatuses } from "./refusal.js";
+import type {
+	RequirementKind,
+	RequirementPictureView,
+} from "./requirement-pictures.js";
+import type { Said } from "./said.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -25,6 +31,7 @@ import type {
 	WaitingOn,
 } from "./standing.js";
 import type { CriterionTraceView } from "./workflow-health.js";
+import type { WrittenLang } from "./written-lang.js";
 
 export const REQUIREMENT_STATUSES = [
 	"draft",
@@ -109,6 +116,7 @@ export const REVISION_STATES = [
 	"proposed",
 	"current",
 	"superseded",
+	"withdrawn",
 ] as const;
 export type RevisionState = (typeof REVISION_STATES)[number];
 
@@ -117,6 +125,7 @@ export const REVISION_STATE_LABELS: Record<RevisionState, string> = {
 	proposed: "Proposed",
 	current: "Current",
 	superseded: "Superseded",
+	withdrawn: "Withdrawn",
 };
 
 export const REVISION_STATE_TONES: Record<RevisionState, StandingTone> = {
@@ -124,6 +133,7 @@ export const REVISION_STATE_TONES: Record<RevisionState, StandingTone> = {
 	proposed: "you",
 	current: "ready",
 	superseded: "done",
+	withdrawn: "done",
 };
 
 export const REVISION_STATE_GLYPHS: Record<RevisionState, string> = {
@@ -131,6 +141,7 @@ export const REVISION_STATE_GLYPHS: Record<RevisionState, string> = {
 	proposed: "●",
 	current: "✓",
 	superseded: "×",
+	withdrawn: "–",
 };
 
 export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
@@ -138,6 +149,7 @@ export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
 	proposed: "proposed: waiting for a person to accept or return it",
 	current: "current: the accepted revision",
 	superseded: "superseded: replaced by a later accepted revision",
+	withdrawn: "withdrawn: a draft dropped without being proposed",
 };
 
 /** The list's attention groups, in the order they are drawn. */
@@ -209,7 +221,8 @@ export type RequirementWaitRefers = (typeof REQUIREMENT_WAIT_REFERS)[number];
  * release has no number yet), so a reader links the issue or the release instead of guessing from
  * the words.
  */
-export interface RequirementWaitingOn extends WaitingOn<RequirementWaitingKind> {
+export interface RequirementWaitingOn
+	extends WaitingOn<RequirementWaitingKind> {
 	refers?: RequirementWaitRefers;
 }
 
@@ -323,7 +336,11 @@ export interface RequirementFacts {
 		current: string;
 	}[];
 	/** Linked designs holding no approved revision; an agree is refused while any is listed. */
-	unapprovedDesigns: { flow: string; title: string; designStatus: string | null }[];
+	unapprovedDesigns: {
+		flow: string;
+		title: string;
+		designStatus: string | null;
+	}[];
 	feedbackOpen: number;
 	feedbackUntriaged: number;
 }
@@ -572,7 +589,8 @@ export function draftIssuesToPromote<T extends { status: string }>(
 	requirementStatus: string,
 	issues: readonly T[],
 ): T[] {
-	if (requirementStatus !== "agreed" && requirementStatus !== "accepted") return [];
+	if (requirementStatus !== "agreed" && requirementStatus !== "accepted")
+		return [];
 	return issues.filter((i) => i.status === "draft");
 }
 
@@ -631,6 +649,7 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_REVISION_NOT_CURRENT",
 	"REQUIREMENT_REVISION_NOT_DRAFT",
 	"REQUIREMENT_REVISION_NOT_PROPOSED",
+	"REQUIREMENT_REVISION_WITHDRAWN",
 	"REQUIREMENT_REVISION_OPEN",
 	"REQUIREMENT_DESIGN_UNAPPROVED",
 	"REQUIREMENT_NOT_AGREED",

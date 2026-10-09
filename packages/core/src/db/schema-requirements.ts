@@ -2,8 +2,6 @@ import { PICTURE_KINDS, REQUIREMENT_KINDS } from '@forge/contracts/requirement-p
 import {
   BASELINE_ACTS,
   type BaselineReadiness,
-  DEFERRABLE_STATUSES,
-  REQUIREMENT_DEFERRAL_ACTS,
   REQUIREMENT_STATUSES,
   REVISION_STATES,
 } from '@forge/contracts/requirements';
@@ -123,6 +121,10 @@ export const requirementRevisions = pgTable(
     // the accepting signer's own words, kept on the act itself; the reason column above is
     // the author's, and a re-baseline copies this one, never that one (ISS-84)
     acceptReason: text('accept_reason'),
+    // a draft withdrawn without being proposed (REQ-41 BC-12, migration 0481): why, by whom, when
+    withdrawnReason: text('withdrawn_reason'),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+    withdrawnBy: uuid('withdrawn_by').references(() => users.id, { onDelete: 'restrict' }),
     // an accepted suggestion's effect points back at it (suggestion-lifecycle step accepted)
     fromSuggestionId: uuid('from_suggestion_id').references((): AnyPgColumn => suggestions.id, {
       onDelete: 'no action',
@@ -153,7 +155,11 @@ export const requirementRevisions = pgTable(
       .where(sql`state IN ('draft', 'proposed')`),
     stateChk: check(
       'requirement_revisions_state_chk',
-      sql`${t.state} IN ('draft', 'proposed', 'current', 'superseded')`,
+      sql`${t.state} IN ('draft', 'proposed', 'current', 'superseded', 'withdrawn')`,
+    ),
+    withdrawnChk: check(
+      'requirement_revisions_withdrawn_chk',
+      sql`${t.state} <> 'withdrawn' OR (${t.withdrawnReason} ~ '[^[:space:]]' AND ${t.withdrawnAt} IS NOT NULL AND ${t.withdrawnBy} IS NOT NULL)`,
     ),
     revisionChk: check('requirement_revisions_revision_chk', sql`${t.revision} >= 1`),
     authorAgencyChk: check(
@@ -335,74 +341,6 @@ export const requirementBaselines = pgTable(
       columns: [t.requirementId, t.revision],
       foreignColumns: [requirementRevisions.requirementId, requirementRevisions.revision],
     }).onDelete('cascade'),
-  }),
-);
-
-// a return is a decision that can happen more than once on one revision (proposed, returned,
-// proposed again), so each is its own insert-only row with who, when and why; the revision's
-// return_reason keeps only the latest for the draft's author to read
-export const requirementReturns = pgTable(
-  'requirement_returns',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    requirementId: uuid('requirement_id').notNull(),
-    revision: integer('revision').notNull(),
-    returnedBy: uuid('returned_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    returnedAt: timestamp('returned_at', { withTimezone: true }).notNull().defaultNow(),
-    reason: text('reason').notNull(),
-  },
-  (t) => ({
-    revisionFk: foreignKey({
-      name: 'requirement_returns_revision_fk',
-      columns: [t.requirementId, t.revision],
-      foreignColumns: [requirementRevisions.requirementId, requirementRevisions.revision],
-    }).onDelete('cascade'),
-    reasonChk: check('requirement_returns_reason_chk', sql`${t.reason} ~ '[^[:space:]]'`),
-    requirementIdx: index('requirement_returns_requirement_idx').on(t.requirementId, t.revision),
-  }),
-);
-
-// a defer and an undefer are decisions a requirement can take more than once, so each is
-// its own insert-only row (`requirement_deferral_guard()`, migration 0362); the head's status says
-// `deferred`, and the latest defer row says from where, why and until when (ISS-85)
-export const requirementDeferrals = pgTable(
-  'requirement_deferrals',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    requirementId: uuid('requirement_id')
-      .notNull()
-      .references((): AnyPgColumn => requirements.id, { onDelete: 'cascade' }),
-    act: text('act', { enum: REQUIREMENT_DEFERRAL_ACTS }).notNull(),
-    fromStatus: text('from_status', {
-      enum: [...DEFERRABLE_STATUSES, 'deferred'] as const,
-    }).notNull(),
-    targetPhase: text('target_phase'),
-    reason: text('reason'),
-    decidedBy: uuid('decided_by')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
-    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    actChk: check(
-      'requirement_deferrals_act_chk',
-      sql`${t.act} IN (${inList(REQUIREMENT_DEFERRAL_ACTS)})`,
-    ),
-    fromChk: check(
-      'requirement_deferrals_from_chk',
-      sql`(${t.act} = 'defer' AND ${t.fromStatus} IN (${inList(DEFERRABLE_STATUSES)})) OR (${t.act} = 'undefer' AND ${t.fromStatus} = 'deferred')`,
-    ),
-    reasonChk: check(
-      'requirement_deferrals_reason_chk',
-      sql`${t.act} <> 'defer' OR ${t.reason} ~ '[^[:space:]]'`,
-    ),
-    phaseChk: check(
-      'requirement_deferrals_phase_chk',
-      sql`${t.act} = 'defer' OR ${t.targetPhase} IS NULL`,
-    ),
-    requirementIdx: index('requirement_deferrals_requirement_idx').on(t.requirementId, t.decidedAt),
   }),
 );
 

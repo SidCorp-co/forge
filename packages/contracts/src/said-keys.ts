@@ -196,6 +196,7 @@ export const SAID = {
 	"requirements.history.text.pictureDrawn": { en: "Drew the picture of r{r}, a rough sketch: {rest}", vars: { r: "count", rest: "text" } },
 	"requirements.history.text.pictureReplaced": { en: "Replaced the picture of r{r}, a rough sketch: {rest}", vars: { r: "count", rest: "text" } },
 	"requirements.history.text.proposed": { en: "Proposed r{r}", vars: { r: "count" } },
+	"requirements.history.text.withdrawn": { en: "Withdrew r{r}: {rest}", vars: { r: "count", rest: "text" } },
 	"requirements.history.text.rejectedSuggestion": { en: "Rejected {what}", vars: { what: "said" } },
 	"requirements.history.text.rejectedSuggestionWhy": { en: "Rejected {what}: {rest}", vars: { what: "said", rest: "text" } },
 	"requirements.history.text.repinned": { en: "Re-pinned r{r} onto the approved designs", vars: { r: "count" } },

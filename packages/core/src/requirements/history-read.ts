@@ -6,20 +6,24 @@
 
 import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
 import type { BaselineReadiness, RequirementHistoryEntry } from '@forge/contracts/requirements';
-import { type Said, type SaidPlainKey, say, sayEn, verbatim } from '@forge/contracts/said';
+import { type Said, type SaidPlainKey, say, verbatim } from '@forge/contracts/said';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { activityLog, issues, kernelTransitions } from '../db/schema.js';
-import {
-  requirementBaselines,
-  requirementDeferrals,
-  requirementReturns,
-  requirementRevisions,
-} from '../db/schema-requirements.js';
+import { requirementDeferrals, requirementReturns } from '../db/schema-requirement-acts.js';
+import { requirementBaselines, requirementRevisions } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import {
+  AN_AGENT,
+  entry,
+  type Namer,
+  revisionEntries,
+  SIGNER,
+  SOMEONE,
+} from './history-entries.js';
 import { type PictureRow, pictureRowsOf } from './picture-read.js';
 
 const SUGGESTION_LABEL: Record<string, SaidPlainKey> = {
@@ -73,7 +77,6 @@ function statusMoveOf(stored: unknown): { from: string; to: string } | null {
   return null;
 }
 
-type RevisionRow = typeof requirementRevisions.$inferSelect;
 type BaselineRow = typeof requirementBaselines.$inferSelect;
 type ReturnRow = typeof requirementReturns.$inferSelect;
 type DeferralRow = typeof requirementDeferrals.$inferSelect;
@@ -94,80 +97,6 @@ interface SuggestionRow {
   decidedAt: Date | null;
 }
 
-interface Namer {
-  who: (id: string | null, fallback: Said) => Said;
-  sourceOf: (id: string | null) => 'person' | 'agent';
-}
-
-const SOMEONE = say('requirements.history.who.someone');
-const SIGNER = say('requirements.history.who.signer');
-const AN_AGENT = say('requirements.history.who.agent');
-
-type EntryInput = Omit<
-  RequirementHistoryEntry,
-  'issue' | 'move' | 'who' | 'text' | 'kind' | 'says'
-> &
-  Partial<Pick<RequirementHistoryEntry, 'issue' | 'move'>> & { who: Said; text: Said; kind: Said };
-
-/** A history entry from what it says: its English `who`, `text` and `kind` rendered from `says`. */
-const entry = ({ who, text, kind, ...e }: EntryInput): RequirementHistoryEntry => ({
-  issue: null,
-  move: null,
-  ...e,
-  kind: sayEn(kind),
-  who: sayEn(who),
-  text: sayEn(text),
-  says: { who, text, kind },
-});
-
-function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
-  const out = [
-    entry({
-      id: `rev-${r.revision}-written`,
-      at: r.createdAt.toISOString(),
-      source: n.sourceOf(r.authorId),
-      who: n.who(r.authorId, SOMEONE),
-      kind: say('requirements.history.kind.Revision'),
-      text: say(
-        r.fromSuggestionId
-          ? 'requirements.history.text.wroteSuggested'
-          : 'requirements.history.text.wrote',
-        { r: r.revision, rest: r.changeSummary ?? r.reason },
-      ),
-    }),
-  ];
-  if (r.proposedAt) {
-    out.push(
-      entry({
-        id: `rev-${r.revision}-proposed`,
-        at: r.proposedAt.toISOString(),
-        source: n.sourceOf(r.proposedBy ?? r.authorId),
-        who: n.who(r.proposedBy ?? r.authorId, SOMEONE),
-        kind: say('requirements.history.kind.Revision'),
-        text: say('requirements.history.text.proposed', { r: r.revision }),
-      }),
-    );
-  }
-  if (r.decidedAt && (r.state === 'current' || r.state === 'superseded')) {
-    out.push(
-      entry({
-        id: `rev-${r.revision}-accepted`,
-        at: r.decidedAt.toISOString(),
-        source: 'person',
-        who: n.who(r.decidedBy, SIGNER),
-        kind: say('requirements.history.kind.Decision'),
-        text: r.acceptReason
-          ? say('requirements.history.text.acceptedWhy', { r: r.revision, rest: r.acceptReason })
-          : say('requirements.history.text.accepted', { r: r.revision }),
-      }),
-    );
-  }
-  return out;
-}
-
-// Each picture written is its own row (requirement_pictures), so a replaced one stays here with who
-// drew it and when (Requirement lifecycle r14 `picture_shown`); a picture is a replace where one was
-// already drawn for the same revision
 function pictureEntries(pictures: readonly PictureRow[], n: Namer): RequirementHistoryEntry[] {
   const drawn = new Set<number>();
   return pictures.map((p) => {

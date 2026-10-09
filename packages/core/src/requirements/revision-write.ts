@@ -37,6 +37,7 @@ import {
   planCriteria,
   type RequirementRefusal,
   staleBaseRefusal,
+  stateRefusal,
 } from './rules.js';
 
 export interface RevisionWrite {
@@ -476,4 +477,45 @@ export async function openRevisionOf(tx: Tx, requirementId: string) {
       ),
     );
   return open ? { revision: open.revision, state: open.state as RevisionState } : null;
+}
+
+/**
+ * Withdraws draft `revision` (REQ-41 BC-12, migration 0481): a terminal state reachable only from
+ * draft, with why, by whom and when. What its writes did to the criteria is undone first, so its
+ * wordings never read as live at a later revision; its own text stays, frozen, as evidence.
+ */
+export async function withdrawRevisionIn(
+  tx: Tx,
+  input: { requirementId: string; revision: number; reason: string; actor: RequirementActor },
+): Promise<RequirementRefusal[] | null> {
+  const [row] = await tx
+    .select({ state: requirementRevisions.state })
+    .from(requirementRevisions)
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, input.requirementId),
+        eq(requirementRevisions.revision, input.revision),
+      ),
+    )
+    .for('update');
+  if (!row)
+    throw new Error(`requirements: ${input.requirementId} has no revision ${input.revision}`);
+  const notDraft = stateRefusal(input.revision, row.state as RevisionState, 'draft');
+  if (notDraft) return [notDraft];
+  await resetDraftCriteria(tx, input.requirementId, input.revision);
+  await tx
+    .update(requirementRevisions)
+    .set({
+      state: 'withdrawn',
+      withdrawnReason: input.reason.trim(),
+      withdrawnAt: new Date(),
+      withdrawnBy: input.actor.userId,
+    })
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, input.requirementId),
+        eq(requirementRevisions.revision, input.revision),
+      ),
+    );
+  return null;
 }
