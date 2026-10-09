@@ -112,7 +112,7 @@ export function answersToNoChecklist(
     {
       code: 'CHECKLIST_ANSWER_INVALID',
       path: '/answers',
-      detail: `The move ${entity} \`${from}\` → \`${to}\` asks no checklist, so it takes no answers. Send the move without them.`,
+      detail: `Moving this ${entity} from ${from} to ${to} asks no checklist questions, so it takes no answers. Send the move without answers.`,
     },
   ];
 }

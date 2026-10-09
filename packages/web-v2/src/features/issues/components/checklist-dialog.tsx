@@ -1,13 +1,14 @@
 // REQ-34 BC-3, BC-18 — the form of a checklist a move was refused by, built from the one definition
 // the kernel judges it with (`@forge/contracts/checklists:checklistFormOf`). Each refusal is shown
-// on the field its path names; a field the issue's own record answers is shown, not typed.
+// on the field its path names; a field the issue's own record answers is shown, not typed. What the
+// person types is held by the caller (`use-guarded-transition.tsx`), so a second refusal or a close
+// never clears it.
 
 "use client";
 
 import { CHECKLISTS, isChecklistId } from "@forge/contracts/checklist-registry";
 import { type ChecklistFormField, checklistFormOf } from "@forge/contracts/checklists";
 import type { Refusal } from "@forge/contracts/refusal";
-import { useEffect, useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -21,6 +22,15 @@ export interface ChecklistPrompt {
 export interface ChecklistField extends ChecklistFormField {
   /** The plain-words refusal on this field, or null. */
   error: string | null;
+}
+
+/** Only what the person actually wrote, trimmed: a blank box is no answer, and is never sent. */
+export function givenAnswers(typed: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(typed)
+      .map(([k, v]) => [k, v.trim()] as const)
+      .filter(([, v]) => v !== ""),
+  );
 }
 
 /** The checklist's fields in its order, each carrying the refusal its path names. */
@@ -46,26 +56,19 @@ export function checklistPromptOf(refusals: Refusal[]): ChecklistPrompt | null {
 
 interface ChecklistDialogProps {
   prompt: ChecklistPrompt | null;
+  /** What the person has typed so far, by question; kept by the caller across refusals and closes. */
+  answers: Readonly<Record<string, string>>;
+  onAnswer: (question: string, value: string) => void;
   loading: boolean;
   onConfirm: (answers: Record<string, string>) => void;
   onClose: () => void;
 }
 
-export function ChecklistDialog({ prompt, loading, onConfirm, onClose }: ChecklistDialogProps) {
+export function ChecklistDialog({ prompt, answers, onAnswer, loading, onConfirm, onClose }: ChecklistDialogProps) {
   const t = useCopy();
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (prompt) setAnswers({});
-  }, [prompt]);
   if (!prompt) return null;
   const read = checklistFieldsOf(prompt);
   if (!read) return null;
-  const set = (name: string, value: string) => setAnswers((a) => ({ ...a, [name]: value }));
-  const given = Object.fromEntries(
-    Object.entries(answers)
-      .map(([k, v]) => [k, v.trim()] as const)
-      .filter(([, v]) => v !== ""),
-  );
   const unrecognised = prompt.refusals.filter((r) => !read.fields.some((f) => f.path === r.path));
 
   return (
@@ -78,13 +81,13 @@ export function ChecklistDialog({ prompt, loading, onConfirm, onClose }: Checkli
           </p>
         ))}
         {read.fields.map((f) => (
-          <ChecklistInput key={f.name} field={f} value={answers[f.name] ?? ""} onChange={(v) => set(f.name, v)} />
+          <ChecklistInput key={f.name} field={f} value={answers[f.name] ?? ""} onChange={(v) => onAnswer(f.name, v)} />
         ))}
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
             {t("common.cancel")}
           </Button>
-          <Button type="button" variant="primary" loading={loading} onClick={() => onConfirm(given)}>
+          <Button type="button" variant="primary" loading={loading} onClick={() => onConfirm(givenAnswers(answers))}>
             {t("issues.checklist.confirm")}
           </Button>
         </div>
@@ -106,7 +109,7 @@ function ChecklistInput({
   const error = field.error ?? undefined;
   if (field.answeredBy === "record") {
     return (
-      <Field label={field.label} error={error} hint={t("issues.checklist.fromRecord", { field: field.recordField ?? "" })}>
+      <Field label={field.label} error={error} hint={t("issues.checklist.fromRecord", { field: field.recordLabel ?? "" })}>
         <p className="fg-body-sm text-muted">{field.help}</p>
       </Field>
     );

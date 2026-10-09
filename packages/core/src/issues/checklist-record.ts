@@ -18,17 +18,20 @@ interface Planned {
   key: string | null;
   status: string | null;
   plannedRevision: number | null;
+  hasPlan: boolean;
 }
 
 async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
   const rows = (await exec.execute(sql`
-    SELECT r.req_seq, r.status, i.planned_revision
+    SELECT r.req_seq, r.status, i.planned_revision,
+           (i.plan IS NOT NULL AND btrim(i.plan) <> '') AS has_plan
       FROM issues i LEFT JOIN requirements r ON r.id = i.requirement_id
      WHERE i.id = ${issueId}
   `)) as unknown as Array<{
     req_seq: number | null;
     status: string | null;
     planned_revision: number | null;
+    has_plan: boolean;
   }>;
   const row = rows[0];
   if (!row) throw new Error(`issue checklist: issue ${issueId} has no row to read`);
@@ -36,19 +39,40 @@ async function plannedOf(exec: Reader, issueId: string): Promise<Planned> {
     key: row.req_seq === null ? null : requirementKey(row.req_seq),
     status: row.status,
     plannedRevision: row.planned_revision,
+    hasPlan: row.has_plan === true,
   };
 }
 
+// Saving a plan is what stamps the revision it is written against
+// (`requirements/issue-links.ts:plannedRevisionFor`), so each gap names the act that clears it.
 function requirementAnswer(p: Planned): RecordAnswer {
-  if (p.key === null) return { gap: 'This issue names no requirement.' };
+  if (p.key === null) {
+    return {
+      gap: 'The issue is not linked to a requirement.',
+      fix: 'Link it to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.',
+    };
+  }
   if (!DELIVERABLE.includes(p.status ?? '')) {
-    return { gap: `${p.key} is ${p.status}, and an issue delivers only an agreed requirement.` };
+    return {
+      gap: `It is linked to ${p.key}, which is ${p.status}, and an issue can deliver only an agreed or accepted requirement.`,
+      fix: `Wait until ${p.key} is agreed, or link the issue to the agreed requirement it delivers instead.`,
+    };
   }
   if (p.plannedRevision === null) {
-    return { gap: `It names ${p.key} and plans against no revision of it.` };
+    return p.hasPlan
+      ? {
+          gap: `It is linked to ${p.key}, and its plan was saved before that link, so the plan records no revision of ${p.key}.`,
+          fix: `Save the issue's plan again: that records the current revision of ${p.key} as the one it is written against.`,
+        }
+      : {
+          gap: `It is linked to ${p.key}, and it has no plan yet.`,
+          fix: `Write the issue's plan: saving it records the current revision of ${p.key} as the one it is written against.`,
+        };
   }
   return { value: `${p.key} at revision ${p.plannedRevision}` };
 }
+
+const criteriaCount = (n: number) => `${n} ${n === 1 ? 'criterion' : 'criteria'}`;
 
 async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promise<RecordAnswer> {
   const rows = (await exec.execute(sql`
@@ -63,19 +87,29 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
      WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
      ORDER BY c.position
   `)) as unknown as Array<{ n: number; code: string | null; traced: boolean | null }>;
-  if (rows.length === 0) return { gap: 'This issue has no criteria.' };
+  if (rows.length === 0) {
+    return {
+      gap: 'The issue has no acceptance criteria.',
+      fix: 'Write its numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.',
+    };
+  }
   if (p.key === null || p.plannedRevision === null) {
-    return { gap: 'Its criteria trace to no requirement revision, because it plans against none.' };
+    return {
+      gap: `Its ${criteriaCount(rows.length)} cannot be traced yet, because the issue has no plan written against a requirement revision.`,
+      fix: 'Answer the requirement question first; then trace each criterion to a business criterion (BC) of that revision.',
+    };
   }
   const untraced = rows.filter((r) => r.traced !== true).map((r) => r.n);
   if (untraced.length > 0) {
+    const one = untraced.length === 1;
     return {
-      gap: `Criteria ${untraced.join(', ')} trace to no BC that stands at ${p.key} revision ${p.plannedRevision}.`,
+      gap: `${one ? 'Criterion' : 'Criteria'} ${untraced.join(', ')} ${one ? 'is' : 'are'} not traced to a business criterion (BC) that stands at ${p.key} revision ${p.plannedRevision}.`,
+      fix: `Trace ${one ? 'it' : 'each one'} to a BC of ${p.key} revision ${p.plannedRevision} on the issue's criteria.`,
     };
   }
   const codes = [...new Set(rows.map((r) => r.code))].join(', ');
   return {
-    value: `${rows.length} criteria, tracing ${codes} of ${p.key} revision ${p.plannedRevision}`,
+    value: `${criteriaCount(rows.length)}, tracing ${codes} of ${p.key} revision ${p.plannedRevision}`,
   };
 }
 

@@ -117,7 +117,7 @@ describe('an incomplete issue-ready checklist', () => {
         question: 'requirement',
         field: 'requirementId',
         detail:
-          'Which agreed requirement does this issue deliver, and at which revision? This issue names no requirement. Link the issue to the agreed or accepted requirement it delivers, at the revision its plan is written against.',
+          'Which agreed requirement does this issue deliver, and at which revision? The issue is not linked to a requirement. Link it to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.',
       },
       {
         code: 'CHECKLIST_INCOMPLETE',
@@ -125,7 +125,7 @@ describe('an incomplete issue-ready checklist', () => {
         question: 'criteria',
         field: 'acceptanceCriteria',
         detail:
-          "What are its criteria, each traced to a business criterion of that revision? This issue has no criteria. Write the issue's numbered criteria and trace each one to a BC that stands at the revision it plans against.",
+          'What are its criteria, each traced to a business criterion of that revision? The issue has no acceptance criteria. Write its numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.',
       },
     ];
     for (const door of ['web', 'api', 'agent', 'lane']) expect(seen[door], door).toEqual(expected);
@@ -141,10 +141,10 @@ describe('an incomplete issue-ready checklist', () => {
         FROM kernel_refused_moves WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
     `);
     expect(refused).toEqual([
-      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 1, n: 2 },
-      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 1, n: 2 },
-      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 1, n: 2 },
-      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 1, n: 2 },
+      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 2, n: 2 },
+      { actor_agency: 'human', checklist: 'issue_ready', checklist_version: 2, n: 2 },
+      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 2, n: 2 },
+      { actor_agency: 'agent', checklist: 'issue_ready', checklist_version: 2, n: 2 },
     ]);
   });
 
@@ -155,8 +155,24 @@ describe('an incomplete issue-ready checklist', () => {
     `);
     const res = await moveThrough('web', id, { toStatus: 'open' });
     expect(refusalsOf(res.body).map((r) => r.detail)).toEqual([
-      "What are its criteria, each traced to a business criterion of that revision? Criteria 2 trace to no BC that stands at REQ-1 revision 1. Write the issue's numbered criteria and trace each one to a BC that stands at the revision it plans against.",
+      "What are its criteria, each traced to a business criterion of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Trace it to a BC of REQ-1 revision 1 on the issue's criteria.",
     ]);
+  });
+
+  it('tells a linked issue with no plan to write its plan, and one planned before the link to save it again', async () => {
+    const id = await readyIssue();
+    await db.execute(sql`UPDATE issues SET planned_revision = NULL, plan = NULL WHERE id = ${id}`);
+    const unplanned = await moveThrough('web', id, { toStatus: 'open' });
+    expect(refusalsOf(unplanned.body).map((r) => r.detail)).toEqual([
+      "Which agreed requirement does this issue deliver, and at which revision? It is linked to REQ-1, and it has no plan yet. Write the issue's plan: saving it records the current revision of REQ-1 as the one it is written against.",
+      'What are its criteria, each traced to a business criterion of that revision? Its 1 criterion cannot be traced yet, because the issue has no plan written against a requirement revision. Answer the requirement question first; then trace each criterion to a business criterion (BC) of that revision.',
+    ]);
+
+    await db.execute(sql`UPDATE issues SET plan = 'Build it.' WHERE id = ${id}`);
+    const stale = await moveThrough('web', id, { toStatus: 'open' });
+    expect(refusalsOf(stale.body)[0]?.detail).toBe(
+      "Which agreed requirement does this issue deliver, and at which revision? It is linked to REQ-1, and its plan was saved before that link, so the plan records no revision of REQ-1. Save the issue's plan again: that records the current revision of REQ-1 as the one it is written against.",
+    );
   });
 });
 
@@ -177,7 +193,7 @@ describe('a complete issue-ready checklist', () => {
     `);
     expect(move).toEqual({
       checklist: 'issue_ready',
-      checklist_version: 1,
+      checklist_version: 2,
       checklist_answers: [
         {
           question: 'requirement',
@@ -187,7 +203,7 @@ describe('a complete issue-ready checklist', () => {
         },
         {
           question: 'criteria',
-          value: '1 criteria, tracing BC-1 of REQ-1 revision 1',
+          value: '1 criterion, tracing BC-1 of REQ-1 revision 1',
           provenance: 'given',
           source: 'record:acceptanceCriteria',
         },
@@ -244,6 +260,44 @@ describe('a wrong answer is refused by name at every door', () => {
     expect(await statusOf(id)).toBe('draft');
   });
 
+  it('is recorded as a refused move at the API exactly as at a lane run', async () => {
+    const id = await readyIssue();
+    const res = await moveThrough('api', id, { toStatus: 'open', answers: { hotfix: '  ' } });
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    const lane = await moveAsLane(id, { hotfix: '  ' });
+    expect(refusalsOf(res.body)).toEqual(refusalsOf(lane));
+    expect(refusalsOf(res.body)).toEqual([
+      {
+        code: 'CHECKLIST_ANSWER_INVALID',
+        path: '/answers/hotfix',
+        question: 'hotfix',
+        field: null,
+        detail:
+          'The answer to "Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one?" was empty. An answer is required: write one. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."',
+      },
+    ]);
+    const recorded = await rows<{
+      actor_type: string;
+      checklist_version: number;
+      refusals: unknown;
+    }>(sql`
+      SELECT actor_type, checklist_version, refusals FROM kernel_refused_moves
+       WHERE entity = 'issue' AND entity_id = ${id} ORDER BY created_at
+    `);
+    expect(recorded).toEqual([
+      {
+        actor_type: 'user',
+        checklist_version: 2,
+        refusals: (res.body.error as { refusals: unknown }).refusals,
+      },
+      {
+        actor_type: 'runner',
+        checklist_version: 2,
+        refusals: (lane.error as { refusals: unknown }).refusals,
+      },
+    ]);
+  });
+
   it('answers sent to a move that asks no checklist', async () => {
     const id = await readyIssue();
     await moveThrough('web', id, { toStatus: 'open' });
@@ -254,7 +308,12 @@ describe('a wrong answer is refused by name at every door', () => {
     });
     expect(res.status, JSON.stringify(res.body)).toBe(400);
     expect(refusalsOf(res.body)).toEqual([
-      expect.objectContaining({ code: 'CHECKLIST_ANSWER_INVALID', path: '/answers' }),
+      expect.objectContaining({
+        code: 'CHECKLIST_ANSWER_INVALID',
+        path: '/answers',
+        detail:
+          'Moving this issue from open to on_hold asks no checklist questions, so it takes no answers. Send the move without answers.',
+      }),
     ]);
   });
 });

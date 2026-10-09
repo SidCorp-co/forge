@@ -407,8 +407,13 @@ written:
   (`packages/contracts/src/checklists.ts:answersSchemaOf`, `checklistInputOf`, `checklistFormOf`);
   the kernel parses the mover's answers, reads the item's own record through the caller's reader
   under the lock, and refuses each blocking gap `CHECKLIST_INCOMPLETE` on `/answers/<question>`. A
-  non-blocking gap takes its recommended answer, recorded as assumed. A checklist is versioned by its
-  own `shapes`, like a machine. The move's `kernel_transitions` row records `checklist`,
+  door hands the answers to the kernel as sent and publishes their schema
+  (`packages/contracts/src/checklists.ts:moveAnswersInputOf`); it never parses them itself, so a
+  wrong answer is refused and recorded alike at every door. A refusal reads in plain words: the
+  reader names what clears each gap it finds (`RecordAnswer` carries `gap` and `fix`), and a record
+  field is named by its `label`, its key staying only in the refusal's `path` and `field`. A
+  non-blocking gap takes its recommended answer, recorded as assumed. A checklist is versioned by
+  its own `shapes`, like a machine. The move's `kernel_transitions` row records `checklist`,
   `checklist_version` and `checklist_answers` (null on a move recorded before, which reads
   `no_checklist` and never counts as passed); a refused one is a `kernel_refused_moves` row,
   written on a connection of its own so the caller's rollback keeps it.

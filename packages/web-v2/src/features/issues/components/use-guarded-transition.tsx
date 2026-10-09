@@ -11,7 +11,8 @@ import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
-import { ChecklistDialog, type ChecklistPrompt, checklistPromptOf } from "./checklist-dialog";
+import { ChecklistDialog, type ChecklistPrompt, checklistPromptOf, givenAnswers } from "./checklist-dialog";
+import { checklistDraft, forgetChecklistDraft, keepChecklistDraft } from "./checklist-drafts";
 import {
   type DialogMode,
   type ReasonStatus,
@@ -68,12 +69,24 @@ export function useGuardedTransition(): GuardedTransition {
     (ChecklistPrompt & { id: string; toStatus: IssueStatus; successMessage: string; onSuccess?: () => void }) | null
   >(null);
 
+  /** What the person typed into the open checklist form; mirrored into its draft on every keystroke. */
+  const [typed, setTyped] = useState<Record<string, string>>({});
+
   const askChecklist =
     (id: string, toStatus: IssueStatus, successMessage: string, onSuccess?: () => void) => (refusals: Refusal[]) => {
       const prompt = checklistPromptOf(refusals);
-      if (prompt) setChecklist({ ...prompt, id, toStatus, successMessage, onSuccess });
-      else toast({ title: t("issues.toast.updateFailed"), description: refusals.map((r) => r.detail).join(" "), tone: "error" });
+      if (prompt) {
+        setTyped(checklistDraft(id, toStatus));
+        setChecklist({ ...prompt, id, toStatus, successMessage, onSuccess });
+      } else toast({ title: t("issues.toast.updateFailed"), description: refusals.map((r) => r.detail).join(" "), tone: "error" });
     };
+
+  const typeAnswer = (question: string, value: string) => {
+    if (!checklist) return;
+    const next = { ...typed, [question]: value };
+    keepChecklistDraft(checklist.id, checklist.toStatus, next);
+    setTyped(next);
+  };
 
   const answerChecklist = (answers: Record<string, string>) => {
     if (!checklist) return;
@@ -82,6 +95,7 @@ export function useGuardedTransition(): GuardedTransition {
       { id, toStatus, answers },
       {
         onSuccess: succeed(successMessage, () => {
+          forgetChecklistDraft(id, toStatus);
           setChecklist(null);
           onSuccess?.();
         }),
@@ -107,10 +121,15 @@ export function useGuardedTransition(): GuardedTransition {
       return;
     }
     const successMessage = opts?.successMessage ?? t("issues.toast.movedTo", { status: L("issueStatus", toStatus) });
+    // answers the person already typed for this move go with it, even when the form is not open
+    const answers = givenAnswers(checklistDraft(id, toStatus));
     transition.mutate(
-      { id, toStatus },
+      { id, toStatus, ...(Object.keys(answers).length > 0 ? { answers } : {}) },
       {
-        onSuccess: succeed(successMessage, opts?.onSuccess),
+        onSuccess: succeed(successMessage, () => {
+          forgetChecklistDraft(id, toStatus);
+          opts?.onSuccess?.();
+        }),
         onOpenQuestions: (ids) =>
           setPrompt({
             id,
@@ -179,6 +198,8 @@ export function useGuardedTransition(): GuardedTransition {
       <>
       <ChecklistDialog
         prompt={checklist}
+        answers={typed}
+        onAnswer={typeAnswer}
         loading={transition.isPending}
         onConfirm={answerChecklist}
         onClose={() => setChecklist(null)}

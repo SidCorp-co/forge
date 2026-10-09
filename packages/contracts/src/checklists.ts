@@ -29,9 +29,13 @@ export type ChecklistAnswerType =
 			readonly options: readonly { readonly value: string; readonly label: string }[];
 	  };
 
-/** Who answers a question: the item's own record, at a field it already holds, or the mover. */
+/**
+ * Who answers a question: the item's own record, or the mover. A record question names the field it
+ * reads twice: `field`, the machine-readable key a refusal carries, and `label`, the words a person
+ * reads for it. A refusal's text and a form's hint use the label, never the key.
+ */
 export type ChecklistAnsweredBy =
-	| { readonly by: "record"; readonly field: string }
+	| { readonly by: "record"; readonly field: string; readonly label: string }
 	| { readonly by: "mover" };
 
 /** A blocking gap stops the move; a non-blocking one takes `recommended`, recorded as assumed. */
@@ -90,6 +94,9 @@ function declarationFaults(checklist: ChecklistDeclaration<string>): string[] {
 	const seen = new Map<string, ChecklistQuestion>();
 	for (const q of checklist.questions) {
 		if (seen.has(q.id)) faults.push(`question \`${q.id}\` is declared twice`);
+		if (q.answeredBy.by === "record" && q.answeredBy.label.trim() === "") {
+			faults.push(`question \`${q.id}\` is answered by the record and gives its field no label`);
+		}
 		if (q.answer.kind === "choice" && q.answer.options.length === 0) {
 			faults.push(`question \`${q.id}\` is a choice with no options`);
 		}
@@ -139,18 +146,32 @@ export function defineChecklist<const Id extends string>(
 const moverQuestions = (checklist: Checklist) =>
 	checklist.questions.filter((q) => q.answeredBy.by === "mover");
 
-function takes(q: ChecklistQuestion): string {
-	return q.answer.kind === "text"
-		? `text of up to ${q.answer.maxLength} characters`
-		: `one of ${q.answer.options.map((o) => `\`${o.value}\``).join(", ")}`;
-}
+const optionsOf = (options: readonly { value: string; label: string }[]) =>
+	options.map((o) => `"${o.value}" (${o.label})`).join(", ");
 
+/** What is wrong with one answer to `q`, in plain words naming what to send instead; null when it is an answer. */
 function answerFault(q: ChecklistQuestion, value: unknown): string | null {
-	if (typeof value !== "string" || value.trim() === "") return takes(q);
-	if (q.answer.kind === "text") {
-		return value.trim().length > q.answer.maxLength ? takes(q) : null;
+	const leaveOut = q.need.blocking
+		? ""
+		: ` Or leave the question out of the move to take the assumed answer: "${q.need.recommended}"`;
+	if (typeof value !== "string") {
+		const sent = value === null ? "null" : Array.isArray(value) ? "a list" : `a ${typeof value}`;
+		return q.answer.kind === "text"
+			? `The answer to "${q.prompt}" was sent as ${sent}. Send it as text.${leaveOut}`
+			: `The answer to "${q.prompt}" was sent as ${sent}. Send one of ${optionsOf(q.answer.options)}.${leaveOut}`;
 	}
-	return q.answer.options.some((o) => o.value === value) ? null : takes(q);
+	if (value.trim() === "") {
+		return `The answer to "${q.prompt}" was empty. An answer is required: write one.${leaveOut}`;
+	}
+	if (q.answer.kind === "text") {
+		const length = value.trim().length;
+		return length > q.answer.maxLength
+			? `The answer to "${q.prompt}" is ${length} characters long. Shorten it to ${q.answer.maxLength} characters or fewer.`
+			: null;
+	}
+	return q.answer.options.some((o) => o.value === value)
+		? null
+		: `"${value}" is not an answer "${q.prompt}" offers. Send one of ${optionsOf(q.answer.options)}.`;
 }
 
 function describe(q: ChecklistQuestion): string {
@@ -174,13 +195,28 @@ export function answersSchemaOf(checklist: Checklist) {
 	);
 }
 
-/** The answers any of these checklists may carry, for a door that serves every move of one machine. */
-export function moveAnswersSchemaOf(checklists: readonly Checklist[]) {
+/**
+ * The JSON Schema of the answers any of these checklists may carry, which a door serving every move
+ * of one machine publishes for its `answers`. The door does not parse them: it hands them to the
+ * kernel as sent, which parses them by the checklist of the edge the move takes, refuses a wrong one
+ * by name and records the refused move, alike at every door.
+ */
+export function moveAnswersInputOf(checklists: readonly Checklist[]): Record<string, unknown> {
 	const [first, ...rest] = checklists.map(answersSchemaOf);
-	if (!first) return z.strictObject({});
-	if (rest.length === 0) return first;
-	const [second, ...more] = rest;
-	return z.union([first, second as typeof first, ...more]);
+	const schema = !first
+		? z.strictObject({})
+		: rest.length === 0
+			? first
+			: z.union([first, rest[0] as typeof first, ...rest.slice(1)]);
+	const { $schema: _drop, ...input } = z.toJSONSchema(schema, { io: "input" }) as Record<
+		string,
+		unknown
+	>;
+	return {
+		...input,
+		description:
+			"The answers to the checklist the move's edge names, each question the mover answers by its id. The kernel parses them by that checklist at every door: a wrong one is refused CHECKLIST_ANSWER_INVALID on its question's path, and the refused move is recorded.",
+	};
 }
 
 /** The JSON Schema an agent sends a move's answers in. */
@@ -205,7 +241,10 @@ export interface ChecklistFormField {
 	readonly options: readonly { readonly value: string; readonly label: string }[];
 	/** `record`: shown, not typed; the item's own field answers it. */
 	readonly answeredBy: "record" | "mover";
+	/** The machine-readable key of the record field that answers it; never shown to a person. */
 	readonly recordField: string | null;
+	/** That record field, in the words a person reads. */
+	readonly recordLabel: string | null;
 	readonly blocking: boolean;
 	readonly recommended: string | null;
 	readonly when: ChecklistQuestion["when"] | null;
@@ -235,6 +274,7 @@ export function checklistFormOf(checklist: Checklist): ChecklistForm {
 			options: q.answer.kind === "choice" ? q.answer.options : [],
 			answeredBy: q.answeredBy.by,
 			recordField: q.answeredBy.by === "record" ? q.answeredBy.field : null,
+			recordLabel: q.answeredBy.by === "record" ? q.answeredBy.label : null,
 			blocking: q.need.blocking,
 			recommended: q.need.blocking ? null : q.need.recommended,
 			when: q.when ?? null,
@@ -281,20 +321,25 @@ export type ParsedAnswers =
  */
 export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers {
 	if (raw === undefined || raw === null) return { ok: true, answers: {} };
+	const asked = moverQuestions(checklist).map((q) => `"${q.id}" (${q.prompt})`);
+	const answeredInMove =
+		asked.length === 0
+			? "It asks nothing in the move: send the move without answers."
+			: `The questions answered in the move are ${asked.join(", ")}.`;
 	if (typeof raw !== "object" || Array.isArray(raw)) {
+		const sent = Array.isArray(raw) ? "a list" : `a ${typeof raw}`;
 		return {
 			ok: false,
 			refusals: [
 				invalid(
 					checklist,
 					null,
-					`The answers to the ${checklist.title} checklist are an object of question ids to answers.`,
+					`The answers to the ${checklist.title} checklist were sent as ${sent}. Send them as an object naming each question you answer, with its answer. ${answeredInMove}`,
 				),
 			],
 		};
 	}
 	const byId = new Map(checklist.questions.map((q) => [q.id, q]));
-	const asked = moverQuestions(checklist).map((q) => `\`${q.id}\``);
 	const refusals: ChecklistRefusal[] = [];
 	const answers: Record<string, string> = {};
 	for (const [key, value] of Object.entries(raw)) {
@@ -304,7 +349,7 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 				invalid(
 					checklist,
 					key,
-					`\`${key}\` is not a question of the ${checklist.title} checklist. The questions answered in the move are ${asked.join(", ") || "none"}.`,
+					`The ${checklist.title} checklist has no question "${key}". ${answeredInMove}`,
 				),
 			);
 			continue;
@@ -314,7 +359,7 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 				invalid(
 					checklist,
 					key,
-					`"${q.prompt}" is answered by the item's own ${q.answeredBy.field}, not in the move. ${q.fix}`,
+					`"${q.prompt}" is answered on the ${checklist.gates.machine} itself, by its ${q.answeredBy.label}, so the move cannot answer it. Leave it out of the move. ${q.fix}`,
 					q.answeredBy.field,
 				),
 			);
@@ -322,7 +367,7 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 		}
 		const fault = answerFault(q, value);
 		if (fault) {
-			refusals.push(invalid(checklist, key, `"${q.prompt}" takes ${fault}.`));
+			refusals.push(invalid(checklist, key, fault));
 			continue;
 		}
 		answers[key] = (value as string).trim();
@@ -330,10 +375,14 @@ export function parseAnswers(checklist: Checklist, raw: unknown): ParsedAnswers 
 	return refusals.length > 0 ? { ok: false, refusals } : { ok: true, answers };
 }
 
-/** What the item's own record answers to a record question, or why it cannot. */
+/**
+ * What the item's own record answers to a record question, or the gap: what is missing, and what
+ * clears it, each in plain words. A reader names the fix for the gap it found, since the same
+ * question can be short for different reasons.
+ */
 export type RecordAnswer =
 	| { readonly value: string }
-	| { readonly gap: string };
+	| { readonly gap: string; readonly fix: string };
 
 export type RecordAnswers = Readonly<Record<string, RecordAnswer>>;
 
@@ -390,7 +439,7 @@ export function evaluateChecklist(
 			continue;
 		}
 		const field = q.answeredBy.by === "record" ? q.answeredBy.field : null;
-		let found: { value: string; source: string } | { gap: string };
+		let found: { value: string; source: string } | { gap: string; fix: string };
 		if (q.answeredBy.by === "record") {
 			const held = input.record[q.id];
 			if (!held) {
@@ -401,7 +450,10 @@ export function evaluateChecklist(
 			found = "value" in held ? { value: held.value, source: `record:${q.answeredBy.field}` } : held;
 		} else {
 			const given = input.given[q.id];
-			found = given !== undefined ? { value: given, source: "mover" } : { gap: "" };
+			found =
+				given !== undefined
+					? { value: given, source: "mover" }
+					: { gap: "It has no answer yet.", fix: q.fix };
 		}
 		if ("value" in found) {
 			answers.push({ question: q.id, value: found.value, provenance: "given", source: found.source });
@@ -422,7 +474,7 @@ export function evaluateChecklist(
 		gaps.push({
 			question: q.id,
 			path: answerPath(q.id),
-			detail: [q.prompt, found.gap, q.fix].filter((s) => s !== "").join(" "),
+			detail: `${q.prompt} ${found.gap} ${found.fix}`,
 			field,
 		});
 	}

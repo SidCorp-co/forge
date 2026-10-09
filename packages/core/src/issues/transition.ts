@@ -1,5 +1,5 @@
 import { checklistsOn } from '@forge/contracts/checklist-registry';
-import { moveAnswersSchemaOf, parseAnswers } from '@forge/contracts/checklists';
+import { moveAnswersInputOf } from '@forge/contracts/checklists';
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
 import { Hono } from 'hono';
@@ -10,7 +10,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { reportFailure } from '../lib/error-tracking.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
-import { isRefusal, RefusalError } from '../lib/refusal.js';
+import { isRefusal } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
@@ -41,25 +41,15 @@ const transitionBodySchema = z
     awaitsMerge: z.object({ issueId: z.uuid() }).strict().optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
-    // the answers to the checklist the move's edge names, derived from that checklist's definition
-    answers: moveAnswersSchemaOf(checklistsOn(ISSUE_MACHINE)).optional(),
+    // handed to the kernel as sent: it parses them by the checklist of the edge the move takes,
+    // and refuses and records a wrong one exactly as it does a lane move's; the contract publishes
+    // the shape that checklist derives
+    answers: z
+      .unknown()
+      .meta(moveAnswersInputOf(checklistsOn(ISSUE_MACHINE)))
+      .optional(),
   })
   .strict();
-
-/**
- * Answers the body schema refused, refused instead as the kernel would refuse them, by the
- * checklist of the edge into `toStatus`, so every door answers a wrong answer alike.
- */
-function refuseInvalidAnswers(raw: unknown): void {
-  if (!raw || typeof raw !== 'object') return;
-  const { toStatus, answers } = raw as { toStatus?: unknown; answers?: unknown };
-  if (answers === undefined) return;
-  const into = checklistsOn(ISSUE_MACHINE).filter((c) => c.gates.to === toStatus);
-  const [checklist] = into;
-  if (!checklist || into.length > 1) return;
-  const parsed = parseAnswers(checklist, answers);
-  if (!parsed.ok) throw new RefusalError(parsed.refusals, 'CHECKLIST_ANSWER_INVALID');
-}
 
 /** Cap on the number of dependents named in a single `issue.unblockCascade`
  *  event payload. Anything above is summarised as `+N more` on the toast. */
@@ -201,7 +191,6 @@ transitionRoutes.post(
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
-      refuseInvalidAnswers(result.data);
     }
   }),
   // a chat's status move (draft to open dispatches) waits for the person's press (REQ-30 BC-4)

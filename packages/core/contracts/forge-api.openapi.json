@@ -12982,6 +12982,7 @@
                 "properties": {
                   "answers": {
                     "additionalProperties": false,
+                    "description": "The answers to the checklist the move's edge names, each question the mover answers by its id. The kernel parses them by that checklist at every door: a wrong one is refused CHECKLIST_ANSWER_INVALID on its question's path, and the refused move is recorded.",
                     "properties": {
                       "hotfix": {
                         "description": "Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one? Left unanswered, it is assumed: Not a hotfix: it fixes no production failure.",

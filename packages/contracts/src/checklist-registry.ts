@@ -10,22 +10,22 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	title: "Issue ready",
 	gates: { machine: "issue", from: ["draft"], to: "open" },
 	design: { flow: "issue-lifecycle", revision: 12, step: "ready-check" },
-	shapes: ["df56d5bf"],
+	shapes: ["df56d5bf", "31b93801"],
 	questions: [
 		{
 			id: "requirement",
 			prompt: "Which agreed requirement does this issue deliver, and at which revision?",
-			fix: "Link the issue to the agreed or accepted requirement it delivers, at the revision its plan is written against.",
+			fix: "Link the issue to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.",
 			answer: { kind: "text", maxLength: 200 },
-			answeredBy: { by: "record", field: "requirementId" },
+			answeredBy: { by: "record", field: "requirementId", label: "linked requirement and its plan" },
 			need: { blocking: true },
 		},
 		{
 			id: "criteria",
 			prompt: "What are its criteria, each traced to a business criterion of that revision?",
-			fix: "Write the issue's numbered criteria and trace each one to a BC that stands at the revision it plans against.",
+			fix: "Write the issue's numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.",
 			answer: { kind: "text", maxLength: 2000 },
-			answeredBy: { by: "record", field: "acceptanceCriteria" },
+			answeredBy: { by: "record", field: "acceptanceCriteria", label: "acceptance criteria" },
 			need: { blocking: true },
 		},
 		{
@@ -33,13 +33,13 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 			prompt: "Which design revision does it build, or none?",
 			fix: "Name the workflow design the issue builds, or leave it building none.",
 			answer: { kind: "text", maxLength: 200 },
-			answeredBy: { by: "record", field: "buildsWorkflow" },
+			answeredBy: { by: "record", field: "buildsWorkflow", label: "workflow design" },
 			need: { blocking: true },
 		},
 		{
 			id: "hotfix",
 			prompt: "Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one?",
-			fix: "Answer it in the move, or leave it to take the assumed answer.",
+			fix: "If it is a hotfix, answer it. If not, leave it unanswered and the assumed answer is taken.",
 			answer: { kind: "text", maxLength: 500 },
 			answeredBy: { by: "mover" },
 			need: {

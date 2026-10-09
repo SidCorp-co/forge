@@ -24,7 +24,7 @@ const owner: ChecklistQuestion = {
 	prompt: "Who owns it?",
 	fix: "Name its owner.",
 	answer: { kind: "text", maxLength: 80 },
-	answeredBy: { by: "record", field: "ownerId" },
+	answeredBy: { by: "record", field: "ownerId", label: "owner" },
 	need: { blocking: true },
 };
 const risk: ChecklistQuestion = {
@@ -96,7 +96,7 @@ describe("one definition produces the form, the agent input and the check", () =
 				code: "CHECKLIST_INCOMPLETE",
 				path: "/answers/notes",
 				question: "notes",
-				detail: "What should the reviewer know? Write it down.",
+				detail: "What should the reviewer know? It has no answer yet. Write it down.",
 			}),
 		]);
 	});
@@ -107,6 +107,7 @@ describe("one definition produces the form, the agent input and the check", () =
 		expect(ownerField).toMatchObject({
 			answeredBy: "record",
 			recordField: "ownerId",
+			recordLabel: "owner",
 			path: "/answers/owner",
 			blocking: true,
 		});
@@ -133,14 +134,14 @@ describe("evaluateChecklist", () => {
 	it("stops only on a blocking gap nobody filled, naming the question and the record's reason", () => {
 		const judged = evaluateChecklist(c, {
 			given: {},
-			record: { owner: { gap: "Nobody is named." } },
+			record: { owner: { gap: "Nobody is named.", fix: "Name its owner on the item." } },
 		});
 		expect(judged.gaps).toEqual([
 			{
 				question: "owner",
 				path: "/answers/owner",
 				field: "ownerId",
-				detail: "Who owns it? Nobody is named. Name its owner.",
+				detail: "Who owns it? Nobody is named. Name its owner on the item.",
 			},
 		]);
 	});
@@ -192,7 +193,8 @@ describe("parseAnswers refuses a wrong answer by name, never widening it", () =>
 			expect.objectContaining({
 				code: "CHECKLIST_ANSWER_INVALID",
 				path: "/answers/colour",
-				detail: "`colour` is not a question of the Probe checklist. The questions answered in the move are `risk`.",
+				detail:
+					'The Probe checklist has no question "colour". The questions answered in the move are "risk" (How risky is it?).',
 			}),
 		]);
 	});
@@ -202,17 +204,26 @@ describe("parseAnswers refuses a wrong answer by name, never widening it", () =>
 			expect.objectContaining({
 				path: "/answers/owner",
 				field: "ownerId",
-				detail: '"Who owns it?" is answered by the item\'s own ownerId, not in the move. Name its owner.',
+				detail:
+					'"Who owns it?" is answered on the issue itself, by its owner, so the move cannot answer it. Leave it out of the move. Name its owner.',
 			}),
 		]);
 	});
 
 	it("a value of the wrong kind, an empty one, and answers that are not an object", () => {
 		expect(refused({ risk: "medium" })[0]?.detail).toBe(
-			'"How risky is it?" takes one of `low`, `high`.',
+			'"medium" is not an answer "How risky is it?" offers. Send one of "low" (Low), "high" (High).',
 		);
-		expect(refused({ risk: "  " })[0]?.path).toBe("/answers/risk");
-		expect(refused(["low"])[0]).toMatchObject({ path: "/answers" });
+		expect(refused({ risk: "  " })[0]).toMatchObject({
+			path: "/answers/risk",
+			detail:
+				'The answer to "How risky is it?" was empty. An answer is required: write one. Or leave the question out of the move to take the assumed answer: "low"',
+		});
+		expect(refused(["low"])[0]).toMatchObject({
+			path: "/answers",
+			detail:
+				'The answers to the Probe checklist were sent as a list. Send them as an object naming each question you answer, with its answer. The questions answered in the move are "risk" (How risky is it?).',
+		});
 	});
 
 	it("passes a choice exactly and a text answer trimmed", () => {
@@ -278,7 +289,7 @@ describe("the registered issue-ready checklist", () => {
 		const edge = ISSUE_MACHINE.edges.find((e) => e.from === "draft" && e.to === "open");
 		expect(edge).toMatchObject({ guards: ["admit", "checklist"], checklist: "issue_ready" });
 		expect(checklistsOn(ISSUE_MACHINE)).toEqual([CHECKLISTS.issue_ready]);
-		expect(ISSUE_READY_CHECKLIST.version).toBe(1);
+		expect(ISSUE_READY_CHECKLIST.version).toBe(2);
 	});
 
 	it("asks hotfix obligations as an assumed answer, naming the open owner question", () => {
@@ -308,5 +319,100 @@ describe("gated move standing", () => {
 		expect(countsAsPassed(before)).toBe(false);
 		expect(countsAsPassed(gatedMoveStanding({ refused: false, checklistVersion: 1 }))).toBe(true);
 		expect(countsAsPassed(gatedMoveStanding({ refused: true, checklistVersion: 1 }))).toBe(false);
+	});
+});
+
+describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
+	const hotfix = ISSUE_READY_CHECKLIST.questions.find((q) => q.id === "hotfix");
+	const prompt = hotfix?.prompt ?? "";
+	const refused = (raw: unknown) => {
+		const parsed = parseAnswers(ISSUE_READY_CHECKLIST, raw);
+		if (parsed.ok) throw new Error("expected a refusal");
+		return parsed.refusals;
+	};
+
+	it("an empty answer is required, or left out to take the assumed answer", () => {
+		expect(refused({ hotfix: "" })).toEqual([
+			expect.objectContaining({
+				code: "CHECKLIST_ANSWER_INVALID",
+				path: "/answers/hotfix",
+				detail: `The answer to "${prompt}" was empty. An answer is required: write one. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+			}),
+		]);
+	});
+
+	it("an empty answer to a blocking question is required, with no assumed answer offered", () => {
+		const { when: _unasked, ...always } = rollback;
+		const parsed = parseAnswers(checklistOf([always]), { rollback: " " });
+		expect(parsed.ok ? null : parsed.refusals[0]?.detail).toBe(
+			'The answer to "How is it rolled back?" was empty. An answer is required: write one.',
+		);
+	});
+
+	it("an over-long answer names its length and the limit", () => {
+		expect(refused({ hotfix: "x".repeat(501) })[0]?.detail).toBe(
+			`The answer to "${prompt}" is 501 characters long. Shorten it to 500 characters or fewer.`,
+		);
+	});
+
+	it("an answer that is not text says to send text", () => {
+		expect(refused({ hotfix: 5 })[0]?.detail).toBe(
+			`The answer to "${prompt}" was sent as a number. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+		);
+	});
+
+	it("an answer to a question the issue's record answers names that part of the issue in words", () => {
+		expect(refused({ requirement: "REQ-9" })).toEqual([
+			expect.objectContaining({
+				path: "/answers/requirement",
+				field: "requirementId",
+				detail:
+					'"Which agreed requirement does this issue deliver, and at which revision?" is answered on the issue itself, by its linked requirement and its plan, so the move cannot answer it. Leave it out of the move. Link the issue to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.',
+			}),
+		]);
+	});
+
+	/**
+	 * Every refusal any registered checklist can answer, and every form hint, read by a person: none
+	 * may carry a record field's key or code formatting, which only its path and `field` hold.
+	 */
+	it("no refusal or form text of any registered checklist shows a record field's key", () => {
+		const texts: string[] = [];
+		for (const checklist of Object.values(CHECKLISTS) as Checklist[]) {
+			const keys = checklist.questions.flatMap((q) =>
+				q.answeredBy.by === "record" ? [q.answeredBy.field] : [],
+			);
+			const raws: unknown[] = [
+				"answers",
+				["answers"],
+				{ unknown: "x" },
+				...checklist.questions.flatMap((q) => [
+					{ [q.id]: "" },
+					{ [q.id]: 7 },
+					{ [q.id]: "x".repeat(10_000) },
+					{ [q.id]: "not an option" },
+				]),
+			];
+			for (const raw of raws) {
+				const parsed = parseAnswers(checklist, raw);
+				if (!parsed.ok) texts.push(...parsed.refusals.map((r) => r.detail));
+			}
+			const record = Object.fromEntries(
+				checklist.questions.map((q) => [q.id, { gap: "Missing.", fix: "Fill it." }]),
+			);
+			texts.push(
+				...checklistRefusals(evaluateChecklist(checklist, { given: {}, record })).map(
+					(r) => r.detail,
+				),
+			);
+			for (const f of checklistFormOf(checklist).fields) {
+				texts.push(f.label, f.help, f.recordLabel ?? "");
+			}
+			expect(texts.length).toBeGreaterThan(checklist.questions.length);
+			for (const text of texts) {
+				for (const key of keys) expect(text, text).not.toContain(key);
+				expect(text, text).not.toContain("`");
+			}
+		}
 	});
 });
