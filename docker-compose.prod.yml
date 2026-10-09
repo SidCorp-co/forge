@@ -215,6 +215,11 @@ services:
       RATE_LIMIT_PAT_READ_WINDOW_MS: ${RATE_LIMIT_PAT_READ_WINDOW_MS:-}
       RATE_LIMIT_PAT_WRITE_MAX: ${RATE_LIMIT_PAT_WRITE_MAX:-}
       RATE_LIMIT_PAT_WRITE_WINDOW_MS: ${RATE_LIMIT_PAT_WRITE_WINDOW_MS:-}
+      # Live previews (REQ-39): unset, previews are refused by name (PREVIEW_DOMAIN_UNCONFIGURED).
+      PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-}
+      # What's new (REQ-40 BC-10): unset, it refuses by name (WHATS_NEW_INSTANCE_UNSET).
+      FORGE_ENVIRONMENT: ${FORGE_ENVIRONMENT:-}
+      FORGE_PRODUCT_PROJECT_ID: ${FORGE_PRODUCT_PROJECT_ID:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s

@@ -126,6 +126,20 @@ services:
       RATE_LIMIT_PAT_READ_WINDOW_MS: ${RATE_LIMIT_PAT_READ_WINDOW_MS:-}
       RATE_LIMIT_PAT_WRITE_MAX: ${RATE_LIMIT_PAT_WRITE_MAX:-}
       RATE_LIMIT_PAT_WRITE_WINDOW_MS: ${RATE_LIMIT_PAT_WRITE_WINDOW_MS:-}
+      # Live previews (REQ-39) are served under their own site, never under AUTH_COOKIE_DOMAIN; this dev
+      # stack's is the owner's iosbenchmarks.com (Cloudflare, Flexible SSL, 2026-10-09).
+      PREVIEW_DOMAIN: ${PREVIEW_DOMAIN:-iosbenchmarks.com}
+      # What's new (REQ-40 BC-10) reads the release this instance serves from its own product project.
+      FORGE_ENVIRONMENT: ${FORGE_ENVIRONMENT:-dev}
+      FORGE_PRODUCT_PROJECT_ID: ${FORGE_PRODUCT_PROJECT_ID:-d1bb4907-74d9-4228-85ff-76121523af7d}
+    labels:
+      # cm:why one wildcard router beside Coolify's generated ones, which each name their own service:
+      # Cloudflare's Flexible mode reaches this server over plain http, so the router listens on the
+      # http entrypoint with no https redirect (a redirect would loop through Cloudflare).
+      - "traefik.http.routers.forge-dev-preview.entryPoints=http"
+      - "traefik.http.routers.forge-dev-preview.rule=HostRegexp(`^[a-z0-9-]+[.]iosbenchmarks[.]com$$`)"
+      - "traefik.http.routers.forge-dev-preview.service=forge-dev-preview"
+      - "traefik.http.services.forge-dev-preview.loadbalancer.server.port=8080"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
