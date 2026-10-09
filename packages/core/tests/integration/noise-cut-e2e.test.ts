@@ -289,7 +289,7 @@ describe('BC-12: a draft untouched for 7 days gets one merge-or-drop question fr
     );
   });
 
-  it('asks one question with three options and a recommended one on an 8-day-old draft, and none on a 6-day-old one', async () => {
+  it('asks one question with its options and a recommended one on an 8-day-old draft, and none on a 6-day-old one', async () => {
     const { sweepStaleDrafts } = await import('../../src/requirements/stale-drafts.js');
     const first = await sweepStaleDrafts();
     expect(first.refused).toBe(0);
@@ -298,8 +298,8 @@ describe('BC-12: a draft untouched for 7 days gets one merge-or-drop question fr
     expect(more).toEqual([]);
     expect(q?.status).toBe('open');
     const step = q?.steps[0] as Doc;
+    // merge is offered only with a live item to merge into, which this draft has none of
     expect((step.options as Doc[]).map((o) => o.id)).toEqual([
-      'stale_draft.merge',
       'stale_draft.drop',
       'stale_draft.keep',
     ]);

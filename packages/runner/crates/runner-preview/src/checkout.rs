@@ -71,9 +71,9 @@ fn contained(c: &Checkout) -> Result<PathBuf, Failure> {
     let root = format!("{}/.claude/worktrees/", c.repo().trim_end_matches('/'));
     let path = c.path();
     let name = path.strip_prefix(&root).unwrap_or("");
-    if !c.repo().starts_with('/')
+    if !Path::new(c.repo()).is_absolute()
         || name.is_empty()
-        || name.contains('/')
+        || name.contains(['/', '\\'])
         || name == ".."
         || name == "."
     {

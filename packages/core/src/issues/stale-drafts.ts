@@ -6,10 +6,14 @@
  * on its answer, so neither is stale; nor is one asked about within the spell.
  */
 
-import { sql } from 'drizzle-orm';
+import { STALE_DRAFT_ASKED_MARK, staleDraftRefusedOf } from '@forge/contracts/stale-drafts';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { blockedByUnsettledSql } from './blocked-by.js';
+import { DISPATCH_GATING_KIND } from './dependency-effects.js';
+import type { IssueStandingInput } from './standing.js';
 
 export interface StaleDraftIssue {
   id: string;
@@ -67,4 +71,51 @@ export async function staleDraftIssues(
     touchedAt: new Date(r.updated_at),
     twinId: r.twin_id,
   }));
+}
+
+/**
+ * The issues a draft holds through a live `blocks` edge, by key: a merge moves the draft's text into
+ * another issue, not its edges, so a draft that holds any is not merged by rule.
+ */
+export async function draftMergeHolds(issueId: string): Promise<string[]> {
+  const rows = rowsOf<{ iss_seq: number; issue_prefix: string | null }>(
+    await db.execute(sql`
+      SELECT t.iss_seq, p.issue_prefix
+        FROM issue_dependencies d
+        JOIN issues t ON t.id = d.to_issue_id
+        JOIN projects p ON p.id = t.project_id
+       WHERE d.from_issue_id = ${issueId} AND d.kind = ${DISPATCH_GATING_KIND}
+         AND (d.valid_until IS NULL OR d.valid_until > now())
+         AND t.status NOT IN ('dropped', 'closed')
+       ORDER BY t.iss_seq`),
+  );
+  return rows.map((r) => formatIssueRef(r.issue_prefix, Number(r.iss_seq)));
+}
+
+/** The newest merge-or-drop question on a draft, as the standing read selects it. */
+export interface StaleDraftQuestionRaw {
+  status: string;
+  days: number;
+  resume: { kind?: string; code?: string; detail?: string } | null;
+}
+
+/**
+ * The newest merge-or-drop question Forge's sweep asked on draft `i` (REQ-41 BC-12), by the mark its
+ * options carry, with the days the draft had been untouched when it was asked.
+ */
+export const staleDraftQuestionSql = (i: SQL) => sql`(
+  SELECT jsonb_build_object('status', q.status, 'resume', q.steps -> -1 -> 'resume',
+           'days', GREATEST(0, floor(extract(epoch FROM q.created_at - ${i}.updated_at) / 86400))::int)
+    FROM agent_questions q
+   WHERE q.issue_id = ${i}.id AND q.status IN ('open', 'answered')
+     AND q.steps -> 0 -> 'options' @> ${STALE_DRAFT_ASKED_MARK}::jsonb
+   ORDER BY q.created_at DESC, q.id DESC LIMIT 1)`;
+
+/** The standing's fact from that question: still open, or answered with an act core refused. */
+export function staleDraftOf(
+  raw: StaleDraftQuestionRaw | null,
+): NonNullable<IssueStandingInput['staleDraft']> | null {
+  if (!raw) return null;
+  const refused = staleDraftRefusedOf(raw.status, raw.resume);
+  return { open: raw.status === 'open', days: Number(raw.days), refused };
 }
