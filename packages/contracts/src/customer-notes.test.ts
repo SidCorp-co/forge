@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	customerNotes,
-	customerNotesText,
-	notesCallingItDemo,
-} from "./customer-notes.js";
+import { customerNotes, notesCallingItDemo } from "./customer-notes.js";
 import type { ReleaseNoteSection } from "./releases.js";
 
 // The HOP journey walk (2026-10-08): the 0.5.0 notes could not be handed to a customer. Each line
@@ -117,23 +113,6 @@ describe("release notes a customer can be handed", () => {
 		expect(
 			customerNotes([{ section: "Changed", entries: [] }]).sections,
 		).toEqual([]);
-	});
-
-	it("writes the view as text to copy or export, version first", () => {
-		expect(customerNotesText("0.5.0", view)).toBe(
-			[
-				"# 0.5.0",
-				"",
-				"## Added",
-				"- CRM reports and campaign ROI: each report names its definition and refresh time.",
-				"- Staff open a patient's 360 record from the staff menu.",
-				"- A campaign is sent for approval only when every item is filled.",
-				"",
-				"## Fixed",
-				"- The home page opens the staff overview instead of a shop sample.",
-				"",
-			].join("\n"),
-		);
 	});
 });
 

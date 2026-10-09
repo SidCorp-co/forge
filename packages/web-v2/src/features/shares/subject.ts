@@ -7,8 +7,9 @@ import { TEMPLATE_NARRATIVE_SLOTS, type TemplateNarrativeSlot } from "@forge/con
 import type { ShareSubjectKind } from "@forge/contracts/shares";
 
 /**
- * What the web shares: a chat answer or a kept status report. A template's output is shared over
- * REST (`template-output`), never offered here: in a thread the whole turn is shared instead.
+ * What the web shares: a chat answer, a kept status report or a release page (its id is the version).
+ * A template's output is shared over REST (`template-output`), never offered here: in a thread the
+ * whole turn is shared instead.
  */
 export interface ShareSubject {
   kind: Exclude<ShareSubjectKind, "template-output">;
