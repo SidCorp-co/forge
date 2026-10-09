@@ -12,7 +12,6 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { runners } from '../db/schema-runners.js';
 import {
   type RequirementStatus,
   type RevisionState,
@@ -21,6 +20,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
+import { runners } from '../db/schema-runners.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -179,6 +179,21 @@ async function workFactsOf(
   return { parkedWaits, release };
 }
 
+/** The proposed suggestions on these requirements, by kind. */
+const proposedSuggestionsOf = (ids: string[]) =>
+  db
+    .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
+    .from(suggestions)
+    .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed')));
+
+/** One online runner of the project, if any: where none is online no master can act (FB-77). */
+const onlineRunnerOf = (projectId: string) =>
+  db
+    .select({ id: runners.id })
+    .from(runners)
+    .where(and(eq(runners.projectId, projectId), eq(runners.status, 'online')))
+    .limit(1);
+
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
   projectId: string,
@@ -247,10 +262,7 @@ export async function standingsOf(
         .from(issues)
         .where(inArray(issues.requirementId, ids))
         .orderBy(issues.issSeq),
-    db
-      .select({ requirementId: suggestions.requirementId, kind: suggestions.kind })
-      .from(suggestions)
-      .where(and(inArray(suggestions.requirementId, ids), eq(suggestions.status, 'proposed'))),
+    proposedSuggestionsOf(ids),
     held ? held.prefix : activeIssuePrefix(projectId),
     latestPinsOf(ids),
     held?.baselines ??
@@ -268,11 +280,7 @@ export async function standingsOf(
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
-    db
-      .select({ id: runners.id })
-      .from(runners)
-      .where(and(eq(runners.projectId, projectId), eq(runners.status, 'online')))
-      .limit(1),
+    onlineRunnerOf(projectId),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);

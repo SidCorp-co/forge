@@ -37,7 +37,10 @@ const BASE = 'a'.repeat(40);
 const PATCH = 'd'.repeat(40);
 const MERGE = 'e'.repeat(40);
 let heads = 0;
-const nextHead = () => (heads += 1).toString(16).padStart(40, 'c');
+const nextHead = () => {
+  heads += 1;
+  return heads.toString(16).padStart(40, 'c');
+};
 
 /** What the box answers a snapshot ask with; a test swaps in a refused merge or a schema change. */
 let files = ['web/src/cart.tsx'];
@@ -152,7 +155,9 @@ async function endTurn(roomId: string): Promise<void> {
 }
 
 const until = async (id: string, pred: (r: Room) => boolean, ms = 20_000) => {
-  await expect.poll(async () => pred((await read(id)).room), { timeout: ms, interval: 100 }).toBe(true);
+  await expect
+    .poll(async () => pred((await read(id)).room), { timeout: ms, interval: 100 })
+    .toBe(true);
   return (await read(id)).room;
 };
 
@@ -166,7 +171,11 @@ async function liveRoom(about: string, brief = 'Show the cart total in bold'): P
   const room = opened.body.room as Room;
   await settleOutbox();
   await until(room.id, (r) => r.preview.state === 'live');
-  await expect.poll(() => turnFrames().some((f) => String(f.data.prompt ?? '').includes(brief)), { timeout: 15_000 }).toBe(true);
+  await expect
+    .poll(() => turnFrames().some((f) => String(f.data.prompt ?? '').includes(brief)), {
+      timeout: 15_000,
+    })
+    .toBe(true);
   await endTurn(room.id);
   return until(room.id, (r) => r.turns[0]?.commit !== null && r.turns[0]?.commit !== undefined);
 }
@@ -215,14 +224,20 @@ describe('a room is opened, joined and built in with no gate (BC-1, BC-3, BC-4, 
     expect(room.preview.state).toBe('live');
     expect(room.members.map((m) => m.userId)).toEqual([ownerId]);
     expect(room.turns).toHaveLength(1);
-    expect(room.turns[0]).toMatchObject({ seq: 1, kind: 'ask', ask: 'Show the cart total in bold' });
+    expect(room.turns[0]).toMatchObject({
+      seq: 1,
+      kind: 'ask',
+      ask: 'Show the cart total in bold',
+    });
   });
 
   it('tells the agent to edit straight away, and runs its session with every hook off (BC-3)', async () => {
     const key = await agreedScreen('Cart shows a discount');
     const before = turnFrames().length;
     const room = await liveRoom(key, 'Show the discount line');
-    const brief = turnFrames().slice(before).find((f) => String(f.data.prompt ?? '').includes('Show the discount line'));
+    const brief = turnFrames()
+      .slice(before)
+      .find((f) => String(f.data.prompt ?? '').includes('Show the discount line'));
     expect(brief?.data).toMatchObject({ ungated: true, confined: true });
     expect(String(brief?.data.prompt)).toContain('do not build, typecheck, lint, test, review');
     const sent = turnFrames().length;
@@ -277,7 +292,10 @@ describe('a room is opened, joined and built in with no gate (BC-1, BC-3, BC-4, 
       expect(refused.status, `${method} ${path}`).toBe(404);
       expect((refused.body.error as Body).code).toBe('ROOM_NOT_FOUND');
     }
-    const strangerOpen = await api(stranger, 'POST', `/api/projects/${projectId}/rooms`, { about: key, brief: 'x' });
+    const strangerOpen = await api(stranger, 'POST', `/api/projects/${projectId}/rooms`, {
+      about: key,
+      brief: 'x',
+    });
     expect([403, 404]).toContain(strangerOpen.status);
     expect((await api(null, 'GET', `/api/rooms/${room.id}`)).status).toBe(401);
   });
@@ -327,10 +345,16 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     await ask(room.id, 'make it purple');
     await endTurn(room.id);
     await until(room.id, (r) => r.turns.at(-1)?.commit != null);
-    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id, text: 'The cart total shows in bold.' });
+    await api(owner, 'POST', `/api/rooms/${room.id}/items`, {
+      turnId: room.turns[0]?.id,
+      text: 'The cart total shows in bold.',
+    });
 
     const before = turnFrames().length;
-    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, { alt: 'The cart with a bold total', snapshot: snapshotOf('Total 12.00') });
+    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, {
+      alt: 'The cart with a bold total',
+      snapshot: snapshotOf('Total 12.00'),
+    });
     expect(settled.status, JSON.stringify(settled.body)).toBe(202);
     expect((settled.body.room as Room).state).toBe('settling');
     // the agent is told to take out what was not settled
@@ -345,19 +369,39 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     const done = await until(room.id, (r) => r.state === 'settled', 30_000);
     const merge = world.box.heardOf('preview.snapshot.read').find((f) => f.data.settle);
     expect(merge?.data).toMatchObject({ keep: true, settle: { into: 'dev' } });
-    expect(String((merge?.data.settle as { message: string }).message)).toContain('The cart total shows in bold.');
-    expect(done.settle).toMatchObject({ into: 'dev', mergeSha: MERGE, requirement: key, revision: 2, refusals: [] });
+    expect(String((merge?.data.settle as { message: string } | undefined)?.message)).toContain(
+      'The cart total shows in bold.',
+    );
+    expect(done.settle).toMatchObject({
+      into: 'dev',
+      mergeSha: MERGE,
+      requirement: key,
+      revision: 2,
+      refusals: [],
+    });
 
     // BC-7: revision 2 holds the old criteria and the settled item, nothing that was not settled, and the page as its picture
     const detail = (await api(owner, 'GET', `/api/projects/${projectId}/requirements/${key}`)).body;
-    const rev2 = (detail.revisions as { revision: number; state: string; picture: { kind: string; content: { head: string; asked: string[] } } | null }[]).find((r) => r.revision === 2);
+    const rev2 = (
+      detail.revisions as {
+        revision: number;
+        state: string;
+        picture: { kind: string; content: { head: string; asked: string[] } } | null;
+      }[]
+    ).find((r) => r.revision === 2);
     expect(rev2?.state).toBe('draft');
-    expect(rev2?.picture).toMatchObject({ kind: 'preview', content: { asked: ['The cart total shows in bold.'] } });
+    expect(rev2?.picture).toMatchObject({
+      kind: 'preview',
+      content: { asked: ['The cart total shows in bold.'] },
+    });
     const criteria = (await db.execute(sql`
       SELECT c.code, c.body FROM requirement_criteria c JOIN requirements r ON r.id = c.requirement_id
        WHERE r.project_id = ${projectId}::uuid AND r.req_seq = ${Number(key.slice(4))} AND c.retired_revision IS NULL ORDER BY c.code
     `)) as unknown as { code: string; body: string }[];
-    expect(criteria.map((c) => c.body)).toEqual(['A buyer sees the cart total.', 'The cart total shows in bold.']);
+    expect(criteria.map((c) => c.body)).toEqual([
+      'A buyer sees the cart total.',
+      'The cart total shows in bold.',
+    ]);
     expect(JSON.stringify(criteria)).not.toContain('purple');
 
     // BC-8: the follow-up issue names the merge and asks for verify, review and standards after it, linked to the requirement
@@ -373,8 +417,14 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     expect(issue?.req_seq).toBe(Number(key.slice(4)));
 
     // the preview closes and the box removes the merged sketch
-    const stop = world.box.heardOf('preview.stop').filter((f) => f.data.previewId === room.preview.id).at(-1);
-    expect(stop?.data).toMatchObject({ why: 'abandoned', drop: { kind: 'sketch', branch: room.branch } });
+    const stop = world.box
+      .heardOf('preview.stop')
+      .filter((f) => f.data.previewId === room.preview.id)
+      .at(-1);
+    expect(stop?.data).toMatchObject({
+      why: 'abandoned',
+      drop: { kind: 'sketch', branch: room.branch },
+    });
     expect((await read(room.id)).room.preview.state).toBe('abandoned');
     const late = await api(owner, 'POST', `/api/rooms/${room.id}/asks`, { text: 'more' });
     expect((late.body.error as Body).code).toBe('ROOM_CLOSED');
@@ -384,8 +434,14 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     const key = await agreedScreen('Cart shows a conflict');
     const room = await liveRoom(key);
     await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id });
-    mergeAnswer = () => ({ mergeRefused: 'the merge of sketch/x into dev conflicts: CONFLICT (content): web/src/cart.tsx' });
-    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, { alt: 'The cart', snapshot: snapshotOf('cart') });
+    mergeAnswer = () => ({
+      mergeRefused:
+        'the merge of sketch/x into dev conflicts: CONFLICT (content): web/src/cart.tsx',
+    });
+    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, {
+      alt: 'The cart',
+      snapshot: snapshotOf('cart'),
+    });
     expect(settled.status, JSON.stringify(settled.body)).toBe(202);
     const back = await until(room.id, (r) => r.state === 'open' && r.detail !== null, 30_000);
     expect(back.detail).toContain('did not land');
@@ -402,8 +458,14 @@ describe('settled items, and a settle that merges straight into dev (BC-2, BC-6,
     fbSeq += 1;
     const fb = await createTestFeedback(projectId, ownerId, fbSeq);
     const room = await liveRoom(fb, 'Show the board filter');
-    await api(owner, 'POST', `/api/rooms/${room.id}/items`, { turnId: room.turns[0]?.id, text: 'The board filters by owner.' });
-    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, { alt: 'The board filtered', snapshot: snapshotOf('board') });
+    await api(owner, 'POST', `/api/rooms/${room.id}/items`, {
+      turnId: room.turns[0]?.id,
+      text: 'The board filters by owner.',
+    });
+    const settled = await api(owner, 'POST', `/api/rooms/${room.id}/settle`, {
+      alt: 'The board filtered',
+      snapshot: snapshotOf('board'),
+    });
     expect(settled.status, JSON.stringify(settled.body)).toBe(202);
     const done = await until(room.id, (r) => r.state === 'settled', 30_000);
     expect(done.settle).toMatchObject({ mergeSha: MERGE, revision: 1 });
@@ -416,17 +478,26 @@ describe('a room sleeps, wakes, is abandoned, and keeps a schema change off shar
   it('sleeps its preview past the idle setting, keeps its branch, and a joining member wakes it (BC-9)', async () => {
     const key = await agreedScreen('Cart sleeps');
     const room = await liveRoom(key);
-    await db.execute(sql`UPDATE previews SET last_viewed_at = now() - interval '2 hours' WHERE id = ${room.preview.id}::uuid`);
+    await db.execute(
+      sql`UPDATE previews SET last_viewed_at = now() - interval '2 hours' WHERE id = ${room.preview.id}::uuid`,
+    );
     await sweepPreviews();
     expect((await read(room.id)).room.preview.state).toBe('idle_closed');
     await settleOutbox();
-    expect(world.box.heardOf('preview.stop').at(-1)?.data).toEqual({ previewId: room.preview.id, why: 'idle' });
+    expect(world.box.heardOf('preview.stop').at(-1)?.data).toEqual({
+      previewId: room.preview.id,
+      why: 'idle',
+    });
     const starts = world.box.heardOf('preview.start').length;
     const joined = await api(member, 'POST', `/api/rooms/${room.id}/join`);
     expect(joined.status).toBe(200);
     await settleOutbox();
-    await expect.poll(() => world.box.heardOf('preview.start').length, { timeout: 15_000 }).toBe(starts + 1);
-    const restart = world.box.heardOf('preview.start').at(-1)?.data as { checkout: { branch: string } };
+    await expect
+      .poll(() => world.box.heardOf('preview.start').length, { timeout: 15_000 })
+      .toBe(starts + 1);
+    const restart = world.box.heardOf('preview.start').at(-1)?.data as {
+      checkout: { branch: string };
+    };
     expect(restart.checkout.branch).toBe(room.branch);
     await until(room.id, (r) => r.preview.state === 'live');
   });
@@ -435,7 +506,9 @@ describe('a room sleeps, wakes, is abandoned, and keeps a schema change off shar
     const key = await agreedScreen('Cart abandoned');
     const room = await liveRoom(key);
     await ask(room.id, 'try a sidebar');
-    const out = await api(owner, 'POST', `/api/rooms/${room.id}/abandon`, { reason: 'not the way' });
+    const out = await api(owner, 'POST', `/api/rooms/${room.id}/abandon`, {
+      reason: 'not the way',
+    });
     expect(out.status, JSON.stringify(out.body)).toBe(200);
     const gone = out.body.room as Room;
     expect(gone).toMatchObject({ state: 'abandoned', detail: 'not the way' });
@@ -448,7 +521,10 @@ describe('a room sleeps, wakes, is abandoned, and keeps a schema change off shar
     });
     const later = await read(room.id, member);
     expect(later.status).toBe(200);
-    expect(later.room.turns.map((t) => t.ask)).toEqual(['Show the cart total in bold', 'try a sidebar']);
+    expect(later.room.turns.map((t) => t.ask)).toEqual([
+      'Show the cart total in bold',
+      'try a sidebar',
+    ]);
     const refused = await api(owner, 'POST', `/api/rooms/${room.id}/asks`, { text: 'again' });
     expect((refused.body.error as Body).code).toBe('ROOM_CLOSED');
   });
@@ -463,7 +539,9 @@ describe('a room sleeps, wakes, is abandoned, and keeps a schema change off shar
     await endTurn(room.id);
     const stopped = await until(room.id, (r) => r.preview.state === 'failed');
     expect(stopped.preview.reason).toBe('SCHEMA_NEEDS_THROWAWAY_DATA');
-    expect((await api(owner, 'GET', `/api/previews/${room.preview.id}`)).body.preview).toMatchObject({
+    expect(
+      (await api(owner, 'GET', `/api/previews/${room.preview.id}`)).body.preview,
+    ).toMatchObject({
       detail: expect.stringContaining('0999_cart_note.sql'),
     });
 
@@ -472,8 +550,14 @@ describe('a room sleeps, wakes, is abandoned, and keeps a schema change off shar
     const demoKey = await agreedScreen('Cart adds a column on demo data');
     const demo = await liveRoom(demoKey);
     expect(demo.data).toBe('demo');
-    const seeded = world.box.heardOf('preview.start').filter((f) => f.data.previewId === demo.preview.id).at(-1);
-    expect(seeded?.data).toMatchObject({ seed: 'npm run seed:demo', env: { FORGE_ENVIRONMENT: 'demo' } });
+    const seeded = world.box
+      .heardOf('preview.start')
+      .filter((f) => f.data.previewId === demo.preview.id)
+      .at(-1);
+    expect(seeded?.data).toMatchObject({
+      seed: 'npm run seed:demo',
+      env: { FORGE_ENVIRONMENT: 'demo' },
+    });
     await ask(demo.id, 'store a note on the cart');
     await endTurn(demo.id);
     const on = await until(demo.id, (r) => r.turns.at(-1)?.commit != null);
