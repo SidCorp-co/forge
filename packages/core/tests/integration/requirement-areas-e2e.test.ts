@@ -92,6 +92,10 @@ describe('the area list (REQ-29)', () => {
       { id: expect.any(String), name: 'Search' },
     ]);
     expect(await areaOfRequirement(key)).toBe(billing?.id);
+    // the list names the area off its own row statement, under its new name
+    const list = await api(token, 'GET', `/api/projects/${projectId}/requirements`);
+    const row = (list.body.requirements as { key: string; area: Area | null }[]).find((r) => r.key === key);
+    expect(row?.area).toEqual({ id: billing?.id, name: 'Billing' });
   });
 
   it('drops an area no requirement holds', async () => {

@@ -176,14 +176,31 @@ export async function listRequirementsAs(
   projectId: string,
 ): Promise<RequirementSummary[]> {
   await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
-  const rows = await db
-    .select()
+  // the rows carry their areas' names and whether a runner is bound to the project, so neither is a
+  // statement of its own on a read every page load's Needs-you count makes once per project
+  const held = await db
+    .select({
+      row: requirements,
+      areaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
+                  WHERE a.id = ${requirements.areaId} AND a.project_id = ${projectId})`,
+      proposedAreaName: sql<string | null>`(SELECT a.name FROM requirement_areas a
+                  WHERE a.id = ${requirements.proposedAreaId} AND a.project_id = ${projectId})`,
+      runnerBound: sql<boolean>`EXISTS (SELECT 1 FROM runners WHERE project_id = ${projectId})`,
+    })
     .from(requirements)
     .where(eq(requirements.projectId, projectId))
     .orderBy(desc(requirements.reqSeq));
-  if (rows.length === 0) return [];
+  if (held.length === 0) return [];
+  const rows = held.map((h) => h.row);
   const ids = rows.map((r) => r.id);
-  const areas = new Map((await areasOf(projectId)).map((a) => [a.id, a.name]));
+  const areas = new Map<string, string>();
+  for (const h of held) {
+    if (h.row.areaId && h.areaName !== null) areas.set(h.row.areaId, h.areaName);
+    if (h.row.proposedAreaId && h.proposedAreaName !== null) {
+      areas.set(h.row.proposedAreaId, h.proposedAreaName);
+    }
+  }
+  const runnerBound = held[0]?.runnerBound === true;
   const [latest, standings] = await Promise.all([
     db
       .selectDistinctOn([requirementRevisions.requirementId], {
@@ -200,7 +217,9 @@ export async function listRequirementsAs(
         ),
       )
       .orderBy(requirementRevisions.requirementId, desc(requirementRevisions.revision)),
-    standingViewer(viewer, projectId).then((v) => standingsOf(projectId, rows, v)),
+    standingViewer(viewer, projectId).then((v) =>
+      standingsOf(projectId, rows, v, undefined, { runnerBound }),
+    ),
   ]);
   const latestBy = new Map(latest.map((l) => [l.requirementId, l]));
   return rows.map((r) => {

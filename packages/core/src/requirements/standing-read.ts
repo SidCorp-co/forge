@@ -194,8 +194,9 @@ const proposedSuggestionsOf = (ids: string[]) =>
  * One runner bound to the project, if any, whatever its status: where none is bound no master can
  * act (FB-77); a runner briefly offline still carries its master.
  */
-const boundRunnerOf = (projectId: string) =>
-  db.select({ id: runners.id }).from(runners).where(eq(runners.projectId, projectId)).limit(1);
+const runnerBoundIn = async (projectId: string): Promise<boolean> =>
+  (await db.select({ id: runners.id }).from(runners).where(eq(runners.projectId, projectId)).limit(1))
+    .length > 0;
 
 /** The standing of each requirement in `rows`, keyed by id; all rows belong to `projectId`. */
 export async function standingsOf(
@@ -203,6 +204,8 @@ export async function standingsOf(
   rows: readonly StandingRow[],
   viewer: StandingViewer | null,
   held?: StandingPreload,
+  /** Facts about the project the caller read in a statement it sends anyway; absent, read here. */
+  known: { runnerBound?: boolean } = {},
 ): Promise<Map<string, RequirementStanding>> {
   if (rows.length === 0) return new Map();
   const now = new Date();
@@ -220,7 +223,7 @@ export async function standingsOf(
     contractPins,
     unapproved,
     policy,
-    boundRunners,
+    runnerBound,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -283,7 +286,7 @@ export async function standingsOf(
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
-    boundRunnerOf(projectId),
+    known.runnerBound ?? runnerBoundIn(projectId),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -356,7 +359,7 @@ export async function standingsOf(
         })),
         feedback: feedbackBy.get(row.id) ?? { open: 0, untriaged: [] },
         judge: policy?.document.qa ?? null,
-        runnerBound: boundRunners.length > 0,
+        runnerBound,
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,

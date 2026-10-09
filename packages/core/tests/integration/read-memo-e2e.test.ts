@@ -18,12 +18,7 @@ import {
 // reads its stale design follows and its open merge-or-drop question beside its rows, one statement
 // each per project, which took the measured read from at most 60 to 61 a project. Ends when those
 // two reads join the standing's first wave or the request memo, and the bound returns to 60.
-// Amnesty (ISS-498, REQ-29, FB-77): the requirements list now reads the project's areas
-// (`requirements/read.ts:listRequirementsAs` → `placement.ts:areasOf`) and the standing whether a
-// runner is online (`requirements/standing-read.ts:onlineRunnerOf`), one statement each per project on
-// every page load's Needs-you count, which took it from 61 to 63. Ends when ISS-498's review of
-// those merges folds both into a statement the read already sends, and the bound returns to 61.
-const PER_PROJECT_BOUND = 63;
+const PER_PROJECT_BOUND = 61;
 
 const queriesOf = (headers: Headers): number => {
   const raw = headers.get('server-timing') ?? '';
