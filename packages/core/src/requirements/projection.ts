@@ -8,6 +8,8 @@ export function requirementSummaryOf(row: ListedRequirement): RequirementSummary
     id: row.id,
     key: row.key,
     title: row.title,
+    area: row.area?.name ?? null,
+    shortName: row.shortName,
     status: row.status,
     state: row.standing.state,
     currentRevision: row.currentRevision,

@@ -1,12 +1,12 @@
 // progress-by-requirement: per requirement, the criteria proven of the total, its issues shipped,
 // awaiting release and to do, and where it stands on the roadmap: its lane by the one lane rule
-// (`ROADMAP_HORIZON_OF`, REQ-33 BC-3) and its forecast with the forecast's basis. Built over the two
+// (`roadmapHorizonOf`, REQ-29 BC-8) and its forecast with the forecast's basis. Built over the two
 // reads the Requirements list reads — its rows and its forecasts — so the report holds every
 // requirement the list does, Later and off the roadmap included, with the dates its ETA cell shows
 // (ISS-433). This file only lays them out as a frame.
 
 import type { ScopeForecast } from '@forge/contracts/forecast';
-import { ROADMAP_HORIZON_OF, ROADMAP_HORIZONS } from '@forge/contracts/project-status';
+import { ROADMAP_HORIZONS, roadmapHorizonOf } from '@forge/contracts/requirement-roadmap';
 import {
   defineReportQuery,
   type ReportCell,
@@ -79,7 +79,7 @@ export function progressRows(
     .filter((r) => state === undefined || r.standing.state === state)
     .map((r) => {
       const scope = scopes.get(r.key);
-      const lane = ROADMAP_HORIZON_OF[r.standing.state];
+      const lane = roadmapHorizonOf(r.standing);
       const eta = scope
         ? etaOf(scope.delivery)
         : { p50At: null, p85At: null, basis: `no forecast: ${r.standing.state}` };

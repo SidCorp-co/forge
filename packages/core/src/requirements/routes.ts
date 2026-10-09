@@ -15,6 +15,23 @@ import {
 } from '@forge/contracts/requirements';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import {
+  REQUIREMENT_AREAS_SHAPE,
+  REQUIREMENT_PLACEMENT_SHAPE,
+  requirementAreasRequestSchema,
+  requirementPlacementRequestSchema,
+} from '@forge/contracts/requirements';
+import { logger } from '../lib/logger.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
+import {
+  acceptPlacement,
+  areasOf,
+  proposeMissingPlacements,
+  proposePlacement,
+  setAreas,
+  setPlacement,
+} from './placement.js';
+import type { RequirementRefusal } from './rules.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { refused } from '../lib/refusal.js';
 import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -87,10 +104,20 @@ requirementRoutes.post(
     const projectId = c.req.valid('param').id;
     const linked = await designsNamed(projectId, designs ?? []);
     if (!linked.ok) return refused(c, [linked.refusal], 'REQUIREMENT_REFUSED');
-    return answer(
-      c,
-      await draftLinked({ projectId, actor: actorOf(c), title, write, workflowIds: linked.ids }),
-    );
+    const outcome = await draftLinked({
+      projectId,
+      actor: actorOf(c),
+      title,
+      write,
+      workflowIds: linked.ids,
+    });
+    // the assistant proposes the area and short name from what was just written; a person accepts
+    if (outcome.ok) {
+      void proposePlacement(projectId, outcome.requirement.id).catch((err: unknown) =>
+        logger.warn({ err }, 'requirement placement: the proposal on create failed'),
+      );
+    }
+    return answer(c, outcome);
   },
 );
 
@@ -135,6 +162,56 @@ requirementRoutes.get('/:id/requirements/:req', reqParam, async (c) => {
       req,
     ),
   );
+});
+
+requirementRoutes.get('/:id/requirement-areas', projectParam, async (c) => {
+  const projectId = c.req.valid('param').id;
+  await requireCan(actorFor(actorOf(c).userId), 'project.read', projectResource(projectId));
+  return c.json({ areas: await areasOf(projectId) });
+});
+
+requirementRoutes.put(
+  '/:id/requirement-areas',
+  projectParam,
+  strictBody(requirementAreasRequestSchema, REQUIREMENT_AREAS_SHAPE),
+  holdChatWrite('requirement_draft'),
+  async (c) => {
+    const projectId = c.req.valid('param').id;
+    const out = await setAreas({
+      projectId,
+      actor: actorOf(c),
+      names: c.req.valid('json').names,
+    });
+    if (out.length > 0 && 'code' in (out[0] as object)) {
+      return refused(c, out as RequirementRefusal[], 'REQUIREMENT_REFUSED');
+    }
+    return c.json({ areas: out });
+  },
+);
+
+// a person asks the assistant to propose an area and short name for every requirement without one
+requirementRoutes.post('/:id/requirement-areas/propose', projectParam, async (c) => {
+  const projectId = c.req.valid('param').id;
+  return c.json(await proposeMissingPlacements(projectId, actorOf(c)), 202);
+});
+
+requirementRoutes.put(
+  '/:id/requirements/:req/placement',
+  reqParam,
+  strictBody(requirementPlacementRequestSchema, REQUIREMENT_PLACEMENT_SHAPE),
+  holdChatWrite('requirement_revision'),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(
+      c,
+      await setPlacement({ projectId: id, ref: req, actor: actorOf(c), ...c.req.valid('json') }),
+    );
+  },
+);
+
+requirementRoutes.post('/:id/requirements/:req/placement/accept', reqParam, async (c) => {
+  const { id, req } = c.req.valid('param');
+  return answer(c, await acceptPlacement({ projectId: id, ref: req, actor: actorOf(c) }));
 });
 
 requirementRoutes.route('/', revisionRoutes);

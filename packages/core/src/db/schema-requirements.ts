@@ -41,6 +41,24 @@ export type CriterionForm = (typeof CRITERION_FORMS)[number];
 
 // the stored status holds only what a person decides (workflow requirement-lifecycle);
 // in_delivery and delivered are read-time phases (`requirements/standing.ts:deliveryOf`), never written (Q1)
+/** A project's list of business areas (REQ-29 BC-1): the rows the Requirements list groups and filters by. */
+export const requirementAreas = pgTable(
+  'requirement_areas',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    nameUq: uniqueIndex('requirement_areas_project_name_uq').on(t.projectId, t.name),
+    nameChk: check('requirement_areas_name_chk', sql`length(${t.name}) BETWEEN 1 AND 60`),
+  }),
+);
+
 export const requirements = pgTable(
   'requirements',
   {
@@ -61,6 +79,16 @@ export const requirements = pgTable(
       onDelete: 'set null',
     }),
     requestedContractSlug: text('requested_contract_slug'),
+    // REQ-29: one business area and a short name of at most six words; null until a person sets them,
+    // the assistant's proposal waits beside them until a person accepts it
+    areaId: uuid('area_id').references((): AnyPgColumn => requirementAreas.id, {
+      onDelete: 'set null',
+    }),
+    shortName: text('short_name'),
+    proposedAreaId: uuid('proposed_area_id').references((): AnyPgColumn => requirementAreas.id, {
+      onDelete: 'set null',
+    }),
+    proposedShortName: text('proposed_short_name'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -75,6 +103,10 @@ export const requirements = pgTable(
     requestChk: check(
       'requirements_request_chk',
       sql`${t.requestedContractSlug} IS NULL OR (${t.requestedByProjectId} IS NOT NULL AND length(${t.requestedContractSlug}) BETWEEN 1 AND 120)`,
+    ),
+    shortNameChk: check(
+      'requirements_short_name_chk',
+      sql`(${t.shortName} IS NULL OR length(${t.shortName}) BETWEEN 1 AND 80) AND (${t.proposedShortName} IS NULL OR length(${t.proposedShortName}) BETWEEN 1 AND 80)`,
     ),
     requestSelfChk: check(
       'requirements_request_self_chk',

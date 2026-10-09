@@ -651,6 +651,8 @@ export interface RequirementSummaryView {
 	id: string;
 	key: string;
 	title: string;
+	area: string | null;
+	shortName: string | null;
 	status: string;
 	state: RequirementState;
 	currentRevision: number | null;
@@ -665,6 +667,10 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_REVISION_NOT_CURRENT",
 	"REQUIREMENT_REVISION_NOT_DRAFT",
 	"REQUIREMENT_REVISION_EMPTY",
+	"REQUIREMENT_AREA_UNKNOWN",
+	"REQUIREMENT_AREA_DUPLICATE",
+	"REQUIREMENT_SHORT_NAME_TOO_LONG",
+	"REQUIREMENT_PLACEMENT_NOT_PROPOSED",
 	"REQUIREMENT_REVISION_NOT_PROPOSED",
 	"REQUIREMENT_REVISION_WITHDRAWN",
 	"REQUIREMENT_REVISION_OPEN",
@@ -831,6 +837,17 @@ export interface RequirementSummary {
 	updatedAt: string;
 	/** Where it stands, derived in core (`requirements/standing.ts`). */
 	standing: RequirementStanding;
+	/** Its business area (REQ-29 BC-1); null until a person sets or accepts one. */
+	area: RequirementAreaRef | null;
+	/** At most six words; null until a person sets or accepts one, the title reads in its place. */
+	shortName: string | null;
+	/** What the assistant proposed, waiting for a person; null when nothing waits. */
+	placementProposal: { area: RequirementAreaRef | null; shortName: string | null } | null;
+}
+
+export interface RequirementAreaRef {
+	id: string;
+	name: string;
 }
 
 export interface RequirementCriterion {
@@ -1008,3 +1025,16 @@ export interface RequirementBuildingIssue {
 	title: string;
 	status: string;
 }
+
+/** `PUT /api/projects/:id/requirement-areas`: the whole list of the project's areas, in order. */
+export const requirementAreasRequestSchema = z.strictObject({
+	names: z.array(z.string().trim().min(1).max(60)).max(30),
+});
+export const REQUIREMENT_AREAS_SHAPE = "{ names: string[] } the project's areas, in the order a list draws them";
+
+/** `PUT …/requirements/:req/placement`: set the area and short name; a field left out stays, null clears it. */
+export const requirementPlacementRequestSchema = z.strictObject({
+	areaId: z.uuid().nullable().optional(),
+	shortName: z.string().trim().min(1).max(80).nullable().optional(),
+});
+export const REQUIREMENT_PLACEMENT_SHAPE = "{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }";

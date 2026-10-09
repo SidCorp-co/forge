@@ -3116,6 +3116,13 @@
       "when": 1824854400000,
       "tag": "0485_a_poc_room_builds_live_and_settles_into_dev",
       "breakpoints": true
+    },
+    {
+      "idx": 486,
+      "version": "7",
+      "when": 1824940800000,
+      "tag": "0486_a_requirement_carries_an_area_and_a_short_name",
+      "breakpoints": true
     }
   ]
 }
