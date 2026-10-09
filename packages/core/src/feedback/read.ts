@@ -113,6 +113,8 @@ function canOf(i: {
   const untriaged = phase === 'new' || phase === 'reopened';
   return {
     triage: approver && (untriaged || phase === 'triaged'),
+    // feedback-lifecycle draws declined from triaged, which reads planned while something carries it
+    drop: approver && phase === 'planned',
     // owner, 2026-10-07: anyone on the project may confirm a fix, not only a BA
     verify: phase === 'resolved',
     reopen: (approver || i.userId === row.reportedBy) && phase === 'resolved',

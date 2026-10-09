@@ -64,7 +64,7 @@ function factsLine(r: IssueStandingRow, t: Copy): string[] {
   if (s.requirement) parts.push(`${s.requirement.key}${s.requirement.criteria.length ? ` ${s.requirement.criteria.join(", ")}` : ""}`);
   if (s.requirement?.staleCriteria.length) parts.push(t("issues.facts.staleShort", { codes: s.requirement.staleCriteria.join(", ") }));
   if (r.priority === "high" || r.priority === "critical") parts.push(r.priority === "critical" ? t("issues.facts.critical") : t("issues.facts.high"));
-  if (s.feedback[0]) parts.push(t("issues.facts.from", { key: s.feedback[0] }));
+  if (s.feedback[0]) parts.push(`${t("issues.facts.from", { key: s.feedback[0] })}${s.feedbackDropped.includes(s.feedback[0]) ? ` (${t("issues.facts.dropped")})` : ""}`);
   if (s.criteria.total > 0) parts.push(t("issues.facts.passing", { passing: s.criteria.passing, total: s.criteria.total }));
   return parts;
 }
@@ -281,9 +281,12 @@ export function IssuePeekFacts({
         <Fact label={t("issues.facts.fromLabel")}>
           <span className="flex min-w-0 flex-wrap gap-x-2">
             {s.feedback.map((k) => (
-              <Link key={k} href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
-                {k}
-              </Link>
+              <span key={k} className="inline-flex items-baseline gap-1">
+                <Link href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
+                  {k}
+                </Link>
+                {s.feedbackDropped.includes(k) ? <span className="text-12 text-muted">{t("issues.facts.dropped")}</span> : null}
+              </span>
             ))}
           </span>
         </Fact>
@@ -368,9 +371,12 @@ export function IssueStandingFacts({ row, slug }: { row: IssueStandingRow; slug:
         <FactsGroup title={t("issues.facts.feedback")} count={t("issues.facts.reports", { n: s.feedback.length })}>
           <div className="flex flex-wrap gap-2">
             {s.feedback.map((k) => (
-              <Link key={k} href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
-                {k}
-              </Link>
+              <span key={k} className="inline-flex items-baseline gap-1">
+                <Link href={feedbackHref(slug, k)} className="font-mono text-12 font-semibold text-link hover:underline">
+                  {k}
+                </Link>
+                {s.feedbackDropped.includes(k) ? <span className="text-12 text-muted">{t("issues.facts.dropped")}</span> : null}
+              </span>
             ))}
           </div>
         </FactsGroup>

@@ -10,7 +10,6 @@ import {
 	UI_ROUTES,
 	type UiSnapshot,
 	uiActionJsonSchema,
-	uiHighlightParamsSchema,
 	uiIssueFilterSchema,
 	uiOpenParamsSchema,
 	uiSnapshotSchema,
@@ -40,7 +39,7 @@ describe("the registry offers what every page applies (REQ-41)", () => {
 		for (const name of Object.values(UI_LIST_FILTER_ACTIONS)) {
 			const r = parseUiAction(UI_ACTIONS[name].wire, {
 				mode: "merge",
-				set: { waitingOn: "you" },
+				set: [{ field: "waitingOn", value: "you" }],
 			});
 			expect(r.ok, name).toBe(true);
 		}
@@ -50,7 +49,7 @@ describe("the registry offers what every page applies (REQ-41)", () => {
 		expect(Object.keys(uiIssueFilterSchema.shape)).toContain("waitingOn");
 		const r = parseUiAction("ui.issues.filter", {
 			mode: "merge",
-			set: { waitingOn: "agent" },
+			set: [{ field: "waitingOn", value: "agent" }],
 		});
 		expect(r.ok).toBe(true);
 	});
@@ -152,30 +151,102 @@ describe("ui.highlight fits the page it is sent to", () => {
 		);
 	});
 
-	it("refuses a field its target does not take, and a target without its own, by name", () => {
-		const extra = uiHighlightParamsSchema.safeParse({
-			target: "row",
-			key: "REQ-3",
-			section: "criteria",
+	it("takes the call a model naturally makes: one target naming the record key and its section", () => {
+		const r = parseUiAction("ui_highlight", {
+			target: { key: "ISS-493", section: "plan" },
 		});
-		expect(extra.success).toBe(false);
-		expect(extra.error?.issues[0]?.message).toBe(
-			'target "row" takes key, not section',
-		);
-		const bare = uiHighlightParamsSchema.safeParse({ target: "step" });
-		expect(bare.success).toBe(false);
-		expect(bare.error?.issues[0]?.message).toBe('target "step" names its step');
-		const r = parseUiAction("ui_highlight", { target: "step", step: "check" });
-		expect(r.ok).toBe(true);
+		expect(r).toMatchObject({
+			ok: true,
+			action: {
+				name: "ui.highlight",
+				params: { target: "section", section: "plan", of: "ISS-493" },
+			},
+		});
+		expect(
+			parseUiAction("ui_highlight", {
+				target: { key: "chat-turn", step: "check" },
+			}),
+		).toMatchObject({
+			ok: true,
+			action: { params: { target: "step", step: "check", of: "chat-turn" } },
+		});
+		expect(
+			parseUiAction("ui_highlight", { target: { key: "REQ-34" } }),
+		).toMatchObject({
+			ok: true,
+			action: { params: { target: "row", key: "REQ-34" } },
+		});
+		expect(
+			parseUiAction("ui_highlight", { target: { section: "criteria" } }),
+		).toMatchObject({ ok: true, action: { params: { target: "section" } } });
 	});
 
-	it("refuses a section that is on no page at all", () => {
+	it("refuses a section its record's page does not have, naming the ones it has", () => {
+		const r = parseUiAction("ui_highlight", {
+			target: { key: "REQ-31", section: "plan" },
+		});
+		expect(r).toMatchObject({ ok: false, code: "UI_ACTION_INVALID" });
+		expect((r as { message: string }).message).toContain(
+			'REQ-31 is a requirement, whose page has waiting, question, criteria, picture, delivery, history, not "plan"',
+		);
 		expect(
-			uiHighlightParamsSchema.safeParse({
-				target: "section",
-				section: "footer",
-			}).success,
+			(
+				parseUiAction("ui_highlight", {
+					target: { key: "chat-turn", section: "plan" },
+				}) as { message: string }
+			).message,
+		).toContain("is a workflow, which highlights a step");
+		expect(
+			(
+				parseUiAction("ui_highlight", {
+					target: { key: "ISS-9", step: "check" },
+				}) as { message: string }
+			).message,
+		).toContain("a step belongs to a workflow");
+	});
+
+	it("refuses a target naming nothing, or both a section and a step, by name", () => {
+		expect(
+			(parseUiAction("ui_highlight", { target: {} }) as { message: string })
+				.message,
+		).toContain("name what to highlight");
+		expect(
+			(
+				parseUiAction("ui_highlight", {
+					target: { section: "plan", step: "check" },
+				}) as { message: string }
+			).message,
+		).toContain("a section or a step, not both");
+		expect(
+			parseUiAction("ui_highlight", { target: { section: "footer" } }).ok,
 		).toBe(false);
+	});
+
+	it("refuses the flat call it once took, by name, and offers the model one object with no slot to fill", () => {
+		const flat = parseUiAction("ui_highlight", {
+			target: "section",
+			section: "plan",
+		});
+		expect(flat.ok).toBe(false);
+		const schema = uiActionJsonSchema("ui.highlight") as {
+			required: string[];
+			properties: { target: { required?: string[]; properties: object } };
+		};
+		expect(schema.required).toEqual(["target"]);
+		expect(schema.properties.target.required).toBeUndefined();
+		expect(Object.keys(schema.properties.target.properties)).toEqual([
+			"key",
+			"section",
+			"step",
+		]);
+	});
+
+	it("marks only the record named, and refuses one the page is not showing", () => {
+		const h = { target: "section", section: "criteria", of: "REQ-31" } as const;
+		expect(highlightRefusal(h, req)).toContain(
+			"names REQ-31, but the page beside the chat shows REQ-34; open REQ-31 with ui.open first",
+		);
+		expect(highlightRefusal({ ...h, of: "REQ-34" }, req)).toBeNull();
 	});
 });
 

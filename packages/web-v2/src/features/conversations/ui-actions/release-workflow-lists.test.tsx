@@ -136,7 +136,7 @@ describe("Releases from chat (BC-4, BC-5)", () => {
     const send = page(<ReleasesScreen projectId="p1" slug="demo" />, "/projects/demo/releases");
     const rows = () => screen.queryAllByTestId("list-row").map((r) => r.getAttribute("data-key"));
     await waitFor(() => expect(rows()).toEqual(["0.4.0-dev.218", "0.4.0-dev.217"]));
-    send(turn("ui_releases_filter", { mode: "merge", set: { waitingOn: "running" } }));
+    send(turn("ui_releases_filter", { mode: "merge", set: [{ field: "waitingOn", value: "running" }] }));
     await waitFor(() => expect(rows()).toEqual(["0.4.0-dev.217"]));
     expect(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "Running" })).toHaveAttribute("data-assistant", "true");
     expect(snapshot()).toMatchObject({ route: "releases", listFilter: { list: "releases", filter: { waitingOn: "running" } }, shown: ["0.4.0-dev.217"] });
@@ -148,10 +148,10 @@ describe("Workflows from chat (BC-4, BC-5)", () => {
     const send = page(<WorkflowsScreen projectId="p1" slug="demo" projectName="Demo" />, "/projects/demo/workflows");
     const rows = () => screen.queryAllByTestId("workflow-row").map((r) => r.getAttribute("data-flow"));
     await waitFor(() => expect(rows().sort()).toEqual(["chat-turn", "feedback-triage"]));
-    send(turn("ui_workflows_filter", { mode: "replace", set: { waitingOn: "you" } }));
+    send(turn("ui_workflows_filter", { mode: "replace", set: [{ field: "waitingOn", value: "you" }] }));
     await waitFor(() => expect(rows()).toEqual(["feedback-triage"]));
     expect(snapshot()).toMatchObject({ route: "workflows", listFilter: { list: "workflows", filter: { waitingOn: "you" } }, shown: ["feedback-triage"] });
-    send(turn("ui_workflows_filter", { mode: "replace", set: { text: "chat" } }));
+    send(turn("ui_workflows_filter", { mode: "replace", set: [{ field: "text", value: "chat" }] }));
     await waitFor(() => expect(rows()).toEqual(["chat-turn"]));
     expect(screen.getByTestId("list-filter-chip")).toHaveAttribute("data-assistant", "true");
   });

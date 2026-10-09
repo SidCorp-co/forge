@@ -118,21 +118,108 @@ export const UI_FILTER_PARAMS = {
 } as const;
 export type UiFilterField = keyof typeof UI_FILTER_PARAMS;
 
+const FIELD_HINT: Record<string, string> = {
+	waitingOn: "who the rows wait on: you, agent or running",
+	text: "words to search for, only the words the person said",
+	status: "the statuses to show",
+	state: "the states to show",
+	phase: "the phases to show",
+	kind: "the kinds to show",
+	priority: "the priority to show",
+	severity: "the severity to show",
+	since: "how far back to reach",
+	createdBy: 'only "me"',
+	assignee: 'only "me"',
+};
+
+/** Whether a search holds a word: two letters or digits in a row, so "/", ".*" and "}," are no search. */
+const holdsWords = (v: string): boolean => /[\p{L}\p{N}]{2,}/u.test(v);
+
+/**
+ * One field's value as an action may set it: the filter's own schema, plus what no list's own URL
+ * needs refusing but a model's call does. A search must hold a word, and a list of choices that
+ * names every choice narrows nothing, so it is the fill of a slot and not a filter (QA of dev.219:
+ * a stray text "/" and all seven states set beside the one filter asked for).
+ */
+function actionValue(field: string, schema: z.ZodType): z.ZodType {
+	const inner = (
+		schema instanceof z.ZodOptional ? schema.unwrap() : schema
+	) as z.ZodType;
+	if (field === "text")
+		return (inner as z.ZodString).refine(holdsWords, {
+			message:
+				"text must hold a word to search for (two letters or digits in a row); leave text out when the person named no words",
+		});
+	if (inner instanceof z.ZodArray && inner.element instanceof z.ZodEnum) {
+		const every = (inner.element as z.ZodEnum).options.length;
+		return (inner as z.ZodArray).refine((v) => new Set(v).size < every, {
+			message: `${field} names every value, which narrows nothing; leave ${field} out unless the person asked for some of them`,
+		});
+	}
+	return inner;
+}
+
 /**
  * A filter action's params over one filter schema: `merge` keeps the filter the person sees and
- * changes only the named fields, `replace` drops every field it does not set. A field is never both
- * set and cleared, and a merge that names nothing is refused, so an action always changes what it says.
+ * changes only the named fields, `replace` drops every field it does not set. A field is set only
+ * by an entry of `set` naming it, one `{field, value}` per field the person asked for, so there is no
+ * empty slot to fill: a model handed an object of optional fields filled every one of them (QA of
+ * dev.219). Absent means untouched. The parsed `set` is the one object of the fields named. A field
+ * is never both set and cleared or set twice, and a merge that names nothing is refused, so an
+ * action always changes what it says.
  */
 export function listFilterParamsOf<S extends z.ZodObject>(filter: S) {
-	const fields = Object.keys(filter.shape) as [
+	const shape = filter.shape as Record<string, z.ZodType>;
+	const fields = Object.keys(shape) as [
 		keyof S["shape"] & string,
 		...(keyof S["shape"] & string)[],
 	];
+	const entries = fields.map((field) =>
+		z.strictObject({
+			field: z.literal(field),
+			value: actionValue(field, shape[field] as z.ZodType).describe(
+				FIELD_HINT[field] ?? field,
+			),
+		}),
+	) as unknown as [z.ZodType, ...z.ZodType[]];
+	const set = z
+		.array(
+			z.discriminatedUnion("field", entries as never, {
+				error: (issue) =>
+					`"${String((issue.input as { field?: unknown } | null)?.field)}" is not a field of this list; it has ${fields.join(", ")}`,
+			}),
+		)
+		.max(fields.length)
+		.describe(
+			"the fields to narrow by, one {field, value} for each field the person asked for, and nothing else",
+		)
+		.optional()
+		.transform((list, ctx) => {
+			const out: Record<string, unknown> = {};
+			for (const [i, entry] of (list ?? []).entries()) {
+				const { field, value } = entry as { field: string; value: unknown };
+				if (field in out) {
+					ctx.addIssue({
+						code: "custom",
+						path: [i, "field"],
+						message: `${field} is set twice`,
+					});
+					return z.NEVER;
+				}
+				out[field] = value;
+			}
+			return out as z.infer<S>;
+		});
 	return z
 		.strictObject({
 			mode: z.enum(["merge", "replace"]),
-			set: (filter as z.ZodObject).default({}) as unknown as z.ZodDefault<S>,
-			clear: z.array(z.enum(fields)).max(fields.length).default([]),
+			set,
+			clear: z
+				.array(z.enum(fields))
+				.max(fields.length)
+				.describe("fields to drop from the filter the person sees")
+				.optional()
+				.transform((c) => c ?? []),
 		})
 		.refine(
 			(v) =>

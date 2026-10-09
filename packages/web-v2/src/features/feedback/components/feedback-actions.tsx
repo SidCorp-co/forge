@@ -14,7 +14,7 @@ import { useFeedbackAction } from "../hooks";
 import { type FeedbackPick, FeedbackPicker } from "./feedback-picker";
 import { RetargetForm } from "./feedback-retarget";
 import { TellShippedBar } from "./feedback-tell";
-import { TriageVerbs } from "./feedback-verbs";
+import { DropItem, TriageVerbs } from "./feedback-verbs";
 import type { FeedbackDedup, FeedbackTriage, FeedbackView } from "../types";
 
 type Choice = "link_issue" | "file_issue" | "revision" | "new_requirement" | "answer" | "duplicate" | "decline";
@@ -178,6 +178,7 @@ export function FeedbackActions({ projectId, f }: { projectId: string; f: Feedba
     <div className="grid gap-4">
       <TriageVerbs projectId={projectId} f={f} />
       {f.can.triage ? <TriageForm projectId={projectId} f={f} /> : null}
+      {f.can.drop ? <DropItem projectId={projectId} f={f} /> : null}
       {f.can.verify || f.can.reopen || f.can.askVerify ? <VerifyBar projectId={projectId} f={f} /> : null}
       {f.can.retarget ? <RetargetForm projectId={projectId} f={f} /> : null}
       {f.can.tellShipped ? <TellShippedBar projectId={projectId} f={f} /> : null}

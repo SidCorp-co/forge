@@ -24,7 +24,7 @@ const approval = {
 };
 const delivery = { ...stamp, landing: landed, release: approval, inHands: null, shipped: null };
 
-const NONE = { triage: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, note: false };
+const NONE = { triage: false, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, accept: false, snooze: false, message: false, note: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",

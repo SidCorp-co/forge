@@ -18,7 +18,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const NOW = Date.parse("2026-10-08T03:00:00.000Z");
 const CLOCK = { lang: "en" as const, now: NOW, timeZone: "UTC" };
-const CAN = { triage: false, verify: true, reopen: true, askVerify: true, redact: false, retarget: false, accept: false, snooze: false, message: true, tellShipped: false, note: true, attach: false };
+const CAN = { triage: false, drop: false, verify: true, reopen: true, askVerify: true, redact: false, retarget: false, accept: false, snooze: false, message: true, tellShipped: false, note: true, attach: false };
 const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
   ({
     id: "f1",

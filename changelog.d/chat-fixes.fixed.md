@@ -1,0 +1,1 @@
+**Chat answers show what they could check, and page actions take the natural call.** A held reply keeps the clauses that passed; highlight takes one key-and-section target; list filters set only named fields; a planned feedback item can be dropped.

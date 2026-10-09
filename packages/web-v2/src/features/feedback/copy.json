@@ -60,6 +60,8 @@
     "feedback.decline.go": "Decline",
     "feedback.decline.hint": "The reporter gets one notice with this reason, and the item leaves the funnel as declined.",
     "feedback.decline.label": "Why it will not be done",
+    "feedback.drop.hint": "Something carries it. Dropping it keeps that link: the issue says the item was dropped.",
+    "feedback.drop.open": "Drop it",
     "feedback.duplicate.go": "Mark duplicate",
     "feedback.duplicate.hint": "Pick it by key or title. Its reporter and evidence join the original, which keeps this record; its reporter is told which item carries it.",
     "feedback.duplicate.label": "The original",

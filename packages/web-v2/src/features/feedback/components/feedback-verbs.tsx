@@ -176,3 +176,28 @@ export function TriageVerbs({ projectId, f }: { projectId: string; f: FeedbackVi
     </section>
   );
 }
+
+/**
+ * Drop an item that reads planned: something carries it, so no route is picked again, but the stored
+ * `triaged` it rests on is declined with a reason like any other (feedback-lifecycle `declined` from
+ * `triaged`). Core's `can.drop` decides whether it is offered; the carrying issue keeps the link and says so.
+ */
+export function DropItem({ projectId, f }: { projectId: string; f: FeedbackView }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="grid gap-2" data-testid="feedback-drop">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="button" size="sm" aria-pressed={open} onClick={() => setOpen(!open)}>
+          {t("feedback.drop.open")}
+        </Button>
+        <span className="text-12 text-muted">{t("feedback.drop.hint")}</span>
+      </div>
+      {open ? (
+        <div className="border-t border-line-subtle pt-3" data-testid="verb-drop">
+          <DeclineForm projectId={projectId} f={f} done={() => setOpen(false)} />
+        </div>
+      ) : null}
+    </section>
+  );
+}

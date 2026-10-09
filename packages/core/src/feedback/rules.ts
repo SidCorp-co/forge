@@ -305,14 +305,23 @@ export function promoteRefusal(f: PromoteFacts): FeedbackRefusal | null {
 
 const OPEN_FOR_TRIAGE: readonly FeedbackPhase[] = ['new', 'triaged', 'reopened'];
 
-// a route is picked while the item is new, reopened, or triaged with a dead carrier; a
-// planned, resolved, verified or declined item is FEEDBACK_STATUS_INVALID
-export function triagePhaseRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
+// a route is picked while the item is new, reopened, or triaged with a dead carrier; a resolved,
+// verified or declined item is FEEDBACK_STATUS_INVALID, and so is a planned one for every route but
+// decline: feedback-lifecycle draws `declined` from the stored `triaged`, which reads planned while
+// an issue, revision or requirement carries it, so that item can be dropped with a reason and
+// nothing else can be done to it but wait for what carries it (QA of dev.219: FB-110 could not be dropped)
+export function triagePhaseRefusal(
+  phase: FeedbackPhase,
+  route?: FeedbackTriageRoute,
+): FeedbackRefusal | null {
   if (OPEN_FOR_TRIAGE.includes(phase)) return null;
+  if (phase === 'planned' && route === 'decline') return null;
   return refusal(
     'FEEDBACK_STATUS_INVALID',
     '/status',
-    `the item reads ${phase}; a route is picked only while it is new, reopened, or triaged with nothing carrying it.`,
+    phase === 'planned'
+      ? `the item reads planned: something carries it, so a route is picked only to drop it; use the decline route with a reason.`
+      : `the item reads ${phase}; a route is picked only while it is new, reopened, or triaged with nothing carrying it.`,
   );
 }
 
