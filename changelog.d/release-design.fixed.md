@@ -1,0 +1,1 @@
+**A release now has a designed page and a shared contract for it.** Highlights with QA clips, requirements proven live, fixes, actions and known issues, claiming a criterion only with a pass on that release's own build.
