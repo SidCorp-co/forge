@@ -79,19 +79,18 @@ export const forgeMemoryGetTool: ContextScopedMcpToolFactory = ({ principal }) =
 
 /**
  * `forge_memory.delete` — remove a memory row by its natural key. Idempotent:
- * succeeds and returns `{deleted: false}` when no row matches. Equivalent to
- * REST `DELETE /api/memory/by-source?...` in tool form.
+ * succeeds and returns `{deleted: 0}` when no row matches, else the number of rows
+ * removed, the answer REST `DELETE /api/memory/by-source?...` gives.
  */
 export const forgeMemoryDeleteTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_memory.delete',
   description:
-    'Delete a memory row by (projectId, source, sourceRef). Idempotent — returns {deleted:false} when no row matches. Requires project membership.',
+    'Delete a memory row by (projectId, source, sourceRef). Idempotent — returns {deleted: <rows removed>}, 0 when no row matches. Requires the project member role or above.',
   inputSchema: zodToMcpSchema(deleteInputSchema),
   handler: async (args) => {
     const input = deleteInputSchema.parse(args);
     await assertPrincipalIsWriter(principal, input.projectId);
-    const removed = await deleteMemory(input.projectId, input.source, input.sourceRef);
-    return { deleted: removed > 0 };
+    return { deleted: await deleteMemory(input.projectId, input.source, input.sourceRef) };
   },
 });
 
