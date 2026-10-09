@@ -11,6 +11,45 @@ export const REQUIRED_CHECKS = [
   'verify',
 ];
 
+/**
+ * The fast lane's checks (REQ-39 BC-7): a change a person approved in its live preview, whose files
+ * core classifies fast, lands with these alone. Copied from the contract's `FAST_LANE_MERGE_CHECKS`
+ * because a script reads no TypeScript; `lib/merge-check.test.mjs` holds the copy to it.
+ */
+export const FAST_LANE_CHECKS = ['rebased-on-base', 'typecheck', 'direct-tests'];
+
+/** The lanes `--lane` takes: `full` is every check above, `fast` the three the fast lane runs. */
+export const LANES = ['full', 'fast'];
+
+/** The checks a run on `lane` owes. */
+export function requiredChecks(lane) {
+  return lane === 'fast' ? FAST_LANE_CHECKS : REQUIRED_CHECKS;
+}
+
+/** What the fast lane leaves to the nightly suite and the release cut, said in its report. */
+export function notRunOnLane(lane) {
+  if (lane !== 'fast') return [];
+  return REQUIRED_CHECKS.filter((n) => !FAST_LANE_CHECKS.includes(n)).map((name) => ({
+    name,
+    owner: 'REQ-39 BC-7',
+    why: 'the fast lane runs the typecheck and the touched tests only; the whole suite runs nightly and at each cut',
+  }));
+}
+
+/**
+ * The patch id `git patch-id --stable` printed for the change, or the refusal naming why there is
+ * none. It is what core holds to the patch id the approved preview served.
+ */
+export function patchIdOf(printed) {
+  const id = printed.trim().split(/\s+/)[0] ?? '';
+  if (/^[0-9a-f]{40}$/.test(id)) return { id };
+  return {
+    refusal:
+      '`git patch-id --stable` printed no id for the change, so the fast lane has nothing to hold to ' +
+      'the approved preview; a change with no diff has nothing to merge',
+  };
+}
+
 /** Named in every report as not run here, with the issue that builds each. */
 export const NOT_RUN_HERE = [
   {
@@ -63,9 +102,9 @@ export function emptyRefusal({ branch, head, touched }) {
   );
 }
 
-/** A required check the run did not make, or null when every one was made. */
-export function missingCheck(checks) {
-  return REQUIRED_CHECKS.find((name) => !checks.some((c) => c.name === name)) ?? null;
+/** A check `lane` needs that the run did not make, or null when every one was made. */
+export function missingCheck(checks, lane = 'full') {
+  return requiredChecks(lane).find((name) => !checks.some((c) => c.name === name)) ?? null;
 }
 
 /** The checks that ended red. */
@@ -74,13 +113,15 @@ export function redChecks(checks) {
 }
 
 /** The body `POST /api/issues/:id/merge-check` takes, as this run made it. */
-export function reportOf({ branch, baseSha, head, mode, touched, checks }) {
+export function reportOf({ branch, baseSha, head, mode, touched, checks, lane = 'full', patchId }) {
   return {
     base: { branch, sha: baseSha },
     head,
     mode,
     touched,
     checks,
+    lane,
+    ...(lane === 'fast' ? { patchId } : {}),
   };
 }
 

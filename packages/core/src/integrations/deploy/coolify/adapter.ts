@@ -9,6 +9,7 @@ import {
   findConnectionById,
   type HealthCheckResult,
   healthOf,
+  NonRetryableDispatchError,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
   recordDelivery,
@@ -42,6 +43,8 @@ interface DeployPayload extends Record<string, unknown> {
   targetId: string;
   targetLabel: string;
   resourceUuid: string;
+  /** The targets to deploy and no others: a web-only deploy (REQ-39 BC-7). Absent, every target. */
+  targetLabels?: string[];
 }
 
 interface CoolifyFailureVerdict {
@@ -192,6 +195,35 @@ async function deployTarget(
   }
 }
 
+type BoundTarget = NonNullable<CoolifyConfig['targets']>[number];
+
+/**
+ * The targets a dispatch deploys: every one, or exactly the labels a web-only deploy names. A label
+ * the binding does not hold is refused for good, never dropped: the guard that sent it read another
+ * binding than this one, and deploying the rest would ship web without the target it named.
+ */
+function namedTargets(
+  bindingId: string,
+  bound: readonly BoundTarget[],
+  labels: unknown,
+): readonly BoundTarget[] {
+  if (labels === undefined) return bound;
+  if (!Array.isArray(labels) || labels.length === 0 || labels.some((l) => typeof l !== 'string')) {
+    throw new NonRetryableDispatchError(
+      `coolify: binding ${bindingId} was sent targetLabels ${JSON.stringify(labels)}, which is not a list of target labels`,
+      'target-labels-malformed',
+    );
+  }
+  const unbound = labels.filter((l) => !bound.some((t) => t.label === l));
+  if (unbound.length > 0) {
+    throw new NonRetryableDispatchError(
+      `coolify: binding ${bindingId} holds no target labelled ${unbound.map((l) => `"${l}"`).join(', ')}; it holds ${bound.map((t) => `"${t.label}"`).join(', ')}. Nothing was deployed`,
+      'target-unbound',
+    );
+  }
+  return bound.filter((t) => labels.includes(t.label));
+}
+
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
   verifyBindingTarget: verifyCoolifyBindingTarget,
   async healthcheck(ctx) {
@@ -270,10 +302,11 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     const payload = (input.payload ?? {}) as Partial<DeployPayload>;
     // A run-less resource redeploy (ISS-312) carries no run; the delivery records runId null.
     const runId = payload.runId ?? input.runId ?? null;
-    const targets = ctx.config.targets ?? [];
-    if (targets.length === 0) {
+    const bound = ctx.config.targets ?? [];
+    if (bound.length === 0) {
       throw new Error(`coolify: binding ${ctx.bindingId} has no deploy targets configured`);
     }
+    const targets = namedTargets(ctx.bindingId, bound, payload.targetLabels);
 
     const client = buildClient(ctx);
     const outcomes: TargetOutcome[] = [];

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { FAST_LANE_MERGE_CHECKS } from '@forge/contracts/fast-lane';
 import {
   MERGE_CHECK_KINDS,
   type MergeCheckReport,
@@ -85,6 +86,41 @@ describe('which report a merge may rely on', () => {
     const out = checkRefusal(report(checks));
     expect(out?.code).toBe('MERGE_CHECK_RED');
     expect(out?.detail).toContain('`direct-tests` (web-v2): packages/web-v2/src/a.test.ts');
+  });
+});
+
+describe('a report on the fast lane (REQ-39 BC-7)', () => {
+  const PATCH = 'c'.repeat(40);
+  const fast = (checks = FAST_LANE_MERGE_CHECKS.map((n) => run(n))): MergeCheckReport => ({
+    ...report(checks),
+    lane: 'fast',
+    patchId: PATCH,
+  });
+
+  it('takes the typecheck and the touched tests alone: no integration tests, no verify', () => {
+    expect(checkRefusal(fast())).toBeNull();
+  });
+
+  it('still refuses one missing a fast check, naming the fast lane', () => {
+    const out = checkRefusal(
+      fast(FAST_LANE_MERGE_CHECKS.filter((n) => n !== 'typecheck').map((n) => run(n))),
+    );
+    expect(out?.code).toBe('MERGE_CHECK_INCOMPLETE');
+    expect(out?.detail).toContain('runs no `typecheck` check, and a fast-lane merge needs');
+  });
+
+  it('holds a report without a lane to every check a merge needs', () => {
+    const out = checkRefusal(report(FAST_LANE_MERGE_CHECKS.map((n) => run(n))));
+    expect(out?.code).toBe('MERGE_CHECK_INCOMPLETE');
+    expect(out?.detail).toContain('`integration-tests`, `verify`');
+  });
+
+  it('records the lane and the patch id it checked', () => {
+    const fields = recordFields(fast());
+    expect(fields.find((f) => f.key === 'lane')?.value).toBe('fast');
+    expect(fields.find((f) => f.key === 'patch-id')?.value).toBe(PATCH);
+    expect(recordFields(report()).find((f) => f.key === 'lane')?.value).toBe('full');
+    expect(recordFields(report()).some((f) => f.key === 'patch-id')).toBe(false);
   });
 });
 

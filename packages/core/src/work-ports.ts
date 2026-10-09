@@ -48,6 +48,7 @@ import {
   settlingContractVersion,
   tokenIdOf,
 } from './ecosystem/index.js';
+import { fastLaneMergeRefusal } from './fast-lane/index.js';
 import { rowIn as feedbackRowIn, listFeedbackAs } from './feedback/index.js';
 import { guideRef } from './guides/index.js';
 import { getStorage, isEnoent, readStorefrontDrafts } from './integrations/index.js';
@@ -261,6 +262,7 @@ export function provideWorkPorts(): void {
       getIssueContexts({ projectId, issueId, kind: 'handoff', limit: 200, orderDir: 'asc' }),
     closeOpenRunForIssue,
     triggerPipelineStepManual,
+    fastLaneMergeRefusal,
   });
 
   provideAutomationPorts({

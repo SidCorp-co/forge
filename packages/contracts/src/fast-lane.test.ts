@@ -7,7 +7,11 @@ import {
 	fastLaneSettingsSchema,
 	globToRegExp,
 } from "./fast-lane.js";
-import { REQUIRED_MERGE_CHECKS } from "./merge-check.js";
+import {
+	mergeCheckReportSchema,
+	REQUIRED_MERGE_CHECKS,
+	requiredMergeChecksOf,
+} from "./merge-check.js";
 import { refusalStatusOf } from "./refusal-statuses.js";
 
 /** Forge's own declaration, as docs/proposals/live-preview.md writes it for forge-core. */
@@ -131,6 +135,7 @@ describe("the fast lane's checks and refusals (BC-7)", () => {
 			FAST_LANE_NOT_APPROVED: 409,
 			FAST_LANE_CHANGED_SINCE_APPROVAL: 409,
 			FAST_LANE_UNDECLARED: 422,
+			FAST_LANE_UNVERIFIED: 503,
 		});
 	});
 
@@ -140,5 +145,58 @@ describe("the fast lane's checks and refusals (BC-7)", () => {
 				.success,
 		).toBe(false);
 		expect(fastLaneSettingsSchema.safeParse(FORGE).success).toBe(true);
+	});
+});
+
+describe("a merge check report on the fast lane (BC-7)", () => {
+	const SHA = "a".repeat(40);
+	const report = (over: Record<string, unknown>) => ({
+		base: { branch: "dev", sha: "b".repeat(40) },
+		head: SHA,
+		mode: "pre-merge",
+		touched: [{ path: "packages/web-v2/src/a.tsx", change: "changed" }],
+		checks: [
+			{
+				id: "6f1c1d1e-7f4a-4a54-9f3c-2b8a2b0f1a11",
+				kind: "typecheck",
+				name: "typecheck",
+				scope: "workspace",
+				command: "tsc",
+				files: [],
+				result: "pass",
+				durationMs: 1,
+				startedAt: "2026-10-09T06:00:00.000Z",
+			},
+		],
+		...over,
+	});
+	const paths = (over: Record<string, unknown>) => {
+		const parsed = mergeCheckReportSchema.safeParse(report(over));
+		return parsed.success
+			? []
+			: parsed.error.issues.map((i) => i.path.join("."));
+	};
+
+	it("needs only the fast checks, and every check a merge needs without a lane", () => {
+		expect(requiredMergeChecksOf("fast")).toEqual(FAST_LANE_MERGE_CHECKS);
+		expect(requiredMergeChecksOf("full")).toEqual(REQUIRED_MERGE_CHECKS);
+		expect(requiredMergeChecksOf(undefined)).toEqual(REQUIRED_MERGE_CHECKS);
+	});
+
+	it("names the patch id of what it checked, and only there", () => {
+		expect(paths({ lane: "fast", patchId: "c".repeat(40) })).toEqual([]);
+		expect(paths({ lane: "fast" })).toEqual(["patchId"]);
+		expect(paths({ lane: "full", patchId: "c".repeat(40) })).toEqual([
+			"patchId",
+		]);
+		expect(paths({ patchId: "c".repeat(40) })).toEqual(["patchId"]);
+		expect(paths({ lane: "fast", patchId: "C".repeat(40) })).toEqual([
+			"patchId",
+		]);
+		expect(paths({})).toEqual([]);
+	});
+
+	it("refuses a lane that is not one", () => {
+		expect(paths({ lane: "express" })).toEqual(["lane"]);
 	});
 });

@@ -12391,6 +12391,51 @@
         ]
       }
     },
+    "/api/issues/{id}/lane": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "projectId",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-query-closed": true,
+        "x-forge-validated": [
+          "param",
+          "query"
+        ]
+      }
+    },
     "/api/issues/{id}/merge": {
       "delete": {
         "parameters": [
@@ -12851,11 +12896,22 @@
                     "pattern": "^[0-9a-f]{40}$",
                     "type": "string"
                   },
+                  "lane": {
+                    "enum": [
+                      "fast",
+                      "full"
+                    ],
+                    "type": "string"
+                  },
                   "mode": {
                     "enum": [
                       "pre-merge",
                       "landed"
                     ],
+                    "type": "string"
+                  },
+                  "patchId": {
+                    "pattern": "^[0-9a-f]{40}$",
                     "type": "string"
                   },
                   "touched": {
@@ -12894,7 +12950,11 @@
                   "touched",
                   "checks"
                 ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "a fast-lane report names the patch id of what it checked (`git diff --binary <base> <head> | git patch-id --stable`): core holds it to the patch id the approved preview served",
+                  "patchId is read only on the fast lane; a full-lane report sends none, or sends `lane: \"fast\"`"
+                ]
               }
             }
           },
@@ -36336,9 +36396,22 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  "targets": {
+                    "items": {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "maxItems": 5,
+                    "minItems": 1,
+                    "type": "array"
                   }
                 },
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "`targets` is the fast lane web-only deploy, which deploys by issue or binding; a release run (pipelineRunId) deploys every target"
+                ]
               }
             }
           },

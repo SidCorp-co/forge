@@ -349,6 +349,11 @@
       "context": "work",
       "serves": ["personal-data-flow#src-sentry", "automation#inline"]
     },
+    "fast-lane": {
+      "kind": "domain",
+      "context": "release",
+      "serves": ["issue-delivery#rule-merge"]
+    },
     "feedback": {
       "kind": "domain",
       "context": "design",

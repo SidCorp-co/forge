@@ -4,6 +4,7 @@ import {
 } from '@forge/contracts/content-language';
 import { SENSITIVE_DATA_LEVELS } from '@forge/contracts/data-policy';
 import { deliveryPolicySchema } from '@forge/contracts/delivery-policy';
+import { fastLaneSettingsSchema } from '@forge/contracts/fast-lane';
 import { FEEDBACK_VERIFY_WINDOW } from '@forge/contracts/feedback';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
@@ -254,6 +255,10 @@ export const projectDocumentSchema = z.strictObject({
         .optional(),
     })
     .optional(),
+  // which changed files may take the fast lane after a preview is approved, the full-gate areas a
+  // project adds to the built-in ones, and the deploy targets a web-only deploy fans out to (REQ-39
+  // BC-7, BC-8; `@forge/contracts/fast-lane:classifyLane`). Absent, every change is full lane.
+  fastLane: fastLaneSettingsSchema.optional(),
   // the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
   // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
   // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,

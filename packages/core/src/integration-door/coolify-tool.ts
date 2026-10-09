@@ -7,7 +7,9 @@
  * The action list and what each one returns live in the tool `description`
  * below — it is what a model actually reads, and a second copy here is a copy
  * that goes stale. ISS-925 added the controls beside deploy: `cancel`,
- * `rollback-images`, `rollback`, `applications`, `targets`.
+ * `rollback-images`, `rollback`, `applications`, `targets`. REQ-39 BC-7 added `targets` on `deploy`:
+ * the fast lane's web-only deploy, which the fast lane's guard (`fast-lane:deployWebOnly`) refuses
+ * unless every commit since what those targets serve classifies fast.
  *
  * Authorization is `project.read`, raised to `deploys.run` for the three actions that change something;
  * prod safety is the human-confirm gate inside `tryDispatchCoolifyRelease` and
@@ -17,6 +19,7 @@
 
 import type { CoolifyRefusalCode } from '@forge/contracts/integrations';
 import { z } from 'zod';
+import { deployWebOnly } from '../fast-lane/index.js';
 import {
   type CoolifyConfig,
   fetchCoolifyDeploymentLogs,
@@ -76,6 +79,8 @@ const inputSchema = z
      *  bound that hard-fails is the same lie ISS-787 removed from `lines`
      *  itself. Coerced: MCP transports routinely deliver numbers as strings. */
     lines: z.coerce.number().int().min(1).max(1000).optional(),
+    /** deploy: the labels of the targets to deploy and no others — the fast lane's web-only deploy. */
+    targets: z.array(z.string().min(1).max(100)).min(1).max(5).optional(),
   })
   .strict();
 
@@ -116,7 +121,15 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
     'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
     'Inspect targets[] to confirm every app you expect (BE+FE) is present. ' +
-    'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
+    'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration unless `targets` ' +
+    'names some. `targets` (labels, e.g. ["web"]) is the FAST LANE web-only deploy (REQ-39): only ' +
+    "labels the project document's `fastLane.deployTargets` declares, on one binding (integrationId, " +
+    'else the sole active one), never with pipelineRunId; refused FAST_LANE_NOT_ELIGIBLE unless every ' +
+    "commit between the commit each target serves and its environment's deploysFrom head touches " +
+    'only fast files (naming the commit, file and rule), FAST_LANE_UNVERIFIED where that cannot be ' +
+    'read whole, FAST_LANE_UNDECLARED where the project or binding does not declare the target. On ' +
+    'success it answers `lane: "fast"` and, per target, the served commit, the head and the commit ' +
+    'count; verify by the commit the web build serves (`logs` -> `commit`). With issueId — ' +
     "run-tracked deploy: resolves the issue's latest pipeline run and enqueues via the SAME path as " +
     'every release deploy (each target webhook then advances that run; run completes when all ' +
     'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
@@ -212,6 +225,19 @@ async function dispatchAction(input: Input, ctx: McpContext): Promise<unknown> {
     case 'list':
       return listCoolifyIntegrations(projectId);
     case 'deploy':
+      if (input.targets) {
+        if (input.pipelineRunId) {
+          throw new Error(
+            'BAD_REQUEST: `targets` is the fast lane web-only deploy, which deploys by issue or binding; a release run (pipelineRunId) deploys every target',
+          );
+        }
+        return deployWebOnly({
+          projectId,
+          targets: input.targets,
+          ...given({ issueId: input.issueId }),
+          ...scope,
+        });
+      }
       return runCoolifyDeploy({
         projectId,
         ...given({ issueId: input.issueId, pipelineRunId: input.pipelineRunId }),

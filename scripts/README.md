@@ -928,6 +928,7 @@ their own.
 | `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |
 | `GITHUB_BASE_REF=dev pnpm merge-check` | before landing on dev, and in `ci.yml`'s `merge-check` job | fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests and `pnpm verify`, each timed; writes the report | 0 · 1 red or behind · 2 could not run |
 | `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed` | as above |
+| `pnpm merge-check --lane fast` | a change a person approved in its live preview (REQ-39 BC-7) | the fast lane: `rebased-on-base`, the typecheck and the direct tests only — no integration tests, no `verify`; the report carries `lane: 'fast'` and the change's `patchId` (`git diff --binary <base> <head> \| git patch-id --stable`), which core holds to the approved preview's and refuses `FAST_LANE_*` by name | as above |
 
 **Every check is timed once** (REQ-36 BC-14, ISS-474). `lib/direct-test-run.mjs` makes each check a
 check run as `packages/contracts/src/check-runs.ts` declares it: an id of its own, its kind
@@ -944,7 +945,8 @@ body of `POST /api/issues/:id/merge-check`, which refuses `MERGE_CHECK_INCOMPLET
 name. A passing check records its checks as check runs, each with its kind and duration, and
 core's `verification` record naming them — never a second copy of a duration. The
 checks every merge needs are `REQUIRED_MERGE_CHECKS` in `packages/contracts/src/merge-check.ts`,
-and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it. Kept probes (ISS-469) and
+and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it, as it holds `FAST_LANE_CHECKS`
+to `FAST_LANE_MERGE_CHECKS` in `packages/contracts/src/fast-lane.ts`. Kept probes (ISS-469) and
 the review (ISS-473) join that list when their issues land; until then each report names them as
 not run. A mark the project's `validation.mergeCheck: required` or an approved new pattern owes a
 check is refused `MERGE_CHECK_MISSING` until a passing one stands at the commit marked.

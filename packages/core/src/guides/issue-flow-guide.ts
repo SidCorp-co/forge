@@ -149,6 +149,15 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
   \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a red check
   \`MERGE_CHECK_RED\`, and an approved new pattern whose catalog page the touched files lack
   \`PATTERN_ENTRY_MISSING\`. Land the commit you checked: a rebase after it is a new check.
+- **The fast lane.** Where a person approved the issue's live preview, \`GET /api/issues/:id/lane\`
+  reads \`lane: 'fast'\` or says, in \`refusal\`, why the change is on the full lane — the file and
+  the rule that caught it. On the fast lane run the merge check's fast lane (here
+  \`pnpm merge-check --lane fast\`): the typecheck and the touched files' direct tests, no integration
+  tests and no \`verify\`. Its report carries \`lane: 'fast'\` and the change's \`patchId\`, and core
+  takes it only for the approved change: \`FAST_LANE_UNDECLARED\` (the project declares no
+  \`fastLane\`), \`FAST_LANE_NOT_APPROVED\`, \`FAST_LANE_CHANGED_SINCE_APPROVAL\` (the change moved
+  after approval: have it approved again) and \`FAST_LANE_NOT_ELIGIBLE\` (a kernel, migration,
+  permissions or security file, or one outside the fast paths). Each of those means the full check.
 
 ### 5. Prove it, one criterion at a time
 Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges, so
@@ -175,6 +184,13 @@ naming its own rule before the green counts.
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
    Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
    recorded at the commit it marks (the commit named, else the one the issue records).
+   On the fast lane the deploy that follows is web only:
+   \`POST /api/projects/:projectId/integrations/coolify/deploy\` \`{ issueId, targets }\`, the labels
+   \`fastLane.deployTargets\` declares (\`forge_coolify_deploy\` takes the same \`targets\`). It is
+   refused \`FAST_LANE_NOT_ELIGIBLE\`, naming the commit, while any commit between what a target
+   serves and the head it deploys from is not fast — deploy every target instead — and
+   \`FAST_LANE_UNVERIFIED\` where that range cannot be read whole. It is verified by the commit the
+   web build serves.
    Where the project's work lands outside git, the mark carries \`landing\` and \`artifacts\`
    \`[{ surface, ref, change }]\` instead of a commit. An artifact this landing touched that another
    open issue's own release will ship carries \`carriedBy: '<that issue's key>'\`: this issue's

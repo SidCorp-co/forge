@@ -51,6 +51,7 @@ import {
   linkProjectRoutes,
   membershipRoutes,
 } from './ecosystem/routes.js';
+import { issueLaneRoutes } from './fast-lane/routes.js';
 import { feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import { guideRoutes } from './guides/routes.js';
@@ -277,6 +278,7 @@ function mountIssueAndJobRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/issues', issueActivityRoutes);
   app.route('/api/issues', issueDependencyRoutes);
   app.route('/api/issues', issueCriteriaRoutes);
+  app.route('/api/issues', issueLaneRoutes);
   app.route('/api/body', bodyRoutes);
   app.route('/api/comments', commentRoutes);
   app.route('/api/attachments', attachmentRoutes);
