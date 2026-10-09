@@ -296,3 +296,6 @@ recordingRoutes.post('/:id/stop', zValidator('param', previewParam, RECORDING_PA
     }),
   ),
 );
+
+// the POC room doors (REQ-44) are served through this face like every other preview route
+export { projectRoomRoutes, roomRoutes } from './room-routes.js';

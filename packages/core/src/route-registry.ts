@@ -120,9 +120,10 @@ import {
   issuePreviewRoutes,
   previewRoutes,
   projectPreviewRoutes,
+  projectRoomRoutes,
   recordingRoutes,
+  roomRoutes,
 } from './previews/routes.js';
-import { projectRoomRoutes, roomRoutes } from './previews/room-routes.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
