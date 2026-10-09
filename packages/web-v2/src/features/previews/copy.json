@@ -17,6 +17,7 @@
     "previews.frame.entering": "Opening the preview",
     "previews.frame.ticketFailed": "Couldn't open the preview",
     "previews.frame.slow": "Still blank? Some browsers hold back the cookie a framed page needs. Open the preview in its own tab.",
+    "previews.frame.cookieRefused": "This browser keeps no cookie for a page framed here, so the preview cannot sign you in inside Forge. Open it in its own tab.",
     "previews.openInTab": "Open in tab",
     "previews.reload": "Reload",
     "previews.reproduce.title": "Reproduce",

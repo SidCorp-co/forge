@@ -131,6 +131,10 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
     if (user) return { principal: user };
   }
 
+  // whom the entry says a socket with no credential is (a demo core's seeded member), if anyone
+  const standIn = await credentialless?.();
+  if (standIn) return { principal: { type: 'user', userId: standIn } };
+
   return null;
 }
 
@@ -184,8 +188,21 @@ async function acceptPreviewTunnel(
   acceptTunnelUpgrade(result.principal.deviceId, req, socket, head);
 }
 
-export function attachWs(server: AnyServer): void {
+/** The user a socket carrying no credential is taken for, or null: it is refused. Set by the entry. */
+type Credentialless = () => Promise<string | null>;
+let credentialless: Credentialless | undefined;
+
+/**
+ * `credentialless` is the entry's answer for a socket that proved nothing: a demo core
+ * (FORGE_DEMO_MODE, loopback only) names its seeded member, because a browser holds no cookie there
+ * and cannot set a header on a WebSocket. Left out, such a socket is refused.
+ */
+export function attachWs(
+  server: AnyServer,
+  options: { credentialless?: Credentialless } = {},
+): void {
   if (wss) return;
+  credentialless = options.credentialless;
 
   wss = new WebSocketServer({ noServer: true });
   markWsListening(true);

@@ -6,7 +6,7 @@
 // It refuses a database that already holds a user, so it can never write over a real one.
 
 import { sql } from 'drizzle-orm';
-import { DEMO_MEMBER_EMAIL } from '../../src/auth/demo.js';
+import { DEMO_MEMBER_EMAIL } from '../../src/auth/demo-member.js';
 import { closeDb, db } from '../../src/db/client.js';
 import {
   addProjectMember,

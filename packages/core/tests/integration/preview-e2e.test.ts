@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
@@ -117,6 +118,15 @@ it('lets in only a signed-in member, once per ticket (BC-4)', async () => {
   const bare = await atPreview(core, preview.url, '/');
   expect(bare.status).toBe(403);
   expect(bare.text).toContain('Open this preview from Forge');
+  // a frame the browser keeps no cookie for is offered the one button, under a CSP that names the
+  // page's own script by hash and lets only Forge frame it
+  expect(bare.text).toContain('Allow this preview');
+  const script = /<script>([\s\S]*)<\/script>/.exec(bare.text)?.[1] ?? '';
+  expect(script).toContain('requestStorageAccess');
+  const hash = createHash('sha256').update(script).digest('base64');
+  expect(bare.headers['content-security-policy']).toBe(
+    `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${hash}'; frame-ancestors http://localhost:3000`,
+  );
   expect(dev.seen.length).toBeGreaterThan(0);
   const before = dev.seen.length;
 

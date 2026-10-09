@@ -1,0 +1,1 @@
+**A preview of Forge opens in Safari and in its own tab without looping on sign-in.** The demo web signs in on the server, a cookie-less frame offers "Allow this preview", a second bounce to /login stops.

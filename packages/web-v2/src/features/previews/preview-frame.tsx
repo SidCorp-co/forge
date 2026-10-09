@@ -2,18 +2,26 @@
 
 // The preview inside Forge (REQ-39 BC-3): an iframe on the preview host, entered with a one-minute
 // ticket so the host sets its own viewer cookie, and "Open in tab" for a browser that holds back the
-// cookie a framed page needs (Safari partitions it). The frame is sandboxed without top navigation;
-// the preview host answers `frame-ancestors` for Forge's origin itself (core).
+// cookie a framed page needs. Safari keeps no third-party cookie at all: the frame then shows "Allow
+// this preview" (core previews/gate.ts), and once the browser grants storage access it asks THIS page,
+// its parent, for a fresh ticket (PREVIEW_FRAME_MESSAGES); a frame that cannot get its cookie says so
+// and this page offers Open in tab. The frame is sandboxed without top navigation; the preview host
+// answers `frame-ancestors` for Forge's origin itself (core).
 
-import type { PreviewRecord } from "@forge/contracts/preview";
-import { type Ref, useCallback, useEffect, useState } from "react";
+import { PREVIEW_FRAME_MESSAGES, type PreviewRecord } from "@forge/contracts/preview";
+import { type Ref, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { previewsApi } from "./api";
 
-/** What the frame may do: run scripts as its own origin, post forms, open popups. Never navigate Forge. */
-export const PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";
+/**
+ * What the frame may do: run scripts as its own origin, post forms, open popups, and ask the browser
+ * for its cookie back (`allow-storage-access-by-user-activation`: without it `requestStorageAccess()`
+ * is refused in a sandboxed frame). Never navigate Forge.
+ */
+export const PREVIEW_SANDBOX =
+  "allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-storage-access-by-user-activation";
 
 /** A framed page that has not loaded by now is probably held back by the browser, not slow. */
 export const FRAME_SLOW_MS = 12_000;
@@ -26,6 +34,16 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
   const [slow, setSlow] = useState(false);
   const [round, setRound] = useState(0);
   const [tabFailure, setTabFailure] = useState<unknown>(null);
+  const [cookieRefused, setCookieRefused] = useState(false);
+  const iframe = useRef<HTMLIFrameElement | null>(null);
+  const setIframe = useCallback(
+    (el: HTMLIFrameElement | null) => {
+      iframe.current = el;
+      if (typeof frameRef === "function") frameRef(el);
+      else if (frameRef) (frameRef as { current: HTMLIFrameElement | null }).current = el;
+    },
+    [frameRef],
+  );
 
   // A ticket is single-use: one per entry, and a new one whenever the frame is reloaded by hand.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `round` is the reload trigger, not an input.
@@ -35,6 +53,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
     setLoaded(false);
     setSlow(false);
     setFailure(null);
+    setCookieRefused(false);
     previewsApi.ticketUrl(preview.id).then(
       (url) => current && setSrc(url),
       (err) => current && setFailure(err),
@@ -49,6 +68,26 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
     const timer = setTimeout(() => setSlow(true), FRAME_SLOW_MS);
     return () => clearTimeout(timer);
   }, [src, loaded]);
+
+  // The frame's two asks, taken from this preview's own frame window at its own origin and nobody else.
+  useEffect(() => {
+    const origin = new URL(preview.url).origin;
+    const onMessage = (event: MessageEvent) => {
+      const frame = iframe.current?.contentWindow;
+      if (!frame || event.source !== frame || event.origin !== origin) return;
+      const type = (event.data as { type?: unknown } | null)?.type;
+      if (type === PREVIEW_FRAME_MESSAGES.ticketRequest) {
+        previewsApi.ticketUrl(preview.id).then(
+          (url) => frame.postMessage({ type: PREVIEW_FRAME_MESSAGES.ticket, url }, origin),
+          (err) => setFailure(err),
+        );
+      } else if (type === PREVIEW_FRAME_MESSAGES.storageRefused) {
+        setCookieRefused(true);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [preview.id, preview.url]);
 
   const openInTab = useCallback(async () => {
     // opened before the ticket is asked for: a window opened after an await is a blocked popup
@@ -69,7 +108,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
   return (
     <div data-testid="preview-frame">
       <div className="flex flex-wrap items-center gap-2 pb-2">
-        <Button size="sm" variant="secondary" onClick={() => void openInTab()}>
+        <Button size="sm" variant={cookieRefused ? "primary" : "secondary"} onClick={() => void openInTab()}>
           {t("previews.openInTab")}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setRound((n) => n + 1)}>
@@ -81,7 +120,12 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
           {t("previews.frame.ticketFailed")}: {formatApiError(problem)}
         </p>
       ) : null}
-      {slow && !loaded ? (
+      {cookieRefused ? (
+        <p role="status" data-testid="preview-frame-cookie-refused" className="fg-body-sm pb-2 text-muted">
+          {t("previews.frame.cookieRefused")}
+        </p>
+      ) : null}
+      {slow && !loaded && !cookieRefused ? (
         <p role="status" data-testid="preview-frame-slow" className="fg-body-sm pb-2 text-muted">
           {t("previews.frame.slow")}
         </p>
@@ -89,7 +133,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520, frameRef }: { 
       {src ? (
         <iframe
           key={src}
-          ref={frameRef}
+          ref={setIframe}
           src={src}
           title={t("previews.frame.title", { issue: issueLabel })}
           sandbox={PREVIEW_SANDBOX}

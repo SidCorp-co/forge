@@ -17,11 +17,13 @@ afterEach(() => {
 });
 
 describe('the login page in Forge previewing itself on demo data', () => {
-  it('sends the browser to the demo core sign-in when FORGE_DEMO_SIGNIN=1', async () => {
+  it('sends the browser home, never to an API route, when FORGE_DEMO_SIGNIN=1', async () => {
+    // the demo web signs its member in on the server (lib/demo-signin.ts): there is no sign-in to run,
+    // and a redirect to /api/auth/demo is the one the client router fetched as a page and ended blank on
     vi.stubEnv('FORGE_DEMO_SIGNIN', '1');
-    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      'NEXT_REDIRECT /api/auth/demo',
-    );
+    await expect(LoginPage({ searchParams: Promise.resolve({}) })).rejects.toThrow('NEXT_REDIRECT /');
+    expect(redirect).toHaveBeenCalledTimes(1);
+    expect(redirect).not.toHaveBeenCalledWith(expect.stringContaining('/api/'));
   });
 
   it('shows the form after a sign-out, so it is not signed straight back in', async () => {

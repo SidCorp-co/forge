@@ -26,10 +26,12 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const sp = await searchParams;
-  // Forge previewing itself on demo data (`pnpm preview:demo`): the demo core signs its one seeded
-  // member in with no credential, and answers DEMO_MODE_OFF anywhere that is not a demo core. A
-  // sign-out lands here with session=ended and is shown the form, so it is not signed straight back in.
-  if (process.env.FORGE_DEMO_SIGNIN === '1' && sp.session !== 'ended') redirect('/api/auth/demo');
+  // Forge previewing itself on demo data (`pnpm preview:demo`) signs its member in on the web server
+  // (lib/demo-signin.ts): the browser holds no session and needs none, so a person who lands here is
+  // sent home, to a page the server already answers as the demo member. A sign-out lands here with
+  // session=ended and is shown the form. Never a redirect to an API route: the client router fetches
+  // that as a page and ends blank.
+  if (process.env.FORGE_DEMO_SIGNIN === '1' && sp.session !== 'ended') redirect('/');
   const justRegistered = sp.registered === '1';
   const presetEmail = typeof sp.email === 'string' ? sp.email : '';
   const oauthErrorCode = typeof sp.oauth_error === 'string' ? sp.oauth_error : null;

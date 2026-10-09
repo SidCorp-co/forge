@@ -7,10 +7,11 @@ import {
   GUIDE_SLUG,
   slugFromGuidePath,
 } from "@/features/guides/requested-path";
+import { demoApi, demoRequest } from "@/lib/demo-signin";
 import { operatorGate } from "@/features/operator/server/operator-gate";
 import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 
-export const config = { matcher: ["/admin", "/admin/:path*", "/guides/:path*"] };
+export const config = { matcher: ["/admin", "/admin/:path*", "/guides/:path*", "/api/:path*"] };
 
 /** Answers a `/guides/<slug>` naming no guide, and a `/guides?path=`/`?for=` naming no page or
  *  door, and gates nobody on those routes — why it is here and not in the page:
@@ -48,8 +49,11 @@ async function guides(request: NextRequest, pathname: string): Promise<NextRespo
   return status === 404 ? missing() : pass();
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (pathname.startsWith("/guides")) return guides(request, pathname);
-  return operatorGate(request);
+  // a demo web answers /api as its seeded member, server-side (lib/demo-signin.ts); any other web
+  // lets the request through to the rewrite that proxies it, or to the ingress that never sends it
+  if (pathname.startsWith("/api/")) return (await demoApi(request)) ?? NextResponse.next();
+  return operatorGate(await demoRequest(request));
 }

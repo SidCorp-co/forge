@@ -2,6 +2,8 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { SignInStopped } from "@/features/auth/components/sign-in-stopped";
+import { useLoginRedirect } from "@/features/auth/use-login-redirect";
 import { formatApiError } from "@/lib/api/error";
 import { ApiError } from "@/lib/api/client";
 import { useOperatorWhoami } from "../hooks";
@@ -17,11 +19,12 @@ export function OperatorClientGate({ children }: { children: React.ReactNode }) 
   const signedOut = error instanceof ApiError && error.status === 401;
   const notAdmin = data?.isAdmin === false;
 
+  const { stopped } = useLoginRedirect(signedOut, data !== undefined);
   useEffect(() => {
-    if (signedOut) router.replace("/login");
-    else if (notAdmin) router.replace("/");
-  }, [signedOut, notAdmin, router]);
+    if (notAdmin) router.replace("/");
+  }, [notAdmin, router]);
 
+  if (stopped) return <SignInStopped />;
   if (data?.isAdmin) return <OperatorShell initialWhoami={data}>{children}</OperatorShell>;
   if (error && !signedOut) {
     return (

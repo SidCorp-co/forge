@@ -1,4 +1,5 @@
 export { insertAgentAccount, setUserDisplayName } from './agent-users.js';
+export { demoMemberId } from './demo-member.js';
 export { agentAccountsAmong } from './read.js';
 export {
   type LoginInput,
