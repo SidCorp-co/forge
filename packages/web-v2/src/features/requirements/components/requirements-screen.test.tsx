@@ -53,7 +53,12 @@ function world() {
   });
 }
 const posts = (calls: { method: string }[]) => calls.filter((c) => c.method === "POST");
-const strip = async () => within(await screen.findByTestId("assistant-strip"));
+/** The strip opens folded to its count (REQ-29); a reader unfolds it before acting on a row. */
+const strip = async () => {
+  const folded = await screen.findByTestId(/^assistant-strip(-collapsed)?$/);
+  if (folded.dataset.testid === "assistant-strip-collapsed") fireEvent.click(folded);
+  return within(await screen.findByTestId("assistant-strip"));
+};
 /** Lets a mutation a click set off reach the fake core before the calls are read. */
 const settled = () => new Promise((done) => setTimeout(done, 50));
 
