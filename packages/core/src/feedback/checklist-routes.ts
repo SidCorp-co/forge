@@ -1,4 +1,5 @@
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
+import type { FeedbackChecklistsRead } from '@forge/contracts/checklist-read';
 import { checklistFormOf, evaluateChecklist } from '@forge/contracts/checklists';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { triageAnswersInput } from '@forge/contracts/feedback-triage';
@@ -40,7 +41,7 @@ feedbackChecklistRoutes.get(
     const checklist = FEEDBACK_TRIAGE_CHECKLIST;
     const record = await feedbackTriageRecord(db, item.id);
     const moves = await gatedMovesOf(db, FEEDBACK_MACHINE, item.id);
-    return c.json({
+    const read: FeedbackChecklistsRead = {
       feedbackId: item.id,
       key: item.key,
       checklists: [
@@ -57,6 +58,7 @@ feedbackChecklistRoutes.get(
             .map((m) => ({ ...m, countsAsPassed: countsAsPassed(m.standing) })),
         },
       ],
-    });
+    };
+    return c.json(read);
   },
 );

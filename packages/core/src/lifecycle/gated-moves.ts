@@ -5,7 +5,7 @@
  * so the item's page and the report never disagree about what passed.
  */
 
-import type { ChecklistAnswer } from '@forge/contracts/checklists';
+import type { GatedMove } from '@forge/contracts/checklist-read';
 import { MACHINES, type MachineEntity, type MachineOf } from '@forge/contracts/machines';
 import {
   birthStanding,
@@ -14,27 +14,14 @@ import {
   type GatedMoveStanding,
   passedMoveStanding,
 } from '@forge/contracts/move-gates';
-import type { Refusal } from '@forge/contracts/refusal';
 import { and, count, desc, eq, gte, lt, or, type SQL, sql } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { db, type Tx } from '../db/client.js';
 import { kernelRefusedMoves, kernelTransitions } from '../db/schema.js';
 import { machineTable } from './machine-tables.js';
 
-/** One move against one gate, passed or refused, as the kernel recorded it. */
-export interface GatedMove {
-  at: string;
-  from: string | null;
-  to: string;
-  gate: string;
-  standing: GatedMoveStanding;
-  /** The checklist that judged it, or null for a move check's and a move recorded before. */
-  checklist: { id: string; version: number } | null;
-  answers: ChecklistAnswer[] | null;
-  refusals: Refusal[] | null;
-  actor: { type: string; agency: string; id: string | null };
-  source: string;
-}
+/** One move against one gate, as the kernel recorded it: the shape a checklist read serves. */
+export type { GatedMove };
 
 type Reader = Pick<Tx, 'select'>;
 

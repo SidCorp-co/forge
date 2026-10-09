@@ -77,7 +77,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
    criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
    lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`. Each blocking gap is
-   refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. Also refused by name:
+   refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`
+   reads the ready and the acceptance checklists before you move: each one's form, how the head stands
+   against it now (\`now\`: answers given or assumed with their source, gaps in plain words; null for
+   acceptance on a draft) and the moves it judged, with the answers each was judged by. Also refused by name:
    \`REQUIREMENT_REVISION_NOT_CURRENT\` (no current head, or the head is not current),
    \`REQUIREMENT_DESIGN_UNAPPROVED\` naming every linked design with no approved revision, and
    \`REQUIREMENT_ALREADY_AGREED\`.
