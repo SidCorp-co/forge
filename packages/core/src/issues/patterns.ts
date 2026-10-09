@@ -9,7 +9,7 @@
  * queued job names it as its dispatch gate. A returned pattern no later one answers holds the work
  * out of build and the issue out of awaiting_release (PATTERN_RETURNED), and its reason is posted on
  * the issue. The rules are `pattern-rules.ts`, the run a call is `pattern-runs.ts`, and the catalog
- * entry the merge mark asks for `pattern-entry.ts`.
+ * entry the merge check asks for `pattern-entry.ts`.
  */
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
@@ -481,7 +481,7 @@ export async function patternFactsIn(
 /**
  * What the move to awaiting_release (and to closed) asks of the issue's patterns under its lock: no
  * new pattern waits on its reviewer, and no return stands unanswered (`pattern-rules.ts:releaseFaults`).
- * The catalog entry is the merge mark's to ask (`pattern-entry.ts`). The first fault, or null.
+ * The catalog entry is the merge check's to ask (`pattern-entry.ts`). The first fault, or null.
  */
 export async function patternReleaseRefusal(
   executor: Pick<Tx, 'select'>,

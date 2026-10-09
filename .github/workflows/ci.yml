@@ -11,9 +11,11 @@ name: CI
 #      desktop job.
 #   3. There is NO per-package package-lock.json. The only lockfile is the
 #      root `pnpm-lock.yaml`.
-#   4. The `install-check` job runs on every PR with no `if` gate — it
-#      catches lockfile/install drift even when no package-specific job
-#      fires. If you find yourself disabling it, you're papering over real
+#   4. The `install-check` job runs on every PR into main with no path
+#      filter — it catches lockfile/install drift even when no
+#      package-specific job fires. Into dev, `merge-check` installs through
+#      the same composite with `--frozen-lockfile`, so the same drift fails
+#      there. If you find yourself disabling it, you're papering over real
 #      drift; fix the lockfile instead.
 
 # The branch set this workflow gates is written three times — twice here and once in the `proved`
@@ -21,14 +23,18 @@ name: CI
 # answer. `dev` is here for the branch work lands on; `main` stays, because it is the branch the
 # promotion from `dev` lands on and every check a promotion owes is one a pull request into `dev`
 # already ran (ISS-1304).
+#
+# The two branches are gated differently (Issue to release r20 `rule-merge`, ISS-472). A push to `dev`
+# and a pull request into `dev` run one job, `merge-check`: the typecheck, the direct tests of the
+# touched files in every package, their direct core integration tests and `pnpm verify`, on the change
+# as it lands, and no package's whole suite (REQ-36 BC-9, BC-15, BC-17). Every other job skips there.
+# `main`'s pushes and pull requests, the schedule and a dispatch run the jobs below as they always
+# have, with `merge-check` skipped. The `changes` job's `scoped` output is the one switch.
 on:
   push:
     branches: [main, dev]
-    # cm:hack ISS-118 until:dev is promoted to main or the owner re-enables CI — every push and pull request on dev skips CI (owner, 2026-10-04); main runs its own copy of this file
-    paths-ignore: ['**']
   pull_request:
     branches: [main, dev]
-    paths-ignore: ['**']
   # The whole suite, nightly at 19:00 UTC (REQ-36 BC-10, ISS-471): every job, the change filter not
   # consulted. GitHub runs a schedule on the default branch alone, so that run is the default
   # branch's, and its `nightly-fanout` job starts the same on the head of every other gated branch.
@@ -76,6 +82,8 @@ jobs:
   # ~90s cold) and high signal: if this fails, every other job would
   # fail too once a path filter happens to match.
   install-check:
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -87,6 +95,8 @@ jobs:
   # in --all mode. Always-on, ungated by paths-filter — language drift can land
   # via any change set. Cheap (~15s); zero-dep script, no pnpm install needed.
   lang-check:
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 is load-bearing for check-release-record — it compares CHANGELOG.md
@@ -151,6 +161,8 @@ jobs:
   # never report clean. Always-on: a PR touching only .forge/conformance.json
   # must still be measured, so no paths filter.
   conformance:
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 is load-bearing — conformance-status compares each baseline
@@ -234,6 +246,8 @@ jobs:
   # Knowledge axis, node and nothing else: the readers of the retired release model that no type
   # can see (ISS-1046).
   retired-model:
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -245,6 +259,8 @@ jobs:
       - run: node scripts/check-retired-model.mjs
 
   archmap:
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 — check-module-shape compares its suppressions with the same file at the
@@ -299,6 +315,8 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       scripts: ${{ steps.filter.outputs.scripts }}
       proved: ${{ steps.proved.outputs.proved }}
+      # A push to dev or a pull request into dev: only `merge-check` runs (ISS-472).
+      scoped: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'pull_request' && github.base_ref == 'dev') }}
     steps:
       - uses: actions/checkout@v7
       # A merge commit on `main` carries a tree a `pull_request` run has ALREADY
@@ -378,7 +396,7 @@ jobs:
       # A whole-suite run consults no filter: its jobs select on the event instead.
       - uses: dorny/paths-filter@v4
         id: filter
-        if: github.event_name != 'schedule' && inputs.suite != 'whole'
+        if: github.event_name != 'schedule' && inputs.suite != 'whole' && !((github.event_name == 'push' && github.ref == 'refs/heads/dev') || (github.event_name == 'pull_request' && github.base_ref == 'dev'))
         with:
           # NB: dorny/paths-filter treats `!pattern` entries as separate
           # positive matchers ("match files NOT matching pattern"), not as
@@ -452,7 +470,7 @@ jobs:
 
   web:
     needs: changes
-    if: (needs.changes.outputs.proved != 'true' && needs.changes.outputs.web == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole'
+    if: needs.changes.outputs.scoped != 'true' && ((needs.changes.outputs.proved != 'true' && needs.changes.outputs.web == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -472,7 +490,7 @@ jobs:
 
   core:
     needs: changes
-    if: (needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true')) || github.event_name == 'schedule' || inputs.suite == 'whole'
+    if: needs.changes.outputs.scoped != 'true' && ((needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true')) || github.event_name == 'schedule' || inputs.suite == 'whole')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -494,7 +512,7 @@ jobs:
       # Integration tests run in `core-integration` below, after the merge.
 
   # Integration tests (Testcontainers) for core. POST-MERGE since ISS-1370: it
-  # runs on the push to a gated branch, nightly and on a dispatch, never on a pull request,
+  # runs on a push to main, nightly and on a dispatch, never on a pull request,
   # and `ci-passed` does not need it. It gated from 2026-07-10 because the
   # first "visibility-only" run sat red for a week (8 rotted tests) while
   # everyone learned to ignore it — the price `.forge/conformance.json`
@@ -504,7 +522,7 @@ jobs:
   # whichever run lands next, before anything else.
   core-integration:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.core == 'true')
+    if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 — the template seeds rows before the migrations this tree adds to its merge
@@ -531,7 +549,7 @@ jobs:
   # runner-release.yml, so a red leg here is found before or at the release.
   runner:
     needs: changes
-    if: (needs.changes.outputs.proved != 'true' && needs.changes.outputs.runner == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole'
+    if: needs.changes.outputs.scoped != 'true' && ((needs.changes.outputs.proved != 'true' && needs.changes.outputs.runner == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -602,7 +620,7 @@ jobs:
   # `$postMerge` names it.
   runner-platforms:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.runner == 'true')
+    if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.runner == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -623,7 +641,7 @@ jobs:
 
   docs:
     needs: changes
-    if: needs.changes.outputs.docs == 'true' || github.event_name == 'schedule' || inputs.suite == 'whole'
+    if: needs.changes.outputs.scoped != 'true' && (needs.changes.outputs.docs == 'true' || github.event_name == 'schedule' || inputs.suite == 'whole')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -649,11 +667,12 @@ jobs:
   #
   # NOT path-filtered on purpose. A filter would have to enumerate "files outside
   # the COPY set", which is the reasoning that fails here by construction.
-  # POST-MERGE since ISS-1370: every push to a gated branch, nightly and on a dispatch, never a
+  # POST-MERGE since ISS-1370: every push to main, nightly and on a dispatch, never a
   # pull request, and `ci-passed` does not need it — so the defect class above
   # now reaches `main` and is found there (`.forge/conformance.json` `$postMerge`).
   images:
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -664,17 +683,84 @@ jobs:
   # test of one module and wrong for a guard that walks every file: #710 changed only documents,
   # `core` was skipped, and the guard that document broke merged green and left `main` red for the
   # next branch to find (ISS-1314). A test carrying `@gate-input whole-tree` runs here on every
-  # push to a gated branch, nightly and on a dispatch; the checker refuses one that walks from the root without
+  # push to main, nightly and on a dispatch; the checker refuses one that walks from the root without
   # it. NOT path-filtered on purpose. POST-MERGE since ISS-1370, like `images`: a pull request
   # never runs it and `ci-passed` does not need it, which is #710's shape again, priced in
   # `.forge/conformance.json` `$postMerge`.
   whole-tree:
-    if: github.event_name != 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
       - run: node scripts/check-whole-tree-gates.mjs --run
+
+  # ───────────────────────────────────────────────────────────────────────
+  # The merge check, dev's whole gate (Issue to release r20 `rule-merge`; REQ-36 BC-9, BC-15, BC-17;
+  # ISS-472). It replaces ISS-118's skip of every dev push and pull request. On a pull request into
+  # dev it checks the pull request's HEAD, not GitHub's merge ref, and refuses MERGE_BEHIND_BASE when
+  # dev has moved past it: branch protection's `strict` is off, so the check itself is what keeps a
+  # stale branch out. On a push to dev it checks the landing, `github.event.before`..HEAD. It runs
+  # the typecheck, the direct tests of the touched files in every package, their direct core
+  # integration tests and `pnpm verify` — never a package's whole suite, which runs nightly and on a
+  # release cut's commit (`whole-suite`). Its check run is named `merge-check`, never a package job's
+  # name, so `scripts/lib/whole-suite.mjs:evidenceOf` never reads a scoped pass as a whole suite's.
+  merge-check:
+    needs: changes
+    if: needs.changes.outputs.scoped == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 — the check fetches the base and diffs the change against it, and `pnpm verify`
+      # compares baselines with the base revision.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Whether the change touches the runner
+        id: touched
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            base="$BEFORE"
+          else
+            git fetch --quiet origin "$GITHUB_BASE_REF"
+            base=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          fi
+          if git diff --name-only "$base" HEAD -- packages/runner | grep -q .; then
+            echo "runner=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "runner=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: ./.github/actions/setup-workspace
+      - if: steps.touched.outputs.runner == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - if: steps.touched.outputs.runner == 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/runner
+      # The runner's tests that need a real tmux server or bubblewrap fail naming it where it is
+      # absent, as in the `runner` job's gate above.
+      - name: Install tmux and bubblewrap for the runner's direct tests
+        if: steps.touched.outputs.runner == 'true'
+        shell: bash
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q tmux bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Run the merge check
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            pnpm merge-check --since "$BEFORE" --report "$RUNNER_TEMP/merge-check.json"
+          else
+            pnpm merge-check --report "$RUNNER_TEMP/merge-check.json"
+          fi
 
   # ───────────────────────────────────────────────────────────────────────
   # The whole suite (REQ-36 BC-10, BC-11; ISS-471). On a schedule, or a dispatch with `suite: whole`,
@@ -817,6 +903,7 @@ jobs:
         retired-model,
         archmap,
         conformance,
+        merge-check,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -832,7 +919,8 @@ jobs:
             "docs:${{ needs.docs.result }}" \
             "retired-model:${{ needs.retired-model.result }}" \
             "archmap:${{ needs.archmap.result }}" \
-            "conformance:${{ needs.conformance.result }}"; do
+            "conformance:${{ needs.conformance.result }}" \
+            "merge-check:${{ needs.merge-check.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

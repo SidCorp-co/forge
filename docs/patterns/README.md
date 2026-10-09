@@ -69,8 +69,9 @@ Naming a pattern on any other project is refused `PATTERN_CATALOG_UNDECLARED`, s
   cannot be retracted. The issue stays dispatchable, because a run has to take it to answer.
 - **The entry lands in the same change.** The approved pattern's page is added here, with its three
   sections and `**Introduced by:**` naming the issue, in the change that introduces the pattern. The
-  merge mark (`POST /api/issues/:id/merge`) reads that change: the `changedPaths` the box sends for
-  the marked commit, or the repository at that commit. It refuses `PATTERN_ENTRY_MISSING` until the
-  page is in the change (`packages/core/src/issues/pattern-entry.ts`). The design puts this on the
-  merge check, which takes it over before the merge once it exists (ISS-472). The move to
+  merge check's record (`POST /api/issues/:id/merge-check`) reads that change: the files its report
+  says the change touches, or the repository at its head. It refuses `PATTERN_ENTRY_MISSING` until the
+  page is in the change (`packages/core/src/issues/pattern-entry.ts`), and the merge mark of an issue
+  with an approved new pattern is refused `MERGE_CHECK_MISSING` until a passing check is recorded at
+  the commit it marks (`packages/core/src/issues/merge-check.ts`). The move to
   `awaiting_release` does not read the catalog: the running build holds a page only after a release.

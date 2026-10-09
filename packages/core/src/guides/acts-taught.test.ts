@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/guides/
 // The issue-flow method is what a run reads at the moment it parks, asks or marks. Each act that
 // says what it waits on or carries is named there with the refusals that hold it, and every refusal
 // the method names is one core can return: a misspelt code teaches a refusal no reader will meet.

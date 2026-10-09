@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test --continue=always --concurrency=2",
     "test:changed": "node scripts/test-changed.mjs",
+    "merge-check": "node scripts/merge-check.mjs",
     "typecheck": "turbo run typecheck --concurrency=2",
     "tc:changed": "node scripts/tc-changed.mjs",
     "verify": "node scripts/verify.mjs",

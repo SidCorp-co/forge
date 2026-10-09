@@ -1,3 +1,4 @@
+// @direct-test-of .github/workflows/ci.yml
 // The whole suite's rules (lib/whole-suite.mjs) and its shape in .github/workflows/ci.yml: which
 // jobs run, and which event reaches it. The aggregate step's shell runs in
 // whole-suite-cli.test.mjs.
@@ -253,8 +254,10 @@ describe('bisecting a red run by what CI recorded', () => {
 });
 
 describe('ci.yml runs the whole suite on a schedule or a whole dispatch, and nowhere else', () => {
-  it('the aggregate needs every job of the workflow but the reporters', () => {
-    const expected = jobNames().filter((j) => !SUITE_REPORTERS.includes(j));
+  it('the aggregate needs every job of the workflow but the reporters and the merge check', () => {
+    // `merge-check` runs only on a push to dev or a pull request into dev (ISS-472): it is the merge
+    // path, never part of a whole suite, and a skipped need would turn every whole-suite run red.
+    const expected = jobNames().filter((j) => !SUITE_REPORTERS.includes(j) && j !== 'merge-check');
     expect(needsOf('whole-suite').sort()).toEqual(expected.sort());
   });
 
@@ -279,8 +282,11 @@ describe('ci.yml runs the whole suite on a schedule or a whole dispatch, and now
     for (const name of ['core-integration', 'runner-platforms']) {
       expect(ifOf(name)).toContain(afterMerge);
     }
+    // `scoped` is false on a schedule and a dispatch; it is true only on dev's merge path (ISS-472).
     for (const name of ['images', 'whole-tree']) {
-      expect(ifOf(name)).toBe("github.event_name != 'pull_request'");
+      expect(ifOf(name)).toBe(
+        "needs.changes.outputs.scoped != 'true' && github.event_name != 'pull_request'",
+      );
     }
   });
 

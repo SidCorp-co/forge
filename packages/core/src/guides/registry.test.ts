@@ -1,3 +1,4 @@
+// @direct-test-of packages/core/src/guides/
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { composeLayers } from '../assistant/prompt/layer.js';

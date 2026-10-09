@@ -3,11 +3,16 @@
  * Issue to release r20 `rule-merge`): a catalogued one is reuse and records no approval, an
  * uncatalogued one is new and holds the issue until one reviewer holding patterns.approve, never its
  * author, decides it. A return is posted on the issue and holds the work until the issue answers it.
- * An approved one's catalog page is asked for by the merge mark, which reads the change, so the issue
- * that introduces it reaches awaiting_release. The dispatch doors and the run author rule are
- * `issue-pattern-doors-e2e.test.ts`.
+ * An approved one's catalog page is asked for by the merge check, which reads the change, and the
+ * mark asks for a passing check, so the issue that introduces it reaches awaiting_release. The
+ * dispatch doors and the run author rule are `issue-pattern-doors-e2e.test.ts`.
+ *
+ * @direct-test-of packages/core/src/issues/pattern-entry.ts
+ * @direct-test-of packages/core/src/issues/pattern-routes.ts
+ * @direct-test-of packages/core/src/issues/patterns.ts
  */
 
+import { REQUIRED_MERGE_CHECKS } from '@forge/contracts/merge-check';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -145,6 +150,18 @@ const mark = (
     commit: SHA,
     note: 'landed',
     changedPaths: { commit: SHA, changes },
+  });
+
+const RAN = { scope: 'workspace', command: 'ran', files: [], result: 'pass', durationMs: 1 };
+
+/** The merge check's report at the landed commit, over the files the change touches. */
+const checked = (issue: string, touched: Parameters<typeof mark>[1]) =>
+  call('reviewer', 'POST', `/api/issues/${issue}/merge-check`, {
+    base: { branch: 'main', sha: 'b'.repeat(40) },
+    head: SHA,
+    mode: 'pre-merge',
+    touched,
+    checks: REQUIRED_MERGE_CHECKS.map((name) => ({ name, ...RAN })),
   });
 
 const statusOf = async (issue: string) =>
@@ -345,7 +362,7 @@ describe('the issue that introduces a pattern reaches awaiting_release (BC-3)', 
   const page = 'docs/patterns/queue-door.md';
   let issue = '';
 
-  it('is refused at the merge mark while the change it reads holds no page for the approved pattern', async () => {
+  it('is refused at the merge check while the change it reads holds no page for the approved pattern', async () => {
     issue = await issueAt(forge, 'in_progress');
     const made = ok(
       await call('author', 'POST', patterns(issue), {
@@ -360,36 +377,35 @@ describe('the issue that introduces a pattern reaches awaiting_release (BC-3)', 
         reason: 'nothing catalogued consumes a queue',
       }),
     );
-    const without = await mark(issue, [
+    const without = await checked(issue, [
       { path: 'packages/core/src/queue/door.ts', change: 'added' },
     ]);
     expect([without.status, refused(without)]).toEqual([422, ['PATTERN_ENTRY_MISSING']]);
     expect(without.body.error.refusals[0].detail).toContain(page);
-    expect(without.body.error.refusals[0].detail).toContain(`the files commit ${SHA} changed`);
-    const removed = await mark(issue, [{ path: page, change: 'removed' }]);
+    expect(without.body.error.refusals[0].detail).toContain(
+      `the files the change touches at ${SHA} list none`,
+    );
+    const removed = await checked(issue, [{ path: page, change: 'removed' }]);
     expect(refused(removed)).toEqual(['PATTERN_ENTRY_MISSING']);
-    const [row] = await rows<{ merged_at: Date | null }>(
-      sql`SELECT merged_at FROM issues WHERE id = ${issue}`,
-    );
-    expect(row?.merged_at).toBeNull();
   });
 
-  it('is refused at a mark that reads no change at all, saying what to send', async () => {
-    const res = await call('reviewer', 'POST', `/api/issues/${issue}/merge`, {
-      target: 'main',
-      commit: SHA,
-    });
-    expect(refused(res)).toEqual(['PATTERN_ENTRY_MISSING']);
-    expect(res.body.error.refusals[0].detail).toContain('changedPaths');
+  it('is refused at the mark while no passing merge check stands, the mark no longer reading the page itself', async () => {
+    const res = await mark(issue, [
+      { path: 'packages/core/src/queue/door.ts', change: 'added' },
+      { path: page, change: 'added' },
+    ]);
+    expect([res.status, refused(res)]).toEqual([422, ['MERGE_CHECK_MISSING']]);
+    expect(res.body.error.refusals[0].detail).toContain('introduces an approved new pattern');
+    expect(await statusOf(issue)).toBe('in_progress');
   });
 
-  it('is marked once the change carries the page, and moves to awaiting_release with no PATTERN_* refusal', async () => {
-    const marked = ok(
-      await mark(issue, [
-        { path: 'packages/core/src/queue/door.ts', change: 'added' },
-        { path: page, change: 'added' },
-      ]),
-    );
+  it('is marked once a check over the page passed, and moves to awaiting_release with no PATTERN_* refusal', async () => {
+    const touched = [
+      { path: 'packages/core/src/queue/door.ts', change: 'added' as const },
+      { path: page, change: 'added' as const },
+    ];
+    expect((await checked(issue, touched)).status).toBe(201);
+    const marked = ok(await mark(issue, touched));
     expect(marked.action).toBe('merged');
     await judged(issue);
     const moved = await toAwaitingRelease(issue);

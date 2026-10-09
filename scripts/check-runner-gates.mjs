@@ -20,8 +20,10 @@ const GATES = [
     label: 'clippy -D warnings',
     argv: ['cargo', 'clippy', '--workspace', '--all-targets', '--', '-D', 'warnings'],
   },
-  { label: 'test', argv: ['cargo', 'test', '--workspace'] },
 ];
+// No `cargo test --workspace` here: that is the runner's whole suite, and verify is the merge gate,
+// which runs only the direct tests of what a change touched (REQ-36 BC-17, ISS-472). Those are
+// `scripts/lib/direct-test-run.mjs`'s; the whole suite runs nightly and on a release cut's commit.
 
 /** Why the scope could not be computed, set beside the `no-base` sentinel below. */
 let noBase = null;
@@ -79,7 +81,7 @@ if (cargo.error || cargo.status !== 0) {
     'Install Rust (https://rustup.rs) or put cargo on PATH, then run `pnpm verify` again.',
   );
   console.error(
-    'CI runs the same four gates on three platforms — but not before you push, which is the whole',
+    'CI runs these gates on three platforms — but not before you push, which is the whole',
   );
   console.error('reason this check exists: 0.7.6 was verified 13/13 and took the release down.');
   process.exit(2);
@@ -124,9 +126,13 @@ for (const gate of GATES) {
   }
   if (r.status !== 0) {
     console.error(`${r.stdout ?? ''}${r.stderr ?? ''}`.slice(-8000));
-    console.error(`runner-gates: cargo ${gate.label} failed — this is the ci.yml \`runner\` job`);
+    console.error(
+      `runner-gates: cargo ${gate.label} failed — the ci.yml \`runner\` job runs it too`,
+    );
     process.exit(1);
   }
 }
 
-console.log(`runner-gates: ${count} crate file(s) passed the ci.yml \`runner\` gates`);
+console.log(
+  `runner-gates: ${count} crate file(s) passed metadata, fmt, clippy and the file-size limit`,
+);

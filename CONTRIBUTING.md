@@ -26,8 +26,8 @@ ever disagree.
    `feat(gates): …`, `docs(npmrc): …`. This is already the convention in the history; nothing
    enforces it yet, so it is on you.
 4. **Run `pnpm verify` before you push.** It declares the suites and the build rather than running
-   them all; `pnpm test:changed` is the inner loop and selects by import graph, which is why it is
-   a loop and not a proof.
+   them all; `pnpm test:changed` is the inner loop — the typecheck and the direct tests of what you
+   touched, never a whole suite — and `pnpm merge-check` is what a change into `dev` must pass.
 5. **Open a pull request** and fill [the template](.github/PULL_REQUEST_TEMPLATE.md). The
    declarations it asks for decide how your change is handled, so answer them honestly.
 

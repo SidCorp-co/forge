@@ -1,107 +1,60 @@
 #!/usr/bin/env node
+// A developer's run before a push (REQ-36 BC-7, BC-17): the typecheck and the DIRECT tests of what
+// this checkout changed against the branch it lands on, committed or not, in every package, and a
+// line for each thing it ran. The selection is `scripts/lib/direct-tests.mjs`'s; nothing widens it.
+//
+//   pnpm test:changed                 typecheck and direct unit tests
+//   pnpm test:changed --integration   the direct core integration tests too (a throwaway Postgres)
+//
+// The merge gate is `pnpm merge-check`, which runs this on the change rebased onto the latest base
+// with the integration tests and `pnpm verify`, and writes the record the merge needs.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { BASIS, baseRevision } from './lib/baseline-ratchet.mjs';
-import { selectionFor } from './lib/changed-selection.mjs';
+import { baseRef } from './lib/base-branch.mjs';
+import {
+  describeChecks,
+  runDirectTests,
+  runTypecheck,
+  touchedBetween,
+} from './lib/direct-test-run.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
 
 const die = dieAs('test-changed');
 
-const TREE_COUPLED =
-  /from ['"]node:fs['"]|readFileSync|readdirSync|globSync|execFileSync|spawnSync/;
+const args = process.argv.slice(2);
+const unknown = args.find((a) => a !== '--integration');
+if (unknown) die(`unknown argument ${unknown}; takes --integration`);
+const integration = args.includes('--integration');
 
-const FULL_RUN_SHARE = 0.5;
+const target = baseRef(ROOT);
+if (target.refusal) die(`no base to measure against: ${target.refusal}`);
+const mb = spawnSync('git', ['merge-base', target.ref, 'HEAD'], { cwd: ROOT, encoding: 'utf8' });
+if (mb.status !== 0) die(`git merge-base ${target.ref} HEAD failed: ${mb.stderr.trim()}`);
+const base = mb.stdout.trim();
 
-const PACKAGES = [
-  { name: '@forge/core', dir: 'packages/core', testGlob: /\.test\.ts$/ },
-  { name: 'web-v2', dir: 'packages/web-v2', testGlob: /\.test\.tsx?$/ },
-];
-
-function vitest(pkgDir, args, capture) {
-  return spawnSync('npx', ['vitest', ...args], {
-    cwd: join(ROOT, pkgDir),
-    encoding: 'utf8',
-    stdio: capture ? 'pipe' : 'inherit',
-  });
-}
-
-/** Test files vitest would collect for `args`, as package-relative paths. */
-function listFiles(pkg, args) {
-  const r = vitest(pkg.dir, ['list', '--filesOnly', ...args], true);
-  if (r.error) die(`could not run vitest in ${pkg.dir}: ${r.error.message}`);
-  if (r.status !== 0) die(`vitest list failed in ${pkg.dir}:\n${r.stderr ?? ''}`);
-  return (r.stdout ?? '')
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => pkg.testGlob.test(l))
-    .map((l) => (l.startsWith('/') ? relative(join(ROOT, pkg.dir), l) : l));
-}
-
-function walk(dir, out = []) {
-  if (!existsSync(dir)) return out;
-  for (const e of readdirSync(dir, { withFileTypes: true })) {
-    const child = join(dir, e.name);
-    if (e.isDirectory()) walk(child, out);
-    else if (e.isFile()) out.push(child);
-  }
-  return out;
-}
-
-/** Test files whose subject is the tree itself, so no import edge reaches them. */
-function alwaysLane(pkg) {
-  const files = [];
-  for (const abs of walk(join(ROOT, pkg.dir, 'src'))) {
-    if (!pkg.testGlob.test(abs)) continue;
-    if (TREE_COUPLED.test(readFileSync(abs, 'utf8'))) {
-      files.push(relative(join(ROOT, pkg.dir), abs));
-    }
-  }
-  return files.sort();
-}
-
-const { rev: base, basis, refusal } = baseRevision(ROOT);
-if (refusal) die(`no base revision can be taken: ${refusal}`);
-if (!base)
-  die(
-    'no base revision — HEAD has no parent here (a single-commit checkout, or a shallow one of depth 1), so nothing says what changed',
-  );
-
-console.log(`test-changed: selecting against ${base.slice(0, 8)}, ${BASIS[basis]}`);
-
-let worst = 0;
-
-for (const pkg of PACKAGES) {
-  const all = listFiles(pkg, []);
-  const always = alwaysLane(pkg);
-  const selected = listFiles(pkg, ['--changed', base]);
-  const { skip, full, files, union } = selectionFor({
-    all,
-    selected,
-    always,
-    fullRunShare: FULL_RUN_SHARE,
-  });
-  if (skip) {
-    console.log(`  ${pkg.name}: no test reached by this change and none reads the tree — skipped`);
-    continue;
-  }
-  console.log(
-    full
-      ? `  ${pkg.name}: ${union.length}/${all.length} files selected — over ${FULL_RUN_SHARE * 100}%, running the whole suite instead`
-      : `  ${pkg.name}: ${selected.length} reached + ${always.length} tree-coupled = ${union.length}/${all.length} files`,
-  );
-
-  const r = vitest(pkg.dir, ['run', ...files], false);
-  if (r.error) die(`could not run vitest in ${pkg.dir}: ${r.error.message}`);
-  worst = Math.max(worst, r.status ?? 1);
-}
-
+const touched = touchedBetween(ROOT, base);
 console.log(
-  '\ntest-changed: a SELECTED run — this is not a green.\n' +
-    '  The graph follows imports. A test that reaches its subject any other way — a route by\n' +
-    '  URL, a table by name, a file by path — is only here if it scans the tree.\n' +
-    '  Before you push: pnpm test && pnpm --filter @forge/core test:integration',
+  `test-changed: ${touched.length} file(s) changed against ${target.ref} (${base.slice(0, 9)}), committed or not`,
 );
+if (touched.length === 0) {
+  console.log('test-changed: nothing changed, so nothing to run');
+  process.exit(0);
+}
 
-process.exit(worst === 0 ? 0 : 1);
+const checks = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
+const direct = runDirectTests(ROOT, { touched, integration });
+checks.push(...direct.checks);
+
+console.log('\ntest-changed: what ran');
+for (const line of describeChecks(checks)) console.log(line);
+if (!integration && direct.integrationSelected.length) {
+  console.log(
+    `\n  not run: ${direct.integrationSelected.length} direct core integration test(s) — pass --integration, or the merge check runs them`,
+  );
+}
+if (direct.untested.length) {
+  console.log(
+    `\n  no direct test reaches ${direct.untested.length} touched code file(s):\n${direct.untested.map((p) => `    ${p}`).join('\n')}\n  A test that guards one by path, not by import, declares it with \`@direct-test-of <path>\`.`,
+  );
+}
+process.exit(checks.some((c) => c.result === 'fail') ? 1 : 0);

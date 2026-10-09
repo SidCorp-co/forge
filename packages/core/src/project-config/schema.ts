@@ -149,6 +149,10 @@ export const projectDocumentSchema = z.strictObject({
       z.strictObject({ type: z.literal('gitlab-pipeline'), name: z.string().min(1).max(100) }),
       z.strictObject({ type: z.literal('none') }),
     ]),
+    // `required`: a merge mark is refused MERGE_CHECK_MISSING until a passing merge check is
+    // recorded at the commit marked (Issue to release r20 `rule-merge`, ISS-472). Absent: a check
+    // is owed only by an issue that introduces an approved new pattern.
+    mergeCheck: z.literal('required').optional(),
   }),
   environments: sized(z.record(slug(), environmentSchema), { max: 10 }),
   promotions: unique(

@@ -78,6 +78,19 @@ as for `merged_at`; a `200` that kept the old landing while the caller was told 
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
 
+## A mark a merge check is owed for
+
+Before the stamp, `refuseUncheckedMerge` (`packages/core/src/issues/merge-marker.ts`) asks
+`uncheckedMergeRefusal` (`packages/core/src/issues/merge-check.ts`) whether this mark owes a merge
+check: on the `git` shape, where the project document declares `validation.mergeCheck: required`,
+or where the issue introduces an approved new pattern, whose catalog page only the check asks for.
+Where one is owed, the commit the mark names — else the one the row or the issue's work evidence
+records — must be the head of a passing check recorded by `POST /api/issues/:id/merge-check`, read
+from core's own `verification` records, never a caller's post of the same kind. Otherwise the mark
+is refused `MERGE_CHECK_MISSING` naming what owed it and the heads that did pass, and writes nothing
+(Issue to release r20 `rule-merge`, ISS-472). A merge the source host's webhook records does not
+pass through here: it has already happened, gated by the host's own required check.
+
 ## What a landing says it changed
 
 `issues.merged_artifacts` (0433) holds what a landing changed, one `{surface, ref, change}` per

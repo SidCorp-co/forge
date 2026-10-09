@@ -17,7 +17,7 @@ one. It reaches core only through REST routes and frames built to the [API route
 - `packages/runner/crates/runner-daemon/src/lib.rs` — where each actor is spawned with its own clone of the cancel receiver
 - `packages/runner/README.md` — the crate layout and the dependency order between crates
 - `packages/runner/clippy.toml` — the function-length limit the crate holds
-- `scripts/check-runner-gates.mjs` — the gates a runner change passes: `cargo metadata --locked`, `fmt --check`, `clippy -D warnings`, `test`, and the file-size limit
+- `scripts/check-runner-gates.mjs` — the gates `pnpm verify` holds a runner change to: `cargo metadata --locked`, `fmt --check`, `clippy -D warnings`, and the file-size limit
 
 ## Test shape
 
@@ -27,9 +27,10 @@ one. It reaches core only through REST routes and frames built to the [API route
 A new actor's decision logic sits behind a trait the test fakes, tested in a **tests.rs** or
 `*_tests.rs` module declared `#[cfg(test)]` beside it; what needs the machine (tmux, a process, a
 socket) is tested against a scratch instance the test owns and removes, and skips by name where the
-tool is absent. `cargo test --workspace` collects both, run by `scripts/check-runner-gates.mjs` when
-`packages/runner` changed. The test asserts what the box sent to core and what it did on the
-machine, and that the actor stops on cancel.
+tool is absent. A change runs the touched module's own tests — inline, and in its **tests.rs** or
+`*_tests.rs` file — through `pnpm test:changed` and the merge check (`scripts/lib/direct-tests.mjs`);
+`cargo test --workspace` runs in the nightly whole suite. The test asserts what the box sent to core
+and what it did on the machine, and that the actor stops on cancel.
 
 ## Review checklist
 

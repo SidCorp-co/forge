@@ -265,6 +265,39 @@ export async function writeKernelRecord(executor: Tx, input: KernelRecordInput):
   });
 }
 
+/** The kinds core writes on its own account although a caller may post one too. */
+type CoreWrittenKind = Extract<RecordEventKind, 'verification'>;
+
+/**
+ * A record core writes from a check it decided itself (the merge check's `verification`), marked as
+ * core's so a reader asking `kernelOnly` never takes a caller's post of the same kind for it.
+ */
+export async function writeCoreRecord(
+  executor: Tx,
+  input: {
+    issueId: string;
+    actor: Actor;
+    kind: CoreWrittenKind;
+    fields: readonly RecordEventField[];
+  },
+): Promise<RecordEvent> {
+  const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));
+  assertRecordEventShape({ kind: input.kind, contract: 1, fields });
+  const [row] = await executor
+    .insert(activityLog)
+    .values({
+      issueId: input.issueId,
+      actorType: input.actor.type,
+      actorId: input.actor.id,
+      actorAgency: input.actor.agency,
+      action: recordAction(input.kind),
+      payload: { contract: 1, fields, lead: null, writer: KERNEL_WRITER },
+    })
+    .returning();
+  if (!row) throw new Error('record event insert returned no row');
+  return eventOfRow(row);
+}
+
 interface RecordEventQuery {
   readonly kinds?: readonly (RecordEventKind | typeof RECORD_DIGEST_KIND)[];
   readonly limit?: number;

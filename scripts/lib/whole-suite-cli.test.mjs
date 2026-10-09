@@ -1,3 +1,4 @@
+// @direct-test-of .github/workflows/ci.yml
 // @gate-input whole-tree — it runs scripts/cut-release.sh under bash, which the guard cannot see
 // into.
 // The whole suite's shells, run as written: ci.yml's aggregate step, and its two doors against a

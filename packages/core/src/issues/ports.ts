@@ -31,6 +31,8 @@ export interface IssueProjectDocument {
   plan?: { approval: { required: boolean } } | undefined;
   /** The language the project writes the prose it stores in Forge in; absent means `en`. */
   contentLanguage?: string | undefined;
+  /** `mergeCheck: 'required'`: a mark asks for a passing merge check (`merge-check.ts`). */
+  validation?: { mergeCheck?: 'required' | undefined } | undefined;
 }
 
 /** Whether the issue's requirement moved since its plan was written; null when it delivers none. */

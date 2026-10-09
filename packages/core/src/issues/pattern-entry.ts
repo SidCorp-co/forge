@@ -1,16 +1,14 @@
 /**
  * The merge's half of the pattern rule (Issue lifecycle r14 `design-check`; Issue to release r20
  * `rule-merge`): an approved new pattern's catalog page lands in the issue's own change, or its merge
- * is refused PATTERN_ENTRY_MISSING (REQ-36 BC-3).
+ * check is refused PATTERN_ENTRY_MISSING (REQ-36 BC-3). The merge check asks it
+ * (`merge-check.ts:recordMergeCheck`), on the files the change touches as the check reported them;
+ * the merge mark asks for a passing check, not for the page (ISS-472).
  *
- * Core has no check before the merge yet (ISS-472 builds it), so the merge mark asks this
- * (`merge-marker.ts:preflightMark`). The mark is the one merge-time act that reads the landed change.
- * The running build's catalog is the wrong thing to read: it holds the page only after a release,
- * and a release claims only issues already past this check.
- *
- * A page counts as shown when the running build's catalog already holds it, when the box's reading
- * of the marked commit's changed files lists it, or when the project's repository holds it at that
- * commit. Anything else is refused by name, saying what was read.
+ * The running build's catalog alone is the wrong thing to read: it holds the page only after a
+ * release, and a release claims only issues already past this check. A page counts as shown when
+ * that catalog already holds it, when the change's touched files list it, or when the project's
+ * repository holds it at the change's head. Anything else is refused by name, saying what was read.
  */
 
 import type { FileChange } from '@forge/contracts/landing-artifacts';
@@ -34,8 +32,8 @@ export type TreeReading =
 export interface EntryReading {
   /** The slugs the running build's catalog holds. */
   running: ReadonlySet<string>;
-  /** The box's reading of the marked commit's changed files; null where the mark carries none. */
-  paths: { commit: string; changes: readonly FileChange[] } | null;
+  /** The files the change touches, at its head, as its merge check reported them. */
+  paths: { commit: string; changes: readonly FileChange[] };
   tree: TreeReading;
 }
 
@@ -53,35 +51,25 @@ export function shownWithoutTree(
 ): boolean {
   if (reading.running.has(slug)) return true;
   const page = entryPageOf(slug);
-  return reading.paths?.changes.some((c) => c.path === page && c.change !== 'removed') ?? false;
+  return reading.paths.changes.some((c) => c.path === page && c.change !== 'removed');
 }
 
 function whatWasRead(reading: EntryReading): string {
-  const parts: string[] = [];
-  if (reading.paths) {
-    parts.push(`the files commit ${reading.paths.commit} changed, as the box read them, list none`);
-  }
-  if (reading.tree.kind === 'read') {
-    parts.push(`the repository holds none at ${reading.tree.sha}`);
-  } else {
-    parts.push(`the repository could not be read (${reading.tree.why})`);
-    if (!reading.paths) {
-      parts.push(
-        'and the mark carries no `changedPaths`, which `forge-runner api` adds to a mark naming a commit its checkout holds',
-      );
-    }
-  }
-  return parts.join('; ');
+  const tree =
+    reading.tree.kind === 'read'
+      ? `the repository holds none at ${reading.tree.sha}`
+      : `the repository could not be read (${reading.tree.why})`;
+  return `the files the change touches at ${reading.paths.commit} list none; ${tree}`;
 }
 
-/** The mark refuses with this code at `/commit`, which the merge refusals declare. */
+/** The merge check refuses with this code at `/touched`, the report's list of the change's files. */
 export interface EntryRefusal {
   code: typeof PATTERN_ENTRY_MISSING;
-  path: '/commit';
+  path: '/touched';
   detail: string;
 }
 
-/** The mark's refusal, or null where every approved new pattern's page is shown. */
+/** The merge check's refusal, or null where every approved new pattern's page is shown. */
 export function entryRefusal(
   issueRef: string,
   approved: readonly string[],
@@ -96,19 +84,18 @@ export function entryRefusal(
   const many = missing.length > 1;
   return {
     code: PATTERN_ENTRY_MISSING,
-    path: '/commit',
-    detail: `${issueRef} introduces the approved new pattern${many ? 's' : ''} ${missing.map((p) => `\`${p}\``).join(', ')}, and the change this mark reads holds no page for ${many ? 'them' : 'it'} (${missing.map(entryPageOf).join(', ')}): ${whatWasRead(reading)}. The page lands in this issue's own change, so land it and mark the commit that carries it. Nothing was marked`,
+    path: '/touched',
+    detail: `${issueRef} introduces the approved new pattern${many ? 's' : ''} ${missing.map((p) => `\`${p}\``).join(', ')}, and the change this merge check reads holds no page for ${many ? 'them' : 'it'} (${missing.map(entryPageOf).join(', ')}): ${whatWasRead(reading)}. The page lands in this issue's own change, so add it and run the merge check again. Nothing was recorded`,
   };
 }
 
 /** What the repository holds at `commit` of `pages`, read through the project's source host. */
 async function readTree(
   projectId: string,
-  commit: string | null,
+  commit: string,
   pages: readonly string[],
 ): Promise<TreeReading> {
-  if (pages.length === 0) return { kind: 'read', sha: commit ?? '', held: new Set() };
-  if (!commit) return { kind: 'unread', why: 'the mark names no commit' };
+  if (pages.length === 0) return { kind: 'read', sha: commit, held: new Set() };
   try {
     const host = await resolveSourceHost(projectId, 'kernel');
     const held = new Set<string>();
@@ -123,24 +110,28 @@ async function readTree(
   }
 }
 
+/** Whether the issue introduces an approved new pattern, whose page only the merge check asks for. */
+export async function hasApprovedNewPattern(issueId: string): Promise<boolean> {
+  return approvedNew(await patternFactsIn(db, issueId)).length > 0;
+}
+
 /**
- * The merge mark's pattern refusal: the issue's approved new patterns, each needing its page in the
- * change the mark reads. Null where the issue has none, or every page is shown.
+ * The merge check's pattern refusal: the issue's approved new patterns, each needing its page in the
+ * change the check reads. Null where the issue has none, or every page is shown.
  */
 export async function patternEntryRefusal(args: {
   issueId: string;
   projectId: string;
-  commit: string | null;
-  changedPaths: { commit: string; changes: readonly FileChange[] } | null;
+  paths: { commit: string; changes: readonly FileChange[] };
 }): Promise<EntryRefusal | null> {
   const approved = approvedNew(await patternFactsIn(db, args.issueId));
   if (approved.length === 0) return null;
   const catalog = await catalogOf(args.projectId);
   const running = catalog.kind === 'read' ? catalog.slugs : new Set<string>();
   const unshown = approved.filter(
-    (slug) => !shownWithoutTree(slug, { running, paths: args.changedPaths }),
+    (slug) => !shownWithoutTree(slug, { running, paths: args.paths }),
   );
-  const tree = await readTree(args.projectId, args.commit, unshown.map(entryPageOf));
+  const tree = await readTree(args.projectId, args.paths.commit, unshown.map(entryPageOf));
   const issueRef = (await issueDisplayIds([args.issueId])).get(args.issueId) ?? args.issueId;
-  return entryRefusal(issueRef, approved, { running, paths: args.changedPaths, tree });
+  return entryRefusal(issueRef, approved, { running, paths: args.paths, tree });
 }

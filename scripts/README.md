@@ -869,7 +869,7 @@ branch. A target that cannot be derived, names no ref here or shares no history 
 push whose `before` cannot be read or is not an ancestor, are refused by name rather than shortened
 to `HEAD~1`, which would judge one commit of many and say nothing. **No base revision is exit 2**,
 which is why `lang-check` carries `fetch-depth: 0`. The checker prints the revision it judged against
-and which rung gave it, and `test-changed.mjs` and `conformance-status.mjs` print the same refusal.
+and which rung gave it, and `conformance-status.mjs` prints the same refusal.
 
 ### Removing an entry is legal, and it is declared
 
@@ -887,6 +887,51 @@ node scripts/check-release-record.mjs      # 0 the record holds · 1 it was brok
 The verdict half is in `lib/release-record.mjs`, the fragment shape in `lib/changelog-fragments.mjs`
 and the correction pairing in `lib/entry-correction.mjs`, so each can be tested without a git tree;
 the CLI reads git and exits.
+
+## merge-check.mjs and test-changed.mjs — the direct tests of a change
+
+REQ-36 BC-7, BC-9, BC-15 and BC-17, as Issue to release r20 draws `rule-merge`. One selection,
+`lib/direct-tests.mjs`, serves both: a test is **direct** for a touched file when it is that file,
+when one of its own import specifiers resolves to it (relative, or through its package's tsconfig
+`paths`; `vi.mock` counts), or when it declares the file in a comment line of its own,
+`// @direct-test-of <path>` (a trailing `/` covers a directory). Nothing goes further: no import
+graph, and no share of a suite that turns a selection into the suite. A touched code file no test
+reaches is printed, never covered by running more. Every package is in it: core's unit and
+integration tests, web-v2, contracts, observability and `scripts/` each under the vitest config
+that collects them, and the runner by crate — the touched module's own tests, inline and in its
+tests file beside it (a module named `tests` or ending `_tests`), read from `cargo test -- --list`
+and run `--exact`, and a touched integration test file under a crate's tests directory as
+`--test <name>`.
+
+**The declaration is how a miss widens.** A test that reaches its subject by URL, by table name or by
+reading a file reaches it by no import, so the merge check cannot see it. When the whole suite goes
+red and the bisect names a merge whose merge check passed (`rule-suite`), the fix declares the path
+on the test that caught it; that change kind selects it from then on. The selection grows, the suite
+size at a merge does not.
+
+| Command | When | What it runs | Exit |
+|---|---|---|---|
+| `pnpm test:changed [--integration]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not | 0 · 1 a check red · 2 could not run |
+| `GITHUB_BASE_REF=dev pnpm merge-check` | before landing on dev, and in `ci.yml`'s `merge-check` job | fetches the base, refuses `MERGE_BEHIND_BASE` unless HEAD holds its tip and a dirty checkout by name; then the typecheck, the direct tests, the direct core integration tests and `pnpm verify`, each timed; writes the report | 0 · 1 red or behind · 2 could not run |
+| `pnpm merge-check --since <sha>` | a push run on dev | the same over a landing already on the base, `<sha>..HEAD`, recorded as `landed` | as above |
+
+**The record.** The report (`--report <path>`, the OS temp directory by default) is the body of
+`POST /api/issues/:id/merge-check`, which refuses `MERGE_CHECK_INCOMPLETE`, `MERGE_BEHIND_BASE`,
+`MERGE_CHECK_RED` and `PATTERN_ENTRY_MISSING` by name and records a passing check on the issue as
+core's `verification` record, one field per check with its command, files and duration. The
+checks every merge needs are `REQUIRED_MERGE_CHECKS` in `packages/contracts/src/merge-check.ts`,
+and `lib/merge-check.test.mjs` holds `lib/merge-check.mjs`'s copy to it. Kept probes (ISS-469) and
+the review (ISS-473) join that list when their issues land; until then each report names them as
+not run. A mark the project's `validation.mergeCheck: required` or an approved new pattern owes a
+check is refused `MERGE_CHECK_MISSING` until a passing one stands at the commit marked.
+
+**Where CI runs it.** A push to `dev` and a pull request into `dev` set the `changes` job's `scoped`
+output, which runs `merge-check` and skips every other job; `ci-passed` needs it. A pull request is
+checked at its head, not at GitHub's merge ref, so a branch behind `dev` is refused rather than
+merged untested: branch protection's `strict` is off. `main`'s events never set `scoped`, so they
+run the jobs they always ran, with `merge-check` skipped. `verify` runs no test suite: the
+runner's `cargo test --workspace` left `check-runner-gates.mjs` with this change, and the
+pre-push hook's `PREPUSH_TEST=1` runs `pnpm test:changed` where `PREPUSH_FULL` ran whole suites.
 
 ## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
 
@@ -940,9 +985,9 @@ whole-suite run is not read as bad by itself: it may be red for a job that is no
 for a cancelled leg, so its jobs' own checks on the commit are read as on any other run. A check of
 another name is not read, since a merge check runs a selection and may not have run the test now
 failing. The broken merge lies after the last good landing and at or before the first bad one after
-it; where no record separates the landings between, the range is named whole. On dev, where pushes
-run no CI (ISS-118), the records are the whole-suite runs each cut starts, so the range is the
-landings between two cuts.
+it; where no record separates the landings between, the range is named whole. On dev, where a push
+runs only the merge check, whose check run has a name of its own, the records are the whole-suite
+runs each cut starts, so the range is the landings between two cuts.
 
 **GitHub runs a schedule on the default branch only.** The nightly run is `main`'s, and dev's comes
 from `main`'s `nightly-fanout` — so it starts once this `ci.yml` is on `main`. A dispatch made with

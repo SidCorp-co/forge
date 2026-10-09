@@ -22,13 +22,15 @@
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { LANDED_CONTRACT } from '@forge/contracts/ecosystem';
 import { changedPathsSchema, landingArtifactsSchema } from '@forge/contracts/landing-artifacts';
+import { MERGE_CHECK_SHAPE, mergeCheckReportSchema } from '@forge/contracts/merge-check';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { strictBody, zValidator } from '../middleware/zod-validator.js';
 import { heldIssue } from './issue-route-ref.js';
 import { mergedLandingSchema } from './landing-evidence.js';
+import { recordMergeCheck } from './merge-check.js';
 import { applyMergeMarker, mergedCommitShaSchema } from './merge-marker.js';
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
@@ -96,3 +98,23 @@ const mergeMarkerValidators = [
 
 issueMergeRoutes.post('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'mark'));
 issueMergeRoutes.delete('/:id/merge', ...mergeMarkerValidators, (c) => runMergeMarker(c, 'unmark'));
+
+// The merge check's record (Issue to release r20 `rule-merge`, ISS-472): the report a project's check
+// wrote, refused by the name of what failed or recorded on the issue for the mark to ask for.
+issueMergeRoutes.post(
+  '/:id/merge-check',
+  zValidator('param', idParamSchema),
+  strictBody(mergeCheckReportSchema, MERGE_CHECK_SHAPE),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const report = c.req.valid('json');
+    const scope = await heldIssue(id, c.get('userId'), 'project.write');
+    const actor = restActor(c);
+    const record = await recordMergeCheck({
+      issue: { id: scope.id, projectId: scope.projectId },
+      report,
+      actor: { type: actor.type, id: actor.id, agency: actor.agency },
+    });
+    return c.json({ id: scope.id, allowed: true, head: report.head, record }, 201);
+  },
+);

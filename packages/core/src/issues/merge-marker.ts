@@ -19,6 +19,7 @@ import {
   standingArtifactsRefusal,
   standingMarkRefusal,
 } from './landing-evidence.js';
+import { uncheckedMergeRefusal } from './merge-check.js';
 import {
   clearIssueMerge,
   describeMergeMark,
@@ -32,7 +33,6 @@ import {
   recordReadPaths,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
-import { patternEntryRefusal } from './pattern-entry.js';
 import { contractDrift, postIssueNotice } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from './work-evidence.js';
@@ -395,26 +395,24 @@ async function writeMarkTrail(
 }
 
 /**
- * An approved new pattern's catalog page lands in this issue's own change, or its mark is refused
- * PATTERN_ENTRY_MISSING (Issue to release r20 `rule-merge`; `pattern-entry.ts`). The change is read
- * through the box's paths when they were read at the commit marked; paths read at another commit are
- * left to the stamp, which refuses them by their own name.
+ * A merge a check is owed for is marked only at a commit a passing merge check is recorded at
+ * (Issue to release r20 `rule-merge`; `merge-check.ts`). The commit is the one the mark names, else
+ * the one the row or the issue's work evidence already records.
  */
-async function refuseMissingEntry(
+async function refuseUncheckedMerge(
   args: MergeMarkArgs,
   prior: IssueRow,
   shape: LandingShape,
 ): Promise<void> {
-  const commit = args.commit ?? prior.mergedCommitSha ?? null;
-  const read = markReadPaths({ shape, commit, sent: args.changedPaths ?? null });
-  if (!read.ok) return;
-  const refusal = await patternEntryRefusal({
+  if (shape !== 'git') return;
+  const commit =
+    args.commit ?? prior.mergedCommitSha ?? (await resolveRecordedCommit(prior.id)) ?? null;
+  const detail = await uncheckedMergeRefusal({
     issueId: prior.id,
     projectId: prior.projectId,
     commit,
-    changedPaths: read.paths,
   });
-  if (refusal) throw refuse(refusal.code, refusal.detail, refusal.path);
+  if (detail) throw refuse('MERGE_CHECK_MISSING', detail, '/commit');
 }
 
 /** The mark's artifacts with each `carriedBy` resolved to its carrier's key, or the refusal naming it. */
@@ -451,7 +449,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
   const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
-  if (preflight) await refuseMissingEntry(args, prior, preflight.shape);
+  if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
   const { stamp, mark, markDetail } = await db.transaction(async (tx) => {

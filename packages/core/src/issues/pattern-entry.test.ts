@@ -16,9 +16,10 @@ const row = (over: Partial<PatternRowFacts>): PatternRowFacts => ({
 });
 
 const PAGE = 'docs/patterns/queue-door.md';
+const HEAD = 'a'.repeat(40);
 const none: EntryReading = {
   running: new Set(),
-  paths: null,
+  paths: { commit: HEAD, changes: [{ path: 'packages/core/src/x.ts', change: 'changed' }] },
   tree: { kind: 'unread', why: 'no source host is bound' },
 };
 
@@ -35,24 +36,25 @@ describe('which patterns the change must carry a page for', () => {
   });
 });
 
-describe('the merge mark asks for the page in the change it reads', () => {
+describe('the merge check asks for the page in the change it reads', () => {
   it('refuses where nothing read shows the page, naming the page and what was read', () => {
     const out = entryRefusal('ISS-9', ['queue-door'], none);
     expect(out?.code).toBe('PATTERN_ENTRY_MISSING');
-    expect(out?.path).toBe('/commit');
+    expect(out?.path).toBe('/touched');
     expect(out?.detail).toContain(PAGE);
     expect(out?.detail).toContain('no source host is bound');
-    expect(out?.detail).toContain('changedPaths');
+    expect(out?.detail).toContain(`the files the change touches at ${HEAD} list none`);
+    expect(out?.detail).toContain('run the merge check again');
   });
 
-  it('passes on the box reading of the marked commit, added or changed, never removed', () => {
+  it("passes on the change's touched files, added or changed, never removed", () => {
     for (const change of ['added', 'changed'] as const) {
-      const paths = { commit: 'abc1234', changes: [{ path: PAGE, change }] };
+      const paths = { commit: HEAD, changes: [{ path: PAGE, change }] };
       expect(entryRefusal('ISS-9', ['queue-door'], { ...none, paths })).toBeNull();
     }
-    const removed = { commit: 'abc1234', changes: [{ path: PAGE, change: 'removed' as const }] };
+    const removed = { commit: HEAD, changes: [{ path: PAGE, change: 'removed' as const }] };
     const out = entryRefusal('ISS-9', ['queue-door'], { ...none, paths: removed });
-    expect(out?.detail).toContain('the files commit abc1234 changed');
+    expect(out?.code).toBe('PATTERN_ENTRY_MISSING');
   });
 
   it("passes on the repository's tree at the commit, and names the sha where it lacks the page", () => {
@@ -71,7 +73,7 @@ describe('the merge mark asks for the page in the change it reads', () => {
   });
 
   it('names only the patterns still missing, and asks nothing of an issue with none approved', () => {
-    const paths = { commit: 'abc1234', changes: [{ path: PAGE, change: 'added' as const }] };
+    const paths = { commit: HEAD, changes: [{ path: PAGE, change: 'added' as const }] };
     const out = entryRefusal('ISS-9', ['queue-door', 'cron-door'], { ...none, paths });
     expect(out?.detail).toContain('`cron-door`');
     expect(out?.detail).not.toContain('`queue-door`');

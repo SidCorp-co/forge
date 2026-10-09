@@ -19,7 +19,7 @@
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
  *                      no new pattern waits on its reviewer, and no returned      PATTERN_REVIEW_PENDING,
  *                      one stands unanswered (its catalog entry is the merge      PATTERN_RETURNED
- *                      mark's to ask, `pattern-entry.ts`)
+ *                      check's to ask, `pattern-entry.ts`)
  *                      every criterion's latest verdict passes, with an          NO_WORK_EVIDENCE,
  *                      admissible identity, recorded after the latest reopen     VERDICT_IDENTITY_REQUIRED, VERDICT_PREDATES_REOPEN, VERDICT_IDENTITY_NOT_ADMISSIBLE, VERDICT_DRAFT_SUPERSEDED, VERDICT_UNCORROBORATED
  *                      (a project document with `delivery.verdictsRequired: false` passes the move

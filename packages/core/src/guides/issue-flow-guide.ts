@@ -101,7 +101,7 @@ pattern. It needs \`summary\` (\`PATTERN_SUMMARY_REQUIRED\`) and holds the issue
 does not hold the issue sends \`run\`, the run id the box declared. A returned pattern's reason is
 posted on the issue. Until the issue names a catalogued pattern or names the slug again revised, its
 work does not move to build and it does not reach \`awaiting_release\` (\`PATTERN_RETURNED\`). An
-approved one's catalog page lands in this change: the merge mark reads the change and refuses
+approved one's catalog page lands in this change: the merge check reads the change and refuses
 \`PATTERN_ENTRY_MISSING\` where the page is not in it.
 
 A question only a person can answer parks the issue:
@@ -130,7 +130,16 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
 - A file another run's tree holds is not yours to edit: the brief lists what the other trees hold.
   Route what you found to the issue that owns it.
 - Before you change behaviour, know what you are replacing, and remove it in the same change.
-- Run the project's own gate before you push.
+- Run the project's own gate before you push: its typecheck and the direct tests of what you
+  touched, never a whole suite — the project's knowledge names the command.
+- Where a merge check is owed — the project document declares \`validation.mergeCheck: required\`,
+  or the issue introduces an approved new pattern — run the project's merge check on the change
+  rebased onto the latest base, and record what it wrote before you land:
+  \`POST /api/issues/:id/merge-check\` with its report
+  \`{ base: { branch, sha }, head, mode, touched, checks }\`. A report missing a check every merge
+  needs is refused \`MERGE_CHECK_INCOMPLETE\`, one behind its base \`MERGE_BEHIND_BASE\`, one with a
+  red check \`MERGE_CHECK_RED\`, and an approved new pattern whose catalog page the touched files
+  lack \`PATTERN_ENTRY_MISSING\`. Land the commit you checked: a rebase after it is a new check.
 
 ### 5. Prove it, one criterion at a time
 Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges, so
@@ -155,9 +164,8 @@ naming its own rule before the green counts.
    It is refused \`COMMIT_NOT_LANDED\` until it is there, and \`COMMIT_UNVERIFIED\` where core
    cannot read the project's repository; there the mark is sent with \`target\` and a \`note\`
    naming the commit, and reads as asserted rather than observed. A merge mark moves no status.
-   An issue with an approved new pattern is refused \`PATTERN_ENTRY_MISSING\` until the change the
-   mark reads carries the pattern's catalog page: the \`changedPaths\` \`forge-runner api\` adds for
-   the commit named, or the repository at that commit.
+   Where a merge check is owed, the mark is refused \`MERGE_CHECK_MISSING\` until a passing one is
+   recorded at the commit it marks (the commit named, else the one the issue records).
    Where the project's work lands outside git, the mark carries \`landing\` and \`artifacts\`
    \`[{ surface, ref, change }]\` instead of a commit. An artifact this landing touched that another
    open issue's own release will ship carries \`carriedBy: '<that issue's key>'\`: this issue's

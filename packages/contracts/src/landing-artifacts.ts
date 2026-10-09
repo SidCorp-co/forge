@@ -12,7 +12,7 @@ export const LANDING_SURFACES = [
 ] as const;
 export type LandingSurface = (typeof LANDING_SURFACES)[number];
 
-const ARTIFACT_CHANGES = ["added", "changed", "removed"] as const;
+export const ARTIFACT_CHANGES = ["added", "changed", "removed"] as const;
 export type ArtifactChange = (typeof ARTIFACT_CHANGES)[number];
 
 export const LANDING_SURFACE_LABELS: Readonly<Record<LandingSurface, string>> =

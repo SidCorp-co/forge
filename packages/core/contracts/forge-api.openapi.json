@@ -12533,6 +12533,177 @@
         ]
       }
     },
+    "/api/issues/{id}/merge-check": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "base": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "sha": {
+                        "pattern": "^[0-9a-f]{40}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "branch",
+                      "sha"
+                    ],
+                    "type": "object"
+                  },
+                  "checks": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "command": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "files": {
+                          "items": {
+                            "maxLength": 1000,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "maxItems": 2000,
+                          "type": "array"
+                        },
+                        "name": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "note": {
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "result": {
+                          "enum": [
+                            "pass",
+                            "fail",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "scope": {
+                          "maxLength": 120,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "scope",
+                        "command",
+                        "files",
+                        "result",
+                        "durationMs"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 200,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "head": {
+                    "pattern": "^[0-9a-f]{40}$",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "pre-merge",
+                      "landed"
+                    ],
+                    "type": "string"
+                  },
+                  "touched": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "change": {
+                          "enum": [
+                            "added",
+                            "changed",
+                            "removed"
+                          ],
+                          "type": "string"
+                        },
+                        "path": {
+                          "maxLength": 1000,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "change"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 2000,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "base",
+                  "head",
+                  "mode",
+                  "touched",
+                  "checks"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
     "/api/issues/{id}/merge-pull-request": {
       "post": {
         "parameters": [

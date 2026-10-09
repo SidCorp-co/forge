@@ -49,7 +49,7 @@ const CI_COVERAGE = {
   'pnpm --filter @forge/core build': 'pnpm build',
   'pnpm --filter @forge/core test:integration:ci': 'pnpm --filter @forge/core test:integration',
   'Lockfile sync + fmt + clippy + test':
-    'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on ubuntu before the merge and on macOS and Windows after it',
+    "verify's scripts/check-runner-gates.mjs for the lockfile, fmt and clippy when packages/runner changed, and pnpm test:changed / pnpm merge-check for the touched modules' own tests — the runner's whole suite runs in this job on main and in a whole-suite run, never in verify (ISS-472)",
   'node scripts/check-whole-tree-gates.mjs --run':
     'verify, the declarations half; pnpm test runs the declared files themselves',
   'node scripts/build-images.mjs':
@@ -66,6 +66,12 @@ const CI_COVERAGE = {
     'suite-bisect, on a red whole-suite run only — it reads what CI recorded, which exists only on GitHub',
   'Start the whole suite on every other gated branch':
     'nightly-fanout, on a schedule only — it dispatches runs on GitHub',
+  'Run the merge check':
+    'pnpm merge-check, which runs verify itself after the typecheck and the direct tests (ISS-472)',
+  'Whether the change touches the runner':
+    'nothing local — it decides whether the merge-check job installs Rust, which a box already has',
+  "Install tmux and bubblewrap for the runner's direct tests":
+    "nothing local — a box running the runner's tests has them, and the tests fail naming either one where it is absent",
 };
 
 function git(args) {

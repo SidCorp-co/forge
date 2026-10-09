@@ -24,11 +24,16 @@ nut). Before coding, name the pattern each criterion reuses (`file:symbol`) or t
 propose, the modules and contracts you touch, and how you will prove each criterion. Prove it by
 running it — start the service (core on a throwaway Postgres through the integration harness, or the
 web dev server) and exercise the criterion's happy, negative and boundary cases — and keep the probe.
-Then run `pnpm tc:changed` and only the DIRECT tests: the test files you touched and those beside each
-source you touched (`npx vitest run <files>` in the package), plus integration files you touched, by
-path. Not the whole suites, not `pnpm test:changed` (its import graph widens a one-file change to most
-of the tree). `pnpm verify` — the conformance entrypoint — runs at merge; the whole suite runs nightly
-and on each release cut's commit.
+Then run `pnpm test:changed`: `pnpm tc:changed`'s typecheck and only the DIRECT tests of what you
+touched, in every package — a test you touched, a test importing a file you touched, and a test
+declaring `@direct-test-of <path>` over it; `--integration` adds the core integration tests chosen
+the same way. It never follows the import graph further and never falls back to a whole suite. Not
+the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check` runs the same on
+the change rebased onto the latest `dev`, with those integration tests and `pnpm verify` — the
+conformance entrypoint — and refuses a branch behind its base (`MERGE_BEHIND_BASE`); record the
+report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs nightly and on each
+release cut's commit. A red there that the merge check missed widens the selection — a
+`@direct-test-of` line on the test that caught it — never the suite.
 
 **A release is cut only on a commit whose whole suite is green.** `scripts/cut-release.sh` reads the
 `whole-suite` check on its commit and refuses `RELEASE_SUITE_NOT_GREEN` otherwise; with none there
@@ -41,14 +46,15 @@ running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is r
 required check.
 
 **Four jobs run after the merge, not before it** — `core-integration`, `whole-tree`, `images` and
-the runner's macOS and Windows legs run on every push to a gated branch (`main`, `dev`) and nightly,
-and `ci-passed` does not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
+the runner's macOS and Windows legs run on every push to `main` and nightly, and `ci-passed` does
+not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
 by the next run to land: read `main`'s latest run before you push. To run them on a branch before it lands:
 `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`.
 
-**On `dev`, pushes and pull requests skip CI** — this branch's `ci.yml` sets `paths-ignore: ['**']`
-on both (ISS-118, until dev is promoted to `main` or the owner re-enables it). Only a dispatch runs
-it here: GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
+**On `dev`, a push and a pull request run the merge check and nothing else** — the `merge-check`
+job (ISS-472, replacing ISS-118's skip): `pnpm merge-check` on a pull request's head against the
+latest `dev`, or on a push over what it landed, and `ci-passed` needs it. Every other job skips
+there. GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
 ever reached dev. `ci.yml`'s `nightly-fanout` starts dev's from `main`'s nightly run once this
 file is on `main`; until then dev's whole suite runs when a release cut starts it.
 
@@ -63,7 +69,8 @@ is the defect.
 **What makes a run proof is where it ran.** On `dev` the core unit and integration suites and the
 web suite are tracked again (ISS-172's QA phase; `pnpm --filter @forge/core test:integration` runs
 every migration on a throwaway Postgres, `pnpm --filter web-v2 test` runs the web suite under jsdom),
-at merge batches, nightly and before a release cut — not in each run. The Rust tests remain.
+nightly and before a release cut — not in each run, and not at a merge, where only the direct tests
+run. The Rust tests remain.
 
 **The builds do not typecheck** — `@forge/contracts` and `@forge/core` build with `--noCheck`.
 `pnpm tc:changed` typechecks the packages your branch touched, and every package importing one,

@@ -9,7 +9,8 @@
 #
 # Controls:
 #   PREPUSH_BUILD=1 git push   — also build affected packages
-#   PREPUSH_FULL=1  git push   — build + run affected packages' test suites
+#   PREPUSH_TEST=1  git push   — typecheck + the direct tests of what changed
+#                                (`pnpm test:changed`, REQ-36 BC-7), never a whole suite
 #   SKIP_PREPUSH=1  git push   — skip everything
 
 set -e
@@ -39,8 +40,20 @@ if [ -x "$repo_root/scripts/check-branch-name.sh" ]; then
   done <<< "$stdin_input"
 fi
 
-if [ "$PREPUSH_BUILD" != "1" ] && [ "$PREPUSH_FULL" != "1" ]; then
-  echo "[pre-push] cheap guards passed — builds/tests skipped (CI gates; PREPUSH_BUILD=1 / PREPUSH_FULL=1 to run locally)"
+if [ -n "$PREPUSH_FULL" ]; then
+  echo "[pre-push] PREPUSH_FULL ran whole package suites and is gone (ISS-472): PREPUSH_TEST=1 runs the typecheck and the direct tests of what changed"
+  exit 1
+fi
+
+if [ "$PREPUSH_TEST" = "1" ]; then
+  (cd "$repo_root" && pnpm test:changed) || {
+    echo "[pre-push] FAIL: the typecheck or a direct test is red. Push aborted."
+    exit 1
+  }
+fi
+
+if [ "$PREPUSH_BUILD" != "1" ]; then
+  echo "[pre-push] cheap guards passed — builds skipped (CI gates; PREPUSH_BUILD=1 to build, PREPUSH_TEST=1 for the direct tests)"
   exit 0
 fi
 
@@ -108,18 +121,6 @@ for pkg in $packages; do
     echo "[pre-push] FAIL: $pkg build broke. Push aborted."
     exit 1
   }
-  if [ "$PREPUSH_FULL" != "1" ]; then
-    continue
-  fi
-  if (cd "$pkg_dir" && grep -q '"test":' package.json); then
-    echo "[pre-push] $pkg → pnpm test"
-    (cd "$pkg_dir" && pnpm test) || {
-      echo "[pre-push] FAIL: $pkg tests broke. Push aborted."
-      exit 1
-    }
-  else
-    echo "[pre-push] $pkg → no test script, skipping"
-  fi
 done
 
 echo "[pre-push] all checks passed for:$packages"

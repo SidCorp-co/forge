@@ -42,8 +42,8 @@ export type PatternDecision = (typeof PATTERN_DECISIONS)[number];
 export const PATTERN_REVIEW_PENDING = "PATTERN_REVIEW_PENDING" as const;
 
 /**
- * The merge mark refuses an approved new pattern whose catalog page is not in the change it reads
- * (Issue to release r20 `rule-merge`, which ISS-472's merge check takes over before the merge).
+ * The merge check refuses an approved new pattern whose catalog page is not in the change it reads
+ * (Issue to release r20 `rule-merge`; `POST /api/issues/:id/merge-check`).
  */
 export const PATTERN_ENTRY_MISSING = "PATTERN_ENTRY_MISSING" as const;
 
