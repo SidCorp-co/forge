@@ -94,7 +94,9 @@ export async function readPool(args: {
       )
       ${projectFilter}
     GROUP BY j.id, i.iss_seq, i.title, i.description, i.priority, i.category, i.status, ipj.issue_prefix
-    ORDER BY j.queued_at ASC
+    -- A release lane (FB-74): a release_batch job is read before any other queued work, so a
+    -- long onboarding analysis queued earlier never holds a release behind it.
+    ORDER BY (j.type = 'release_batch') DESC, j.queued_at ASC
     LIMIT ${args.limit}
   `)) as unknown as Array<Record<string, unknown>>;
 
