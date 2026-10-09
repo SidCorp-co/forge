@@ -30,6 +30,8 @@ export function previewOf(over: Partial<PreviewRecord> = {}): PreviewRecord {
     liveAt: "2026-10-09T10:00:05.000Z",
     lastViewedAt: null,
     closedAt: null,
+    streams: 0,
+    streamsWaiting: 0,
     ...over,
   });
 }

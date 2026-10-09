@@ -54,6 +54,20 @@ export const TUNNEL_LIMITS = {
 	windowUpdateAt: 131_072,
 	maxStreamsPerPreview: 64,
 	maxStreamsPerTunnel: 512,
+	/**
+	 * A request past those limits waits for a stream rather than being refused: this many may wait per
+	 * preview (the hard cap; the next is refused at once as "queue full") ...
+	 */
+	maxQueuedPerPreview: 256,
+	/** ... and one that waits this long is refused as "wait timed out". */
+	streamWaitSeconds: 15,
+	/**
+	 * The box's own backstop, twice core's: core forgets a stream when it sends its reset and the
+	 * box when it reads it, so the box counting against core's numbers would refuse a stream core
+	 * had already released.
+	 */
+	boxStreamsPerPreview: 128,
+	boxStreamsPerTunnel: 1024,
 	/** Above this many bytes queued on the socket, core stops reading from browsers until it drains. */
 	socketHighWater: 4 * 1024 * 1024,
 	streamIdleSeconds: 300,

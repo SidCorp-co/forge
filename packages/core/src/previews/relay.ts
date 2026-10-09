@@ -43,7 +43,7 @@ import {
   sendPage,
   signInPage,
   startingPage,
-  tunnelDownPage,
+  tunnelRefusedPage,
 } from './pages.js';
 import { previewBySlug } from './read.js';
 import {
@@ -217,9 +217,16 @@ function downstreamHeaders(headers: IncomingHttpHeaders, port: number, origin: s
   return out;
 }
 
-function streamFor(row: PreviewRow): { ok: true; stream: Duplex } | { ok: false; page: Page } {
-  const opened = openTunnelStream(row.deviceId, row.id);
-  return opened.ok ? opened : { ok: false, page: tunnelDownPage(opened.why) };
+/**
+ * A stream to the preview's dev server, waiting its turn when it holds as many as it may. `gone`
+ * aborts when the browser leaves first, so a request nobody waits for never takes one.
+ */
+async function streamFor(
+  row: PreviewRow,
+  gone: AbortSignal,
+): Promise<{ ok: true; stream: Duplex } | { ok: false; page: Page }> {
+  const opened = await openTunnelStream(row.deviceId, row.id, gone);
+  return opened.ok ? opened : { ok: false, page: tunnelRefusedPage(opened.why) };
 }
 
 const failureCode = (err: unknown) => streamEndOf(err) ?? (err as Error).message;
@@ -323,11 +330,16 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
     const admitted = await admit(req, url);
     if (admitted.ok === 'enter') return await enter(req, res, url);
     if (admitted.ok === 'recorder') return await serveRecorder(req, res, admitted);
-    if (!admitted.ok) return sendPage(res, admitted.page);
+    if (!admitted.ok) return sendPage(res, admitted.page, req);
     const { row, site } = admitted;
     await noteViewed(row);
-    const opened = streamFor(row);
-    if (!opened.ok) return sendPage(res, opened.page);
+    const left = new AbortController();
+    res.on('close', () => left.abort());
+    const opened = await streamFor(row, left.signal);
+    if (!opened.ok) return left.signal.aborted ? undefined : sendPage(res, opened.page, req);
+    // the browser went while this waited for its stream: give the stream back at once
+    res.on('close', () => opened.stream.destroy());
+    if (res.destroyed) return opened.stream.destroy();
     const origin = previewOrigin(site, row.slug);
     const port = row.port ?? 0;
     const recording = records(row);
@@ -363,10 +375,9 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
       answer.pipe(res);
     });
     upstream.on('error', (err) => {
-      if (!res.headersSent) sendPage(res, devServerErrorPage(failureCode(err)));
+      if (!res.headersSent) sendPage(res, devServerErrorPage(failureCode(err)), req);
       else res.destroy();
     });
-    res.on('close', () => opened.stream.destroy());
     req.pipe(upstream);
   } catch (err) {
     logger.error({ err }, 'preview relay: request failed');
@@ -376,8 +387,13 @@ export async function relayPreviewRequest(req: IncomingMessage, res: ServerRespo
 }
 
 function refuseUpgrade(socket: Duplex, page: Page): void {
+  const body = `${page.title}. ${page.body.replace(/\n/g, ' ')}`;
+  const retry = page.status === 503 ? (page.retryAfter ?? page.refresh) : undefined;
   socket.end(
-    `HTTP/1.1 ${page.status} ${page.title}\r\nconnection: close\r\ncontent-length: 0\r\n\r\n`,
+    `HTTP/1.1 ${page.status} ${page.title.replace(/[^\x20-\x7e]/g, '')}\r\n` +
+      `connection: close\r\nx-forge-preview-refusal: ${page.code}\r\n` +
+      (retry === undefined ? '' : `retry-after: ${retry}\r\n`) +
+      `content-type: text/plain; charset=utf-8\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`,
   );
 }
 
@@ -398,8 +414,18 @@ export async function relayPreviewUpgrade(req: IncomingMessage, socket: Duplex, 
     if (!admitted.ok) return refuseUpgrade(socket, admitted.page);
     const { row, site } = admitted;
     await noteViewed(row);
-    const opened = streamFor(row);
-    if (!opened.ok) return refuseUpgrade(socket, opened.page);
+    // a server socket is half-open (`allowHalfOpen`): a browser that goes away sends its FIN and the
+    // socket stays, so the end of its side is what says it left, not only `close`
+    const left = new AbortController();
+    for (const gone of ['close', 'end', 'error'] as const) socket.on(gone, () => left.abort());
+    // a socket nobody reads never reports the FIN; a browser sends nothing before the 101
+    socket.resume();
+    const opened = await streamFor(row, left.signal);
+    if (!opened.ok) return left.signal.aborted ? undefined : refuseUpgrade(socket, opened.page);
+    // every way this ends, the browser leaving first included, gives the stream back
+    for (const gone of ['close', 'end', 'error'] as const)
+      socket.on(gone, () => opened.stream.destroy());
+    if (left.signal.aborted) return opened.stream.destroy();
     const origin = previewOrigin(site, row.slug);
     const upstream = httpRequest({
       method: req.method,

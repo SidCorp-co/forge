@@ -1,0 +1,1 @@
+**A preview page loads in full instead of refusing requests.** A request past a preview's 64 open connections waits its turn, and is refused only after 15 seconds with its reason in a header; closed pages give their connection back.

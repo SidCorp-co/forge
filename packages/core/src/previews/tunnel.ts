@@ -170,9 +170,23 @@ export class TunnelStream extends Duplex {
 
 const DRAIN_POLL_MS = 10;
 
+/** Why a request got no stream: the box is away, the queue for one was full, or it waited too long. */
+export type StreamRefusal = 'TUNNEL_DOWN' | 'QUEUE_FULL' | 'WAIT_TIMEOUT' | 'ABORTED';
+
+/** A browser request parked until its preview has a free stream. */
+interface Waiter {
+  previewId: string;
+  resolve: (open: StreamOpen) => void;
+  timer: NodeJS.Timeout;
+  signal: AbortSignal | undefined;
+  onAbort: () => void;
+}
+
 export class Tunnel {
   private readonly streams = new Map<number, TunnelStream>();
   private nextId = 1;
+  /** Requests waiting for a stream, oldest first. */
+  private readonly waiters: Waiter[] = [];
 
   constructor(
     readonly deviceId: string,
@@ -189,7 +203,82 @@ export class Tunnel {
     return n;
   }
 
-  open(previewId: string): TunnelStream {
+  /** Requests parked for a stream to `previewId`. */
+  waitingOf(previewId: string): number {
+    let n = 0;
+    for (const w of this.waiters) if (w.previewId === previewId) n++;
+    return n;
+  }
+
+  private hasRoom(previewId: string): boolean {
+    return (
+      this.streams.size < TUNNEL_LIMITS.maxStreamsPerTunnel &&
+      this.streamsOf(previewId) < TUNNEL_LIMITS.maxStreamsPerPreview
+    );
+  }
+
+  /**
+   * A stream to `previewId` now if it has room, else once one is released: a browser opening many
+   * requests at once is served in turn, not refused. A request that waits past
+   * `streamWaitSeconds`, or finds `maxQueuedPerPreview` already waiting, is refused by name; an
+   * aborted `signal` takes it out of the queue.
+   */
+  acquire(previewId: string, signal?: AbortSignal): Promise<StreamOpen> {
+    if (signal?.aborted) return Promise.resolve({ ok: false, why: 'ABORTED' });
+    if (this.waiters.length === 0 && this.hasRoom(previewId)) {
+      return Promise.resolve({ ok: true, stream: this.open(previewId) });
+    }
+    if (this.waitingOf(previewId) >= TUNNEL_LIMITS.maxQueuedPerPreview) {
+      return Promise.resolve({ ok: false, why: 'QUEUE_FULL' });
+    }
+    return new Promise((resolve) => {
+      const leave = (open: StreamOpen) => {
+        const at = this.waiters.indexOf(waiter);
+        if (at !== -1) this.waiters.splice(at, 1);
+        clearTimeout(waiter.timer);
+        signal?.removeEventListener('abort', waiter.onAbort);
+        resolve(open);
+      };
+      const waiter: Waiter = {
+        previewId,
+        resolve,
+        timer: setTimeout(
+          () => leave({ ok: false, why: 'WAIT_TIMEOUT' }),
+          TUNNEL_LIMITS.streamWaitSeconds * 1000,
+        ),
+        signal,
+        onAbort: () => leave({ ok: false, why: 'ABORTED' }),
+      };
+      signal?.addEventListener('abort', waiter.onAbort, { once: true });
+      this.waiters.push(waiter);
+    });
+  }
+
+  /** Give each waiter, oldest first, the stream it waited for, where its preview has room now. */
+  private pump(): void {
+    for (let i = 0; i < this.waiters.length; ) {
+      if (this.streams.size >= TUNNEL_LIMITS.maxStreamsPerTunnel) return;
+      const waiter = this.waiters[i] as Waiter;
+      if (!this.hasRoom(waiter.previewId)) {
+        i++;
+        continue;
+      }
+      this.waiters.splice(i, 1);
+      clearTimeout(waiter.timer);
+      waiter.signal?.removeEventListener('abort', waiter.onAbort);
+      waiter.resolve({ ok: true, stream: this.open(waiter.previewId) });
+    }
+  }
+
+  private refuseAll(why: StreamRefusal): void {
+    for (const waiter of this.waiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.signal?.removeEventListener('abort', waiter.onAbort);
+      waiter.resolve({ ok: false, why });
+    }
+  }
+
+  private open(previewId: string): TunnelStream {
     const id = this.nextId++;
     const stream = new TunnelStream(this, id, previewId);
     this.streams.set(id, stream);
@@ -213,7 +302,10 @@ export class Tunnel {
   }
 
   forget(stream: TunnelStream): void {
-    if (this.streams.get(stream.id) === stream) this.streams.delete(stream.id);
+    if (this.streams.get(stream.id) === stream) {
+      this.streams.delete(stream.id);
+      this.pump();
+    }
   }
 
   /** One binary message from the box. A fault naming a stream resets it; one naming none is dropped. */
@@ -238,6 +330,7 @@ export class Tunnel {
 
   /** The socket went away: every stream on it ends with it. */
   dropAll(): void {
+    this.refuseAll('TUNNEL_DOWN');
     for (const stream of [...this.streams.values()]) {
       stream.gone = true;
       stream.destroy(streamEnded('TUNNEL_DOWN'));
@@ -282,21 +375,28 @@ export function adoptTunnel(deviceId: string, ws: WebSocket, now = Date.now()): 
   return tunnel;
 }
 
-export type StreamOpen =
-  | { ok: true; stream: TunnelStream }
-  | { ok: false; why: 'TUNNEL_DOWN' | 'STREAM_LIMIT' };
+export type StreamOpen = { ok: true; stream: TunnelStream } | { ok: false; why: StreamRefusal };
 
-/** A new stream to `previewId`'s dev server over its box's tunnel. */
-export function openTunnelStream(deviceId: string, previewId: string): StreamOpen {
+/** A new stream to `previewId`'s dev server over its box's tunnel, waiting its turn when it is full. */
+export function openTunnelStream(
+  deviceId: string,
+  previewId: string,
+  signal?: AbortSignal,
+): Promise<StreamOpen> {
   const tunnel = tunnels.get(deviceId);
-  if (!tunnel) return { ok: false, why: 'TUNNEL_DOWN' };
-  if (
-    tunnel.size >= TUNNEL_LIMITS.maxStreamsPerTunnel ||
-    tunnel.streamsOf(previewId) >= TUNNEL_LIMITS.maxStreamsPerPreview
-  ) {
-    return { ok: false, why: 'STREAM_LIMIT' };
-  }
-  return { ok: true, stream: tunnel.open(previewId) };
+  if (!tunnel) return Promise.resolve({ ok: false, why: 'TUNNEL_DOWN' });
+  return tunnel.acquire(previewId, signal);
+}
+
+/** The streams open to a preview's dev server, and the requests waiting for one. */
+export function streamCountsOf(
+  deviceId: string,
+  previewId: string,
+): { streams: number; waiting: number } {
+  const tunnel = tunnels.get(deviceId);
+  return tunnel
+    ? { streams: tunnel.streamsOf(previewId), waiting: tunnel.waitingOf(previewId) }
+    : { streams: 0, waiting: 0 };
 }
 
 /** Whether a box's tunnel is up, and since when it is down or up. */
