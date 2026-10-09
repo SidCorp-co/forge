@@ -1,1 +1,0 @@
-**A feedback item or an idea opens as a live preview.** A reproduce serves the reporter's build on demo data, recording clicks, errors and failed requests, inputs masked, members only. A sketch run builds ideas; fixes take the reporter's confirm.

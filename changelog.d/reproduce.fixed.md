@@ -1,1 +1,0 @@
-**A feedback item is reproduced, diagnosed and confirmed fixed.** Its page and chat open a recorded preview of the reporter's build, the assistant proposes a cause and fix, and the reporter's Fixed closes the item once that change ships.
