@@ -685,10 +685,12 @@ async fn adopt_steps(
     Ok(())
 }
 
-/// An existing checkout that holds no commit cannot serve a project that names a remote, and
-/// reporting it `ready` hands a master a repository with nothing in it. A failed adopt used to
-/// leave exactly that (ISS-1359), so the shape is in the field already: it is refused by name,
-/// and the folder is left as it is for a person to look at.
+/// An existing checkout that holds no commit on any branch cannot serve a project that names a
+/// remote, and reporting it `ready` hands a master a repository with nothing in it. A failed adopt
+/// used to leave exactly that (ISS-1359), so the shape is in the field already: it is refused by
+/// name, and the folder is left as it is for a person to look at. Any ref holding a commit is
+/// enough to pass, so a repository whose current branch is unborn but which keeps history on
+/// another is not called empty.
 async fn require_a_commit(repo_path: &Path, limit: Duration) -> std::result::Result<(), Stop> {
     require_a_commit_with(Path::new("git"), repo_path, limit).await
 }
@@ -699,15 +701,22 @@ async fn require_a_commit_with(
     limit: Duration,
 ) -> std::result::Result<(), Stop> {
     let mut cmd = git_command(program, Some(repo_path), &[], None);
-    cmd.args(["rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+    cmd.args(["rev-list", "-n", "1", "--all"]);
     match run_git(cmd, limit).await {
-        Ok(Some(out)) if out.status.success() => Ok(()),
-        Ok(Some(_)) => Err(Stop::manual(format!(
-            "{} is a git repository with no commit, so it cannot serve a project whose code is at a remote. A failed adopt leaves this. Delete its .git (nothing in it is lost; it holds no commit) or clone the project there by hand, then re-provision.",
+        Ok(Some(out)) if out.status.success() && !out.stdout.iter().all(u8::is_ascii_whitespace) => {
+            Ok(())
+        }
+        Ok(Some(out)) if out.status.success() => Err(Stop::manual(format!(
+            "{} is a git repository holding no commit on any branch, so it cannot serve a project whose code is at a remote. A failed adopt leaves this. Look at it, then delete its .git or clone the project there by hand, and re-provision.",
             repo_path.display()
         ))),
-        Ok(None) => Err(Stop::timed_out("git rev-parse HEAD", limit)),
-        Err(e) => Err(Stop::manual(format!("spawn git rev-parse HEAD: {e}"))),
+        Ok(Some(out)) => Err(Stop::manual(format!(
+            "git rev-list failed in {}: {}",
+            repo_path.display(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))),
+        Ok(None) => Err(Stop::timed_out("git rev-list", limit)),
+        Err(e) => Err(Stop::manual(format!("spawn git rev-list: {e}"))),
     }
 }
 
@@ -1654,13 +1663,14 @@ esac"#
         let _ = fs::remove_dir_all(&dir);
     }
 
-    /// A repository with no commit cannot serve a project that names a remote, whoever left it so.
-    /// The stranded `.git` the failed adopts above used to leave is already in the field.
+    /// A repository with no commit on any branch cannot serve a project that names a remote,
+    /// whoever left it so. The stranded `.git` the failed adopts above used to leave is already in
+    /// the field.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_checkout_holding_no_commit_is_refused_by_name_for_a_project_with_a_remote() {
         let bin = tmp("fake-git-nocommit");
-        let git = fake_git(&bin, "exit 128");
+        let git = fake_git(&bin, "exit 0");
         let dir = tmp("no-commit");
         fs::create_dir_all(dir.join(".git")).unwrap();
 
@@ -1676,6 +1686,15 @@ esac"#
 
         let has = fake_git(&bin, "echo abc123");
         assert!(require_a_commit_with(&has, &dir, ONE_SECOND).await.is_ok());
+        let broken = fake_git(&bin, "echo 'not a git repository' >&2; exit 128");
+        let stop = require_a_commit_with(&broken, &dir, ONE_SECOND)
+            .await
+            .expect_err("a probe that failed is not an answer");
+        assert!(
+            stop.detail.contains("not a git repository"),
+            "{}",
+            stop.detail
+        );
         let hung = fake_git(&bin, "sleep 30");
         let stop = require_a_commit_with(&hung, &dir, Duration::from_millis(300))
             .await
@@ -1683,6 +1702,30 @@ esac"#
         assert_eq!(stop.status, "failed");
         let _ = fs::remove_dir_all(&bin);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A current branch with no commit does not make a repository empty: history on another
+    /// branch is history, and the refusal never tells anyone to delete it.
+    #[tokio::test]
+    async fn an_unborn_current_branch_over_committed_history_is_not_called_empty() {
+        let dir = tmp("orphan-current");
+        fs::create_dir_all(&dir).unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&*dir)
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {:?}", out);
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "history"]);
+        git(&["checkout", "-q", "--orphan", "unborn"]);
+        assert!(require_a_commit(&dir, Duration::from_secs(20))
+            .await
+            .is_ok());
     }
 
     /// What the daemon's own provision step reports, read off a core that records the bodies it was
