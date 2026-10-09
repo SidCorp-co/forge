@@ -423,11 +423,12 @@ async fn run_git(
 }
 
 fn git_command(
+    program: &Path,
     repo_path: Option<&Path>,
     git_cfg: &[String],
     ssh_cmd: Option<&str>,
 ) -> tokio::process::Command {
-    let mut cmd = tokio::process::Command::new("git");
+    let mut cmd = tokio::process::Command::new(program);
     if let Some(dir) = repo_path {
         cmd.arg("-C").arg(dir);
     }
@@ -475,7 +476,7 @@ async fn clone_repo(
     if let Some(parent) = repo_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| Stop::manual(format!("mkdir parent: {e}")))?;
     }
-    let mut cmd = git_command(None, git_cfg, ssh_cmd);
+    let mut cmd = git_command(Path::new("git"), None, git_cfg, ssh_cmd);
     cmd.arg("clone").arg(repo_url).arg(repo_path);
     let out = match run_git(cmd, limit).await {
         Ok(Some(out)) => out,
@@ -514,7 +515,7 @@ async fn checkout_base_branch(
     branch: &str,
     limit: Duration,
 ) -> std::result::Result<(), Stop> {
-    let mut cmd = git_command(Some(repo_path), &[], None);
+    let mut cmd = git_command(Path::new("git"), Some(repo_path), &[], None);
     cmd.arg("checkout").arg(branch);
     match run_git(cmd, limit).await {
         Ok(Some(o)) if o.status.success() => {}
@@ -536,8 +537,29 @@ async fn adopt_repo(
     branch: Option<&str>,
     limit: Duration,
 ) -> std::result::Result<(), Stop> {
+    adopt_repo_with(
+        Path::new("git"),
+        repo_url,
+        repo_path,
+        ssh_cmd,
+        git_cfg,
+        branch,
+        limit,
+    )
+    .await
+}
+
+async fn adopt_repo_with(
+    program: &Path,
+    repo_url: &str,
+    repo_path: &Path,
+    ssh_cmd: Option<&str>,
+    git_cfg: &[String],
+    branch: Option<&str>,
+    limit: Duration,
+) -> std::result::Result<(), Stop> {
     let git = |args: &[&str]| {
-        let mut cmd = git_command(Some(repo_path), git_cfg, ssh_cmd);
+        let mut cmd = git_command(program, Some(repo_path), git_cfg, ssh_cmd);
         cmd.args(args);
         let what = format!("git {}", args.join(" "));
         async move {
@@ -559,7 +581,10 @@ async fn adopt_repo(
     // An adopt may re-run (a fetch that failed on a network blip), so the remote
     // may already be there. Set it either way rather than branching on `git
     // remote get-url`, which is one more process for the same outcome.
-    if git(&["remote", "add", "origin", repo_url]).await.is_err() {
+    if let Err(stop) = git(&["remote", "add", "origin", repo_url]).await {
+        if stop.status == "failed" {
+            return Err(stop);
+        }
         git(&["remote", "set-url", "origin", repo_url]).await?;
     }
     git(&["fetch", "--prune", "origin"]).await?;
@@ -567,7 +592,13 @@ async fn adopt_repo(
     let target = match branch.map(str::trim).filter(|b| !b.is_empty()) {
         Some(b) => b.to_string(),
         None => {
-            let _ = git(&["remote", "set-head", "origin", "--auto"]).await;
+            // A failure here is tolerated, because the symbolic-ref below names what is missing;
+            // a step that overran is not, because nothing says what state it left the repository in.
+            if let Err(stop) = git(&["remote", "set-head", "origin", "--auto"]).await {
+                if stop.status == "failed" {
+                    return Err(stop);
+                }
+            }
             let head = git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]).await?;
             head.strip_prefix("origin/").unwrap_or(&head).to_string()
         }
@@ -603,6 +634,11 @@ async fn claim_workspace(
             return Err(refuse(format!(
                 "{pane} (session {session}) is this box's live master for the project"
             )))
+        }
+        Some(Err(Refused::Provisioning)) => {
+            return Err(refuse(
+                "another provision of this workspace is already running on this box".into(),
+            ))
         }
         Some(Err(Refused::Placing)) => {
             return Err(refuse(
@@ -1308,6 +1344,71 @@ mod tests {
             "{}",
             stop.detail
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A second provision of one project's workspace (the periodic sweep and a `provision.request`
+    /// sweep can both pull the same row) must be refused, or dropping the first lease would admit a
+    /// master under the second's writes.
+    #[tokio::test]
+    async fn a_second_provision_of_one_workspace_is_refused_and_placement_waits_for_the_first() {
+        let dir = tmp("two-leases");
+        let p = provision_for("proj-1", "iss1359-two-leases", Some(&dir), None);
+        let masters = Masters::new();
+
+        let first = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .unwrap();
+        let said = claim_workspace(Some(&masters), &p, &dir, never_up())
+            .await
+            .expect_err("a second provision was granted over the first");
+        assert!(said.contains("already running"), "{said}");
+        assert!(
+            masters.placement_would_wait("proj-1"),
+            "the refused attempt released the first's hold"
+        );
+        let other = provision_for("proj-2", "iss1359-two-other", Some(&dir), None);
+        assert!(claim_workspace(Some(&masters), &other, &dir, never_up())
+            .await
+            .is_ok());
+
+        drop(first);
+        assert!(!masters.placement_would_wait("proj-1"));
+    }
+
+    /// An adopt step that is tolerated when git FAILS is not tolerated when it OVERRAN: a fake `git`
+    /// that answers `fetch` and hangs on `remote set-head` must fail the adopt by name.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_adopt_whose_remote_head_lookup_overruns_fails_by_name() {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = tmp("fake-git");
+        fs::create_dir_all(&bin).unwrap();
+        let git = bin.join("git");
+        fs::write(
+            &git,
+            "#!/bin/sh\ncase \"$*\" in *set-head*) sleep 30;; *) exit 0;; esac\n",
+        )
+        .unwrap();
+        fs::set_permissions(&git, fs::Permissions::from_mode(0o755)).unwrap();
+        let dir = tmp("adopt-sethead");
+        fs::create_dir_all(&dir).unwrap();
+
+        let stop = adopt_repo_with(
+            &git,
+            "git://127.0.0.1:1/x.git",
+            &dir,
+            None,
+            &[],
+            None,
+            Duration::from_millis(500),
+        )
+        .await
+        .expect_err("a lookup that overran cannot be tolerated");
+
+        assert_eq!(stop.status, "failed");
+        assert!(stop.detail.contains("remote set-head"), "{}", stop.detail);
+        let _ = fs::remove_dir_all(&bin);
         let _ = fs::remove_dir_all(&dir);
     }
 }

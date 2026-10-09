@@ -112,6 +112,8 @@ pub enum Refused {
     Live { session: String, pane: String },
     /// A master is being placed for the project this moment.
     Placing,
+    /// Another provision of the project's workspace is running on this box.
+    Provisioning,
 }
 
 /// Held by a provision for as long as it may write into the workspace.
@@ -828,7 +830,9 @@ impl Masters {
         if reg.placing.contains(project_id) {
             return Err(Refused::Placing);
         }
-        reg.provisioning.insert(project_id.to_string());
+        if !reg.provisioning.insert(project_id.to_string()) {
+            return Err(Refused::Provisioning);
+        }
         Ok(ProvisionLease {
             registry: self.0.clone(),
             project_id: project_id.to_string(),
