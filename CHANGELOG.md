@@ -9,6 +9,16 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.219] - 2026-10-09
+
+Stale drafts answer merge-or-drop themselves; feedback and ideas open as live previews
+
+### Fixed
+
+- **A stale draft's merge-or-drop answer acts by itself.** Drop drops it, merge moves it into the named item, keep changes nothing; a refused merge waits on the master, and Needs you files these questions under Merge or drop.
+- **A feedback item or an idea opens as a live preview.** A reproduce serves the reporter's build on demo data, recording clicks, errors and failed requests, inputs masked, members only. A sketch run builds ideas; fixes take the reporter's confirm.
+- **A feedback item is reproduced, diagnosed and confirmed fixed.** Its page and chat open a recorded preview of the reporter's build, the assistant proposes a cause and fix, and the reporter's Fixed closes the item once that change ships.
+
 ## [0.4.0-dev.218] - 2026-10-09
 
 Live previews with a fast lane, and every release becomes a readable page
