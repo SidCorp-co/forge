@@ -6,15 +6,16 @@
 import { customerNotes } from '@forge/contracts/customer-notes';
 import type { ArtifactChange } from '@forge/contracts/landing-artifacts';
 import { PROJECT_PERMISSIONS } from '@forge/contracts/permissions';
-import type {
-  ReleaseActionItem,
-  ReleaseActionKind,
-  ReleasePageApproval,
-  ReleasePageChange,
-  ReleasePageHeader,
-  ReleasePageUnnoted,
-  ReleaseShipped,
-  ReleaseTechnicalNotes,
+import {
+  type ReleaseActionItem,
+  type ReleaseActionKind,
+  type ReleasePageApproval,
+  type ReleasePageChange,
+  type ReleasePageHeader,
+  type ReleasePageUnnoted,
+  type ReleaseShipped,
+  type ReleaseTechnicalNotes,
+  releaseBuildOf,
 } from '@forge/contracts/release-page';
 import type { ReleaseDetail, ReleaseNoteSection } from '@forge/contracts/releases';
 import {
@@ -22,8 +23,6 @@ import {
   WHATS_NEW_SECTIONS,
   type WhatsNewSection,
 } from '@forge/contracts/whats-new';
-
-const COMMIT = /^[0-9a-f]{40}$/;
 
 /** Who approved it, or that nobody was asked: an approval given anyway still shows (BC-12). */
 export function approvalOf(detail: ReleaseDetail): ReleasePageApproval {
@@ -37,13 +36,9 @@ export function approvalOf(detail: ReleaseDetail): ReleasePageApproval {
   return { required, state: owed ? 'pending' : 'not_asked', by: null, at: null };
 }
 
-/**
- * The build the page describes: the commit the release was cut at and deploys, as the release
- * record names it; none on a draft nobody cut, and none where the record holds no full commit.
- */
+/** The build the page describes, the one the release record counts its criteria on (`releaseBuildOf`). */
 export function buildOf(detail: ReleaseDetail): string | null {
-  if (detail.state === 'draft' || !detail.head) return null;
-  return COMMIT.test(detail.head) ? detail.head : null;
+  return releaseBuildOf(detail.state, detail.head);
 }
 
 export function headerOf(detail: ReleaseDetail): ReleasePageHeader {

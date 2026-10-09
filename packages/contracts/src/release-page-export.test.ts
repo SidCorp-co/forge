@@ -65,12 +65,33 @@ function page(over: Partial<ReleasePage> = {}): ReleasePage {
 				title: "Release page",
 				completes: true,
 				proven: [
-					{ code: "BC-1", statement: "Each release has a page.", short: false },
-					{ code: "BC-2", statement: "Highlights open it.", short: true },
+					{
+						code: "BC-1",
+						statement: "Each release has a page.",
+						short: false,
+						issueKey: "ISS-1",
+					},
+					{
+						code: "BC-2",
+						statement: "Highlights open it.",
+						short: true,
+						issueKey: "ISS-1",
+					},
 				],
 				unproven: 1,
 			},
 		],
+		untraced: {
+			proven: [
+				{
+					code: null,
+					statement: "The export opens in a mail client.",
+					short: false,
+					issueKey: "ISS-4",
+				},
+			],
+			unproven: 0,
+		},
 		improvements: [
 			{ issueKey: "ISS-1", kind: "new", line: "Releases read as pages." },
 		],
@@ -124,6 +145,10 @@ describe("a release page as Markdown (BC-11)", () => {
 		expect(md).toContain("## Fixes\n- Dates show correctly.");
 		expect(md).toContain(
 			"- Release page (complete): Each release has a page.; Highlights open it. (short of its wording) (1 not yet proven on this build)",
+		);
+		// a proven criterion of an issue tracing no requirement is listed too, as the header counts it
+		expect(md).toContain(
+			"- Not traced to a requirement: The export opens in a mail client.",
 		);
 		expect(md).toContain("- Known issues are listed. (Falls short)");
 	});

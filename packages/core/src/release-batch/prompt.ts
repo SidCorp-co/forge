@@ -72,7 +72,7 @@ function renderReach(projectId: string, runId: string): string {
   const path = releaseBatchPath(projectId, runId);
   return `
 ### How you reach Forge
-Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with.
+Every call below is \`forge-runner api ${path}[/...]\`: \`${path}\` reads the batch, \`${path}/method -X POST\` announces your method, \`${path}/finish -X POST\` records the release, \`${path}/state\` reads its outcome, \`${path}/abort -X POST\` gives the batch back. It runs on the credential this session was started with. Before \`finish\`, \`forge-runner release range --project-id ${projectId} --run ${runId} --head <sha>\`, run in the checkout you cut the release in, reports what its commit range ships on the same credential: the release page reads what an admin must do from it.
 
 If the first call is refused, STOP before you touch any branch, tag or deployment: nothing you did could be recorded. End the turn saying so, with the refusal's text. Do not look for another credential on this machine.
 `;

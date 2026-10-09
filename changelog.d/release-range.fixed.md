@@ -1,0 +1,1 @@
+**A release page says what its range requires and counts its criteria once.** The release run reports its range, so migrations and settings show without a repository binding; header, Proof panel and list count the same criteria on the build.

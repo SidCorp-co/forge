@@ -36,6 +36,7 @@ export {
   warnedReleaseNotes,
 } from './queries.js';
 export { bindingReachesProduction } from './release-coolify.js';
+export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
 export { nextDraftVersion, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';

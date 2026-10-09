@@ -1,8 +1,8 @@
 /**
- * What a release's own commit range ships, read from the repository (REQ-40 BC-7, BC-9): the range
- * is the previous shipped release's served commit up to the commit this one deploys. Read from
- * there, an admin's migration, a new required setting, a changed API operation and a moved
- * dependency are named whether or not any issue filled in a field about them.
+ * What a release's own commit range ships (REQ-40 BC-7, BC-9): the range is the previous shipped
+ * release's served commit up to the commit this one deploys. Read from there, an admin's migration,
+ * a new required setting, a changed API operation and a moved dependency are named whether or not any
+ * issue filled in a field about them.
  *
  * - migrations: entries the drizzle journal gains in the range;
  * - API contracts: operations of the generated OpenAPI file added, removed or changed, a schema an
@@ -11,20 +11,40 @@
  * - settings: environment names a deployment file (`docker-compose*.yml`) names that its base did
  *   not, required where it is written `${NAME:?...}`.
  *
- * A range that cannot be read whole is `unread` with why, never an empty answer.
+ * The run that cut the release has the range in its checkout, so it reports it (`forge-runner
+ * release range`): which files changed, then the two ends of each file this reader reads
+ * (`rangeReads`). The reading is kept on the release run (`metadata.range`) and the page reads it
+ * from there; no source host is called, so a project with no repository binding reads the same way
+ * as one with one. A range not reported is `unread` with why, never an empty answer.
  */
 
 import { posix } from 'node:path';
-import type { ReleaseShipped } from '@forge/contracts/release-page';
-import {
-  type HostFileChange,
-  resolveSourceHost,
-  type SourceHost,
-} from '../integrations/source-host/index.js';
+import type {
+  ReleaseRangeBase,
+  ReleaseRangeReport,
+  ReleaseShipped,
+} from '@forge/contracts/release-page';
+import { eq, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { pipelineRuns } from '../db/schema.js';
+import { writeRunMetadata } from '../pipeline/index.js';
+import { refuseRelease } from './refuse.js';
 import { shippedReleaseRuns } from './shipped-earlier.js';
 
-/** The two reads a range needs; a `SourceHost` is one. */
-export type RangeHost = Pick<SourceHost, 'compareFiles' | 'readFile'>;
+/** One file a range changed; a rename is its old path removed and its new one added. */
+export interface RangeChange {
+  readonly path: string;
+  readonly change: 'added' | 'changed' | 'removed';
+}
+
+/** The two reads the reader takes of a range: which files changed, and a file's text at one end. */
+export interface RangeHost {
+  compareFiles(
+    base: string,
+    head: string,
+  ): Promise<{ readonly changes: readonly RangeChange[] } | { readonly why: string }>;
+  readFile(path: string, ref: string, maxBytes: number): Promise<string | { missing: string }>;
+}
 
 const JOURNAL = /(^|\/)drizzle\/migrations\/meta\/_journal\.json$/;
 const OPENAPI = /(^|\/)contracts\/[^/]+\.openapi\.json$/;
@@ -235,7 +255,7 @@ async function settingsOf(
   }));
 }
 
-const alive = (changes: readonly HostFileChange[], pattern: RegExp) =>
+const alive = (changes: readonly RangeChange[], pattern: RegExp) =>
   sorted(changes.filter((c) => pattern.test(c.path)).map((c) => c.path));
 
 /** What the range `base..head` ships, read through `host`. */
@@ -268,50 +288,150 @@ export async function shippedBetween(
   }
 }
 
-// A range between two commits never changes, so a successful reading is kept for the process,
-// bounded, oldest out first; an unread one is a reading about the moment and is never kept.
-const KEPT = new Map<string, ReleaseShipped>();
-const KEPT_LIMIT = 200;
+const READ = [JOURNAL, OPENAPI, MANIFEST, COMPOSE];
+
+/** The changed files this reader reads at both ends: the run sends these, and only these. */
+export function rangeReads(changes: readonly RangeChange[]): string[] {
+  return sorted(changes.filter((c) => READ.some((p) => p.test(c.path))).map((c) => c.path));
+}
+
+const short = (sha: string) => sha.slice(0, 7);
 
 /**
- * What the release `version`, deploying `head`, ships over the release shipped before it (or, for a
- * release not yet shipped, over the newest one shipped): `unread` with why where there is no cut
- * build, no earlier release to compare with, or no repository to read.
+ * Where the range of the release `version` starts: the commit the release shipped before it served
+ * (for a release not yet shipped, the newest one shipped), or why there is none.
+ */
+export async function rangeBaseOf(
+  projectId: string,
+  version: string | null,
+): Promise<ReleaseRangeBase> {
+  const runs = await shippedReleaseRuns(projectId);
+  const at = version === null ? -1 : runs.findIndex((r) => r.version === version);
+  const prior = at === -1 ? runs[runs.length - 1] : runs[at - 1];
+  return prior
+    ? { base: prior.commit, why: null }
+    : { base: null, why: 'no release shipped before this one, so there is no range to read' };
+}
+
+/** A report read as a repository: its changes, and each file it sent at the end it was asked for. */
+function reportedHost(report: ReleaseRangeReport): RangeHost {
+  const files = new Map(report.files.map((f) => [f.path, f]));
+  return {
+    compareFiles: async () => ({ changes: report.changes }),
+    readFile: async (path, ref) => {
+      const end = ref === report.base ? 'base' : ref === report.head ? 'head' : null;
+      const text = end === null ? null : (files.get(path)?.[end] ?? null);
+      return text ?? { missing: `${path} does not exist at ${short(ref)}` };
+    },
+  };
+}
+
+const KEY = 'range';
+
+/**
+ * Keep what the release run reports its range ships (BC-7, BC-9), read by `shippedBetween`. Refused
+ * by name, with nothing kept: a release with no release before it, a base that is not the commit that
+ * release served, a file the reader reads that was not sent, and one it does not read.
+ */
+export async function recordRange(args: {
+  projectId: string;
+  runId: string;
+  version: string | null;
+  report: ReleaseRangeReport;
+}): Promise<ReleaseShipped> {
+  const { report } = args;
+  const start = await rangeBaseOf(args.projectId, args.version);
+  if (start.base === null) throw refuseRelease('RELEASE_RANGE_NO_BASE', start.why, '/base');
+  if (report.base !== start.base) {
+    throw refuseRelease(
+      'RELEASE_RANGE_BASE_MOVED',
+      `the range starts at ${short(start.base)}, the commit the release before this one served, not at ${short(report.base)}: read it again with \`GET release-batches/${args.runId}/range\``,
+      '/base',
+    );
+  }
+  const reads = new Set(rangeReads(report.changes));
+  const sent = new Set(report.files.map((f) => f.path));
+  const missing = [...reads].filter((p) => !sent.has(p));
+  if (missing.length > 0) {
+    throw refuseRelease(
+      'RELEASE_RANGE_FILE_MISSING',
+      `the range changes ${missing.join(', ')}, which the reader reads, and the report does not send ${missing.length === 1 ? 'it' : 'them'}: send each with its text at base and at head (null where it does not exist there)`,
+      '/files',
+    );
+  }
+  const unread = [...sent].filter((p) => !reads.has(p));
+  if (unread.length > 0) {
+    throw refuseRelease(
+      'RELEASE_RANGE_FILE_UNREAD',
+      `${unread.join(', ')} ${unread.length === 1 ? 'is' : 'are'} not a file the reader reads of this range: send only the paths \`POST release-batches/${args.runId}/range/reads\` answers`,
+      '/files',
+    );
+  }
+  const read = await shippedBetween(reportedHost(report), report.base, report.head);
+  await writeRunMetadata(args.runId, {
+    merge: { [KEY]: { ...read, reportedAt: new Date().toISOString() } },
+    touch: true,
+  });
+  return read;
+}
+
+function storedOf(value: unknown): ReleaseShipped | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
+  if (v.state === 'unread' && typeof v.why === 'string') return { state: 'unread', why: v.why };
+  if (v.state !== 'read' || typeof v.base !== 'string' || typeof v.head !== 'string') return null;
+  const list = (x: unknown) => (Array.isArray(x) ? x.filter((i) => typeof i === 'string') : []);
+  return {
+    state: 'read',
+    base: v.base,
+    head: v.head,
+    migrations: list(v.migrations),
+    contracts: list(v.contracts),
+    dependencies: list(v.dependencies),
+    settings: (Array.isArray(v.settings) ? v.settings : []).flatMap((x) =>
+      typeof x?.name === 'string'
+        ? [{ name: x.name as string, required: x.required === true }]
+        : [],
+    ),
+  };
+}
+
+/**
+ * What the release `version`, deploying `head`, ships, as its run reported it: `unread` with why
+ * where there is no cut build, no earlier release to compare with, no report, or a report of a range
+ * other than the one from the release before it to `head`.
  */
 export async function readShipped(
   projectId: string,
   version: string,
   head: string | null,
-  host?: (projectId: string) => Promise<RangeHost>,
+  runId: string | null,
 ): Promise<ReleaseShipped> {
   if (head === null) {
     return { state: 'unread', why: 'the release has no cut build to read a range up to' };
   }
-  const runs = await shippedReleaseRuns(projectId);
-  const at = runs.findIndex((r) => r.version === version);
-  const prior = at === -1 ? runs[runs.length - 1] : runs[at - 1];
-  if (!prior) {
+  const start = await rangeBaseOf(projectId, version);
+  if (start.base === null) return { state: 'unread', why: start.why };
+  const [row] = runId
+    ? await db
+        .select({ range: sql<unknown>`${pipelineRuns.metadata} -> ${KEY}` })
+        .from(pipelineRuns)
+        .where(eq(pipelineRuns.id, runId))
+    : [];
+  const stored = storedOf(row?.range);
+  const range = `${short(start.base)}..${short(head)}`;
+  if (!stored) {
     return {
       state: 'unread',
-      why: 'no release shipped before this one, so there is no range to read',
+      why: `the release run did not report what its range ${range} ships: the run that cuts a release reports it with \`forge-runner release range\` from its checkout, before \`finish\``,
     };
   }
-  let source: RangeHost;
-  try {
-    source = await (host ?? ((id) => resolveSourceHost(id, 'kernel')))(projectId);
-  } catch (err) {
+  if (stored.state === 'unread') return stored;
+  if (stored.head !== head || stored.base !== start.base) {
     return {
       state: 'unread',
-      why: `the project's repository could not be reached: ${err instanceof Error ? err.message : String(err)}`,
+      why: `the release run reported the range ${short(stored.base)}..${short(stored.head)}, not ${range}, the range from the release before this one to the build this page describes`,
     };
   }
-  const key = `${projectId}\u0000${prior.commit}\u0000${head}`;
-  const kept = KEPT.get(key);
-  if (kept) return kept;
-  const read = await shippedBetween(source, prior.commit, head);
-  if (read.state === 'read') {
-    if (KEPT.size >= KEPT_LIMIT) KEPT.delete(KEPT.keys().next().value as string);
-    KEPT.set(key, read);
-  }
-  return read;
+  return stored;
 }

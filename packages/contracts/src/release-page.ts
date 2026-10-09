@@ -140,6 +140,41 @@ export function releaseClaimOf(
 	};
 }
 
+/**
+ * The build a release describes and counts its criteria on: the commit it was cut at and deploys;
+ * none on a draft nobody cut, and none where the record holds no full commit.
+ */
+export function releaseBuildOf(
+	state: ReleaseState,
+	head: string | null,
+): string | null {
+	if (state === "draft" || !head) return null;
+	return COMMIT.test(head) ? head : null;
+}
+
+/**
+ * The standing a release counts one criterion it carries by (BC-5, BC-13): the newest verdict on the
+ * commit `build`, or `unjudged` where none is on it, so a verdict on an earlier build never counts
+ * here; with no cut build (a draft) the newest verdict, which is what a draft is cut on. "Proven" is
+ * `criterionCountsAsPass` of this, on every surface that counts a release's criteria: the release
+ * record's totals and the page's list read the same rows by it.
+ */
+export function releaseStandingOf(
+	verdicts: readonly ReleaseVerdictReading[],
+	build: string | null,
+): CriterionStanding {
+	const newestFirst = [...verdicts].sort((a, b) => b.at.localeCompare(a.at));
+	const counted =
+		build === null
+			? newestFirst[0]
+			: newestFirst.find(
+					(v) => v.identityKind === "commit" && v.commitSha === build,
+				);
+	if (!counted) return "unjudged";
+	if (counted.identityKind === "commit_unresolved") return "unresolved";
+	return counted.verdict;
+}
+
 // ---- highlights (BC-2, BC-3) ----
 
 export const RELEASE_HIGHLIGHTS_MIN = 1;
@@ -352,14 +387,29 @@ export interface ReleasePageHeader {
 	approval: ReleasePageApproval;
 }
 
-export interface ReleasePageRequirement {
+/**
+ * One carried criterion proven on `header.build` (`criterionCountsAsPass` of `releaseStandingOf`):
+ * `code` is the requirement criterion it traces, with that criterion's wording, or null with the
+ * issue criterion's own wording where it traces none; `short` marks one met but short of its wording.
+ */
+export interface ReleasePageProven {
+	code: string | null;
+	statement: string;
+	short: boolean;
+	issueKey: string | null;
+}
+
+/** The carried criteria of one group, each row one criterion: what the header counts, listed. */
+export interface ReleasePageCriteria {
+	proven: ReleasePageProven[];
+	/** How many of its carried criteria are not proven on the build: the known issues among them. */
+	unproven: number;
+}
+
+export interface ReleasePageRequirement extends ReleasePageCriteria {
 	key: string;
 	title: string;
 	completes: boolean;
-	/** Criteria proven on `header.build` by `criterionCountsAsPass`; `short` marks one met but short of its wording. */
-	proven: { code: string; statement: string; short: boolean }[];
-	/** How many of its carried criteria are known issues instead. */
-	unproven: number;
 }
 
 /** One user-facing line (`customer-notes.ts:customerNotes` output), with the kind its section reads as. */
@@ -397,10 +447,10 @@ export interface ReleaseKnownIssue {
 }
 
 /**
- * What the release's own commit range ships, read from the repository rather than from what an
- * issue filled in (BC-7, BC-9): `base` is the commit the previous shipped release served and `head`
- * the commit this one deploys. A range that could not be read says why, so a page never reads "None"
- * for what nobody looked at.
+ * What the release's own commit range ships, as the run that cut it reported it from its checkout
+ * (`ReleaseRangeReport`) rather than what an issue filled in (BC-7, BC-9): `base` is the commit the
+ * previous shipped release served and `head` the commit this one deploys. A range not reported, or
+ * reported for another head, says why, so a page never reads "None" for what nobody looked at.
  */
 export type ReleaseShipped =
 	| {
@@ -417,6 +467,46 @@ export type ReleaseShipped =
 			settings: { name: string; required: boolean }[];
 	  }
 	| { state: "unread"; why: string };
+
+/** The changed files of a range, as the release run's checkout names them; a rename is its old path removed and its new one added. */
+export const RELEASE_RANGE_CHANGES = ["added", "changed", "removed"] as const;
+
+const RangeChangeSchema = z.strictObject({
+	path: z.string().trim().min(1).max(1000),
+	change: z.enum(RELEASE_RANGE_CHANGES),
+});
+
+/** The release run asks which of its range's changed files the reader reads. */
+export const ReleaseRangeReadsBodySchema = z.strictObject({
+	changes: z.array(RangeChangeSchema).max(20_000),
+});
+
+/**
+ * What the run that cut a release reports of its range (BC-7, BC-9), from the checkout on its box:
+ * every file changed `base...head`, and the text at each end of each file the reader reads (`null`
+ * where the file does not exist at that end). Core reads it with the one reader and keeps the
+ * reading on the release run; no source host is called.
+ */
+export const ReleaseRangeReportSchema = z.strictObject({
+	base: z.string().regex(COMMIT, "base is a full 40-hex commit"),
+	head: z.string().regex(COMMIT, "head is a full 40-hex commit"),
+	changes: z.array(RangeChangeSchema).max(20_000),
+	files: z
+		.array(
+			z.strictObject({
+				path: z.string().trim().min(1).max(1000),
+				base: z.string().nullable(),
+				head: z.string().nullable(),
+			}),
+		)
+		.max(200),
+});
+export type ReleaseRangeReport = z.infer<typeof ReleaseRangeReportSchema>;
+
+/** Where a release run's range starts: the commit the release shipped before it served, or why there is none. */
+export type ReleaseRangeBase =
+	| { base: string; why: null }
+	| { base: null; why: string };
 
 /** The developer view's addition (BC-9). */
 export interface ReleaseTechnicalNotes {
@@ -445,6 +535,8 @@ export interface ReleasePage {
 	header: ReleasePageHeader;
 	highlights: ReleaseHighlights;
 	requirements: ReleasePageRequirement[];
+	/** The carried criteria of issues that trace no requirement; null where every issue traces one. */
+	untraced: ReleasePageCriteria | null;
 	improvements: ReleasePageChange[];
 	fixes: ReleasePageChange[];
 	withoutNotes: ReleasePageUnnoted[];
@@ -462,6 +554,13 @@ const PersonSchema = z.strictObject({
 	id: z.string().min(1),
 	name: z.string(),
 	kind: z.enum(["human", "agent"]),
+});
+// a share frozen before every carried criterion was listed has a code on each row and no issue key
+const ProvenSchema = z.strictObject({
+	code: z.string().min(1).nullable(),
+	statement: z.string(),
+	short: z.boolean().default(false),
+	issueKey: z.string().min(1).nullable().default(null),
 });
 const ChangeSchema = z.strictObject({
 	issueKey: z.string().min(1),
@@ -505,16 +604,17 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 			key: z.string().min(1),
 			title: z.string().min(1),
 			completes: z.boolean(),
-			proven: z.array(
-				z.strictObject({
-					code: z.string().min(1),
-					statement: z.string(),
-					short: z.boolean().default(false),
-				}),
-			),
+			proven: z.array(ProvenSchema),
 			unproven: z.number().int().min(0),
 		}),
 	),
+	untraced: z
+		.strictObject({
+			proven: z.array(ProvenSchema),
+			unproven: z.number().int().min(0),
+		})
+		.nullable()
+		.default(null),
 	improvements: z.array(ChangeSchema),
 	fixes: z.array(ChangeSchema),
 	withoutNotes: z.array(

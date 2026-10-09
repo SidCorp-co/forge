@@ -8,6 +8,7 @@ import {
   mediaOf,
   readClaims,
   requirementsOf,
+  untracedOf,
 } from './claims.js';
 
 const BUILD = 'a'.repeat(40);
@@ -101,12 +102,27 @@ describe('the truth rule over the carried criteria', () => {
         title: 'Reminders',
         completes: false,
         proven: [
-          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false },
-          { code: 'BC-2', statement: 'A doctor sees the report', short: true },
+          { code: 'BC-1', statement: 'A nurse sees the reminder', short: false, issueKey: 'ISS-1' },
+          { code: 'BC-2', statement: 'A doctor sees the report', short: true, issueKey: 'ISS-1' },
         ],
         unproven: 2,
       },
     ]);
+  });
+
+  it('lists the carried criteria under no requirement apart, so the list sums to every carried criterion', () => {
+    const reqs = [
+      { key: 'REQ-1', title: 'Reminders', completes: false, criteria: new Map<string, string>() },
+    ];
+    const listed = requirementsOf(reqs, claims);
+    const rest = untracedOf(reqs, claims);
+    expect(rest).toEqual({ proven: [], unproven: 1 });
+    const sum = [...listed, ...(rest ? [rest] : [])].reduce(
+      (n, g) => n + g.proven.length + g.unproven,
+      0,
+    );
+    expect(sum).toBe(claims.length);
+    expect(untracedOf(reqs, claims.slice(0, 4))).toBeNull();
   });
 });
 
@@ -186,8 +202,24 @@ describe('proven is one rule: criterionCountsAsPass (BC-5)', () => {
     expect([...(claimableByRequirement(claims).get('REQ-1') ?? [])]).toEqual(['BC-1']);
   });
 
-  it('proves nothing on a release nobody cut', () => {
+  it('counts a pass on an earlier build as not proven on this one, the earlier verdict kept as where it was judged', () => {
+    const earlier = readClaims(
+      [criterion(1, 'BC-1', [verdict('pass', MERGED, '2026-10-09T12:00:00.000Z')])],
+      BUILD,
+    );
+    expect(requirementsOf([req], earlier)[0]).toMatchObject({ proven: [], unproven: 1 });
+    expect(knownIssuesOf(earlier)[0]).toMatchObject({
+      standing: 'not_judged',
+      elsewhere: { verdict: 'pass', commitSha: MERGED },
+    });
+  });
+
+  it('reads a release nobody cut by its newest verdicts, as its record counts it, and claims nothing', () => {
     const none = readClaims(rows, null);
-    expect(requirementsOf([req], none)[0]?.proven).toEqual([]);
+    expect(requirementsOf([req], none)[0]?.proven.map((p) => [p.code, p.short])).toEqual([
+      ['BC-1', false],
+      ['BC-2', true],
+    ]);
+    expect(claimableByRequirement(none).size).toBe(0);
   });
 });

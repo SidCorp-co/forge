@@ -44,8 +44,18 @@ export function releasePage(over: Partial<ReleasePage> = {}): ReleasePage {
       ],
     },
     requirements: [
-      { key: "REQ-40", title: "Release page", completes: true, proven: [{ code: "BC-1", statement: "Each release has a page.", short: false }, { code: "BC-2", statement: "Each release opens on highlights.", short: true }], unproven: 1 },
+      {
+        key: "REQ-40",
+        title: "Release page",
+        completes: true,
+        proven: [
+          { code: "BC-1", statement: "Each release has a page.", short: false, issueKey: "ISS-1" },
+          { code: "BC-2", statement: "Each release opens on highlights.", short: true, issueKey: "ISS-1" },
+        ],
+        unproven: 1,
+      },
     ],
+    untraced: null,
     improvements: [{ issueKey: "ISS-1", kind: "new", line: "Releases read as pages." }],
     fixes: [{ issueKey: "ISS-2", kind: "fixed", line: "Dates show correctly." }],
     withoutNotes: [{ issueKey: "ISS-9", title: "Rename a helper", why: "no_note" }],
