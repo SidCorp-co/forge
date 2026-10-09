@@ -1,12 +1,12 @@
-import {
-  REQUIREMENT_ACCEPTANCE_CHECKLIST,
-  REQUIREMENT_READY_CHECKLIST,
-} from '@forge/contracts/checklist-registry';
 import type {
   ChecklistMove,
   ChecklistRead,
   RequirementChecklistsRead,
 } from '@forge/contracts/checklist-read';
+import {
+  REQUIREMENT_ACCEPTANCE_CHECKLIST,
+  REQUIREMENT_READY_CHECKLIST,
+} from '@forge/contracts/checklist-registry';
 import {
   type Checklist,
   checklistFormOf,
@@ -21,7 +21,6 @@ import { Hono } from 'hono';
 import { db } from '../db/client.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { gatedMovesOf } from '../lifecycle/index.js';
-import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { deliveryIn, liveBuildOfRequirement } from './acceptance.js';
 import {
@@ -32,13 +31,8 @@ import {
 import { type Row, rowIn } from './read.js';
 import { actorOf, type RequirementEnv, reqParam } from './route-kit.js';
 
+// mounted on `routes.ts:requirementRoutes`, whose auth gate covers every requirement path
 export const requirementChecklistRoutes = new Hono<RequirementEnv>();
-
-requirementChecklistRoutes.use(
-  '/:id/requirements/:req/checklist',
-  requireAuth(),
-  assertEmailVerified(),
-);
 
 /** Whether the requirement has reached a status the checklist is asked from, or moved through it. */
 const reached = (checklist: Checklist, status: string, moves: readonly ChecklistMove[]) =>

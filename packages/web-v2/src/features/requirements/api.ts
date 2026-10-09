@@ -9,7 +9,6 @@ import type {
   RequirementDetail,
   RequirementList,
   RequirementRevision,
-  RequirementSpec,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/requirements`;

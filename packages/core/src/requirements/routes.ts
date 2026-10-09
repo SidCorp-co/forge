@@ -28,6 +28,7 @@ import { strictBody } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { acceptDelivery, dropRequirement } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
+import { requirementChecklistRoutes } from './checklist-routes.js';
 import { requestContract } from './contract-request.js';
 import { readRequirementDecisionsAs } from './decisions-read.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
@@ -353,3 +354,4 @@ requirementRoutes.post(
 );
 
 requirementRoutes.route('/', requirementLinkRoutes);
+requirementRoutes.route('/', requirementChecklistRoutes);

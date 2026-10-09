@@ -1223,6 +1223,9 @@
     "automation": {
       "serves": ["REQ-16", "automation#screen"]
     },
+    "checklists": {
+      "serves": ["REQ-34", "requirement-lifecycle#ready_check", "feedback-lifecycle#triage-check"]
+    },
     "board": {
       "serves": ["via:conversations", "via:mockups"]
     },

@@ -36,7 +36,7 @@ function rowsOf(read: ChecklistRead, move: ChecklistMove | null): Row[] {
 }
 
 /** A choice answer reads by its option's label, core's own words for it; text reads as written. */
-const valueOf = (field: ChecklistFormField, value: string) => field.options.find((o) => o.value === value)?.label ?? value;
+const shownValue = (field: ChecklistFormField, value: string) => field.options.find((o) => o.value === value)?.label ?? value;
 
 /** What a gap still lacks, without the question it repeats. */
 const gapWords = (field: ChecklistFormField, gap: ChecklistGap) =>
@@ -72,7 +72,7 @@ function AnswerRow({ row, revision }: { row: Extract<Row, { kind: "answer" }>; r
       <dt className="text-13 text-muted">{field.label}</dt>
       <dd className="grid min-w-0 gap-1">
         <span className="flex flex-wrap items-center gap-2">
-          <span className={`whitespace-pre-wrap break-words text-14 ${corrected ? "text-muted line-through" : "text-fg"}`}>{valueOf(field, answer.value)}</span>
+          <span className={`whitespace-pre-wrap break-words text-14 ${corrected ? "text-muted line-through" : "text-fg"}`}>{shownValue(field, answer.value)}</span>
           {answer.provenance === "assumed" ? <ToneBadge tone={corrected ? "done" : "neutral"} label={t("checklist.assumed")} title={t("checklist.assumed")} /> : null}
         </span>
         <Source answer={answer} field={field} />
@@ -80,7 +80,7 @@ function AnswerRow({ row, revision }: { row: Extract<Row, { kind: "answer" }>; r
           <span className="flex flex-wrap items-center gap-2" data-testid="checklist-correction">
             <ToneBadge tone="ready" label={t("checklist.corrected")} title={t("checklist.corrected")} />
             <span className="text-12 text-subtle">{revision !== null ? t("checklist.nowIn", { r: revision }) : null}</span>
-            <span className="whitespace-pre-wrap break-words text-14 text-fg">{valueOf(field, corrected.value)}</span>
+            <span className="whitespace-pre-wrap break-words text-14 text-fg">{shownValue(field, corrected.value)}</span>
           </span>
         ) : null}
       </dd>

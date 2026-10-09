@@ -1,5 +1,5 @@
-import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
 import type { FeedbackChecklistsRead } from '@forge/contracts/checklist-read';
+import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
 import { checklistFormOf, evaluateChecklist } from '@forge/contracts/checklists';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { triageAnswersInput } from '@forge/contracts/feedback-triage';

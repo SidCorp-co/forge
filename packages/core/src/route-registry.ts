@@ -146,7 +146,6 @@ import { releaseBatchRoutes } from './release-batch/routes.js';
 import { releasePageRoutes } from './release-page/routes.js';
 import { reportQueryRoutes } from './report-queries/routes.js';
 import { reportRoutes } from './reports/routes.js';
-import { requirementChecklistRoutes } from './requirements/checklist-routes.js';
 import { requirementRoutes } from './requirements/routes.js';
 import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { projectRunnerRoutes, runnerLoadRoutes, runnerRoutes } from './runners/routes.js';
@@ -218,7 +217,6 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', environmentStateRoutes);
   app.route('/api/projects', workflowRoutes);
   app.route('/api/projects', requirementRoutes);
-  app.route('/api/projects', requirementChecklistRoutes);
   app.route('/api/projects', suggestionRoutes);
   app.route('/api/projects', intakeRoutes);
   app.route('/api/projects', projectPreviewRoutes);

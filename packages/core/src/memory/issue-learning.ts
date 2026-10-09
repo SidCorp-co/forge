@@ -75,7 +75,8 @@ export async function landingOfMirrorWrite<W extends MirrorWrite>(
   if (!(MEMORY_MIRROR_SOURCES as readonly string[]).includes(input.source)) {
     return { input, landedAs: null };
   }
-  const issue = input.source === 'issue' ? await issueNamed(input.projectId, input.sourceRef) : null;
+  const issue =
+    input.source === 'issue' ? await issueNamed(input.projectId, input.sourceRef) : null;
   if (!issue) {
     throw refuse(
       'MEMORY_MIRROR_READ_ONLY',
@@ -93,7 +94,11 @@ export async function landingOfMirrorWrite<W extends MirrorWrite>(
       source: 'note',
       sourceRef,
       textContent,
-      metadata: { ...(input.metadata ?? {}), about: issue.key, ...(issue.id ? { issueId: issue.id } : {}) },
+      metadata: {
+        ...(input.metadata ?? {}),
+        about: issue.key,
+        ...(issue.id ? { issueId: issue.id } : {}),
+      },
     },
     landedAs: {
       source: 'note',

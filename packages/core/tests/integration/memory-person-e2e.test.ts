@@ -212,65 +212,80 @@ describe('memory as a person reads it, and a person acts on it', () => {
     const res = await act(w, row.id, 'retire', { reason: 'not mine' }, await userToken(reader.id));
     expect(res.status).toBe(403);
   });
+});
 
-  // ISS-457 round 1 and ISS-470 both wrote a run's learning as source issue under the issue's id,
-  // and each replaced the issue's own search entry with a 201: the call a run reaches for is planted
-  // whole. A learning about an issue is its own row, linked to the issue; the mirror stays core's.
-  describe('a learning a run writes about an issue', () => {
-    const mirrorOf = async (ref: string) =>
-      (
-        await db.execute<{ text_content: string }>(sql`
-          SELECT text_content FROM memories WHERE project_id = ${w.projectId} AND source = 'issue' AND source_ref = ${ref}
-        `)
-      ).map((r) => r.text_content);
-    const learn = (sourceRef: string, textContent: string, source = 'issue') =>
-      api(agentToken, 'POST', '/api/memory', { projectId: w.projectId, source, sourceRef, textContent });
+// ISS-457 round 1 and ISS-470 both wrote a run's learning as source issue under the issue's id,
+// and each replaced the issue's own search entry with a 201: the call a run reaches for is planted
+// whole. A learning about an issue is its own row, linked to the issue; the mirror stays core's.
+describe('a learning a run writes about an issue', () => {
+  let w: World;
+  let agentToken: string;
 
-    it('lands as its own note linked to the issue, by its id or its key, and leaves the mirror as core wrote it', async () => {
-      const target = await issue(w, { status: 'open', createdAt: ago(1) }); // ISS-4
-      await db.execute(sql`
-        INSERT INTO memories (project_id, source, source_ref, text_content)
-        VALUES (${w.projectId}, 'issue', ${target.id}, 'ISS-4 text as core indexed it')
-      `);
-      const byId = await learn(target.id, 'A rebase after the merge check is a new check.');
-      expect(byId.status, JSON.stringify(byId.body)).toBe(201);
-      expect(byId.body.landedAs).toMatchObject({ source: 'note', about: target.key });
-      expect(await mirrorOf(target.id)).toEqual(['ISS-4 text as core indexed it']);
+  beforeAll(async () => {
+    w = await world();
+    const agent = await createTestUser({ kind: 'agent' });
+    await addProjectMember(w.projectId, agent.id, 'member');
+    agentToken = await userToken(agent.id);
+  });
 
-      const byKey = await learn(target.key, `${target.key}: the box reaps its own tree after close.`);
-      expect(byKey.status, JSON.stringify(byKey.body)).toBe(201);
-      expect(byKey.body.landedAs).toMatchObject({ source: 'note', about: target.key });
-      expect(byKey.body.id).not.toBe(byId.body.id);
-      expect(await mirrorOf(target.key)).toEqual([]);
-
-      const onIssue = (await entries(w, `&cites=${target.key}`)).map((r) => r.text);
-      expect(onIssue).toEqual(
-        expect.arrayContaining([
-          `A rebase after the merge check is a new check. (${target.key})`,
-          `${target.key}: the box reaps its own tree after close.`,
-        ]),
-      );
-      const [linked] = await db.execute<{ source: string; issue_id: string | null }>(sql`
-        SELECT source, metadata->>'issueId' AS issue_id FROM memories WHERE id = ${byId.body.id as string}
-      `);
-      expect(linked).toEqual({ source: 'note', issue_id: target.id });
-
-      const again = await learn(target.id, 'A rebase after the merge check is a new check.');
-      expect(again.body.id).toBe(byId.body.id);
+  const mirrorOf = async (ref: string) =>
+    (
+      await db.execute<{ text_content: string }>(sql`
+        SELECT text_content FROM memories WHERE project_id = ${w.projectId} AND source = 'issue' AND source_ref = ${ref}
+      `)
+    ).map((r) => r.text_content);
+  const learn = (sourceRef: string, textContent: string, source = 'issue') =>
+    api(agentToken, 'POST', '/api/memory', {
+      projectId: w.projectId,
+      source,
+      sourceRef,
+      textContent,
     });
 
-    it('refuses by name a write that would still replace an indexed row, naming the route that keeps both', async () => {
-      for (const [source, ref] of [
-        ['comment', randomUUID()],
-        ['job', randomUUID()],
-        ['issue', randomUUID()],
-        ['issue', 'ISS-99'],
-      ] as const) {
-        const res = await learn(ref, 'A learning the run meant to keep.', source);
-        expect(res.status, `${source} ${ref}: ${JSON.stringify(res.body)}`).toBe(422);
-        expect(code(res.body)).toBe('MEMORY_MIRROR_READ_ONLY');
-        expect(String(res.body.detail)).toContain('source note');
-      }
-    });
+  it('lands as its own note linked to the issue, by its id or its key, and leaves the mirror as core wrote it', async () => {
+    const target = await issue(w, { status: 'open', createdAt: ago(1) }); // ISS-1
+    await db.execute(sql`
+      INSERT INTO memories (project_id, source, source_ref, text_content)
+      VALUES (${w.projectId}, 'issue', ${target.id}, 'ISS-1 text as core indexed it')
+    `);
+    const byId = await learn(target.id, 'A rebase after the merge check is a new check.');
+    expect(byId.status, JSON.stringify(byId.body)).toBe(201);
+    expect(byId.body.landedAs).toMatchObject({ source: 'note', about: target.key });
+    expect(await mirrorOf(target.id)).toEqual(['ISS-1 text as core indexed it']);
+
+    const byKey = await learn(target.key, `${target.key}: the box reaps its own tree after close.`);
+    expect(byKey.status, JSON.stringify(byKey.body)).toBe(201);
+    expect(byKey.body.landedAs).toMatchObject({ source: 'note', about: target.key });
+    expect(byKey.body.id).not.toBe(byId.body.id);
+    expect(await mirrorOf(target.key)).toEqual([]);
+
+    const onIssue = (await entries(w, `&cites=${target.key}`)).map((r) => r.text);
+    expect(onIssue).toEqual(
+      expect.arrayContaining([
+        `A rebase after the merge check is a new check. (${target.key})`,
+        `${target.key}: the box reaps its own tree after close.`,
+      ]),
+    );
+    const [linked] = await db.execute<{ source: string; issue_id: string | null }>(sql`
+      SELECT source, metadata->>'issueId' AS issue_id FROM memories WHERE id = ${byId.body.id as string}
+    `);
+    expect(linked).toEqual({ source: 'note', issue_id: target.id });
+
+    const again = await learn(target.id, 'A rebase after the merge check is a new check.');
+    expect(again.body.id).toBe(byId.body.id);
+  });
+
+  it('refuses by name a write that would still replace an indexed row, naming the route that keeps both', async () => {
+    for (const [source, ref] of [
+      ['comment', randomUUID()],
+      ['job', randomUUID()],
+      ['issue', randomUUID()],
+      ['issue', 'ISS-99'],
+    ] as const) {
+      const res = await learn(ref, 'A learning the run meant to keep.', source);
+      expect(res.status, `${source} ${ref}: ${JSON.stringify(res.body)}`).toBe(422);
+      expect(code(res.body)).toBe('MEMORY_MIRROR_READ_ONLY');
+      expect(String(res.body.detail)).toContain('source note');
+    }
   });
 });

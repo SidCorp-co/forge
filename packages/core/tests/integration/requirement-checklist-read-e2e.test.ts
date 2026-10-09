@@ -50,8 +50,7 @@ async function draft(): Promise<string> {
 }
 
 const read = async (key: string) => ok(on('GET', `/requirements/${key}/checklist`));
-const checklist = (r: Doc, id: string) =>
-  (r.checklists as Doc[]).find((c) => c.id === id) as Doc;
+const checklist = (r: Doc, id: string) => (r.checklists as Doc[]).find((c) => c.id === id) as Doc;
 const answerTo = (evaluation: Doc, question: string) =>
   (evaluation.answers as Doc[]).find((a) => a.question === question);
 const gapOn = (evaluation: Doc, question: string) =>
@@ -108,7 +107,7 @@ describe("a requirement's checklists read", () => {
     const ready = checklist(agreed, 'requirement_ready');
     const [move] = ready.moves as Doc[];
     expect(move).toMatchObject({ standing: 'passed', countsAsPassed: true, to: 'agreed' });
-    expect((move?.answers as Doc[]).find((a) => a.question === 'kind')).toMatchObject({
+    expect(((move as Doc).answers as Doc[]).find((a) => a.question === 'kind')).toMatchObject({
       provenance: 'assumed',
       source: 'recommended',
     });
@@ -139,7 +138,7 @@ describe("a requirement's checklists read", () => {
       source: 'record:revision.kind',
     });
     expect(
-      ((after.moves as Doc[])[0]?.answers as Doc[]).find((a) => a.question === 'kind'),
+      (((after.moves as Doc[])[0] as Doc).answers as Doc[]).find((a) => a.question === 'kind'),
     ).toMatchObject({ provenance: 'assumed' });
   });
 

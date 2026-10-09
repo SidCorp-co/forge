@@ -3,7 +3,6 @@
 // The issue's criteria with the act that ties the issue to its requirement's criteria, taken on a
 // closed issue too: judging shipped work is the point.
 
-import { useCopy } from "@/lib/i18n/interface-language";
 import type { IssueDetail } from "../types";
 import { TieCriteria } from "./criteria-acts";
 import { CriteriaList } from "./criteria-list";
