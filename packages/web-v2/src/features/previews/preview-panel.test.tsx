@@ -8,7 +8,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Call, fakeCore, renderWithQuery } from "@/test/render";
 import copy from "./copy.json";
-import { HOST, ISSUE_ID, PREVIEW_ID, previewOf } from "./fixtures";
+import { approveBody, HOST, ISSUE_ID, PREVIEW_ID, previewOf, ticketBody } from "./fixtures";
 import { PreviewPanel } from "./preview-panel";
 
 const PREVIEW = `/issues/${ISSUE_ID}/preview`;
@@ -28,7 +28,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("the preview on the issue", () => {
   it("draws nothing where there is no preview and nothing a reader could start", async () => {
-    const calls = core({ [`GET ${PREVIEW}`]: () => ({ status: 404, body: refusal("PREVIEW_NOT_FOUND", "none") }) });
+    const calls = core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: null } }) });
     const { container } = mount({ canWrite: false });
     await waitFor(() => expect(calls).toHaveLength(1));
     await waitFor(() => expect(container.querySelector("[data-testid=preview-panel]")).toBeNull());
@@ -37,8 +37,8 @@ describe("the preview on the issue", () => {
 
   it("offers Start preview to a writer whose run holds a worktree, and opens it with one POST", async () => {
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ status: 404, body: refusal("PREVIEW_NOT_FOUND", "none") }),
-      [`POST ${PREVIEW}`]: () => ({ status: 201, body: previewOf({ state: "starting", liveAt: null }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: null } }),
+      [`POST ${PREVIEW}`]: () => ({ status: 201, body: { preview: previewOf({ state: "starting", liveAt: null }) } }),
     });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Start preview" }));
@@ -47,7 +47,7 @@ describe("the preview on the issue", () => {
 
   it("names a start refused by core, with core's own words", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ status: 404, body: refusal("PREVIEW_NOT_FOUND", "none") }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: null } }),
       [`POST ${PREVIEW}`]: () => ({ status: 422, body: refusal("PREVIEW_NO_RUN", "the issue has no live run holding a worktree") }),
     });
     mount();
@@ -56,7 +56,7 @@ describe("the preview on the issue", () => {
   });
 
   it("refuses a record it cannot read by name, never drawing a state it does not know", async () => {
-    core({ [`GET ${PREVIEW}`]: () => ({ body: { ...previewOf(), state: "levitating" } }) });
+    core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: { ...previewOf(), state: "levitating" } } }) });
     mount();
     const failed = await screen.findByTestId("preview-load-failed");
     expect(failed).toHaveTextContent("answered a preview this build cannot read");
@@ -68,8 +68,8 @@ describe("the preview on the issue", () => {
 describe("BC-3: the frame", () => {
   const live = () =>
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "tk-1" } }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("tk-1") }),
     });
 
   it("is entered through the preview host's enter path with a ticket, sandboxed without top navigation", async () => {
@@ -87,8 +87,8 @@ describe("BC-3: the frame", () => {
   it("opens in a tab of its own with a fresh ticket, the window opened before the ticket is asked for", async () => {
     let n = 0;
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: `tk-${++n}` } }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody(`tk-${++n}`) }),
     });
     const tab = { opener: "kept", location: { href: "" }, close: vi.fn() };
     const open = vi.fn(() => tab);
@@ -122,7 +122,7 @@ describe("BC-3: the frame", () => {
 
   it("names a ticket core refused, and draws no frame", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
       [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ status: 403, body: refusal("PREVIEW_FORBIDDEN", "you are not a member of this project") }),
     });
     mount();
@@ -137,7 +137,7 @@ describe("BC-10: a preview that cannot start says why", () => {
     ["PORT_IN_USE", "Port in use", /Free the port/],
     ["DEV_SERVER_EXITED", "The dev server exited", /tail of its output/],
   ] as const)("%s names itself on the issue", async (reason, name, fix) => {
-    core({ [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "failed", reason, detail: "exit 1\nError: EADDRINUSE", closedAt: "2026-10-09T10:01:00.000Z" }) }) });
+    core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "failed", reason, detail: "exit 1\nError: EADDRINUSE", closedAt: "2026-10-09T10:01:00.000Z" }) } }) });
     mount();
     const note = await screen.findByTestId("preview-failure");
     expect(note).toHaveAttribute("data-reason", reason);
@@ -156,15 +156,15 @@ describe("BC-10: a preview that cannot start says why", () => {
   });
 
   it("says a failure that carries no reason is incomplete rather than drawing a blank", async () => {
-    core({ [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "failed", reason: null }) }) });
+    core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "failed", reason: null }) } }) });
     mount();
     expect(await screen.findByText("The preview could not start or stopped answering.")).toBeInTheDocument();
   });
 
   it("offers Try again to a writer whose run is live, posting the open again", async () => {
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "failed", reason: "DEV_SERVER_NOT_LISTENING", detail: "" }) }),
-      [`POST ${PREVIEW}`]: () => ({ status: 201, body: previewOf({ state: "starting", liveAt: null }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "failed", reason: "DEV_SERVER_NOT_LISTENING", detail: "" }) } }),
+      [`POST ${PREVIEW}`]: () => ({ status: 201, body: { preview: previewOf({ state: "starting", liveAt: null }) } }),
     });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
@@ -175,8 +175,8 @@ describe("BC-10: a preview that cannot start says why", () => {
 describe("BC-9: a closed preview says which way it closed", () => {
   it("idle: names the minutes and reopens at the same link", async () => {
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "idle_closed", idleMinutes: 45 }) }),
-      [`POST ${PREVIEW}`]: () => ({ body: previewOf({ state: "starting", liveAt: null }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "idle_closed", idleMinutes: 45 }) } }),
+      [`POST ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "starting", liveAt: null }) } }),
     });
     mount();
     expect(await screen.findByText(/closed after 45 minutes with nobody viewing/)).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe("BC-9: a closed preview says which way it closed", () => {
   });
 
   it("abandoned and approved: say so and offer no frame", async () => {
-    core({ [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "abandoned", detail: "the run ended" }) }) });
+    core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "abandoned", detail: "the run ended" }) } }) });
     mount();
     expect(await screen.findByText("This preview was abandoned. Its link is closed.")).toBeInTheDocument();
     expect(screen.getByText("the run ended")).toBeInTheDocument();
@@ -197,8 +197,8 @@ describe("BC-9: a closed preview says which way it closed", () => {
 describe("approve, abandon and the lane", () => {
   it("approves with one POST on the preview, and names a refusal for a member who may not", async () => {
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "t" } }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
       [`POST /previews/${PREVIEW_ID}/approve`]: () => ({ status: 403, body: refusal("PREVIEW_FORBIDDEN", "approving a preview needs previews.approve") }),
     });
     mount();
@@ -207,11 +207,34 @@ describe("approve, abandon and the lane", () => {
     expect(calls.filter((c) => c.path.endsWith("/approve"))).toHaveLength(1);
   });
 
+  it("reads core's approve answer through the contract: a body that is not it is refused by name", async () => {
+    core({
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
+      [`POST /previews/${PREVIEW_ID}/approve`]: () => ({ body: { ...approveBody(), runTold: "yes" } }),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("this build cannot read: runTold");
+  });
+
+  it("approves with core's full answer", async () => {
+    const calls = core({
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
+      [`POST /previews/${PREVIEW_ID}/approve`]: () => ({ body: approveBody() }),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/approve"))).toHaveLength(1));
+    expect(screen.queryByText(/Couldn't approve/)).toBeNull();
+  });
+
   it("abandons with one POST", async () => {
     const calls = core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "t" } }),
-      [`POST /previews/${PREVIEW_ID}/abandon`]: () => ({ body: previewOf({ state: "abandoned" }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
+      [`POST /previews/${PREVIEW_ID}/abandon`]: () => ({ body: { preview: previewOf({ state: "abandoned" }) } }),
     });
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Abandon" }));
@@ -220,8 +243,8 @@ describe("approve, abandon and the lane", () => {
 
   it("a reader who cannot write sees the frame and no act", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "t" } }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
     });
     mount({ canWrite: false });
     await screen.findByTitle("Preview of ISS-491");
@@ -231,7 +254,7 @@ describe("approve, abandon and the lane", () => {
 
   it("an approved preview shows the fast lane read", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "approved" }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "approved" }) } }),
       [`GET /issues/${ISSUE_ID}/lane`]: () => ({ body: { issueId: ISSUE_ID, lane: "fast", decision: { lane: "fast", files: ["packages/web-v2/src/a.tsx"] }, approved: null, refusal: null } }),
     });
     mount();
@@ -242,7 +265,7 @@ describe("approve, abandon and the lane", () => {
 
   it("an approved preview on the full lane says why, in core's words", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "approved" }) }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "approved" }) } }),
       [`GET /issues/${ISSUE_ID}/lane`]: () => ({
         body: { issueId: ISSUE_ID, lane: "full", decision: null, approved: null, refusal: { code: "FAST_LANE_NOT_ELIGIBLE", path: "/touched", detail: "packages/core/src/auth/x.ts (security)" } },
       }),
@@ -257,9 +280,9 @@ describe("approve, abandon and the lane", () => {
 describe("BC-6: asking for a change in the preview", () => {
   const live = () =>
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "t" } }),
-      [`POST /previews/${PREVIEW_ID}/messages`]: () => ({ status: 202, body: {} }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
+      [`POST /previews/${PREVIEW_ID}/messages`]: () => ({ status: 202, body: { sent: true, seq: 4 } }),
     });
 
   it("sends the trimmed text to the preview's messages route, clears the box and says it was sent", async () => {
@@ -287,8 +310,8 @@ describe("BC-6: asking for a change in the preview", () => {
 
   it("keeps the words and names core's refusal where the run is gone", async () => {
     core({
-      [`GET ${PREVIEW}`]: () => ({ body: previewOf() }),
-      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: { ticket: "t" } }),
+      [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf() } }),
+      [`POST /previews/${PREVIEW_ID}/ticket`]: () => ({ body: ticketBody("t") }),
       [`POST /previews/${PREVIEW_ID}/messages`]: () => ({ status: 422, body: refusal("PREVIEW_NO_RUN", "the run holding this preview has ended") }),
     });
     mount();
@@ -305,7 +328,7 @@ describe("BC-6: asking for a change in the preview", () => {
     await screen.findByTitle("Preview of ISS-491");
     expect(screen.queryByRole("textbox", { name: "Ask for a change" })).toBeNull();
     unmount();
-    core({ [`GET ${PREVIEW}`]: () => ({ body: previewOf({ state: "idle_closed" }) }) });
+    core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "idle_closed" }) } }) });
     mount();
     await screen.findByText(/closed after/);
     expect(screen.queryByRole("textbox", { name: "Ask for a change" })).toBeNull();

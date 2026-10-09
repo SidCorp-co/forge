@@ -3,9 +3,14 @@
 // its device credential. Each route validates, calls one service function and answers.
 
 import {
+  issuePreviewResponseSchema,
   PREVIEW_LIMITS,
+  previewApproveResponseSchema,
+  previewEnvelopeSchema,
   previewMessageRequestSchema,
+  previewMessageResponseSchema,
   previewReportSchema,
+  previewTicketResponseSchema,
 } from '@forge/contracts/preview';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -44,7 +49,11 @@ issuePreviewRoutes.get(
   '/:issueId/preview',
   zValidator('param', issueParam, invalid('invalid path: /api/issues/<issue id>/preview')),
   async (c) =>
-    c.json({ preview: await readIssuePreview(c.req.valid('param').issueId, actorOf(c)) }),
+    c.json(
+      issuePreviewResponseSchema.parse({
+        preview: await readIssuePreview(c.req.valid('param').issueId, actorOf(c)),
+      }),
+    ),
 );
 
 issuePreviewRoutes.post(
@@ -52,7 +61,10 @@ issuePreviewRoutes.post(
   zValidator('param', issueParam, invalid('invalid path: /api/issues/<issue id>/preview')),
   async (c) => {
     const opened = await openIssuePreview(c.req.valid('param').issueId, actorOf(c));
-    return c.json({ preview: opened.preview }, opened.reopened ? 200 : 201);
+    return c.json(
+      previewEnvelopeSchema.parse({ preview: opened.preview }),
+      opened.reopened ? 200 : 201,
+    );
   },
 );
 
@@ -74,13 +86,15 @@ previewRoutes.post(
     ),
   ),
   async (c) =>
-    c.json({
-      preview: await reportPreview(
-        c.get('device').id,
-        c.req.valid('param').id,
-        c.req.valid('json'),
-      ),
-    }),
+    c.json(
+      previewEnvelopeSchema.parse({
+        preview: await reportPreview(
+          c.get('device').id,
+          c.req.valid('param').id,
+          c.req.valid('json'),
+        ),
+      }),
+    ),
 );
 
 for (const at of ['/:id', '/:id/ticket', '/:id/approve', '/:id/abandon', '/:id/messages']) {
@@ -88,16 +102,24 @@ for (const at of ['/:id', '/:id/ticket', '/:id/approve', '/:id/abandon', '/:id/m
 }
 
 previewRoutes.get('/:id', zValidator('param', previewParam, PATH), async (c) =>
-  c.json({ preview: await readPreview(c.req.valid('param').id, actorOf(c)) }),
+  c.json(
+    previewEnvelopeSchema.parse({
+      preview: await readPreview(c.req.valid('param').id, actorOf(c)),
+    }),
+  ),
 );
 
 previewRoutes.post('/:id/ticket', zValidator('param', previewParam, PATH), async (c) => {
   c.header('Cache-Control', 'no-store');
-  return c.json(await mintPreviewTicket(c.req.valid('param').id, actorOf(c)));
+  return c.json(
+    previewTicketResponseSchema.parse(await mintPreviewTicket(c.req.valid('param').id, actorOf(c))),
+  );
 });
 
 previewRoutes.post('/:id/approve', zValidator('param', previewParam, PATH), async (c) =>
-  c.json(await approvePreview(c.req.valid('param').id, actorOf(c))),
+  c.json(
+    previewApproveResponseSchema.parse(await approvePreview(c.req.valid('param').id, actorOf(c))),
+  ),
 );
 
 previewRoutes.post(
@@ -106,7 +128,11 @@ previewRoutes.post(
   zValidator('json', abandonBody, invalid('invalid body: { reason?: string }')),
   async (c) => {
     const { reason } = c.req.valid('json');
-    return c.json({ preview: await abandonPreview(c.req.valid('param').id, actorOf(c), reason) });
+    return c.json(
+      previewEnvelopeSchema.parse({
+        preview: await abandonPreview(c.req.valid('param').id, actorOf(c), reason),
+      }),
+    );
   },
 );
 
@@ -120,7 +146,9 @@ previewRoutes.post(
   ),
   async (c) =>
     c.json(
-      await sendPreviewMessage(c.req.valid('param').id, actorOf(c), c.req.valid('json').text),
+      previewMessageResponseSchema.parse(
+        await sendPreviewMessage(c.req.valid('param').id, actorOf(c), c.req.valid('json').text),
+      ),
       202,
     ),
 );

@@ -5,13 +5,17 @@
 
 import type { LaneDecision } from "@forge/contracts/fast-lane";
 import {
-  PREVIEW_ENTER_PATH,
+  issuePreviewResponseSchema,
   PREVIEW_ROUTES,
+  type PreviewApproveResponse,
   type PreviewRecord,
-  previewRecordSchema,
+  previewApproveResponseSchema,
+  previewEnvelopeSchema,
+  previewMessageResponseSchema,
+  previewTicketResponseSchema,
 } from "@forge/contracts/preview";
-import { z } from "zod";
-import { apiClient, ApiError } from "@/lib/api/client";
+import type { z } from "zod";
+import { apiClient } from "@/lib/api/client";
 
 const routeOf = (route: string, params: Record<string, string>): string => {
   const path = route.replace(/:(\w+)/g, (_, name: string) => {
@@ -30,14 +34,15 @@ export class PreviewRecordRefused extends Error {
   }
 }
 
-function recordOf(where: string, body: unknown): PreviewRecord {
-  const parsed = previewRecordSchema.safeParse(body);
+/** A body read through the contract's own schema; a body that is not it is refused by name, never drawn from. */
+function read<S extends z.ZodType>(where: string, schema: S, body: unknown): z.infer<S> {
+  const parsed = schema.safeParse(body);
   if (!parsed.success) throw new PreviewRecordRefused(where, parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"} ${i.message}`).join("; "));
   return parsed.data;
 }
 
-/** What `POST /api/previews/:id/ticket` answers: the one-time ticket the preview host turns into its viewer cookie. */
-const ticketSchema = z.strictObject({ ticket: z.string().min(1) });
+const post = (route: string, params: Record<string, string>, body?: unknown) =>
+  apiClient<unknown>(routeOf(route, params), { method: "POST", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 
 /** `GET /api/issues/:id/lane` (fast-lane): the lane the issue's approved change takes, and why not the fast one. */
 export interface IssueLane {
@@ -50,44 +55,25 @@ export interface IssueLane {
 
 export const previewsApi = {
   /** The issue's latest preview, or null where it has had none. */
-  ofIssue: async (issueId: string): Promise<PreviewRecord | null> => {
-    try {
-      const body = await apiClient<unknown>(routeOf(PREVIEW_ROUTES.ofIssue, { issueId }));
-      return body === null || body === undefined ? null : recordOf("GET preview of issue", body);
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "PREVIEW_NOT_FOUND") return null;
-      throw err;
-    }
-  },
+  ofIssue: async (issueId: string): Promise<PreviewRecord | null> =>
+    read("GET preview of issue", issuePreviewResponseSchema, await apiClient<unknown>(routeOf(PREVIEW_ROUTES.ofIssue, { issueId }))).preview,
 
   /** Opens the preview of the issue's live run, or reopens its idle-closed one at the same link. */
   open: async (issueId: string): Promise<PreviewRecord> =>
-    recordOf("POST preview of issue", await apiClient<unknown>(routeOf(PREVIEW_ROUTES.ofIssue, { issueId }), { method: "POST" })),
+    read("POST preview of issue", previewEnvelopeSchema, await post(PREVIEW_ROUTES.ofIssue, { issueId })).preview,
 
-  approve: async (id: string): Promise<PreviewRecord> =>
-    recordOf("POST approve", await apiClient<unknown>(routeOf(PREVIEW_ROUTES.approve, { id }), { method: "POST" })),
+  approve: async (id: string): Promise<PreviewApproveResponse> =>
+    read("POST approve", previewApproveResponseSchema, await post(PREVIEW_ROUTES.approve, { id })),
 
   abandon: async (id: string): Promise<PreviewRecord> =>
-    recordOf("POST abandon", await apiClient<unknown>(routeOf(PREVIEW_ROUTES.abandon, { id }), { method: "POST" })),
+    read("POST abandon", previewEnvelopeSchema, await post(PREVIEW_ROUTES.abandon, { id }, {})).preview,
 
   /** A person's request for a change, sent to the run holding the preview (BC-6). */
-  message: (id: string, text: string) =>
-    apiClient<unknown>(routeOf(PREVIEW_ROUTES.messages, { id }), { method: "POST", body: JSON.stringify({ text }) }),
+  message: async (id: string, text: string) =>
+    read("POST messages", previewMessageResponseSchema, await post(PREVIEW_ROUTES.messages, { id }, { text })),
 
-  /** A one-time, one-minute ticket; the address that spends it is `enterUrl`. */
-  ticket: async (id: string): Promise<string> => {
-    const body = await apiClient<unknown>(routeOf(PREVIEW_ROUTES.ticket, { id }), { method: "POST" });
-    const parsed = ticketSchema.safeParse(body);
-    if (!parsed.success) throw new PreviewRecordRefused("POST ticket", "expected { ticket }");
-    return parsed.data.ticket;
-  },
+  /** The address that spends a one-time ticket on the preview host: it sets the viewer cookie and lands on `/`. */
+  ticketUrl: async (id: string): Promise<string> => read("POST ticket", previewTicketResponseSchema, await post(PREVIEW_ROUTES.ticket, { id })).url,
 
   lane: (issueId: string) => apiClient<IssueLane>(`/issues/${encodeURIComponent(issueId)}/lane`),
 };
-
-/** The address that turns a ticket into the viewer cookie on the preview host and lands on `/`. */
-export function enterUrl(preview: Pick<PreviewRecord, "url">, ticket: string): string {
-  const url = new URL(PREVIEW_ENTER_PATH, preview.url);
-  url.searchParams.set("ticket", ticket);
-  return url.toString();
-}

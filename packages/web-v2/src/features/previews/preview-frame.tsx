@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { enterUrl, previewsApi } from "./api";
+import { previewsApi } from "./api";
 
 /** What the frame may do: run scripts as its own origin, post forms, open popups. Never navigate Forge. */
 export const PREVIEW_SANDBOX = "allow-scripts allow-same-origin allow-forms allow-popups allow-modals";
@@ -35,8 +35,8 @@ export function PreviewFrame({ preview, issueLabel, height = 520 }: { preview: P
     setLoaded(false);
     setSlow(false);
     setFailure(null);
-    previewsApi.ticket(preview.id).then(
-      (ticket) => current && setSrc(enterUrl(preview, ticket)),
+    previewsApi.ticketUrl(preview.id).then(
+      (url) => current && setSrc(url),
       (err) => current && setFailure(err),
     );
     return () => {
@@ -56,7 +56,7 @@ export function PreviewFrame({ preview, issueLabel, height = 520 }: { preview: P
     if (tab) tab.opener = null;
     setTabFailure(null);
     try {
-      const url = enterUrl(preview, await previewsApi.ticket(preview.id));
+      const url = await previewsApi.ticketUrl(preview.id);
       if (tab) tab.location.href = url;
       else window.location.assign(url);
     } catch (err) {

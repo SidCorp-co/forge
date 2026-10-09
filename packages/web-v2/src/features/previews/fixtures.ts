@@ -32,3 +32,17 @@ export function previewOf(over: Partial<PreviewRecord> = {}): PreviewRecord {
     ...over,
   });
 }
+
+/** What `POST /previews/:id/ticket` answers: the enter address, ticket in it. */
+export const ticketBody = (ticket: string) => ({
+  url: `${HOST}__forge_preview/enter?ticket=${ticket}`,
+  expiresAt: "2026-10-09T10:01:00.000Z",
+});
+
+/** What `POST /previews/:id/approve` answers. */
+export const approveBody = (over: Partial<PreviewRecord> = {}) => ({
+  preview: previewOf({ state: "approved", ...over }),
+  lane: { lane: "fast", files: ["packages/web-v2/src/a.tsx"] },
+  patchId: "a".repeat(40),
+  runTold: true,
+});

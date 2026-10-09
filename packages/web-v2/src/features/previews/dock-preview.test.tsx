@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { DockPreview, issuePageOf } from "./dock-preview";
-import { ISSUE_ID, PREVIEW_ID, PROJECT_ID, previewOf } from "./fixtures";
+import { ISSUE_ID, PREVIEW_ID, PROJECT_ID, previewOf, ticketBody } from "./fixtures";
 
 const issue = (over: Record<string, unknown> = {}) => ({
   id: ISSUE_ID,
@@ -20,9 +20,9 @@ function core(preview: unknown) {
   return fakeCore((c) => {
     if (c.method === "GET" && c.path.startsWith("/issues/ISS-491")) return { body: issue() };
     if (c.method === "GET" && c.path === "/projects") return { body: projects };
-    if (c.method === "GET" && c.path === `/issues/${ISSUE_ID}/preview`) return preview === null ? { status: 404, body: { error: { code: "PREVIEW_NOT_FOUND", message: "none", refusals: [] } } } : { body: preview };
-    if (c.method === "POST" && c.path === `/previews/${PREVIEW_ID}/ticket`) return { body: { ticket: "t" } };
-    if (c.method === "POST" && c.path === `/previews/${PREVIEW_ID}/messages`) return { status: 202, body: {} };
+    if (c.method === "GET" && c.path === `/issues/${ISSUE_ID}/preview`) return { body: { preview } };
+    if (c.method === "POST" && c.path === `/previews/${PREVIEW_ID}/ticket`) return { body: ticketBody("t") };
+    if (c.method === "POST" && c.path === `/previews/${PREVIEW_ID}/messages`) return { status: 202, body: { sent: true, seq: 1 } };
     return undefined;
   });
 }
