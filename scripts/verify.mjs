@@ -24,6 +24,7 @@ const CI_COVERAGE = {
   'node scripts/check-pat-surface.mjs': 'verify',
   'node scripts/check-api-contracts.mjs': 'verify',
   'node scripts/check-source-language.mjs --all': 'verify',
+  'node scripts/check-copy-budget.mjs': 'verify',
   'node scripts/check-test-signal.mjs --all': 'verify',
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',

@@ -1,0 +1,31 @@
+"use client";
+
+// The issue's criteria with the act that ties the issue to its requirement's criteria, taken on a
+// closed issue too: judging shipped work is the point.
+
+import { useCopy } from "@/lib/i18n/interface-language";
+import type { IssueDetail } from "../types";
+import { TieCriteria } from "./criteria-acts";
+import { CriteriaList } from "./criteria-list";
+
+export function CriteriaSection({
+  issue,
+  projectId,
+  checklist,
+  canWrite,
+  requirementKey,
+}: {
+  issue: Pick<IssueDetail, "id" | "status">;
+  projectId: string;
+  /** The lines of the acceptance-criteria text, read where the issue has no criterion rows yet. */
+  checklist: { key: string; text: string; checked: boolean }[];
+  canWrite: boolean;
+  /** The requirement the issue delivers, by key; null where it delivers none. */
+  requirementKey: string | null;
+}) {
+  const tie =
+    canWrite && requirementKey && issue.status !== "dropped" ? (
+      <TieCriteria issueId={issue.id} projectId={projectId} requirementKey={requirementKey} />
+    ) : null;
+  return <CriteriaList issueId={issue.id} judge={canWrite} headingAct={tie} checklist={checklist} />;
+}

@@ -28,6 +28,8 @@ export interface SelectProps {
   invalid?: boolean;
   "aria-label"?: string;
   "aria-describedby"?: string;
+  /** The control's description where no visible element carries it. */
+  "aria-description"?: string;
   className?: string;
   /** An edit in place (a facts rail, a table cell): the value reads as text, the control shows on hover and focus. */
   quiet?: boolean;
@@ -53,6 +55,7 @@ export function Select({
           id={id}
           aria-label={aria["aria-label"]}
           aria-describedby={aria["aria-describedby"]}
+          aria-description={aria["aria-description"]}
           aria-invalid={isInvalid || undefined}
           className={cn(
             quiet

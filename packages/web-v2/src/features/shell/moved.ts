@@ -18,7 +18,7 @@ const withQuery = (href: string, query: Record<string, string>) => `${href}?${ne
 
 /**
  * Where an old link to a removed page lands: a decision-log link narrowed to one requirement,
- * workflow or issue opens that item's decisions, any other the Requirements list; the roadmap one
+ * workflow or issue opens that item's decisions (an issue's, in its developer view, where every fold is open), any other the Requirements list; the roadmap one
  * opens the list grouped by Now, Next and Later; the memory one the Dashboard's Memory section,
  * where the memories naming no item are read (an item's own are on its Memory tab).
  */
@@ -29,7 +29,7 @@ export function movedTarget(slug: string, page: MovedPage, params: URLSearchPara
     const workflow = params.get("workflow");
     if (workflow) return withQuery(workflowHref(slug, workflow), { tab: "decisions", moved: page });
     const issue = params.get("issue");
-    if (issue) return withQuery(issueHref(slug, issue), { tab: "activity", moved: page });
+    if (issue) return withQuery(issueHref(slug, issue), { view: "developer", moved: page });
   }
   if (page === "roadmap") return withQuery(requirementsHref(slug), { group: "roadmap", moved: page });
   if (page === "memory") return `${withQuery(`/projects/${encodeURIComponent(slug)}`, { moved: page })}#project-memory`;

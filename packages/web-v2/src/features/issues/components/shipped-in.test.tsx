@@ -1,14 +1,14 @@
 // FB-102: dev's ISS-294 read "Run: Completed" in Properties while its Runs tab counted 0 and said
 // "Steps: None yet" — the tab counted recorded steps, and a delegated run records none — and the
-// release that shipped it (dev.72) was only in comment prose. The rail now names that release as a
+// release that shipped it (dev.72) was only in comment prose. The page now names that release as a
 // link, and the Runs tab counts and lists the issue's runs whether or not they recorded steps.
 
 import { screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueAgentSession, IssueDetail } from "../types";
-import { RunsTab, runsTabCount } from "./detail/issue-tabs";
-import { PropertiesRail } from "./properties-rail";
+import { RunsTab, runsTabCount } from "./detail/issue-sections";
+import { ChangesRow } from "./changes-row";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -21,11 +21,8 @@ afterEach(() => vi.unstubAllGlobals());
 const issue = (over: Partial<IssueDetail>) =>
   ({ id: "i-294", projectId: "p1", displayId: "ISS-294", title: "t", status: "closed", priority: "medium", labels: [], ...over }) as IssueDetail;
 
-function rail(detail: IssueDetail) {
-  fakeCore(() => ({ body: {} }));
-  renderWithQuery(
-    <PropertiesRail issue={detail} slug="forge" cost={undefined} deps={undefined} pending={false} onPatch={() => {}} onTransition={() => {}} moves={[]} />,
-  );
+function changes(detail: IssueDetail) {
+  renderWithQuery(<ChangesRow issue={detail} slug="forge" developer={false} />);
 }
 
 const RUN: IssueAgentSession = {
@@ -45,13 +42,13 @@ const settled = { isLoading: false, isError: false, error: null } as never;
 
 describe("the release that shipped an issue", () => {
   it("names it as a link to the release, and nothing while none has shipped it", () => {
-    rail(issue({ shippedIn: { version: "0.4.0-dev.72", at: "2026-10-05T12:00:00.000Z" } }));
-    const link = within(screen.getByTestId("rail-shipped-in")).getByRole("link", { name: "0.4.0-dev.72" });
+    changes(issue({ shippedIn: { version: "0.4.0-dev.72", at: "2026-10-05T12:00:00.000Z" } }));
+    const link = screen.getByRole("link", { name: "0.4.0-dev.72" });
     expect(link.getAttribute("href")).toBe("/projects/forge/releases/0.4.0-dev.72");
   });
 
-  it("shows no row on an issue no release shipped", () => {
-    rail(issue({ shippedIn: null, status: "awaiting_release" }));
+  it("shows no link on an issue no release shipped", () => {
+    changes(issue({ shippedIn: null, status: "awaiting_release", releaseNotes: { userFacing: "A page.", section: "Added" } as never }));
     expect(screen.queryByTestId("rail-shipped-in")).toBeNull();
   });
 });

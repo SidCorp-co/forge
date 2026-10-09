@@ -35,9 +35,9 @@ export const HIGHLIGHT_ANCHORS: { [K in UiPageItemKind]?: Partial<Record<UiHighl
   issue: {
     waiting: anchor(null, '[data-highlight~="waiting"]'),
     question: anchor(null, '[data-highlight~="question"]'),
-    criteria: anchor("criteria", '[data-testid="view-criteria"]'),
-    plan: anchor("overview", '[data-highlight~="plan"]'),
-    preview: anchor("overview", '[data-highlight~="preview"]'),
+    criteria: anchor(null, '[data-testid="view-criteria"]'),
+    plan: anchor(null, '[data-highlight~="plan"]'),
+    preview: anchor(null, '[data-highlight~="preview"]'),
   },
 };
 

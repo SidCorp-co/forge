@@ -58,8 +58,9 @@ const PROBES = {
     ],
   },
   language: {
-    gate: 'check-source-language',
-    probe: ['node', 'scripts/check-source-language.mjs', '--all'],
+    gate: 'check-source-language + check-copy-budget',
+    probe: ['node', 'scripts/check-copy-budget.mjs'],
+    also: [{ from: 'none', probe: ['node', 'scripts/check-source-language.mjs', '--all'] }],
   },
   record: {
     gate: 'check-release-record',

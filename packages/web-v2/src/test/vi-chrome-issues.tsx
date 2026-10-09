@@ -10,7 +10,9 @@ import { BatchReleaseDialog } from "@/features/issues/components/batch-release-d
 import { BlockerBanner } from "@/features/issues/components/blocker-banner";
 import { BulkActionBar } from "@/features/issues/components/bulk-action-bar";
 import { CommentThread } from "@/features/issues/components/comment-thread";
-import { CriteriaTab, OverviewTab, RunsTab } from "@/features/issues/components/detail/issue-tabs";
+import { RunsTab } from "@/features/issues/components/detail/issue-sections";
+import { ChangesRow } from "@/features/issues/components/changes-row";
+import { CriteriaSection } from "@/features/issues/components/criteria-section";
 import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { IssuePeek } from "@/features/issues/components/issue-peek";
 import { IssuesBoard } from "@/features/issues/components/issues-board";
@@ -319,9 +321,9 @@ export const SCREENS = [
       wrap(
         detailQueries(),
         <>
-          <OverviewTab issue={ISSUE} attachmentsQ={{ data: [], isLoading: false, isError: false } as never} canWrite />
-          <CriteriaTab issue={ISSUE} projectId={P} hasCriteriaRows checklist={[]} canWrite requirementKey="REQ-1" />
-          <CriteriaTab issue={{ ...ISSUE, id: "i2" }} projectId={P} hasCriteriaRows={false} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
+          <ChangesRow issue={ISSUE} slug="hop" developer />
+          <CriteriaSection issue={ISSUE} projectId={P} checklist={[]} canWrite requirementKey="REQ-1" />
+          <CriteriaSection issue={{ ...ISSUE, id: "i2" }} projectId={P} checklist={[{ key: "a", text: "Tieu chi", checked: true }]} canWrite={false} requirementKey={null} />
           <RunsTab issueId="i1" slug="hop" sessions={[]} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={DETAIL.stepOutcomes} expandedStep="build" onToggleStep={noop} />
           <RunsTab issueId="i1" slug="hop" sessions={RUNS} standingQ={{ isLoading: false, isError: false, data: DETAIL } as never} stepOutcomes={[]} expandedStep={null} onToggleStep={noop} />
           <CommentThread issueId="i1" comments={COMMENTS} members={undefined} />
@@ -334,7 +336,7 @@ export const SCREENS = [
     render: () =>
       wrap(
         detailQueries(),
-        <PropertiesRail issue={ISSUE} slug="hop" cost={{ estimatedCost: 1.2, inputTokens: 5, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 } as never} deps={{ incoming: [{ id: "e1", kind: "blocks", fromIssueId: "i9", toIssueId: "i1", fromDisplayId: "ISS-9", expired: true } as never], outgoing: [] }} pending={false} onPatch={noop} onTransition={noop} onEditModules={noop} canMarkMerged moves={[]} />,
+        <PropertiesRail issue={ISSUE} slug="hop" cost={{ estimatedCost: 1.2, inputTokens: 5, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 } as never} deps={{ incoming: [{ id: "e1", kind: "blocks", fromIssueId: "i9", toIssueId: "i1", fromDisplayId: "ISS-9", expired: true } as never], outgoing: [] }} pending={false} onPatch={noop} onEditModules={noop} canMarkMerged developer />,
       ),
   },
   {

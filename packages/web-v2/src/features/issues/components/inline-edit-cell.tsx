@@ -29,9 +29,9 @@ interface InlineSelectProps {
   className?: string;
 }
 
-/** A refusal shown once beside the fields it holds: the id of its visible line, and its words. */
+/** A refusal on the fields it holds: its words, and the id of the visible line that says them where the page draws one. */
 export interface EditRefusal {
-  id: string;
+  id?: string;
   text: string;
 }
 
@@ -48,10 +48,12 @@ export function InlineSelect({
 }: InlineSelectProps) {
   const off = Boolean(disabled) || Boolean(refusal);
   const describedBy = refusal?.id;
+  const description = refusal && !refusal.id ? refusal.text : undefined;
   const control = native ? (
     <NativeSelect
       aria-label={ariaLabel}
       aria-describedby={describedBy}
+      aria-description={description}
       value={value}
       disabled={off}
       options={options}
@@ -66,6 +68,7 @@ export function InlineSelect({
       quiet
       aria-label={ariaLabel}
       aria-describedby={describedBy}
+      aria-description={description}
       value={value}
       disabled={off}
       options={options}

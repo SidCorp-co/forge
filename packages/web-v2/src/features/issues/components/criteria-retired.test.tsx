@@ -8,7 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { IssueDetail } from "../types";
-import { CriteriaTab } from "./detail/issue-tabs";
+import { CriteriaSection } from "./criteria-section";
+import { IssueRetiredCriteria } from "./criteria-list";
 
 const RUNTIME = "880cc8c4d471572bffefc43eb2ba654fd6a252ef";
 
@@ -61,7 +62,8 @@ const issue = { id: "i1", projectId: "p1", status: "closed", mergedCommitSha: nu
 describe("a criterion tied again", () => {
   it("keeps its retired row readable, marked Retired, with every verdict it earned", async () => {
     fakeCore((c) => (c.method === "GET" && c.path === "/issues/i1/criteria" ? { body: { criteria: [live], retired: [retired] } } : undefined));
-    renderWithQuery(<CriteriaTab issue={issue} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    // retired criteria are Activity's: the page draws them there, not among the live rows
+    renderWithQuery(<IssueRetiredCriteria issueId="i1" />);
     const section = await screen.findByTestId("retired-criteria");
     expect(section).toHaveTextContent("Retired criteria · 1");
     await userEvent.click(within(section).getByText("Retired criteria · 1"));
@@ -79,7 +81,7 @@ describe("a criterion tied again", () => {
 
   it("shows no retired section where nothing was retired", async () => {
     fakeCore((c) => (c.method === "GET" && c.path === "/issues/i1/criteria" ? { body: { criteria: [live], retired: [] } } : undefined));
-    renderWithQuery(<CriteriaTab issue={issue} projectId="p1" hasCriteriaRows checklist={[]} canWrite={false} requirementKey="REQ-37" />);
+    renderWithQuery(<CriteriaSection issue={issue} projectId="p1" checklist={[]} canWrite={false} requirementKey="REQ-37" />);
     expect(await screen.findByText("(REQ-37 BC-8) The output cap names its size")).toBeInTheDocument();
     expect(screen.queryByTestId("retired-criteria")).toBeNull();
   });
