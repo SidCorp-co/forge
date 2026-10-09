@@ -27,10 +27,17 @@ text. Do not look for another credential on this machine.
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.
-3. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
+3. Once the commit you will name to \`finish\` is pushed, report what its range ships, from the
+   checkout you cut the release in: \`forge-runner release range --project-id <projectId> --run <runId> --head <sha>\`.
+   The release page's Action required and its developer view (migrations, API contracts,
+   dependencies, settings) are read from this report, and from nothing else. A refusal names what
+   to fix: \`RELEASE_RANGE_BASE_MOVED\` names the commit the range starts at, and a base this
+   checkout lacks is fetched (\`git fetch origin\`) and the report sent again. It never holds the
+   release: where it cannot be sent, say why in your report and go on to \`finish\`.
+4. \`release-batches/<runId>/finish -X POST -d '{"commit":"<sha>"}'\` → answers at once with the attempt at
    \`accepted\`; the server verifies and closes every claimed issue on its own. \`commit\` is the
    SHA you pushed to the production branch.
-4. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
+5. \`release-batches/<runId>/state\` → \`finish.state\` ends at \`finished\` (report its
    closed/failed) or \`failed\` (report its \`refusal\`). Read it again while it says
    \`accepted\`, \`verifying\` or \`closing\`.
 

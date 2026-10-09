@@ -9,6 +9,7 @@ import type {
 	ReleaseMediaRef,
 	ReleasePage,
 	ReleasePageChange,
+	ReleasePageCriteria,
 } from "./release-page.js";
 
 export interface ReleasePageExportOptions {
@@ -95,22 +96,30 @@ function mediaLink(m: ReleaseMediaRef, origin: string | undefined) {
 
 const lineOf = (c: ReleasePageChange) => ({ text: c.line });
 
+/** One group's proven criteria, a short marked, then how many are not proven on the build. */
+function criteriaText(g: ReleasePageCriteria): string {
+	const proven =
+		g.proven.length > 0
+			? `: ${g.proven.map((p) => (p.short ? `${p.statement} (short of its wording)` : p.statement)).join("; ")}`
+			: "";
+	return `${proven}${g.unproven > 0 ? ` (${g.unproven} not yet proven on this build)` : ""}`;
+}
+
 function sectionsOf(page: ReleasePage, origin: string | undefined): Section[] {
 	const out: Section[] = [];
 	const highlights = highlightItems(page.highlights, origin);
 	if (highlights.length > 0)
 		out.push({ title: "Highlights", items: highlights });
-	if (page.requirements.length > 0)
-		out.push({
-			title: "What this release proves",
-			items: page.requirements.map((r) => ({
-				text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${
-					r.proven.length > 0
-						? `: ${r.proven.map((p) => (p.short ? `${p.statement} (short of its wording)` : p.statement)).join("; ")}`
-						: ""
-				}${r.unproven > 0 ? ` (${r.unproven} not yet proven on this build)` : ""}`,
-			})),
-		});
+	const proves = [
+		...page.requirements.map((r) => ({
+			text: `${r.title}${r.completes ? " (complete)" : " (in progress)"}${criteriaText(r)}`,
+		})),
+		...(page.untraced
+			? [{ text: `Not traced to a requirement${criteriaText(page.untraced)}` }]
+			: []),
+	];
+	if (proves.length > 0)
+		out.push({ title: "What this release proves", items: proves });
 	if (page.improvements.length > 0)
 		out.push({ title: "Improvements", items: page.improvements.map(lineOf) });
 	if (page.fixes.length > 0)

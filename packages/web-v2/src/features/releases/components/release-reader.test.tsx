@@ -198,6 +198,17 @@ describe("the developer view (BC-9)", () => {
     expect(within(tech).getByTestId("page-technical-contracts")).toHaveTextContent("release-page.ts");
     expect(within(tech).getByTestId("page-technical-dependencies")).toHaveTextContent("no new dependency");
     expect(within(tech).getByTestId("page-technical-settings")).toHaveTextContent("PREVIEW_DOMAIN (optional)");
+    // where the lists were read from: the range the release run reported, never a silent "None"
+    expect(within(tech).getByTestId("page-technical-range")).toHaveTextContent("Read from the range bbbbbbb..aaaaaaa that the release run reported.");
+  });
+
+  it("says why the range was not read where the run reported none", () => {
+    const why = "the release run did not report what its range bbbbbbb..aaaaaaa ships";
+    renderWithQuery(
+      <ReleaseReader page={releasePage({ view: "developer", technical: TECHNICAL, shipped: { state: "unread", why } })} slug="forge" authed />,
+    );
+    expect(screen.getByTestId("page-technical-range")).toHaveAttribute("data-read", "unread");
+    expect(screen.getByTestId("page-technical-range")).toHaveTextContent(`The range was not read: ${why}.`);
   });
 
   it("draws nothing technical for the user view", () => {

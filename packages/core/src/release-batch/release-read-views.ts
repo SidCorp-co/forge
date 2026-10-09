@@ -2,6 +2,7 @@
 
 import { releaseNoteAttention } from '@forge/contracts/content-language';
 import { releaseNotesSections } from '@forge/contracts/release-notes';
+import { releaseBuildOf } from '@forge/contracts/release-page';
 import {
   type IssueLandingReading,
   RELEASE_ROSTER_LIMIT,
@@ -27,7 +28,7 @@ import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
 import type { RecordedVerification } from './channel.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
-import type { IssueFact, ReleaseFacts } from './release-facts.js';
+import { criteriaAt, type IssueFact, type ReleaseFacts } from './release-facts.js';
 import {
   completionOf,
   headlineOf,
@@ -128,6 +129,21 @@ function lastChange(p: Part, s: Shared): string {
   return new Date(Math.max(0, ...times.map((t) => t.getTime()))).toISOString();
 }
 
+/** The commit the release was cut at and deploys, as the record names it. */
+function headOf(p: Part): string | null {
+  return (
+    p.commit ??
+    p.approvals[0]?.evidence.commit ??
+    [...p.attempts].reverse().find((a) => a.commit)?.commit ??
+    null
+  );
+}
+
+/** Each issue's criteria as this release counts them: on its build (`criteriaAt`). */
+function criteriaOf(p: Part, issue: IssueFact) {
+  return criteriaAt(issue, releaseBuildOf(p.state, headOf(p)));
+}
+
 function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
   const groups = new Map<string | null, ReleaseContentGroup>();
   for (const id of p.issueIds) {
@@ -143,7 +159,7 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
       key: issue.key,
       title: issue.title,
       status: issue.status,
-      proof: proofOf(totalsOf(issue.criteria.map((c) => c.standing))),
+      proof: proofOf(totalsOf(criteriaOf(p, issue).map((c) => c.standing))),
     });
     groups.set(at, group);
   }
@@ -181,7 +197,7 @@ export function summaryOf(p: Part, s: Shared): ReleaseSummary {
   const facts = p.issueIds.flatMap((id) => s.facts.issues.get(id) ?? []);
   const { owner, act } = ownerOf(p, s);
   const split = splitOf(p, s);
-  const criteria = sumTotals(facts.map((i) => totalsOf(i.criteria.map((c) => c.standing))));
+  const criteria = sumTotals(facts.map((i) => totalsOf(criteriaOf(p, i).map((c) => c.standing))));
   const reqs = [
     ...new Set(
       facts.flatMap((i) => {
@@ -308,7 +324,7 @@ function issueViews(
   return p.issueIds.flatMap((id) => {
     const i = s.facts.issues.get(id);
     if (!i) return [];
-    const criteria = totalsOf(i.criteria.map((c) => c.standing));
+    const criteria = totalsOf(criteriaOf(p, i).map((c) => c.standing));
     const landing = landings.get(id) ?? UNREAD;
     return [
       {
@@ -367,7 +383,7 @@ export function detailOf(
           Number(b.completes) - Number(a.completes) ||
           a.key.localeCompare(b.key, 'en', { numeric: true }),
       ),
-    issueCriteria: facts.map((i) => ({ key: i.key, title: i.title, criteria: i.criteria })),
+    issueCriteria: facts.map((i) => ({ key: i.key, title: i.title, criteria: criteriaOf(p, i) })),
     notes: noteSections(p, s, landings),
     gates: p.gates,
     approval: latest ? strip(latest) : null,
@@ -378,10 +394,6 @@ export function detailOf(
     cuts: p.cuts,
     production,
     verifiedBy,
-    head:
-      p.commit ??
-      latest?.evidence.commit ??
-      [...p.attempts].reverse().find((a) => a.commit)?.commit ??
-      null,
+    head: headOf(p),
   };
 }

@@ -10,10 +10,13 @@ import {
   type ReleaseClaim,
   type ReleaseKnownIssue,
   type ReleaseMediaRef,
+  type ReleasePageCriteria,
+  type ReleasePageProven,
   type ReleasePageRequirement,
   type ReleaseVerdictReading,
   releaseClaimOf,
   releaseMediaKindOf,
+  releaseStandingOf,
 } from '@forge/contracts/release-page';
 
 export interface CarriedVerdict extends ReleaseVerdictReading {
@@ -45,8 +48,10 @@ export interface IssueFile {
 export interface ClaimReading {
   criterion: CarriedCriterion;
   claim: ReleaseClaim;
-  /** Whether the newest verdict on the build counts as a pass (`criterionCountsAsPass`: a pass, or a short): what "proven" means everywhere. */
+  /** Whether it counts as proven on the build: `criterionCountsAsPass(releaseStandingOf(...))`, the rule the release record's totals count by. */
   proven: boolean;
+  /** Proven, and only short of its wording. */
+  short: boolean;
   /** The verdict on the build the claim reads: the pass it claims, or the short, fail or skip it is held by. */
   onBuild: CarriedVerdict | null;
 }
@@ -69,12 +74,13 @@ export function readClaims(
   build: string | null,
 ): ClaimReading[] {
   return criteria.map((criterion) => {
-    const onBuild = newestOnBuild(criterion.verdicts, build);
+    const standing = releaseStandingOf(criterion.verdicts, build);
     return {
       criterion,
       claim: releaseClaimOf(criterion.verdicts, build),
-      proven: onBuild !== null && criterionCountsAsPass(onBuild.verdict),
-      onBuild,
+      proven: criterionCountsAsPass(standing),
+      short: standing === 'short',
+      onBuild: newestOnBuild(criterion.verdicts, build),
     };
   });
 }
@@ -118,31 +124,59 @@ export interface CarriedRequirement {
   criteria: ReadonlyMap<string, string>;
 }
 
-const byCode = (a: string, b: string) => a.localeCompare(b, 'en', { numeric: true });
+const byCode = (a: string | null, b: string | null) =>
+  a === null ? (b === null ? 0 : 1) : b === null ? -1 : a.localeCompare(b, 'en', { numeric: true });
 
-/** Each requirement the release completes or advances, with the criteria it proves live and how many of its carried criteria are known issues (BC-5). */
+/**
+ * One group's carried criteria, each row one criterion as the header counts it (BC-5): the proven
+ * ones listed, a short marked, the traced ones in code order, then those that trace no code under
+ * their own wording; the rest counted as not proven on the build.
+ */
+function criteriaOf(
+  claims: readonly ClaimReading[],
+  wording: ReadonlyMap<string, string>,
+): ReleasePageCriteria {
+  const proven: ReleasePageProven[] = claims
+    .filter((c) => c.proven)
+    .map(({ criterion, short }) => ({
+      code: criterion.bc,
+      statement: (criterion.bc ? wording.get(criterion.bc) : undefined) ?? criterion.statement,
+      short,
+      issueKey: criterion.issueKey,
+    }))
+    .sort((a, b) => byCode(a.code, b.code));
+  return { proven, unproven: claims.length - proven.length };
+}
+
+/** Each requirement the release completes or advances, with every carried criterion it proves live and how many it does not (BC-5). */
 export function requirementsOf(
   requirements: readonly CarriedRequirement[],
   claims: readonly ClaimReading[],
 ): ReleasePageRequirement[] {
-  // proven is `criterionCountsAsPass`, the one rule the gate and the release record count by; a
-  // criterion that is only short of its wording is listed as proven and marked so
-  const proven = new Map<string, Map<string, boolean>>();
-  for (const { criterion, proven: counts, claim } of claims) {
-    if (!counts || !criterion.requirementKey || !criterion.bc) continue;
-    const codes = proven.get(criterion.requirementKey) ?? new Map<string, boolean>();
-    codes.set(criterion.bc, (codes.get(criterion.bc) ?? true) && !claim.claimed);
-    proven.set(criterion.requirementKey, codes);
-  }
   return requirements.map((r) => ({
     key: r.key,
     title: r.title,
     completes: r.completes,
-    proven: [...(proven.get(r.key) ?? new Map<string, boolean>())]
-      .sort(([a], [b]) => byCode(a, b))
-      .map(([code, short]) => ({ code, statement: r.criteria.get(code) ?? '', short })),
-    unproven: claims.filter((c) => !c.proven && c.criterion.requirementKey === r.key).length,
+    ...criteriaOf(
+      claims.filter((c) => c.criterion.requirementKey === r.key),
+      r.criteria,
+    ),
   }));
+}
+
+/**
+ * The carried criteria under no requirement the page lists: of issues tracing none, or one the
+ * release record does not carry. Null where there are none, so the list sums to the header's total.
+ */
+export function untracedOf(
+  requirements: readonly CarriedRequirement[],
+  claims: readonly ClaimReading[],
+): ReleasePageCriteria | null {
+  const listed = new Set(requirements.map((r) => r.key));
+  const rest = claims.filter(
+    (c) => c.criterion.requirementKey === null || !listed.has(c.criterion.requirementKey),
+  );
+  return rest.length === 0 ? null : criteriaOf(rest, new Map());
 }
 
 /**

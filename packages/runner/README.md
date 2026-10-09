@@ -49,6 +49,7 @@ Size: functions stay under 100 lines (`clippy.toml`), files under 800 (`scripts/
 | `runners` | List runners registered for this device |
 | `master` | Look at, talk to, stand down and end this box's resident masters |
 | `question` | Ask a person on this box's pairing, and read the answer back |
+| `release` | `release range`: report what a release's commit range ships, read from the checkout that cut it, before `finish` |
 | `sync` | Pull the latest skills for bound projects now (one-shot) |
 | `update` | Self-update from the release manifest |
 

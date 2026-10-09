@@ -16,7 +16,14 @@ import type { ReleaseDetail } from '@forge/contracts/releases';
 import { HTTPException } from 'hono/http-exception';
 import { refuser } from '../lib/refusal.js';
 import { readRelease, readShipped, type ViewerFacts } from '../release-batch/index.js';
-import { type ClaimReading, knownIssuesOf, mediaOf, readClaims, requirementsOf } from './claims.js';
+import {
+  type ClaimReading,
+  knownIssuesOf,
+  mediaOf,
+  readClaims,
+  requirementsOf,
+  untracedOf,
+} from './claims.js';
 import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
@@ -122,13 +129,14 @@ export async function readReleasePage(args: {
   const shown = shownHighlights(row, page.facts, page.digest, page.build);
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
   const changes = changesOf(detail.notes);
-  const shipped = await readShipped(projectId, detail.version, page.build);
+  const shipped = await readShipped(projectId, detail.version, page.build, detail.runId);
   return {
     view,
     projectId,
     header: headerOf(detail),
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
+    untraced: untracedOf(page.requirements, page.claims),
     improvements: changes.improvements,
     fixes: changes.fixes,
     withoutNotes: changes.withoutNotes,

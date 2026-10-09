@@ -134,11 +134,12 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
 
 export async function findReleaseBatchRun(
   runId: string,
-): Promise<{ id: string; projectId: string } | null> {
+): Promise<{ id: string; projectId: string; version: string | null } | null> {
   const [run] = await db
     .select({
       id: pipelineRuns.id,
       projectId: pipelineRuns.projectId,
+      version: pipelineRuns.releaseVersion,
       metadata: pipelineRuns.metadata,
     })
     .from(pipelineRuns)
@@ -146,7 +147,9 @@ export async function findReleaseBatchRun(
     .limit(1);
   if (!run) return null;
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
-  return meta.source === 'release-batch' ? { id: run.id, projectId: run.projectId } : null;
+  return meta.source === 'release-batch'
+    ? { id: run.id, projectId: run.projectId, version: run.version }
+    : null;
 }
 
 export async function isOpenReleaseBatchRun(projectId: string, runId: string): Promise<boolean> {

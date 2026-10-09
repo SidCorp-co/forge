@@ -79,10 +79,14 @@ export function criterionStandingOf(
 	return latest.verdict;
 }
 
+/** How a verdict judged on one commit names it. */
+export const commitIdentityPhrase = (sha: string | null): string =>
+	`commit ${sha?.slice(0, 12)}`;
+
 export function identityPhraseOf(v: VerdictReading): string {
 	switch (v.identityKind) {
 		case "commit":
-			return `commit ${v.commitSha?.slice(0, 12)}`;
+			return commitIdentityPhrase(v.commitSha);
 		case "commit_unresolved":
 			return `abbreviated commit ${v.commitSha} (backfilled, never resolved)`;
 		case "runtime":

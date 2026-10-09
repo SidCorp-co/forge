@@ -3,7 +3,6 @@
 // peek and page draw them, so a state keeps one badge and nobody derives whom a release waits on in
 // the browser.
 
-import type { Said } from "./said.js";
 import type { CriterionStanding, IssueStatusTone } from "./issue-vocabulary.js";
 import type {
 	ArtifactChange,
@@ -11,7 +10,12 @@ import type {
 	LandingSurface,
 } from "./landing-artifacts.js";
 import type { RefusalStatuses } from "./refusal.js";
-import type { BcVerdict, CriteriaCoverage, RequirementState } from "./requirements.js";
+import type {
+	BcVerdict,
+	CriteriaCoverage,
+	RequirementState,
+} from "./requirements.js";
+import type { Said } from "./said.js";
 import type {
 	Standing,
 	StandingGroup,
@@ -718,6 +722,14 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_CARRIED_SHAPE",
 	"RELEASE_CARRIED_RUN_OPEN",
 	"RELEASE_CARRIED_SHIPPED",
+	/** A range report for a release that has no release shipped before it to start from. */
+	"RELEASE_RANGE_NO_BASE",
+	/** A range report starting anywhere but the commit the release shipped before it served. */
+	"RELEASE_RANGE_BASE_MOVED",
+	/** A range report that names a file the reader reads and does not send it. */
+	"RELEASE_RANGE_FILE_MISSING",
+	/** A range report that sends a file the reader does not read, or one its changes do not name. */
+	"RELEASE_RANGE_FILE_UNREAD",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -728,6 +740,8 @@ export const RELEASE_REFUSAL_STATUSES = {
 	RELEASE_CARRIED_RUN_OPEN: 409,
 	RELEASE_CARRIED_SHIPPED: 409,
 	CLAIM_CONFLICT: 409,
+	RELEASE_RANGE_NO_BASE: 409,
+	RELEASE_RANGE_BASE_MOVED: 409,
 } as const satisfies RefusalStatuses<ReleaseRefusalCode | ReleaseBlockerCode>;
 
 /** What production serves, read when asked and never stored (core `release-batch/serving-reading.ts`). */
