@@ -4,7 +4,7 @@
  *
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
- *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends)
+ *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording)
  *   POST /api/issues/:id/verdicts   one verdict on one criterion
  *   GET  /api/issues/:id/judged-build   the build a verdict on it defaults to (REQ-6 BC-2, BC-4)
  */

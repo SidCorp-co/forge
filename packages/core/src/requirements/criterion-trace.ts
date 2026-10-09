@@ -11,8 +11,11 @@ import { issues } from '../db/schema.js';
 import { requirementCriteria, requirements } from '../db/schema-requirements.js';
 
 export interface TraceWordings {
-  /** The issue's requirement, and the revision its plan was written against; null where it serves none. */
-  requirement: { seq: number; revision: number | null } | null;
+  /**
+   * The issue's requirement, the revision its plan was written against (its current one where it
+   * records none), and its current revision, the one coverage reads; null where it serves none.
+   */
+  requirement: { seq: number; revision: number | null; current: number | null } | null;
   wordings: {
     id: string;
     code: string;
@@ -45,7 +48,10 @@ export async function traceWordingsOf(tx: Tx, issueId: string): Promise<TraceWor
     })
     .from(requirementCriteria)
     .where(eq(requirementCriteria.requirementId, req.id));
-  return { requirement: { seq: req.seq, revision: req.planned ?? req.current }, wordings };
+  return {
+    requirement: { seq: req.seq, revision: req.planned ?? req.current, current: req.current },
+    wordings,
+  };
 }
 
 /** Of `ids`, the wordings of the issue's own requirement that are live, as `REQ-n BC-m`. */

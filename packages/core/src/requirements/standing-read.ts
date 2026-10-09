@@ -36,6 +36,7 @@ import {
   issueCriteriaOf,
   latestContractPinsOf,
   latestPinsOf,
+  liveBuildOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { awaitsReleaseOnly } from './standing-work.js';
@@ -245,18 +246,17 @@ export async function standingsOf(
     readEffectivePolicy(projectId),
   ]);
   const uncovered = await uncoveredOf(ids);
+  const linkedIds = linked.map((i) => i.id);
   const [people, issueCriteria, feedbackLinks, closedAt, changedTraced, work] = await Promise.all([
     peopleOf([...revisions.map((r) => r.authorId), ...rows.map((r) => r.ownerId)]),
-    issueCriteriaOf(linked.map((i) => i.id)),
+    issueCriteriaOf(linkedIds),
     feedbackLinksOf(projectId, ids),
     closedAtOf(linked.filter((i) => i.status === 'closed').map((i) => i.id)),
-    changedTracedOf(
-      db,
-      linked.map((i) => i.id),
-    ),
+    changedTracedOf(db, linkedIds),
     workFactsOf(projectId, rows, linked, viewer, now),
   ]);
   const { parkedWaits, release } = work;
+  const liveBuild = await liveBuildOf(projectId, issueCriteria);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
@@ -306,6 +306,7 @@ export async function standingsOf(
         issueCriteria: issueCriteria.filter((c) => issueIds.has(c.issueId)),
         openSuggestionKinds: by(open, row.id).map((s) => s.kind),
         uncovered: uncovered.get(row.id) ?? new Map(),
+        liveBuild,
         stalePins: stalePinsOf(by(pins, row.id)),
         staleContractPins: staleContractPinsOf(by(contracts, row.id), by(contractPins, row.id)),
         unapprovedDesigns: by(unapproved, row.id).map(({ flow, title, designStatus }) => ({

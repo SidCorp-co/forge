@@ -57,7 +57,7 @@ export function page(tab: "overview" | "criteria" | "revisions" | "decisions" | 
   renderWithQuery(<RequirementPage projectId={PROJECT} slug="hop" reqKey="REQ-1" tab={tab} onTab={() => {}} />, client(d));
 }
 
-const row = (code: string, verdict: BcVerdict) => ({ code, body: `Tieu chi ${code}`, verdict, issues: [], uncoveredReason: null });
+const row = (code: string, verdict: BcVerdict) => ({ code, body: `Tieu chi ${code}`, verdict, issues: [], counts: null, uncoveredReason: null });
 
 /** Every verdict at once: one passing, so k is 1 of 5 whatever a count that also took stale or not judged would say. */
 export const mixed = {

@@ -1,13 +1,14 @@
 /**
  * The facts a requirement's standing reads beyond its own rows: each linked issue criterion's
- * latest verdict that is still current evidence, and the latest baseline's design and contract pins
+ * latest verdict that is still current evidence with the commit it was judged at, and the latest baseline's design and contract pins
  * beside the revision or version each is approved at now.
  */
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { reopenedAtOf } from '../issues/index.js';
-import type { StandingIssueCriterion } from './standing.js';
+import { requirementDependents } from './dependents.js';
+import type { LiveBuildHolds, StandingIssueCriterion } from './standing.js';
 
 type CriterionVerdictRow = {
   issue_id: string;
@@ -15,6 +16,7 @@ type CriterionVerdictRow = {
   requirement_criterion_id: string;
   verdict: StandingIssueCriterion['verdict'];
   verdict_at: Date | string | null;
+  commit_sha: string | null;
 };
 
 export async function issueCriteriaOf(
@@ -23,10 +25,10 @@ export async function issueCriteriaOf(
 ): Promise<StandingIssueCriterion[]> {
   if (issueIds.length === 0) return [];
   const rows = (await ex.execute(sql`
-    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at
+    SELECT c.issue_id, c.n, c.requirement_criterion_id, v.verdict, v.verdict_at, v.commit_sha
       FROM issue_criteria c
       LEFT JOIN LATERAL (
-        SELECT cv.verdict, cv.created_at AS verdict_at FROM criterion_verdicts cv
+        SELECT cv.verdict, cv.created_at AS verdict_at, cv.commit_sha FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id
          ORDER BY cv.created_at DESC, cv.id DESC
          LIMIT 1
@@ -50,8 +52,21 @@ export async function issueCriteriaOf(
       requirementCriterionId: r.requirement_criterion_id,
       verdict: voided ? null : r.verdict,
       verdictAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
+      commit: voided ? null : r.commit_sha,
     };
   });
+}
+
+/** What the live build holds of the commits `rows`' judgements were made at; null where none names one or it cannot be read. */
+export async function liveBuildOf(
+  projectId: string,
+  rows: readonly StandingIssueCriterion[],
+): Promise<LiveBuildHolds | null> {
+  const commits = rows.flatMap((r) =>
+    r.commit && r.verdict !== null && r.verdict !== 'skipped' ? [r.commit] : [],
+  );
+  if (commits.length === 0) return null;
+  return requirementDependents().liveBuildHolds(projectId, commits);
 }
 
 type PinRow = {

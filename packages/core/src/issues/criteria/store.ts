@@ -29,7 +29,7 @@ import {
   traceTagOf,
 } from './criteria-text.js';
 
-const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
+export const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
 
 // status-tuple: differs — not ISSUE_DISPATCH_TERMINAL_STATUSES: where verdicts were earned, so the wording is frozen
 const LOCKED_STATUSES: ReadonlySet<string> = new Set(['awaiting_release', 'closed', 'dropped']);
@@ -72,7 +72,13 @@ export interface CriterionWithVerdict {
   readonly latest: LatestVerdict | null;
 }
 
-type LiveRow = { id: string; n: number; statement: string; requirementCriterionId: string | null };
+type LiveRow = {
+  id: string;
+  n: number;
+  statement: string;
+  position: number;
+  requirementCriterionId: string | null;
+};
 
 export async function liveRows(tx: Tx, issueId: string): Promise<LiveRow[]> {
   return tx
@@ -80,6 +86,7 @@ export async function liveRows(tx: Tx, issueId: string): Promise<LiveRow[]> {
       id: issueCriteria.id,
       n: issueCriteria.n,
       statement: issueCriteria.statement,
+      position: issueCriteria.position,
       requirementCriterionId: issueCriteria.requirementCriterionId,
     })
     .from(issueCriteria)
@@ -254,7 +261,7 @@ type Wording = TraceWordings['wordings'][number];
 type TraceWordings = Awaited<ReturnType<typeof traceWordingsOf>>;
 
 /** The one wording of `code` live at `revision`, or null where there is none or more than one. */
-function liveWordingAt(
+export function liveWordingAt(
   wordings: readonly Wording[],
   code: string,
   revision: number | null,
@@ -269,94 +276,6 @@ function liveWordingAt(
   return live.length === 1 ? (live[0] ?? null) : null;
 }
 
-const BC_CODE = /^BC-[1-9]\d*$/u;
-
-/**
- * Tie an issue to business criteria of its requirement: one new criterion per code, worded as the
- * BC is at the revision the issue was planned against and traced to that wording. It only appends,
- * so the criteria verdicts were earned on keep their wording, and it is taken at every status but
- * `dropped`: a closed issue is tied to what it delivered so its shipped work can be judged against
- * it. A code that is not `BC-<n>`, names no live wording, is sent twice, or is already traced by a
- * live criterion of this issue is refused by name, and nothing is written.
- */
-export async function appendTracedCriteria(
-  tx: Tx,
-  issueId: string,
-  codes: readonly string[],
-): Promise<boolean> {
-  const issue = await lockIssue(tx, issueId);
-  if (!issue) return false;
-  if (issue.status === 'dropped') {
-    throw refuseCriteria(
-      'CRITERIA_LOCKED',
-      'this issue is `dropped`: it delivers nothing, so no business criterion is tied to it; reopen it first',
-      '/codes',
-    );
-  }
-  const malformed = codes.find((code) => !BC_CODE.test(code));
-  if (malformed !== undefined) {
-    throw refuseCriteria(
-      'CRITERIA_TRACE_INVALID',
-      `\`${malformed}\` is not a business criterion code; send each as \`BC-<n>\`, as the requirement numbers them`,
-      '/codes',
-    );
-  }
-  const twice = codes.find((code, at) => codes.indexOf(code) !== at);
-  if (twice !== undefined) {
-    throw refuseCriteria('CRITERIA_INPUT_INVALID', `${twice} is sent twice`, '/codes');
-  }
-  const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
-  if (!req) {
-    throw refuseCriteria(
-      'CRITERIA_TRACE_UNRESOLVED',
-      'this issue serves no requirement: link it to the requirement it delivers first',
-      '/codes',
-    );
-  }
-  const rows = await liveRows(tx, issueId);
-  const tracedBy = new Map(
-    rows.flatMap((r) => {
-      const code = wordings.find((w) => w.id === r.requirementCriterionId)?.code;
-      return code ? [[code, r.n] as const] : [];
-    }),
-  );
-  let next = Math.max(0, ...rows.map((r) => r.n)) + 1;
-  let position = rows.length;
-  const added: Array<{ n: number; statement: string; requirementCriterionId: string }> = [];
-  for (const code of codes) {
-    const held = tracedBy.get(code);
-    if (held !== undefined) {
-      throw refuseCriteria(
-        'CRITERIA_TRACE_DUPLICATE',
-        `REQ-${req.seq} ${code} is already traced by criterion ${held} of this issue`,
-        '/codes',
-      );
-    }
-    const wording = liveWordingAt(wordings, code, req.revision);
-    if (!wording) {
-      throw refuseCriteria(
-        'CRITERIA_TRACE_UNRESOLVED',
-        `REQ-${req.seq} has no wording of ${code} live at revision ${req.revision ?? 'none'}, the one this issue was planned against`,
-        '/codes',
-      );
-    }
-    added.push({
-      n: next++,
-      statement: `(REQ-${req.seq} ${code}) ${wording.body.trim()}`,
-      requirementCriterionId: wording.id,
-    });
-  }
-  for (const c of added) {
-    await tx.insert(issueCriteria).values({ issueId, ...c, position: position++ });
-  }
-  const all = [...rows].sort((a, b) => a.n - b.n);
-  const text = renderCriteriaText(
-    [...all, ...added].map(({ n, statement }) => ({ n, statement: statement.trim() })),
-  );
-  await tx.update(issues).set({ acceptanceCriteria: text }).where(eq(issues.id, issueId));
-  return true;
-}
-
 /** Refuse a desired set whose numbers repeat or fall below 1, or whose statements are blank. */
 function inputFault(desired: readonly CriterionInput[]): string | null {
   const seen = new Set<number>();
@@ -369,7 +288,10 @@ function inputFault(desired: readonly CriterionInput[]): string | null {
   return null;
 }
 
-async function lockIssue(tx: Tx, issueId: string): Promise<{ id: string; status: string } | null> {
+export async function lockIssue(
+  tx: Tx,
+  issueId: string,
+): Promise<{ id: string; status: string } | null> {
   const [row] = await tx
     .select({ id: issues.id, status: issues.status })
     .from(issues)

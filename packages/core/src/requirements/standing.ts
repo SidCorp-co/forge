@@ -1,18 +1,16 @@
 /**
  * Where a requirement stands, derived from what was read and nothing else: the attention group the
  * list puts it under, whom it waits on and for what, the facts the list's secondary line prints,
- * and each business criterion's coverage by issue verdicts. Pure, so every rule below is a unit
- * test; `standing-read.ts` gathers the facts.
+ * and each business criterion's coverage by issue verdicts (`standing-coverage.ts`). Pure, so every
+ * rule below is a unit test; `standing-read.ts` gathers the facts.
  */
 
 import type { ReleaseLeg } from '@forge/contracts/forecast';
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
-  type BcVerdict,
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
-  type CoverageIssue,
   criteriaCoverageOf,
   type DeliveryPhase,
   draftIssuesToPromote,
@@ -27,12 +25,18 @@ import {
 import { type Said, say } from '@forge/contracts/said';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { RequirementStatus } from '../db/schema-requirements.js';
-import { liveAt } from './rules.js';
+import {
+  coverageOf,
+  type LiveBuildHolds,
+  type StandingIssueCriterion,
+} from './standing-coverage.js';
 import { designTurn, draftTurn, type StandingRevision } from './standing-draft.js';
 import { updateToApprovedAct, updateToApprovedEffect } from './standing-follow.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, workTurn } from './standing-work.js';
+
+export type { LiveBuildHolds, StandingIssueCriterion } from './standing-coverage.js';
 
 /** Untouched this long, an open requirement is listed as stuck. */
 const STUCK_AFTER_DAYS = 21;
@@ -62,14 +66,6 @@ export interface StandingIssue {
   parkedOn: ParkedWait | null;
 }
 
-export interface StandingIssueCriterion {
-  issueId: string;
-  n: number;
-  requirementCriterionId: string;
-  verdict: CoverageIssue['verdict'];
-  verdictAt: Date | null;
-}
-
 export interface StandingInput {
   status: RequirementStatus;
   owner: RequirementStanding['owner'];
@@ -87,6 +83,8 @@ export interface StandingInput {
   openSuggestionKinds: readonly string[];
   /** Per BC code, why the newest accepted breakdown naming it left it uncovered. */
   uncovered?: ReadonlyMap<string, string>;
+  /** What the live build holds of the verdict commits; null or absent where it was not read. */
+  liveBuild?: LiveBuildHolds | null;
   /** Linked designs the latest baseline leaves unpinned or pins below their approved revision. */
   stalePins: readonly { flow: string; title: string; pinned: number | null; approved: number }[];
   staleContractPins: readonly { contract: string; pinned: string | null; current: string }[];
@@ -112,7 +110,7 @@ export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
 /** What the delivery phase and coverage read, and nothing else. */
 type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
-  'status' | 'criteria' | 'issueCriteria' | 'uncovered'
+  'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild'
 > & { issues: readonly I[] };
 
 /** The input with its delivery phase read (`deliveryOf`). */
@@ -124,54 +122,6 @@ const ADMITTER = say('standing.who.signerAdmitter');
 function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
   if (status !== 'agreed') return status;
   return phase === 'in_delivery' || phase === 'delivered' ? phase : 'agreed';
-}
-
-// A business criterion is proven by the issue criteria that trace to it
-// (issue_criteria.requirement_criterion_id, ISS-55). Only links to the wording live at the shown
-// revision count as proof; a link to an earlier wording of the same code is stale evidence. Over
-// the live links: any latest verdict `fail` → failing; every one `pass` or `short` → passing;
-// otherwise (none yet, or `skipped`) → not judged. No live link but an earlier one → stale; no link
-// at all → gap, carrying the reason an accepted breakdown gave for leaving it uncovered. A dropped
-// issue proves nothing and is left out.
-function coverageOf(input: ProofInput, shownRevision: number | null): RequirementCoverage[] {
-  if (shownRevision === null) return [];
-  const live = liveAt(input.criteria, shownRevision);
-  const byId = new Map(input.criteria.map((c) => [c.id, c]));
-  const issues = new Map(
-    input.issues.filter((i) => i.status !== 'dropped').map((i) => [i.id, i] as const),
-  );
-  return live.map((bc) => {
-    const links = input.issueCriteria.flatMap((ic) => {
-      const wording = byId.get(ic.requirementCriterionId);
-      const issue = issues.get(ic.issueId);
-      if (!wording || wording.code !== bc.code || !issue) return [];
-      return [
-        {
-          issueId: issue.id,
-          displayId: issue.displayId,
-          title: issue.title,
-          status: issue.status,
-          tone: issue.tone,
-          criterion: ic.n,
-          verdict: ic.verdict,
-          verdictAt: ic.verdictAt?.toISOString() ?? null,
-          stale: wording.id !== bc.id,
-        } satisfies CoverageIssue,
-      ];
-    });
-    const verdict = verdictOf(links);
-    const why = verdict === 'gap' ? (input.uncovered?.get(bc.code) ?? null) : null;
-    return { code: bc.code, body: bc.body, verdict, issues: links, uncoveredReason: why };
-  });
-}
-
-function verdictOf(links: readonly CoverageIssue[]): BcVerdict {
-  if (links.length === 0) return 'gap';
-  const current = links.filter((l) => !l.stale);
-  if (current.length === 0) return 'stale';
-  if (current.some((l) => l.verdict === 'fail')) return 'failing';
-  if (current.every((l) => l.verdict === 'pass' || l.verdict === 'short')) return 'passing';
-  return 'not_judged';
 }
 
 const wait = (

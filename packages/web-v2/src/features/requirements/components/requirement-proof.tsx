@@ -121,7 +121,8 @@ function byIssue(links: CoverageIssue[]) {
 }
 
 /** Each business criterion once, as a checklist: its verdict's glyph dot, its code and the verdict's word,
- *  its wording, the issues tracing to it inline, and the per-criterion evidence behind an expander. */
+ *  its wording, the verdict that counts (the newest, with its issue, commit and time), the issues tracing
+ *  to it inline, and the per-criterion evidence behind an expander. */
 export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: string }) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -151,6 +152,13 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
               ) : (
                 <p className="text-14 leading-relaxed">{c.body}</p>
               )}
+              {c.counts ? (
+                <p className="mt-1 text-12-5 text-muted" data-testid="criterion-counts">
+                  {t("requirements.criteria.counts", { verdict: t(VERDICT_WORD[c.counts.verdict]), issue: c.counts.displayId, n: c.counts.criterion })}
+                  {c.counts.commit ? <span className="font-mono text-12"> · {c.counts.commit.slice(0, 9)}</span> : null}
+                  <span title={time.dateTime(c.counts.at)}> · {time.relative(c.counts.at)}</span>
+                </p>
+              ) : null}
               {crit && shown !== null && crit.sinceRevision === shown && shown > 1 ? (
                 <span className="mt-1 inline-block text-12 text-muted">{t("requirements.criteria.changedIn", { r: shown })}</span>
               ) : null}
@@ -180,8 +188,10 @@ export function CriteriaChecklist({ d, slug }: { d: RequirementDetail; slug: str
                       links.map((l) => (
                         <li key={`${i.issueId}-${l.criterion}`} className="text-muted" data-testid="criterion-evidence-row">
                           <span className="font-medium text-fg">{t(l.verdict ? VERDICT_WORD[l.verdict] : "requirements.criteria.notJudged")}</span>
-                          {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null} · {i.title}
-                          {l.stale ? t("requirements.criteria.tracesEarlier") : ""}{" "}
+                          {l.verdictAt ? <span title={time.dateTime(l.verdictAt)}> · {time.relative(l.verdictAt)}</span> : null}
+                          {l.commit ? <span className="font-mono text-12"> · {l.commit.slice(0, 9)}</span> : null} · {i.title}
+                          {l.stale ? t("requirements.criteria.tracesEarlier") : ""}
+                          {l.inLiveBuild === false ? t("requirements.criteria.notInLiveBuild") : ""}{" "}
                           <Link href={issueHref(slug, i.displayId)} className="whitespace-nowrap font-mono text-12 text-subtle hover:underline" data-testid="criterion-issue-key">
                             {i.displayId}
                           </Link>

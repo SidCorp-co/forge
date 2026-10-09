@@ -270,6 +270,29 @@ describe("tying a closed issue to its requirement's criteria", () => {
     await waitFor(() => expect(screen.queryByTestId("tie-form")).toBeNull());
   });
 
+  // coverage-truth: ISS-412's BC-13 trace sat on r1 after r6 reworded it; the dialog matched by code
+  // and showed it "already tied", so the current wording could never be tied on the issue delivering it
+  it("offers a BC tied only at an earlier wording, saying a tie refreshes it, and sends it", async () => {
+    const reworded = [{ code: "BC-13", body: "A new report or share destination is a port", verdict: "stale", issues: [{ issueId: "i1", stale: true }], uncoveredReason: null }];
+    const calls = fakeCore((c) => {
+      if (c.method === "GET" && c.path === "/issues/i1/criteria") return { body: { criteria: [] } };
+      if (c.method === "GET" && c.path === "/projects/p1/requirements/REQ-32") return { body: { standing: { coverage: reworded } } };
+      if (c.method === "POST" && c.path === "/issues/i1/criteria/traces") return { status: 201, body: { criteria: [] } };
+      return undefined;
+    });
+    const user = userEvent.setup();
+    renderWithQuery(<CriteriaTab issue={issue()} projectId="p1" hasCriteriaRows={false} checklist={[]} canWrite requirementKey="REQ-32" />);
+    await user.click(screen.getByRole("button", { name: "Tie to REQ-32 criteria" }));
+    const form = await screen.findByTestId("tie-form");
+    const box = await within(form).findByRole("checkbox", { name: /BC-13 .* · tied to an earlier wording; tying refreshes it to this one/ });
+    expect(box).not.toBeChecked();
+    expect(box).not.toHaveAttribute("data-disabled");
+    expect(form).not.toHaveTextContent("already tied");
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: "Tie 1" }));
+    await waitFor(() => expect(calls).toContainEqual({ method: "POST", path: "/issues/i1/criteria/traces", body: { codes: ["BC-13"] } }));
+  });
+
   it("shows core's refusal by name", async () => {
     fakeCore((c) => {
       if (c.method === "GET" && c.path === "/issues/i1/criteria") return { body: { criteria: [] } };

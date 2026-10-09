@@ -243,7 +243,7 @@ interface IssuePorts {
     tx: Tx,
     issueId: string,
   ) => Promise<{
-    requirement: { seq: number; revision: number | null } | null;
+    requirement: { seq: number; revision: number | null; current: number | null } | null;
     wordings: {
       id: string;
       code: string;

@@ -11,7 +11,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { consume, emitEvent } from '../outbox/index.js';
-import { deliveryIn } from './acceptance.js';
+import { deliveryIn, liveBuildOfRequirement } from './acceptance.js';
 
 async function noticeDelivered(issueId: string): Promise<void> {
   const [row] = await db
@@ -28,7 +28,8 @@ async function noticeDelivered(issueId: string): Promise<void> {
     .where(eq(issues.id, issueId));
   if (row?.status !== 'agreed' || row.currentRevision === null) return;
   const revision = row.currentRevision;
-  const { delivery } = await deliveryIn(db, row.projectId, row);
+  const liveBuild = await liveBuildOfRequirement(row.projectId, row.id);
+  const { delivery } = await deliveryIn(db, row.projectId, row, liveBuild);
   if (delivery.phase !== 'delivered') return;
   await db.transaction((tx) =>
     emitEvent(tx, 'requirement.delivered', {

@@ -157,8 +157,10 @@ export function RecordVerdict({ issueId, row }: { issueId: string; row: Criterio
 
 /**
  * Tie the issue to business criteria of its requirement: the requirement's BCs, those this issue
- * already traces shown ticked and fixed, the rest to pick. Each picked BC becomes a criterion of the
- * issue worded as the BC, so it can be judged.
+ * already traces at their current wording shown ticked and fixed, the rest to pick. Each picked BC
+ * becomes a criterion of the issue worded as the BC is now, so it can be judged. A BC this issue
+ * traces only at an earlier wording is matched as coverage matches it, by wording: it is pickable,
+ * and tying it refreshes that criterion to the current wording, to be judged again.
  */
 export function TieCriteria({
   issueId,
@@ -174,7 +176,10 @@ export function TieCriteria({
   const [picked, setPicked] = useState<string[]>([]);
   const bcs = useRequirementCriteria(projectId, open ? requirementKey : null);
   const tie = useTraceCriteria(issueId, projectId, requirementKey);
-  const held = new Set((bcs.data ?? []).filter((bc) => bc.issues.some((i) => i.issueId === issueId)).map((bc) => bc.code));
+  const mine = (bc: { issues: { issueId: string; stale: boolean }[] }) => bc.issues.filter((i) => i.issueId === issueId);
+  const held = new Set((bcs.data ?? []).filter((bc) => mine(bc).some((i) => !i.stale)).map((bc) => bc.code));
+  const earlier = new Set((bcs.data ?? []).filter((bc) => !held.has(bc.code) && mine(bc).some((i) => i.stale)).map((bc) => bc.code));
+  const note = (code: string) => (held.has(code) ? ` · ${t("issues.tieAct.held")}` : earlier.has(code) ? ` · ${t("issues.tieAct.earlier")}` : "");
   const close = () => {
     setOpen(false);
     setPicked([]);
@@ -206,7 +211,7 @@ export function TieCriteria({
                     checked={held.has(bc.code) || picked.includes(bc.code)}
                     disabled={held.has(bc.code)}
                     onChange={(on) => toggle(bc.code, on)}
-                    label={`${bc.code} ${bc.body}${held.has(bc.code) ? ` · ${t("issues.tieAct.held")}` : ""}`}
+                    label={`${bc.code} ${bc.body}${note(bc.code)}`}
                   />
                 </li>
               ))}
