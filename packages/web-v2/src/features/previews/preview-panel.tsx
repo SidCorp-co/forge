@@ -11,8 +11,6 @@ import { Banner, Button, Skeleton, Textarea, ViewHeading } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils/cn";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { useCurrentProject } from "@/features/projects/current-project";
-import { settingsHref } from "@/features/project-settings/sections";
 import { useAbandonPreview, useApprovePreview, useIssueLane, useOpenPreview, usePreview, useSendPreviewMessage } from "./hooks";
 import { PreviewFrame } from "./preview-frame";
 
@@ -37,6 +35,8 @@ export interface PreviewPanelProps {
   compact?: boolean;
   /** Classes for the section itself, so a wrapper never stands empty where the panel draws nothing. */
   className?: string;
+  /** Where the project's preview settings are, from the page that mounts the panel; no link is drawn without it. */
+  settingsHref?: string;
 }
 
 export function PreviewPanel(props: PreviewPanelProps) {
@@ -86,7 +86,7 @@ function Refusal({ error, lead }: { error: unknown; lead: string }) {
   );
 }
 
-function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compact }: PreviewPanelProps & { preview: PreviewRecord }) {
+function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compact, settingsHref }: PreviewPanelProps & { preview: PreviewRecord }) {
   const t = useCopy();
   const open = useOpenPreview(issueId);
   const approve = useApprovePreview(issueId);
@@ -140,7 +140,7 @@ function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compa
           {preview.detail ? <p className="fg-caption text-muted">{preview.detail}</p> : null}
         </>
       ) : null}
-      {preview.state === "failed" ? <FailureNote preview={preview} /> : null}
+      {preview.state === "failed" ? <FailureNote preview={preview} settingsHref={settingsHref} /> : null}
       {(preview.state === "failed" || preview.state === "abandoned") && canWrite && hasLiveRun ? (
         <div>
           <Button size="sm" variant="secondary" loading={open.isPending} onClick={() => open.mutate()}>
@@ -154,9 +154,8 @@ function PreviewBody({ preview, issueId, issueLabel, canWrite, hasLiveRun, compa
 }
 
 /** Why it did not start, in the three words the criterion names and the other ways the same promise breaks. */
-function FailureNote({ preview }: { preview: PreviewRecord }) {
+function FailureNote({ preview, settingsHref }: { preview: PreviewRecord; settingsHref?: string }) {
   const t = useCopy();
-  const slug = useCurrentProject()?.slug;
   if (!preview.reason) {
     // a failed preview with no reason is core's defect; say so rather than draw an empty failure
     return <Banner tone="danger">{t("previews.failed.lead")}</Banner>;
@@ -172,8 +171,8 @@ function FailureNote({ preview }: { preview: PreviewRecord }) {
           {preview.detail}
         </pre>
       ) : null}
-      {slug && SETTINGS_REASONS.includes(preview.reason) ? (
-        <a className="fg-body-sm text-link hover:underline" href={settingsHref(slug, "preview")}>
+      {settingsHref && SETTINGS_REASONS.includes(preview.reason) ? (
+        <a className="fg-body-sm text-link hover:underline" href={settingsHref}>
           {t("previews.failed.openSettings")}
         </a>
       ) : null}

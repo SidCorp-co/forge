@@ -6,9 +6,10 @@
 // of the issue, or any other page, draws nothing.
 
 import { useIssue } from "@/features/issues/detail-hooks";
+import { settingsHref } from "@/features/project-settings/sections";
 import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
-import { PreviewPanel } from "./preview-panel";
+import { PreviewPanel } from "@/features/previews/preview-panel";
 
 const ISSUE_PAGE = /^\/projects\/[^/]+\/issues\/([^/?#]+)/;
 
@@ -29,7 +30,8 @@ function IssuePreview({ id, projectId }: { id: string; projectId: string }) {
   const projectsQ = useProjects();
   const issue = issueQ.data;
   if (!issue) return null;
-  const role = projectsQ.data?.find((p) => p.id === projectId)?.role;
+  const project = projectsQ.data?.find((p) => p.id === projectId);
+  const role = project?.role;
   return (
     <PreviewPanel
       compact
@@ -37,6 +39,7 @@ function IssuePreview({ id, projectId }: { id: string; projectId: string }) {
       issueId={issue.id}
       issueLabel={issue.displayId}
       canWrite={canWriteProject(role)}
+      settingsHref={project ? settingsHref(project.slug, "preview") : undefined}
       hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
     />
   );

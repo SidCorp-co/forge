@@ -12,6 +12,8 @@ import {
 } from "@/design";
 import type { IssueStepOutcome } from "@forge/contracts/issue-standing";
 import { PreviewPanel } from "@/features/previews/preview-panel";
+import { settingsHref } from "@/features/project-settings/sections";
+import { useCurrentProject } from "@/features/projects/current-project";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
@@ -42,6 +44,7 @@ export function OverviewTab({
   canWrite: boolean;
 }) {
   const t = useCopy();
+  const slug = useCurrentProject()?.slug;
   return (
     <div className="grid gap-8" data-testid="view-overview">
       <ReleaseNoteCard issue={issue} />
@@ -56,6 +59,7 @@ export function OverviewTab({
         issueId={issue.id}
         issueLabel={issue.displayId}
         canWrite={canWrite}
+        settingsHref={slug ? settingsHref(slug, "preview") : undefined}
         hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
       />
       <section aria-label={t("issues.plan.title")}>

@@ -5,7 +5,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { DockPreview, issuePageOf } from "./dock-preview";
-import { ISSUE_ID, PREVIEW_ID, PROJECT_ID, previewOf, ticketBody } from "./fixtures";
+import { ISSUE_ID, PREVIEW_ID, PROJECT_ID, previewOf, ticketBody } from "@/features/previews/fixtures";
 
 const issue = (over: Record<string, unknown> = {}) => ({
   id: ISSUE_ID,
