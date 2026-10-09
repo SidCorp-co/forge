@@ -13,6 +13,9 @@
 # The runner is NOT cloud. It sits at 0.9.x against cloud's 0.3.x and is cut with
 # `runner-vX.Y.Z` by its own workflow; bumping the two together walks it backwards.
 #
+# Refused RELEASE_SUITE_NOT_GREEN unless the commit it cuts from has a green whole-suite run (step
+# 1b); `gh` must be able to read the repository's check runs for that.
+#
 # Usage: scripts/cut-release.sh X.Y.Z[-rc.N|-dev.N] --headline "plain-language summary" [--no-push]
 set -euo pipefail
 
@@ -35,7 +38,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --headline) [ $# -ge 2 ] || die "--headline needs a value"; HEADLINE="$2"; shift 2;;
     --no-push)  PUSH=0; shift;;
-    -h|--help)  sed -n '1,15p' "$0"; exit 0;;
+    -h|--help)  sed -n '1,19p' "$0"; exit 0;;
     -*)         die "unknown flag $1";;
     *)          [ -z "$NEW" ] || die "version given twice ($NEW, then $1)"; NEW="$1"; shift;;
   esac
@@ -82,6 +85,15 @@ done
 BULLETS=${#FRAGMENT_FILES[@]}
 [ "$BULLETS" -gt 0 ] || die "no fragments under $FRAGMENTS/ — nothing to release"
 grep -q '^## \[Unreleased\]' "$RECORD" && die "$RECORD still carries \`## [Unreleased]\`; move its entries to $FRAGMENTS/<name>.<section>.md and delete the heading"
+
+# ---- step 1b: the whole suite is green on the commit this cut ships -------
+# REQ-36 BC-10: a release is cut only on a commit whose whole-suite run is green, read from the
+# `whole-suite` check run CI left on it (scripts/whole-suite.mjs). With none there and none in
+# flight, it starts one on this branch's head, which is this commit, and refuses; the cut is taken
+# again once that run is green. It runs after every other refusal above so a cut refused for
+# something else starts nothing. A read that fails refuses too: a gate that cannot read never passes.
+SUITE=$(node scripts/whole-suite.mjs gate --commit "$LOCAL" --branch "$RELEASE_BRANCH" --dispatch 2>&1) || die "$SUITE"
+printf '%s\n' "$SUITE"
 
 # ---- step 2: atomic version bump ------------------------------------------
 # Written to a staging directory and verified to agree BEFORE anything moves, so

@@ -29,20 +29,29 @@ on:
   pull_request:
     branches: [main, dev]
     paths-ignore: ['**']
-  # The heavy jobs a pull request no longer waits on also run nightly, 19:00 UTC (ISS-1370), so a
-  # red one is found on a day nothing landed as well.
+  # The whole suite, nightly at 19:00 UTC (REQ-36 BC-10, ISS-471): every job, the change filter not
+  # consulted. GitHub runs a schedule on the default branch alone, so that run is the default
+  # branch's, and its `nightly-fanout` job starts the same on the head of every other gated branch.
   schedule:
     - cron: '0 19 * * *'
-  # The same heavy jobs on a branch before it lands, which a pull request no longer runs:
-  # `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. `base` is required and
-  # has no default, because GitHub cannot know where a dispatched branch lands and every
-  # delta-scoped gate measures against it (`scripts/lib/base-branch.mjs`).
+  # A branch before it lands: `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`
+  # runs the jobs its changes select plus the post-merge ones, which a pull request no longer runs.
+  # `-f suite=whole` runs the whole suite on the branch's head instead, which is what a release cut
+  # starts on its commit when that commit has none (`scripts/whole-suite.mjs gate`). `base` is
+  # required and has no default, because GitHub cannot know where a dispatched branch lands and
+  # every delta-scoped gate measures against it (`scripts/lib/base-branch.mjs`).
   workflow_dispatch:
     inputs:
       base:
         description: 'The branch this work lands on (main or dev); the gates measure against it'
         required: true
         type: string
+      suite:
+        description: 'changed: the jobs the changes select, plus the post-merge ones. whole: every job, the filter not consulted'
+        required: false
+        type: choice
+        options: [changed, whole]
+        default: changed
 
 # A pull request's newer run cancels its older one. A push run is never cancelled: since ISS-1370
 # the heavy jobs run only there, and a landing cancelled by the next one would be measured by
@@ -316,8 +325,7 @@ jobs:
       # past red carries two parents too. Anything else, or a read that fails, is
       # `proved=false` with its reason logged, so a DIRECT push — the owner lane,
       # which sees no pull_request run at all — keeps the full gate. It went red 16
-      # times in that same window. `scripts/lib/proved-step.test.mjs` runs this
-      # shell as written.
+      # times in that same window.
       # The cheap always-on jobs (lang-check, conformance, archmap, docs,
       # retired-model, install-check) are NOT gated on this: they cost seconds,
       # they are ungated by paths-filter on purpose, and `docs` walks the whole
@@ -367,10 +375,10 @@ jobs:
           echo "proved=$proved" >> "$GITHUB_OUTPUT"
           echo "why: $why"
           echo "pull_request run already proved this tree: $proved"
-      # A scheduled run has no pushed range to diff, and its jobs select on the event instead.
+      # A whole-suite run consults no filter: its jobs select on the event instead.
       - uses: dorny/paths-filter@v4
         id: filter
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' && inputs.suite != 'whole'
         with:
           # NB: dorny/paths-filter treats `!pattern` entries as separate
           # positive matchers ("match files NOT matching pattern"), not as
@@ -444,7 +452,7 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.web == 'true')
+    if: (needs.changes.outputs.proved != 'true' && needs.changes.outputs.web == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -464,7 +472,7 @@ jobs:
 
   core:
     needs: changes
-    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true')
+    if: (needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true')) || github.event_name == 'schedule' || inputs.suite == 'whole'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -523,7 +531,7 @@ jobs:
   # runner-release.yml, so a red leg here is found before or at the release.
   runner:
     needs: changes
-    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.runner == 'true')
+    if: (needs.changes.outputs.proved != 'true' && needs.changes.outputs.runner == 'true') || github.event_name == 'schedule' || inputs.suite == 'whole'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -615,7 +623,7 @@ jobs:
 
   docs:
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.outputs.docs == 'true' || github.event_name == 'schedule' || inputs.suite == 'whole'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -667,6 +675,110 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-workspace
       - run: node scripts/check-whole-tree-gates.mjs --run
+
+  # ───────────────────────────────────────────────────────────────────────
+  # The whole suite (REQ-36 BC-10, BC-11; ISS-471). On a schedule, or a dispatch with `suite: whole`,
+  # every job above runs on one commit and no filter is consulted, and this job is the one verdict:
+  # its check run on the commit is what `scripts/cut-release.sh` reads before a release is cut
+  # (RELEASE_SUITE_NOT_GREEN). Unlike `ci-passed`, a SKIPPED job is red here — a whole suite that
+  # skipped a job did not run the whole suite. No push or pull request reaches it (BC-17): a merge
+  # is checked by its own scoped gate, never by this one. `.forge/conformance.json` `$wholeSuite`
+  # declares these three jobs for conformance-audit R12.
+  whole-suite:
+    if: always() && (github.event_name == 'schedule' || inputs.suite == 'whole')
+    needs:
+      [
+        install-check,
+        lang-check,
+        conformance,
+        retired-model,
+        archmap,
+        changes,
+        web,
+        core,
+        runner,
+        docs,
+        core-integration,
+        runner-platforms,
+        images,
+        whole-tree,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job of the whole suite to have succeeded
+        run: |
+          failed=""
+          for r in \
+            "install-check:${{ needs.install-check.result }}" \
+            "lang-check:${{ needs.lang-check.result }}" \
+            "conformance:${{ needs.conformance.result }}" \
+            "retired-model:${{ needs.retired-model.result }}" \
+            "archmap:${{ needs.archmap.result }}" \
+            "changes:${{ needs.changes.result }}" \
+            "web:${{ needs.web.result }}" \
+            "core:${{ needs.core.result }}" \
+            "runner:${{ needs.runner.result }}" \
+            "docs:${{ needs.docs.result }}" \
+            "core-integration:${{ needs.core-integration.result }}" \
+            "runner-platforms:${{ needs.runner-platforms.result }}" \
+            "images:${{ needs.images.result }}" \
+            "whole-tree:${{ needs.whole-tree.result }}"; do
+            echo "$r"
+            result="${r##*:}"
+            if [ "$result" != "success" ]; then
+              echo "::error::whole suite: job '${r%%:*}' did not succeed (result=$result)"
+              failed="$failed ${r%%:*}"
+            fi
+          done
+          if [ -n "$failed" ]; then
+            echo "whole suite red:$failed"
+            exit 1
+          fi
+          echo "whole suite green: every job succeeded"
+
+  # A red whole-suite run names the merge that broke it (BC-11): it bisects the first-parent
+  # landings since the last green whole-suite run by what CI recorded on each, and names one merge
+  # and the issue it carries, or the range and every merge in it where no record separates them.
+  # It reads; it reruns and dispatches nothing.
+  suite-bisect:
+    needs: whole-suite
+    if: always() && (github.event_name == 'schedule' || inputs.suite == 'whole') && needs.whole-suite.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    steps:
+      # fetch-depth: 0 — the bisect walks the branch's first-parent history back to the last green run.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Name the merge that turned the whole suite red
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/whole-suite.mjs bisect --commit "$GITHUB_SHA" --run "$GITHUB_RUN_ID"
+
+  # The nightly whole suite on every gated branch, not only the default one a schedule runs on. A
+  # dispatch made with GITHUB_TOKEN is the one event that token may start a run with. The branches
+  # are read from this file's own `on.push.branches`, so the set is not written a fourth time (R11).
+  nightly-fanout:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Start the whole suite on every other gated branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/whole-suite.mjs fanout --ran-on "$GITHUB_REF_NAME"
 
   # ───────────────────────────────────────────────────────────────────────
   # Single aggregate gate. Branch protection should require ONLY this check

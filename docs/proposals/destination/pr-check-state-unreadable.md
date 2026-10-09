@@ -47,6 +47,16 @@ is an inference, not the check.
 3. **A `forge github` verb**, so the terminal reaches the same face the MCP client does. This is
    the one ISS-1114 gestured at and is the largest; it is a surface, not a fix.
 
+## A red whole-suite run reaches no issue either
+
+ISS-471 (REQ-36 BC-11) names the merge a red whole-suite run bisects to, in the `suite-bisect` job's
+summary on GitHub (`scripts/whole-suite.mjs`). Issue to release r20 `rule-suite` then sends that
+merge's issue back to reopen with the failing jobs as its reason, and nothing does: the
+`whole-suite` check run reaches core's projection with every other `check_run` delivery, and nothing
+reads it there. Answer 2 above, keyed by a commit instead of a pull request, is the read that move
+would stand on. The other route, a Forge credential in CI, puts a token where every step of every
+job can read it.
+
 ## Honest costs
 
 | What adopting it takes | From whom |

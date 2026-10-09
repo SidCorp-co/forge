@@ -27,8 +27,13 @@ web dev server) and exercise the criterion's happy, negative and boundary cases 
 Then run `pnpm tc:changed` and only the DIRECT tests: the test files you touched and those beside each
 source you touched (`npx vitest run <files>` in the package), plus integration files you touched, by
 path. Not the whole suites, not `pnpm test:changed` (its import graph widens a one-file change to most
-of the tree). `pnpm verify` — the conformance entrypoint — runs at merge; the whole suites run nightly
-and before a release cut.
+of the tree). `pnpm verify` — the conformance entrypoint — runs at merge; the whole suite runs nightly
+and on each release cut's commit.
+
+**A release is cut only on a commit whose whole suite is green.** `scripts/cut-release.sh` reads the
+`whole-suite` check on its commit and refuses `RELEASE_SUITE_NOT_GREEN` otherwise; with none there
+and none running it starts one (`-f suite=whole`, about fifteen minutes) and the cut is taken again
+once it is green. A red one names the merge that broke it in its `suite-bisect` job (ISS-471).
 
 **The gate is CI, not your laptop.** `verify` declares the test suites and the build rather than
 running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is red — the one
@@ -41,8 +46,10 @@ by the next run to land: read `main`'s latest run before you push. To run them o
 `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`.
 
 **On `dev`, pushes and pull requests skip CI** — this branch's `ci.yml` sets `paths-ignore: ['**']`
-on both (ISS-118, until dev is promoted to `main` or the owner re-enables it). Only the nightly
-schedule and a dispatch run it here.
+on both (ISS-118, until dev is promoted to `main` or the owner re-enables it). Only a dispatch runs
+it here: GitHub runs a schedule on the default branch alone, which is `main`, so no nightly run has
+ever reached dev. `ci.yml`'s `nightly-fanout` starts dev's from `main`'s nightly run once this
+file is on `main`; until then dev's whole suite runs when a release cut starts it.
 
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not

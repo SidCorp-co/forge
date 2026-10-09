@@ -152,23 +152,33 @@ function workflowJobs(text) {
   return jobs;
 }
 
-// R12: every ci.yml job either gates the merge or is declared as running after it, never both.
+// R12: every ci.yml job gates the merge, runs after it, or judges the whole suite — exactly one.
 const postMerge = manifest.$postMerge?.jobs ?? [];
+const wholeSuite = manifest.$wholeSuite?.jobs ?? [];
 const ciJobs = ciYml === null ? null : workflowJobs(ciYml);
 const gateNeeds = ciPassedNeeds(ciYml ?? '') ?? [];
+const classes = [
+  ['ci-passed.needs', gateNeeds],
+  ['$postMerge.jobs', postMerge],
+  ['$wholeSuite.jobs', wholeSuite],
+];
 const partitionFaults =
   ciJobs === null
     ? null
     : [
         ...ciJobs
-          .filter((j) => j !== 'ci-passed' && !gateNeeds.includes(j) && !postMerge.includes(j))
-          .map((j) => `${j}: neither in ci-passed.needs nor in $postMerge.jobs`),
-        ...postMerge
-          .filter((j) => gateNeeds.includes(j))
-          .map((j) => `${j}: in $postMerge.jobs and in ci-passed.needs`),
-        ...postMerge
-          .filter((j) => !ciJobs.includes(j))
-          .map((j) => `${j}: in $postMerge.jobs and no such job in ci.yml`),
+          .filter((j) => j !== 'ci-passed' && !classes.some(([, jobs]) => jobs.includes(j)))
+          .map((j) => `${j}: in none of ${classes.map(([name]) => name).join(', ')}`),
+        ...ciJobs.flatMap((j) => {
+          const held = classes.filter(([, jobs]) => jobs.includes(j)).map(([name]) => name);
+          return held.length > 1 ? [`${j}: in ${held.join(' and in ')}`] : [];
+        }),
+        ...[
+          ...postMerge.map((j) => ['$postMerge.jobs', j]),
+          ...wholeSuite.map((j) => ['$wholeSuite.jobs', j]),
+        ]
+          .filter(([, j]) => !ciJobs.includes(j))
+          .map(([name, j]) => `${j}: in ${name} and no such job in ci.yml`),
       ];
 
 const NON_BLOCKING = new Set(['warn', 'info', 'on']);
@@ -380,15 +390,15 @@ const RULES = [
   },
   {
     id: 'R12',
-    text: 'every CI job gates the merge or is declared as running after it, and none is both',
+    text: 'every CI job gates the merge, runs after it, or judges the whole suite, and is exactly one',
     pass: partitionFaults === null ? null : partitionFaults.length === 0,
     detail:
       partitionFaults === null
         ? 'no .github/workflows/ci.yml'
         : partitionFaults.length > 0
           ? partitionFaults.join(' · ')
-          : `${gateNeeds.length} gate the merge, ${postMerge.length} run after it${postMerge.length ? ` (${postMerge.join(', ')}, ${manifest.$postMerge.issue ?? 'no issue named'})` : ''}`,
-    why: 'a job left out of ci-passed.needs blocks nothing and says so nowhere: its red shows on a run nobody is required to read. ISS-1370 moved four jobs after the merge on purpose, and .forge/conformance.json $postMerge is where that is priced; a job outside both lists was moved by nobody, and one in both is a declaration that no longer describes the gate',
+          : `${gateNeeds.length} gate the merge, ${postMerge.length} run after it${postMerge.length ? ` (${postMerge.join(', ')}, ${manifest.$postMerge.issue ?? 'no issue named'})` : ''}, ${wholeSuite.length} judge the whole suite${wholeSuite.length ? ` (${wholeSuite.join(', ')}, ${manifest.$wholeSuite.issue ?? 'no issue named'})` : ''}`,
+    why: 'a job left out of ci-passed.needs blocks nothing and says so nowhere: its red shows on a run nobody is required to read. ISS-1370 moved four jobs after the merge on purpose, and .forge/conformance.json $postMerge is where that is priced; ISS-471 added three that run only in a whole-suite run, declared in $wholeSuite; a job in none of the lists was placed by nobody, and one in two is a declaration that no longer describes the gate',
   },
 ];
 

@@ -15,7 +15,9 @@ and `runner-platforms` (the runner's macOS and Windows legs) run on every push t
 nightly, never on a pull request, and sit outside `ci-passed`'s `needs`. A red there is fixed forward
 by whichever run lands next. The owner ruled it for forge-dev while it is a beta with no production;
 `.forge/conformance.json` `$postMerge` names the four, what the move costs and what ends it, and
-conformance-audit R12 fails on a job that is in neither list or in both. So the `selection` row
+conformance-audit R12 fails on a job that is in no list or in two. **Three more gate no merge
+either**: `whole-suite`, `suite-bisect` and `nightly-fanout` run only in a whole-suite run, declared
+in `$wholeSuite` (ISS-471) — see *whole-suite.mjs* below. So the `selection` row
 below measures after the merge, not before it. The runner's trade is narrower: its
 compile and lint errors for all three targets still gate the pull request, because the ubuntu
 `runner` job clippies `x86_64-pc-windows-gnu` and `x86_64-apple-darwin` too — the class of #816, an
@@ -886,6 +888,33 @@ The verdict half is in `lib/release-record.mjs`, the fragment shape in `lib/chan
 and the correction pairing in `lib/entry-correction.mjs`, so each can be tested without a git tree;
 the CLI reads git and exits.
 
+## whole-suite.mjs — the whole suite on one commit, the cut it gates, and the merge it names
+
+REQ-36 BC-10 and BC-11, as Issue to release r20 draws `rule-suite`. A **whole-suite run** is `ci.yml`
+on a schedule, or dispatched with `-f suite=whole`: the change filter is not consulted, every job
+runs, and the `whole-suite` job concludes success only when every one of them succeeded. A skipped
+job is red there, which is the opposite of `ci-passed`, because a whole suite that skipped a job did
+not run the whole suite. No push or pull request reaches it (BC-17).
+
+| Act | Where it runs | What it reads | What it answers |
+|---|---|---|---|
+| `gate --commit <sha> --branch <b> --dispatch` | `cut-release.sh` step 1b, on the box cutting | the `whole-suite` check on the commit; the CI runs in flight on it | 0 green · 1 `RELEASE_SUITE_NOT_GREEN`, starting the whole suite on the branch when nothing has and nothing is running · 2 could not read |
+| `bisect --commit <sha> --run <id>` | `suite-bisect`, on a red whole-suite run | the run's failing jobs; the first-parent landings since the last green whole-suite run, and the check runs recorded on each | the merge that broke it and the issue it names, or the range and every merge in it |
+| `fanout --ran-on <branch>` | `nightly-fanout`, on a schedule | `on.push.branches` of `ci.yml` | a whole-suite dispatch onto every other gated branch |
+
+**The bisect reads, it reruns nothing.** A landing reads good on a green whole-suite run, or where
+every failing job recorded success on it; bad on a red whole-suite run or a failing job's recorded
+failure. A check of another name is not read, since a merge check runs a selection and may not have
+run the test now failing. The broken merge lies after the last good landing and at or before the
+first bad one after it; where no record separates the landings between, the range is named whole.
+On dev, where pushes run no CI (ISS-118), the records are the whole-suite runs each cut starts, so
+the range is the landings between two cuts.
+
+**GitHub runs a schedule on the default branch only.** The nightly run is `main`'s, and dev's comes
+from `main`'s `nightly-fanout` — so it starts once this `ci.yml` is on `main`. A dispatch made with
+`GITHUB_TOKEN` is the one event that token may start a run with, which is why the fan-out needs no
+other credential.
+
 ## check-source-language.mjs — English-only source policy
 
 Fails if any `.ts`/`.tsx`/`.md` file under `packages/web-v2/src/` or `packages/core/src/` contains non-allowlisted diacritics. See ISS-65 for context — the project is English-only across UI strings, identifiers, comments, docs, and tests, after ISS-43 leaked Vietnamese copy onto `main`.
@@ -1055,7 +1084,7 @@ printing `0 violations`.
 | R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 | R11 | one branch set across the merge gate, and the merge target is in it | `ci.yml` triggered on `[main]` alone, so a pull request into any other base would have run no CI at all and reported no failure (ISS-1304) |
-| R12 | every `ci.yml` job but `ci-passed` is in its `needs` or in `$postMerge.jobs`, never both, and every declared job exists | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere |
+| R12 | every `ci.yml` job but `ci-passed` is in exactly one of its `needs`, `$postMerge.jobs` and `$wholeSuite.jobs`, and every declared job exists | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere. ISS-471 added the third list |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two

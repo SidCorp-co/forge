@@ -2,6 +2,8 @@ const GATED_HEADER =
   'A green here does not cover these — CI runs them, and ci-passed gates the merge:';
 const AFTER_MERGE_HEADER =
   'Nor these — CI runs them after the merge, on main, nightly and on a dispatch, and ci-passed does not gate them:';
+const WHOLE_SUITE_HEADER =
+  'Nor these — CI runs them only in a whole-suite run, nightly and on a release cut commit:';
 const OFF_TREE_HEADER =
   'Nor these, which ci-passed does not gate either — read them on the pull request:';
 
@@ -10,13 +12,14 @@ function section(header, entries) {
   return ['', `  ${header}`, ...[...new Set(entries)].sort().map((e) => `    ${e}`)];
 }
 
-export function notRunHereLines(elsewhere, afterMerge, offTree) {
-  if (elsewhere.length === 0 && afterMerge.length === 0) return [];
+export function notRunHereLines(elsewhere, afterMerge, offTree, wholeSuite = []) {
+  if (elsewhere.length === 0 && afterMerge.length === 0 && wholeSuite.length === 0) return [];
   return [
     ...section(GATED_HEADER, elsewhere),
     ...section(AFTER_MERGE_HEADER, afterMerge),
+    ...section(WHOLE_SUITE_HEADER, wholeSuite),
     ...(offTree.length > 0 ? ['', `  ${OFF_TREE_HEADER}`, ...offTree.map((l) => `    ${l}`)] : []),
   ];
 }
 
-export { AFTER_MERGE_HEADER, GATED_HEADER, OFF_TREE_HEADER };
+export { AFTER_MERGE_HEADER, GATED_HEADER, OFF_TREE_HEADER, WHOLE_SUITE_HEADER };

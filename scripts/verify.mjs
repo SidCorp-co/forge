@@ -11,6 +11,7 @@ import { CHECKS, CI_PARITY } from './lib/verify-checks.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
+const MANIFEST_PATH = join(ROOT, '.forge', 'conformance.json');
 const COMPOSITE_PATH = join(ROOT, '.github', 'actions', 'setup-workspace', 'action.yml');
 
 const CI_COVERAGE = {
@@ -59,6 +60,12 @@ const CI_COVERAGE = {
   'Whether a pull_request run already proved this exact tree':
     "nothing local — it reads the event and the commit's parent count, which exist only on CI",
   'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
+  'Require every job of the whole suite to have succeeded':
+    'the whole-suite job itself, nightly and on a cut commit — no local run is the whole suite on one commit; scripts/lib/whole-suite-cli.test.mjs runs its shell as written',
+  'Name the merge that turned the whole suite red':
+    'suite-bisect, on a red whole-suite run only — it reads what CI recorded, which exists only on GitHub',
+  'Start the whole suite on every other gated branch':
+    'nightly-fanout, on a schedule only — it dispatches runs on GitHub',
 };
 
 function git(args) {
@@ -264,7 +271,7 @@ function ciSteps() {
  * that step somewhere the gating job does not.
  */
 function jobsAfterTheMerge() {
-  const none = { jobs: [], onlyAfter: new Set() };
+  const none = { jobs: [], onlyAfter: new Set(), wholeSuite: [] };
   if (!existsSync(CI_PATH)) return none;
   const text = readFileSync(CI_PATH, 'utf8');
   const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
@@ -288,9 +295,16 @@ function jobsAfterTheMerge() {
   byJob.delete('ci-passed');
   const all = [...byJob.values()];
   const gated = new Set(all.filter((j) => gating.has(j.job)).flatMap((j) => j.steps));
-  const jobs = all.filter((j) => !gating.has(j.job));
+  const whole = new Set(wholeSuiteJobs());
+  const jobs = all.filter((j) => !gating.has(j.job) && !whole.has(j.job));
   const onlyAfter = new Set(jobs.flatMap((j) => j.steps).filter((step) => !gated.has(step)));
-  return { jobs, onlyAfter };
+  return { jobs, onlyAfter, wholeSuite: all.filter((j) => whole.has(j.job)) };
+}
+
+/** The jobs `.forge/conformance.json` `$wholeSuite` declares: they run in a whole-suite run only. */
+function wholeSuiteJobs() {
+  if (!existsSync(MANIFEST_PATH)) return [];
+  return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')).$wholeSuite?.jobs ?? [];
 }
 
 function ciGateParity() {
@@ -402,7 +416,7 @@ function afterMergeLine({ job, steps, os }) {
 }
 
 function reportNotRunHere() {
-  const { jobs, onlyAfter } = jobsAfterTheMerge();
+  const { jobs, onlyAfter, wholeSuite } = jobsAfterTheMerge();
   const elsewhere = Object.entries(CI_COVERAGE)
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
@@ -410,6 +424,7 @@ function reportNotRunHere() {
     elsewhere.filter(([step]) => !onlyAfter.has(step)).map(([, where]) => where),
     jobs.map(afterMergeLine),
     OFF_TREE_CHECKS,
+    wholeSuite.map(afterMergeLine),
   );
   for (const line of lines) console.log(line);
 }
