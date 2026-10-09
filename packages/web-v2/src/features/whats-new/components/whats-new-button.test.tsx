@@ -46,7 +46,7 @@ describe("the What's new rail entry", () => {
     first.unmount();
     renderWithQuery(<WhatsNewButton />);
     await screen.findByTestId("whats-new-dot");
-    expect(screen.queryByTestId("whats-new-release")).toBeNull();
+    expect(screen.queryByTestId("whats-new-panel")).toBeNull();
   });
 
   it("opens nothing and wears no dot when the release is not owed, and by hand writes nothing on close", async () => {
