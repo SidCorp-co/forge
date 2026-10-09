@@ -2,6 +2,7 @@ import type { MachineEntity } from '@forge/contracts/machines';
 import { agentSessions, devices, issues, jobs, pipelineRuns, runners } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { mockups } from '../db/schema-mockups.js';
+import { pocRooms } from '../db/schema-poc-rooms.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { previewRecordings } from '../db/schema-preview-recordings.js';
 import { previews } from '../db/schema-previews.js';
@@ -32,6 +33,7 @@ interface MachineTables {
   workflow_design: typeof projectWorkflows;
   preview: typeof previews;
   recording: typeof previewRecordings;
+  room: typeof pocRooms;
 }
 
 export type MachineRow<E extends MachineEntity> = MachineTables[E]['$inferSelect'];
@@ -85,6 +87,8 @@ export function machineTable<E extends MachineEntity>(entity: E): MachineTable<E
       return at(previews, 'state');
     case 'recording':
       return at(previewRecordings, 'state');
+    case 'room':
+      return at(pocRooms, 'state');
     default:
       throw new Error(`lifecycle: no table holds the status of machine \`${entity}\``);
   }

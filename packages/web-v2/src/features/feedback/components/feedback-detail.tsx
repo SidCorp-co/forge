@@ -22,6 +22,9 @@ import {
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { ReproduceSection } from "@/features/previews/reproduce-section";
+import { OpenRoom } from "@/features/previews/room-open";
+import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { useMockups } from "@/features/mockups/hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
@@ -165,6 +168,7 @@ export function FeedbackPage({
                     carriers={f.route?.route === "issue" ? f.route.carriers.flatMap((c) => (c.key ? [c.key] : [])) : []}
                     redacted={f.redacted}
                   />
+                  <FeedbackRoom projectId={projectId} fbKey={f.key} />
                   <Messages projectId={projectId} f={f} />
                 </div>
               ) : null}
@@ -179,4 +183,10 @@ export function FeedbackPage({
       }}
     </QueryBoundary>
   );
+}
+
+/** The POC room entry for this item (REQ-44 BC-1). */
+function FeedbackRoom({ projectId, fbKey }: { projectId: string; fbKey: string }) {
+  const project = useProjects().data?.find((p) => p.id === projectId);
+  return <OpenRoom projectId={projectId} slug={project?.slug} about={fbKey} canWrite={canWriteProject(project?.role)} />;
 }

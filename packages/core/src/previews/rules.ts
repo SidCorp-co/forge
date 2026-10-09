@@ -14,6 +14,8 @@ import {
   previewEnvironmentProblem,
   reproduceDataOf,
 } from '@forge/contracts/preview';
+import { BUILT_IN_FULL_GATE_PATHS, globToRegExp } from '@forge/contracts/fast-lane';
+import { ROOM_NEVER_MERGES_INTO, type RoomRefusalCode } from '@forge/contracts/poc-room';
 import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
 import type { Refusal } from '../lib/refusal.js';
 import type { ProjectDocument } from '../project-config/index.js';
@@ -27,6 +29,8 @@ export interface PreviewPlan {
   env: Record<string, string>;
   /** The demo seed a reproduce runs in its checkout before the dev server (REQ-41 BC-22). */
   seed: string | null;
+  /** Where the dev server's data comes from: the project's demo data, or the environment named. */
+  data: 'demo' | 'environment';
 }
 
 const refusal = (code: PreviewRefusalCode, detail: string, path = ''): Refusal => ({
@@ -84,10 +88,12 @@ export function previewPlan(
     environments: Environments;
   } | null,
   subject: PreviewSubjectKind = 'issue',
+  /** A POC room's idea (REQ-44 BC-12) takes the reproduce's data: the demo data where declared. */
+  throwaway = false,
 ): { ok: true; plan: PreviewPlan } | { ok: false; refusal: Refusal } {
   const settings = document?.preview ?? null;
   const environments = document?.environments ?? {};
-  if (subject === 'reproduce') {
+  if (subject === 'reproduce' || throwaway) {
     const data = reproduceDataOf(settings ?? {});
     const demoNamed = data.kind === 'demo' && settings?.demo?.environment !== undefined;
     const path = demoNamed ? '/preview/demo/environment' : '/preview/environment';
@@ -95,12 +101,17 @@ export function previewPlan(
     if (!env.ok) return env;
     return {
       ok: true,
-      plan: { settings, env: env.env, seed: data.kind === 'demo' ? data.seed : null },
+      plan: {
+        settings,
+        env: env.env,
+        seed: data.kind === 'demo' ? data.seed : null,
+        data: data.kind,
+      },
     };
   }
   const env = environmentOf(environments, settings?.environment, '/preview/environment');
   if (!env.ok) return env;
-  return { ok: true, plan: { settings, env: env.env, seed: null } };
+  return { ok: true, plan: { settings, env: env.env, seed: null, data: 'environment' } };
 }
 
 /** The states a preview leaves only by a move: a run's one preview stands at one of these. */
@@ -236,4 +247,44 @@ export function runEndedWhy(subjectKind: PreviewSubjectKind, run: RunFacts): str
   return (TERMINAL_AGENT_SESSION_STATUSES as readonly string[]).includes(run.sessionStatus)
     ? `the run holding the worktree ended: its session is ${run.sessionStatus}`
     : null;
+}
+
+/**
+ * The branch a settled POC room merges into (REQ-44 BC-2, BC-8): the project's git default branch,
+ * where work lands. Refused by name where there is none, or where it is main, master or the branch
+ * production deploys from: a POC never merges straight into production.
+ */
+export function roomLanding(
+  document: Pick<ProjectDocument, 'source' | 'environments'> | null,
+): { ok: true; into: string } | { ok: false; code: RoomRefusalCode; detail: string } {
+  const into = document?.source.type === 'git' ? document.source.git.defaultBranch : null;
+  if (!into) {
+    return {
+      ok: false,
+      code: 'ROOM_NO_DEV_BRANCH',
+      detail:
+        'the project document declares no git source with a default branch, so a settled room has no dev branch to merge into: declare source.git.defaultBranch',
+    };
+  }
+  const production = Object.entries(document?.environments ?? {}).find(
+    ([, e]) => e.tier === 'production',
+  );
+  const deploysFrom = production?.[1].deploysFrom;
+  if ((ROOM_NEVER_MERGES_INTO as readonly string[]).includes(into) || deploysFrom === into) {
+    return {
+      ok: false,
+      code: 'ROOM_PRODUCTION_BRANCH',
+      detail: `the project's default branch is ${into}${deploysFrom === into ? `, which production environment ${production?.[0]} deploys from` : ''}: a POC branch merges straight into a dev branch only, never main or production's. Land work on a dev branch (source.git.defaultBranch) promoted to production`,
+    };
+  }
+  return { ok: true, into };
+}
+
+/** The files of a change that alter the schema: the migration globs every lane holds, and the project's own. */
+export function schemaFilesOf(
+  files: readonly string[],
+  extra: readonly string[] = [],
+): string[] {
+  const globs = [...BUILT_IN_FULL_GATE_PATHS.migrations, ...extra].map(globToRegExp);
+  return files.filter((f) => globs.some((re) => re.test(f)));
 }

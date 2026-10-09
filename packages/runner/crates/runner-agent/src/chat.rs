@@ -93,6 +93,9 @@ struct StartFrame {
     /// core that predates it, the session runs with the box's view.
     #[serde(default)]
     confined: bool,
+    /// Core's word that the session runs with every hook off: a POC room's agent (REQ-44 BC-3).
+    #[serde(default)]
+    ungated: bool,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -123,6 +126,9 @@ struct SendFrame {
     /// See `StartFrame::confined`.
     #[serde(default)]
     confined: bool,
+    /// See `StartFrame::ungated`.
+    #[serde(default)]
+    ungated: bool,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -145,6 +151,8 @@ struct Turn {
     credential: Option<TurnCredential>,
     /// See `StartFrame::confined`.
     confined: bool,
+    /// See `StartFrame::ungated`.
+    ungated: bool,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -285,6 +293,7 @@ pub async fn handle_start(
             event_seq_base: f.event_seq_base,
             credential: handed_credential(f.forge_token),
             confined: f.confined,
+            ungated: f.ungated,
         },
     )
     .await
@@ -327,6 +336,7 @@ pub async fn handle_send(
             event_seq_base: f.event_seq_base,
             credential: handed_credential(f.forge_token),
             confined: f.confined,
+            ungated: f.ungated,
         },
     )
     .await
@@ -374,6 +384,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         confinement: turn.confined.then(|| Confinement {
             reads: turn.attachment_dir.iter().cloned().collect(),
         }),
+        hooks_off: turn.ungated,
     }
 }
 
@@ -854,7 +865,26 @@ mod tests {
             event_seq_base: f.event_seq_base,
             credential: handed_credential(f.forge_token),
             confined: f.confined,
+            ungated: f.ungated,
         }
+    }
+
+    /// A POC room's agent (REQ-44 BC-3): core marks its turn `ungated`, and the session is spawned
+    /// with every hook off, so nothing the checkout declares runs between an edit and the preview.
+    #[test]
+    fn a_turn_core_marks_ungated_spawns_a_session_with_every_hook_off() {
+        let frame = serde_json::json!({
+            "sessionId": "s1", "message": "make it green", "forgeToken": "t", "confined": true, "ungated": true
+        });
+        let spec = chat_spec("s1", "make it green", &turn_of(frame, None));
+        assert!(spec.hooks_off, "an ungated turn spawned a session that runs the checkout's hooks");
+        let args = crate::claude_code::args_for_test(&spec);
+        let at = args.iter().position(|a| a == "--settings").expect("no --settings flag");
+        assert_eq!(args[at + 1], r#"{"disableAllHooks":true}"#);
+        let plain = serde_json::json!({ "sessionId": "s1", "message": "hi", "forgeToken": "t" });
+        let spec = chat_spec("s1", "hi", &turn_of(plain, None));
+        assert!(!spec.hooks_off);
+        assert!(!crate::claude_code::args_for_test(&spec).contains(&"--settings".to_string()));
     }
 
     /// Core marks a chat door's turn `confined`; the session it spawns is then confined, and

@@ -154,10 +154,24 @@ async function openIdea(
   request: Extract<OpenPreviewRequest, { kind: 'idea' }>,
   actor: PreviewActor,
 ): Promise<PreviewRow> {
-  await accessFor(projectId, actor, 'project.write', 'open an idea preview');
+  return (await openIdeaPreview(projectId, request, actor)).row;
+}
+
+/**
+ * Open an idea's preview, optionally as a POC room's (REQ-44): the room's id rides the subject and
+ * the sketch session's metadata (the bridge marker its turn ends are delivered by), and its data is
+ * the project's demo data where declared (BC-12).
+ */
+export async function openIdeaPreview(
+  projectId: string,
+  request: Extract<OpenPreviewRequest, { kind: 'idea' }>,
+  actor: PreviewActor,
+  room?: { id: string },
+): Promise<{ row: PreviewRow; plan: PreviewPlan; item: Item }> {
+  await accessFor(projectId, actor, 'project.write', room ? 'open a POC room' : 'open an idea preview');
   const item = await itemOrRefuse(projectId, request.about);
   const kept = request.from === undefined ? null : await keptOf(projectId, request.from);
-  const plan = await planOf(projectId, 'idea');
+  const plan = await planOf(projectId, 'idea', room !== undefined);
   const placed = await placeOn(projectId, CONFINES_A_CHAT);
   const branch = `sketch/${item.kind === 'requirement' ? 'req' : 'fb'}-${item.key.split('-')[1]}-${suffix(6)}`;
   if (!SKETCH_BRANCH.test(branch))
@@ -177,12 +191,18 @@ async function openIdea(
         brief: request.brief,
         asked: [...(kept?.asked ?? []), request.brief],
       },
+      ...(room ? { pocRoom: { roomId: room.id } } : {}),
     },
   });
-  return insertSubjectPreview({
+  const row = await insertSubjectPreview({
     projectId,
     deviceId: placed.deviceId,
-    subject: { kind: 'idea', about: { kind: item.kind, key: item.key } as never, branch },
+    subject: {
+      kind: 'idea',
+      about: { kind: item.kind, key: item.key } as never,
+      branch,
+      ...(room ? { room: room.id } : {}),
+    },
     // from a kept preview, the sketch is cut at the head the keep committed: the edit continues it
     checkout: { kind: 'sketch', repoPath: placed.repoPath, path, branch, base: kept?.head ?? null },
     sessionId: session.id,
@@ -190,6 +210,7 @@ async function openIdea(
     plan,
     createdBy: actor.userId,
   });
+  return { row, plan, item };
 }
 
 /**
@@ -215,6 +236,29 @@ async function keptOf(
     );
   }
   return { head: content.head, asked: content.asked };
+}
+
+/**
+ * What a POC room's agent is told once (REQ-44 BC-3): every message in the room asks it for a change,
+ * made straight in the source with nothing run before the preview shows it; the branch merges only
+ * when a person settles the room, and not by the agent.
+ */
+export function roomBrief(args: {
+  about: string;
+  title: string;
+  brief: string;
+  branch: string;
+  url: string;
+}): string {
+  return [
+    `You are the agent of a POC room about ${args.about} (${args.title}). The people in the room talk to you as to an assistant in a terminal, and each message asks you for a change. The first:`,
+    '',
+    args.brief,
+    '',
+    `Build it in this working directory, on branch ${args.branch}. A dev server already serves it at ${args.url} and shows each edit by hot reload, so edit the source and nothing else: do not build, typecheck, lint, test, review, restart or deploy anything, and run no command before the change shows. Coded just enough to run is the bar.`,
+    'Never push, merge or open a pull request, and never file or change any Forge record. The room merges this branch itself when a person settles it.',
+    'When the change shows, say in one or two sentences what you changed.',
+  ].join('\n');
 }
 
 /** What a sketch run is told: the item, the ask, and that its branch goes nowhere. */
@@ -300,7 +344,7 @@ export async function briefSketchOnLive(row: PreviewRow, url: string): Promise<v
   const session = await sessionOf(row.sessionId);
   const sketch = (session?.metadata as { sketch?: { brief?: string } } | null)?.sketch;
   const item = await itemOf(row.projectId, row.subject.about.key);
-  const message = sketchBrief({
+  const message = (row.subject.room === undefined ? sketchBrief : roomBrief)({
     about: row.subject.about.key,
     title: item?.title ?? row.subject.about.key,
     brief: sketch?.brief ?? '',
@@ -331,7 +375,25 @@ export async function sendIdeaMessage(
   await mergeSessionMetadata(session.id, {
     sketch: { ...sketch, asked: [...(sketch.asked ?? []), text] },
   });
-  const body = `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
+  const body =
+    row.subject?.kind === 'idea' && row.subject.room !== undefined
+      ? text
+      : `A person viewing this idea's live preview (${url}) asks for a change:\n\n${text}\n\nMake it in this working directory; the preview shows it by hot reload. Never push, merge or file anything.`;
+  return deliverToSketch(row, session, actor, body);
+}
+
+/**
+ * One message to a sketch run: a run working its last turn takes it as an inject, an idle one as
+ * its next turn. Nothing runs between the message and the run's edit (REQ-44 BC-3).
+ */
+export async function deliverToSketch(
+  row: PreviewRow,
+  held: typeof agentSessions.$inferSelect | null,
+  actor: PreviewActor,
+  body: string,
+): Promise<{ sent: true; seq: number }> {
+  const session = held ?? (row.sessionId === null ? null : await sessionOf(row.sessionId));
+  if (!session) throw refuse('PREVIEW_NO_RUN', `preview ${row.id}'s sketch run is gone`);
   if (session.status === 'running' || session.status === 'queued') {
     const sent = await requestSessionSend({
       agentSessionId: session.id,

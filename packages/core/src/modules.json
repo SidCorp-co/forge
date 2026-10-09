@@ -877,7 +877,15 @@
     "previews": {
       "kind": "domain",
       "context": "execution",
-      "owns": ["previewFixConfirmations", "previewRecordings", "previews"],
+      "owns": [
+        "pocRoomItems",
+        "pocRoomMembers",
+        "pocRooms",
+        "pocRoomTurns",
+        "previewFixConfirmations",
+        "previewRecordings",
+        "previews"
+      ],
       "serves": ["REQ-39", "REQ-41"]
     },
     "project-config": {

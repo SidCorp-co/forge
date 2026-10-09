@@ -8,6 +8,8 @@ export {
   redactRecordingsOf,
 } from './recordings.js';
 export { isPreviewRequest, relayPreviewUpgrade, withPreviewHosts } from './relay.js';
+export { type RoomSettleWriter, provideRoomSettleWriter } from './room-port.js';
+export { registerRoomBridge } from './room-turns.js';
 export { sweepPreviews } from './service.js';
 export { itemOf } from './subject-reads.js';
 export { acceptTunnelUpgrade, closeAllTunnels } from './tunnel.js';

@@ -15,6 +15,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { canWriteProject } from "@/features/projects/write-access";
 import { ideaApi } from "@/features/previews/idea-api";
 import { IdeaPanel } from "@/features/previews/idea-panel";
+import { OpenRoom } from "@/features/previews/room-open";
 import { toolOutputText } from "@/lib/tool-output";
 
 /** Every idea offer an entry's blocks carry, in the order the turn made them. */
@@ -50,6 +51,7 @@ export function IdeaOfferCard({ offer }: { offer: IdeaOffer }) {
               {t("previews.idea.offer.build")}
             </Button>
           </div>
+          <OpenRoom projectId={offer.projectId} slug={project?.slug} about={offer.about} brief={offer.brief} canWrite={canWriteProject(project?.role)} />
         </>
       )}
       {open.isError ? (

@@ -23,6 +23,7 @@ import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import { requireHeld } from '../permissions/index.js';
 import {
   accessFor,
+  isRoomPreview,
   type PreviewActor,
   planOf,
   pushBox,
@@ -148,7 +149,7 @@ async function insertPreview(args: {
 
 /** An idle-closed preview starts again in the same worktree at the same link. */
 async function reopen(row: PreviewRow, actor: KernelActor): Promise<PreviewRow> {
-  const plan = await planOf(row.projectId, row.subjectKind);
+  const plan = await planOf(row.projectId, row.subjectKind, isRoomPreview(row));
   const moved = await transition(db, PREVIEW_MACHINE, {
     to: 'starting',
     expect: 'idle_closed',
@@ -186,6 +187,16 @@ export async function noteViewed(row: PreviewRow, now = Date.now()): Promise<voi
     .update(previews)
     .set({ lastViewedAt: new Date(now) })
     .where(eq(previews.id, row.id));
+}
+
+/** Fail a starting or live preview by the kernel, naming why, and stop its dev server. */
+export async function failPreview(
+  row: PreviewRow,
+  reason: PreviewFailureReason,
+  detail: string,
+): Promise<PreviewRow> {
+  throwRefusal(stateRefusal(row.id, row.state, ['starting', 'live'], 'fail'));
+  return fail(row, [row.state], reason, detail, { type: 'system' });
 }
 
 async function fail(
@@ -270,7 +281,7 @@ async function onFacts(
   throwRefusal(stateRefusal(row.id, row.state, ['starting'], 'be started from the repository'));
   const detected = detectPreviewSettings(facts);
   if (!detected.ok) return fail(row, ['starting'], detected.reason, detected.detail, box);
-  const plan = await planOf(row.projectId, row.subjectKind);
+  const plan = await planOf(row.projectId, row.subjectKind, isRoomPreview(row));
   const settings = detected.settings;
   return db.transaction(async (tx) => {
     const [updated] = await tx
@@ -293,7 +304,30 @@ export async function abandonPreview(previewId: string, actor: PreviewActor, why
   const row = await rowOf(previewId);
   await accessFor(row.projectId, actor, 'project.write', 'abandon the preview');
   throwRefusal(stateRefusal(row.id, row.state, OPEN_STATES, 'be abandoned'));
+  return closeAbandoned(row, actor, why);
+}
+
+/**
+ * Abandon an open preview, or, where `dropBranch`, also have its box remove the sketch checkout and
+ * delete its branch and kept ref whatever state the preview is in (a POC room abandoned or settled,
+ * REQ-44 BC-10). The caller has checked access.
+ */
+export async function closeAbandoned(
+  row: PreviewRow,
+  actor: PreviewActor,
+  why?: string,
+  dropBranch = false,
+) {
   const reason = why?.trim() || 'abandoned by a person';
+  const drop = dropBranch && row.checkout?.kind === 'sketch' ? { drop: row.checkout } : {};
+  if (!OPEN_STATES.includes(row.state)) {
+    if (Object.keys(drop).length > 0) {
+      await db.transaction((tx) =>
+        pushBox(tx, row.deviceId, 'preview.stop', { previewId: row.id, why: 'abandoned', ...drop }),
+      );
+    }
+    return view(row);
+  }
   const moved = await transition(db, PREVIEW_MACHINE, {
     to: 'abandoned',
     expect: row.state,
@@ -304,7 +338,11 @@ export async function abandonPreview(previewId: string, actor: PreviewActor, why
     source: SOURCE,
     afterWrite: async (tx, rows) => {
       for (const r of rows) {
-        await pushBox(tx, row.deviceId, 'preview.stop', { previewId: r.id, why: 'abandoned' });
+        await pushBox(tx, row.deviceId, 'preview.stop', {
+          previewId: r.id,
+          why: 'abandoned',
+          ...drop,
+        });
       }
     },
   });

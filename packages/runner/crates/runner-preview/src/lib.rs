@@ -63,6 +63,14 @@ struct Named {
     /// `preview.snapshot.read`: a keep (REQ-41 BC-16) commits and pins the sketch's head too.
     #[serde(default)]
     keep: bool,
+    /// `preview.snapshot.read`: a POC room's settle (REQ-44 BC-8) merges the kept sketch into
+    /// origin's dev branch after the keep.
+    #[serde(default)]
+    settle: Option<snapshot::SettleAsk>,
+    /// `preview.stop`: an abandoned or settled POC room's checkout (REQ-44 BC-10), removed with its
+    /// branch and kept ref whether this box still holds the preview or not.
+    #[serde(default)]
+    drop: Option<Checkout>,
 }
 
 /// One preview this box holds: the worktree it serves and, while it runs, its dev server.
@@ -146,13 +154,20 @@ impl Previews {
             },
             "preview.stop" => match serde_json::from_value::<Named>(data) {
                 Ok(n) => {
-                    tokio::spawn(async move { this.close(&n.preview_id, n.why.as_deref()).await });
+                    tokio::spawn(async move {
+                        this.close(&n.preview_id, n.why.as_deref()).await;
+                        if let Some(c) = n.drop {
+                            checkout::drop_sketch(&c, &n.preview_id).await;
+                        }
+                    });
                 }
                 Err(e) => tracing::warn!("[preview] preview.stop refused: {e}"),
             },
             "preview.snapshot.read" => match serde_json::from_value::<Named>(data) {
                 Ok(n) => {
-                    tokio::spawn(async move { this.snapshot(&n.preview_id, n.keep).await });
+                    tokio::spawn(async move {
+                        this.snapshot(&n.preview_id, n.keep, n.settle).await
+                    });
                 }
                 Err(e) => tracing::warn!("[preview] preview.snapshot.read refused: {e}"),
             },
@@ -417,11 +432,14 @@ impl Previews {
             .await;
     }
 
-    async fn snapshot(&self, id: &str, keep: bool) {
+    async fn snapshot(&self, id: &str, keep: bool, settle: Option<snapshot::SettleAsk>) {
         let held = self.held().get(id).map(|h| {
             (
                 h.worktree.clone(),
-                matches!(h.checkout, Some(Checkout::Sketch { .. })),
+                match &h.checkout {
+                    Some(Checkout::Sketch { branch, .. }) => Some(branch.clone()),
+                    _ => None,
+                },
             )
         });
         let Some((worktree, sketch)) = held else {
@@ -430,12 +448,12 @@ impl Previews {
             );
             return;
         };
-        if keep && !sketch {
+        if (keep || settle.is_some()) && sketch.is_none() {
             // only a sketch this box cut is committed to: core answers its keep "unavailable" by name
             tracing::warn!("[preview] {id}: a keep was asked of a preview that is not a sketch");
             return;
         }
-        let read = if keep {
+        let read = if keep || settle.is_some() {
             snapshot::keep(&worktree, id).await
         } else {
             snapshot::read(&worktree).await
@@ -445,6 +463,20 @@ impl Previews {
                 let mut body = serde_json::json!({ "kind": "snapshot", "base": s.base, "patchId": s.patch_id, "files": s.files });
                 if let Some(head) = s.head {
                     body["head"] = serde_json::Value::String(head);
+                }
+                if let (Some(ask), Some(branch)) = (settle, sketch.as_deref()) {
+                    match snapshot::settle(&worktree, branch, &ask).await {
+                        Ok(sha) => {
+                            body["merged"] = serde_json::json!({ "into": ask.into, "sha": sha });
+                        }
+                        Err(e) => {
+                            tracing::warn!("[preview] {id}: the settle's merge did not land: {e}");
+                            body["mergeRefused"] = serde_json::Value::String(devserver::tail(
+                                &e,
+                                devserver::DETAIL_LIMIT,
+                            ));
+                        }
+                    }
                 }
                 self.report(id, body).await;
             }

@@ -116,7 +116,12 @@ import { registerOutboxConsumers } from './outbox-consumers.js';
 import { providePermissionsPorts, readsTechnical } from './permissions/index.js';
 import { pipelineRunProjectId } from './pipeline/index.js';
 import { providePreferencesPorts } from './preferences/index.js';
-import { approvedPreviewOf, provideKeptPreviewWriter, withPreviewHosts } from './previews/index.js';
+import {
+  approvedPreviewOf,
+  provideKeptPreviewWriter,
+  provideRoomSettleWriter,
+  withPreviewHosts,
+} from './previews/index.js';
 import {
   encryptPlaintextBindingSecrets,
   provideProjectConfigPorts,
@@ -162,6 +167,7 @@ import {
   provideInterfaceContracts,
   provideRequirementDependents,
   requirementStatusesBySeq,
+  roomSettleWriter,
 } from './requirements/index.js';
 import { mountRoutes } from './route-registry.js';
 import { bootstrapRunnerAdapters, deviceProjectIds } from './runners/index.js';
@@ -326,6 +332,7 @@ provideRequirementDependents({
   liveBuildHolds,
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
+provideRoomSettleWriter(roomSettleWriter);
 provideFeedbackDependents({
   redactSuggestions: redactFeedbackSuggestions,
   deleteMockups: deleteFeedbackMockups,

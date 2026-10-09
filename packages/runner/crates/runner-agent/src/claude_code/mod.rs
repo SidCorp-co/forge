@@ -163,8 +163,23 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         args.push("--resume".into());
         args.push(rid.into());
     }
+    if spec.hooks_off {
+        // a POC room's agent (REQ-44 BC-3): no hook the checkout declares runs between an edit and
+        // the preview showing it
+        args.push("--settings".into());
+        args.push(HOOKS_OFF.into());
+    }
     args
 }
+
+/// `build_args` with a placeholder MCP config path, for the turn tests.
+#[cfg(test)]
+pub(crate) fn args_for_test(spec: &JobSpec) -> Vec<String> {
+    build_args(spec, "/tmp/mcp.json")
+}
+
+/// The settings a session with every hook off is spawned with.
+pub const HOOKS_OFF: &str = r#"{"disableAllHooks":true}"#;
 
 impl ClaudeCodeRunner {
     /// What the live duplex session for `id` was spawned with, if there is one.
@@ -712,6 +727,7 @@ mod confine_elsewhere_tests {
             counts_against_session_cap: false,
             credential: Some(crate::TurnCredential("t".into())),
             confinement: Some(crate::Confinement::default()),
+            hooks_off: false,
         };
         let view = confine::BoxView {
             home: repo.clone(),

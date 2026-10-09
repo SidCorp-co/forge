@@ -45,7 +45,7 @@ export {
   retractContractWaitIn,
   settleContractWaitsIn,
 } from './contract-waits.js';
-export { insertIssueRow } from './create-service.js';
+export { createIssue, insertIssueRow } from './create-service.js';
 export { runCriteriaBackfillOnce } from './criteria/backfill.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export {

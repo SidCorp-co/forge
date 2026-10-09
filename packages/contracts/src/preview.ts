@@ -69,6 +69,11 @@ export const PREVIEW_FAILURE_REASONS = [
 	 * `detail` holds git's own output.
 	 */
 	"REF_NOT_FOUND",
+	/**
+	 * A POC room's branch changed the schema (a migration path) while its preview talks to the
+	 * project's dev environment rather than throwaway demo data (REQ-44 BC-12); `detail` names the files.
+	 */
+	"SCHEMA_NEEDS_THROWAWAY_DATA",
 ] as const;
 export type PreviewFailureReason = (typeof PREVIEW_FAILURE_REASONS)[number];
 
@@ -288,6 +293,8 @@ export const previewSubjectSchema = z.discriminatedUnion("kind", [
 		branch: z
 			.string()
 			.regex(SKETCH_BRANCH, "a sketch branch such as sketch/fb-51-abcdef"),
+		/** The POC room this idea is the preview of (REQ-44): its data is the project's demo data where declared. */
+		room: z.uuid().optional(),
 	}),
 	z.strictObject({
 		kind: z.literal("reproduce"),
@@ -658,6 +665,12 @@ export const previewReportSchema = z.discriminatedUnion("kind", [
 		files: z.array(z.string().max(1000)).max(2000),
 		/** Where the sketch branch stands after a keep committed its edits (`keep` frame); absent for an approval's read. */
 		head: wholeShaSchema("head").optional(),
+		/** A settle's merge (REQ-44 BC-8): the merge commit now at the head of `into` on origin. */
+		merged: z
+			.strictObject({ into: z.string().min(1).max(250), sha: wholeShaSchema("merged.sha") })
+			.optional(),
+		/** Why the settle's merge did not land (a conflict, a refused push), in git's own words. */
+		mergeRefused: z.string().max(PREVIEW_LIMITS.detail).optional(),
 	}),
 ]);
 export type PreviewReport = z.infer<typeof previewReportSchema>;
@@ -684,13 +697,27 @@ export interface PreviewControlFrames {
 	"preview.stop": {
 		previewId: string;
 		why: "idle" | "approved" | "abandoned" | "failed";
+		/**
+		 * An abandoned or settled POC room (REQ-44 BC-10): the sketch checkout the box removes, with
+		 * its branch and kept ref, whether the box still holds the preview or not.
+		 */
+		drop?: PreviewCheckout;
 	};
 	/**
 	 * Asked at approval, or at a keep (`keep: true`, REQ-41 BC-16): answered by a `snapshot` report.
 	 * A keep has the box commit a sketch checkout's edits to its branch, pin that commit under
 	 * `refs/forge/kept/<previewId>` and report it as `head`; an approval reads and writes nothing.
 	 */
-	"preview.snapshot.read": { previewId: string; keep?: boolean };
+	"preview.snapshot.read": {
+		previewId: string;
+		keep?: boolean;
+		/**
+		 * A POC room's settle (REQ-44 BC-8), with `keep`: after committing, the box merges the sketch
+		 * branch `--no-ff` into origin's `into` with `message` and pushes it there, no hook run, and
+		 * reports `merged`, or `mergeRefused` with git's output. Core never names main or production's branch.
+		 */
+		settle?: { into: string; message: string };
+	};
 }
 
 /**

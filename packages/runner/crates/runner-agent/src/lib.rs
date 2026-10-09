@@ -39,6 +39,10 @@ pub struct JobSpec {
     /// Core's word that this session holds only `credential`: none of this box's own, in its
     /// environment or on any path it can read. `None` runs it with the box's view, as a run.
     pub confinement: Option<Confinement>,
+    /// Core's word that this session runs with every Claude Code hook off (`ungated` on the turn
+    /// frame): a POC room's agent, whose edit reaches its preview with no check the checkout declares
+    /// run in between (REQ-44 BC-3).
+    pub hooks_off: bool,
 }
 
 /// What a confined session is handed beyond its checkout, its MCP config and Claude Code's

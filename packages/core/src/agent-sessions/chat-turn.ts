@@ -271,6 +271,11 @@ interface TurnPlan {
   language: ContentLanguageView | null;
   /** A chat door's turn: the box runs it holding its turn token and none of the box's own. */
   confined: boolean;
+  /**
+   * A POC room's agent (REQ-44 BC-3): the box runs it with every hook off, so no check the checkout
+   * declares runs between an edit and the preview showing it.
+   */
+  ungated: boolean;
 }
 
 /** The session's checkout, re-read from the device binding when the turn lands on another box. */
@@ -300,6 +305,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
   requireListeningBox(deviceId);
   const confined = isChatDoorSession(session);
   if (confined) await requireConfiningBox(deviceId);
+  const ungated = Boolean((session.metadata as { pocRoom?: unknown } | null)?.pocRoom);
 
   const attachments = args.attachmentIds?.length
     ? await listSessionAttachmentsByIds(session.id, args.attachmentIds)
@@ -344,6 +350,7 @@ async function planTurn(args: DispatchChatTurnArgs): Promise<TurnPlan> {
     model,
     language,
     confined,
+    ungated,
   };
 }
 
@@ -452,6 +459,7 @@ async function boxFrame(
     ...(plan.attachments.length ? { attachments: plan.attachments } : {}),
     ...(args.credential ? { forgeToken: args.credential } : {}),
     ...(plan.confined ? { confined: true } : {}),
+    ...(plan.ungated ? { ungated: true } : {}),
   };
   // `--resume` keeps the original system prompt and history
   if (plan.resumable) {

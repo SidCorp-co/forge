@@ -82,12 +82,17 @@ export async function pushStart(tx: Tx, row: PreviewRow, plan: PreviewPlan): Pro
   });
 }
 
+/** Whether the preview is a POC room's (REQ-44): an idea that names its room. */
+export const isRoomPreview = (row: Pick<PreviewRow, 'subject'>): boolean =>
+  row.subject?.kind === 'idea' && row.subject.room !== undefined;
+
 export async function planOf(
   projectId: string,
   subject: PreviewRow['subjectKind'] = 'issue',
+  throwaway = false,
 ): Promise<PreviewPlan> {
   const held = await readProjectDocument(projectId);
-  const planned = previewPlan(held?.document ?? null, subject);
+  const planned = previewPlan(held?.document ?? null, subject, throwaway);
   if (!planned.ok) throw new RefusalError([planned.refusal], planned.refusal.code);
   return planned.plan;
 }

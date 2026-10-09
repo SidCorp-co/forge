@@ -86,6 +86,7 @@ import {
   warnedReleaseNotes,
 } from './release-batch/index.js';
 import { owedBreakdowns, owedRequirementRevisions } from './requirements/index.js';
+import { registerRoomBridge } from './previews/index.js';
 import { provideRunnersPorts } from './runners/index.js';
 import {
   provideSchedulesPorts,
@@ -222,4 +223,5 @@ export function provideExecutionPorts(): void {
   });
 
   registerConversationAgentBridge();
+  registerRoomBridge();
 }
