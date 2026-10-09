@@ -17,54 +17,38 @@ import {
   ErrorState,
   FactsRail,
   ProjectLoader,
-  SegmentedControl,
   useListOrigin,
   useUrlChoice,
 } from "@/design";
 import { useResumeRun } from "@/features/run-control/hooks";
-import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
-import { PreviewPanel } from "@/features/previews/preview-panel";
-import { settingsHref } from "@/features/project-settings/sections";
+import { focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { useRecents } from "@/lib/navigation/recents";
 import { useIssueProject } from "./use-issue-project";
 import { useIssueReads } from "./use-issue-reads";
-import type { MockupTarget } from "@/features/mockups/types";
-import { useIssueForecast } from "@/features/forecast/hooks";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ParkThreadQuestion } from "@forge/contracts/park";
-import type { Forecast } from "@forge/contracts/forecast";
-import type { IssueBlocker } from "@forge/contracts/issue-standing";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isLiveRun, issueQueryKey, parseChecklist, runStatusChip, workStepOf } from "../derive";
 import { deriveQueuedStep } from "../waiting";
-import { useActivity, useAttachments, type useComments, type useIssue, useCreateComment } from "../detail-hooks";
-import { type useIssueStandingOf, usePatchIssue, useProjectMembers } from "../hooks";
+import { useActivity, useAttachments, type useIssue, useCreateComment } from "../detail-hooks";
+import { usePatchIssue, useProjectMembers } from "../hooks";
 import { ISSUES_LIST, issuesHref } from "@/lib/routes/issues";
 import { ReleaseApprovalProvider } from "../release-approval";
-import type { IssueAgentSession, IssueDetail, IssueStatus } from "../types";
-import { AwaitingReleaseBanner, ReleaseNowAct } from "./awaiting-release-banner";
-import { PatternsPanel } from "./patterns-panel";
-import { BlockerAct, BlockerBanner } from "./blocker-banner";
+import type { IssueAgentSession, IssueStatus } from "../types";
+import { ReleaseNowAct } from "./awaiting-release-banner";
+import { BlockerAct, } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
-import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
+import type { LiveAgentState, } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { readStart } from "./start-issue-action";
 import { StatusEdit } from "./inline-edit-cell";
 import { IssueActions } from "./detail/issue-actions";
-import { IssueDetails } from "./detail/issue-details";
-import { IssueStateHead } from "./detail/issue-state-head";
-import { ChangesRow } from "./changes-row";
-import { CriteriaSection } from "./criteria-section";
+import { ISSUE_PAGE_VIEWS, type IssuePageView, IssuePageMain } from "./detail/issue-page-main";
 import { Written } from "@/lib/i18n/written";
-
-/** The two ways to read the page: a person's, and a developer's with every fold open. */
-const ISSUE_PAGE_VIEWS = ["person", "developer"] as const;
-type IssuePageView = (typeof ISSUE_PAGE_VIEWS)[number];
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -108,7 +92,6 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
   const issue = issueQ.data;
   const stickyHeader = useRef<HTMLDivElement>(null);
   const answerInThread = useCreateComment(issue?.id ?? "");
-  const forecastQ = useIssueForecast(issue?.projectId, issue?.displayId);
   const attachmentsQ = useAttachments(canonicalId, projectId);
   const activityQ = useActivity(canonicalId, projectId);
   const membersQ = useProjectMembers(projectId);
@@ -231,7 +214,6 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             onView={setView}
             standingQ={standingQ}
             blocker={blocker}
-            forecast={forecastQ.data?.forecast}
             needsYouAct={needsYouAct}
             threadQuestion={threadQuestion}
             onAnswerInThread={canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined}
@@ -244,7 +226,7 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
             commentsQ={commentsQ}
             activityQ={activityQ}
             membersQ={membersQ}
-            mockupTarget={mockupTarget as MockupTarget}
+            mockupTarget={mockupTarget}
             mockupCount={mockupsQ.data?.returned}
             checklist={checklist}
             reasonDialog={reasonDialog}
@@ -261,118 +243,6 @@ export function IssueDetailScreen({ projectId, slug, id }: IssueDetailScreenProp
         />
       </div>
     </ReleaseApprovalProvider>
-  );
-}
-
-/** The main column of the page: the state head, what needs a person, the criteria, the preview, the change and the Details. */
-function IssuePageMain(props: {
-  issue: IssueDetail;
-  projectId: string;
-  slug: string;
-  id: string;
-  canWrite: boolean;
-  pending: boolean;
-  view: IssuePageView;
-  onView: (view: IssuePageView) => void;
-  standingQ: ReturnType<typeof useIssueStandingOf>;
-  blocker: IssueBlocker | null;
-  forecast: Forecast | undefined;
-  needsYouAct: ReactNode;
-  threadQuestion: ParkThreadQuestion | null;
-  onAnswerInThread: ((text: string) => Promise<unknown>) | undefined;
-  onTransition: (to: IssueStatus) => void;
-  onResumeRun: (runId: string) => void;
-  onProvideInfo: () => void;
-  agentState: LiveAgentState | null;
-  liveStep: string | null;
-  attachmentsQ: ReturnType<typeof useAttachments>;
-  commentsQ: ReturnType<typeof useComments>;
-  activityQ: ReturnType<typeof useActivity>;
-  membersQ: ReturnType<typeof useProjectMembers>;
-  mockupTarget: MockupTarget;
-  mockupCount: number | undefined;
-  checklist: { key: string; text: string; checked: boolean }[];
-  reasonDialog: ReactNode;
-}) {
-  const { issue, projectId, slug, id, canWrite, pending, view, standingQ, blocker, agentState, liveStep } = props;
-  const t = useCopy();
-  const developer = view === "developer";
-  const standing = standingQ.data?.standing;
-  return (
-          <div className="max-w-[900px] px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
-            <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
-              <SegmentedControl
-                options={ISSUE_PAGE_VIEWS.map((v) => ({ value: v, label: t(`issues.view.${v}`) }))}
-                value={view}
-                onChange={props.onView}
-              />
-            </div>
-            <div data-highlight="waiting question">
-              {standing ? <IssueStateHead standing={standing} forecast={props.forecast} act={props.needsYouAct} /> : null}
-            </div>
-            <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
-              <DecisionPanel
-                show="now"
-                issueId={issue.id}
-                parkedForInfo={issue.status === "needs_info"}
-                threadQuestion={props.threadQuestion}
-                onAnswerInThread={props.onAnswerInThread}
-              />
-              <PatternsPanel issueId={issue.id} projectId={issue.projectId} />
-              {props.reasonDialog}
-            </div>
-            {developer && blocker ? (
-              <div className="mt-3">
-                <BlockerBanner
-                  blocker={blocker}
-                  slug={slug}
-                  pending={pending || !canWrite}
-                  onResumePark={props.onTransition}
-                  onResumeRun={props.onResumeRun}
-                  onProvideInfo={props.onProvideInfo}
-                />
-              </div>
-            ) : null}
-            {developer ? <AwaitingReleaseBanner projectId={issue.projectId} issueId={issue.id} canWrite={canWrite} /> : null}
-            {developer && agentState ? <LiveAgentPanel state={agentState} step={liveStep ?? "—"} slug={slug} issueId={id} /> : null}
-            <div className="border-b border-line-subtle py-4">
-              <CriteriaSection
-                issue={issue}
-                projectId={projectId}
-                checklist={props.checklist}
-                canWrite={canWrite}
-                requirementKey={standingQ.data?.standing.requirement?.key ?? null}
-              />
-            </div>
-            <div className="border-b border-line-subtle py-4" data-highlight="preview">
-              <PreviewPanel
-                issueId={issue.id}
-                issueLabel={issue.displayId}
-                canWrite={canWrite}
-                settingsHref={settingsHref(slug, "preview")}
-                hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
-                row={!developer}
-              />
-            </div>
-            <ChangesRow issue={issue} slug={slug} developer={developer} />
-            <div className="pt-4">
-              <IssueDetails
-                key={view}
-                issue={issue}
-                projectId={projectId}
-                slug={slug}
-                canWrite={canWrite}
-                developer={developer}
-                attachmentsQ={props.attachmentsQ}
-                commentsQ={props.commentsQ}
-                activityQ={props.activityQ}
-                membersQ={props.membersQ}
-                standingQ={standingQ}
-                mockupTarget={props.mockupTarget}
-                mockupCount={props.mockupCount}
-              />
-            </div>
-          </div>
   );
 }
 
