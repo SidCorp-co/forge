@@ -137,7 +137,7 @@ describe('attaching a visual block', () => {
     expect(attached.text).toContain('| REQ-2 | 5 |');
   });
 
-  it("keeps the settings the run read with beside the block, so its source can show them (BC-2)", async () => {
+  it('keeps the settings the run read with beside the block, so its source can show them (BC-2)', async () => {
     const attached = await attach(table);
     expect(attached.run?.params).toEqual({ windowDays: 30 });
   });
@@ -154,7 +154,11 @@ describe('attaching a visual block', () => {
       },
     };
     readReportRun.mockResolvedValue(dated);
-    const attached = await attach({ kind: 'table', columns: ['key', 'shipped'], source: { runId: 'run-1' } });
+    const attached = await attach({
+      kind: 'table',
+      columns: ['key', 'shipped'],
+      source: { runId: 'run-1' },
+    });
     expect(attached.text).toContain('2026-10-09T01:03:00.000Z');
     expect(attached.text).not.toContain('UTC');
     expect((posted[0] as { content: string }).content).toContain('Oct 9, 01:03 UTC');
