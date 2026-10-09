@@ -190,8 +190,13 @@ const ALLOWED: readonly { why: string; rest: readonly string[]; tools: readonly 
     tools: [
       'ui_navigate',
       'ui_issues_filter',
+      'ui_requirements_filter',
+      'ui_feedback_filter',
+      'ui_workflows_filter',
+      'ui_releases_filter',
       'ui_select',
       'ui_open',
+      'ui_highlight',
       'ui_board_draw',
       'ui_board_revise',
       'offer_act',
