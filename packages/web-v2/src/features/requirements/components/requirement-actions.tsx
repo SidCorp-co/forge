@@ -21,6 +21,7 @@ import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
 import type { RequirementAction, RequirementDetail } from "../types";
 import { PromoteDrafts } from "./promote-drafts";
+import { DraftEditor } from "./requirement-draft-editor";
 
 /** Opens the viewer's BA assistant room about this requirement; a refusal is a toast and no room. */
 export function useAssistantDoor(projectId: string, reqKey: string): DockDoor {
@@ -112,9 +113,12 @@ export function PrimaryActions({
     );
   } else if (draft && s.waitingOn.kind === "you") {
     primary = (
-      <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "propose", revision: draft.revision })}>
-        {t("requirements.act.proposeR", { r: draft.revision })}
-      </Button>
+      <>
+        <Button type="button" size="sm" variant="primary" loading={busy} onClick={() => act.mutate({ kind: "propose", revision: draft.revision })}>
+          {t("requirements.act.proposeR", { r: draft.revision })}
+        </Button>
+        <DraftEditor projectId={projectId} d={d} draft={draft} />
+      </>
     );
   } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
     const notYet = t("requirements.act.notFollowedYet");
