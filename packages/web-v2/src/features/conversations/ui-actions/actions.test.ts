@@ -46,14 +46,14 @@ describe("the page snapshot names the record its page is about", () => {
 describe("every page action changes only the view (BC-9)", () => {
   const SAMPLES: Record<(typeof UI_ACTION_NAMES)[number], unknown> = {
     "ui.navigate": { route: "requirements" },
-    "ui.issues.filter": { mode: "merge", set: { waitingOn: "you" } },
-    "ui.requirements.filter": { mode: "replace", set: { waitingOn: "agent", state: ["agreed"] } },
-    "ui.feedback.filter": { mode: "merge", set: { phase: ["new"] } },
-    "ui.workflows.filter": { mode: "merge", set: { text: "chat" } },
-    "ui.releases.filter": { mode: "merge", set: { waitingOn: "running" } },
+    "ui.issues.filter": { mode: "merge", set: [{ field: "waitingOn", value: "you" }] },
+    "ui.requirements.filter": { mode: "replace", set: [{ field: "waitingOn", value: "agent" }, { field: "state", value: ["agreed"] }] },
+    "ui.feedback.filter": { mode: "merge", set: [{ field: "phase", value: ["new"] }] },
+    "ui.workflows.filter": { mode: "merge", set: [{ field: "text", value: "chat" }] },
+    "ui.releases.filter": { mode: "merge", set: [{ field: "waitingOn", value: "running" }] },
     "ui.select": { keys: [] },
     "ui.open": { key: "REQ-34" },
-    "ui.highlight": { target: "row", key: "REQ-34" },
+    "ui.highlight": { target: { key: "REQ-34" } },
     "ui.board.draw": { doc: { v: "wireframe-v1", title: "Sign in", shapes: [{ type: "frame", id: "f", x: 0, y: 0, w: 100, h: 100, label: "Sign in" }] } },
     "ui.board.revise": { ops: [{ op: "update", id: "f", set: { x: 10 } }] },
   };

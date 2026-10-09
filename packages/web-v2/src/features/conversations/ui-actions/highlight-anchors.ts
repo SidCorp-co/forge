@@ -49,18 +49,18 @@ const quote = (v: string) => (typeof CSS !== "undefined" && CSS.escape ? CSS.esc
 /** The selectors a highlight is found by on a page about `kind` (none for a section the page lacks). */
 export function selectorsOf(h: UiHighlight, kind: UiPageItemKind | null): readonly string[] {
   if (h.target === "row") {
-    const k = quote(h.key ?? "");
+    const k = quote(h.key);
     return [`[data-testid="list-row"][data-key="${k}"]`, `[data-row-key="${k}"]`, `[data-testid="workflow-row"][data-flow="${k}"]`];
   }
-  if (h.target === "step") return [`[data-testid="design-step-row"][data-step="${quote(h.step ?? "")}"]`];
-  const a = kind && h.section ? HIGHLIGHT_ANCHORS[kind]?.[h.section] : undefined;
+  if (h.target === "step") return [`[data-testid="design-step-row"][data-step="${quote(h.step)}"]`];
+  const a = kind ? HIGHLIGHT_ANCHORS[kind]?.[h.section] : undefined;
   return a?.selectors ?? [];
 }
 
 /** The tab a highlight's element shows under, or null. */
 export function tabOf(h: UiHighlight, kind: UiPageItemKind | null): string | null {
   if (h.target === "step") return STEP_TAB;
-  if (h.target === "row" || !kind || !h.section) return null;
+  if (h.target === "row" || !kind) return null;
   return HIGHLIGHT_ANCHORS[kind]?.[h.section]?.tab ?? null;
 }
 

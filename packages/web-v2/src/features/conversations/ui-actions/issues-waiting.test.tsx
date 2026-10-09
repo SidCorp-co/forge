@@ -134,7 +134,7 @@ describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
   it("keeps only the issues waiting on an agent once the chat asks, marked as the assistant's", async () => {
     const send = page("/projects/demo/issues");
     await waitFor(() => expect(shownRows()).toEqual(["ISS-1", "ISS-3", "ISS-2"]));
-    send(turn("ui_issues_filter", { mode: "merge", set: { waitingOn: "agent" } }));
+    send(turn("ui_issues_filter", { mode: "merge", set: [{ field: "waitingOn", value: "agent" }] }));
     await waitFor(() => expect(shownRows()).toEqual(["ISS-2"]));
     const agent = within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "An agent" });
     expect(agent).toHaveAttribute("data-assistant", "true");
@@ -154,7 +154,7 @@ describe("the Issues list filters by whom an issue waits on (BC-5)", () => {
 
   it("moves a waiting filter sent to the Table onto the grouped view that reads it", async () => {
     const send = page("/projects/demo/issues?group=table");
-    send(turn("ui_issues_filter", { mode: "merge", set: { waitingOn: "you" } }));
+    send(turn("ui_issues_filter", { mode: "merge", set: [{ field: "waitingOn", value: "you" }] }));
     expect(window.location.search).toBe("?waiting=you");
   });
 });

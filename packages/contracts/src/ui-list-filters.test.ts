@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { REQUIREMENT_STATES } from "./requirements.js";
 import { say } from "./said.js";
 import { type WaitingKind, waitingOn } from "./standing.js";
 import {
@@ -72,7 +74,7 @@ describe("each list's filter", () => {
 	it("refuses a field the list does not have, by name", () => {
 		const r = uiListFilterParams("workflows").safeParse({
 			mode: "merge",
-			set: { phase: ["new"] },
+			set: [{ field: "phase", value: ["new"] }],
 		});
 		expect(r.success).toBe(false);
 		expect(JSON.stringify(r.error?.issues)).toContain("phase");
@@ -81,7 +83,7 @@ describe("each list's filter", () => {
 	it("refuses a waiting filter outside the three", () => {
 		const r = uiListFilterParams("requirements").safeParse({
 			mode: "merge",
-			set: { waitingOn: "person" },
+			set: [{ field: "waitingOn", value: "person" }],
 		});
 		expect(r.success).toBe(false);
 	});
@@ -90,20 +92,119 @@ describe("each list's filter", () => {
 		const p = uiListFilterParams("feedback");
 		expect(p.safeParse({ mode: "merge" }).success).toBe(false);
 		expect(
-			p.safeParse({ mode: "merge", set: { since: "7d" }, clear: ["since"] })
-				.success,
+			p.safeParse({
+				mode: "merge",
+				set: [{ field: "since", value: "7d" }],
+				clear: ["since"],
+			}).success,
 		).toBe(false);
 	});
 
 	it("takes the mockup's feedback filter: new this week", () => {
 		const r = uiListFilterParams("feedback").parse({
 			mode: "replace",
-			set: { phase: ["new"], since: "7d" },
+			set: [
+				{ field: "phase", value: ["new"] },
+				{ field: "since", value: "7d" },
+			],
 		});
 		expect(r).toEqual({
 			mode: "replace",
 			set: { phase: ["new"], since: "7d" },
 			clear: [],
+		});
+	});
+
+	// REQ-41 BC-4, QA of dev.219: "show only what waits on me" set Waiting on You and also a stray
+	// text ("/", ".*", "x", "all", ".") and all seven states, and the list showed 1 row, not 21.
+	describe("sets only what the call names; absent means untouched", () => {
+		const reqs = uiListFilterParams("requirements");
+
+		it("takes the one filter asked for and nothing else", () => {
+			expect(
+				reqs.parse({
+					mode: "merge",
+					set: [{ field: "waitingOn", value: "you" }],
+				}),
+			).toEqual({ mode: "merge", set: { waitingOn: "you" }, clear: [] });
+		});
+
+		it("offers no slot to fill: set is a list of {field, value}, none required, no defaults", () => {
+			const schema = z.toJSONSchema(reqs, { io: "input" }) as unknown as {
+				required: string[];
+				properties: {
+					set: Record<string, unknown>;
+					clear: Record<string, unknown>;
+				};
+			};
+			expect(schema.required).toEqual(["mode"]);
+			expect(schema.properties.set.type).toBe("array");
+			expect(JSON.stringify(schema)).not.toContain('"default"');
+		});
+
+		it("refuses a search that is not words, by name", () => {
+			for (const text of ["/", ".*", ".", "x", "},", "  -  "]) {
+				const r = reqs.safeParse({
+					mode: "merge",
+					set: [{ field: "text", value: text }],
+				});
+				expect(r.success, text).toBe(false);
+				expect(JSON.stringify(r.error?.issues), text).toContain(
+					"text must hold a word to search for",
+				);
+			}
+			expect(
+				reqs.safeParse({
+					mode: "merge",
+					set: [{ field: "text", value: "chat panel" }],
+				}).success,
+			).toBe(true);
+		});
+
+		it("refuses a choice list that names every choice, which narrows nothing", () => {
+			const every = [...REQUIREMENT_STATES];
+			const r = reqs.safeParse({
+				mode: "merge",
+				set: [
+					{ field: "waitingOn", value: "you" },
+					{ field: "state", value: every },
+				],
+			});
+			expect(r.success).toBe(false);
+			expect(JSON.stringify(r.error?.issues)).toContain(
+				"state names every value, which narrows nothing",
+			);
+			expect(
+				reqs.safeParse({
+					mode: "merge",
+					set: [{ field: "state", value: every.slice(0, 2) }],
+				}).success,
+			).toBe(true);
+		});
+
+		it("refuses the same field twice, and the old object of every field", () => {
+			const twice = reqs.safeParse({
+				mode: "merge",
+				set: [
+					{ field: "waitingOn", value: "you" },
+					{ field: "waitingOn", value: "agent" },
+				],
+			});
+			expect(JSON.stringify(twice.error?.issues)).toContain(
+				"waitingOn is set twice",
+			);
+			expect(
+				reqs.safeParse({ mode: "merge", set: { waitingOn: "you" } }).success,
+			).toBe(false);
+		});
+
+		it("does not refuse what the person's own search box holds: the page snapshot keeps its shape", () => {
+			expect(
+				uiListFilterSnapshotSchema.safeParse({
+					list: "requirements",
+					filter: { text: "/" },
+				}).success,
+			).toBe(true);
 		});
 	});
 

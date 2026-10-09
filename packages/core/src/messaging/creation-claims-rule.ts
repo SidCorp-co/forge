@@ -37,7 +37,7 @@
 import { SHARE_TOKEN_PREFIX } from '@forge/contracts/shares';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { claimsIssueCreated } from './issue-tokens.js';
+import { issueCreatedClaim } from './issue-tokens.js';
 
 type Call = MessageFacts['toolCalls'][number];
 type RecordKind = 'feedback' | 'requirement';
@@ -77,6 +77,22 @@ function claimsSave(body: string): boolean {
 }
 
 const SHARE_TOKEN_RE = new RegExp(`${SHARE_TOKEN_PREFIX}[A-Za-z0-9_-]{8,}`);
+
+/** The issue keys this turn's `ui_open` opened on the person's page, upper case: what "opened ISS-n" truly reports. */
+function issueKeysOpenedBy(calls: readonly Call[]): Set<string> {
+  const keys = new Set<string>();
+  for (const c of calls) {
+    if (c.isError || !(c.name === 'ui_open' || c.name.endsWith('__ui_open'))) continue;
+    try {
+      const args = JSON.parse(c.arguments) as { key?: unknown; kind?: unknown };
+      if (typeof args.key === 'string' && (args.kind === undefined || args.kind === 'issue'))
+        keys.add(args.key.toUpperCase());
+    } catch {
+      // arguments that are not JSON opened nothing
+    }
+  }
+  return keys;
+}
 
 const writes = (calls: readonly Call[]) => calls.filter((c) => !c.isError);
 
@@ -207,9 +223,10 @@ export const CREATION_CLAIMS_GROUNDED: MessageRule = {
       ...ungroundedRecords(text, f.toolCalls, f.agreedRecords),
       ...ungroundedSharesAndSaves(text, f.toolCalls, f.agreedRecords),
     ];
-    if (claimsIssueCreated(text, f.prefixes)) {
+    const created = issueCreatedClaim(text, f.prefixes, issueKeysOpenedBy(f.toolCalls));
+    if (created !== null) {
       breaks.push({
-        quote: null,
+        quote: created,
         why: 'reply claims an issue was created, and chat cannot create one (CHAT_FILES_FEEDBACK_NOT_ISSUES): it records Feedback or a Requirement draft',
       });
     }

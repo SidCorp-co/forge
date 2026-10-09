@@ -5,14 +5,21 @@
  * refused UI_ACTION_NOT_ON_PAGE by core, from that same snapshot, before the browser is asked
  * (BC-6). Read at origin/dev 3262b434d the snapshot took the fields, but no tool judged a highlight
  * and ui_highlight was not in the registry the model was offered. Only the model is scripted.
+ *
+ * QA of dev.219 (REQ-41 BC-3, BC-4, BC-6, ISS-495), the exact asks, the model scripted to make the
+ * call and the reply that QA recorded: a held reply shows the part it could check; "open ISS-493 and
+ * highlight its plan" is one valid call; "show only what waits on me" sets that one filter.
  */
 
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 const seen: unknown[][] = [];
 const offered: string[][] = [];
 let script: { name: string; args: unknown }[] = [];
+/** What the model says once its scripted calls are spent; a retry says it again. */
+let closing = 'Done.';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -34,7 +41,7 @@ vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
             arguments: JSON.stringify(next.args),
           };
         } else {
-          yield { type: 'chunk', text: 'Done.' };
+          yield { type: 'chunk', text: closing };
         }
         yield { type: 'done' };
       },
@@ -45,9 +52,8 @@ vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
 const { claimDueWindows, claimOf } = await import('../../src/conversations/index.js');
 const { routeWebWindow } = await import('../../src/assistant/conversation-send.js');
 const { api, userToken } = await import('../helpers/api.js');
-const { createTestProject, createTestRequirement, createTestUser } = await import(
-  '../helpers/factories.js'
-);
+const { createTestIssue, createTestProject, createTestRequirement, createTestUser, rows } =
+  await import('../helpers/factories.js');
 
 let token = '';
 let projectId = '';
@@ -61,10 +67,12 @@ beforeAll(async () => {
   slug = project.slug;
   await createTestRequirement(projectId, 34, 'Chat is the way in');
   await createTestRequirement(projectId, 35, 'Noise cut');
+  await createTestRequirement(projectId, 31, 'The Ask Agent panel opens at its largest width');
+  await createTestIssue(projectId, owner, 493, { status: 'open', createdAt: new Date() });
 });
 
 /** Ask from the page `snapshot` in a fresh room, and route the turn as the send would. */
-async function askFrom(snapshot: Record<string, unknown>, content: string): Promise<void> {
+async function askFrom(snapshot: Record<string, unknown>, content: string): Promise<string> {
   const opened = await api(token, 'POST', '/api/conversations', {
     projectId,
     title: `page actions ${randomUUID().slice(0, 6)}`,
@@ -86,7 +94,7 @@ async function askFrom(snapshot: Record<string, unknown>, content: string): Prom
       venuePrefixes: [room.externalId],
       settleMs: 0,
     });
-    if (!window) return;
+    if (!window) return room.id;
     const claim = claimOf(window);
     if (claim) await routeWebWindow(window, claim);
   }
@@ -131,8 +139,8 @@ describe('the chat knows what the list beside it shows (BC-8)', () => {
 describe('a highlight the page cannot show is refused by core (BC-6)', () => {
   it('refuses a row the list is not showing, naming the code, and forwards one it shows', async () => {
     script = [
-      { name: 'ui_highlight', args: { target: 'row', key: 'REQ-35' } },
-      { name: 'ui_highlight', args: { target: 'row', key: 'REQ-34' } },
+      { name: 'ui_highlight', args: { target: { key: 'REQ-35' } } },
+      { name: 'ui_highlight', args: { target: { key: 'REQ-34' } } },
     ];
     const before = seen.length;
     await askFrom(list(), 'highlight REQ-35, then REQ-34');
@@ -147,11 +155,118 @@ describe('a highlight the page cannot show is refused by core (BC-6)', () => {
   });
 
   it('refuses a section when the page has no record open', async () => {
-    script = [{ name: 'ui_highlight', args: { target: 'section', section: 'criteria' } }];
+    script = [{ name: 'ui_highlight', args: { target: { section: 'criteria' } } }];
     const before = seen.length;
     await askFrom(list(), 'show me the criteria');
     const after = told(before + 1);
     expect(after).toContain('UI_ACTION_NOT_ON_PAGE: ui.highlight names section');
     expect(after).toContain('and no record is open; open one with ui.open first');
+  });
+});
+
+/** The text of the last assistant message the room holds. */
+async function repliedIn(room: string): Promise<string> {
+  const [last] = await rows<{ content: string }>(sql`
+    SELECT content FROM conversation_messages
+     WHERE conversation_id = ${room} AND role = 'assistant' ORDER BY seq DESC LIMIT 1`);
+  return last?.content ?? '';
+}
+
+describe('"open ISS-493 and highlight its plan" is one valid call (BC-6)', () => {
+  const ask = 'open ISS-493 and highlight its plan';
+
+  it('forwards the key with the section, and the reply that says it opened the issue is not held', async () => {
+    script = [
+      { name: 'ui_open', args: { key: 'ISS-493', kind: 'issue' } },
+      { name: 'ui_highlight', args: { target: { key: 'ISS-493', section: 'plan' } } },
+    ];
+    closing = 'I opened ISS-493 and highlighted its plan.';
+    const before = seen.length;
+    const room = await askFrom(list(), ask);
+    expect(told(before + 2)).toContain('\\"name\\":\\"ui.highlight\\"');
+    expect(told(before + 2)).toContain('\\"of\\":\\"ISS-493\\"');
+    expect(told(before + 2)).not.toContain('UI_ACTION_INVALID');
+    expect(await repliedIn(room)).toBe(closing);
+  });
+
+  it('refuses the call QA saw the model make (every field filled), by name, once the contract is one target', async () => {
+    script = [
+      { name: 'ui_open', args: { key: 'ISS-493', kind: 'issue' } },
+      { name: 'ui_highlight', args: { key: 'x', step: 'x', target: 'section', section: 'plan' } },
+    ];
+    closing = 'I opened ISS-493.';
+    const before = seen.length;
+    await askFrom(list(), ask);
+    expect(told(before + 2)).toContain('UI_ACTION_INVALID: ui.highlight params refused');
+  });
+
+  it('refuses a section its record has no page for, naming the ones it has', async () => {
+    script = [
+      { name: 'ui_open', args: { key: 'REQ-31' } },
+      { name: 'ui_highlight', args: { target: { key: 'REQ-31', section: 'plan' } } },
+    ];
+    closing = 'I opened REQ-31.';
+    const before = seen.length;
+    await askFrom(list(), 'open REQ-31 and highlight its plan');
+    expect(told(before + 2)).toContain(
+      'REQ-31 is a requirement, whose page has waiting, question, criteria, picture, delivery, history',
+    );
+  });
+});
+
+describe('"open Requirements and show only what waits on me" sets that one filter (BC-4)', () => {
+  it('refuses the filler QA saw (a stray search, every state) and forwards only waitingOn', async () => {
+    const every = [
+      'draft',
+      'agreed',
+      'in_delivery',
+      'delivered',
+      'accepted',
+      'deferred',
+      'dropped',
+    ];
+    script = [
+      {
+        name: 'ui_requirements_filter',
+        args: {
+          mode: 'merge',
+          set: [
+            { field: 'waitingOn', value: 'you' },
+            { field: 'text', value: '/' },
+            { field: 'state', value: every },
+          ],
+        },
+      },
+      {
+        name: 'ui_requirements_filter',
+        args: { mode: 'merge', set: [{ field: 'waitingOn', value: 'you' }] },
+      },
+    ];
+    closing = 'Opened Requirements, waiting on you.';
+    const before = seen.length;
+    const room = await askFrom(list(), 'open Requirements and show only what waits on me');
+    expect(told(before + 1)).toContain('text must hold a word to search for');
+    expect(told(before + 2)).toContain('\\"set\\":{\\"waitingOn\\":\\"you\\"}');
+    expect(told(before + 2)).not.toContain('\\"set\\":{\\"waitingOn\\":\\"you\\",');
+    expect(await repliedIn(room)).toBe(closing);
+  });
+});
+
+describe('a held reply still shows the part it could check (BC-3)', () => {
+  it('"What is REQ-31\'s state, and is ISS-9998 done?": REQ-31 is shown, ISS-9998 is left out and said so', async () => {
+    script = [{ name: 'forge_requirement', args: { requirement: 'REQ-31' } }];
+    closing =
+      'REQ-31 is a draft (The Ask Agent panel opens at its largest width), and ISS-9998 does not exist on the tracker.';
+    const room = await askFrom(
+      list(),
+      "What is REQ-31's state, and is ISS-9998 done? Answer both in one reply.",
+    );
+    const shown = await repliedIn(room);
+    expect(shown).toContain('REQ-31 is a draft (The Ask Agent panel opens at its largest width).');
+    expect(shown).not.toContain('ISS-9998');
+    expect(shown).toContain(
+      'The reply check left out an issue key that nothing this answer read backs.',
+    );
+    expect(shown).not.toContain('the answer was not sent');
   });
 });

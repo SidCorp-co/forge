@@ -169,53 +169,115 @@ const SECTION_NAMES = [
 /** A workflow step's id as its design names it (`check`, `rule-merge`). */
 export const WORKFLOW_STEP_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
 
-/** The one field each highlight target names. */
-const HIGHLIGHT_FIELD = {
-	section: "section",
-	step: "step",
-	row: "key",
-} as const;
-type HighlightField = (typeof HIGHLIGHT_FIELD)[keyof typeof HIGHLIGHT_FIELD];
+/**
+ * What a highlight points at, as the page reports it back and the page code reads it: a section or
+ * a step of the record named by `of` (the open one where absent), or one row of the open list.
+ */
+export const uiHighlightSchema = z.discriminatedUnion("target", [
+	z.strictObject({
+		target: z.literal("section"),
+		section: z.enum(SECTION_NAMES),
+		of: z.string().trim().min(1).max(200).optional(),
+	}),
+	z.strictObject({
+		target: z.literal("step"),
+		step: z.string().regex(WORKFLOW_STEP_ID, "a step id such as check"),
+		of: z.string().trim().min(1).max(200).optional(),
+	}),
+	z.strictObject({
+		target: z.literal("row"),
+		key: z.string().trim().min(1).max(200),
+	}),
+]);
+export type UiHighlight = z.infer<typeof uiHighlightSchema>;
 
 /**
- * `ui.highlight`: mark one section of the open record, one step of the open workflow, or one row of
- * the open list. One object, `target` and the one field it names, never a union at the top: a tool's
- * params are an object (`mcp-adapter.ts` refuses a top-level union), so a field the target does not
- * take is refused by name instead.
+ * `ui.highlight` as the model calls it: ONE `target` object naming the thing by the record's key and
+ * what to mark in it, `{key: "ISS-493", section: "plan"}`, `{key: "chat-turn", step: "check"}`, or
+ * the key alone for a row of the open list. Nothing else is needed and nothing else is taken: a
+ * model handed a flat object of optional fields filled every one of them (QA of dev.219: `{key: "x",
+ * step: "x", target: "section", section: "plan"}`, refused three times a turn), so each field here
+ * means one thing and none asks to be set for its own sake. A section the key's kind has no page
+ * for, a section on a workflow, and a step on anything but a workflow are refused naming what the
+ * kind has.
  */
 export const uiHighlightParamsSchema = z
 	.strictObject({
-		target: z.enum(["section", "step", "row"]),
-		section: z.enum(SECTION_NAMES).optional(),
-		step: z
-			.string()
-			.regex(WORKFLOW_STEP_ID, "a step id such as check")
-			.optional(),
-		key: z.string().trim().min(1).max(200).optional(),
+		target: z.strictObject({
+			key: z
+				.string()
+				.trim()
+				.min(1)
+				.max(200)
+				.describe(
+					"the record's key (ISS-47, REQ-30, FB-12, or a workflow's flow such as chat-turn); alone, it marks that row of the open list",
+				)
+				.optional(),
+			section: z
+				.enum(SECTION_NAMES)
+				.describe(
+					"a section of that record's page; leave out unless marking a section",
+				)
+				.optional(),
+			step: z
+				.string()
+				.regex(WORKFLOW_STEP_ID, "a step id such as check")
+				.describe("a step of that workflow; leave out unless marking a step")
+				.optional(),
+		}),
 	})
-	.superRefine((v, ctx) => {
-		const own = HIGHLIGHT_FIELD[v.target];
-		if (v[own] === undefined)
-			ctx.addIssue({
-				code: "custom",
-				path: [own],
-				message: `target "${v.target}" names its ${own}`,
-			});
-		for (const other of Object.values(HIGHLIGHT_FIELD) as HighlightField[]) {
-			if (other !== own && v[other] !== undefined)
-				ctx.addIssue({
-					code: "custom",
-					path: [other],
-					message: `target "${v.target}" takes ${own}, not ${other}`,
-				});
+	.transform(({ target: t }, ctx): UiHighlight => {
+		const refuse = (path: string, message: string) => {
+			ctx.addIssue({ code: "custom", path: ["target", path], message });
+			return z.NEVER;
+		};
+		if (t.section !== undefined && t.step !== undefined)
+			return refuse("step", "name a section or a step, not both");
+		const kind = t.key === undefined ? null : openKindOf(t.key);
+		if (t.section !== undefined) {
+			if (t.key !== undefined) {
+				if (kind === null)
+					return refuse(
+						"section",
+						`"${t.key}" is a workflow, which highlights a step, not a section; name step`,
+					);
+				const has: readonly string[] =
+					UI_HIGHLIGHT_SECTIONS[kind as keyof typeof UI_HIGHLIGHT_SECTIONS];
+				if (!has.includes(t.section))
+					return refuse(
+						"section",
+						`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, whose page has ${has.join(", ")}, not "${t.section}"`,
+					);
+			}
+			return {
+				target: "section",
+				section: t.section,
+				...(t.key !== undefined ? { of: t.key } : {}),
+			};
 		}
+		if (t.step !== undefined) {
+			if (kind !== null)
+				return refuse(
+					"step",
+					`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, which has sections, not steps; a step belongs to a workflow, named by its flow`,
+				);
+			return {
+				target: "step",
+				step: t.step,
+				...(t.key !== undefined ? { of: t.key } : {}),
+			};
+		}
+		if (t.key === undefined)
+			return refuse(
+				"key",
+				"name what to highlight: a key with a section or a step, or a row's key alone",
+			);
+		return { target: "row", key: t.key };
 	});
-export type UiHighlight = z.infer<typeof uiHighlightParamsSchema>;
 
 /** What a highlight points at, as the page and the person name it: the section, the step id or the row key. */
 export const highlightTargetOf = (h: UiHighlight): string =>
-	(h.target === "section" ? h.section : h.target === "step" ? h.step : h.key) ??
-	"";
+	h.target === "section" ? h.section : h.target === "step" ? h.step : h.key;
 
 /** The most row keys a page reports as shown, top of the list first (BC-8). */
 export const UI_SHOWN_MAX = 50;
@@ -246,7 +308,7 @@ const productFilter = <L extends UiProductList>(list: L, label: string) => ({
 	wire: `ui_${list}_filter` as const,
 	version: UI_ACTION_VERSION,
 	params: uiListFilterParams(list),
-	describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. waitingOn is "you", "agent" or "running".`,
+	describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else: a field you leave out is left as it is, so never fill a field to be complete. waitingOn is "you", "agent" or "running".`,
 });
 const requirementsFilter = productFilter("requirements", "Requirements");
 const feedbackFilter = productFilter("feedback", "Feedback");
@@ -267,7 +329,7 @@ export const UI_ACTIONS = {
 		version: UI_ACTION_VERSION,
 		params: filterParams,
 		describe:
-			'Open the Issues list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. createdBy and assignee take only "me" (the signed-in person). waitingOn is "you", "agent" or "running", and shows the grouped view, which reads whom each issue waits on.',
+			'Open the Issues list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else: a field you leave out is left as it is, so never fill a field to be complete. createdBy and assignee take only "me" (the signed-in person). waitingOn is "you", "agent" or "running", and shows the grouped view, which reads whom each issue waits on.',
 	},
 	"ui.requirements.filter": requirementsFilter,
 	"ui.feedback.filter": feedbackFilter,
@@ -292,7 +354,7 @@ export const UI_ACTIONS = {
 		version: UI_ACTION_VERSION,
 		params: uiHighlightParamsSchema,
 		describe:
-			'Highlight one thing on the page beside the chat: a section of the open record (target "section" with section), a step of the open workflow (target "step" with its step id), or a row the open list shows (target "row" with its key). It scrolls to it and marks it; it changes nothing else.',
+			'Highlight one thing on the page beside the chat. Send one target naming the record by its key and what to mark in it: {"target":{"key":"ISS-493","section":"plan"}} marks a section of an issue, requirement or feedback page; {"target":{"key":"chat-turn","step":"check"}} marks a step of a workflow; {"target":{"key":"REQ-34"}} marks that row of the list that is open. Send only the fields you mean: no section or step unless marking one. The record must be the one open beside the chat (open it first with ui_open). It scrolls to it and marks it; it changes nothing else.',
 	},
 	"ui.board.draw": {
 		wire: "ui_board_draw",
@@ -491,29 +553,39 @@ export type UiPageItem = z.infer<typeof uiPageItemSchema>;
 export function highlightRefusal(h: UiHighlight, s: UiSnapshot): string | null {
 	const no = (why: string) =>
 		`UI_ACTION_NOT_ON_PAGE: ui.highlight ${why}. Nothing was highlighted.`;
+	if (h.target === "row")
+		return s.shown?.includes(h.key)
+			? null
+			: no(`names row ${h.key}, which the list beside the chat is not showing`);
+	const named = h.target === "section" ? h.section : h.step;
+	if (h.target === "step" && s.item?.kind !== "workflow")
+		return no(
+			`names step "${named}" and no workflow is open; open one with ui.open first`,
+		);
 	if (h.target === "section") {
 		const kind = s.item?.kind;
 		const sections: readonly string[] =
 			kind && kind in UI_HIGHLIGHT_SECTIONS
 				? UI_HIGHLIGHT_SECTIONS[kind as keyof typeof UI_HIGHLIGHT_SECTIONS]
 				: [];
-		if (h.section !== undefined && sections.includes(h.section)) return null;
+		if (h.section === undefined || !sections.includes(h.section))
+			return no(
+				kind
+					? `names section "${h.section}", which a ${kind} page does not have (it has ${sections.join(", ") || "none"})`
+					: `names section "${h.section}" and no record is open; open one with ui.open first`,
+			);
+	}
+	// a workflow page is addressed by its flow or its uuid, so one key cannot be told from the other
+	if (
+		h.of !== undefined &&
+		s.item &&
+		s.item.kind !== "workflow" &&
+		s.item.key !== h.of
+	)
 		return no(
-			kind
-				? `names section "${h.section}", which a ${kind} page does not have (it has ${sections.join(", ") || "none"})`
-				: `names section "${h.section}" and no record is open; open one with ui.open first`,
+			`names ${h.of}, but the page beside the chat shows ${s.item.key}; open ${h.of} with ui.open first`,
 		);
-	}
-	if (h.target === "step") {
-		return s.item?.kind === "workflow"
-			? null
-			: no(
-					`names step "${h.step}" and no workflow is open; open one with ui.open first`,
-				);
-	}
-	return h.key !== undefined && s.shown?.includes(h.key)
-		? null
-		: no(`names row ${h.key}, which the list beside the chat is not showing`);
+	return null;
 }
 
 /** What the page beside the chat looks like, sent with each message — typed, never scraped. */
@@ -533,7 +605,7 @@ export const uiSnapshotSchema = z.strictObject({
 		.max(UI_SHOWN_MAX)
 		.optional(),
 	/** What the page has highlighted, by the chat or by the person's own anchor (BC-6). */
-	highlight: uiHighlightParamsSchema.optional(),
+	highlight: uiHighlightSchema.optional(),
 	/** The board open in the dock, as the assistant last drew it (ISS-48). */
 	board: wireframeDocSchema.optional(),
 });

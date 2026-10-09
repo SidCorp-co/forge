@@ -201,6 +201,27 @@ describe('a reply claiming it created an issue', () => {
     expect(await held(vi1, [])).toHaveLength(1);
   });
 
+  it('quotes the words of the claim, so the clause holding them can be cut', async () => {
+    const [r] = await held('REQ-31 is in delivery. I created a new issue for it.', []);
+    expect(r?.quote).toBe('created a new issue');
+  });
+
+  it('reads "opened ISS-n" as the page opening it where this turn ui_open opened that issue', async () => {
+    const open = (key: string, isError = false): Call => ({
+      name: 'ui_open',
+      arguments: JSON.stringify({ key, kind: 'issue' }),
+      isError,
+    });
+    const said = 'I opened ISS-493 for you.';
+    expect(await held(said, [open('ISS-493')])).toEqual([]);
+    expect(await held('I opened the issue for you.', [open('ISS-493')])).toEqual([]);
+    expect(await held(said, [open('ISS-495')]), 'another issue was opened').toHaveLength(1);
+    expect(await held(said, [open('ISS-493', true)]), 'the open failed').toHaveLength(1);
+    expect(await held(said, []), 'nothing opened it').toHaveLength(1);
+    expect(await held('I opened a new issue for it.', [open('ISS-493')])).toHaveLength(1);
+    expect(await held('I created ISS-493 for it.', [open('ISS-493')])).toHaveLength(1);
+  });
+
   it('lets a reply that only names an existing issue pass', async () => {
     expect(await held('ISS-395 is still a draft.', [])).toEqual([]);
   });

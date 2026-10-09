@@ -44,12 +44,30 @@ const ISSUE_NOUN_CLAIM_RE =
   /(?:(?:đã|vừa)\s+tạo\s+(?:một\s+)?(?:issue|task)|\b(?:created|opened|raised|filed)\s+(?:(?:a|an|the|new)\s+)*(?:issue|task|ticket)\b)/iu; // i18n-allow: matches the Vietnamese phrasing of the claim being policed
 
 /**
- * The reply claims it created an issue. No chat door can: the kernel refuses a chat credential
- * `CHAT_FILES_FEEDBACK_NOT_ISSUES`, so the claim is false whatever the turn did.
+ * The words of the reply that claim it created an issue, or null. No chat door can create one: the
+ * kernel refuses a chat credential `CHAT_FILES_FEEDBACK_NOT_ISSUES`, so the claim is false whatever
+ * the turn did. "Opened" is also what `ui_open` does to the person's page (REQ-41 BC-6), so "opened
+ * ISS-493" and "opened the issue" are no creation claim where this turn's own `ui_open` opened an
+ * issue (`openedKeys`, upper case, the keys it named); "opened a new issue" always is. The words are
+ * returned, never a bare yes, so the clause holding them can be cut and the rest of the reply still
+ * shown (REQ-41 BC-3).
  */
-export function claimsIssueCreated(reply: string, prefixes: readonly string[] = []): boolean {
-  if (ISSUE_NOUN_CLAIM_RE.test(reply)) return true;
-  const key = issueTokenRe(prefixes).source;
+export function issueCreatedClaim(
+  reply: string,
+  prefixes: readonly string[] = [],
+  openedKeys: ReadonlySet<string> = new Set(),
+): string | null {
+  const tokens = issueTokenRe(prefixes);
+  for (const m of reply.matchAll(new RegExp(ISSUE_NOUN_CLAIM_RE.source, 'giu'))) {
+    const theOpened = /^opened\s+the\b/i.test(m[0]);
+    if (theOpened && openedKeys.size > 0) continue;
+    return m[0];
+  }
   const verbs = '(?:\\bcreated|\\bopened|\\braised|(?:đã|vừa)\\s+tạo)'; // i18n-allow: the Vietnamese creation verb
-  return new RegExp(`${verbs}\\s+(?:\\*\\*)?${key}`, 'iu').test(reply);
+  for (const m of reply.matchAll(new RegExp(`${verbs}\\s+(?:\\*\\*)?${tokens.source}`, 'giu'))) {
+    const key = m[0].match(issueTokenRe(prefixes))?.[0]?.toUpperCase();
+    if (/^opened\b/i.test(m[0]) && key !== undefined && openedKeys.has(key)) continue;
+    return m[0];
+  }
+  return null;
 }

@@ -160,7 +160,7 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     const p = page(<RequirementsScreen projectId="p1" slug="demo" />, "/projects/demo/requirements");
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34", "REQ-35", "REQ-36"]));
     p.send(turn());
-    p.send(turn({ name: "ui_requirements_filter", args: { mode: "merge", set: { waitingOn: "you" } } }));
+    p.send(turn({ name: "ui_requirements_filter", args: { mode: "merge", set: [{ field: "waitingOn", value: "you" }] } }));
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
     expect(window.location.search).toBe("?waiting=you");
     const you = within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "You" });
@@ -175,7 +175,7 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     const p = page(<RequirementsScreen projectId="p1" slug="demo" />, "/projects/demo/requirements");
     await waitFor(() => expect(shownRows()).toHaveLength(3));
     p.send(turn());
-    p.send(turn({ name: "ui_requirements_filter", args: { mode: "merge", set: { waitingOn: "you" } } }));
+    p.send(turn({ name: "ui_requirements_filter", args: { mode: "merge", set: [{ field: "waitingOn", value: "you" }] } }));
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
     fireEvent.click(within(screen.getByTestId("waiting-filter")).getByRole("button", { name: "An agent" }));
     await waitFor(() => expect(shownRows()).toEqual(["REQ-35"]));
@@ -192,7 +192,7 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     const p = page(<FeedbackScreen projectId="p1" slug="demo" />, "/projects/demo/feedback");
     await waitFor(() => expect(shownRows()).toHaveLength(3));
     p.send(turn());
-    p.send(turn({ name: "ui_feedback_filter", args: { mode: "replace", set: { waitingOn: "running", phase: ["triaged"] } } }));
+    p.send(turn({ name: "ui_feedback_filter", args: { mode: "replace", set: [{ field: "waitingOn", value: "running" }, { field: "phase", value: ["triaged"] }] } }));
     await waitFor(() => expect(shownRows()).toEqual(["FB-53"]));
     const chip = screen.getByTestId("list-filter-chip");
     expect(chip).toHaveTextContent("Phase triaged");
@@ -202,6 +202,30 @@ describe("chat filters a Product list by whom a row waits on (BC-4, BC-5, BC-7, 
     await waitFor(() => expect(shownRows()).toEqual(["FB-53"]));
     expect(screen.queryByTestId("list-filter-chip")).toBeNull();
     expect(window.location.search).toBe("?waiting=running");
+  });
+
+  // QA of dev.219: "show only what waits on me" also set a text "/" and all seven states, so the list
+  // showed 1 row for 21. A call that fills slots it was not asked for is refused and sets nothing; the
+  // call that names only the asked filter changes only that param.
+  it("sets only the filter asked for: a stray search and a full state list are refused, and nothing moves", async () => {
+    const p = page(<RequirementsScreen projectId="p1" slug="demo" />, "/projects/demo/requirements");
+    await waitFor(() => expect(shownRows()).toEqual(["REQ-34", "REQ-35", "REQ-36"]));
+    p.send(turn());
+    const every = ["draft", "agreed", "in_delivery", "delivered", "accepted", "deferred", "dropped"];
+    p.send(
+      turn({
+        name: "ui_requirements_filter",
+        args: { mode: "merge", set: [{ field: "waitingOn", value: "you" }, { field: "text", value: "/" }, { field: "state", value: every }] },
+      }),
+    );
+    expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("text must hold a word to search for");
+    expect(window.location.search).toBe("");
+    expect(shownRows()).toEqual(["REQ-34", "REQ-35", "REQ-36"]);
+    p.send(turn({ name: "ui_requirements_filter", args: { mode: "merge", set: [{ field: "waitingOn", value: "you" }] } }));
+    await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
+    expect(window.location.search).toBe("?waiting=you");
+    expect(new URLSearchParams(window.location.search).has("q")).toBe(false);
+    expect(new URLSearchParams(window.location.search).has("state")).toBe(false);
   });
 
   it("navigates to the Requirements and Feedback routes", async () => {
@@ -236,13 +260,13 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     const p = page(<RequirementsScreen projectId="p1" slug="demo" />, "/projects/demo/requirements?waiting=you");
     await waitFor(() => expect(shownRows()).toEqual(["REQ-34"]));
     p.send(turn());
-    p.send(turn({ name: "ui_highlight", args: { target: "row", key: "REQ-34" } }));
+    p.send(turn({ name: "ui_highlight", args: { target: { key: "REQ-34" } } }));
     const row = screen.getAllByTestId("list-row")[0] as HTMLElement;
     expect(row).toHaveClass("forge-highlight");
     expect(row).toHaveAttribute("data-highlighted", "true");
     await waitFor(() => expect(snapshot().highlight).toEqual({ target: "row", key: "REQ-34" }));
     expect(screen.getByTestId("sees")).toHaveTextContent("highlighting REQ-34");
-    p.send(turn({ name: "ui_highlight", args: { target: "row", key: "REQ-35" } }));
+    p.send(turn({ name: "ui_highlight", args: { target: { key: "REQ-35" } } }));
     expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("UI_ACTION_NOT_ON_PAGE: ui.highlight names row REQ-35, which the list beside the chat is not showing");
   });
 
@@ -253,17 +277,40 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
     }
     const p = page(<RequirementPage />, "/projects/demo/requirements/REQ-34");
     p.send(turn());
-    p.send(turn({ name: "ui_highlight", args: { target: "section", section: "criteria" } }));
+    p.send(turn({ name: "ui_highlight", args: { target: { section: "criteria" } } }));
     expect(window.location.search).toBe("?tab=criteria");
     p.send(turn());
     await waitFor(() => expect(screen.getByTestId("view-criteria")).toHaveAttribute("data-highlighted", "true"));
     await waitFor(() => expect(snapshot()).toMatchObject({ item: { kind: "requirement", key: "REQ-34" }, highlight: { target: "section", section: "criteria" } }));
   });
 
+  // QA of dev.219: "open ISS-493 and highlight its plan" sent the key with the section, and was refused
+  // three times a turn. The natural call, one target naming the record and its section, is the valid one.
+  it("marks the plan of the issue just opened when the call names the issue's key and the section", async () => {
+    const p = page(
+      <section data-testid="view-overview">
+        <div data-highlight="plan" data-testid="issue-plan" />
+      </section>,
+      "/projects/demo/issues/ISS-493",
+    );
+    p.send(turn());
+    p.send(turn({ name: "ui_highlight", args: { target: { key: "ISS-493", section: "plan" } } }));
+    expect(screen.queryByTestId("ui-action-refused")).toBeNull();
+    expect(screen.getByTestId("issue-plan")).toHaveAttribute("data-highlighted", "true");
+    await waitFor(() => expect(snapshot().highlight).toEqual({ target: "section", section: "plan", of: "ISS-493" }));
+  });
+
+  it("refuses a key that is not the record open beside the chat, naming both", () => {
+    const p = page(<div data-highlight="plan" />, "/projects/demo/issues/ISS-493");
+    p.send(turn());
+    p.send(turn({ name: "ui_highlight", args: { target: { key: "ISS-495", section: "plan" } } }));
+    expect(screen.getByTestId("ui-action-refused")).toHaveTextContent("names ISS-495, but the page beside the chat shows ISS-493");
+  });
+
   it("marks the question a requirement page asks, and step check of an open workflow", async () => {
     const p = page(<section data-testid="requirement-unclear">question</section>, "/projects/demo/requirements/REQ-34");
     p.send(turn());
-    p.send(turn({ name: "ui_highlight", args: { target: "section", section: "question" } }));
+    p.send(turn({ name: "ui_highlight", args: { target: { section: "question" } } }));
     expect(screen.getByTestId("requirement-unclear")).toHaveAttribute("data-highlighted", "true");
     act(() => go("/projects/demo/workflows/chat-turn?tab=steps"));
     p.rerender(
@@ -273,7 +320,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
             check
           </li>
         </ul>
-        <Dock progress={turn({ name: "ui_highlight", args: { target: "step", step: "check" } })} />
+        <Dock progress={turn({ name: "ui_highlight", args: { target: { step: "check" } } })} />
       </>,
     );
     expect(screen.getByTestId("design-step-row")).toHaveAttribute("data-highlighted", "true");
@@ -287,7 +334,7 @@ describe("chat opens any record by key and highlights on it (BC-6)", () => {
       "/projects/demo/issues/ISS-495",
     );
     p.send(turn());
-    p.send(turn({ name: "ui_highlight", args: { target: "section", section: "preview" } }));
+    p.send(turn({ name: "ui_highlight", args: { target: { section: "preview" } } }));
     expect(screen.getByTestId("issue-preview")).toHaveAttribute("data-highlighted", "true");
     expect(screen.queryByTestId("ui-action-refused")).toBeNull();
     expect(window.location.pathname).toBe("/projects/demo/issues/ISS-495");

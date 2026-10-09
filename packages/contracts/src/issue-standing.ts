@@ -1,13 +1,13 @@
-import type { WrittenLang } from "./written-lang.js";
 import type { IssueMove, IssueStatus } from "./issue-machine.js";
-import type { Said } from "./said.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
+import type { Said } from "./said.js";
 import type {
 	Standing,
 	StandingGroup,
 	StandingGroupLabels,
 	WaitingKind,
 } from "./standing.js";
+import type { WrittenLang } from "./written-lang.js";
 
 /** The list's attention groups, in the order they are drawn. */
 export const ISSUE_ATTENTION_GROUPS = [
@@ -189,6 +189,8 @@ export interface IssueStanding
 	module: IssueModuleRef | null;
 	/** Product feedback (FB-n) routed to this issue. */
 	feedback: string[];
+	/** The ones of them the feedback's own triager dropped; the issue keeps the link and says so. */
+	feedbackDropped: string[];
 	blockedBy: IssueEdgeRef[];
 	blocks: IssueEdgeRef[];
 	lease: IssueLeaseView | null;
