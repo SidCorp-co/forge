@@ -20,6 +20,7 @@ import onboardingCopy from "@/features/onboarding/copy.json";
 import orgsCopy from "@/features/orgs/copy.json";
 import overviewCopy from "@/features/overview/copy.json";
 import pipelineCopy from "@/features/pipeline/copy.json";
+import previewsCopy from "@/features/previews/copy.json";
 import projectDashboardCopy from "@/features/project-dashboard/copy.json";
 import projectSettingsCopy from "@/features/project-settings/copy.json";
 import projectStatusCopy from "@/features/project-status/copy.json";
@@ -64,6 +65,7 @@ export const COPY_FILES = {
   "features/orgs/copy.json": orgsCopy,
   "features/overview/copy.json": overviewCopy,
   "features/pipeline/copy.json": pipelineCopy,
+  "features/previews/copy.json": previewsCopy,
   "features/project-dashboard/copy.json": projectDashboardCopy,
   "features/project-settings/copy.json": projectSettingsCopy,
   "features/project-status/copy.json": projectStatusCopy,

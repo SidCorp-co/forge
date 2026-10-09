@@ -67,6 +67,7 @@ export const PREFIX_HOMES = {
   onboarding: 'features/onboarding/copy.json',
   overview: 'features/overview/copy.json',
   pipeline: 'features/pipeline/copy.json',
+  previews: 'features/previews/copy.json',
   progress: 'features/forecast/copy.json',
   pulse: 'features/overview/copy.json',
   questions: 'features/questions/copy.json',

@@ -11,6 +11,7 @@ import {
   ViewHeading,
 } from "@/design";
 import type { IssueStepOutcome } from "@forge/contracts/issue-standing";
+import { PreviewPanel } from "@/features/previews/preview-panel";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { agentsListHref, runHref } from "@/lib/routes/agents";
@@ -50,6 +51,12 @@ export function OverviewTab({
         attachmentsLoading={attachmentsQ.isLoading}
         attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
         canWrite={canWrite}
+      />
+      <PreviewPanel
+        issueId={issue.id}
+        issueLabel={issue.displayId}
+        canWrite={canWrite}
+        hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
       />
       <section aria-label={t("issues.plan.title")}>
         <ViewHeading>{t("issues.plan.title")}</ViewHeading>

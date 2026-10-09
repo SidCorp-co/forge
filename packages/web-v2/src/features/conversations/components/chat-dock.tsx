@@ -17,6 +17,7 @@ import { useConversation } from "../hooks";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationList } from "./conversation-list";
 import { DockOpening, WaitingOffer } from "./dock-opening";
+import { DockPreview } from "@/features/previews/dock-preview";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { StartConversation } from "./start-conversation";
@@ -224,6 +225,7 @@ export function ChatDockBody({ dock, fullScreen, sizeControl }: { dock: ChatDock
             onAskProject={() => pick({ kind: "draft", projectId: target.projectId })}
           />
         )}
+        {!listing && <DockPreview pathname={pathname} projectId={dock.projectId} />}
         <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
       </div>
     </SecondaryRegion>
