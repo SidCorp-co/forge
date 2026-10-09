@@ -43,7 +43,11 @@ async function resolved(who: Who, title: string): Promise<string> {
     201,
   ).feedback.key as string;
   ok(
-    await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'answer', answer: 'It is by design.' }),
+    await say('owner', 'POST', item(fb, 'triage'), {
+      answers: TRIAGE_ANSWERS,
+      route: 'answer',
+      answer: 'It is by design.',
+    }),
   );
   return fb;
 }
@@ -133,7 +137,9 @@ describe('Forge answers for an item nobody confirmed only from the record, once 
     expect(past).toMatchObject({ verified: 0 });
     expect(past.held).toBeGreaterThanOrEqual(1);
     const out = await read(fb);
-    expect(out.status, 'its triage named no criterion, so nothing says the problem is gone').toBe('triaged');
+    expect(out.status, 'its triage named no criterion, so nothing says the problem is gone').toBe(
+      'triaged',
+    );
     expect(out.phase).toBe('resolved');
     expect(out.can).toMatchObject({ verify: true });
     expect((await bell('ann')).slice(before)).toEqual([]);

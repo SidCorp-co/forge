@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { declinedNotice, duplicateNotice, messageNotice } from './reporter-notices.js';
 import { feedbackStandingOf } from './standing.js';
-import {
-  duplicateRefusal,
-  messageRefusal,
-  noteActRefusal,
-  snoozeRefusal,
-} from './verb-rules.js';
+import { duplicateRefusal, messageRefusal, noteActRefusal, snoozeRefusal } from './verb-rules.js';
 
 const now = new Date('2026-10-07T00:00:00Z');
 const inDays = (n: number) => new Date(now.getTime() + n * 86_400_000);

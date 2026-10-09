@@ -22720,69 +22720,6 @@
         ]
       }
     },
-    "/api/projects/{id}/feedback/{fb}/accept": {
-      "post": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "fb",
-            "required": true,
-            "schema": {
-              "maxLength": 64,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "requirement": {
-                    "maxLength": 200,
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "4XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Problem"
-          },
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-auth": [
-          "requireAuth",
-          "assertEmailVerified"
-        ],
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
     "/api/projects/{id}/feedback/{fb}/attachments": {
       "post": {
         "parameters": [
@@ -22890,6 +22827,50 @@
             "schema": {
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/feedback/{fb}/checklist": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "fb",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
               "type": "string"
             }
           }
@@ -24176,6 +24157,35 @@
                     "maxLength": 10000,
                     "type": "string"
                   },
+                  "answers": {
+                    "additionalProperties": false,
+                    "description": "The answers to the Feedback triage checklist (version 1) the triager gives, by question. The route is sent as `route`. A bug naming the criterion it violates needs only criterion, reproduced and severity.",
+                    "properties": {
+                      "criterion": {
+                        "description": "Which business criterion does it violate, or none? Required: Name it as REQ-n BC-m, or answer \"none\".",
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "reproduced": {
+                        "description": "Was it reproduced, and with what evidence? Required: Say how it was reproduced and what shows it, or why it could not be.",
+                        "maxLength": 2000,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "severity": {
+                        "description": "How severe is it? Required: Pick low, medium, high or critical.",
+                        "enum": [
+                          "low",
+                          "medium",
+                          "high",
+                          "critical"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
                   "createIssue": {
                     "additionalProperties": false,
                     "properties": {
@@ -24296,15 +24306,6 @@
                     ],
                     "type": "string"
                   },
-                  "severity": {
-                    "enum": [
-                      "low",
-                      "medium",
-                      "high",
-                      "critical"
-                    ],
-                    "type": "string"
-                  },
                   "suggestion": {
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
@@ -24316,9 +24317,6 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "route"
-                ],
                 "type": "object"
               }
             }

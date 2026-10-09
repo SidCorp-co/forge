@@ -1,9 +1,5 @@
 import { FEEDBACK_TRIAGE_CHECKLIST } from '@forge/contracts/checklist-registry';
-import {
-  checklistFormOf,
-  countsAsPassed,
-  evaluateChecklist,
-} from '@forge/contracts/checklists';
+import { checklistFormOf, countsAsPassed, evaluateChecklist } from '@forge/contracts/checklists';
 import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { triageAnswersInput } from '@forge/contracts/feedback-triage';
 import { Hono } from 'hono';
@@ -36,7 +32,8 @@ feedbackChecklistRoutes.get(
   async (c) => {
     const { id, fb } = c.req.valid('param');
     const agency = c.get('agency');
-    if (!agency) throw new Error('feedback checklist: a request reached its handler without an auth gate');
+    if (!agency)
+      throw new Error('feedback checklist: a request reached its handler without an auth gate');
     // read as the viewer, so an item they may not read is refused before its record is
     const item = await detailAs({ userId: c.get('userId'), agency }, id, fb);
     const checklist = FEEDBACK_TRIAGE_CHECKLIST;

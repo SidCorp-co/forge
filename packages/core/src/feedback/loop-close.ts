@@ -7,7 +7,7 @@
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
-import { requirementKey, type BcVerdict } from '@forge/contracts/requirements';
+import { type BcVerdict, requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { criterionVerdictOf } from '../requirements/index.js';
@@ -26,7 +26,10 @@ export type RecordAnswer = { gone: true; reason: string } | { gone: false; why: 
 /** Whether the record says the problem is gone, with its sources, or why it cannot say. */
 export function goneByRecord(f: LoopCloseFacts): RecordAnswer {
   if (!f.criterion) {
-    return { gone: false, why: 'its triage named no criterion, so no verdict can say the problem is gone' };
+    return {
+      gone: false,
+      why: 'its triage named no criterion, so no verdict can say the problem is gone',
+    };
   }
   const { ref, verdict, why } = f.criterion;
   if (verdict !== 'passing') {

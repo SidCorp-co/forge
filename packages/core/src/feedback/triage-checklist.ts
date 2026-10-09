@@ -51,7 +51,7 @@ export function answersShapeRefusal(
     return refusal(
       'CHECKLIST_ANSWER_INVALID',
       `/answers/${TRIAGE_ROUTE_QUESTION}`,
-      'The route is the triage\'s own field: send it as route, not inside answers.',
+      "The route is the triage's own field: send it as route, not inside answers.",
     );
   }
   return null;
@@ -128,6 +128,9 @@ export function judgeRetriage(
 ): { evaluation: ChecklistEvaluation } | { refusals: Refusal[] } {
   const parsed = parseAnswers(FEEDBACK_TRIAGE_CHECKLIST, answers);
   if (!parsed.ok) return { refusals: parsed.refusals };
-  const evaluation = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, { given: parsed.answers, record });
+  const evaluation = evaluateChecklist(FEEDBACK_TRIAGE_CHECKLIST, {
+    given: parsed.answers,
+    record,
+  });
   return evaluation.complete ? { evaluation } : { refusals: checklistRefusals(evaluation) };
 }

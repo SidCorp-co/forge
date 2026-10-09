@@ -9,20 +9,23 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../../src/db/client.js';
 import { api } from './api.js';
+import type { Doc } from './ecosystem-world.js';
 import { createTestIssue } from './factories.js';
 import { plantLiveBuild } from './live-build.js';
 
 const LIVE = '9999999999999999999999999999999999999999';
 
-async function okay(r: Promise<{ status: number; body: Record<string, any> }>) {
+async function okay(r: Promise<{ status: number; body: Doc }>) {
   const res = await r;
-  if (res.status >= 300) throw new Error(`loop-close plant: ${res.status} ${JSON.stringify(res.body)}`);
+  if (res.status >= 300)
+    throw new Error(`loop-close plant: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body;
 }
 
 /** An agreed requirement with two criteria; its key. */
 export async function agreedRequirement(token: string, projectId: string): Promise<string> {
-  const on = (path: string, body: unknown) => api(token, 'POST', `/api/projects/${projectId}${path}`, body);
+  const on = (path: string, body: unknown) =>
+    api(token, 'POST', `/api/projects/${projectId}${path}`, body);
   const key = String(
     (
       await okay(
@@ -62,7 +65,11 @@ export async function vouchedByPassingCriterion(input: {
     createdAt: new Date(),
     mergedAt: new Date(),
   });
-  await okay(api(token, 'POST', `/api/projects/${projectId}/requirements/${requirement}/issues`, { issue: `ISS-${seq}` }));
+  await okay(
+    api(token, 'POST', `/api/projects/${projectId}/requirements/${requirement}/issues`, {
+      issue: `ISS-${seq}`,
+    }),
+  );
   await okay(api(token, 'POST', `/api/issues/${issueId}/criteria/traces`, { codes: ['BC-1'] }));
   await okay(
     api(token, 'POST', `/api/issues/${issueId}/verdicts`, {

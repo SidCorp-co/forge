@@ -53,8 +53,7 @@ import {
   membershipRoutes,
 } from './ecosystem/routes.js';
 import { issueLaneRoutes } from './fast-lane/routes.js';
-import { feedbackChecklistRoutes } from './feedback/checklist-routes.js';
-import { feedbackRoutes } from './feedback/routes.js';
+import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';

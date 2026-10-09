@@ -408,3 +408,6 @@ feedbackRoutes.delete('/:id/feedback/:fb/reporter-data', itemParam, async (c) =>
   const { id, fb } = c.req.valid('param');
   return answer(c, await redactReporterData({ projectId: id, ref: fb, actor: actorOf(c) }));
 });
+
+// the triage checklist door (REQ-34 BC-3) is served through this face like every other feedback route
+export { feedbackChecklistRoutes } from './checklist-routes.js';

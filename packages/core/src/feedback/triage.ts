@@ -7,15 +7,15 @@
  * `triageIn` from its accept, held to feedback.approve like a person's triage.
  */
 
-import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import {
+  FEEDBACK_SEVERITIES,
   type FeedbackSeverity,
   type FeedbackTriage,
   type FeedbackTriageEffect,
   type FeedbackTriageRoute,
-  FEEDBACK_SEVERITIES,
   feedbackKey,
 } from '@forge/contracts/feedback';
+import { FEEDBACK_MACHINE } from '@forge/contracts/feedback-machine';
 import { namedCriterionOf, triageAnswersOf, triageRouteOf } from '@forge/contracts/feedback-triage';
 import { requirementKey } from '@forge/contracts/requirements';
 import { eq, sql } from 'drizzle-orm';
@@ -308,11 +308,14 @@ export async function triageIn(
     if ('refusals' in judged) return { refusals: judged.refusals };
   }
   // the checklist asks the route, so a triage that reaches here has one
-  if (route === undefined) throw new Error(`feedback triage: ${row.id} passed its checklist with no route`);
+  if (route === undefined)
+    throw new Error(`feedback triage: ${row.id} passed its checklist with no route`);
   // an issue route naming no existing issue files a draft in the same act (feedback-triage r4 `issue`)
   const routed = { ...t, route };
   const write =
-    route === 'issue' && carriersNamed(routed).length === 0 ? { ...routed, createIssue: {} } : routed;
+    route === 'issue' && carriersNamed(routed).length === 0
+      ? { ...routed, createIssue: {} }
+      : routed;
   const written = await writeRouteIn(tx, {
     row,
     route,

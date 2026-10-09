@@ -109,7 +109,13 @@ describe('an item delivered by several issues names every one of them', () => {
   });
 
   it('routes the item to each issue the list names, and reads each with its own status', async () => {
-    const answered = ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: carriers.map((c) => c.key) }));
+    const answered = ok(
+      await triage(fb, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: carriers.map((c) => c.key),
+      }),
+    );
     expect(answered.effect).toEqual({
       feedback: fb,
       route: 'issue',
@@ -174,7 +180,13 @@ describe('an item whose every carrier is dropped goes back to triage', () => {
   it('reads triaged and takes a new route', async () => {
     const fb = await file('The board flickers');
     const dropped = [await issue('Flicker one'), await issue('Flicker two')];
-    ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: dropped.map((d) => d.key) }));
+    ok(
+      await triage(fb, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: dropped.map((d) => d.key),
+      }),
+    );
     for (const d of dropped) await seedIssueStatus(d.id, 'dropped');
     expect((await read(fb)).phase).toBe('triaged');
     const next = await issue('Flicker, for real');
@@ -204,7 +216,9 @@ describe('a carrier list is refused by name and writes nothing', () => {
   });
 
   it('refuses one issue named twice, by key and by uuid', async () => {
-    const r = refusal(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: [named.key, named.id] }));
+    const r = refusal(
+      await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: [named.key, named.id] }),
+    );
     expect(r).toMatchObject({ code: 'FEEDBACK_CARRIER_REPEATED', path: '/issue/1' });
     expect(r.detail).toContain(named.key);
     const after = await read(fb);
@@ -212,7 +226,9 @@ describe('a carrier list is refused by name and writes nothing', () => {
   });
 
   it('refuses a list with one reference that names no issue here, at that entry', async () => {
-    const r = refusal(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: [named.key, 'ISS-9999'] }));
+    const r = refusal(
+      await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: [named.key, 'ISS-9999'] }),
+    );
     expect(r).toMatchObject({ code: 'FEEDBACK_TARGET_UNKNOWN', path: '/issue/1' });
     const after = await read(fb);
     expect([after.phase, after.route]).toEqual(['new', null]);
@@ -239,7 +255,13 @@ describe('the database holds an issue route to its carriers', () => {
 
   it('refuses an issue-routed item left with no carrier', async () => {
     const fb = await file('The board drops a card');
-    ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: (await issue('Keep the card')).key }));
+    ok(
+      await triage(fb, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: (await issue('Keep the card')).key,
+      }),
+    );
     const seq = Number(fb.slice(3));
     const said = await refusedBy(
       rows(sql`
@@ -278,7 +300,13 @@ describe('a contract change carried by several issues', () => {
       RETURNING fb_seq`);
     const fb = `FB-${made?.fb_seq}`;
     const upgrades = [await issue('Upgrade the client'), await issue('Upgrade the worker')];
-    ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: upgrades.map((u) => u.key) }));
+    ok(
+      await triage(fb, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: upgrades.map((u) => u.key),
+      }),
+    );
     const waits = await rows<{ issue_id: string; min_version: string }>(sql`
       SELECT issue_id, min_version FROM issue_contract_waits
        WHERE contract_slug = 'orders' AND provider_project_id = ${providerId}`);

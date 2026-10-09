@@ -155,7 +155,13 @@ describe('an item filed about a screen moves to the requirement that records its
 describe('a verified item is retargeted with its phase and route as they were', () => {
   it('moves while verified, and still reads verified on its answer route', async () => {
     const fb = await file({ screen: 'Every screen that prints an enum' });
-    ok(await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'answer', answer: 'Labels now.' }));
+    ok(
+      await say('owner', 'POST', item(fb, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'answer',
+        answer: 'Labels now.',
+      }),
+    );
     ok(await say('member', 'POST', item(fb, 'verify'), {}));
     const before = await read(fb);
     expect(before.phase).toBe('verified');
@@ -183,7 +189,13 @@ describe('what an item can never be moved off or onto', () => {
       }),
       201,
     ).suggestion.id;
-    ok(await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'revision', suggestion }));
+    ok(
+      await say('owner', 'POST', item(fb, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'revision',
+        suggestion,
+      }),
+    );
     const r = refusal(
       await say('owner', 'POST', item(fb, 'retarget'), { requirement: keys.draft }),
     );

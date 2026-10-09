@@ -232,7 +232,11 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
   // REQ-34 BC-2: the agent's door is a triage like the others, so it proposes none it cannot answer
   it('refuses a diagnosis with no triage answers, naming each question the press would be refused on', async () => {
     const [recording] = (await recordingTool('owner', { feedback: 'FB-52' })).recordings;
-    const diagnosis = { recording: recording?.id, cause: 'Save drops the currency.', fix: 'Send it.' };
+    const diagnosis = {
+      recording: recording?.id,
+      cause: 'Save drops the currency.',
+      fix: 'Send it.',
+    };
     const refused = await recordingTool('owner', { feedback: 'FB-52', diagnosis }).then(
       () => null,
       (err: { refusals: Doc[] }) => err.refusals,
@@ -277,7 +281,11 @@ describe('the assistant reads the recording and proposes a cause and a fix (BC-1
     expect(JSON.stringify(off.json)).toContain('FEEDBACK_DIAGNOSIS_INVALID');
 
     const routed = ok(
-      await say('owner', 'POST', at('/feedback/FB-52/triage'), { answers: TRIAGE_ANSWERS, route: 'issue', diagnosis }),
+      await say('owner', 'POST', at('/feedback/FB-52/triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        diagnosis,
+      }),
     ).feedback;
     expect(routed.route).toMatchObject({ route: 'issue' });
     expect((routed.route.carriers as Doc[])[0]?.key).toMatch(/^[A-Z]+-\d+$/);

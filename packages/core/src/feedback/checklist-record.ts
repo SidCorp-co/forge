@@ -34,7 +34,10 @@ export function triageRecordOf(row: TriageRecordRow): RecordAnswers {
   return { kind: { value: row.kind }, requirement: requirementAnswerOf(row) };
 }
 
-export async function feedbackTriageRecord(exec: Reader, feedbackId: string): Promise<RecordAnswers> {
+export async function feedbackTriageRecord(
+  exec: Reader,
+  feedbackId: string,
+): Promise<RecordAnswers> {
   const rows = (await exec.execute(sql`
     SELECT f.kind,
            COALESCE(tr.req_seq, ir.req_seq) AS target_seq,
@@ -46,7 +49,11 @@ export async function feedbackTriageRecord(exec: Reader, feedbackId: string): Pr
       LEFT JOIN requirement_criteria c ON c.id = f.violated_criterion_id
       LEFT JOIN requirements cr ON cr.id = c.requirement_id
      WHERE f.id = ${feedbackId}
-  `)) as unknown as Array<{ kind: string; target_seq: number | null; criterion_seq: number | null }>;
+  `)) as unknown as Array<{
+    kind: string;
+    target_seq: number | null;
+    criterion_seq: number | null;
+  }>;
   const row = rows[0];
   if (!row) throw new Error(`feedback checklist: item ${feedbackId} has no row to read`);
   return triageRecordOf({

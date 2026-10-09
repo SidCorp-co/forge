@@ -162,7 +162,12 @@ describe("a feedback item's History reads the person's reason on a triage a sugg
         kind: 'feedback_triage',
         feedback: fb,
         baseRevision: null,
-        payload: { answers: TRIAGE_ANSWERS, route: 'issue', issue: carrier, note: 'the same crash as the save bug' },
+        payload: {
+          answers: TRIAGE_ANSWERS,
+          route: 'issue',
+          issue: carrier,
+          note: 'the same crash as the save bug',
+        },
       }),
       201,
     ).suggestion.id as string;
@@ -184,7 +189,13 @@ describe("a feedback item's History reads the person's reason on a triage a sugg
       await as('POST', '/feedback', { kind: 'bug', title: 'Columns vanish', screen: 'The board' }),
       201,
     ).feedback.key as string;
-    ok(await as('POST', `/feedback/${direct}/triage`, { answers: TRIAGE_ANSWERS, route: 'issue', issue: carrier }));
+    ok(
+      await as('POST', `/feedback/${direct}/triage`, {
+        answers: TRIAGE_ANSWERS,
+        route: 'issue',
+        issue: carrier,
+      }),
+    );
     const [decision] = ok(await as('GET', `/feedback/${direct}`)).feedback.decisions as Doc[];
     expect(decision).toMatchObject({ fromSuggestionId: null, acceptReason: null });
   });

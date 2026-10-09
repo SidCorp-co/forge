@@ -10,7 +10,11 @@ import {
   shortFormRouteRefusal,
 } from './triage-checklist.js';
 
-const three = { criterion: 'REQ-3 BC-2', severity: 'high', reproduced: 'On dev.220 the filter resets.' };
+const three = {
+  criterion: 'REQ-3 BC-2',
+  severity: 'high',
+  reproduced: 'On dev.220 the filter resets.',
+};
 
 describe('what a triage carries in answers (Feedback triage r16 check)', () => {
   it('takes no route inside answers, naming the field it belongs in', () => {
@@ -45,16 +49,21 @@ describe('the violated criterion', () => {
   const named = { requirement: 'REQ-3', code: 'BC-2' };
 
   it('must stand now on its requirement', () => {
-    expect(criterionFitRefusal(named, { found: false }, { key: 'FB-4', requirement: null })?.detail).toContain(
-      'REQ-3 BC-2 is not a criterion',
-    );
+    expect(
+      criterionFitRefusal(named, { found: false }, { key: 'FB-4', requirement: null })?.detail,
+    ).toContain('REQ-3 BC-2 is not a criterion');
   });
 
   it("must be of the item's own requirement where it is about one", () => {
     expect(
-      criterionFitRefusal(named, found, { key: 'FB-4', requirement: { id: 'r9', key: 'REQ-9' } })?.detail,
-    ).toBe('REQ-3 BC-2 is a criterion of REQ-3, and FB-4 is about REQ-9. Name a criterion of REQ-9, or retarget FB-4 first.');
-    expect(criterionFitRefusal(named, found, { key: 'FB-4', requirement: { id: 'r3', key: 'REQ-3' } })).toBeNull();
+      criterionFitRefusal(named, found, { key: 'FB-4', requirement: { id: 'r9', key: 'REQ-9' } })
+        ?.detail,
+    ).toBe(
+      'REQ-3 BC-2 is a criterion of REQ-3, and FB-4 is about REQ-9. Name a criterion of REQ-9, or retarget FB-4 first.',
+    );
+    expect(
+      criterionFitRefusal(named, found, { key: 'FB-4', requirement: { id: 'r3', key: 'REQ-3' } }),
+    ).toBeNull();
     expect(criterionFitRefusal(named, found, { key: 'FB-4', requirement: null })).toBeNull();
   });
 });
@@ -71,7 +80,8 @@ describe('the short form route (BC-6)', () => {
     expect(shortFormRouteRefusal('bug', three, 'revision')).toMatchObject({
       code: 'FEEDBACK_ROUTE_TARGET_MISMATCH',
       path: '/route',
-      detail: 'A bug against REQ-3 BC-2 takes the issue route on it, not revision. Send route issue, or leave the route out.',
+      detail:
+        'A bug against REQ-3 BC-2 takes the issue route on it, not revision. Send route issue, or leave the route out.',
     });
   });
 
@@ -83,7 +93,9 @@ describe('the short form route (BC-6)', () => {
 
 describe("the item's record answers", () => {
   it("answer the requirement from its target, else the violated criterion's, else none", () => {
-    expect(requirementAnswerOf({ kind: 'bug', targetSeq: 12, criterionSeq: 3 })).toEqual({ value: 'REQ-12' });
+    expect(requirementAnswerOf({ kind: 'bug', targetSeq: 12, criterionSeq: 3 })).toEqual({
+      value: 'REQ-12',
+    });
     expect(requirementAnswerOf({ kind: 'bug', targetSeq: null, criterionSeq: 3 })).toEqual({
       value: "REQ-3, the violated criterion's",
     });

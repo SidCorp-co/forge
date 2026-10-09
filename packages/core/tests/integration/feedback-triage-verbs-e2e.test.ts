@@ -138,7 +138,11 @@ describe('duplicate: the reporters and evidence read on the original, each told 
     const fb = await file('ann', 'Duplicate of itself');
     expect(
       refusal(
-        await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: fb }),
+        await say('owner', 'POST', item(fb, 'triage'), {
+          answers: TRIAGE_ANSWERS,
+          route: 'duplicate',
+          duplicateOf: fb,
+        }),
       ),
     ).toMatchObject({ code: 'FEEDBACK_DUPLICATE_SELF' });
     const gone = await file('bo', 'Declined original');
@@ -146,7 +150,11 @@ describe('duplicate: the reporters and evidence read on the original, each told 
       await say('owner', 'POST', item(gone, 'triage'), { route: 'decline', note: 'Out of scope.' }),
     );
     const r = refusal(
-      await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: gone }),
+      await say('owner', 'POST', item(fb, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'duplicate',
+        duplicateOf: gone,
+      }),
     );
     expect(r).toMatchObject({ code: 'FEEDBACK_DUPLICATE_OF_DECLINED', path: '/duplicateOf' });
     expect((await read(fb)).status, 'a refused duplicate must leave the item new').toBe('new');

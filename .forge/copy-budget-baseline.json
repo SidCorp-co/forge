@@ -87,8 +87,6 @@
       "ecosystem.threads.noEcosystem": 16
     },
     "packages/web-v2/src/features/feedback/copy.json": {
-      "feedback.accept.hint": 19,
-      "feedback.accept.unmatched": 15,
       "feedback.body.flaggedHint": 15,
       "feedback.decline.hint": 16,
       "feedback.drop.hint": 15,
@@ -102,7 +100,6 @@
       "feedback.target.servesNone": 21,
       "feedback.target.unmatched": 15,
       "feedback.verify.asking": 16,
-      "feedback.verify.byDate": 14,
       "feedback.verify.copy": 18
     },
     "packages/web-v2/src/features/forecast/copy.json": {

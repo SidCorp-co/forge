@@ -19,9 +19,9 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser } from '../helpers/factories.js';
+import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
-import { vouchedByPassingCriterion } from '../helpers/loop-close.js';
 
 type Who = 'owner' | 'ann' | 'bo';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
@@ -60,7 +60,13 @@ async function bell(
 
 async function answered(who: Who, title: string): Promise<string> {
   const fb = await file(who, title, 'question');
-  ok(await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'answer', answer: 'Theo thiết kế.' }));
+  ok(
+    await say('owner', 'POST', item(fb, 'triage'), {
+      answers: TRIAGE_ANSWERS,
+      route: 'answer',
+      answer: 'Theo thiết kế.',
+    }),
+  );
   return fb;
 }
 
@@ -117,7 +123,11 @@ describe('a reporter reads each notice about their item in their language', () =
     const original = await file('owner', 'Xuất file chậm');
     const fb = await file('bo', 'Xuất file rất chậm');
     ok(
-      await say('owner', 'POST', item(fb, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: original }),
+      await say('owner', 'POST', item(fb, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'duplicate',
+        duplicateOf: original,
+      }),
     );
     const [n] = await bell('bo', fb);
     expect(n?.title).toBe(`${fb}: Xuất file rất chậm đã được báo trước đó trong ${original}`);
@@ -129,7 +139,13 @@ describe('a reporter reads each notice about their item in their language', () =
   it('message: each reporter of a merged item gets it in their own language, the words as written', async () => {
     const fb = await file('bo', 'Thẻ bị trùng');
     const dup = await file('ann', 'Cards repeat');
-    ok(await say('owner', 'POST', item(dup, 'triage'), { answers: TRIAGE_ANSWERS, route: 'duplicate', duplicateOf: fb }));
+    ok(
+      await say('owner', 'POST', item(dup, 'triage'), {
+        answers: TRIAGE_ANSWERS,
+        route: 'duplicate',
+        duplicateOf: fb,
+      }),
+    );
     ok(
       await say('owner', 'POST', item(fb, 'messages'), {
         audience: 'all_reporters',

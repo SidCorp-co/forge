@@ -15,6 +15,7 @@ import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { api, userToken } from '../helpers/api.js';
+import type { Doc } from '../helpers/ecosystem-world.js';
 import {
   createTestFeedback,
   createTestIssue,
@@ -24,8 +25,6 @@ import {
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import { agreedRequirement as agreedRequirementIn } from '../helpers/loop-close.js';
-
-type Doc = Record<string, any>;
 
 const LIVE = '9999999999999999999999999999999999999999';
 const FIXED = '3333333333333333333333333333333333333333';
@@ -89,7 +88,9 @@ describe('a triage missing an answer is refused naming the question (criterion 1
       SELECT checklist, from_status, to_status FROM kernel_refused_moves
        WHERE entity = 'feedback' AND checklist = 'feedback_triage'
     `)) as unknown as Doc[];
-    expect(kept).toEqual([{ checklist: 'feedback_triage', from_status: 'new', to_status: 'triaged' }]);
+    expect(kept).toEqual([
+      { checklist: 'feedback_triage', from_status: 'new', to_status: 'triaged' },
+    ]);
   });
 
   it('names the route as a question when neither the triage nor the short form gives one', async () => {
@@ -108,7 +109,11 @@ describe('a triage missing an answer is refused naming the question (criterion 1
       await ok(
         on('POST', `/feedback/${fb}/triage`, {
           route: 'issue',
-          answers: { criterion: 'none', severity: 'high', reproduced: 'Exported 3 rows, got 2, on dev.220.' },
+          answers: {
+            criterion: 'none',
+            severity: 'high',
+            reproduced: 'Exported 3 rows, got 2, on dev.220.',
+          },
         }),
       )
     ).feedback;
@@ -120,10 +125,20 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     expect(move?.checklist).toBe('feedback_triage');
     expect(move?.checklist_answers).toEqual([
       { question: 'kind', value: 'bug', provenance: 'given', source: 'record:kind' },
-      { question: 'requirement', value: 'None: it is about no requirement.', provenance: 'given', source: 'record:requirementId' },
+      {
+        question: 'requirement',
+        value: 'None: it is about no requirement.',
+        provenance: 'given',
+        source: 'record:requirementId',
+      },
       { question: 'criterion', value: 'none', provenance: 'given', source: 'mover' },
       { question: 'severity', value: 'high', provenance: 'given', source: 'mover' },
-      { question: 'reproduced', value: 'Exported 3 rows, got 2, on dev.220.', provenance: 'given', source: 'mover' },
+      {
+        question: 'reproduced',
+        value: 'Exported 3 rows, got 2, on dev.220.',
+        provenance: 'given',
+        source: 'mover',
+      },
       { question: 'route', value: 'issue', provenance: 'given', source: 'mover' },
     ]);
   });
@@ -136,15 +151,19 @@ describe('a triage missing an answer is refused naming the question (criterion 1
         answers: { criterion: 'REQ-77 BC-1', severity: 'low', reproduced: 'x' },
       }),
     );
-    expect(refusals[0]).toMatchObject({ code: 'FEEDBACK_CRITERION_INVALID', path: '/answers/criterion' });
+    expect(refusals[0]).toMatchObject({
+      code: 'FEEDBACK_CRITERION_INVALID',
+      path: '/answers/criterion',
+    });
     expect(await statusOf(fb)).toBe('new');
   });
 
   it('serves the checklist the triage is judged by, as the form, the agent input and where it stands', async () => {
     const fb = await fileBug('The board is slow');
     const [read] = (await ok(on('GET', `/feedback/${fb}/checklist`))).checklists as Doc[];
-    expect(read?.id).toBe('feedback_triage');
-    expect((read?.form.fields as Doc[]).map((f) => f.name)).toEqual([
+    if (!read) throw new Error('the checklist route served no checklist');
+    expect(read.id).toBe('feedback_triage');
+    expect((read.form.fields as Doc[]).map((f) => f.name)).toEqual([
       'kind',
       'requirement',
       'criterion',
@@ -152,8 +171,12 @@ describe('a triage missing an answer is refused naming the question (criterion 1
       'reproduced',
       'route',
     ]);
-    expect(Object.keys(read?.input.properties).sort()).toEqual(['criterion', 'reproduced', 'severity']);
-    expect((read?.now.gaps as Doc[]).map((g) => g.question)).toEqual([
+    expect(Object.keys(read.input.properties).sort()).toEqual([
+      'criterion',
+      'reproduced',
+      'severity',
+    ]);
+    expect((read.now.gaps as Doc[]).map((g) => g.question)).toEqual([
       'criterion',
       'severity',
       'reproduced',
@@ -169,7 +192,11 @@ describe('a bug against an existing criterion is triaged with only its three ans
     const out = (
       await ok(
         on('POST', `/feedback/${fb}/triage`, {
-          answers: { criterion: `${req} BC-1`, severity: 'high', reproduced: 'Reload on dev.220 clears it.' },
+          answers: {
+            criterion: `${req} BC-1`,
+            severity: 'high',
+            reproduced: 'Reload on dev.220 clears it.',
+          },
         }),
       )
     ).feedback;
@@ -181,7 +208,9 @@ describe('a bug against an existing criterion is triaged with only its three ans
         JOIN feedback f ON f.id = fr.feedback_id
        WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(fb.slice(3))}
     `)) as unknown as Doc[];
-    expect(`REQ-${issue?.req_seq}`, 'the filed issue delivers the criterion’s requirement').toBe(req);
+    expect(`REQ-${issue?.req_seq}`, 'the filed issue delivers the criterion’s requirement').toBe(
+      req,
+    );
     const [named] = (await db.execute(sql`
       SELECT c.code FROM feedback f JOIN requirement_criteria c ON c.id = f.violated_criterion_id
        WHERE f.project_id = ${projectId} AND f.fb_seq = ${Number(fb.slice(3))}
@@ -194,7 +223,11 @@ describe('a bug against an existing criterion is triaged with only its three ans
     const fb = await fileBug('A reload clears my filter, again');
     const three = { criterion: `${req} BC-1`, severity: 'high', reproduced: 'Reload clears it.' };
     const [wrong] = await refused(
-      on('POST', `/feedback/${fb}/triage`, { route: 'new_requirement', title: 'Filters', answers: three }),
+      on('POST', `/feedback/${fb}/triage`, {
+        route: 'new_requirement',
+        title: 'Filters',
+        answers: three,
+      }),
     );
     expect(wrong).toMatchObject({ code: 'FEEDBACK_ROUTE_TARGET_MISMATCH', path: '/route' });
 
@@ -208,13 +241,24 @@ describe('a bug against an existing criterion is triaged with only its three ans
 
 describe('a suggestion accept meets the same check (criterion 3)', () => {
   const suggest = async (fb: string, payload: Doc) =>
-    (await ok(on('POST', '/suggestions', { kind: 'feedback_triage', feedback: fb, baseRevision: null, payload }), 201))
-      .suggestion.id as string;
+    (
+      await ok(
+        on('POST', '/suggestions', {
+          kind: 'feedback_triage',
+          feedback: fb,
+          baseRevision: null,
+          payload,
+        }),
+        201,
+      )
+    ).suggestion.id as string;
 
   it('refuses the accept of a proposal with no answers, naming each question, and takes one that answers', async () => {
     const fb = await fileBug('Cards vanish on save');
     const bare = await suggest(fb, { route: 'issue', note: 'the save bug' });
-    const refusals = await refused(on('POST', `/suggestions/${bare}/accept`, { reason: 'looks right' }));
+    const refusals = await refused(
+      on('POST', `/suggestions/${bare}/accept`, { reason: 'looks right' }),
+    );
     expect(refusals.map((r) => r.path)).toEqual([
       '/answers/criterion',
       '/answers/severity',
@@ -225,7 +269,11 @@ describe('a suggestion accept meets the same check (criterion 3)', () => {
     const answered = await suggest(fb, {
       route: 'issue',
       note: 'the save bug',
-      answers: { criterion: 'none', severity: 'medium', reproduced: 'Saved twice on dev.220, both cards gone.' },
+      answers: {
+        criterion: 'none',
+        severity: 'medium',
+        reproduced: 'Saved twice on dev.220, both cards gone.',
+      },
     });
     await ok(on('POST', `/suggestions/${answered}/accept`, { reason: 'looks right' }));
     expect(await statusOf(fb)).toBe('triaged');
@@ -254,9 +302,11 @@ describe('loop close answers from the record (criterion 4)', () => {
   }
 
   const feedbackIdOf = async (fb: string) =>
-    ((await db.execute(sql`
+    (
+      (await db.execute(sql`
       SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = ${Number(fb.slice(3))}
-    `)) as unknown as { id: string }[])[0]?.id as string;
+    `)) as unknown as { id: string }[]
+    )[0]?.id as string;
 
   const pass = (issueId: string, sha = FIXED) =>
     ok(
@@ -269,12 +319,17 @@ describe('loop close answers from the record (criterion 4)', () => {
       }),
     );
 
-  async function pastWindow(fbId: string) {
+  /** Seen resolved by one sweep, then aged past its window; the caller runs the sweep that answers. */
+  async function agedPastWindow(fbId: string) {
     const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
     await sweepResolvedFeedback();
-    await db.execute(sql`UPDATE feedback SET resolved_seen_at = now() - interval '8 days' WHERE id = ${fbId}`);
-    return sweepResolvedFeedback();
+    await db.execute(
+      sql`UPDATE feedback SET resolved_seen_at = now() - interval '8 days' WHERE id = ${fbId}`,
+    );
+    return sweepResolvedFeedback;
   }
+
+  const pastWindow = async (fbId: string) => (await agedPastWindow(fbId))();
 
   it('verifies where the violated criterion passes on the running build, naming its sources', async () => {
     unplant = plantLiveBuild(LIVE, { [FIXED]: true });
@@ -285,7 +340,9 @@ describe('loop close answers from the record (criterion 4)', () => {
     const out = (await ok(on('GET', `/feedback/${fb}`))).feedback;
     expect(out.status).toBe('verified');
     expect(out.verified.reason).toMatch(
-      new RegExp(`^Verified from the record: ${req} BC-1 passes on the running build, and nothing was filed against it since \\d{4}-\\d{2}-\\d{2}\\.$`),
+      new RegExp(
+        `^Verified from the record: ${req} BC-1 passes on the running build, and nothing was filed against it since \\d{4}-\\d{2}-\\d{2}\\.$`,
+      ),
     );
   });
 
@@ -301,15 +358,19 @@ describe('loop close answers from the record (criterion 4)', () => {
     unplant = plantLiveBuild(LIVE, { [FIXED]: true });
     const { req, issueId, fbId, fb } = await resolvedAgainstBc1(43);
     await pass(issueId);
-    const { sweepResolvedFeedback } = await import('../../src/feedback/index.js');
-    await sweepResolvedFeedback();
-    await db.execute(sql`UPDATE feedback SET resolved_seen_at = now() - interval '8 days' WHERE id = ${fbId}`);
+    const sweepResolvedFeedback = await agedPastWindow(fbId);
     await fileBug('The filter is gone again', { requirement: req });
     expect(await sweepResolvedFeedback()).toMatchObject({ verified: 0, held: 1 });
     expect(await statusOf(fb)).toBe('triaged');
 
-    const plain = await createTestIssue(projectId, ownerId, 60, { status: 'closed', createdAt: new Date(), mergedAt: new Date() });
-    const unnamed = await feedbackIdOf(await createTestFeedback(projectId, ownerId, 60, [plain.id]));
+    const plain = await createTestIssue(projectId, ownerId, 60, {
+      status: 'closed',
+      createdAt: new Date(),
+      mergedAt: new Date(),
+    });
+    const unnamed = await feedbackIdOf(
+      await createTestFeedback(projectId, ownerId, 60, [plain.id]),
+    );
     expect((await pastWindow(unnamed)).verified).toBe(0);
     expect(await statusOf('FB-60')).toBe('triaged');
   });
