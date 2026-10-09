@@ -672,7 +672,7 @@ async fn claim_workspace(
         }
         Some(Err(Refused::Provisioning)) => return Err(refuse(
             "another provision of this workspace is already running on this box".into(),
-            "That one reports its own outcome, and the next sweep provisions again if it fails."
+            "That one reports its own outcome; if it ends failed, Re-provision queues it again, and one that stops reporting is offered again once it has stalled."
                 .into(),
         )),
         Some(Err(Refused::Placing)) => {
@@ -1494,6 +1494,10 @@ esac"#,
             .expect_err("refused");
 
         assert!(said.contains("another provision"), "{said}");
+        assert!(
+            said.contains("Re-provision") && !said.contains("next sweep provisions again"),
+            "{said}"
+        );
         assert!(
             !said.contains("master kill") && !said.contains("served as it stands"),
             "{said}"
