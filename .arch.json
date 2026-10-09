@@ -492,6 +492,7 @@
         "web-feature-board",
         "web-feature-chat",
         "web-feature-project-settings",
+        "web-feature-whats-new",
         "web-feature-releases",
         "web-feature-questions",
         "web-feature-integrations",
@@ -506,7 +507,6 @@
         "web-feature-orgs",
         "web-feature-preferences",
         "web-feature-forecast",
-        "web-feature-whats-new",
         "web-feature-issue-picker",
         "web-feature-memory",
         "web-features"

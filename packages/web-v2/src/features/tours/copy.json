@@ -30,7 +30,6 @@
     "tours.progress": "{{current}} / {{total}}",
     "tours.seen": "Seen",
     "tours.show": "Show",
-    "tours.showMe": "Show me · {count} steps",
     "tours.steps": "{count} steps",
     "tours.updated": "Updated"
   },
@@ -60,7 +59,6 @@
     "tours.progress": "{{current}} / {{total}}",
     "tours.seen": "Đã xem",
     "tours.show": "Xem",
-    "tours.showMe": "Xem hướng dẫn · {count} bước",
     "tours.steps": "{count} bước",
     "tours.updated": "Có cập nhật"
   }

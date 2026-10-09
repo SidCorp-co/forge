@@ -3,8 +3,9 @@
 export { readReleasePage } from './read.js';
 export {
   backgroundRefreshesSettled,
+  refreshInBackground,
   refreshReleaseHighlights,
   registerReleaseHighlightsRefresh,
 } from './refresh.js';
 export { releasePageRoutes } from './routes.js';
-export { releaseShareSource } from './share-source.js';
+export { releaseShareSource, ticketedHighlights } from './share-source.js';

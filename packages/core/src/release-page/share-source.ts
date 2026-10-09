@@ -44,6 +44,28 @@ async function relinked(
   return { ...highlights, highlights: out };
 }
 
+/**
+ * The highlights with each clip or picture behind a short-lived download ticket minted now for
+ * `readerId` and that file alone: a reader who holds no right to the project's attachments, a share's
+ * opener or an instance's member reading What's new, plays it from the ticket.
+ */
+export async function ticketedHighlights(
+  highlights: ReleaseHighlights,
+  projectId: string,
+  readerId: string | null,
+): Promise<ReleaseHighlights> {
+  return relinked(highlights, async (attachmentId) => {
+    const ticket = await createDownloadTicket({
+      targetType: 'issue',
+      attachmentId,
+      projectId,
+      issuedToUserId: readerId,
+      issuedToDeviceId: null,
+    });
+    return `/api/uploads/download/${ticket.id}`;
+  });
+}
+
 async function freeze(input: {
   projectId: string;
   subjectId: string;
@@ -94,16 +116,7 @@ async function opened(
   const page = ReleasePageSnapshotSchema.parse(frozen);
   return {
     ...page,
-    highlights: await relinked(page.highlights, async (attachmentId) => {
-      const ticket = await createDownloadTicket({
-        targetType: 'issue',
-        attachmentId,
-        projectId: ctx.projectId,
-        issuedToUserId: ctx.openerId,
-        issuedToDeviceId: null,
-      });
-      return `/api/uploads/download/${ticket.id}`;
-    }),
+    highlights: await ticketedHighlights(page.highlights, ctx.projectId, ctx.openerId),
   };
 }
 

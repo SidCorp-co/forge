@@ -1,11 +1,8 @@
+export type { ProductStateView } from "@forge/contracts/product-state";
 export type {
-  WhatsNewAway,
-  WhatsNewCounts,
-  WhatsNewDay,
-  WhatsNewDigestView,
-  WhatsNewEntry,
+  WhatsNewChange,
   WhatsNewFeed,
   WhatsNewKind,
+  WhatsNewRelease,
   WhatsNewSummary,
 } from "@forge/contracts/whats-new";
-export type { ProductStateView } from "@forge/contracts/product-state";

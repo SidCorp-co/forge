@@ -1,20 +1,28 @@
-// What's new: Forge's own released changes, read by time rather than by version. An entry is one
-// bullet of the running build's CHANGELOG.md; a digest is the short weekly summary a release folds
-// in under `### Digest`. Versions ship many times a week, so the version is only metadata on an
-// entry, never the grouping.
+// What's new: the release this Forge instance is serving, read once per person (REQ-40 BC-10). The
+// release is the one of the instance's own product project whose commit the running build is; what a
+// person reads is its highlights and its lines, never the rest of the release page.
 
 import type { RefusalStatuses } from "./refusal.js";
+import type { ReleaseHighlights } from "./release-page.js";
 
 /** The three filters a reader picks between. */
 export const WHATS_NEW_KINDS = ["new", "improved", "fixed"] as const;
 export type WhatsNewKind = (typeof WHATS_NEW_KINDS)[number];
 
 /** The sections of a CHANGELOG version section that hold entries. */
-export const WHATS_NEW_SECTIONS = ["Added", "Changed", "Fixed", "Removed", "Security"] as const;
+export const WHATS_NEW_SECTIONS = [
+	"Added",
+	"Changed",
+	"Fixed",
+	"Removed",
+	"Security",
+] as const;
 export type WhatsNewSection = (typeof WHATS_NEW_SECTIONS)[number];
 
 /** Each section read as one kind. */
-export const WHATS_NEW_KIND_OF_SECTION: Readonly<Record<WhatsNewSection, WhatsNewKind>> = {
+export const WHATS_NEW_KIND_OF_SECTION: Readonly<
+	Record<WhatsNewSection, WhatsNewKind>
+> = {
 	Added: "new",
 	Changed: "improved",
 	Removed: "improved",
@@ -22,137 +30,49 @@ export const WHATS_NEW_KIND_OF_SECTION: Readonly<Record<WhatsNewSection, WhatsNe
 	Security: "fixed",
 };
 
-/** A reader who has not opened What's new for this long reads a summary first. */
-export const WHATS_NEW_AWAY_DAYS = 7;
-/** How far back the feed reads when the reader's mark is recent or absent. */
-export const WHATS_NEW_WINDOW_DAYS = 30;
-/** How far back a reader's first look reads, when no seen mark says where they stopped. */
-export const WHATS_NEW_FIRST_LOOK_DAYS = 7;
-
-/**
- * Orders two entries of one day, newest version first: `0.4.0-dev.96` before `0.4.0-dev.9`, where a
- * plain string compare puts them the other way. Equal versions keep the order the changelog lists.
- */
-export function newestVersionFirst(a: { version: string }, b: { version: string }): number {
-	return b.version.localeCompare(a.version, "en", { numeric: true });
-}
-/** How far back the feed reads at most, however long the reader was away. */
-export const WHATS_NEW_MAX_WINDOW_DAYS = 90;
-/** How many unread entries an away summary lifts out as highlights. */
-export const WHATS_NEW_HIGHLIGHTS = 3;
-
-/** A tour an entry opens: the `tour:` line its changelog fragment carried, at the catalog's revision. */
-export interface WhatsNewTourRef {
-	id: string;
-	revision: number;
-}
-
-export interface WhatsNewEntry {
-	/** `<version>#<n>`: the entry's place in its version section, stable for the build. */
-	key: string;
-	section: WhatsNewSection;
+/** One line of a release: what changed for a reader, as its issue's user-facing note says it. */
+export interface WhatsNewChange {
 	kind: WhatsNewKind;
-	/** The bold lead of the bullet: what changed for the reader. */
-	title: string;
-	/** The rest of the bullet; empty when the lead says it all. */
-	body: string;
+	line: string;
+}
+
+/** What the rail reads on every page: the serving release's version and whether it is owed to this person. */
+export interface WhatsNewSummary {
+	/** The instance's own name for where it runs: `dev`, `beta`, `production`. */
+	environment: string;
+	release: { version: string; owed: boolean } | null;
+}
+
+/** The release this instance serves, as What's new opens it. */
+export interface WhatsNewRelease {
 	version: string;
-	/** The version's date, at 00:00 UTC. */
-	releasedAt: string;
-	/** The ISO week the release shipped in, in UTC: `2026-W41`. */
-	week: string;
-	unread: boolean;
-	tour: WhatsNewTourRef | null;
+	releasedAt: string | null;
+	owed: boolean;
+	/** Each clip or picture is a short-lived link minted for this reader. */
+	highlights: ReleaseHighlights;
+	/** The release's new and improved lines, then its fixes. */
+	changes: WhatsNewChange[];
 }
-
-/** One calendar day of entries in the reader's time zone, newest day first. */
-export interface WhatsNewDay {
-	date: string;
-	entries: WhatsNewEntry[];
-}
-
-/** A week's summary, as the release that carried it folded it in. */
-export interface WhatsNewDigestView {
-	week: string;
-	title: string;
-	body: string;
-	version: string;
-	releasedAt: string;
-}
-
-export interface WhatsNewCounts {
-	new: number;
-	improved: number;
-	fixed: number;
-}
-
-/** What a reader away for `WHATS_NEW_AWAY_DAYS` or more reads first. */
-export interface WhatsNewAway {
-	since: string;
-	days: number;
-	counts: WhatsNewCounts;
-	/** The unread entries lifted out, new ones first. */
-	highlights: string[];
-}
-
-/**
- * What a page loads on every view: whether anything is unread, without the entries. The feed itself
- * is read when the reader opens What's new; for the same reader at the same moment the two agree.
- */
-export type WhatsNewSummary = Pick<WhatsNewFeed, "version" | "seenAt" | "unread" | "counts">;
 
 export interface WhatsNewFeed {
-	/** The version of the build that answered: the newest section of its CHANGELOG.md. */
-	version: string | null;
-	seenAt: string | null;
-	/** The earliest release the feed read from. */
-	since: string;
-	timeZone: string;
-	unread: number;
-	/** The unread entries by kind. */
-	counts: WhatsNewCounts;
-	away: WhatsNewAway | null;
-	days: WhatsNewDay[];
-	digests: WhatsNewDigestView[];
-}
-
-const WEEK = /^(\d{4})-W(\d{2})$/;
-/** The ISO 8601 week a moment falls in, read in UTC. */
-export function isoWeekOf(at: Date): string {
-	const day = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
-	const weekday = day.getUTCDay() || 7;
-	day.setUTCDate(day.getUTCDate() + 4 - weekday);
-	const yearStart = Date.UTC(day.getUTCFullYear(), 0, 1);
-	const n = Math.ceil(((day.getTime() - yearStart) / 86_400_000 + 1) / 7);
-	return `${day.getUTCFullYear()}-W${String(n).padStart(2, "0")}`;
-}
-
-/** The UTC Monday a week starts on and the Monday after it, or null for text that names no week. */
-export function weekRange(week: string): { from: Date; to: Date } | null {
-	const m = WEEK.exec(week);
-	if (!m) return null;
-	const year = Number(m[1]);
-	const n = Number(m[2]);
-	const jan4 = new Date(Date.UTC(year, 0, 4));
-	const monday = new Date(jan4);
-	monday.setUTCDate(jan4.getUTCDate() - ((jan4.getUTCDay() || 7) - 1) + (n - 1) * 7);
-	if (n < 1 || isoWeekOf(monday) !== week) return null;
-	const to = new Date(monday);
-	to.setUTCDate(monday.getUTCDate() + 7);
-	return { from: monday, to };
+	environment: string;
+	/** Null where no release of the product project carries the commit this build runs. */
+	release: WhatsNewRelease | null;
 }
 
 /** Words a digest body may spend. */
 export const WHATS_NEW_DIGEST_WORDS_MAX = 120;
-export const WHATS_NEW_DIGEST_TITLE_MAX = 120;
 
 /** The words a digest body counts, as a reader would count them. */
 export function digestWordCount(body: string): number {
 	return body.trim().split(/\s+/u).filter(Boolean).length;
 }
 
-const WHATS_NEW_REFUSAL_CODES = ["WHATS_NEW_TIME_ZONE_UNKNOWN", "WHATS_NEW_REFUSED"] as const;
+const WHATS_NEW_REFUSAL_CODES = [
+	"WHATS_NEW_INSTANCE_UNSET",
+	"WHATS_NEW_REFUSED",
+] as const;
 export type WhatsNewRefusalCode = (typeof WHATS_NEW_REFUSAL_CODES)[number];
 export const WHATS_NEW_REFUSAL_STATUSES = {
-	WHATS_NEW_TIME_ZONE_UNKNOWN: 400,
+	WHATS_NEW_INSTANCE_UNSET: 503,
 } as const satisfies RefusalStatuses<WhatsNewRefusalCode>;

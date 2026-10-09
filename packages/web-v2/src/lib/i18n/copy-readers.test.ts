@@ -33,8 +33,8 @@ describe("the locale readers", () => {
     expect(ETA_COPY.vi.header).toBe(product.vi["eta.header"]);
     expect(ETA_COPY.en.header).toBe(product.en["eta.header"]);
     expect(ETA_COPY.vi.latestInline("T")).toBe("muộn nhất T"); // i18n-allow: asserts the vi copy itself
-    expect(productCopy("vi-VN")("whatsNew.breakdown" as never, { new: 1 })).toBe(
-      productCopy("vi")("whatsNew.breakdown" as never, { new: 1 }),
+    expect(productCopy("vi-VN")("whatsNew.title" as never, { new: 1 })).toBe(
+      productCopy("vi")("whatsNew.title" as never, { new: 1 }),
     );
   });
 });

@@ -18,9 +18,9 @@ import {
 const RELEASED = /^## \[/m;
 
 /**
- * One fragment as the bullet the What's new reader parses: a digest leads with the week it
- * summarises, an entry that offers a tour closes with it, both as HTML comments that render as
- * nothing and that `packages/core/src/whats-new/changelog.ts` reads.
+ * One fragment as its bullet: a digest leads with the week it summarises and an entry that offers a
+ * tour closes with it, both as HTML comments that render as nothing. No reader of them remains,
+ * since What's new shows the release the instance serves rather than this record.
  */
 function bullet(f) {
   if (f.section === DIGEST) return `- <!-- digest: ${f.week} --> ${f.entry}`;

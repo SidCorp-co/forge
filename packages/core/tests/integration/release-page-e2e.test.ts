@@ -9,10 +9,8 @@
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
-import { getStorage } from '../../src/integrations/index.js';
 import { register } from '../../src/integrations/llm/registry.js';
 import type { ChatMessage, ChatStreamEvent } from '../../src/integrations/llm/types.js';
-import { addVerdict, replaceCriteria } from '../../src/issues/criteria/service.js';
 import {
   backgroundRefreshesSettled,
   refreshReleaseHighlights,
@@ -23,15 +21,11 @@ import {
   addProjectMember,
   createTestProject,
   createTestUser,
-  seedIssueStatus,
   truncateAll,
 } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
+import { BUILD, CLIP_BYTES, MERGED, releasePageWorld } from '../helpers/release-page-world.js';
 import { declareProductionDocument, releaseWorld } from '../helpers/release-world.js';
-
-const BUILD = 'e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510';
-const MERGED = '3b1c2d4e5f60718293a4b5c6d7e8f90112233445';
-const CLIP_BYTES = Buffer.from('webm-bytes-of-the-reminder-clip');
 
 // the gateway model, faked at the provider seam behind the same `completeOnce` a chat turn uses
 const asked: ChatMessage[][] = [];
@@ -56,6 +50,8 @@ let projectId: string;
 let ownerId: string;
 const tokens: Record<'owner' | 'member' | 'agent', string> = { owner: '', member: '', agent: '' };
 const fx = releaseWorld(() => ({ projectId, ownerId }));
+const world = releasePageWorld(() => ({ projectId, ownerId, call, fx }));
+const { judge, releaseWorldOfFour } = world;
 let unplant: (() => void) | null = null;
 
 afterEach(async () => {
@@ -89,8 +85,9 @@ beforeEach(async () => {
   });
 });
 
-const call = (who: keyof typeof tokens, method: 'GET' | 'POST', path: string, body?: unknown) =>
-  api(tokens[who], method, `/api/projects/${projectId}${path}`, body);
+function call(who: keyof typeof tokens, method: 'GET' | 'POST', path: string, body?: unknown) {
+  return api(tokens[who], method, `/api/projects/${projectId}${path}`, body);
+}
 
 const rows = async (query: ReturnType<typeof sql>) => [...(await db.execute(query))];
 
@@ -98,130 +95,6 @@ const keyOf = async (issueId: string) => {
   const [row] = await rows(sql`SELECT iss_seq FROM issues WHERE id = ${issueId}`);
   return `ISS-${(row as { iss_seq: number }).iss_seq}`;
 };
-
-async function agreedRequirement(): Promise<{ id: string; bc: Record<string, string> }> {
-  const created = await call('owner', 'POST', '/requirements', {
-    title: 'Visit reminders',
-    reason: 'planted',
-    criteria: [
-      { body: 'A nurse sees the reminder' },
-      { body: 'A nurse sees it on a phone' },
-      { body: 'A doctor sees the visit report' },
-      { body: 'A report keeps its filter' },
-    ],
-  });
-  expect(created.status, JSON.stringify(created.body)).toBe(201);
-  const key = String(created.body.key);
-  for (const [path, body] of [
-    [`/requirements/${key}/revisions/1/propose`, {}],
-    [`/requirements/${key}/revisions/1/accept`, {}],
-    [`/requirements/${key}/agree`, { revision: 1 }],
-  ] as const) {
-    const r = await call('owner', 'POST', path, body);
-    expect(r.status, `${path} ${JSON.stringify(r.body)}`).toBe(200);
-  }
-  const [req] = await rows(sql`SELECT id FROM requirements WHERE project_id = ${projectId}`);
-  const id = String((req as { id: string }).id);
-  const bcs = await rows(
-    sql`SELECT id, code FROM requirement_criteria WHERE requirement_id = ${id}`,
-  );
-  return { id, bc: Object.fromEntries(bcs.map((b) => [String(b.code), String(b.id)])) };
-}
-
-async function traceIssue(issueId: string, requirementId: string, bcs: string[]) {
-  await seedIssueStatus(issueId, 'in_progress');
-  await db.execute(
-    sql`UPDATE issues SET requirement_id = ${requirementId}, planned_revision = 1 WHERE id = ${issueId}`,
-  );
-  await replaceCriteria(
-    issueId,
-    bcs.map((bc, i) => ({ n: i + 1, statement: `criterion ${i + 1}`, requirementCriterionId: bc })),
-  );
-  await seedIssueStatus(issueId, 'awaiting_release');
-}
-
-async function judge(
-  issueId: string,
-  criterion: number,
-  verdict: 'pass' | 'short' | 'fail',
-  sha: string,
-  extra: { evidence?: string[]; reason?: string } = {},
-) {
-  await addVerdict({
-    issue: { id: issueId, projectId },
-    draft: {
-      criterion,
-      verdict,
-      reason: extra.reason ?? null,
-      identity: { kind: 'commit', sha },
-      evidence: extra.evidence ?? ['vitest'],
-    },
-    author: { userId: ownerId, deviceId: null, agency: 'agent' },
-  });
-}
-
-async function attach(issueId: string, name: string, mime: string, bytes: Buffer): Promise<string> {
-  const { path } = await getStorage().put(`release-page/${issueId}/${name}`, bytes, mime);
-  const [row] = await rows(sql`
-    INSERT INTO issue_attachments (issue_id, uploader_id, name, path, mime, size)
-    VALUES (${issueId}, ${ownerId}, ${name}, ${path}, ${mime}, ${bytes.length}) RETURNING id
-  `);
-  return String((row as { id: string }).id);
-}
-
-interface World {
-  a: string;
-  b: string;
-  runId: string;
-  approvalId: string;
-  clipId: string;
-}
-
-/**
- * A cut release of two issues tracing one requirement's four criteria, its build the commit its
- * approval was asked at; then the verdicts recorded on that build after the cut.
- */
-async function releaseWorldOfFour(): Promise<World> {
-  const req = await agreedRequirement();
-  const a = await fx.insertIssue('awaiting_release', {
-    section: 'Added',
-    userFacing: 'Nurses see a reminder before each visit.',
-  });
-  const b = await fx.insertIssue('awaiting_release', {
-    section: 'Fixed',
-    userFacing: 'A visit report keeps its filter after a reload.',
-    technical: 'The filter is kept in the URL.',
-  });
-  await traceIssue(a, req.id, [req.bc['BC-1'] as string, req.bc['BC-2'] as string]);
-  await traceIssue(b, req.id, [req.bc['BC-3'] as string, req.bc['BC-4'] as string]);
-  await db.execute(sql`
-    UPDATE issues SET merged_artifacts = ${JSON.stringify([
-      {
-        surface: 'data',
-        ref: 'packages/core/drizzle/migrations/0999_reminders.sql',
-        change: 'added',
-      },
-      { surface: 'config', ref: 'reminders.leadHours', change: 'added' },
-      { surface: 'config', ref: 'shares.write', change: 'changed' },
-    ])}::jsonb WHERE id = ${a}
-  `);
-  const clipId = await attach(a, 'reminder.webm', 'video/webm', CLIP_BYTES);
-  await attach(a, 'reminder.png', 'image/png', Buffer.from('png-bytes'));
-  await judge(a, 1, 'pass', BUILD, { evidence: ['reminder.png', 'reminder.webm'] });
-  await judge(a, 2, 'pass', MERGED);
-  await judge(b, 1, 'pass', MERGED);
-  await judge(b, 2, 'pass', BUILD);
-  const cut = await call('owner', 'POST', '/release-batches', { issueIds: [a, b] });
-  expect(cut.status, JSON.stringify(cut.body)).toBe(201);
-  const runId = String(cut.body.runId);
-  const ask = await call('agent', 'POST', `/release-batches/${runId}/approvals`, {
-    evidence: { environment: 'beta', commit: BUILD, reading: 'GET /api/health 200' },
-  });
-  expect(ask.status, JSON.stringify(ask.body)).toBe(201);
-  await judge(a, 2, 'short', BUILD, { reason: 'only on a desktop browser' });
-  await judge(b, 2, 'fail', BUILD, { reason: 'the filter resets on reload' });
-  return { a, b, runId, approvalId: String(ask.body.id ?? ask.body.approvalId), clipId };
-}
 
 type Page = {
   view: string;

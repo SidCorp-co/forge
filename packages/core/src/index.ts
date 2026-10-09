@@ -141,6 +141,7 @@ import {
   registerReleaseBatchFinish,
   releaseVersionsAmong,
 } from './release-batch/index.js';
+import { providePreferencesPorts } from './preferences/index.js';
 import { releaseShareSource } from './release-page/index.js';
 import { provideReportPorts } from './report-ports.js';
 import { registerReportQueries } from './report-queries/index.js';
@@ -172,6 +173,7 @@ import {
 } from './suggestions/index.js';
 import { coreTimers } from './timer-registry.js';
 import { provideWorkPorts } from './work-ports.js';
+import { readServing } from './whats-new/index.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
 import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
@@ -211,6 +213,13 @@ provideShareSubjectSources([
   statusReportShareSource,
   releaseShareSource,
 ]);
+// the seen-mark rule asks which release this instance serves, which What's new reads (REQ-40 BC-10)
+providePreferencesPorts({
+  serving: async () => {
+    const { environment, release } = await readServing();
+    return { environment, version: release?.version ?? null };
+  },
+});
 provideAssistantMethod(composeLayers(METHOD_LAYERS));
 provideKnowledgePorts({
   searchMemory: runMemorySearch,

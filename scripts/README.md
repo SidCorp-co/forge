@@ -744,11 +744,11 @@ The record is two places: `CHANGELOG.md`, which holds released version sections 
 `changelog.d/<name>.<section>.md` — the name the branch or issue that writes it, the section one of
 `added`, `changed`, `fixed`, `removed`, `security`. `scripts/cut-release.sh` folds the fragments into
 the new version section through `lib/assemble-release.mjs` and deletes them in the release commit.
-Two fragment forms feed What's new, which reads the running build's `CHANGELOG.md`
-(`packages/core/src/whats-new/changelog.ts`): an entry may close with one line `tour: <id>`, folded
-as an invisible `<!-- tour: <id> -->` the entry's "Show me" is read from, and a week's digest is
-`digest-<year>-w<nn>.digest.md`, folded under `### Digest` as `<!-- digest: <week> -->` and held to
-`DIGEST_WORD_BUDGET` words instead of `ENTRY_WORD_BUDGET`.
+Two fragment forms are folded though nothing reads them any more, since What's new shows the release
+the instance serves (REQ-40) and not this record: an entry may close with one line `tour: <id>`,
+folded as an invisible `<!-- tour: <id> -->`, and a week's digest is `digest-<year>-w<nn>.digest.md`,
+folded under `### Digest` as `<!-- digest: <week> -->` and held to `DIGEST_WORD_BUDGET` words instead
+of `ENTRY_WORD_BUDGET`.
 
 **Why fragments.** While unreleased entries were lines under `## [Unreleased]`, a release inserting
 its version heading under that line and a branch appending an entry below it edited neighbouring

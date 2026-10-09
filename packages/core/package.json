@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
-    "build": "tsc -p tsconfig.build.json --noCheck && node dist/whats-new/check-changelog.js",
+    "build": "tsc -p tsconfig.build.json --noCheck",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
