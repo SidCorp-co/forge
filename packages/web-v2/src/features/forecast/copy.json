@@ -22,6 +22,8 @@
     "eta.notForecast": "Not forecast: {status}.",
     "eta.nothingLinked": "Nothing is linked to it yet.",
     "eta.shipped": "Shipped in {version} {when}.",
+    "eta.late": "Late, was {when}",
+    "eta.inVersion": "in {version}",
     "eta.shippedUnversioned": "Shipped {when}.",
     "eta.sortBy": "Sort by forecast time",
     "eta.thenCuts": "then {who} cuts it",

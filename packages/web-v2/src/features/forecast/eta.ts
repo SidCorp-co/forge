@@ -22,7 +22,7 @@ interface EtaTail {
 export type Eta =
   | { kind: "range"; p50At: string; p85At: string; tail: EtaTail | null; detail: string }
   | { kind: "waits"; who: Said; act: Said; detail: string }
-  | { kind: "done"; at: string | null; tail: EtaTail | null; detail: string }
+  | { kind: "done"; at: string | null; tail: EtaTail | null; detail: string; version?: string | null }
   /** Landed and not yet in people's hands: no tick and no date in the cell, only who releases it (JU-7). */
   | { kind: "landed"; at: string | null; tail: EtaTail | null; detail: string }
   | { kind: "none"; detail: string };
@@ -83,7 +83,7 @@ export function etaOfDelivery(d: DeliveryForecast, c: EtaClock): Eta {
   const said = deliveryText(d, c, { within: false }).detail;
   if (d.shipped) {
     const when = d.shipped.at ? formatDateTime(d.shipped.at, c.lang, c.timeZone) : "";
-    return { kind: "done", at: d.shipped.at, tail: null, detail: copy.shipped(d.shipped.version, when) };
+    return { kind: "done", at: d.shipped.at, tail: null, detail: copy.shipped(d.shipped.version, when), version: d.shipped.version };
   }
   const tail = tailOf(d.release);
   // the dates are the one reading the progress report takes too (`deliveryDatesOf`), so the two never disagree
@@ -117,17 +117,20 @@ export function etaSortValue(e: Eta | null): number | null {
 }
 
 /** The cell's two lines: the time and, quieter, the p85 or the person who cuts the release. */
-export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null } {
+export function etaLines(e: Eta, c: EtaClock): { line: string; sub: string | null; late?: boolean } {
   const copy = ETA_COPY[c.lang];
   const tail = e.kind === "range" || e.kind === "done" || e.kind === "landed" ? e.tail : null;
   const sub = tail ? thenCuts(tail.who, c.lang) : null;
   switch (e.kind) {
     case "range":
-      return { line: whenText(e.p50At, c), sub: sub ?? copy.latest(whenText(e.p85At, c)) };
+      // the expected day has passed and nothing landed: the cell says late, never a date that reads as still ahead
+      return Date.parse(e.p50At) < c.now
+        ? { line: copy.late(whenText(e.p50At, c)), sub: sub ?? copy.latest(whenText(e.p85At, c)), late: true }
+        : { line: whenText(e.p50At, c), sub: sub ?? copy.latest(whenText(e.p85At, c)) };
     case "waits":
       return { line: copy.waitsOn(shortWho(e.who, c.lang)), sub: null };
     case "done":
-      return { line: e.at ? doneDayText(e.at, c) : "", sub };
+      return { line: e.at ? doneDayText(e.at, c) : "", sub: sub ?? (e.version ? copy.inVersion(e.version) : null) };
     case "landed":
       return { line: copy.awaitingRelease, sub };
     case "none":

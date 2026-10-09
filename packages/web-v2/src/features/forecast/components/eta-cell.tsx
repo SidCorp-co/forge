@@ -7,13 +7,14 @@ import { type Eta, type EtaClock, etaInline, etaLines } from "../eta";
 /** One ETA cell: the time right-aligned in tabular figures, the p85 or the release tail under it, the rest on hover. */
 export function EtaCell({ eta, clock }: { eta: Eta | null; clock: EtaClock }) {
   if (!eta) return <span className="block text-right text-12 text-subtle" data-testid="eta-cell" data-kind="empty" />;
-  const { line, sub } = etaLines(eta, clock);
+  const { line, sub, late } = etaLines(eta, clock);
   return (
     <span className="flex min-w-0 flex-col items-end text-right tabular-nums" title={eta.detail} data-testid="eta-cell" data-kind={eta.kind}>
       <span
         className={cn(
           "inline-flex max-w-full items-center gap-1 truncate text-12-5",
-          eta.kind === "range" && "font-semibold text-fg",
+          eta.kind === "range" && !late && "font-semibold text-fg",
+          late && "font-semibold text-danger",
           (eta.kind === "waits" || eta.kind === "landed") && "text-muted",
           (eta.kind === "done" || eta.kind === "none") && "text-subtle",
         )}

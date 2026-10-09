@@ -29,6 +29,10 @@ interface EtaCopy {
   /** The p85 as the cell's quiet second line, and mid-line on the rail. */
   latest: (when: string) => string;
   latestInline: (when: string) => string;
+  /** The expected day has passed: "late, was {when}". */
+  late: (when: string) => string;
+  /** The release that delivered it. */
+  inVersion: (version: string) => string;
   /** A paused row: whom it waits on. */
   waitsOn: (who: string) => string;
   /** A release a person still cuts after the landing, and the same where the viewer cuts it. */
@@ -66,6 +70,8 @@ function copyOf(lang: EtaLang): EtaCopy {
     date: (day, month) => t("eta.date", { d: day, dd: String(day).padStart(2, "0"), month: MONTHS[month - 1] ? t(MONTHS[month - 1] as ProductCopyKey) : String(month) }),
     latest: (when) => t("eta.latest", { when }),
     latestInline: (when) => t("eta.latestInline", { when }),
+    late: (when) => t("eta.late", { when }),
+    inVersion: (version) => t("eta.inVersion", { version }),
     waitsOn: (who) => t("eta.waitsOn", { who }),
     thenCuts: (who) => t("eta.thenCuts", { who }),
     thenYouCut: t("eta.thenYouCut"),
