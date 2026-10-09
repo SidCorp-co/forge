@@ -1,9 +1,12 @@
 "use client";
 
-import type { UiSnapshot } from "@forge/contracts/ui-actions";
+import { highlightTargetOf, type UiSnapshot } from "@forge/contracts/ui-actions";
+import { describeListFilter } from "@forge/contracts/ui-list-filters";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/design";
+import { useHighlight } from "@/design/hooks/use-highlight";
+import { useShownKeys } from "@/design/hooks/use-page-shown";
 import { enumLabel, statusReading } from "@/design/vocabulary";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
@@ -16,6 +19,7 @@ import {
   type UiCallReading,
   applyUiAction,
   hrefWithout,
+  pageHighlighter,
   readUiCall,
   routeWord,
   shapesText,
@@ -52,15 +56,28 @@ function filterParts(f: NonNullable<UiSnapshot["filter"]>, t: Copy, language: st
     f.assignee && t("conversations.sees.assignedToMe"),
     f.priority && t("conversations.sees.priority", { value: word(enumLabel("priority", f.priority, language), f.priority) }),
     f.status && t("conversations.sees.status", { value: f.status.map((s) => word(statusReading("issue", s, language).label, s)).join("/") }),
+    ...(f.waitingOn ? describeListFilter({ waitingOn: f.waitingOn }) : []),
     f.text && `"${f.text}"`,
   ].filter((p): p is string => Boolean(p));
 }
+
+/** The rows the list shows, as the one line says them: the first five and how many more. */
+function shownText(keys: readonly string[], t: Copy): string {
+  const first = keys.slice(0, 5).join(", ");
+  return keys.length > 5 ? t("conversations.sees.more", { keys: first, n: keys.length - 5 }) : first;
+}
+
+const highlightWords = (h: NonNullable<UiSnapshot["highlight"]>, t: Copy) =>
+  h.target === "step" ? `${t("conversations.ui.step")} ${highlightTargetOf(h)}` : highlightTargetOf(h);
 
 /** The one line under the composer: what page the assistant is looking at, in the reader's words. */
 export function seesLabel(s: UiSnapshot, t: Copy, language: string): string {
   const parts: string[] = [s.item ? s.item.key : s.route === "other" ? s.path : routeWord(s.route, t)];
   if (s.filter) parts.push(...filterParts(s.filter, t, language));
+  if (s.listFilter) parts.push(...describeListFilter(s.listFilter.filter));
   if (s.selection && s.selection.length > 0) parts.push(t("conversations.sees.selected", { n: s.selection.length }));
+  if (s.shown?.length) parts.push(t("conversations.sees.showing", { keys: shownText(s.shown, t) }));
+  if (s.highlight) parts.push(t("conversations.sees.highlighting", { what: highlightWords(s.highlight, t) }));
   if (s.board) parts.push(t("conversations.sees.boardOf", { shapes: shapesText(s.board.shapes.length, t) }));
   return parts.join(" · ");
 }
@@ -75,10 +92,12 @@ export function seesDetail(s: UiSnapshot, at: { project: string | null; scope: "
     t("conversations.sees.route", { route: routeWord(s.route, t), path: s.path }),
   ];
   if (s.item) lines.push(t("conversations.sees.item", { key: s.item.key }));
-  if (s.filter) {
-    const parts = filterParts(s.filter, t, language);
+  if (s.filter || s.listFilter) {
+    const parts = [...(s.filter ? filterParts(s.filter, t, language) : []), ...(s.listFilter ? describeListFilter(s.listFilter.filter) : [])];
     lines.push(t("conversations.sees.filters", { parts: parts.length ? parts.join(", ") : none }));
   }
+  if (s.shown) lines.push(t("conversations.sees.shown", { keys: s.shown.length ? shownText(s.shown, t) : none }));
+  if (s.highlight) lines.push(t("conversations.sees.highlight", { what: highlightWords(s.highlight, t) }));
   lines.push(t("conversations.sees.selection", { keys: s.selection?.length ? s.selection.join(", ") : none }));
   if (s.board) lines.push(t("conversations.sees.board", { shapes: shapesText(s.board.shapes.length, t) }));
   return lines.join("\n");
@@ -93,6 +112,8 @@ export function useUiSnapshot(slug: string | undefined) {
   const { user } = useAuth();
   const selection = useSelectedIssueKeys();
   const board = useBoard();
+  const shown = useShownKeys();
+  const highlight = useHighlight(pathname);
   return useMemo(() => {
     const snapshot = uiSnapshotOf({
       pathname,
@@ -100,9 +121,11 @@ export function useUiSnapshot(slug: string | undefined) {
       userId: user?.id ?? null,
       selection: selection ? selection.split(",") : [],
       board,
+      shown,
+      highlight,
     });
     return { snapshot, sees: slug ? seesLabel(snapshot, t, language) : null };
-  }, [pathname, search, user?.id, selection, slug, board, t, language]);
+  }, [pathname, search, user?.id, selection, slug, board, shown, highlight, t, language]);
 }
 
 /**
@@ -137,6 +160,7 @@ export function useUiActions(args: {
       href: () => `${window.location.pathname}${window.location.search}`,
       go,
       selection: issueSelectionBridge,
+      ...pageHighlighter,
     }),
     [args.slug, user?.id, go, t, language],
   );

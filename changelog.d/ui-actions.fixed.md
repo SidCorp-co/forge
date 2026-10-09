@@ -1,0 +1,1 @@
+**Chat now drives Requirements, Feedback, Workflows and Releases beside it.** It opens any record by key, filters every list by whom a row waits on, highlights a section, step or row, and knows which rows the page shows.

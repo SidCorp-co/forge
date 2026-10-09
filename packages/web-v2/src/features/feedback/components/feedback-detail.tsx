@@ -55,7 +55,7 @@ function Heading({ children }: { children: ReactNode }) {
 function Body({ projectId, f }: { projectId: string; f: FeedbackView }) {
   const t = useCopy();
   return (
-    <section>
+    <section data-highlight="evidence">
       <Heading>{t("feedback.body.heading")}</Heading>
       {f.redacted ? (
         <p className="text-13 text-subtle">{t("feedback.body.redacted")}</p>
@@ -150,7 +150,7 @@ export function FeedbackPage({
                 <div className="grid gap-8" data-testid="view-overview">
                   <Proposals projectId={projectId} f={f} />
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
-                    <section id="feedback-act">
+                    <section id="feedback-act" data-highlight="triage verify">
                       <FeedbackActions projectId={projectId} f={f} />
                     </section>
                   ) : null}

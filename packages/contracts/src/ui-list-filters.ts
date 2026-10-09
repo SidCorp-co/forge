@@ -197,3 +197,99 @@ export function describeListFilter(filter: Record<string, unknown>): string[] {
 	}
 	return parts;
 }
+
+/**
+ * A list's filter as its URL holds it: each field read from its one param (`UI_FILTER_PARAMS`), so
+ * the list narrows by exactly what the chat's action wrote and the mark compares against. A value a
+ * field does not take is left out, as an unknown URL choice reads as its default. `createdBy` and
+ * `assignee` hold a person's id in the URL and "me" in the filter, so only the caller that knows
+ * the signed-in id reads them.
+ */
+export function listFilterFromSearch<L extends UiList>(
+	list: L,
+	search: string | URLSearchParams,
+): UiListFilter<L> {
+	const sp = typeof search === "string" ? new URLSearchParams(search) : search;
+	const shape = UI_LIST_FILTERS[list].shape as Record<string, z.ZodType>;
+	const out: Record<string, unknown> = {};
+	for (const [field, schema] of Object.entries(shape)) {
+		if (field === "createdBy" || field === "assignee") continue;
+		const raw = sp.get(UI_FILTER_PARAMS[field as UiFilterField])?.trim();
+		if (!raw) continue;
+		const one = schema.safeParse(raw);
+		if (one.success && one.data !== undefined) {
+			out[field] = one.data;
+			continue;
+		}
+		const each = raw
+			.split(",")
+			.map((v) => v.trim())
+			.filter((v) => schema.safeParse([v]).success);
+		if (each.length > 0) out[field] = each;
+	}
+	return out as UiListFilter<L>;
+}
+
+/** What a list row shows of itself, as every list's filter reads it. */
+export interface UiListRowFacts {
+	/** `waitingFilterOf` the row's standing. */
+	waiting: UiWaitingFilter | null;
+	/** What the list's search reads: its key and title, and whatever else that list searches. */
+	text: string;
+	state?: string | undefined;
+	status?: string | undefined;
+	priority?: string | undefined;
+	phase?: string | undefined;
+	kind?: string | undefined;
+	severity?: string | undefined;
+	/** When the row was filed, for `since`. */
+	createdAt?: string | undefined;
+}
+
+const MATCHED_FIELDS = new Set([
+	"waitingOn",
+	"text",
+	"state",
+	"status",
+	"priority",
+	"phase",
+	"kind",
+	"severity",
+	"since",
+]);
+
+/**
+ * Whether one row stays on a list under `filter`. A field this function does not read (`createdBy`,
+ * `assignee`, which need the signed-in id) is refused by name rather than passed over, so a filter
+ * the person sees is never one the list silently ignores.
+ */
+export function matchesListFilter(
+	filter: Record<string, unknown>,
+	row: UiListRowFacts,
+	now: Date = new Date(),
+): boolean {
+	for (const [field, value] of Object.entries(filter)) {
+		if (value === undefined) continue;
+		if (!MATCHED_FIELDS.has(field))
+			throw new Error(
+				`matchesListFilter does not read "${field}": the list that offers it narrows by it itself, against the signed-in id`,
+			);
+		if (field === "waitingOn") {
+			if (row.waiting !== value) return false;
+		} else if (field === "text") {
+			if (!row.text.toLowerCase().includes(String(value).trim().toLowerCase()))
+				return false;
+		} else if (field === "since") {
+			if (
+				!row.createdAt ||
+				!withinSince(value as UiSince, new Date(row.createdAt), now)
+			)
+				return false;
+		} else {
+			const own = row[field as keyof UiListRowFacts];
+			const allowed = Array.isArray(value) ? value : [value];
+			if (typeof own !== "string" || !allowed.includes(own)) return false;
+		}
+	}
+	return true;
+}

@@ -9,6 +9,8 @@ import { Written } from "@/lib/i18n/written";
 import { FEEDBACK_ATTENTION_GROUPS, FEEDBACK_ATTENTION_LABELS, FEEDBACK_PHASE_TONES, type FeedbackAttentionGroup } from "@forge/contracts/feedback";
 import type { StandingGroupLabels } from "@forge/contracts/standing";
 import { needsViewer } from "@forge/contracts/standing";
+import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
+import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -187,10 +189,16 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const fold = useGroupFold("web-v2:feedback-fold");
 
   const all = q.data?.feedback ?? [];
+  // the search box reads q; the rest is the list filter the chat sets too (REQ-41 BC-5)
+  const filter = useListNarrowing("feedback");
   const rows = useMemo(() => {
     const t = text.trim().toLowerCase();
-    return t ? all.filter((r) => `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(t)) : all;
-  }, [all, text]);
+    return all.filter(
+      (r) =>
+        (!t || `${r.key} ${r.title} ${r.reporter.name ?? ""}`.toLowerCase().includes(t)) &&
+        matchesListFilter(filter, { waiting: waitingFilterOf(r), text: "", phase: r.phase, kind: r.kind, severity: r.severity, createdAt: r.createdAt }),
+    );
+  }, [all, text, filter]);
   const forecastQ = useFeedbackForecasts(projectId);
   const forecasts = useMemo(() => new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i])), [forecastQ.data]);
   const clock = useEtaClock();
@@ -243,6 +251,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
                 <ViewModeSwitcher modes={modes} value={grouping} onChange={setGrouping} placement="toolbar" />
                 <ListSearch noun={t("feedback.noun")} value={text} onChange={(q) => setParams({ q: q || null })} />
+                <ListFilterBar list="feedback" />
               </div>
               {all.length === 0 ? (
                 <div className="px-5 py-10">

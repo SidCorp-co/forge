@@ -32,6 +32,8 @@ import { useEtaSort, useRequirementForecasts } from "@/features/forecast/hooks";
 import { useCreateRequirement, useRequirements } from "../hooks";
 import { REQUIREMENTS_LIST, requirementHref } from "@/lib/routes/requirements";
 import type { RequirementSummary } from "../types";
+import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
+import { ListFilterBar, useListNarrowing } from "@/features/conversations/ui-actions/list-filter-bar";
 import { RequirementPeek } from "./requirement-peek";
 import { revisionText } from "./standing-bits";
 
@@ -255,10 +257,16 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const fold = useGroupFold("web-v2:requirements-fold");
 
   const all = q.data?.requirements ?? [];
+  // the search box reads q; whom a row waits on and its state are the list filter the chat sets too (REQ-41 BC-5)
+  const filter = useListNarrowing("requirements");
   const rows = useMemo(() => {
     const t = text.trim().toLowerCase();
-    return t ? all.filter((r) => `${r.key} ${r.title}`.toLowerCase().includes(t)) : all;
-  }, [all, text]);
+    return all.filter(
+      (r) =>
+        (!t || `${r.key} ${r.title}`.toLowerCase().includes(t)) &&
+        matchesListFilter(filter, { waiting: waitingFilterOf(r.standing), text: "", state: r.standing.state }),
+    );
+  }, [all, text, filter]);
   const forecastQ = useRequirementForecasts(projectId);
   const forecasts = useMemo(() => new Map((forecastQ.data?.requirements ?? []).map((s) => [s.key, s])), [forecastQ.data]);
   const clock = useEtaClock();
@@ -313,6 +321,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
               <div className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-5 py-2.5 max-md:px-3">
                 <ViewModeSwitcher modes={modes} value={mode} onChange={setMode} placement="toolbar" />
                 <ListSearch noun={t("requirements.searchNoun")} value={text} onChange={(q) => setParams({ q: q || null })} />
+                <ListFilterBar list="requirements" />
               </div>
               <AssistantStrip projectId={projectId} rows={all} onPeek={(k) => peek.set(k)} />
               {all.length === 0 ? (

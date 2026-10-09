@@ -1,6 +1,9 @@
 "use client";
 
 import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
+import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
+import { useReportShown } from "@/design/hooks/use-page-shown";
+import { ListFilterBar, useListFilter } from "@/features/conversations/ui-actions/list-filter-bar";
 import Link from "next/link";
 import { Button, EmptyState, PageTitle, rememberListOrigin, Tooltip } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
@@ -121,7 +124,15 @@ function Designs({
   const [picked, setPicked] = useQueryParam("template");
   const chips = [...new Set(all.map(templateIdOf))].sort((a, b) => templateTitle(a, templates, label).localeCompare(templateTitle(b, templates, label)));
   const filter = picked && chips.includes(picked) ? picked : null;
-  const groups = catalogue(filter ? all.filter((r) => templateIdOf(r) === filter) : all, t);
+  // whom a design waits on and its words are the list filter the chat sets too (REQ-41 BC-5)
+  const narrowing = useListFilter("workflows");
+  const narrowed = all.filter(
+    (r) =>
+      (!filter || templateIdOf(r) === filter) &&
+      matchesListFilter(narrowing, { waiting: waitingFilterOf({ waitingOn: r.design.waitingOn }), text: `${r.document.flow} ${r.document.title} ${r.document.summary}` }),
+  );
+  const groups = catalogue(narrowed, t);
+  useReportShown(groups.flatMap((g) => g.rows.map((r) => r.document.flow)));
   const pad = narrow ? "px-5 max-md:px-4" : "px-7 max-md:px-4";
   return (
     <section aria-labelledby="designs-title" className={cn(narrow ? "pt-3.5" : "pt-5")} data-testid="designs">
@@ -151,6 +162,9 @@ function Designs({
             ))}
           </span>
         ) : null}
+        <span className="flex flex-wrap items-center gap-1.5" data-testid="workflows-filter">
+          <ListFilterBar list="workflows" />
+        </span>
       </header>
       {narrow ? null : (
         <div aria-hidden className={cn(COLS, "h-8 items-center border-y border-line-subtle text-11-5 font-semibold text-subtle max-md:hidden")}>

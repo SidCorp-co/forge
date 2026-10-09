@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils/cn";
 import { Icon } from "../icons/icon";
 import { LEGEND, type LegendTone } from "../vocabulary";
 import { useCopy } from "@/lib/i18n/interface-language";
+import { useReportShown } from "../hooks/use-page-shown";
 
 /** A read model's groups in the order its contract declares them, each holding the rows core put there. */
 export function standingGroups<R extends { attentionGroup: G }, G extends StandingGroup>(
@@ -222,6 +223,12 @@ export interface GroupedListProps<R> {
 export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek, empty, columns, eta }: GroupedListProps<R>) {
   const t = useCopy();
   const shown = groups.filter((g) => g.rows.length > 0);
+  // each open group's rows, viewed once: drawn below and reported as what the list shows (REQ-41 BC-8)
+  const drawn = shown.map((g) => {
+    const open = fold.isOpen(g.id, g.collapsed);
+    return { g, open, views: open ? g.rows.map(row) : [] };
+  });
+  useReportShown(drawn.flatMap((d) => d.views.map((v) => v.key)));
   return (
     <section aria-label={ariaLabel} data-testid="grouped-list">
       <div
@@ -248,20 +255,14 @@ export function GroupedList<R>({ ariaLabel, groups, fold, row, selected, onPeek,
         <span aria-hidden className="text-right max-lg:hidden">{columns?.meta ?? t("list.col.meta")}</span>
       </div>
       {shown.length === 0 ? <p className="px-5 py-8 text-13 text-subtle">{empty ?? t("list.empty")}</p> : null}
-      {shown.map((g) => {
-        const open = fold.isOpen(g.id, g.collapsed);
-        return (
-          <div key={g.id}>
-            <GroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
-            {open
-              ? g.rows.map((r) => {
-                  const v = row(r);
-                  return <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} />;
-                })
-              : null}
-          </div>
-        );
-      })}
+      {drawn.map(({ g, open, views }) => (
+        <div key={g.id}>
+          <GroupHeader g={g} open={open} onToggle={() => fold.toggle(g.id, g.collapsed)} />
+          {views.map((v) => (
+            <Row key={v.key} v={v} selected={v.key === selected} onPeek={onPeek} eta={eta !== undefined} />
+          ))}
+        </div>
+      ))}
     </section>
   );
 }

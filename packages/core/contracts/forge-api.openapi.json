@@ -4579,80 +4579,62 @@
                             "maxLength": 200,
                             "minLength": 1,
                             "type": "string"
+                          },
+                          "waitingOn": {
+                            "enum": [
+                              "you",
+                              "agent",
+                              "running"
+                            ],
+                            "type": "string"
                           }
                         },
                         "type": "object"
                       },
                       "highlight": {
-                        "oneOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "section": {
-                                "enum": [
-                                  "waiting",
-                                  "question",
-                                  "criteria",
-                                  "plan",
-                                  "preview",
-                                  "picture",
-                                  "delivery",
-                                  "history",
-                                  "evidence",
-                                  "triage",
-                                  "route",
-                                  "verify"
-                                ],
-                                "type": "string"
-                              },
-                              "target": {
-                                "const": "section",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "target",
-                              "section"
-                            ],
-                            "type": "object"
+                        "additionalProperties": false,
+                        "properties": {
+                          "key": {
+                            "maxLength": 200,
+                            "minLength": 1,
+                            "type": "string"
                           },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "step": {
-                                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
-                                "type": "string"
-                              },
-                              "target": {
-                                "const": "step",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "target",
-                              "step"
+                          "section": {
+                            "enum": [
+                              "waiting",
+                              "question",
+                              "criteria",
+                              "plan",
+                              "preview",
+                              "picture",
+                              "delivery",
+                              "history",
+                              "evidence",
+                              "triage",
+                              "route",
+                              "verify"
                             ],
-                            "type": "object"
+                            "type": "string"
                           },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "key": {
-                                "maxLength": 200,
-                                "minLength": 1,
-                                "type": "string"
-                              },
-                              "target": {
-                                "const": "row",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "target",
-                              "key"
+                          "step": {
+                            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$",
+                            "type": "string"
+                          },
+                          "target": {
+                            "enum": [
+                              "section",
+                              "step",
+                              "row"
                             ],
-                            "type": "object"
+                            "type": "string"
                           }
+                        },
+                        "required": [
+                          "target"
+                        ],
+                        "type": "object",
+                        "x-forge-refinements": [
+                          "a refinement with no fixed message, whose rule this contract cannot state"
                         ]
                       },
                       "item": {
@@ -4954,6 +4936,8 @@
                         "enum": [
                           "overview",
                           "issues",
+                          "requirements",
+                          "feedback",
                           "pipeline",
                           "releases",
                           "agents",
@@ -4962,8 +4946,6 @@
                           "schedules",
                           "improvements",
                           "settings",
-                          "requirements",
-                          "feedback",
                           "issue",
                           "requirement",
                           "workflow",

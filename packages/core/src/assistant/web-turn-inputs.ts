@@ -43,6 +43,7 @@ import { buildProjectToolset } from './tools/registry.js';
 import { buildUiActionToolset } from './tools/ui-actions-tool.js';
 import { fenceToolsetToOrigin, handoffVenueRefusal, turnOriginRefused } from './turn-origin.js';
 import type { TurnHookContext, TurnInputs, TurnReply } from './turn-request.js';
+import { latestUiSnapshot } from './ui-snapshot.js';
 
 interface WebTurnArgs {
   project: { id: string; slug: string; name: string };
@@ -300,7 +301,7 @@ async function prepareWebTurn(
     }),
     tools: mergeToolsets(
       buildProjectToolset(ctx),
-      buildUiActionToolset(),
+      buildUiActionToolset({ snapshot: () => latestUiSnapshot(conversationId) }),
       buildOfferActToolset({
         projectId: args.project.id,
         userId: authority.userId,

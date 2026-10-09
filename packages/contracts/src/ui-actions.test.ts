@@ -4,11 +4,12 @@ import {
 	highlightRefusal,
 	openKindOf,
 	parseUiAction,
-	UI_ACTION_ADDITIONS,
+	UI_ACTION_NAMES,
 	UI_ACTIONS,
-	UI_ROUTE_ADDITIONS,
+	UI_LIST_FILTER_ACTIONS,
 	UI_ROUTES,
 	type UiSnapshot,
+	uiActionJsonSchema,
 	uiHighlightParamsSchema,
 	uiIssueFilterSchema,
 	uiOpenParamsSchema,
@@ -22,27 +23,34 @@ const page = (over: Partial<UiSnapshot>): UiSnapshot => ({
 	...over,
 });
 
-describe("the registry as offered today", () => {
-	it("still refuses an unknown action by name", () => {
-		const r = parseUiAction("ui_requirements_filter", { mode: "replace" });
+describe("the registry offers what every page applies (REQ-41)", () => {
+	it("refuses an unknown action by name", () => {
+		const r = parseUiAction("ui_settings_filter", { mode: "replace" });
 		expect(r.ok).toBe(false);
 		if (!r.ok) expect(r.code).toBe("UI_ACTION_UNKNOWN");
 	});
 
-	it("keeps the Issues filter at the fields the Issues list applies, until the lane adds waitingOn", () => {
-		expect(Object.keys(uiIssueFilterSchema.shape).sort()).toEqual([
-			"assignee",
-			"createdBy",
-			"priority",
-			"status",
-			"text",
-		]);
-		expect(uiIssueFilterSchema.safeParse({ waitingOn: "you" }).success).toBe(
-			false,
-		);
+	it("opens Requirements and Feedback by route (BC-4)", () => {
+		expect(UI_ROUTES.requirements).toBe("/requirements");
+		expect(UI_ROUTES.feedback).toBe("/feedback");
+		expect(parseUiAction("ui_navigate", { route: "feedback" }).ok).toBe(true);
+	});
+
+	it("filters each Product list in the shape ui.issues.filter has (BC-4)", () => {
+		for (const name of Object.values(UI_LIST_FILTER_ACTIONS)) {
+			const r = parseUiAction(UI_ACTIONS[name].wire, {
+				mode: "merge",
+				set: { waitingOn: "you" },
+			});
+			expect(r.ok, name).toBe(true);
+		}
+	});
+
+	it("filters Issues by whom an issue waits on, now its list reads it (BC-5)", () => {
+		expect(Object.keys(uiIssueFilterSchema.shape)).toContain("waitingOn");
 		const r = parseUiAction("ui.issues.filter", {
 			mode: "merge",
-			set: { priority: "high" },
+			set: { waitingOn: "agent" },
 		});
 		expect(r.ok).toBe(true);
 	});
@@ -55,29 +63,20 @@ describe("the registry as offered today", () => {
 				"a merge must set or clear at least one field",
 			);
 	});
-});
 
-describe("the REQ-41 additions", () => {
-	it("name routes and wire names the registry does not already hold, except ui.open which they replace", () => {
-		for (const r of Object.keys(UI_ROUTE_ADDITIONS))
-			expect(UI_ROUTES).not.toHaveProperty(r);
-		const wires = new Set<string>(Object.values(UI_ACTIONS).map((a) => a.wire));
-		for (const [name, a] of Object.entries(UI_ACTION_ADDITIONS)) {
-			if (name === "ui.open") expect(UI_ACTIONS["ui.open"].wire).toBe(a.wire);
-			else {
-				expect(UI_ACTIONS).not.toHaveProperty(name);
-				expect(wires.has(a.wire)).toBe(false);
-			}
-			expect(a.wire).toMatch(/^ui_[a-z_]+$/);
+	it("offers every action's params as one object, which a tool's params must be", () => {
+		for (const name of UI_ACTION_NAMES) {
+			const schema = uiActionJsonSchema(name);
+			expect(schema.type, name).toBe("object");
+			expect(schema).not.toHaveProperty("oneOf");
+			expect(schema).not.toHaveProperty("anyOf");
 		}
 	});
 
-	it("filter each Product list in the shape ui.issues.filter has", () => {
-		const r = UI_ACTION_ADDITIONS["ui.requirements.filter"].params.safeParse({
-			mode: "merge",
-			set: { waitingOn: "you" },
-		});
-		expect(r.success).toBe(true);
+	it("names each wire once", () => {
+		const wires = UI_ACTION_NAMES.map((n) => UI_ACTIONS[n].wire);
+		expect(new Set(wires).size).toBe(wires.length);
+		for (const w of wires) expect(w).toMatch(/^ui_[a-z_]+$/);
 	});
 });
 
@@ -151,6 +150,23 @@ describe("ui.highlight fits the page it is sent to", () => {
 		expect(highlightRefusal({ target: "row", key: "ISS-2" }, list)).toContain(
 			"not showing",
 		);
+	});
+
+	it("refuses a field its target does not take, and a target without its own, by name", () => {
+		const extra = uiHighlightParamsSchema.safeParse({
+			target: "row",
+			key: "REQ-3",
+			section: "criteria",
+		});
+		expect(extra.success).toBe(false);
+		expect(extra.error?.issues[0]?.message).toBe(
+			'target "row" takes key, not section',
+		);
+		const bare = uiHighlightParamsSchema.safeParse({ target: "step" });
+		expect(bare.success).toBe(false);
+		expect(bare.error?.issues[0]?.message).toBe('target "step" names its step');
+		const r = parseUiAction("ui_highlight", { target: "step", step: "check" });
+		expect(r.ok).toBe(true);
 	});
 
 	it("refuses a section that is on no page at all", () => {

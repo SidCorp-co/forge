@@ -55,14 +55,16 @@ export function OverviewTab({
         attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
         canWrite={canWrite}
       />
-      <PreviewPanel
-        issueId={issue.id}
-        issueLabel={issue.displayId}
-        canWrite={canWrite}
-        settingsHref={slug ? settingsHref(slug, "preview") : undefined}
-        hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
-      />
-      <section aria-label={t("issues.plan.title")}>
+      <div data-highlight="preview">
+        <PreviewPanel
+          issueId={issue.id}
+          issueLabel={issue.displayId}
+          canWrite={canWrite}
+          settingsHref={slug ? settingsHref(slug, "preview") : undefined}
+          hasLiveRun={(issue.agentSessions ?? []).some((s) => s.status === "running")}
+        />
+      </div>
+      <section aria-label={t("issues.plan.title")} data-highlight="plan">
         <ViewHeading>{t("issues.plan.title")}</ViewHeading>
         {issue.plan ? (
           <Markdown>{issue.plan}</Markdown>

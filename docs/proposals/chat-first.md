@@ -14,7 +14,8 @@ The shared contracts are landed in `packages/contracts/src`: `ui-list-filters.ts
 of `ui-actions.ts`, `needs-you-decisions.ts`, `reply-check.ts`, the REQ-41 block of `preview.ts`, and
 `reproduce.ts`. Each shape a lane must register with its executor (a UI action, a refusal code, a
 route, a setting) is landed beside the registry, not in it, so the model is never offered an action
-and no route is named that nothing answers yet. The lane that builds the executor moves it in.
+and no route is named that nothing answers yet. The lane that builds the executor moves it in; the
+ui-actions lane has moved the page actions and routes into `UI_ACTIONS` and `UI_ROUTES`.
 
 ## What was wrong on 2026-10-09
 
@@ -83,25 +84,30 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 
 ## Page actions (BC-4..BC-9)
 
-- **Routes (BC-4).** `UI_ROUTE_ADDITIONS` adds `requirements` and `feedback`. `workflows` and
-  `releases` are already registered.
+- **Routes (BC-4).** `UI_ROUTES` names `requirements` and `feedback` beside `workflows` and
+  `releases`.
 - **Filters (BC-4, BC-5).** `ui-list-filters.ts:UI_LIST_FILTERS` gives each list a closed set of
   fields. Every list has `waitingOn: you | agent | running`. The value is read by
   `waitingFilterOf` from the row's standing, the same read every list draws its Waiting-on cell
   from. Each field lives in one URL param (`UI_FILTER_PARAMS`), so the list, the action and the mark
-  read the same thing. The Product lists get `ui.requirements.filter`, `ui.feedback.filter`,
-  `ui.workflows.filter` and `ui.releases.filter`, in the shape `ui.issues.filter` already has.
-  Issues gains `waitingOn` in the same change that teaches its list to read it.
+  read the same thing (`listFilterFromSearch`, `matchesListFilter`). The Product lists get
+  `ui.requirements.filter`, `ui.feedback.filter`, `ui.workflows.filter` and `ui.releases.filter`, in
+  the shape `ui.issues.filter` already has. Issues takes `waitingOn` in its grouped views, which read
+  each issue's standing; the paged Table reads no standing, so a waiting filter sent to it opens the
+  grouped view instead.
 - **Open by key (BC-6).** `ui.open` takes `{key}` read by its shape (REQ-n, FB-n, an issue key), or
   `{kind, key}` for a workflow flow or a release version. A key its kind does not take is refused,
   naming the shape it takes.
 - **Highlight (BC-6).** `ui.highlight` marks a section of the open record (`UI_HIGHLIGHT_SECTIONS`),
-  a step of the open workflow, or a row the list shows. `highlightRefusal` refuses it
-  `UI_ACTION_NOT_ON_PAGE` from the snapshot core already holds, before the browser is asked. The
-  page uses the existing `.forge-highlight` style in `globals.css`, through one hook.
-- **Marks (BC-7).** `chat-dock/assistant-filters.ts` already marks a chip orange while the URL still
-  holds the value the assistant set, so a person's change clears it. This spreads to every list's
-  toolbar.
+  a step of the open workflow, or a row the list shows. Its params are one object, `target` and the
+  one field it names, because a tool's params cannot be a union at the top. `highlightRefusal`
+  refuses it `UI_ACTION_NOT_ON_PAGE` from the snapshot core already holds, as the turn's earlier
+  actions leave it, before the browser is asked. The page finds each section by the anchor
+  `ui-actions/highlight-anchors.ts:HIGHLIGHT_ANCHORS` names, switches to the tab that shows it, and marks it with the
+  existing `.forge-highlight` style through `design/hooks/use-highlight.ts`.
+- **Marks (BC-7).** `chat-dock/assistant-filters.ts` marks a chip orange while the URL still holds
+  the value the assistant set, and forgets the mark the first time it holds anything else. Every
+  list's toolbar draws its filter through it.
 - **Sees (BC-8).** The snapshot gains `listFilter`, `shown` (the top 50 row keys, so "the first one"
   means what the person sees) and `highlight`. `describeUiSnapshot` says them. The model reads them
   as page context, as it already does.

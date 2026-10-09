@@ -247,7 +247,7 @@ export function IssueDetailScreen({
         }
       >
         <DetailMobileTitle itemKey={issue.displayId} title={<Written className="break-words" text={issue.title} lang={issue.writtenLang} />} badge={badge} />
-        <div className="grid gap-3 px-8 pt-4 empty:hidden max-md:px-4">
+        <div className="grid gap-3 px-8 pt-4 empty:hidden max-md:px-4" data-highlight="waiting question">
           {!blocker && standingQ.data ? <IssueBanner standing={standingQ.data.standing} className="rounded-md" /> : null}
           {blocker && (
             <BlockerBanner
