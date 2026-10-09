@@ -123,10 +123,11 @@ export async function markApprovedDesign(
 
 /** The notice the design issue carries saying what the approval recorded on it. */
 export function designLandingNotice(
-  args: { flow: string; revision: number },
+  args: { flow: string; revision: number; kernel?: boolean | undefined },
   outcome: DesignLandingOutcome,
 ): string | null {
-  const design = `Design \`${args.flow}\` revision ${args.revision} was approved`;
+  const by = args.kernel ? ' by Forge itself (pin-only: only the revisions it pins moved)' : '';
+  const design = `Design \`${args.flow}\` revision ${args.revision} was approved${by}`;
   if (outcome.action === 'marked' || outcome.action === 'repointed') {
     const was =
       outcome.action === 'repointed'

@@ -28,6 +28,8 @@ interface WorkflowPorts {
     projectId: string,
     requirementIds: readonly string[],
   ) => Promise<Map<string, RequirementState>>;
+  /** The project's own agent account, minted where it has none: the author of a notice Forge itself posts (as the reconciler's are). */
+  projectAgentOf: (tx: Tx, projectId: string) => Promise<string>;
   /** Answer the open questions waiting on a revision with its decision, in the decision's transaction. */
   answerDesignQuestions: (
     tx: Tx,
@@ -60,5 +62,6 @@ export const provideWorkflowPorts = slot.provide;
 export const repositoryOf = slot.port('repositoryOf');
 export const changedTracedOf = slot.port('changedTracedOf');
 export const requirementStatesOf = slot.port('requirementStatesOf');
+export const projectAgentOf = slot.port('projectAgentOf');
 export const answerDesignQuestions = slot.port('answerDesignQuestions');
 export const reaskSupersededDesignQuestions = slot.port('reaskSupersededDesignQuestions');

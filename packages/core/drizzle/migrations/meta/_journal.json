@@ -3095,6 +3095,13 @@
       "when": 1824595200000,
       "tag": "0482_a_question_without_a_recommendation_gets_the_assistants_suggestion",
       "breakpoints": true
+    },
+    {
+      "idx": 483,
+      "version": "7",
+      "when": 1824681600000,
+      "tag": "0483_a_design_decision_names_who_made_it_a_person_or_the_kernel",
+      "breakpoints": true
     }
   ]
 }

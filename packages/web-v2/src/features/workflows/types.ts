@@ -151,6 +151,7 @@ export interface DesignRevision {
   proposedAt: string;
   decision: "approve" | "return" | null;
   decidedBy: string | null;
+  decidedKind: "person" | "kernel" | null;
   decidedByName: string | null;
   decidedAt: string | null;
   reason: string | null;

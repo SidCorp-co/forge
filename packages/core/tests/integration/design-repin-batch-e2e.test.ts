@@ -35,6 +35,9 @@ const DEPENDENTS = [
   'loyalty-ux',
 ] as const;
 
+/** What the owner's one act re-pins: the dependents the master filed nothing for. */
+const ACTED = ['operational-case', 'complaint-ux', 'evaluation-ux', 'loyalty-ux'] as const;
+
 const design = (flow: string, basedOn?: Doc[]): Doc => {
   const d = JSON.parse(
     readFileSync(
@@ -125,7 +128,7 @@ async function rewrite(flow: string, edit: (d: Doc) => void): Promise<void> {
 }
 
 describe('a base approved at a new revision, with designs that only need their pin moved', () => {
-  it('clears every pin-only dependent in one act, one decision each, and refuses a real change by name', async () => {
+  it('approves a filed pin-only proposal by itself, clears the rest in one act, and refuses a real change by name', async () => {
     await approvedAt1('access');
     const onAccess = [{ workflow: 'access', revision: 1 }];
     for (const flow of DEPENDENTS) {
@@ -159,21 +162,21 @@ describe('a base approved at a new revision, with designs that only need their p
       d.steps[0].node.label = 'Billing source (renamed)';
     });
 
-    const filed = await read('complaint-intake');
-    expect(filed.pinOnly).toEqual({
-      pins: [{ workflow: 'access', from: 1, to: 2 }],
-      changed: ['/basedOn/0/revision'],
-      fingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
-    });
+    // a proposal that only moves its pin approves by itself (REQ-41 BC-23): the master's two never wait
+    for (const flow of ['complaint-intake', 'campaign-ux']) {
+      const d = await read(flow);
+      expect(d.status, flow).toBe('approved');
+      expect(d.revisions[0].decision, flow).toBe('approve');
+      expect(d.revisions[0].says.reason.key, flow).toBe('designs.reason.pinOnlyKernel');
+    }
     expect((await read('billing-ux')).pinOnly).toBe(null);
+    expect((await read('billing-ux')).status).toBe('proposed');
 
     const before = await plan();
     expect(before.base).toMatchObject({ flow: 'access', approvedRevision: 2 });
     const ready = before.ready.map((r: Doc) => r.flow);
-    expect([...ready].sort()).toEqual([...DEPENDENTS].sort());
-    expect(ready.indexOf('complaint-intake')).toBeLessThan(ready.indexOf('complaint-ux'));
+    expect([...ready].sort()).toEqual([...ACTED].sort());
     const item = (flow: string) => before.ready.find((r: Doc) => r.flow === flow);
-    expect(item('complaint-intake')).toMatchObject({ source: 'proposal', approves: 2 });
     expect(item('operational-case')).toMatchObject({
       source: 'approved',
       approves: 2,
@@ -193,9 +196,13 @@ describe('a base approved at a new revision, with designs that only need their p
 
     const needs = ok(await say('owner', 'GET', at('/needs-you')));
     const designs = needs.items.filter((i: Doc) => i.area === 'designs');
-    expect(designs.map((i: Doc) => i.key).sort()).toEqual(['access', 'billing-ux']);
+    expect(designs.map((i: Doc) => i.key).sort()).toEqual([
+      'access',
+      'billing-ux',
+      'complaint-intake',
+    ]);
     expect(designs.find((i: Doc) => i.key === 'access')).toMatchObject({
-      title: '6 designs only need their pin moved → r2',
+      title: '4 designs only need their pin moved → r2',
       waitingOn: { kind: 'you' },
     });
 
@@ -205,22 +212,22 @@ describe('a base approved at a new revision, with designs that only need their p
         return { workflowId: row.workflowId, revision: row.revision };
       });
 
-    const refused = await act(2, named([...DEPENDENTS, 'billing-ux']));
+    const refused = await act(2, named([...ACTED, 'billing-ux']));
     expect(refused.status, JSON.stringify(refused.json)).toBe(422);
     expect(refused.json.error.refusals).toEqual([
       expect.objectContaining({ code: 'WORKFLOW_REPIN_PENDING_CHANGE', flow: 'billing-ux' }),
     ]);
     expect((await read('operational-case')).revisions).toHaveLength(1);
 
-    const stale = await act(1, named(DEPENDENTS));
+    const stale = await act(1, named(ACTED));
     expect(stale.status, JSON.stringify(stale.json)).toBe(409);
 
-    const done = ok(await act(2, named(DEPENDENTS)));
-    expect(done.approved).toHaveLength(6);
+    const done = ok(await act(2, named(ACTED)));
+    expect(done.approved).toHaveLength(4);
     const actId = done.act as string;
     expect(actId).toMatch(/^[0-9a-f-]{36}$/);
 
-    for (const flow of DEPENDENTS) {
+    for (const flow of ACTED) {
       const d = await read(flow);
       const [latest] = d.revisions;
       expect(d.status, flow).toBe('approved');
@@ -233,8 +240,7 @@ describe('a base approved at a new revision, with designs that only need their p
       // the act's reason is Forge's own sentence, so a vi reader reads it in vi (ISS-368)
       expect(latest.says?.reason?.key, flow).toBe('designs.reason.repinOnly');
       expect(saidDisagreements(d), flow).toEqual([]);
-      const filedByMaster = flow === 'complaint-intake' || flow === 'campaign-ux';
-      expect(latest.proposedBy, flow).toBe(filedByMaster ? agentId : ownerId);
+      expect(latest.proposedBy, flow).toBe(ownerId);
     }
     const ux = await read('complaint-ux');
     expect(ux.revisions[0].document.basedOn).toEqual([

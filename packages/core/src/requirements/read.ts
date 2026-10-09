@@ -10,6 +10,7 @@ import {
   type RequirementSummary,
   requirementKey,
 } from '@forge/contracts/requirements';
+import { KERNEL_DECIDER_NAME } from '@forge/contracts/workflows';
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -298,7 +299,8 @@ function baselineViews(
     seq: b.seq,
     act: b.act,
     agreedBy: b.agreedBy,
-    agreedByName: name(b.agreedBy),
+    agreedKind: b.agreedKind,
+    agreedByName: b.agreedKind === 'kernel' ? KERNEL_DECIDER_NAME : name(b.agreedBy),
     agreedAt: b.agreedAt.toISOString(),
     reason: b.reason,
     readiness: b.readiness,

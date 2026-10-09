@@ -4,6 +4,7 @@ import {
   runRescueCapRehomeOnce,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
+import { reconcilePinOnlyDesigns } from './workflows/index.js';
 
 /**
  * The one-time data backfills, each gated by its `backfill_markers` row. They read domain code, so
@@ -36,6 +37,19 @@ export async function runOnceBackfills(): Promise<void> {
     logger.info(
       { rehomed: rehome.rehomed, left: rehome.left, refused: rehome.refusals.length },
       'boot: rescue-cap parks re-homed to the master',
+    );
+  }
+  // REQ-41 BC-23: a pin-only revision that waited on a person before the rule shipped approves by itself
+  const pinOnly = await reconcilePinOnlyDesigns();
+  for (const r of pinOnly.refused)
+    logger.error(
+      { workflowId: r.workflowId, code: r.code, refusal: r.detail },
+      'boot: pin-only reconciliation could not compare a design; it stays with a person',
+    );
+  if (pinOnly.approved.length > 0 || pinOnly.refused.length > 0) {
+    logger.info(
+      { approved: pinOnly.approved, refused: pinOnly.refused.length },
+      'boot: pin-only design revisions approved by themselves',
     );
   }
 }

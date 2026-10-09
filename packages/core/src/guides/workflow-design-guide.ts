@@ -110,11 +110,19 @@ base it declares is not approved at the revision it names — returned, still pr
 approved at another revision — and the refusal names each base and its state. The same reading stands
 before anyone tries: a proposed design whose base moved reads as waiting on its writer to re-pin \`basedOn\`,
 not on its approver. Approve the base first, or write the design again naming the base revision that is approved — but only a design with a change
-of its own: one whose only change would be the pin is never proposed again, and whoever approves designs re-pins every such
-dependent in one act (below). Prose that cites another design is
+of its own: one whose only change is the pin approves by itself the moment it is proposed or written (below), and
+whoever approves designs re-pins every dependent that was never proposed in one act. Prose that cites another design is
 never read as a base.
 
-### A base approved at a new revision: one act for the pin-only dependents
+### A base approved at a new revision: a pin-only revision approves by itself
+A proposal whose only change from the approved revision is the base revisions it pins is approved by Forge in
+the transaction that proposes it, as the kernel and never as a person: the decision is recorded like any
+approval, its reason names each pin moved (from → to) and the fingerprint the two share, the requirement
+re-pin follows on that approval, and it never reaches Needs you. Any other change keeps it a person's
+approval. A proposal resting on a base not yet approved waits, and approves in the transaction that approves
+that base. A design whose shape cannot be compared is refused \`WORKFLOW_DESIGN_UNCOMPARABLE\`, never approved.
+The act below is for the dependents nobody proposed.
+
 A proposed revision that differs from its approved revision only in the base revisions it pins, read on the
 canonical design and never on its text, reads as a pin-only change: the design read carries \`pinOnly\` with
 each pin old → new, every path at which the two differ (each a \`/basedOn/<i>/revision\`) and the fingerprint
@@ -122,13 +130,11 @@ they share once the pins are set aside. \`GET …/workflows/<base>/design/repins
 dependents: every design whose approved revision pins the base at another revision, and every design resting
 on one of those, ordered every base first. \`POST …/design/repins { revision, designs: [{ workflowId, revision }] }\`
 takes it in one transaction for whoever holds \`workflow-designs.approve\`: each design is re-pinned as a revision
-written by the acting person (a pin-only proposal already filed at those pins is approved as filed) and
-approved, one recorded decision per design whose note names the act's id. A design with any other change
+written by the acting person and approved, one recorded decision per design whose note names the act's id. A design with any other change
 pending is refused \`WORKFLOW_REPIN_PENDING_CHANGE\` and goes through its own review; a re-pin that would rest
 on a base with no approved revision is refused \`WORKFLOW_DESIGN_BASE_UNAPPROVED\`; bases naming each other in a
 ring are refused \`WORKFLOW_REPIN_CYCLE\`; a design the plan does not take is \`WORKFLOW_REPIN_NOT_DEPENDENT\`. A
-base or design read at a revision that has moved is \`WORKFLOW_DESIGN_REVISION_STALE\`. Nothing moves a pin
-without the act. Needs you shows the base's dependents as one row, not one per design.
+base or design read at a revision that has moved is \`WORKFLOW_DESIGN_REVISION_STALE\`. Needs you shows the base's dependents as one row, not one per design.
 
 An issue that delivers a design revision — the issue the revision is drawn under, or one whose criteria
 are judged against a design revision — holds the issues it \`blocks\` until that revision is approved,

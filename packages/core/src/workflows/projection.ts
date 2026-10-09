@@ -56,6 +56,7 @@ function revisionSummaryOf(r: DesignView['revisions'][number]): DesignRevisionSu
     proposedAt: r.proposedAt,
     decision: r.decision,
     decidedBy: r.decidedBy,
+    decidedKind: r.decidedKind,
     decidedByName: r.decidedByName,
     decidedAt: r.decidedAt,
     reason: r.reason,

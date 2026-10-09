@@ -124,6 +124,7 @@ export const reqDetail: RequirementDetail = {
       seq: 1,
       act: "agree",
       agreedBy: "u1",
+      agreedKind: "person",
       agreedByName: "Lan",
       agreedAt: at,
       reason: null,

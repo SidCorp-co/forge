@@ -1,0 +1,1 @@
+**A design revision whose only change is re-pins now approves by itself.** Forge approves it as the kernel, naming each pin moved, and the requirement re-pin follows; any other change still waits on a person. Waiting rows clear at boot.

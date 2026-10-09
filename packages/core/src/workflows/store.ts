@@ -10,7 +10,7 @@ import {
   workflowBuilds,
 } from '../db/schema-workflows.js';
 import { lockXact } from '../lib/advisory-lock.js';
-import { movedRow, transition } from '../lifecycle/index.js';
+import { type KernelActor, movedRow, transition } from '../lifecycle/index.js';
 import type { DesignDecision } from './design.js';
 import type { WorkflowWrite } from './schema.js';
 import type { WorkflowWriter } from './service.js';
@@ -133,7 +133,13 @@ export async function moveDesign(
   id: string,
   from: DesignStatus | null,
   to: DesignStatus,
-  how: { writer: WorkflowWriter; reason?: string | null; approvedRevision?: number },
+  how: {
+    writer: WorkflowWriter;
+    reason?: string | null;
+    approvedRevision?: number;
+    /** Who the ledger names, where it is not the writer: Forge's own approval of a pin-only revision. */
+    actor?: KernelActor;
+  },
 ): Promise<void> {
   const moved = await transition(tx, WORKFLOW_DESIGN_MACHINE, {
     to,
@@ -141,7 +147,7 @@ export async function moveDesign(
     set: { approvedRevision: how.approvedRevision, updatedAt: sql`now()` },
     where: eq(projectWorkflows.id, id),
     reason: how.reason ?? null,
-    actor: { type: 'user', id: how.writer.userId, agency: how.writer.agency },
+    actor: how.actor ?? { type: 'user', id: how.writer.userId, agency: how.writer.agency },
     source: 'workflows',
     returning: ['id'],
   });
@@ -156,6 +162,8 @@ export interface StoredDesign {
   proposedAt: Date;
   decision: DesignDecision | null;
   decidedByUser: string | null;
+  /** Who decided: a person names their user, Forge's kernel names none. */
+  decidedKind: 'person' | 'kernel' | null;
   decidedAt: Date | null;
   reason: string | null;
   /** `reason` as said where Forge composed it; null where the decider wrote it. */
@@ -171,6 +179,7 @@ const designColumns = {
   proposedAt: projectWorkflowDesigns.proposedAt,
   decision: sql<DesignDecision | null>`${projectWorkflowDesigns.decision}`,
   decidedByUser: projectWorkflowDesigns.decidedByUser,
+  decidedKind: projectWorkflowDesigns.decidedKind,
   decidedAt: projectWorkflowDesigns.decidedAt,
   reason: projectWorkflowDesigns.reason,
   reasonSays: projectWorkflowDesigns.reasonSays,
@@ -353,7 +362,9 @@ export async function decideDesign(
     workflowId: string;
     revision: number;
     decision: DesignDecision;
-    userId: string;
+    /** The deciding person; null where `kernel` decides. */
+    userId: string | null;
+    kernel?: boolean;
     reason: string | null;
     /** `reason` as said where Forge composed it; null where the decider wrote it. */
     reasonSays?: Said | null;
@@ -363,7 +374,8 @@ export async function decideDesign(
     .update(projectWorkflowDesigns)
     .set({
       decision: input.decision,
-      decidedByUser: input.userId,
+      decidedByUser: input.kernel ? null : input.userId,
+      decidedKind: input.kernel ? 'kernel' : 'person',
       decidedAt: sql`now()`,
       reason: input.reason,
       reasonSays: input.reasonSays ?? null,

@@ -1,13 +1,12 @@
 import { approvalPermission } from '@forge/contracts/permissions';
-import { type Said, verbatim } from '@forge/contracts/said';
+import { verbatim } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import type { PinOnlyChange } from '@forge/contracts/workflows';
+import { KERNEL_DECIDER_NAME, type PinOnlyChange } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
 import { activeIssuePrefix, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import { emitEvent } from '../outbox/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import {
   type DesignDecision,
@@ -24,13 +23,9 @@ import {
   standingBaseRefusal,
 } from './design-bases.js';
 import { revisionChangesOf } from './design-changes.js';
-import {
-  type DesignIssueOutcome,
-  handBack,
-  parkedAtDecision,
-  recordApprovedDesign,
-  redrawWaitingDesign,
-} from './design-issue.js';
+import { type DesignIssueOutcome, handBack, redrawWaitingDesign } from './design-issue.js';
+import { refuseUncomparable, settlePinOnly } from './design-pin-only.js';
+import { recordDecision } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
 import { designRequirementsOf } from './design-requirements.js';
 import {
@@ -40,7 +35,6 @@ import {
   revisionStateOf,
 } from './design-standing.js';
 import { nodeSetRefusals, nodesOfDocument, observedNodesIn } from './node-refs.js';
-import { answerDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
 import {
   assertWriter,
@@ -52,7 +46,6 @@ import {
 import {
   buildOfIssue,
   buildsOf,
-  decideDesign,
   designsOf,
   insertDesign,
   linkBuild,
@@ -166,7 +159,9 @@ async function designView(row: StoredWorkflow, viewer: WorkflowWriter | null) {
       proposedAt: d.proposedAt.toISOString(),
       decision: d.decision,
       decidedBy: d.decidedByUser,
-      decidedByName: name(d.decidedByUser),
+      decidedKind: d.decidedKind,
+      // a kernel decision names Forge, never a person (VISION: state-never-lies)
+      decidedByName: d.decidedKind === 'kernel' ? KERNEL_DECIDER_NAME : name(d.decidedByUser),
       decidedAt: d.decidedAt?.toISOString() ?? null,
       reason: d.reason,
       // Forge's own sentence by key; a decider's words as they wrote them
@@ -207,6 +202,7 @@ export async function proposeDesign(input: {
     ? await designIssueIn(projectId, input.issue, writer.userId)
     : undefined;
   const designIssueId = named?.id;
+  const { templates } = await templatesOf(projectId);
   const outcome = await db.transaction(async (tx): Promise<DesignRefusal[] | null> => {
     await lockWorkflows(tx, projectId);
     const row = await readWorkflow(tx, id);
@@ -262,69 +258,11 @@ export async function proposeDesign(input: {
       designIssueId: drawing.issueId,
     });
     await moveDesign(tx, id, row.designStatus, 'proposed', { writer });
+    refuseUncomparable(await settlePinOnly(tx, projectId, templates), id);
     return null;
   });
   if (outcome) return { ok: false, refusals: outcome };
   return { ok: true, design: await designView(await rowIn(projectId, id), writer) };
-}
-
-/**
- * Everything one decision records, inside a transaction holding the project's workflow lock and after
- * its refusals were read: the decided revision, the design's move, the design issue's mark, the
- * questions it answers and the event.
- */
-export async function recordDecision(
-  tx: Tx,
-  input: {
-    projectId: string;
-    row: Pick<StoredWorkflow, 'id' | 'flow' | 'designStatus'>;
-    designIssueId: string | null;
-    revision: number;
-    decision: DesignDecision;
-    reason: string | null;
-    /** `reason` as said, where Forge composed it; absent where the decider wrote it. */
-    reasonSays?: Said | null;
-    decider: WorkflowWriter;
-  },
-): Promise<{ parked: boolean; approved: DesignIssueOutcome | null }> {
-  const { projectId, row, designIssueId, revision, decision, reason, decider } = input;
-  const id = row.id;
-  await decideDesign(tx, {
-    workflowId: id,
-    revision,
-    decision,
-    userId: decider.userId,
-    reason,
-    reasonSays: input.reasonSays ?? null,
-  });
-  await moveDesign(tx, id, row.designStatus, decision === 'approve' ? 'approved' : 'returned', {
-    writer: decider,
-    reason,
-    ...(decision === 'approve' ? { approvedRevision: revision } : {}),
-  });
-  const parked = await parkedAtDecision(tx, designIssueId);
-  // the approved revision is its design issue's deliverable: its mark records it (ISS-262)
-  const approved =
-    decision === 'approve'
-      ? await recordApprovedDesign(tx, { designIssueId, flow: row.flow, revision, decider })
-      : null;
-  // the decision is the answer a question waiting on this revision asked for (ISS-254)
-  await answerDesignQuestions(tx, {
-    workflowId: id,
-    revision,
-    flow: row.flow,
-    decision,
-    reason,
-    by: decider.userId,
-    agency: decider.agency,
-  });
-  await emitEvent(tx, 'workflow.designDecided', {
-    projectId,
-    workflowId: id,
-    decision,
-    issueId: designIssueId,
-  });
-  return { parked, approved };
 }
 
 export async function decideDesignAs(input: {
@@ -340,6 +278,7 @@ export async function decideDesignAs(input: {
   await rowIn(projectId, id);
   const refusal = await approverRefusalFor(decider, projectId);
   if (refusal) return { ok: false, refusals: [refusal] };
+  const { templates } = await templatesOf(projectId);
   type Decided =
     | { refusals: DesignRefusal[] }
     | {
@@ -376,6 +315,8 @@ export async function decideDesignAs(input: {
       reason,
       decider,
     });
+    // an approval can leave a dependent's pin-only proposal resting on a base that stands approved now
+    if (decision === 'approve') await settlePinOnly(tx, projectId, templates);
     return { flow: row.flow, designIssueId: latest?.designIssueId ?? null, parked, approved };
   });
   if ('refusals' in outcome) return { ok: false, refusals: outcome.refusals };

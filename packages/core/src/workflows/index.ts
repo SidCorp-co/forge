@@ -8,6 +8,7 @@ export {
 export { workflowFlowsByIds, workflowFlowsOf } from './cited-workflows.js';
 export { proposesWorkflowOf } from './design-issue.js';
 export { approvedDesignRevisions, buildIssuesAmong, workflowDesign } from './design-lookup.js';
+export { reconcilePinOnlyDesigns } from './design-pin-only-boot.js';
 export { repinGroupsAs } from './design-repin-service.js';
 export { provideWorkflowHealthPorts } from './health-ports.js';
 export { projectHealthAs } from './health-read.js';

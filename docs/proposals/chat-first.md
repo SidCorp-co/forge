@@ -142,6 +142,20 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 The 7 crash-park questions already open are voided by the master through the API after the change
 lands, each moving its issue to the agent park, so no SQL rewrites a kernel row.
 
+## Pin-only design revisions (BC-23)
+
+A design revision whose only change is re-pins approves by itself. `workflows/design-pin-only.ts:settlePinOnly`
+reads each proposed design against its approved revision with `design-repin.ts:pinOnlyChange` (structural over
+the canonical design, never a text diff) and approves it through `design-record.ts:recordDecision`, so the
+`workflow.designDecided` event, the design issue's mark and BC-10's requirement re-pin follow as for any
+approval. It runs inside the project's workflow lock where a design is proposed (`proposeDesign`, a write that
+proposes) and where an approval can unblock a dependent resting on that base, and at boot over rows already
+waiting (`design-pin-only-boot.ts`). The ledger names the kernel (`sweeper`) and the decision row says
+`decided_kind = 'kernel'` with no user (migration 0483; a CHECK refuses a kernel decision that names a user and a
+person decision that names none), so every reader shows "Forge (pin-only)", never the proposer. The reason is `designs.reason.pinOnlyKernel`, naming
+each pin moved. Any other change, or a base not yet approved, leaves it a person's approval; a design that
+cannot be compared is refused `WORKFLOW_DESIGN_UNCOMPARABLE`, never approved.
+
 ## The home opens on chat (BC-13)
 
 The project home (`app/(workspace)/projects/[slug]/page.tsx`) leads with the conversation: the
@@ -364,7 +378,5 @@ Each lane owns its files outright; the exact list is the split the orchestrator 
 
 - **How a design-only issue closes.** This is ISS-290's owner ruling. Its 3 open questions stay
   decisions with no recommendation until then.
-- **Pin-only design batches.** Whether "approve N pin-only changes" follows by itself like BC-10.
-  It is the same principle, but no criterion names it.
 - **Safari and the recorder.** Whether the recorder survives Safari's iframe cookie partitioning is
   REQ-39's open question too.
