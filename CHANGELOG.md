@@ -3157,6 +3157,10 @@
 
 - **One hung `git clone` no longer stops a box provisioning its other projects.** Each git step is killed after ten minutes and reported `failed` by name, and the box refuses to provision a workspace its own live master holds.
 
+- **A failed adopt no longer leaves an empty repository that reads as ready.** It removes the `.git` it made and nothing else, and a checkout with no commit is refused by name.
+
+- **The device row on the project Runners screen no longer prints its name and version over its buttons on a phone.** The header, its badges and the Set primary, Re-provision and Unassign buttons wrap onto the next line instead.
+
 - **A project that releases on its own is no longer blocked for having over 50 issues waiting.** Readiness names the oldest 50 as the next part and how many wait behind; where a person cuts, the refusal stays.
 
 - **A pane the runner starts keeps the runner's temp directory, however old the tmux server is.** A long-lived server wrote panes' scratch to the RAM-backed `/tmp`; the runner now hands each pane its own and corrects a stale server.
