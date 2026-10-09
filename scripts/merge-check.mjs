@@ -41,6 +41,8 @@ import {
   patchIdOf,
   redChecks,
   reportOf,
+  verifyCommand,
+  verifyEnv,
 } from './lib/merge-check.mjs';
 
 const die = dieAs('merge-check');
@@ -155,15 +157,18 @@ const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
 checks.push(...direct.checks);
 
 if (lane === 'full') {
+  // A landed run hands verify the landing's base: the base branch's tip is HEAD there, and every
+  // delta-scoped gate would otherwise measure an empty change (ISS-472 round 3).
+  const landedSince = since ? baseSha : null;
   const verify = run(['pnpm', 'verify'], ROOT, {
-    env: { ...process.env, GITHUB_BASE_REF: branch },
+    env: verifyEnv({ branch, since: landedSince, env: process.env }),
   });
   checks.push(
     check({
       name: 'verify',
       kind: 'conformance',
       scope: 'workspace',
-      command: `GITHUB_BASE_REF=${branch} pnpm verify`,
+      command: verifyCommand({ branch, since: landedSince }),
       files: [],
       result: verify.ok ? 'pass' : 'fail',
       startedAt: verify.startedAt,

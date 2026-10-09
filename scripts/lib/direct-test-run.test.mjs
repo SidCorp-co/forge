@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   check,
   describeChecks,
@@ -328,6 +328,100 @@ describe('no count of touched files widens what runs (REQ-36 BC-17)', () => {
           run.files.includes('packages/core/src/unrelated.test.ts'),
         ]).toEqual([n, true, false]);
       }
+    }
+  });
+});
+
+// The same at sizes past any plausible threshold (ISS-472 round 3): dev landings touch 16 to 55 files,
+// and a run layer whose fixture stopped at six let a whole-collection run above twelve stay green. A
+// fallback keyed on a count or a share fires for every count past it, so the largest count here
+// catches any threshold below it.
+describe('no count of touched files widens what runs, at hundreds of files (REQ-36 BC-17)', () => {
+  const WIDE = 600;
+  let wide = '';
+
+  beforeAll(() => {
+    wide = mkdtempSync(join(tmpdir(), 'direct-test-run-wide-'));
+    const files = {
+      'packages/core/tsconfig.json': '{}',
+      'packages/contracts/tsconfig.json': '{}',
+      'packages/core/src/unrelated.test.ts': "import { x } from './elsewhere.js';\n",
+      'packages/contracts/src/unrelated.test.ts': "import { x } from './elsewhere.js';\n",
+    };
+    for (let i = 0; i < WIDE; i++) {
+      const pkg = i % 4 === 0 ? 'contracts' : 'core';
+      files[`packages/${pkg}/src/w${i}.ts`] = `export const w${i} = 1;\n`;
+      files[`packages/${pkg}/src/w${i}.test.ts`] = `import { w${i} } from './w${i}.js';\n`;
+    }
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(wide, path)), { recursive: true });
+      writeFileSync(join(wide, path), text);
+    }
+    spawnSync('git', ['init', '-q'], { cwd: wide });
+  });
+
+  afterAll(() => rmSync(wide, { recursive: true, force: true }));
+
+  const sourceOf = (i) => `packages/${i % 4 === 0 ? 'contracts' : 'core'}/src/w${i}.ts`;
+
+  it("runs exactly the touched files' tests, every vitest run naming its files, at every count up to all of them", () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      for (const n of [
+        1,
+        2,
+        7,
+        13,
+        16,
+        20,
+        33,
+        55,
+        64,
+        100,
+        128,
+        250,
+        299,
+        301,
+        450,
+        WIDE - 1,
+        WIDE,
+      ]) {
+        const calls = [];
+        const exec = (argv, cwd) => {
+          calls.push({ argv, cwd: relative(wide, cwd) });
+          return {
+            ok: true,
+            status: 0,
+            error: null,
+            stdout: '',
+            stderr: '',
+            startedAt: Date.now(),
+            durationMs: 1,
+          };
+        };
+        const touched = Array.from({ length: n }, (_, i) => ({
+          path: sourceOf(i),
+          change: 'changed',
+        }));
+        const { checks } = runDirectTests(wide, { touched, integration: false, exec });
+        // Every command started is a vitest run naming files, and nothing else.
+        const shapes = calls.map((c) => {
+          const at = c.argv.indexOf('--config');
+          const named = at === -1 ? [] : c.argv.slice(at + 2);
+          return c.argv.includes('vitest') && named.length > 0
+            ? 'vitest naming files'
+            : c.argv.join(' ');
+        });
+        expect([n, [...new Set(shapes)]]).toEqual([n, ['vitest naming files']]);
+        const ran = calls
+          .flatMap((c) => c.argv.slice(c.argv.indexOf('--config') + 2))
+          .map((p) => relative(wide, p));
+        const want = touched.map((t) => t.path.replace(/\.ts$/, '.test.ts'));
+        expect([n, [...ran].sort()]).toEqual([n, [...want].sort()]);
+        expect([n, checks.filter((c) => c.result === 'fail').map((c) => c.name)]).toEqual([n, []]);
+      }
+    } finally {
+      log.mockRestore();
     }
   });
 });

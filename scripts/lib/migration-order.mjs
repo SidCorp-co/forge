@@ -202,12 +202,19 @@ export function readOpenSet({ git, isAncestor, journal, baseRef, isOurs, parse, 
     '+refs/heads/*:refs/remotes/origin/*',
   ]);
   if (fetched === null) return null;
-  const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
+  // A symbolic ref is skipped: `refs/remotes/origin/HEAD` is an alias of a branch read under its own
+  // name, and git abbreviates it to `origin`, so a name test for `origin/HEAD` never matched it.
+  const refs = git([
+    'for-each-ref',
+    '--format=%(refname:short)%09%(symref)',
+    'refs/remotes/origin',
+  ]);
   if (refs === null) return null;
   const base = afterFetch();
   const open = [];
-  for (const ref of refs.split('\n').filter(Boolean)) {
-    if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
+  for (const line of refs.split('\n').filter(Boolean)) {
+    const [ref, symref] = line.split('\t');
+    if (symref || ref === baseRef || isOurs(ref)) continue;
     const landed = isAncestor(ref, baseRef);
     if (landed === null) return { hole: { ref, kind: 'ancestry' } };
     if (landed) continue;

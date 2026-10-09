@@ -127,21 +127,30 @@ fi
 
 echo "[pre-push] validating packages:$packages"
 
+# The emit-only workspace dependencies build first, once, in dependency order: a consumer imports
+# their dist/, and core's post-build step imports @forge/contracts/dist, so a fresh checkout that
+# built only observability failed "core build broke" with nothing wrong in core (ISS-472 round 3).
+prebuilt=""
+for dep in observability contracts; do
+  [ -d "$repo_root/packages/$dep" ] || continue
+  echo "[pre-push] $dep → pnpm build (a workspace dependency, built first)"
+  (cd "$repo_root/packages/$dep" && pnpm build) || {
+    echo "[pre-push] FAIL: $dep build broke, so nothing that depends on it was built. Push aborted."
+    exit 1
+  }
+  prebuilt="$prebuilt $dep"
+done
+
 for pkg in $packages; do
   pkg_dir="$repo_root/packages/$pkg"
   if [ ! -d "$pkg_dir" ]; then
     echo "[pre-push] skip $pkg — directory missing"
     continue
   fi
-  echo "[pre-push] $pkg → pnpm build (with workspace deps prebuilt)"
-  # Emit-only workspace deps (e.g. @forge/observability → dist/) must build
-  # before any consumer, or the consumer's import resolves to a missing file.
-  if [ -d "$repo_root/packages/observability" ]; then
-    (cd "$repo_root" && pnpm --filter @forge/observability build) || {
-      echo "[pre-push] FAIL: @forge/observability build broke (consumer of $pkg)."
-      exit 1
-    }
-  fi
+  case " $prebuilt " in
+    *" $pkg "*) echo "[pre-push] $pkg built above"; continue ;;
+  esac
+  echo "[pre-push] $pkg → pnpm build"
   (cd "$pkg_dir" && pnpm build) || {
     echo "[pre-push] FAIL: $pkg build broke. Push aborted."
     exit 1

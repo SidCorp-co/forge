@@ -86,7 +86,9 @@ let BASE_REF = null;
 function mergeBase() {
   const target = baseRef(ROOT);
   if (target.refusal) return { refusal: target.refusal };
-  BASE_REF = target.ref;
+  BASE_REF = target.landedSince
+    ? `${target.ref.slice(0, 12)}, the base of a landing already on ${target.branch}`
+    : target.ref;
   const base = git(['merge-base', target.ref, 'HEAD']);
   if (base === null) {
     return {

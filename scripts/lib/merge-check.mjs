@@ -2,6 +2,8 @@
 // change must be before its checks count, which checks a merge needs, and the report the tracker
 // records on the issue (`POST /api/issues/:id/merge-check`). `scripts/merge-check.mjs` runs them.
 
+import { LANDED_SINCE } from './base-branch.mjs';
+
 /** Every check a merge needs, in the order they run. Probes and review are the tracker's half. */
 export const REQUIRED_CHECKS = [
   'rebased-on-base',
@@ -143,4 +145,24 @@ export function passedMessage({ mode, branch, baseSha, head, path }) {
     'merge-check: passed. Record it on the issue before the merge mark, with the report as the body:\n' +
     `  POST /api/issues/<issue id>/merge-check   < ${path}`
   );
+}
+
+/**
+ * The environment `pnpm verify` runs under inside the merge check. It names the base branch, and on a
+ * landing already on it (`--since`) the commit the landing was made on, so verify's delta-scoped
+ * gates (`check-runner-gates.mjs`, `check-migration-order.mjs`, the baseline ratchets) measure
+ * `<since>..HEAD`. Without it the base branch's tip is HEAD itself and each scope is empty — a
+ * landed run then passed fmt, clippy, lockfile sync and migration order over nothing (ISS-472
+ * round 3).
+ */
+export function verifyEnv({ branch, since, env }) {
+  const out = { ...env, GITHUB_BASE_REF: branch };
+  delete out[LANDED_SINCE];
+  if (since) out[LANDED_SINCE] = since;
+  return out;
+}
+
+/** The command line a report records for that verify run. */
+export function verifyCommand({ branch, since }) {
+  return `${since ? `${LANDED_SINCE}=${since} ` : ''}GITHUB_BASE_REF=${branch} pnpm verify`;
 }

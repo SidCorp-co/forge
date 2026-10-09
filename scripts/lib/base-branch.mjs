@@ -177,10 +177,44 @@ export function refCandidates(branch) {
   return [`${REMOTE}/${branch}`, `refs/remotes/${REMOTE}/${branch}`, branch];
 }
 
-/** The merge target and the ref naming it here, or a refusal naming the branch and every ref tried. */
+/**
+ * Set by `merge-check --since <sha>` for the `pnpm verify` it runs: the commit a landing already on
+ * its base was made on top of. On a push run the base branch's tip IS the landing, so its merge-base
+ * with HEAD is HEAD and every delta-scoped gate measured nothing (ISS-472 round 3).
+ */
+export const LANDED_SINCE = 'FORGE_LANDED_SINCE';
+
+/** The landing's base as the ref to scope against, or a refusal naming what the value is not. */
+function landedBase(root, target, since) {
+  const refuse = (why) => {
+    const summary = `${LANDED_SINCE}=${since} ${why}`;
+    return {
+      summary,
+      refusal:
+        `${summary}.\n` +
+        `${LANDED_SINCE} names the commit a landing already on \`${target.branch}\` was made on top\n` +
+        'of, and every delta-scoped gate measures that commit..HEAD. Measuring against anything\n' +
+        'else would report a scope this landing does not have. Unset it for a change not yet landed.',
+    };
+  };
+  const sha = git(['rev-parse', '--verify', '--quiet', `${since}^{commit}`], root);
+  if (!sha) return refuse('names no commit in this checkout');
+  if (spawnSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], { cwd: root }).status !== 0) {
+    return refuse('is not an ancestor of HEAD, so the change since it is not one landing');
+  }
+  return { ...target, ref: sha, landedSince: sha };
+}
+
+/**
+ * The merge target and the ref naming it here, or a refusal naming the branch and every ref tried.
+ * Where `LANDED_SINCE` is set, the ref is that commit, and `landedSince` says so.
+ */
 export function baseRef(root, env = process.env) {
   const target = mergeTarget(root, env);
   if (target.refusal) return target;
+
+  const since = String(env[LANDED_SINCE] ?? '').trim();
+  if (since) return landedBase(root, target, since);
 
   const candidates = refCandidates(target.branch);
   const ref = candidates.find((c) => git(['rev-parse', '--verify', `${c}^{commit}`], root));

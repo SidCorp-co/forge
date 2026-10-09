@@ -68,8 +68,13 @@ let baseEntries = journalAt(baseRef);
 const headName = git(['rev-parse', '--abbrev-ref', 'HEAD'], root);
 const prBranch = process.env.GITHUB_HEAD_REF?.trim();
 const branch = prBranch || (headName && headName !== 'HEAD' ? headName : 'this tree');
+// On a landing already on its base (`FORGE_LANDED_SINCE`, ISS-472 round 3) the base is the commit the
+// landing was made on, and the branch itself already carries this tree's entries — and, where it has
+// moved on since, later ones. It is this landing's own branch, never a sibling to order against.
 const ourRefs = new Set(
-  [headName, prBranch].filter((n) => n && n !== 'HEAD').map((n) => `origin/${n}`),
+  [headName, prBranch, base.landedSince ? base.branch : null]
+    .filter((n) => n && n !== 'HEAD')
+    .map((n) => `origin/${n}`),
 );
 
 function isOurs(ref) {
