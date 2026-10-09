@@ -126,11 +126,8 @@ fn write(path: &Path, body: &str) {
 }
 
 fn plant() -> Planted {
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = std::env::temp_dir().join(format!("confine-{}-{nanos}", std::process::id()));
+    let id = uuid::Uuid::new_v4();
+    let root = std::env::temp_dir().join(format!("confine-{id}"));
     let home = root.join("home");
     let repo = root.join("repo");
     std::fs::create_dir_all(&repo).unwrap();

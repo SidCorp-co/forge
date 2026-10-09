@@ -244,9 +244,12 @@ mod tests {
         p
     }
 
+    /// `maintenance.auto=false`: a commit otherwise detaches `git maintenance run --auto`, whose
+    /// `objects/maintenance.lock` can land after `checkout_aged` back-dates the tree and make it new.
     fn git(dir: &Path, args: &[&str]) {
         let ok = std::process::Command::new("git")
             .args(["-c", "user.email=a@b", "-c", "user.name=n"])
+            .args(["-c", "maintenance.auto=false"])
             .args(args)
             .current_dir(dir)
             .status()
@@ -323,6 +326,8 @@ mod tests {
             swept.removed.is_empty() && p.exists(),
             "unpushed commits were removed"
         );
+        assert_eq!(swept.kept.len(), 1, "the checkout was never judged");
+        assert!(swept.kept[0].1.contains("unpushed commits"));
     }
 
     #[tokio::test]

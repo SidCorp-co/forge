@@ -490,11 +490,8 @@ mod tests {
     /// A scratch repository whose base branch (`dev`) is ahead of the remote's default (`main`), with
     /// one more tree holding a committed and an uncommitted file.
     fn scratch_repo() -> PathBuf {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("forge-brief-{}-{stamp}", std::process::id()));
+        let id = uuid::Uuid::new_v4();
+        let root = std::env::temp_dir().join(format!("forge-brief-{id}"));
         let repo = root.join("repo");
         std::fs::create_dir_all(&repo).unwrap();
         let run = |dir: &Path, args: &[&str]| {

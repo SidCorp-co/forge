@@ -185,12 +185,8 @@ mod tests {
 
     /// A repository whose second commit adds, changes, removes and renames one file each.
     fn scratch_repo() -> (PathBuf, String) {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let repo =
-            std::env::temp_dir().join(format!("forge-mark-paths-{}-{stamp}", std::process::id()));
+        let id = uuid::Uuid::new_v4();
+        let repo = std::env::temp_dir().join(format!("forge-mark-paths-{id}"));
         std::fs::create_dir_all(repo.join("web")).unwrap();
         run(&repo, &["init", "-q", "-b", "dev"]);
         std::fs::write(repo.join("web/page.tsx"), "one").unwrap();

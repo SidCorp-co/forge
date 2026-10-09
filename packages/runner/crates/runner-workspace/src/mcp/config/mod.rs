@@ -452,14 +452,7 @@ mod borrowed_token_tests {
     }
 
     fn uuid_like() -> String {
-        format!(
-            "{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        )
+        format!("{}-{}", std::process::id(), uuid::Uuid::new_v4())
     }
 
     #[test]

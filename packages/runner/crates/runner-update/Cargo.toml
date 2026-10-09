@@ -18,5 +18,8 @@ tokio = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process", "fs"] }
 
+[dev-dependencies]
+uuid = { workspace = true }
+
 [lints]
 workspace = true

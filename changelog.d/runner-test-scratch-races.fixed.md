@@ -1,0 +1,1 @@
+**The runner's suite no longer fails at random on a scratch directory.** Test checkouts are named by a fresh id rather than the clock, and back-dated ones stop git's background maintenance from making them new again.
