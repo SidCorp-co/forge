@@ -3,6 +3,7 @@ import {
 	describeUiSnapshot,
 	highlightRefusal,
 	openKindOf,
+	parseForwardedUiAction,
 	parseUiAction,
 	UI_ACTION_NAMES,
 	UI_ACTIONS,
@@ -275,5 +276,113 @@ describe("what the page reports (BC-8)", () => {
 				shown,
 			}).success,
 		).toBe(false);
+	});
+});
+
+describe("a filled-in slot is read, not refused (ISS-495, QA of dev.220)", () => {
+	it("reads an empty, null or placeholder section/step as absent and names the key it ignored", () => {
+		const r = parseUiAction("ui_highlight", {
+			target: { key: "ISS-493", section: "plan", step: "check" },
+		});
+		expect(r).toMatchObject({
+			ok: true,
+			action: { params: { target: "section", section: "plan", of: "ISS-493" } },
+			ignored: [expect.stringContaining('step "check"')],
+		});
+		expect(
+			parseUiAction("ui_highlight", {
+				target: { key: "ISS-493", section: "plan", step: "x" },
+			}),
+		).toMatchObject({
+			ok: true,
+			ignored: ['step "x": empty or a placeholder, read as not given'],
+		});
+		for (const empty of [null, "", "  ", "none", "unused"]) {
+			expect(
+				parseUiAction("ui_highlight", {
+					target: { key: "chat-turn", step: "check", section: empty },
+				}),
+			).toMatchObject({
+				ok: true,
+				action: { params: { target: "step", step: "check", of: "chat-turn" } },
+			});
+		}
+	});
+
+	it("refuses two real values with no key to tell them apart, naming both", () => {
+		const r = parseUiAction("ui_highlight", {
+			target: { section: "plan", step: "check" },
+		});
+		expect(r).toMatchObject({ ok: false });
+		expect((r as { message: string }).message).toContain(
+			'section "plan" and step "check"',
+		);
+	});
+
+	it("takes a filter's set as an object map of only the fields asked, or as the list", () => {
+		const asMap = parseUiAction("ui_requirements_filter", {
+			mode: "merge",
+			set: { waitingOn: "you" },
+		});
+		const asList = parseUiAction("ui_requirements_filter", {
+			mode: "merge",
+			set: [{ field: "waitingOn", value: "you" }],
+		});
+		expect(asMap).toMatchObject({ ok: true });
+		expect(asMap.ok && asList.ok && asMap.action).toEqual(
+			asList.ok && asList.action,
+		);
+	});
+
+	it("ignores a map field sent null or empty and says so, and keeps refusing junk by name", () => {
+		const r = parseUiAction("ui_feedback_filter", {
+			mode: "merge",
+			set: { waitingOn: "agent", text: null, severity: "" },
+			clear: null,
+		});
+		expect(r).toMatchObject({
+			ok: true,
+			action: { params: { set: { waitingOn: "agent" }, clear: [] } },
+		});
+		expect(r.ok && r.ignored).toEqual(
+			expect.arrayContaining(["set.text", "set.severity", "clear"]),
+		);
+		const junk = parseUiAction("ui_feedback_filter", {
+			mode: "merge",
+			set: { text: "/" },
+		});
+		expect((junk as { message: string }).message).toContain(
+			"text must hold a word",
+		);
+	});
+
+	it("reads what core forwarded back into the same action, for every call the model can make", () => {
+		const calls: [string, unknown][] = [
+			[
+				"ui_requirements_filter",
+				{ mode: "replace", set: { waitingOn: "agent", text: "chat" } },
+			],
+			[
+				"ui_feedback_filter",
+				{
+					mode: "merge",
+					set: [{ field: "severity", value: "low" }],
+					clear: ["since"],
+				},
+			],
+			["ui_highlight", { target: { key: "ISS-493", section: "plan" } }],
+			["ui_highlight", { target: { key: "chat-turn", step: "check" } }],
+			["ui_highlight", { target: { key: "REQ-34" } }],
+			["ui_highlight", { target: { step: "check" } }],
+			["ui_open", { key: "FB-110" }],
+			["ui_navigate", { route: "feedback" }],
+		];
+		for (const [name, input] of calls) {
+			const sent = parseUiAction(name, input);
+			expect(sent.ok, JSON.stringify(sent)).toBe(true);
+			if (!sent.ok) continue;
+			const back = parseForwardedUiAction(sent.action.name, sent.action.params);
+			expect(back.ok && back.action, JSON.stringify(back)).toEqual(sent.action);
+		}
 	});
 });

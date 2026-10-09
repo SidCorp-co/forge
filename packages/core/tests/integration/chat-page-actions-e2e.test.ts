@@ -49,6 +49,7 @@ vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
   }),
 }));
 
+const { REAL_UI_CALLS } = await import('@forge/contracts/ui-actions-real-calls');
 const { claimDueWindows, claimOf } = await import('../../src/conversations/index.js');
 const { routeWebWindow } = await import('../../src/assistant/conversation-send.js');
 const { api, userToken } = await import('../helpers/api.js');
@@ -189,17 +190,6 @@ describe('"open ISS-493 and highlight its plan" is one valid call (BC-6)', () =>
     expect(await repliedIn(room)).toBe(closing);
   });
 
-  it('refuses the call QA saw the model make (every field filled), by name, once the contract is one target', async () => {
-    script = [
-      { name: 'ui_open', args: { key: 'ISS-493', kind: 'issue' } },
-      { name: 'ui_highlight', args: { key: 'x', step: 'x', target: 'section', section: 'plan' } },
-    ];
-    closing = 'I opened ISS-493.';
-    const before = seen.length;
-    await askFrom(list(), ask);
-    expect(told(before + 2)).toContain('UI_ACTION_INVALID: ui.highlight params refused');
-  });
-
   it('refuses a section its record has no page for, naming the ones it has', async () => {
     script = [
       { name: 'ui_open', args: { key: 'REQ-31' } },
@@ -268,5 +258,70 @@ describe('a held reply still shows the part it could check (BC-3)', () => {
       'The reply check left out an issue key that nothing this answer read backs.',
     );
     expect(shown).not.toContain('the answer was not sent');
+  });
+});
+
+/** The real call of dev.220 or dev.219 the fixtures hold, by its wire name and a fragment of its input. */
+const real = (name: string, fragment: string) => {
+  const found = REAL_UI_CALLS.find(
+    (c) => c.name === name && JSON.stringify(c.input).includes(fragment),
+  );
+  if (!found) throw new Error(`no real call ${name} ${fragment}`);
+  return found.input;
+};
+
+describe('the calls the model really sent, through a whole turn (ISS-495)', () => {
+  const claim = 'Requirements is open and filtered to show only items waiting on you';
+
+  it('a refused filter call is never reported as done: the QA sentence is cut and the notice says why', async () => {
+    script = [
+      { name: 'ui_navigate', args: { route: 'requirements' } },
+      // dev.219's own call: a stray search "/" and every state beside the one filter asked for
+      { name: 'ui_requirements_filter', args: real('ui_requirements_filter', '"text":"/"') },
+    ];
+    closing = `${claim}. Anything else?`;
+    const before = seen.length;
+    const room = await askFrom(list(), 'open Requirements and show only what waits on me');
+    expect(told(before + 2)).toContain('UI_ACTION_INVALID: ui.requirements.filter');
+    const shown = await repliedIn(room);
+    expect(shown).not.toContain('filtered to show only');
+    expect(shown).toContain('Anything else?');
+    expect(shown).toContain('a claim to have moved the page that no accepted page action backs');
+  });
+
+  it('a made-up claim with no page call at all is cut the same way', async () => {
+    script = [];
+    closing = `${claim}.`;
+    const room = await askFrom(list(), 'show me the requirements waiting on me');
+    expect(await repliedIn(room)).not.toContain('filtered to show only');
+  });
+
+  it('the call the model sent (a filter as a map, or as a list) is forwarded and the claim stands', async () => {
+    script = [
+      { name: 'ui_navigate', args: { route: 'requirements' } },
+      { name: 'ui_requirements_filter', args: real('ui_requirements_filter', '"value":"you"') },
+    ];
+    closing = `${claim}.`;
+    const before = seen.length;
+    const room = await askFrom(list(), 'open Requirements and show only what waits on me');
+    expect(told(before + 2)).toContain('\\"deferred\\":\\"browser\\"');
+    expect(told(before + 2)).toContain('\\"set\\":{\\"waitingOn\\":\\"you\\"}');
+    expect(await repliedIn(room)).toBe(closing);
+  });
+
+  it('"open ISS-493 and highlight its plan" with the slots the model filled lands, and says what it ignored', async () => {
+    script = [
+      { name: 'ui_open', args: real('ui_open', 'ISS-493') },
+      { name: 'ui_highlight', args: real('ui_highlight', '"step":"x","section":"plan"') },
+    ];
+    closing = 'I opened ISS-493 and highlighted its plan.';
+    const before = seen.length;
+    const room = await askFrom(list(), 'open ISS-493 and highlight its plan');
+    const after = told(before + 2);
+    expect(after).toContain('\\"name\\":\\"ui.highlight\\"');
+    expect(after).toContain('Ignored, not applied: step ');
+    expect(after).toContain('empty or a placeholder, read as not given');
+    expect(after).not.toContain('UI_ACTION_INVALID');
+    expect(await repliedIn(room)).toBe(closing);
   });
 });

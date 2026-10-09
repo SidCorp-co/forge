@@ -191,88 +191,198 @@ export const uiHighlightSchema = z.discriminatedUnion("target", [
 ]);
 export type UiHighlight = z.infer<typeof uiHighlightSchema>;
 
+/** A value a model puts in a slot it was not asked to fill: nothing, null, or a word that says so. */
+const PLACEHOLDER =
+	/^(?:x+|none|null|nil|undefined|n\/a|na|no|noop|unused|ignored?|skip|-+|\.+)?$/i;
+const asked = (v: string | null | undefined): string | undefined => {
+	const t = typeof v === "string" ? v.trim() : "";
+	return PLACEHOLDER.test(t) ? undefined : t;
+};
+
+/** What `ui.highlight` was told to mark, as the record's kind reads it; the keys it did not use are named. */
+export type HighlightResolved =
+	| { ok: true; highlight: UiHighlight; ignored: string[] }
+	| { ok: false; path: "key" | "section" | "step"; message: string };
+
+const aOrAn = (kind: string) => (kind === "issue" ? "an" : "a");
+
+/**
+ * The one reading of a highlight's `target`: what the record's kind says it can mark. An issue, a
+ * requirement and feedback have sections; a workflow, named by its flow, has steps. A model handed
+ * three optional slots fills all three (QA of dev.220: `{key: "ISS-493", step: "x", section:
+ * "plan"}`, 40 calls in two turns), so an empty, null or placeholder value counts as absent, and
+ * where the key's kind takes one of two filled slots the other is ignored and named as ignored.
+ * Both filled with no key to tell which is meant, a section the kind has no page for, and a step on
+ * a record are refused naming what is wrong.
+ */
+function resolveHighlightRead(t: HighlightTarget): HighlightResolved {
+	const key = asked(t.key) || undefined;
+	const section = asked(t.section) || undefined;
+	const step = asked(t.step) || undefined;
+	const no = (
+		path: "key" | "section" | "step",
+		message: string,
+	): HighlightResolved => ({
+		ok: false,
+		path,
+		message,
+	});
+	const sectionName = (name: string) =>
+		(SECTION_NAMES as readonly string[]).includes(name)
+			? ({ ok: true, name: name as UiHighlightSection } as const)
+			: ({
+					ok: false,
+					message: `"${name}" is not a section; a page has ${SECTION_NAMES.join(", ")}`,
+				} as const);
+	const stepId = (id: string) =>
+		WORKFLOW_STEP_ID.test(id) ? null : `"${id}" is not a step id such as check`;
+	const kind = key === undefined ? null : openKindOf(key);
+
+	if (key === undefined) {
+		if (section !== undefined && step !== undefined)
+			return no(
+				"step",
+				`name a section or a step, not both (got section "${section}" and step "${step}"); give the record's key and the one its kind takes is used`,
+			);
+		if (section !== undefined) {
+			const named = sectionName(section);
+			return named.ok
+				? {
+						ok: true,
+						highlight: { target: "section", section: named.name },
+						ignored: [],
+					}
+				: no("section", named.message);
+		}
+		if (step !== undefined) {
+			const bad = stepId(step);
+			return bad
+				? no("step", bad)
+				: { ok: true, highlight: { target: "step", step }, ignored: [] };
+		}
+		return no(
+			"key",
+			"name what to highlight: a key with a section or a step, or a row's key alone",
+		);
+	}
+
+	if (kind !== null) {
+		const has: readonly string[] = UI_HIGHLIGHT_SECTIONS[kind];
+		if (section === undefined) {
+			if (step !== undefined)
+				return no(
+					"step",
+					`${key} is ${aOrAn(kind)} ${kind}, which has sections (${has.join(", ")}), not steps; a step belongs to a workflow, named by its flow`,
+				);
+			return { ok: true, highlight: { target: "row", key }, ignored: [] };
+		}
+		if (!has.includes(section))
+			return no(
+				"section",
+				`${key} is ${aOrAn(kind)} ${kind}, whose page has ${has.join(", ")}, not "${section}"`,
+			);
+		return {
+			ok: true,
+			highlight: {
+				target: "section",
+				section: section as UiHighlightSection,
+				of: key,
+			},
+			ignored:
+				step === undefined
+					? []
+					: [
+							`step "${step}": ${key} is ${aOrAn(kind)} ${kind}, which has sections, not steps`,
+						],
+		};
+	}
+
+	if (step === undefined) {
+		if (section !== undefined)
+			return no(
+				"section",
+				`"${key}" is a workflow, which highlights a step, not a section; name step`,
+			);
+		return { ok: true, highlight: { target: "row", key }, ignored: [] };
+	}
+	const bad = stepId(step);
+	if (bad) return no("step", bad);
+	return {
+		ok: true,
+		highlight: { target: "step", step, of: key },
+		ignored:
+			section === undefined
+				? []
+				: [
+						`section "${section}": "${key}" is a workflow, which has steps, not sections`,
+					],
+	};
+}
+
+type HighlightTarget = {
+	key?: string | null | undefined;
+	section?: string | null | undefined;
+	step?: string | null | undefined;
+};
+
+/** `resolveHighlightRead`, with each slot sent empty, null or as a placeholder named among `ignored`. */
+export function resolveHighlight(t: HighlightTarget): HighlightResolved {
+	const r = resolveHighlightRead(t);
+	if (!r.ok) return r;
+	const given = {
+		key: asked(t.key) || undefined,
+		section: asked(t.section) || undefined,
+		step: asked(t.step) || undefined,
+	};
+	const blank = (["key", "section", "step"] as const).flatMap((k) =>
+		t[k] === undefined || given[k] !== undefined
+			? []
+			: [
+					t[k] === null
+						? `${k}: null, read as not given`
+						: `${k} ${JSON.stringify(t[k])}: empty or a placeholder, read as not given`,
+				],
+	);
+	return { ...r, ignored: [...r.ignored, ...blank] };
+}
+
 /**
  * `ui.highlight` as the model calls it: ONE `target` object naming the thing by the record's key and
  * what to mark in it, `{key: "ISS-493", section: "plan"}`, `{key: "chat-turn", step: "check"}`, or
- * the key alone for a row of the open list. Nothing else is needed and nothing else is taken: a
- * model handed a flat object of optional fields filled every one of them (QA of dev.219: `{key: "x",
- * step: "x", target: "section", section: "plan"}`, refused three times a turn), so each field here
- * means one thing and none asks to be set for its own sake. A section the key's kind has no page
- * for, a section on a workflow, and a step on anything but a workflow are refused naming what the
- * kind has.
+ * the key alone for a row of the open list (`resolveHighlight` reads it).
  */
 export const uiHighlightParamsSchema = z
 	.strictObject({
 		target: z.strictObject({
 			key: z
 				.string()
-				.trim()
-				.min(1)
-				.max(200)
+				.nullish()
 				.describe(
 					"the record's key (ISS-47, REQ-30, FB-12, or a workflow's flow such as chat-turn); alone, it marks that row of the open list",
-				)
-				.optional(),
+				),
 			section: z
-				.enum(SECTION_NAMES)
+				.string()
+				.nullish()
 				.describe(
-					"a section of that record's page; leave out unless marking a section",
-				)
-				.optional(),
+					`a section of an issue, requirement or feedback page (${SECTION_NAMES.join(", ")}); leave it out for a workflow`,
+				),
 			step: z
 				.string()
-				.regex(WORKFLOW_STEP_ID, "a step id such as check")
-				.describe("a step of that workflow; leave out unless marking a step")
-				.optional(),
+				.nullish()
+				.describe(
+					"a step id of a workflow, such as check; leave it out for any other record",
+				),
 		}),
 	})
-	.transform(({ target: t }, ctx): UiHighlight => {
-		const refuse = (path: string, message: string) => {
-			ctx.addIssue({ code: "custom", path: ["target", path], message });
-			return z.NEVER;
-		};
-		if (t.section !== undefined && t.step !== undefined)
-			return refuse("step", "name a section or a step, not both");
-		const kind = t.key === undefined ? null : openKindOf(t.key);
-		if (t.section !== undefined) {
-			if (t.key !== undefined) {
-				if (kind === null)
-					return refuse(
-						"section",
-						`"${t.key}" is a workflow, which highlights a step, not a section; name step`,
-					);
-				const has: readonly string[] =
-					UI_HIGHLIGHT_SECTIONS[kind as keyof typeof UI_HIGHLIGHT_SECTIONS];
-				if (!has.includes(t.section))
-					return refuse(
-						"section",
-						`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, whose page has ${has.join(", ")}, not "${t.section}"`,
-					);
-			}
-			return {
-				target: "section",
-				section: t.section,
-				...(t.key !== undefined ? { of: t.key } : {}),
-			};
-		}
-		if (t.step !== undefined) {
-			if (kind !== null)
-				return refuse(
-					"step",
-					`${t.key} is ${kind === "issue" ? "an" : "a"} ${kind}, which has sections, not steps; a step belongs to a workflow, named by its flow`,
-				);
-			return {
-				target: "step",
-				step: t.step,
-				...(t.key !== undefined ? { of: t.key } : {}),
-			};
-		}
-		if (t.key === undefined)
-			return refuse(
-				"key",
-				"name what to highlight: a key with a section or a step, or a row's key alone",
-			);
-		return { target: "row", key: t.key };
+	.transform(({ target }, ctx): UiHighlight => {
+		const r = resolveHighlight(target);
+		if (r.ok) return r.highlight;
+		ctx.addIssue({
+			code: "custom",
+			path: ["target", r.path],
+			message: r.message,
+		});
+		return z.NEVER;
 	});
 
 /** What a highlight points at, as the page and the person name it: the section, the step id or the row key. */
@@ -308,7 +418,7 @@ const productFilter = <L extends UiProductList>(list: L, label: string) => ({
 	wire: `ui_${list}_filter` as const,
 	version: UI_ACTION_VERSION,
 	params: uiListFilterParams(list),
-	describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else: a field you leave out is left as it is, so never fill a field to be complete. waitingOn is "you", "agent" or "running".`,
+	describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. set lists one {field, value} for each filter the person asked for and nothing else (an object {field: value} of only those fields is read the same): a field you leave out is left as it is, and a field sent empty or null is ignored and said so, so never fill a field to be complete. waitingOn is "you", "agent" or "running".`,
 });
 const requirementsFilter = productFilter("requirements", "Requirements");
 const feedbackFilter = productFilter("feedback", "Feedback");
@@ -354,7 +464,7 @@ export const UI_ACTIONS = {
 		version: UI_ACTION_VERSION,
 		params: uiHighlightParamsSchema,
 		describe:
-			'Highlight one thing on the page beside the chat. Send one target naming the record by its key and what to mark in it: {"target":{"key":"ISS-493","section":"plan"}} marks a section of an issue, requirement or feedback page; {"target":{"key":"chat-turn","step":"check"}} marks a step of a workflow; {"target":{"key":"REQ-34"}} marks that row of the list that is open. Send only the fields you mean: no section or step unless marking one. The record must be the one open beside the chat (open it first with ui_open). It scrolls to it and marks it; it changes nothing else.',
+			'Highlight one thing on the page beside the chat. Send one target naming the record by its key and what to mark in it: {"target":{"key":"ISS-493","section":"plan"}} marks a section of an issue, requirement or feedback page; {"target":{"key":"chat-turn","step":"check"}} marks a step of a workflow; {"target":{"key":"REQ-34"}} marks that row of the list that is open. Send only the fields you mean: a field you leave out, send empty or null, or fill with a placeholder is ignored and said so, and a section and a step that are both real are refused because one mark names one thing. The record must be the one open beside the chat (open it first with ui_open). It scrolls to it and marks it; it changes nothing else.',
 	},
 	"ui.board.draw": {
 		wire: "ui_board_draw",
@@ -428,7 +538,7 @@ type UiActionRefusalCode =
 	| "UI_ACTION_INVALID"
 	| WireframeRefusalCode;
 type UiActionParse =
-	| { ok: true; action: UiAction }
+	| { ok: true; action: UiAction; ignored?: string[] }
 	| { ok: false; code: UiActionRefusalCode; name: string; message: string };
 
 /** The registry entry a name (dotted, or its exact wire form) names, or null. */
@@ -437,6 +547,68 @@ export function uiActionNamed(name: string): UiActionName | null {
 	for (const key of UI_ACTION_NAMES)
 		if (UI_ACTIONS[key].wire === name) return key;
 	return null;
+}
+
+const FILTER_ACTIONS: ReadonlySet<string> = new Set(
+	Object.values(UI_LIST_FILTER_ACTIONS),
+);
+const isPlain = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * A filter call as the model sends it, read into the `{field, value}` list the schema holds: `set`
+ * may be an object map of only the fields asked (what the browser reads back from core, and what a
+ * model offered fields writes), and a field a model fills with null or "" counts as not asked and is
+ * named in `ignored`. Absent means untouched, either way.
+ */
+function readFilterInput(params: unknown): {
+	params: unknown;
+	ignored: string[];
+} {
+	if (!isPlain(params)) return { params, ignored: [] };
+	const out: Record<string, unknown> = {};
+	const ignored: string[] = [];
+	for (const [k, v] of Object.entries(params)) {
+		if (v === null) ignored.push(k);
+		else out[k] = v;
+	}
+	if (isPlain(out.set)) {
+		out.set = Object.entries(out.set).flatMap(([field, value]) => {
+			if (
+				value === null ||
+				value === undefined ||
+				(typeof value === "string" && value.trim() === "")
+			) {
+				ignored.push(`set.${field}`);
+				return [];
+			}
+			return [{ field, value }];
+		});
+	}
+	return { params: out, ignored };
+}
+
+/**
+ * What the browser reads back of an action core forwarded: the action's own parsed form (a filter's
+ * `set` a map, a highlight a section/step/row union), turned back into the call that parses to it, so
+ * core and the browser read one registry and one schema. Reading the forwarded form with the input
+ * schema is what refused every call the model made in QA of dev.220 ("set: expected array,
+ * received object"), after core had accepted it.
+ */
+function forwardedAsInput(key: UiActionName, params: unknown): unknown {
+	if (
+		key === "ui.highlight" &&
+		isPlain(params) &&
+		typeof params.target === "string"
+	) {
+		const h = params as unknown as UiHighlight;
+		const of = "of" in h && h.of !== undefined ? { key: h.of } : {};
+		if (h.target === "row") return { target: { key: h.key } };
+		if (h.target === "section")
+			return { target: { ...of, section: h.section } };
+		return { target: { ...of, step: h.step } };
+	}
+	return params;
 }
 
 /** Parse one call against the registry: the action, or a refusal naming what was wrong. */
@@ -452,7 +624,10 @@ export function parseUiAction(name: string, params: unknown): UiActionParse {
 	}
 	const board = boardRefusal(key, params);
 	if (board) return board;
-	const parsed = UI_ACTIONS[key].params.safeParse(params ?? {});
+	const read = FILTER_ACTIONS.has(key)
+		? readFilterInput(params ?? {})
+		: { params: params ?? {}, ignored: [] as string[] };
+	const parsed = UI_ACTIONS[key].params.safeParse(read.params);
 	if (!parsed.success) {
 		const where = parsed.error.issues
 			.map(
@@ -466,6 +641,11 @@ export function parseUiAction(name: string, params: unknown): UiActionParse {
 			message: `UI_ACTION_INVALID: ${key} params refused — ${where}. Nothing was changed.`,
 		};
 	}
+	const ignored = [...read.ignored];
+	if (key === "ui.highlight" && isPlain(params) && isPlain(params.target)) {
+		const r = resolveHighlight(params.target);
+		if (r.ok) ignored.push(...r.ignored);
+	}
 	return {
 		ok: true,
 		action: {
@@ -473,7 +653,17 @@ export function parseUiAction(name: string, params: unknown): UiActionParse {
 			v: UI_ACTION_VERSION,
 			params: parsed.data,
 		} as UiAction,
+		...(ignored.length > 0 ? { ignored } : {}),
 	};
+}
+
+/** The action an already-parsed (forwarded) call stands for, as the browser reads what core handed it. */
+export function parseForwardedUiAction(
+	name: string,
+	params: unknown,
+): UiActionParse {
+	const key = uiActionNamed(name);
+	return parseUiAction(name, key ? forwardedAsInput(key, params) : params);
 }
 
 /** A board action's document judged by wireframe-v1 first, so its refusal carries the WIREFRAME_* code. */

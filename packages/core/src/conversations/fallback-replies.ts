@@ -138,6 +138,7 @@ const HELD_CLAIM: Record<HeldClaim, string> = {
   issue: 'it named an issue that nothing it read backs',
   status: 'it said where the work stands without a read that shows it',
   record: 'it said it had done something, such as a save or a share, that it had not done',
+  page: 'it said it had opened, filtered or highlighted something on the page, and the page action was refused or never made',
 };
 
 /**

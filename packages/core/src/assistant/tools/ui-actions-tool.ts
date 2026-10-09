@@ -169,7 +169,7 @@ export function buildUiActionToolset(
             text: JSON.stringify({
               deferred: UI_ACTION_DEFERRED,
               action: parsed.action,
-              note: "Handed to the person's browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.",
+              note: `Handed to the person's browser, which applies it and shows it as a card with Undo; the next message carries the page it produced.${parsed.ignored ? ` Ignored, not applied: ${parsed.ignored.join('; ')}.` : ''}`,
             }),
           },
         ],
