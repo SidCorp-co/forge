@@ -3,9 +3,9 @@
 // A requirement's full page: a main column for reading and acting, beside a sticky rail of the
 // at-a-glance facts. The column opens on one strip (whose turn, lifecycle step and what is next,
 // k/n verified), then the requirement's picture above any text (REQ-35 BC-1, `requirement-picture.tsx`),
-// then seven views by tabs (Overview with what is still unclear, Criteria, Revisions,
-// Mockups, Decisions, Memory, Activity); in Revisions, Decisions and Activity the long reading stays
-// folded until opened (REQ-35 BC-5, BC-6, BC-7). Each fact and each act appears once: Accept / Reject
+// then seven views by tabs (Overview with what is still unclear in `requirement-overview.tsx`,
+// Criteria, Revisions, Mockups, Decisions, Memory, Activity); in Revisions, Decisions and Activity
+// the long reading stays folded until opened (REQ-35 BC-5, BC-6, BC-7). Each fact and each act appears once: Accept / Reject
 // only beside the diff. Everything derived (whose turn, coverage, history) comes from core's read model.
 
 import { Written } from "@/lib/i18n/written";
@@ -21,18 +21,15 @@ import {
   FactsRail,
   StatusBadge,
   useUrlTab,
-  FieldLabel,
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments/components/entity-comment-thread";
-import { IntakeDraft } from "@/features/intake/components/intake-draft";
 import { MockupsPanel } from "@/features/mockups/components/mockups-panel";
 import { useMockups } from "@/features/mockups/hooks";
-import { PendingBadge, RequirementSuggestions } from "@/features/suggestions/components/suggestion-list";
+import { PendingBadge } from "@/features/suggestions/components/suggestion-list";
 import { useWaitingSuggestions } from "@/features/suggestions/hooks";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import type { Copy } from "@/lib/i18n/product-copy";
 import { useRequirement, useRequirementDecisions } from "../hooks";
 import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
@@ -40,8 +37,8 @@ import { RequirementFacts } from "./requirement-facts";
 import { CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
 import { RequirementDecisions } from "./requirement-decisions";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
+import { RequirementOverview } from "./requirement-overview";
 import { RequirementPicture } from "./requirement-picture";
-import { AssumptionsSection, UnclearSection } from "./requirement-unclear";
 import { RequirementProgress } from "./standing-bits";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "decisions", "memory", "activity"] as const;
@@ -49,74 +46,6 @@ type RequirementTab = (typeof REQUIREMENT_TABS)[number];
 
 /** The open view rides `?tab=`, written without a navigation, so back from an issue lands on it. */
 export const useRequirementTab = () => useUrlTab(REQUIREMENT_TABS);
-
-function Bullets({ items }: { items: string[] }) {
-  return (
-    <ul className="grid list-disc gap-1 pl-[18px] text-14 leading-relaxed marker:text-[var(--paper-400)]">
-      {items.map((x) => (
-        <li key={x}>{x}</li>
-      ))}
-    </ul>
-  );
-}
-
-const NoneNamed = ({ t }: { t: Copy }) => <p className="text-13 text-subtle">{t("requirements.overview.noneNamed")}</p>;
-
-function Overview({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
-  const t = useCopy();
-  const shown = d.revisions.find((r) => r.state === "current") ?? d.revisions[0];
-  const spec = shown?.spec ?? {};
-  const summary = shown?.tldr ?? spec.goal;
-  const goalBeyond = shown?.tldr && spec.goal && spec.goal !== shown.tldr ? spec.goal : null;
-  const sug = useWaitingSuggestions(projectId, { requirement: d.key });
-  const waiting = d.canSignOff && (sug.data?.suggestions.length ?? 0) > 0;
-  return (
-    <div className="grid gap-8" data-testid="view-overview">
-      <section>
-        <ViewHeading right={shown ? <span className="text-12 text-subtle">{t("requirements.overview.fromR", { r: shown.revision })}</span> : undefined}>
-          {t("requirements.overview.summary")}
-        </ViewHeading>
-        {summary ? <Written className="block max-w-[80ch] text-15 leading-relaxed text-fg" text={summary} lang={shown?.writtenLang} /> : <p className="text-13 text-subtle">{t("requirements.overview.noSummary")}</p>}
-        {goalBeyond ? (
-          <details className="mt-2 max-w-[72ch]">
-            <summary className="cursor-pointer select-none text-13 font-medium text-muted hover:text-fg">{t("requirements.overview.fullGoal")}</summary>
-            <p className="mt-1.5 text-14 leading-relaxed">{goalBeyond}</p>
-          </details>
-        ) : null}
-      </section>
-      <UnclearSection questions={d.questions} unclear={d.unclear} projectId={projectId} reqKey={d.key} slug={slug} />
-      {spec.assumptions?.length ? <AssumptionsSection assumptions={spec.assumptions} revision={shown?.revision ?? null} slug={slug} /> : null}
-      <IntakeDraft projectId={projectId} slug={slug} itemKey={d.key} assumptions={false} />
-      {spec.personas?.length || spec.scopeIn?.length || spec.scopeOut?.length ? (
-        <section>
-          <ViewHeading>{t("requirements.overview.servesAndScope")}</ViewHeading>
-          <div className="grid gap-x-10 gap-y-5 md:grid-cols-2">
-            <div>
-              <FieldLabel>{t("requirements.overview.persona")}</FieldLabel>
-              {spec.personas?.length ? <Bullets items={spec.personas} /> : <NoneNamed t={t} />}
-            </div>
-            <div className="grid content-start gap-5">
-              <div>
-                <FieldLabel>{t("requirements.overview.inScope")}</FieldLabel>
-                {spec.scopeIn?.length ? <Bullets items={spec.scopeIn} /> : <NoneNamed t={t} />}
-              </div>
-              <div>
-                <FieldLabel>{t("requirements.overview.outOfScope")}</FieldLabel>
-                {spec.scopeOut?.length ? <Bullets items={spec.scopeOut} /> : <NoneNamed t={t} />}
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-      {waiting ? (
-        <section>
-          <ViewHeading>{t("requirements.overview.suggestionsWaiting")}</ViewHeading>
-          <RequirementSuggestions projectId={projectId} reqKey={d.key} />
-        </section>
-      ) : null}
-    </div>
-  );
-}
 
 function Criteria({ d, projectId, slug }: { d: RequirementDetail; projectId: string; slug: string }) {
   const t = useCopy();
@@ -274,7 +203,7 @@ export function RequirementPage({
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="requirement-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("requirements.tab.overview")}>
-              {tab === "overview" ? <Overview d={d} projectId={projectId} slug={slug} /> : null}
+              {tab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} /> : null}
               {tab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
               {tab === "mockups" ? <MockupsPanel projectId={projectId} target={mockupTarget} /> : null}

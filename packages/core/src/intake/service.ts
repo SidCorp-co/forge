@@ -2,22 +2,17 @@
  * The intake assistant's act (REQ-34 BC-4, BC-10; feedback-triage r16 `intake` -> `dedup` ->
  * `suggest`, requirement-lifecycle r15 `start` -> `draft`): when a requirement is created or a
  * feedback item filed, the outbox hands it to `intake-assistant`, which drafts it with no chat and
- * writes the draft where the item's own flow reads it. A requirement's open draft gets its empty
- * fields filled, each stated as an assumption naming its source; a feedback item gets its triage
- * checklist proposed as a `feedback_triage` suggestion by the BA assistant, which also takes it off
- * the master's owed triage. The draft itself, or the code it could not be made under, is kept on the
- * item. An item the assistant could not draft stays owed to its master (feedback-triage
- * `master-draft`).
+ * writes the draft where the item's own flow reads it (`apply.ts`); a feedback item's triage
+ * suggestion also takes it off the master's owed triage. The draft itself, or the code it could not
+ * be made under, is kept on the item. An item the assistant could not draft stays owed to its
+ * master (feedback-triage `master-draft`).
  */
 
-import {
-  INTAKE_FIELDS,
-  type IntakeDraftApplied,
-  type IntakeDraftCode,
-  type IntakeItemKind,
-  intakeRefOf,
+import type {
+  IntakeDraftApplied,
+  IntakeDraftCode,
+  IntakeItemKind,
 } from '@forge/contracts/intake-drafts';
-import { SUGGESTION_PAYLOADS } from '@forge/contracts/suggestions';
 import { eq } from 'drizzle-orm';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
 import { db } from '../db/client.js';
@@ -26,14 +21,11 @@ import { completeOnce } from '../integrations/llm/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { logger } from '../lib/logger.js';
-import { RefusalError } from '../lib/refusal.js';
 import { consume } from '../outbox/index.js';
 import { readContentLanguage } from '../project-config/index.js';
-import { type DraftGapFill, fillDraftGaps } from '../requirements/index.js';
-import { createSuggestion } from '../suggestions/index.js';
+import { applyDraft, triageFault } from './apply.js';
 import { type DraftDeps, type DraftOutcome, draftIntake, type Spent } from './draft.js';
 import { dbIntakeReads, type IntakeItem } from './reads.js';
-import type { JudgedDraft } from './rules.js';
 
 /** A miss worth trying again on a later delivery, up to `ATTEMPTS`; every other miss is final. */
 const RETRYABLE: readonly IntakeDraftCode[] = ['INTAKE_MODEL_FAILED', 'INTAKE_MODEL_UNCONFIGURED'];
@@ -43,17 +35,6 @@ export type IntakeResult =
   | { kind: 'drafted'; applied: IntakeDraftApplied }
   | { kind: 'failed'; code: IntakeDraftCode }
   | { kind: 'not_owed'; why: string };
-
-/** The feedback_triage payload's own schema, so a draft is judged by what the suggestion takes. */
-export function triageFault(triage: unknown): string | null {
-  const parsed = SUGGESTION_PAYLOADS.feedback_triage.schema.safeParse(triage);
-  return parsed.success
-    ? null
-    : parsed.error.issues
-        .slice(0, 6)
-        .map((i) => `${i.path.join('.') || 'triage'}: ${i.message}`)
-        .join('; ');
-}
 
 const arcOf = (kind: IntakeItemKind, id: string) =>
   kind === 'requirement' ? eq(intakeDrafts.requirementId, id) : eq(intakeDrafts.feedbackId, id);
@@ -79,56 +60,6 @@ function settled(standing: Awaited<ReturnType<typeof standingOf>>): string | nul
     return `its draft ended as ${standing.code}`;
   if (standing.attempts >= ATTEMPTS) return `its draft failed ${standing.attempts} times`;
   return null;
-}
-
-async function applyToRequirement(
-  item: IntakeItem,
-  draft: JudgedDraft,
-): Promise<IntakeDraftApplied> {
-  const fields: readonly string[] = INTAKE_FIELDS.requirement;
-  const fills = draft.assumptions
-    .filter((a) => fields.includes(a.field))
-    .map(
-      (a) => ({ field: a.field, value: a.value, source: intakeRefOf(a.source) }) as DraftGapFill,
-    );
-  const out = await fillDraftGaps({ projectId: item.projectId, requirementId: item.id, fills });
-  return out.ok
-    ? { as: 'revision', revision: out.revision, fields: out.fields }
-    : { as: 'none', code: out.code, detail: out.detail };
-}
-
-async function applyToFeedback(
-  item: IntakeItem,
-  draft: JudgedDraft,
-  model: string | null,
-): Promise<IntakeDraftApplied> {
-  try {
-    const out = await createSuggestion({
-      projectId: item.projectId,
-      actor: { userId: item.authorId, agency: item.authorAgency },
-      producerKind: 'ba_assistant',
-      producerId: null,
-      kind: 'feedback_triage',
-      target: { feedback: item.key },
-      baseRevision: null,
-      payload: draft.triage,
-      model,
-    });
-    if (out.ok) return { as: 'suggestion', suggestionId: out.suggestion.id };
-    const [first] = out.refusals;
-    return { as: 'none', code: first?.code ?? 'SUGGESTION_REFUSED', detail: first?.detail ?? '' };
-  } catch (err) {
-    // the reporter's own permissions bound what the assistant proposes for them: a refusal is kept
-    if (err instanceof RefusalError) {
-      const [first] = err.refusals;
-      return {
-        as: 'none',
-        code: first?.code ?? err.fallbackCode,
-        detail: first?.detail ?? err.message,
-      };
-    }
-    throw err;
-  }
 }
 
 async function recordSpend(projectId: string, spent: readonly Spent[]): Promise<void> {
@@ -235,10 +166,7 @@ export async function draftIntakeFor(
     logger.info({ key: item.key, code: out.code }, 'intake: the item was not drafted');
     return { kind: 'failed', code: out.code };
   }
-  const applied =
-    item.kind === 'requirement'
-      ? await applyToRequirement(item, out.draft)
-      : await applyToFeedback(item, out.draft, out.model);
+  const applied = await applyDraft(item, out.draft, out.model);
   await keep(item, out, applied);
   return { kind: 'drafted', applied };
 }
