@@ -94,7 +94,7 @@ function OpenRevision({ d, projectId, open }: { d: RequirementDetail; projectId:
         </span>
       </ViewHeading>
       <Written className="block max-w-[80ch] text-14 leading-relaxed" text={open.changeSummary ?? open.reason} lang={open.writtenLang} />
-      {open.changeSummary && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
+      {open.changeSummary && open.reason && open.reason !== open.changeSummary ? <p className="mt-1.5 max-w-[80ch] text-13 text-muted">{t("requirements.revision.why", { reason: open.reason })}</p> : null}
       <div className="mt-1.5">
         <CriteriaChanges changes={open.criteriaChanges} />
       </div>

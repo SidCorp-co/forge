@@ -38,6 +38,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"contract.requested",
 	"ecosystem.buildOwed",
 	"requirement.created",
+	"requirement.transitioned",
 	"requirement.agreed",
 	"requirement.returned",
 	"requirement.delivered",
@@ -128,6 +129,8 @@ export const TRANSITION_EVENTS = {
 	run: "every",
 	question: ["answered", "void", "expired"],
 	preview: "every",
+	// each stored move is a step change its author is told of (REQ-34 BC-21, notify-requirements.ts)
+	requirement: "every",
 } as const satisfies {
 	readonly [E in MachineEntity]?: "every" | readonly StateOf<E>[];
 };
@@ -225,6 +228,8 @@ export interface OutboxEventPayloads {
 	"question.transitioned": TransitionEvent<"question">;
 	/** A preview moved (REQ-39); a failure's `reason` is its `PreviewFailureReason`. */
 	"preview.transitioned": TransitionEvent<"preview">;
+	/** A requirement's stored status moved (agree, defer, undefer, accept, drop). */
+	"requirement.transitioned": TransitionEvent<"requirement">;
 	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */
 	"question.asked": {
 		questionId: string;

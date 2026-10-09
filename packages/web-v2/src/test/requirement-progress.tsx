@@ -178,12 +178,11 @@ function bannerStray(banner: Element, s: RequirementDetail["standing"]): string 
   return null;
 }
 
-/** The line under the step bar the lifecycle alone decides: "Step 2 of 5 · next In delivery". */
-function captionOf(state: RequirementState): string | null {
+/** The line under the step bar: its place on the lifecycle and the next step core says (REQ-34 BC-19), "Step 2 of 5 · next In delivery". */
+function captionOf(state: RequirementState, next: RequirementState | null): string | null {
   const at = REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
   if (at < 0) return null;
   const caption = t("requirements.step.caption", { at: at + 1, of: REQUIREMENT_LIFECYCLE.length });
-  const next = REQUIREMENT_LIFECYCLE[at + 1];
   return next ? t("requirements.step.next", { caption, state: REQUIREMENT_STATE_LABELS[next] }) : caption;
 }
 
@@ -193,7 +192,7 @@ function barStray(bar: Element, s: RequirementDetail["standing"]): string | null
   if (lists.length !== 1) return `a step bar holding ${lists.length} lists`;
   const words = [...(lists[0] as Element).children].map((li) => li.querySelector("span:not([aria-hidden])")?.textContent ?? "");
   if (words.join("|") !== STEP_WORDS.join("|")) return `a step list that is not the lifecycle: "${words.join(", ")}"`;
-  const allowed = new Set([...STEP_WORDS, captionOf(s.state) ?? ""]);
+  const allowed = new Set([...STEP_WORDS, captionOf(s.state, s.next) ?? ""]);
   const walker = document.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const text = (node.textContent ?? "").trim();

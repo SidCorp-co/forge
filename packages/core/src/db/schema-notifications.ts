@@ -37,6 +37,8 @@ export const notificationTypes = [
   'channel_gate_pending',
   'contract_version_published',
   'requirement_delivered',
+  // REQ-34 BC-21: a requirement's author is told each step it moves to
+  'requirement_step',
   'feedback_verify_asked',
   'feedback_shipped',
   'feedback_message',

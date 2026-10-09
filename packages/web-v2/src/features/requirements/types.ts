@@ -20,12 +20,13 @@ export type {
 
 export interface RequirementList { requirements: RequirementSummary[]; returned: number }
 
+/** A title alone creates one (REQ-34 BC-17): its reason is asked afterwards, its criteria drafted. */
 export interface CreateRequirementBody {
   title: string;
-  reason: string;
+  reason?: string;
   spec?: RequirementSpec;
   tldr?: string;
-  criteria: { body: string; form?: 'statement' | 'scenario' }[];
+  criteria?: { body: string; form?: 'statement' | 'scenario' }[];
 }
 
 /** One sign-off move on a requirement: the revision it acts on, the reason a return, defer, undefer

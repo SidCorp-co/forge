@@ -55,7 +55,7 @@ import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-s
 import { criterionView, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
 import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
-import { approvalRequiredIn, standingsOf } from './standing-read.js';
+import { documentGatesIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
   userId: string;
@@ -161,7 +161,8 @@ export function summaryOf(
   };
 }
 
-/** What the viewer may do here: sign off (requirements.approve), and admit a draft issue (issues.admit). */
+/** What the viewer may do here: sign off (requirements.approve), admit a draft issue (issues.admit), and
+ *  accept a breakdown where its switch asks a person (suggestions.approve). */
 export async function standingViewer(viewer: RequirementActor | null, projectId: string) {
   if (!viewer) return null;
   const facts = await permissionFactsOf(viewer.userId, projectId);
@@ -169,6 +170,7 @@ export async function standingViewer(viewer: RequirementActor | null, projectId:
     userId: viewer.userId,
     canSignOff: signoffRefusal(facts, 'a sign-off') === null,
     canAdmit: permissionRefusal(facts, ISSUE_ADMIT_PERMISSION) === null,
+    canApproveBreakdown: permissionRefusal(facts, 'suggestions.approve') === null,
   };
 }
 
@@ -380,7 +382,7 @@ export async function detailOf(
     readiness,
     deferral,
     dedup,
-    releaseApproval,
+    gates,
     feedback,
     traces,
     contracts,
@@ -393,7 +395,7 @@ export async function detailOf(
     readinessOf(row),
     deferralOf(row.id, row.status),
     row.currentRevision === null ? null : dedupCheckOf(row.id),
-    approvalRequiredIn(row.projectId),
+    documentGatesIn(row.projectId),
     requirementDependents().feedbackOf(viewer ?? NO_PERSON, row.projectId, row.id, door),
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
@@ -429,7 +431,7 @@ export async function detailOf(
       linked,
       baselines,
       prefix,
-      releaseApproval,
+      gates,
     }),
     changedTracedOf(
       db,
@@ -457,7 +459,7 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, changedTraced, prefix, releaseApproval, shipped),
+    issues: issueViews(row, linked, changedTraced, prefix, gates.releaseApproval, shipped),
     releases: releasesOf(shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
     canPromote: (viewerFacts?.canSignOff && viewerFacts.canAdmit) ?? false,

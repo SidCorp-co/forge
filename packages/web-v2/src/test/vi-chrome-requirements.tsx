@@ -23,6 +23,7 @@ const h = (id: string, source: string, who: Said, kind: string, text: Said, over
 
 const standing = {
   state: "agreed",
+  next: "in_delivery",
   attentionGroup: "needs_you",
   waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.acceptR", { r: 2 }), rule: RULE }),
   delivery: { phase: "agreed", liveIssues: 2, startedIssues: 1, closedIssues: 1, criteriaCoverage: { criteria: 3, passing: 1, judged: 2 } },

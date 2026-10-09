@@ -28,7 +28,7 @@ import {
   type StatusMachine,
   staleTransitionRefusal,
 } from '@forge/contracts/state-machine';
-import { and, inArray, type SQL } from 'drizzle-orm';
+import { and, inArray, type SQL, sql } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { delegationOf } from '../credentials/pat-scope.js';
 import { asKernelStatusWrite, type KernelExecutor } from '../db/kernel-marker.js';
@@ -430,7 +430,8 @@ async function subjectsOf(
     .select({
       id: idColumn,
       projectId: columns.projectId as PgColumn,
-      issueId: (entity === 'issue' ? idColumn : columns.issueId) as PgColumn,
+      // a row with no issue column (a requirement) belongs to no issue
+      issueId: entity === 'issue' ? idColumn : (columns.issueId ?? sql<string | null>`NULL::uuid`),
     })
     .from(table as PgTable)
     .where(inArray(idColumn, [...ids]))) as Array<{

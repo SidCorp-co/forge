@@ -9,7 +9,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { AcceptStep, AGENT_TINT, Button, EmptyState, Field, Input, ListSearch, PageTitle, rememberListOrigin, StatusBadge, Textarea, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
+import { AcceptStep, AGENT_TINT, Button, EmptyState, Field, Input, ListSearch, PageTitle, rememberListOrigin, StatusBadge, TopBarActions, usePeek, usePeekKeys, useUrlParams, useViewMode, ViewModeSwitcher, } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
@@ -34,20 +34,15 @@ import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-fil
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock/list-filter-bar";
 import { RequirementPeek } from "./requirement-peek";
 
-// each field owns the paths core refuses a create on, so a refusal is read where it is fixed (REQ-34 BC-18)
-const CREATE_FIELDS = { title: ["/title"], reason: ["/reason"], criteria: ["/criteria"] } as const;
+// a title alone creates it: the assistant drafts the rest and its author is asked why (REQ-34 BC-4, BC-17);
+// the title owns the path core refuses a create on, so a refusal is read where it is fixed (BC-18)
+const CREATE_FIELDS = { title: ["/title"] } as const;
 
 export function CreateRequirementForm({ projectId, onDone }: { projectId: string; onDone: (key: string) => void }) {
   const t = useCopy();
   const create = useCreateRequirement(projectId);
   const submitting = useSubmitGuard();
   const [title, setTitle] = useState("");
-  const [reason, setReason] = useState("");
-  const [criteria, setCriteria] = useState("");
-  const lines = criteria
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
   const refused = placeRefusals(create.error, CREATE_FIELDS);
   return (
     <form
@@ -57,19 +52,13 @@ export function CreateRequirementForm({ projectId, onDone }: { projectId: string
         e.preventDefault();
         if (!submitting.claim()) return;
         create.mutate(
-          { title: title.trim(), reason: reason.trim(), criteria: lines.map((body) => ({ body })) },
+          { title: title.trim() },
           { onSuccess: (d) => onDone(d.key), onSettled: submitting.release },
         );
       }}
     >
       <Field label={t("requirements.form.title")} error={refused.at("title")} required>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
-      </Field>
-      <Field label={t("requirements.form.reason")} hint={t("requirements.form.reasonHint")} error={refused.at("reason")}>
-        <Input value={reason} onChange={(e) => setReason(e.target.value)} />
-      </Field>
-      <Field label={t("requirements.form.criteria")} hint={t("requirements.form.criteriaHint")} error={refused.at("criteria")}>
-        <Textarea value={criteria} onChange={(e) => setCriteria(e.target.value)} rows={4} />
       </Field>
       <RefusalLine error={create.error} onField={refused.onField} />
       <div className="flex gap-2">

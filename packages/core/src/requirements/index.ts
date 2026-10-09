@@ -28,6 +28,7 @@ export { owedBreakdowns } from './owed-breakdowns.js';
 export { owedRequirementRevisions } from './owed-revisions.js';
 export { changedTracedOf } from './plan-drift.js';
 export { listRequirementsAs, readRequirementAs, requirementIdIn, rowIn } from './read.js';
+export { registerReasonAnswers } from './reason-question.js';
 export { criteriaRefusalsAt } from './revision-criteria.js';
 export {
   createRequirementIn,
@@ -46,4 +47,5 @@ export {
   requirementStatesOf,
   standingsOf,
 } from './standing-read.js';
+export { type StepChange, stepChangeOf } from './step-notice.js';
 export { lockRequirements } from './write-tx.js';

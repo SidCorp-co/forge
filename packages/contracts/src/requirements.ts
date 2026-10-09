@@ -477,6 +477,12 @@ export interface RequirementStanding
 	extends Standing<RequirementAttentionGroup, RequirementWaitingKind> {
 	waitingOn: RequirementWaitingOn;
 	state: RequirementState;
+	/**
+	 * The step that follows the one it stands at, as Requirement lifecycle r15 draws each step's
+	 * Next: (REQ-34 BC-19); null where nothing follows (accepted, dropped). A deferred one goes back
+	 * to the step it left.
+	 */
+	next: RequirementState | null;
 	delivery: RequirementDelivery;
 	facts: RequirementFacts;
 	/** The open tasks of the delivery journey, each with its owner and SLA. */
@@ -873,7 +879,8 @@ export interface RequirementRevision {
 	spec: RequirementSpec;
 	tldr: string | null;
 	changeSummary: string | null;
-	reason: string;
+	/** Why it was written; null until its author answers the question the create asked (REQ-34 BC-17). */
+	reason: string | null;
 	authorId: string;
 	authorName: string | null;
 	authorKind: "human" | "agent";

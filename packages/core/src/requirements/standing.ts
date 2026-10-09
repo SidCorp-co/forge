@@ -7,6 +7,7 @@
 
 import type { ReleaseLeg } from '@forge/contracts/forecast';
 import type { IssueStatusTone } from '@forge/contracts/issue-vocabulary';
+import type { Approvals } from '@forge/contracts/person-gates';
 import type { PolicyQaMode } from '@forge/contracts/project-config';
 import {
   BREAKDOWN_SLA_WORKING_DAYS,
@@ -38,6 +39,7 @@ import {
   updateToApprovedAct,
   updateToApprovedEffect,
 } from './standing-follow.js';
+import { actWait, nextStepOf, signerWait } from './standing-gates.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, workTurn } from './standing-work.js';
@@ -79,7 +81,18 @@ export interface StandingInput {
    * Null for a reader with no person behind it; nothing then reads as theirs. `canAdmit` is
    * issues.admit, which the promote of a draft needs beside the sign-off.
    */
-  viewer: { userId: string; canSignOff: boolean; canAdmit: boolean } | null;
+  viewer: {
+    userId: string;
+    canSignOff: boolean;
+    canAdmit: boolean;
+    /** suggestions.approve: what a breakdown's accept asks where its switch is on. */
+    canApproveBreakdown?: boolean;
+  } | null;
+  /**
+   * The project document's `approvals` (`@forge/contracts/person-gates`): which steps ask a
+   * person. Absent or null reads every switch off, the default.
+   */
+  approvals?: Approvals | null;
   revisions: readonly StandingRevision[];
   currentRevision: number | null;
   criteria: readonly StandingCriterion[];
@@ -160,11 +173,7 @@ const wait = (
 const YOU = say('standing.who.you');
 const MASTER = say('standing.who.master');
 const NONE = say('standing.who.dash');
-
-const signerWait = (viewer: StandingInput['viewer'], act: Said, rule: Said) =>
-  viewer?.canSignOff
-    ? { group: 'needs_you' as const, waitingOn: wait('you', YOU, act, rule) }
-    : { group: 'waiting' as const, waitingOn: wait('person', SIGNER, act, rule) };
+const BA = say('requirements.who.ba');
 
 interface Turn {
   group: RequirementAttentionGroup;
@@ -226,8 +235,9 @@ function turnOf(
   }
   const proposed = input.revisions.find((r) => r.state === 'proposed');
   if (proposed) {
-    return signerWait(
-      viewer,
+    return actWait(
+      input,
+      'revisions',
       say('standing.act.acceptR', { r: proposed.revision }),
       say('requirements.rule.proposed'),
     );
@@ -256,8 +266,9 @@ function turnOf(
     const head = input.currentRevision;
     const designs = designTurn(input.unapprovedDesigns, head);
     if (designs) return designs;
-    return signerWait(
-      viewer,
+    return actWait(
+      input,
+      'agree',
       head === null ? say('standing.act.agreeIt') : say('standing.act.agreeR', { r: head }),
       say('requirements.rule.unagreed'),
     );
@@ -315,18 +326,14 @@ function turnOf(
       days: CHECK_SLA_WORKING_DAYS,
       overdue: check.overdue ? say('requirements.rule.overdue') : null,
     });
-    return viewer?.canSignOff
-      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule, { dueAt: check.dueAt }) }
-      : {
-          group: 'waiting',
-          waitingOn: wait('person', say('requirements.who.ba'), act, rule, { dueAt: check.dueAt }),
-        };
+    return actWait(input, 'accept', act, rule, { dueAt: check.dueAt, holder: BA });
   }
   const proof = proofTurn(input.judge, live, coverage);
   if (proof) return proof;
   if (input.openSuggestionKinds.includes('breakdown')) {
-    return signerWait(
-      viewer,
+    return actWait(
+      input,
+      'breakdown',
       say('standing.act.reviewBreakdown'),
       say('requirements.rule.breakdownWaits'),
     );
@@ -481,8 +488,10 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
       );
     }
   }
+  const state = stateOf(input.status, input.phase);
   return {
-    state: stateOf(input.status, input.phase),
+    state,
+    next: nextStepOf(state, input.agreedAt),
     delivery,
     attentionGroup: group,
     waitingOn,

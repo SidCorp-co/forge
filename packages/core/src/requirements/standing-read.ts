@@ -5,6 +5,7 @@
 
 import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
+import type { Approvals } from '@forge/contracts/person-gates';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
 import type {
   BcVerdict,
@@ -61,6 +62,7 @@ interface StandingViewer {
   userId: string;
   canSignOff: boolean;
   canAdmit: boolean;
+  canApproveBreakdown?: boolean;
 }
 
 /** Rows a caller already holds for these requirements (the detail does), so they are not read twice. */
@@ -80,7 +82,13 @@ export interface StandingPreload {
   >[];
   baselines: readonly (typeof requirementBaselines.$inferSelect)[];
   prefix: string | null;
+  gates: DocumentGates;
+}
+
+/** What the project document asks of a person: a release approval, and each step's switch (REQ-34 BC-25). */
+export interface DocumentGates {
   releaseApproval: boolean;
+  approvals: Approvals | null;
 }
 
 const firstBaselineAt = (
@@ -94,9 +102,23 @@ const firstBaselineAt = (
     null,
   );
 
-/** Whether `projectId`'s document requires a release approval, by the one predicate release reads too. */
-export async function approvalRequiredIn(projectId: string): Promise<boolean> {
-  return releaseApprovalRequired((await readProjectDocument(projectId))?.document);
+/** A requirement's owner as its standing names them; null where it has none. */
+function ownerOf(
+  id: string | null,
+  people: ReadonlyMap<string, { name: string | null; kind: 'human' | 'agent' }>,
+): RequirementStanding['owner'] {
+  if (!id) return null;
+  return { id, name: people.get(id)?.name ?? null, kind: people.get(id)?.kind ?? 'human' };
+}
+
+/** `projectId`'s person gates, from one read of its document: whether a release needs approval, by
+ *  the one predicate release reads too, and which steps ask a person. */
+export async function documentGatesIn(projectId: string): Promise<DocumentGates> {
+  const document = (await readProjectDocument(projectId))?.document;
+  return {
+    releaseApproval: releaseApprovalRequired(document),
+    approvals: document?.approvals ?? null,
+  };
 }
 
 const uncoveredList = z.object({
@@ -223,7 +245,7 @@ export async function standingsOf(
     prefix,
     pins,
     baselineSeqs,
-    releaseApproval,
+    gates,
     contracts,
     contractPins,
     unapproved,
@@ -286,7 +308,7 @@ export async function standingsOf(
         })
         .from(requirementBaselines)
         .where(inArray(requirementBaselines.requirementId, ids)),
-    held ? held.releaseApproval : approvalRequiredIn(projectId),
+    held ? held.gates : documentGatesIn(projectId),
     linkedContractsOf(db, ids),
     latestContractPinsOf(ids),
     unapprovedDesignsOf(ids),
@@ -313,7 +335,7 @@ export async function standingsOf(
       displayId: formatIssueRef(prefix, i.issSeq),
       title: i.title,
       status: i.status,
-      tone: issueStatusToneOn(i.status as IssueStatus, releaseApproval),
+      tone: issueStatusToneOn(i.status as IssueStatus, gates.releaseApproval),
       updatedAt: i.updatedAt,
       closedAt: i.status === 'closed' ? (closedAt.get(i.id) ?? null) : null,
       changedSincePlan: changedSincePlan({
@@ -328,14 +350,9 @@ export async function standingsOf(
       row.id,
       deriveStanding({
         status: row.status as RequirementStatus,
-        owner: row.ownerId
-          ? {
-              id: row.ownerId,
-              name: people.get(row.ownerId)?.name ?? null,
-              kind: people.get(row.ownerId)?.kind ?? 'human',
-            }
-          : null,
+        owner: ownerOf(row.ownerId, people),
         viewer,
+        approvals: gates.approvals,
         revisions: by(revisions, row.id).map((r) => ({
           revision: r.revision,
           state: r.state as RevisionState,

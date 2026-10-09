@@ -21345,6 +21345,7 @@
                     "type": "string"
                   },
                   "criteria": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "properties": {
@@ -21710,8 +21711,15 @@
                     ]
                   },
                   "reason": {
-                    "maxLength": 4000,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "spec": {
                     "additionalProperties": false,
@@ -21841,9 +21849,7 @@
                 },
                 "required": [
                   "contract",
-                  "title",
-                  "reason",
-                  "criteria"
+                  "title"
                 ],
                 "type": "object"
               }
@@ -30166,6 +30172,7 @@
                     ]
                   },
                   "criteria": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "properties": {
@@ -30540,8 +30547,15 @@
                     ]
                   },
                   "reason": {
-                    "maxLength": 4000,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "spec": {
                     "additionalProperties": false,
@@ -30670,9 +30684,7 @@
                   }
                 },
                 "required": [
-                  "title",
-                  "reason",
-                  "criteria"
+                  "title"
                 ],
                 "type": "object"
               }
@@ -32766,8 +32778,15 @@
                     ]
                   },
                   "reason": {
-                    "maxLength": 4000,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "spec": {
                     "additionalProperties": false,
@@ -32892,7 +32911,6 @@
                 },
                 "required": [
                   "baseRevision",
-                  "reason",
                   "criteria"
                 ],
                 "type": "object"
@@ -33339,8 +33357,15 @@
                     ]
                   },
                   "reason": {
-                    "maxLength": 4000,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "spec": {
                     "additionalProperties": false,
@@ -33464,7 +33489,6 @@
                   }
                 },
                 "required": [
-                  "reason",
                   "criteria"
                 ],
                 "type": "object"

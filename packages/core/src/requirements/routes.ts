@@ -91,9 +91,10 @@ requirementRoutes.post(
     z.strictObject({
       title: z.string().trim().min(1).max(500),
       ...revisionFields,
+      criteria: revisionFields.criteria.default([]),
       designs: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
     }),
-    '{ title, reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }], designs?: [flow name or id] } writes REQ-n at revision 1, linked to each design named',
+    '{ title, reason?, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria?: [{ body, form? }], designs?: [flow name or id] } writes REQ-n at revision 1 from its title alone if need be, linked to each design named; without a reason, its author is asked why',
   ),
   draftPictureFits('new'),
   holdChatWrite('requirement_draft'),
@@ -132,8 +133,9 @@ requirementRoutes.post(
         .regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/),
       title: z.string().trim().min(1).max(500),
       ...revisionFields,
+      criteria: revisionFields.criteria.default([]),
     }),
-    '{ contract: "<provider>/<contract>", title, reason, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } lands a draft requirement in the provider',
+    '{ contract: "<provider>/<contract>", title, reason?, spec?, kind?: process | rule | screen | report | null, picture?: { kind, content, alt? } drawn with it (alt left out is written from the content), tldr?, changeSummary?, writtenLang?: en | vi, criteria?: [{ body, form? }] } lands a draft requirement in the provider',
   ),
   async (c) => {
     const { contract, title, ...write } = c.req.valid('json');

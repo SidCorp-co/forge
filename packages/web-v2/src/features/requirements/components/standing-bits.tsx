@@ -54,13 +54,19 @@ export function VerdictWord({ verdict }: { verdict: BcVerdict }) {
 
 const onLifecycle = (state: RequirementState) => REQUIREMENT_LIFECYCLE.indexOf(state as (typeof REQUIREMENT_LIFECYCLE)[number]);
 
-/** Draft → Agreed → In delivery → Delivered → Accepted; a delivered one waits on a person's acceptance. */
-function Stepper({ state }: { state: RequirementState }) {
+/** Draft → Agreed → In delivery → Delivered → Accepted, and the step core says comes next. */
+function Stepper({ state, next }: { state: RequirementState; next: RequirementState | null }) {
   const t = useCopy();
   const label = useLabel();
   const at = onLifecycle(state);
-  if (at < 0) return null;
-  const next = REQUIREMENT_LIFECYCLE[at + 1];
+  // deferred is off the line: it says the step it goes back to
+  if (at < 0) {
+    return next ? (
+      <p className="text-12 text-muted" data-testid="step-off-line">
+        {t("requirements.step.next", { caption: label("requirementState", state), state: label("requirementState", next) })}
+      </p>
+    ) : null;
+  }
   return (
     <StepBar
       steps={REQUIREMENT_LIFECYCLE.map((s, i) => ({
@@ -138,7 +144,7 @@ const verdictCounts = (coverage: RequirementStanding["coverage"]) =>
 export function RequirementProgress({ standing, slug, inset }: { standing: RequirementStanding; slug: string; inset: string }) {
   const t = useCopy();
   const { passing: k, criteria: n } = criteriaCoverageOf(standing.coverage);
-  const line = onLifecycle(standing.state) >= 0;
+  const line = onLifecycle(standing.state) >= 0 || standing.next !== null;
   return (
     <section aria-label={t("requirements.progress.label")} className="border-b border-line-subtle bg-surface" data-testid="requirement-progress">
       <RequirementBanner standing={standing} slug={slug} className={cn(inset, "py-2.5")} />
@@ -146,7 +152,7 @@ export function RequirementProgress({ standing, slug, inset }: { standing: Requi
         <div className={cn("flex flex-wrap items-start gap-x-8 gap-y-3 py-3", inset)}>
           {line ? (
             <div className="min-w-[min(100%,300px)] max-w-[560px] flex-1">
-              <Stepper state={standing.state} />
+              <Stepper state={standing.state} next={standing.next} />
             </div>
           ) : null}
           {n > 0 ? (

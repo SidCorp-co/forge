@@ -246,6 +246,7 @@
     "label.notificationType.ops_alert": "Ops alert",
     "label.notificationType.pipeline_wedge": "Pipeline stuck",
     "label.notificationType.requirement_delivered": "Delivered",
+    "label.notificationType.requirement_step": "Step change",
     "label.notificationType.retry_rescue_threshold": "Retries",
     "label.notificationType.schedule_report": "Schedule report",
     "label.notificationType.status_report": "Status report",

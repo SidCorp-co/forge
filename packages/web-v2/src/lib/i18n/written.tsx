@@ -24,8 +24,9 @@ export function WrittenMark({ lang }: { lang: WrittenLang | null | undefined }) 
   );
 }
 
-/** A written text with its `lang` attribute and, where it is not the reader's, its mark. */
-export function Written({ text, lang, className }: { text: string; lang: WrittenLang | null | undefined; className?: string }) {
+/** A written text with its `lang` attribute and, where it is not the reader's, its mark; nothing where none was written. */
+export function Written({ text, lang, className }: { text: string | null; lang: WrittenLang | null | undefined; className?: string }) {
+  if (text === null) return null;
   return (
     <span className={className} lang={lang ?? undefined}>
       {text}

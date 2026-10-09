@@ -35,6 +35,19 @@ export const entry = ({ who, text, kind, ...e }: EntryInput): RequirementHistory
   says: { who, text, kind },
 });
 
+/** "Wrote r2: <why>", with its summary or reason; a revision written with neither says only that it was written. */
+function writtenText(r: RevisionRow): Said {
+  const rest = r.changeSummary ?? r.reason;
+  if (rest === null) {
+    return r.fromSuggestionId
+      ? say('requirements.history.text.wroteSuggestedBare', { r: r.revision })
+      : say('requirements.history.text.wroteBare', { r: r.revision });
+  }
+  return r.fromSuggestionId
+    ? say('requirements.history.text.wroteSuggested', { r: r.revision, rest })
+    : say('requirements.history.text.wrote', { r: r.revision, rest });
+}
+
 export function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
   const out = [
     entry({
@@ -43,12 +56,7 @@ export function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEnt
       source: n.sourceOf(r.authorId),
       who: n.who(r.authorId, SOMEONE),
       kind: say('requirements.history.kind.Revision'),
-      text: say(
-        r.fromSuggestionId
-          ? 'requirements.history.text.wroteSuggested'
-          : 'requirements.history.text.wrote',
-        { r: r.revision, rest: r.changeSummary ?? r.reason },
-      ),
+      text: writtenText(r),
     }),
   ];
   if (r.proposedAt) {

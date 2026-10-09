@@ -2,6 +2,7 @@ import { PICTURE_KINDS, REQUIREMENT_KINDS } from '@forge/contracts/requirement-p
 import {
   BASELINE_ACTS,
   type BaselineReadiness,
+  REQUIREMENT_STATES,
   REQUIREMENT_STATUSES,
   REVISION_STATES,
 } from '@forge/contracts/requirements';
@@ -73,6 +74,8 @@ export const requirements = pgTable(
     currentRevision: integer('current_revision'),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    // the step its author was last told of (`requirements/step-notice.ts`, REQ-34 BC-21); null until first read
+    toldStep: text('told_step', { enum: REQUIREMENT_STATES }),
     // A contract request from another project (E2, 0410): that project and the contract it asks for;
     // only this project agrees it
     requestedByProjectId: uuid('requested_by_project_id').references(() => projects.id, {
@@ -100,6 +103,10 @@ export const requirements = pgTable(
       sql`${t.status} IN (${inList(REQUIREMENT_STATUSES)})`,
     ),
     seqChk: check('requirements_seq_chk', sql`${t.reqSeq} >= 1`),
+    toldStepChk: check(
+      'requirements_told_step_chk',
+      sql`${t.toldStep} IS NULL OR ${t.toldStep} IN (${inList(REQUIREMENT_STATES)})`,
+    ),
     requestChk: check(
       'requirements_request_chk',
       sql`${t.requestedContractSlug} IS NULL OR (${t.requestedByProjectId} IS NOT NULL AND length(${t.requestedContractSlug}) BETWEEN 1 AND 120)`,
@@ -139,7 +146,8 @@ export const requirementRevisions = pgTable(
     specVersion: integer('spec_version').notNull().default(1),
     tldr: text('tldr'),
     changeSummary: text('change_summary'),
-    reason: text('reason').notNull(),
+    // null until its author answers the question the create asked (REQ-34 BC-17), then frozen
+    reason: text('reason'),
     authorId: uuid('author_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -198,7 +206,10 @@ export const requirementRevisions = pgTable(
       'requirement_revisions_author_agency_chk',
       sql`${t.authorAgency} IN (${inList(actorAgencies)})`,
     ),
-    reasonChk: check('requirement_revisions_reason_chk', sql`${t.reason} ~ '[^[:space:]]'`),
+    reasonChk: check(
+      'requirement_revisions_reason_chk',
+      sql`${t.reason} IS NULL OR ${t.reason} ~ '[^[:space:]]'`,
+    ),
     decidedChk: check(
       'requirement_revisions_decided_chk',
       sql`${t.state} NOT IN ('current', 'superseded') OR (${t.decidedBy} IS NOT NULL AND ${t.decidedAt} IS NOT NULL)`,

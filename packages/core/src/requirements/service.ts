@@ -23,7 +23,7 @@ import {
   type RevisionWrite,
   rewriteRevisionIn,
 } from './revision-write.js';
-import { reasonRefusal, staleBaseRefusal, stateRefusal } from './rules.js';
+import { staleBaseRefusal, stateRefusal } from './rules.js';
 import {
   answer,
   inTx,
@@ -39,10 +39,8 @@ export async function createRequirement(input: {
   title: string;
   write: RevisionWrite;
 }): Promise<RequirementOutcome> {
-  const { projectId, actor, write } = input;
+  const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
-  const early = reasonRefusal(write.reason);
-  if (early) return { ok: false, refusals: [early] };
   let id = '';
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);
@@ -67,8 +65,6 @@ export async function writeRevision(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor, write } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
-  const early = reasonRefusal(write.reason);
-  if (early) return { ok: false, refusals: [early] };
   const row = await rowIn(db, projectId, input.ref);
   const refusals = await inTx(async (tx) => {
     await lockRequirements(tx, projectId);

@@ -16,7 +16,7 @@ import { contractsOfProject } from './contract-links.js';
 import type { RequirementActor } from './read.js';
 import type { RevisionWrite } from './revision-write.js';
 import { createRequirementIn } from './revision-write.js';
-import { type RequirementRefusal, reasonRefusal } from './rules.js';
+import type { RequirementRefusal } from './rules.js';
 import { inTx, lockRequirements } from './write-tx.js';
 
 export interface ContractRequestAnswer {
@@ -66,8 +66,6 @@ export async function requestContract(input: {
 > {
   const { projectId, actor, write } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
-  const early = reasonRefusal(write.reason);
-  if (early) return { ok: false, refusals: [early] };
   const [providerSlug = '', contractSlug = ''] = input.contract.split('/');
   const providerId = await findProjectIdBySlug(providerSlug);
   if (!providerId) throw notFound(`no project has the slug ${providerSlug}`);

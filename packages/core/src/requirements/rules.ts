@@ -33,15 +33,6 @@ export function signoffRefusal(
   return permissionRefusal(facts, permission, act);
 }
 
-export function reasonRefusal(reason: string | null | undefined): RequirementRefusal | null {
-  if (reason?.trim()) return null;
-  return {
-    code: 'REVISION_REASON_REQUIRED',
-    path: '/reason',
-    detail: 'a revision carries why it was written, so its reviewer and every later reader know.',
-  };
-}
-
 /** A revision may be written only while no other revision of the requirement is open. */
 export function openRevisionRefusal(
   open: { revision: number; state: RevisionState } | null,

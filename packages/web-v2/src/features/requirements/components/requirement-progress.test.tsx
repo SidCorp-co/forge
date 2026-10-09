@@ -113,7 +113,7 @@ describe("the top of a requirement page", () => {
   });
 
   it("says nothing is owed on an accepted one, at the lifecycle's last step with no next", () => {
-    const accepted = { ...reqDetail, standing: { ...reqDetail.standing, state: "accepted", attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.empty"), rule: RULE }) } } as RequirementDetail;
+    const accepted = { ...reqDetail, standing: { ...reqDetail.standing, state: "accepted", next: null, attentionGroup: "done", waitingOn: waitingOn("none", { who: say("standing.who.nobody"), act: say("standing.empty"), rule: RULE }) } } as RequirementDetail;
     render(<RequirementProgress standing={accepted.standing} slug="hop" inset="px-4" />);
     expect(screen.getByTestId("wait-banner")).toHaveTextContent("Accepted. Nothing is owed on it.");
     expect(screen.getByTestId("step-bar")).toHaveTextContent("Step 5 of 5");
@@ -121,10 +121,11 @@ describe("the top of a requirement page", () => {
     expect(strayInStrip(screen.getByTestId("requirement-progress"), accepted.standing)).toBeNull();
   });
 
-  it("draws no step bar for one off the lifecycle, rather than a step of its own", () => {
-    const deferred = { ...reqDetail.standing, state: "deferred" } as RequirementDetail["standing"];
+  it("draws no step bar for one off the lifecycle, and says the step core says it goes back to (REQ-34 BC-19)", () => {
+    const deferred = { ...reqDetail.standing, state: "deferred", next: "agreed" } as RequirementDetail["standing"];
     render(<RequirementProgress standing={deferred} slug="hop" inset="px-4" />);
     expect(screen.queryByTestId("step-bar")).toBeNull();
+    expect(screen.getByTestId("step-off-line")).toHaveTextContent("Deferred · next Agreed");
     expect(screen.getByTestId("progress-verified")).toHaveTextContent("1/3 verified");
   });
 

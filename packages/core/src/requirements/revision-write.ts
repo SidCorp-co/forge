@@ -29,6 +29,7 @@ import { withAskedQuestions } from './clarity.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { drawIn, pictureFitsKind } from './picture.js';
 import type { RequirementActor } from './read.js';
+import { askReasonIn } from './reason-question.js';
 import { resetDraftCriteria, writeCriteria } from './revision-criteria.js';
 import {
   type CriterionInput,
@@ -39,7 +40,8 @@ import {
 } from './rules.js';
 
 export interface RevisionWrite {
-  reason: string;
+  /** Why it was written; asked, never required (REQ-34 BC-17): absent, null or blank stores none. */
+  reason?: string | null | undefined;
   spec?: RequirementSpec | undefined;
   tldr?: string | null | undefined;
   changeSummary?: string | null | undefined;
@@ -56,6 +58,9 @@ export interface RevisionWrite {
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
 
+/** The reason as stored: its trimmed text, or null where none was given. */
+export const reasonOf = (write: Pick<RevisionWrite, 'reason'>) => write.reason?.trim() || null;
+
 /** A revision's text as it is stored at the project's data policy: scrubbed on write at redact and
  *  no_egress, the way comments and issues are (personal-data-flow#ds-issues). */
 export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): RevisionWrite {
@@ -63,7 +68,7 @@ export function storedWrite(level: SensitiveDataLevel, write: RevisionWrite): Re
   const text = (v: string) => storedText(level, v).text;
   return {
     ...write,
-    reason: text(write.reason),
+    reason: write.reason == null ? write.reason : text(write.reason),
     spec: write.spec === undefined ? undefined : storedDeep(level, write.spec),
     tldr: write.tldr == null ? write.tldr : text(write.tldr),
     changeSummary: write.changeSummary == null ? write.changeSummary : text(write.changeSummary),
@@ -106,6 +111,8 @@ export async function createRequirementIn(
       reqSeq: next,
       title: storedText(level, input.title.trim()).text,
       ownerId: input.ownerId === undefined ? actor.userId : input.ownerId,
+      // its author is told every step from here (`step-notice.ts`)
+      toldStep: 'draft',
     })
     .returning({ id: requirements.id });
   if (!row) throw new Error('requirements: the insert returned no row');
@@ -115,13 +122,26 @@ export async function createRequirementIn(
     spec: specOf(write.spec),
   });
   if ('refusals' in asked) return { id: row.id, refusals: asked.refusals };
+  // no reason given: its author is asked why, never refused (REQ-34 BC-17)
+  const why =
+    reasonOf(write) === null
+      ? await askReasonIn(tx, {
+          projectId,
+          requirementId: row.id,
+          key: requirementKey(next),
+          title: input.title.trim(),
+          revision: 1,
+        })
+      : null;
   await tx.insert(requirementRevisions).values({
     requirementId: row.id,
     revision: 1,
-    spec: asked.spec,
+    spec: why
+      ? { ...asked.spec, openQuestions: [...(asked.spec.openQuestions ?? []), why] }
+      : asked.spec,
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
-    reason: write.reason.trim(),
+    reason: reasonOf(write),
     kind: write.kind ?? null,
     authorId: (input.author ?? actor).userId,
     authorAgency: (input.author ?? actor).agency,
@@ -131,7 +151,7 @@ export async function createRequirementIn(
       projectId,
       write.writtenLang,
       tx,
-      [write.reason, write.changeSummary, write.tldr].join('\n'),
+      [write.reason ?? '', write.changeSummary, write.tldr].join('\n'),
     ),
   });
   if (write.picture) {
@@ -191,7 +211,7 @@ export function newRevisionRow(input: {
     spec: specOf(write.spec),
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
-    reason: write.reason.trim(),
+    reason: reasonOf(write),
     fromSuggestionId: write.fromSuggestionId ?? null,
     kind,
     pictureId: input.carried && kind === input.carried.kind ? input.carried.pictureId : null,
@@ -274,7 +294,7 @@ export async function newRevisionIn(
       owner.projectId,
       write.writtenLang,
       tx,
-      [write.reason, write.changeSummary, write.tldr].join('\n'),
+      [write.reason ?? '', write.changeSummary, write.tldr].join('\n'),
     ),
   });
   if (write.picture) {
@@ -331,7 +351,8 @@ export async function rewriteRevisionIn(
       spec: asked.spec,
       tldr: stored.tldr ?? null,
       changeSummary: stored.changeSummary ?? null,
-      reason: stored.reason.trim(),
+      // an edit that gives no reason keeps the one the draft holds
+      ...(reasonOf(stored) === null ? {} : { reason: reasonOf(stored) }),
       authorId: actor.userId,
       authorAgency: actor.agency,
       writtenLang: await writtenLangFor(
@@ -339,7 +360,7 @@ export async function rewriteRevisionIn(
         projectId,
         input.write.writtenLang,
         tx,
-        [input.write.reason, input.write.changeSummary, input.write.tldr].join('\n'),
+        [input.write.reason ?? '', input.write.changeSummary, input.write.tldr].join('\n'),
       ),
       ...(stored.fromSuggestionId ? { fromSuggestionId: stored.fromSuggestionId } : {}),
       ...(landing?.state === 'proposed'

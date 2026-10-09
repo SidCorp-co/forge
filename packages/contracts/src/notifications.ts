@@ -13,6 +13,7 @@ export const NOTIFICATION_TYPES = [
 	"channel_gate_pending",
 	"contract_version_published",
 	"requirement_delivered",
+	"requirement_step",
 	"feedback_verify_asked",
 	"feedback_shipped",
 	"feedback_message",
@@ -36,6 +37,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	channel_gate_pending: "Approval",
 	contract_version_published: "Contract version",
 	requirement_delivered: "Delivered",
+	requirement_step: "Step change",
 	feedback_verify_asked: "Verify the fix",
 	feedback_shipped: "Shipped",
 	feedback_message: "Feedback update",
@@ -172,6 +174,12 @@ const NOTIFICATION_CONTRACT: Record<
 		channels: ["bell", "toast"],
 		kind: "task",
 		tier: "ticket",
+	},
+	requirement_step: {
+		severity: "info",
+		channels: ["bell"],
+		kind: "signal",
+		tier: "log",
 	},
 	feedback_verify_asked: {
 		severity: "info",

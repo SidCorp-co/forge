@@ -33,6 +33,7 @@ import {
 } from './release-batch/index.js';
 import { registerReleaseHighlightsRefresh } from './release-page/index.js';
 import {
+  registerReasonAnswers,
   registerRequirementDelivery,
   registerRequirementFollow,
   registerStaleDraftAct,
@@ -71,6 +72,7 @@ export function registerOutboxConsumers(): void {
   registerFirstRequirementsCase();
   registerRequirementFollow();
   registerStaleDraftAct();
+  registerReasonAnswers();
   registerQuestionSuggest();
   registerFeedbackNotifications();
   registerIntakeAssistant();

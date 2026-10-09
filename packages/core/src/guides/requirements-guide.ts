@@ -42,11 +42,12 @@ it lives in numbered revisions, and each revision carries business criteria unde
   \`GET /api/issues/:id/criteria\`.
 
 ### The order of the work
-1. **create** \`{ title, reason, criteria }\` writes REQ-n at revision 1, a draft. Any member of the
-   project may, an agent included.
+1. **create** \`{ title }\` writes REQ-n at revision 1, a draft; \`reason\` and \`criteria\` may come with it.
+   Any member of the project may, an agent included. A create without a reason asks its author
+   why, as a question on the requirement, and the answer becomes that revision's reason.
 2. **revise** writes a new draft revision against the head you read: send that head as
-   \`baseRevision\`, or the write is \`REQUIREMENT_REVISION_STALE\`. Every revision says why it was
-   written (\`REVISION_REASON_REQUIRED\`). In its criteria list, a criterion naming a live code keeps
+   \`baseRevision\`, or the write is \`REQUIREMENT_REVISION_STALE\`. A revision's \`reason\` says why it
+   was written; it is asked, never required. In its criteria list, a criterion naming a live code keeps
    that code (reworded under it, or unchanged), one naming no code takes the next code never used,
    and a live code you leave out is retired. A code is never reissued, which is what lets an issue's
    trace to BC-3 mean the same thing next month. Naming a code the base does not hold is

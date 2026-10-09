@@ -208,6 +208,8 @@ export const SAID = {
 	"requirements.history.text.undeferredWhy": { en: "Undeferred: {rest}", vars: { rest: "text" } },
 	"requirements.history.text.wrote": { en: "Wrote r{r}: {rest}", vars: { r: "count", rest: "text" } },
 	"requirements.history.text.wroteSuggested": { en: "Wrote r{r} (an accepted suggestion): {rest}", vars: { r: "count", rest: "text" } },
+	"requirements.history.text.wroteBare": { en: "Wrote r{r}", vars: { r: "count" } },
+	"requirements.history.text.wroteSuggestedBare": { en: "Wrote r{r} (an accepted suggestion)", vars: { r: "count" } },
 	"requirements.history.what.breakdown": { en: "a breakdown" },
 	"requirements.history.what.change": { en: "a change" },
 	"requirements.history.what.duplicate": { en: "a duplicate" },

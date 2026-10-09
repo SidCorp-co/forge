@@ -3165,6 +3165,13 @@
       "when": 1825459200000,
       "tag": "0492_a_release_approval_says_why",
       "breakpoints": true
+    },
+    {
+      "idx": 493,
+      "version": "7",
+      "when": 1825545600000,
+      "tag": "0493_a_requirement_is_created_from_a_title_and_its_author_is_told_each_step",
+      "breakpoints": true
     }
   ]
 }

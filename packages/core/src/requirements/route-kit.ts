@@ -56,7 +56,8 @@ export const decisionsQuery = zValidator(
 );
 
 export const revisionFields = {
-  reason: z.string().max(REASON_TEXT_MAX),
+  // asked, never required (REQ-34 BC-17): a create without one asks it as a question
+  reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
   spec: specSchema.optional(),
   kind: revisionKindField,
   picture: draftPictureSchema.optional(),
