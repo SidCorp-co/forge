@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.213] - 2026-10-09
+
+Records the requirement progress strip; a draft opens only on a complete checklist
+
+### Added
+
+- **A draft issue opens only once its issue-ready checklist is complete.** A missing requirement or criterion is named on its field, hotfix obligations are assumed when left blank, and every move records the checklist that judged it.
+
 ## [0.4.0-dev.212] - 2026-10-08
 
 Script fires show who ran them and what they read; chat figures name reads
