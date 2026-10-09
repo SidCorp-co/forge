@@ -1,1 +1,0 @@
-**An idea can be built as a live preview from chat and kept as the requirement's picture.** Keep stores the sketch branch head and the page's rrweb snapshot, drawn still with Reopen live, and suggests criteria to accept.

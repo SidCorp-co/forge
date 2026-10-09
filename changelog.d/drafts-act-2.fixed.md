@@ -1,1 +1,0 @@
-**A stale draft revision answered "drop" is withdrawn.** Withdrawn is a terminal revision state reachable only from draft, with its reason; the requirement leaves Needs you and reads as before, and proposing a withdrawn revision is refused by name.
