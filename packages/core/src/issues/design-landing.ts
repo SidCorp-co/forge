@@ -4,8 +4,9 @@
  * or re-pointed to the approved revision in the decision's transaction, so a mark naming a proposed
  * revision does not outlive its approval. An issue linked as the build of a workflow delivers that
  * build, so a revision drawn under it is evidence its notice records, never its merged mark. Neither
- * moves a status — recording a landing never does (docs/modules/issues/merge-mark.md) and only a
- * release closes — so the issue's run or its release takes the next move.
+ * moves a status — recording a landing never does (docs/modules/issues/merge-mark.md). A design-only
+ * issue needs no release: once every revision it delivers is approved, an agent closes it through the
+ * `design_delivered` edge (REQ-45 BC-4); any other issue's run or release takes the next move.
  */
 
 import { designArtifact } from '@forge/contracts/landing-artifacts';
@@ -139,7 +140,7 @@ export function designLandingNotice(
       outcome.mark === 'landed'
         ? 'Its landing now names the approved revision.'
         : 'This project lands its work in git, where a mark names no revision, so the mark is a timestamp and this notice names the revision.';
-    return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it. ${names}${was} The approval moves no status: this issue's run, or the release that claims it, takes its next move.`;
+    return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it. ${names}${was} The approval moves no status. Where design is this issue's only deliverable it needs no release: once every revision it delivers is approved, move it to \`closed\` (the \`design_delivered\` edge); otherwise its run, or the release that claims it, takes its next move.`;
   }
   if (outcome.action === 'evidence') {
     const standing =

@@ -1,0 +1,1 @@
+**Landed work moves on without waiting for verdicts.** An agent moves a merged issue to awaiting release with no verdicts, closes a design-only issue once its revisions are approved, and releases skip design-only issues.

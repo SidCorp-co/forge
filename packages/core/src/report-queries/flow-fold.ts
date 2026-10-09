@@ -11,7 +11,7 @@ import type { FlowIssue, FlowMove, IssueFlow } from '../issues/index.js';
 
 /** The move into each of these is what a flow report counts. */
 export const FLOW_EVENTS = {
-  /** Merged and proven against its criteria: the machine's `merged.and.proven` edge. */
+  /** Merged: the machine's `merged` edge into `awaiting_release`. */
   verified: 'awaiting_release',
   /** Released: the `release.recorded` edge. */
   closed: 'closed',

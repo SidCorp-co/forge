@@ -97,7 +97,7 @@ export const ISSUE_STATUS_HINTS: Record<IssueStatus, string> = {
 	needs_info: "needs_info: waiting on a person to answer",
 	on_hold: "on_hold: deliberately paused",
 	awaiting_release:
-		"awaiting_release: every criterion passed; waiting for the release",
+		"awaiting_release: its work merged; waiting for the release",
 	closed: "closed: shipped",
 	dropped: "dropped: will not be done",
 };

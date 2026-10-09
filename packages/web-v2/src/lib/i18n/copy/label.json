@@ -129,7 +129,7 @@
     "label.hintFeedbackPhase.triaged": "the route's carrier died, and a person routes it again",
     "label.hintFeedbackPhase.verified": "a person confirmed the fix; never automatic",
     "label.hintIssueStatus.approved": "the plan checkpoint; the next run goes straight to build",
-    "label.hintIssueStatus.awaiting_release": "every criterion passed; waiting for the release",
+    "label.hintIssueStatus.awaiting_release": "its work merged; waiting for the release",
     "label.hintIssueStatus.closed": "shipped",
     "label.hintIssueStatus.draft": "not accepted as work yet; a person decides",
     "label.hintIssueStatus.dropped": "will not be done",

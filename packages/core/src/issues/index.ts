@@ -56,6 +56,7 @@ export {
 export type { IssueDependencyExecutor } from './dependency-executor.js';
 export { allRelationDigests, loadIssueRelationsForIssues } from './dependency-read.js';
 export { registerDependencyHealth } from './dependency-service.js';
+export { designOnlyMarkSql } from './design-delivery.js';
 export {
   type DesignLandingOutcome,
   designLandingNotice,
