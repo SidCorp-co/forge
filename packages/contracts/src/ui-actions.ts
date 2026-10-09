@@ -5,8 +5,13 @@
 // writes data — a board reaches an issue only when the person presses Attach.
 
 import { z } from 'zod';
-import { ISSUE_STATUSES } from './issue-machine.js';
-import { REGISTRY_ISSUE_PRIORITIES } from './pipeline-registry.js';
+import {
+  describeListFilter,
+  listFilterParamsOf,
+  UI_LIST_FILTERS,
+  uiListFilterParams,
+  uiListFilterSnapshotSchema,
+} from './ui-list-filters.js';
 import {
   parseWireframe,
   type WireframeRefusalCode,
@@ -38,30 +43,18 @@ const issueKey = z.string().regex(ISSUE_KEY_PATTERN, 'an issue key such as ISS-4
 export const UI_ISSUE_FILTER_FIELDS = ['status', 'priority', 'createdBy', 'assignee', 'text'] as const;
 export type UiIssueFilterField = (typeof UI_ISSUE_FILTER_FIELDS)[number];
 
-export const uiIssueFilterSchema = z.strictObject({
-  status: z.array(z.enum(ISSUE_STATUSES)).min(1).optional(),
-  priority: z.enum(REGISTRY_ISSUE_PRIORITIES).optional(),
-  createdBy: z.literal('me').optional(),
-  assignee: z.literal('me').optional(),
-  text: z.string().trim().min(1).max(200).optional(),
-});
+/**
+ * The Issues filter the registry offers today: the issues list's filter (`ui-list-filters.ts`) less
+ * `waitingOn`, which the ui-actions lane (REQ-41) adds here in the change that teaches the Issues
+ * list to read it, so the model is never offered a field no page applies.
+ */
+export const uiIssueFilterSchema = UI_LIST_FILTERS.issues.omit({ waitingOn: true });
 export type UiIssueFilter = z.infer<typeof uiIssueFilterSchema>;
 
 const navigateParams = z.strictObject({
   route: z.enum(ROUTE_NAMES),
 });
-const filterParams = z
-  .strictObject({
-    mode: z.enum(['merge', 'replace']),
-    set: uiIssueFilterSchema.default({}),
-    clear: z.array(z.enum(UI_ISSUE_FILTER_FIELDS)).max(UI_ISSUE_FILTER_FIELDS.length).default([]),
-  })
-  .refine((v) => Object.keys(v.set).length > 0 || v.clear.length > 0 || v.mode === 'replace', {
-    message: 'a merge must set or clear at least one field',
-  })
-  .refine((v) => !v.clear.some((f) => f in v.set), {
-    message: 'a field cannot be both set and cleared',
-  });
+const filterParams = listFilterParamsOf(uiIssueFilterSchema);
 const selectParams = z.strictObject({
   keys: z.array(issueKey).max(100),
 });
@@ -226,15 +219,181 @@ export const uiPageItemSchema = z.discriminatedUnion('kind', [
 ]);
 export type UiPageItem = z.infer<typeof uiPageItemSchema>;
 
+// ---- REQ-41 additions (docs/proposals/chat-first.md, "Page actions"). The shapes land here; the
+// ui-actions lane moves each into UI_ROUTES and UI_ACTIONS in the same change as its executor in
+// web (`applyUiAction`) and core (`ui-actions-tool.ts`), so the model is never offered an action no
+// page can run. Until then they parse and are tested on their own.
+
+/** The Product routes the registry does not yet name (BC-4). */
+export const UI_ROUTE_ADDITIONS = {
+  requirements: '/requirements',
+  feedback: '/feedback',
+} as const;
+export type UiRouteAddition = keyof typeof UI_ROUTE_ADDITIONS;
+
+/** Every kind of record the chat can open by key (BC-6). */
+export const UI_OPEN_KINDS = ['issue', 'requirement', 'feedback', 'workflow', 'release'] as const;
+export type UiOpenKind = (typeof UI_OPEN_KINDS)[number];
+
+const REQUIREMENT_KEY = /^REQ-\d{1,9}$/;
+const FEEDBACK_KEY = /^FB-\d{1,9}$/;
+/** A release is opened by its version, as its page is addressed (`0.4.0-dev.217`). */
+const RELEASE_KEY = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
+const KEY_OF_KIND: Record<UiOpenKind, RegExp> = {
+  issue: ISSUE_KEY_PATTERN,
+  requirement: REQUIREMENT_KEY,
+  feedback: FEEDBACK_KEY,
+  workflow: WORKFLOW_PAGE_REF,
+  release: RELEASE_KEY,
+};
+const KEY_EXAMPLE: Record<UiOpenKind, string> = {
+  issue: 'an issue key such as ISS-47',
+  requirement: 'a requirement key such as REQ-30',
+  feedback: 'a feedback key such as FB-12',
+  workflow: 'a workflow flow such as chat-turn',
+  release: 'a release version such as 0.4.0-dev.217',
+};
+
+/**
+ * The kind a key names by its own shape: REQ-n a requirement, FB-n feedback, any other PREFIX-n an
+ * issue. A workflow flow and a release version look like neither, so they are opened only with
+ * their kind named; null says so.
+ */
+export function openKindOf(key: string): 'issue' | 'requirement' | 'feedback' | null {
+  if (REQUIREMENT_KEY.test(key)) return 'requirement';
+  if (FEEDBACK_KEY.test(key)) return 'feedback';
+  if (ISSUE_KEY_PATTERN.test(key)) return 'issue';
+  return null;
+}
+
+/**
+ * `ui.open` for every record kind (BC-6): `{key}` alone is read by the key's shape, so a call made
+ * before kinds existed (`{key: "ISS-47"}`) still opens that issue; a key its kind does not take is
+ * refused naming the shape the kind takes. The parsed params always name the kind.
+ */
+export const uiOpenParamsSchema = z
+  .strictObject({
+    kind: z.enum(UI_OPEN_KINDS).optional(),
+    key: z.string().trim().min(1).max(200),
+  })
+  .transform((v, ctx) => {
+    const kind = v.kind ?? openKindOf(v.key);
+    if (kind === null) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['kind'],
+        message: `"${v.key}" is not ISS-n, REQ-n or FB-n; name kind "workflow" or "release" to open one by its flow or version`,
+      });
+      return z.NEVER;
+    }
+    if (!KEY_OF_KIND[kind].test(v.key)) {
+      ctx.addIssue({ code: 'custom', path: ['key'], message: `a ${kind} is opened by ${KEY_EXAMPLE[kind]}` });
+      return z.NEVER;
+    }
+    return { kind, key: v.key };
+  });
+export type UiOpenTarget = z.output<typeof uiOpenParamsSchema>;
+
+/** The sections each record page marks with a highlight anchor (BC-6); a workflow highlights a step. */
+export const UI_HIGHLIGHT_SECTIONS = {
+  issue: ['waiting', 'question', 'criteria', 'plan', 'preview'],
+  requirement: ['waiting', 'question', 'criteria', 'picture', 'delivery', 'history'],
+  feedback: ['waiting', 'question', 'evidence', 'triage', 'route', 'verify'],
+} as const satisfies Partial<Record<UiPageItemKind, readonly string[]>>;
+type HighlightSection = (typeof UI_HIGHLIGHT_SECTIONS)[keyof typeof UI_HIGHLIGHT_SECTIONS][number];
+const SECTION_NAMES = [...new Set(Object.values(UI_HIGHLIGHT_SECTIONS).flat())] as [
+  HighlightSection,
+  ...HighlightSection[],
+];
+
+/** A workflow step's id as its design names it (`check`, `rule-merge`). */
+export const WORKFLOW_STEP_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$/;
+
+/** `ui.highlight`: mark one section of the open record, one step of the open workflow, or one row of the open list. */
+export const uiHighlightParamsSchema = z.discriminatedUnion('target', [
+  z.strictObject({ target: z.literal('section'), section: z.enum(SECTION_NAMES) }),
+  z.strictObject({ target: z.literal('step'), step: z.string().regex(WORKFLOW_STEP_ID, 'a step id such as check') }),
+  z.strictObject({ target: z.literal('row'), key: z.string().trim().min(1).max(200) }),
+]);
+export type UiHighlight = z.infer<typeof uiHighlightParamsSchema>;
+
+/** The most row keys a page reports as shown, top of the list first (BC-8). */
+export const UI_SHOWN_MAX = 50;
+
+/**
+ * Why a highlight does not fit the page the person sees, or null where it does: a section the open
+ * record's page does not have, a step with no workflow open, a row the list is not showing. Read
+ * from the snapshot core already holds, so the refusal is made before the browser is asked.
+ */
+export function highlightRefusal(h: UiHighlight, s: UiSnapshot): string | null {
+  const no = (why: string) => `UI_ACTION_NOT_ON_PAGE: ui.highlight ${why}. Nothing was highlighted.`;
+  if (h.target === 'section') {
+    const kind = s.item?.kind;
+    const sections: readonly string[] =
+      kind && kind in UI_HIGHLIGHT_SECTIONS ? UI_HIGHLIGHT_SECTIONS[kind as keyof typeof UI_HIGHLIGHT_SECTIONS] : [];
+    if (sections.includes(h.section)) return null;
+    return no(
+      kind
+        ? `names section "${h.section}", which a ${kind} page does not have (it has ${sections.join(', ') || 'none'})`
+        : `names section "${h.section}" and no record is open; open one with ui.open first`,
+    );
+  }
+  if (h.target === 'step') {
+    return s.item?.kind === 'workflow' ? null : no(`names step "${h.step}" and no workflow is open; open one with ui.open first`);
+  }
+  return s.shown?.includes(h.key) ? null : no(`names row ${h.key}, which the list beside the chat is not showing`);
+}
+
+/** The filter action of each Product list (BC-4), one per list in the shape `ui.issues.filter` has. */
+const productFilter = (list: 'requirements' | 'feedback' | 'workflows' | 'releases', label: string) => ({
+  wire: `ui_${list}_filter`,
+  version: UI_ACTION_VERSION,
+  params: uiListFilterParams(list),
+  describe: `Open the ${label} list and set its filter. mode "merge" keeps the filter the person sees and changes only the named fields; mode "replace" drops every field it does not set. waitingOn is "you", "agent" or "running".`,
+});
+
+/** The actions REQ-41 adds, each registered into UI_ACTIONS by the ui-actions lane with its executor. */
+export const UI_ACTION_ADDITIONS = {
+  'ui.requirements.filter': productFilter('requirements', 'Requirements'),
+  'ui.feedback.filter': productFilter('feedback', 'Feedback'),
+  'ui.workflows.filter': productFilter('workflows', 'Workflows'),
+  'ui.releases.filter': productFilter('releases', 'Releases'),
+  'ui.open': {
+    wire: 'ui_open',
+    version: UI_ACTION_VERSION,
+    params: uiOpenParamsSchema,
+    describe:
+      'Open one record in the page beside the chat: an issue (ISS-n), a requirement (REQ-n) or feedback (FB-n) by its key, a workflow by its flow with kind "workflow", a release by its version with kind "release".',
+  },
+  'ui.highlight': {
+    wire: 'ui_highlight',
+    version: UI_ACTION_VERSION,
+    params: uiHighlightParamsSchema,
+    describe:
+      'Highlight one thing on the page beside the chat: a section of the open record (target "section"), a step of the open workflow (target "step", its step id), or a row the open list shows (target "row", its key). It scrolls to it and marks it; it changes nothing else.',
+  },
+} as const;
+
 /** What the page beside the chat looks like, sent with each message — typed, never scraped. */
 export const uiSnapshotSchema = z.strictObject({
   v: z.literal(UI_ACTION_VERSION),
-  route: z.enum([...ROUTE_NAMES, ...UI_PAGE_ITEM_KINDS, 'other']),
+  route: z.enum([
+    ...ROUTE_NAMES,
+    ...(Object.keys(UI_ROUTE_ADDITIONS) as UiRouteAddition[]),
+    ...UI_PAGE_ITEM_KINDS,
+    'other',
+  ]),
   path: z.string().max(500),
   /** The record the page is about, which core loads for the turn; absent on a page about none. */
   item: uiPageItemSchema.optional(),
   filter: uiIssueFilterSchema.optional(),
+  /** A Product list's filter as the person sees it (REQ-41 BC-8). */
+  listFilter: uiListFilterSnapshotSchema.optional(),
   selection: z.array(issueKey).max(100).optional(),
+  /** The keys of the rows the list shows, top first, so "the first one" means what the person sees (BC-8). */
+  shown: z.array(z.string().trim().min(1).max(200)).max(UI_SHOWN_MAX).optional(),
+  /** What the page has highlighted, by the chat or by the person's own anchor (BC-6). */
+  highlight: uiHighlightParamsSchema.optional(),
   /** The board open in the dock, as the assistant last drew it (ISS-48). */
   board: wireframeDocSchema.optional(),
 });
@@ -265,7 +424,13 @@ export function describeUiSnapshot(s: UiSnapshot): string {
     if (f.status) parts.push(`status ${f.status.join('/')}`);
     if (f.text) parts.push(`"${f.text}"`);
   }
+  if (s.listFilter) parts.push(...describeListFilter(s.listFilter.filter));
   if (s.selection && s.selection.length > 0) parts.push(`${s.selection.length} selected`);
+  if (s.shown && s.shown.length > 0) parts.push(`showing ${s.shown.slice(0, 5).join(', ')}${s.shown.length > 5 ? ` and ${s.shown.length - 5} more` : ''}`);
+  if (s.highlight) {
+    const h = s.highlight;
+    parts.push(`highlighting ${h.target === 'section' ? h.section : h.target === 'step' ? `step ${h.step}` : h.key}`);
+  }
   if (s.board) parts.push(`board of ${s.board.shapes.length} shape${s.board.shapes.length === 1 ? '' : 's'}`);
   return parts.join(' · ');
 }

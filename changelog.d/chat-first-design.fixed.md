@@ -1,0 +1,1 @@
+**Chat-first design and its shared contracts are in place.** The needs-me decisions read, a held reply's checked part, page actions for every Product list, and idea and reproduce previews with session recording have one agreed shape.
