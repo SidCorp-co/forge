@@ -1,1 +1,1 @@
-**An idea preview now stays open after its sketch run ends its turn.** Only keep, abandon, idle close or the box releasing the checkout end it, so chat edits land in the same preview. An issue run's preview still closes with its run.
+**An idea preview now stays open after its sketch run ends its turn.** Only keep, abandon, idle close or the box releasing the checkout end it, so chat edits land in it. An issue run's preview still closes with its run.
