@@ -1,7 +1,7 @@
 /**
  * The BA door's tool set (ISS-58): read the room's requirement, an issue and similar requirements;
- * write a suggestion; ask a clarification; propose a wireframe mockup (ISS-78). It is the whole catalog a BA turn is offered — no
- * forge CLI, no requirement or issue write — so the role's bound is what the model can call, not
+ * write a suggestion; ask a clarification. It is the whole catalog a BA turn is offered — no forge
+ * CLI, no requirement or issue write — so the role's bound is what the model can call, not
  * what its prompt asks of it. The requirement is bound when the toolset is built, from the room.
  */
 
@@ -22,7 +22,6 @@ import {
 import { readRequirementAs, similarRequirements } from '../../requirements/index.js';
 import { createSuggestion, listSuggestions, suggestionBaseOf } from '../../suggestions/index.js';
 import { askClarification, clarificationOf, sendQuestionnaire } from './ba-ask-tools.js';
-import { drawMockup } from './ba-mockup-tool.js';
 import { actorOf, type BaRoom, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
@@ -258,6 +257,5 @@ export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
     { factory: suggest(room, seen) },
     { factory: askClarification(room) },
     { factory: sendQuestionnaire(room) },
-    { factory: drawMockup(room) },
   ]);
 }

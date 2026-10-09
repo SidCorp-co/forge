@@ -97,9 +97,9 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
     tools: [],
   },
   {
-    why: 'a suggestion or mockup the BA offers: it changes nothing until a person accepts it on the requirement page',
+    why: 'a suggestion the BA offers: it changes nothing until a person accepts it on the requirement page',
     rest: [],
-    tools: ['ba_suggest', 'ba_suggest_requirement', 'ba_draw_mockup'],
+    tools: ['ba_suggest', 'ba_suggest_requirement'],
   },
   {
     why: 'an ask to the person in this room, through the questionnaire card',

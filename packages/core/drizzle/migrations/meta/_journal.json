@@ -3025,6 +3025,13 @@
       "when": 1823731200000,
       "tag": "0472_a_gated_move_records_its_checklist_and_its_refusals",
       "breakpoints": true
+    },
+    {
+      "idx": 473,
+      "version": "7",
+      "when": 1823817600000,
+      "tag": "0473_a_revision_names_its_kind_and_holds_one_picture",
+      "breakpoints": true
     }
   ]
 }

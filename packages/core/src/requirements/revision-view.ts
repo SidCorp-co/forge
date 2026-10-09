@@ -1,5 +1,6 @@
 // A requirement revision and its live criteria as the read model answers them (`read.ts`).
 
+import type { RequirementKind } from '@forge/contracts/requirement-pictures';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import type {
   CriterionForm,
@@ -8,6 +9,7 @@ import type {
   requirementRevisions,
 } from '../db/schema-requirements.js';
 import type { Person } from '../lib/people.js';
+import { type PictureRow, pictureView } from './picture-read.js';
 import { liveAt } from './rules.js';
 
 export type RevisionRow = typeof requirementRevisions.$inferSelect;
@@ -22,10 +24,20 @@ export const criterionView = (c: CriterionRow) => ({
   retiredRevision: c.retiredRevision,
 });
 
+function pictureOf(
+  id: string | null,
+  pictures: readonly PictureRow[],
+  people: ReadonlyMap<string, Person>,
+) {
+  const shown = id === null ? undefined : pictures.find((p) => p.id === id);
+  return shown ? pictureView(shown, people) : null;
+}
+
 export function revisionView(
   r: RevisionRow,
   criteria: readonly CriterionRow[],
   people: ReadonlyMap<string, Person>,
+  pictures: readonly PictureRow[],
 ) {
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
   return {
@@ -48,6 +60,8 @@ export function revisionView(
     acceptReason: r.acceptReason,
     fromSuggestionId: r.fromSuggestionId,
     writtenLang: r.writtenLang,
+    kind: (r.kind as RequirementKind | null) ?? null,
+    picture: pictureOf(r.pictureId, pictures, people),
     criteria: liveAt(criteria, r.revision).map(criterionView),
   };
 }

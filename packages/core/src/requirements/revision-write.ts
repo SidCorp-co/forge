@@ -6,6 +6,7 @@
  */
 
 import type { SensitiveDataLevel } from '@forge/contracts/data-policy';
+import type { RequirementKind } from '@forge/contracts/requirement-pictures';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -21,6 +22,7 @@ import {
 import { dataPolicyOf, storedDeep, storedText } from '../lib/data-egress.js';
 import { writtenLangFor } from '../lib/written-lang.js';
 import { withAskedQuestions } from './clarity.js';
+import { pictureFitsKind } from './picture.js';
 import type { RequirementActor } from './read.js';
 import {
   type CriterionInput,
@@ -42,6 +44,8 @@ export interface RevisionWrite {
   fromSuggestionId?: string | undefined;
   /** The language its reason, summary and spec are written in, as declared; absent, derived. */
   writtenLang?: WrittenLang | undefined;
+  /** What the requirement is (REQ-35): absent keeps what is there (the head's, on a new revision), null clears it. */
+  kind?: RequirementKind | null | undefined;
 }
 
 export const specOf = (spec: RequirementSpec | undefined) => spec ?? {};
@@ -193,6 +197,7 @@ export async function createRequirementIn(
     tldr: write.tldr ?? null,
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
+    kind: write.kind ?? null,
     authorId: (input.author ?? actor).userId,
     authorAgency: (input.author ?? actor).agency,
     fromSuggestionId: write.fromSuggestionId ?? null,
@@ -229,8 +234,11 @@ export function newRevisionRow(input: {
   write: RevisionWrite;
   landing: RevisionLanding;
   at: Date;
+  /** What the head carries over: its kind, and its picture where the new revision keeps that kind. */
+  carried?: { kind: RequirementKind | null; pictureId: string | null } | undefined;
 }) {
   const { write, landing } = input;
+  const kind = write.kind === undefined ? (input.carried?.kind ?? null) : write.kind;
   return {
     requirementId: input.requirementId,
     revision: input.revision,
@@ -242,6 +250,8 @@ export function newRevisionRow(input: {
     changeSummary: write.changeSummary ?? null,
     reason: write.reason.trim(),
     fromSuggestionId: write.fromSuggestionId ?? null,
+    kind,
+    pictureId: input.carried && kind === input.carried.kind ? input.carried.pictureId : null,
     state: landing.state,
     proposedAt: landing.state === 'proposed' ? input.at : null,
     proposedBy: landing.state === 'proposed' ? landing.proposedBy : null,
@@ -281,6 +291,20 @@ export async function newRevisionIn(
     .select({ next: sql<number>`coalesce(max(${requirementRevisions.revision}), 0)::int + 1` })
     .from(requirementRevisions)
     .where(eq(requirementRevisions.requirementId, requirementId));
+  // a new revision of the head's kind carries the head's picture until it is redrawn or replaced;
+  // one of another kind starts with none (Requirement lifecycle r14 `revision.written`)
+  const [carried] =
+    input.head === null
+      ? []
+      : await tx
+          .select({ kind: requirementRevisions.kind, pictureId: requirementRevisions.pictureId })
+          .from(requirementRevisions)
+          .where(
+            and(
+              eq(requirementRevisions.requirementId, requirementId),
+              eq(requirementRevisions.revision, input.head),
+            ),
+          );
   await tx.insert(requirementRevisions).values({
     ...newRevisionRow({
       requirementId,
@@ -290,6 +314,10 @@ export async function newRevisionIn(
       write: { ...write, spec: asked.spec },
       landing: input.landing,
       at: new Date(),
+      carried: carried && {
+        kind: (carried.kind as RequirementKind | null) ?? null,
+        pictureId: carried.pictureId,
+      },
     }),
     writtenLang: await writtenLangFor(
       input.actor,
@@ -328,9 +356,12 @@ export async function rewriteRevisionIn(
   });
   if ('refusals' in asked) return asked.refusals;
   const { landing } = input;
+  const kindSet =
+    stored.kind === undefined ? {} : await kindChangeOf(tx, requirementId, revision, stored.kind);
   await tx
     .update(requirementRevisions)
     .set({
+      ...kindSet,
       spec: asked.spec,
       tldr: stored.tldr ?? null,
       changeSummary: stored.changeSummary ?? null,
@@ -357,6 +388,26 @@ export async function rewriteRevisionIn(
     );
   const own = await resetDraftCriteria(tx, requirementId, revision);
   return writeCriteria(tx, requirementId, revision, stored.criteria, own);
+}
+
+/** The kind a rewrite names, and no picture where the one it held was drawn for another kind. */
+async function kindChangeOf(
+  tx: Tx,
+  requirementId: string,
+  revision: number,
+  kind: RequirementKind | null,
+): Promise<{ kind: RequirementKind | null; pictureId?: null }> {
+  const [held] = await tx
+    .select({ pictureId: requirementRevisions.pictureId })
+    .from(requirementRevisions)
+    .where(
+      and(
+        eq(requirementRevisions.requirementId, requirementId),
+        eq(requirementRevisions.revision, revision),
+      ),
+    );
+  const keeps = await pictureFitsKind(tx, held?.pictureId ?? null, kind);
+  return keeps ? { kind } : { kind, pictureId: null };
 }
 
 /** The open (draft or proposed) revision of a requirement, if any. */

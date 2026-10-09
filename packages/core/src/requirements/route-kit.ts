@@ -1,5 +1,6 @@
 import { DECISION_MAKERS, DECISION_MAKERS_SHAPE, REASON_TEXT_MAX } from '@forge/contracts/comments';
 import { ANSWER_VIEWS } from '@forge/contracts/projection';
+import { revisionKindField } from '@forge/contracts/requirement-pictures';
 import { writtenLangSchema } from '@forge/contracts/written-lang';
 import type { Context } from 'hono';
 import { z } from 'zod';
@@ -49,6 +50,7 @@ export const decisionsQuery = zValidator(
 export const revisionFields = {
   reason: z.string().max(REASON_TEXT_MAX),
   spec: specSchema.optional(),
+  kind: revisionKindField,
   tldr: z.string().max(4_000).nullable().optional(),
   changeSummary: z.string().max(4_000).nullable().optional(),
   criteria: z.array(criterionSchema).max(200),

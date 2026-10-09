@@ -77,7 +77,7 @@ requirementRoutes.post(
       ...revisionFields,
       designs: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
     }),
-    '{ title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }], designs?: [flow name or id] } writes REQ-n at revision 1, linked to each design named',
+    '{ title, reason, spec?, kind?: process | rule | screen | report | null, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }], designs?: [flow name or id] } writes REQ-n at revision 1, linked to each design named',
   ),
   holdChatWrite('requirement_draft'),
   async (c) => {
@@ -106,7 +106,7 @@ requirementRoutes.post(
       title: z.string().trim().min(1).max(500),
       ...revisionFields,
     }),
-    '{ contract: "<provider>/<contract>", title, reason, spec?, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } lands a draft requirement in the provider',
+    '{ contract: "<provider>/<contract>", title, reason, spec?, kind?: process | rule | screen | report | null, tldr?, changeSummary?, writtenLang?: en | vi, criteria: [{ body, form? }] } lands a draft requirement in the provider',
   ),
   async (c) => {
     const { contract, title, ...write } = c.req.valid('json');

@@ -1,6 +1,7 @@
 /**
  * The guards of a mockup (MK-n, ISS-78) as pure functions over what the service read: what a
  * proposal may carry, which target it may be about, and who may accept, return or withdraw it.
+ * A requirement is no longer one (REQ-35): its picture is its revision's own.
  * Each refusal is named; nothing is written.
  */
 
@@ -13,7 +14,6 @@ import {
   mockupKindTakes,
   type ProposeMockupRequest,
 } from '@forge/contracts/mockups';
-import type { RevisionState } from '@forge/contracts/requirements';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
 export interface MockupRefusal {
@@ -74,28 +74,18 @@ export function sizeRefusal(kind: MockupKind, size: number): MockupRefusal | nul
   );
 }
 
-// A requirement mockup is proposed against a revision that can still be agreed: a
-// superseded revision is evidence and takes nothing (MOCKUP_REVISION_SUPERSEDED); a current one
-// takes it as an explicitly additive proposal, pinned only by a baseline a person writes after
-// accepting it, so nothing under an agreed baseline changes silently
-export function revisionRefusal(
+// A requirement's picture is its revision's one picture (REQ-35, Requirement lifecycle r14
+// `picture`): shown at once, replaced in place and pinned by no baseline, so a mockup is no longer
+// proposed or accepted about a requirement. One already proposed may still be returned or withdrawn.
+export function requirementTargetRefusal(
   key: string,
+  act: 'propose' | 'accept',
   revision: number,
-  state: RevisionState | null,
-  head: number | null,
-): MockupRefusal | null {
-  if (state === null) {
-    return refusal(
-      'MOCKUP_TARGET_INVALID',
-      '/target/revision',
-      `${key} has no revision ${revision}.`,
-    );
-  }
-  if (state !== 'superseded') return null;
+): MockupRefusal {
   return refusal(
-    'MOCKUP_REVISION_SUPERSEDED',
-    '/target/revision',
-    `${key} revision ${revision} is superseded${head === null ? '' : ` by revision ${head}`}; propose the mockup against revision ${head ?? revision} instead.`,
+    'MOCKUP_TARGET_INVALID',
+    act === 'propose' ? '/target/requirement' : '/target',
+    `${act === 'propose' ? 'a mockup is no longer proposed about' : 'a mockup is no longer accepted on'} ${key}: a requirement's picture is its revision's own, shown at once with no accept and replaced in place (PUT /api/projects/:id/requirements/${key}/revisions/${revision}/picture). Mockups are proposed about a feedback item or an issue.`,
   );
 }
 

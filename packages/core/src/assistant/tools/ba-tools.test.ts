@@ -47,12 +47,9 @@ describe('the BA door as the model is shown it', () => {
     expect(byName('ba_suggest')?.description).toContain('never a key of revision_diff');
   });
 
-  it('shows ba_draw_mockup each shape with its fields, in a schema the provider takes', () => {
-    const schema = JSON.stringify(byName('ba_draw_mockup')?.parameters);
-    expect(schema).toContain('"const":"arrow"');
-    expect(schema).toContain('"const":"text"');
-    expect(schema).not.toContain('"const":"pen"');
-    expect(schema).not.toContain('oneOf');
-    expect(schema).not.toContain('prefixItems');
+  // REQ-35: a requirement's picture is its revision's own, shown at once and pinned by nothing, so
+  // the door offers no tool that queues a requirement mockup for someone to accept
+  it('offers no tool that proposes a requirement mockup', () => {
+    expect(byName('ba_draw_mockup')).toBeUndefined();
   });
 });

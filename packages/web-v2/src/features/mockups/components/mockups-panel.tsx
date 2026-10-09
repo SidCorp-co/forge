@@ -146,7 +146,7 @@ function Row({ projectId, m }: { projectId: string; m: MockupView }) {
             <div className="basis-full">
               <AcceptStep
                 confirmLabel={t("common.mockups.accept")}
-                consequence={m.target.type === "requirement" ? t("common.mockups.acceptRequirement") : t("common.mockups.acceptItem")}
+                consequence={t("common.mockups.acceptItem")}
                 loading={busy}
                 onCancel={() => setAccepting(false)}
                 onConfirm={(why) => act.mutate({ key: m.key, act: "accept", reason: why }, { onSuccess: () => setAccepting(false) })}
@@ -206,16 +206,20 @@ function Propose({ projectId, target }: { projectId: string; target: MockupTarge
   );
 }
 
-/** The Mockups tab of a requirement, a feedback item or an issue; who may act and what is pinned are core's. */
+/**
+ * The Mockups tab of a requirement, a feedback item or an issue; who may act and what is pinned are core's. A
+ * requirement's tab is its earlier mockups as history and takes no proposal: its picture is each revision's own (REQ-35).
+ */
 export function MockupsPanel({ projectId, target, canPropose = true }: { projectId: string; target: MockupTarget; canPropose?: boolean }) {
+  const proposes = canPropose && target.type !== "requirement";
   const q = useMockups(projectId, target);
   const rows = q.data?.mockups ?? [];
   const t = useCopy();
   return (
     <section data-testid="view-mockups" aria-label={t("common.mockups.title")}>
-      <ViewHeading right={canPropose ? <Propose projectId={projectId} target={target} /> : undefined}>{t("common.mockups.title")}</ViewHeading>
+      <ViewHeading right={proposes ? <Propose projectId={projectId} target={target} /> : undefined}>{t("common.mockups.title")}</ViewHeading>
       <p className="mb-3 max-w-[80ch] text-13 text-muted">
-        {target.type === "requirement" ? t("common.mockups.leadRequirement", { r: target.revision }) : t("common.mockups.leadItem")}
+        {target.type === "requirement" ? t("common.mockups.leadRequirement") : t("common.mockups.leadItem")}
       </p>
       {q.isError ? <p className="text-13 text-muted">{formatApiError(q.error)}</p> : null}
       {q.isSuccess && rows.length === 0 ? <p className="text-13 text-subtle">{t("common.mockups.none")}</p> : null}

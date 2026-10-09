@@ -5,8 +5,8 @@
  * `ba_suggest` refused SUGGESTION_BASE_STALE ("the target's head is no revision"), twice of three
  * (REQ-31, REQ-36). The model no longer types a base: the tool takes what this turn's
  * ba_read_requirement returned, and a revision_diff may build on the open draft, whose accept
- * rewrites that draft. Its `ba_draw_mockup` failed twice on REQ-36 with no reason shown; a refused
- * board now answers a refusal that names its code, its shape and the valid form.
+ * rewrites that draft. Its `ba_draw_mockup` queued a requirement mockup for a person to accept;
+ * since REQ-35 a requirement's picture is its revision's own, and the door offers that tool no more.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -281,73 +281,12 @@ describe('the base is what the turn read, never re-read behind its back', () => 
   });
 });
 
-describe('ba_draw_mockup names why a board was refused', () => {
-  const board = (shapes: Doc[]) => ({
-    revision: 1,
-    name: 'Delivery flow',
-    document: { v: 'wireframe-v1', title: 'Delivery flow', shapes },
-  });
-  const frame = { id: 'flow', type: 'frame', x: 20, y: 20, w: 1240, h: 300 };
-  const design = { id: 'design', type: 'button', x: 50, y: 90, w: 145, h: 55, label: 'Design' };
-  const build = { id: 'build', type: 'button', x: 225, y: 90, w: 145, h: 55, label: 'Build' };
-
-  it('REQ-36 attempt 1, a text with no size: refused naming the field', async () => {
-    const tools = await turn(await newRequirement('A board of the flow'));
-    const r = await call(
-      tools,
-      'ba_draw_mockup',
-      board([frame, { id: 'who', type: 'text', x: 55, y: 60, text: 'Developer' }]),
-    );
-    expect(r.isError).toBe(true);
-    expect(r.json.code).toBe('MOCKUP_TYPE_INVALID');
-    expect(r.json.message).toContain('shapes.1.w');
-  });
-
-  it('REQ-36 attempt 2, an arrow end given as a bare id: refused naming the valid form', async () => {
-    const tools = await turn(await newRequirement('A board with arrows'));
-    const r = await call(
-      tools,
-      'ba_draw_mockup',
-      board([frame, design, build, { id: 'a1', type: 'arrow', from: 'design', to: 'build' }]),
-    );
-    expect(r.isError).toBe(true);
-    expect(r.json.message).toContain('shapes.3.from');
-    expect(r.json.message).toContain('{ "id": "design" }');
-  });
-
-  it('REQ-36 attempt 3, an arrow with no ends: refused naming the missing end', async () => {
-    const tools = await turn(await newRequirement('A board with loose arrows'));
-    const r = await call(
-      tools,
-      'ba_draw_mockup',
-      board([frame, design, { id: 'a1', type: 'arrow', x: 195, y: 117, w: 30, h: 2 }]),
-    );
-    expect(r.isError).toBe(true);
-    expect(r.json.message).toContain('shapes.2.from');
-  });
-
-  it('the corrected board is proposed on the open draft', async () => {
-    const tools = await turn(await newRequirement('A board that fits'));
-    const r = await call(
-      tools,
-      'ba_draw_mockup',
-      board([
-        frame,
-        design,
-        build,
-        { id: 'a1', type: 'arrow', from: { id: 'design' }, to: { id: 'build' } },
-      ]),
-    );
-    expect(r.isError, JSON.stringify(r.json)).toBe(false);
-    expect(r.json.mockup.status).toBe('proposed');
-  });
-
-  it('the tool shows the model each shape’s fields', async () => {
-    const tools = await turn(await newRequirement('A board described'));
-    const draw = tools.tools.find((t) => t.function.name === 'ba_draw_mockup');
-    const schema = JSON.stringify(draw?.function.parameters);
-    expect(schema).toContain('"const":"arrow"');
-    expect(schema).not.toContain('prefixItems');
-    expect(schema).not.toContain('oneOf');
+// REQ-35: a requirement's picture is its revision's own (PUT …/revisions/:n/picture), shown at once
+// and pinned by nothing, so the door no longer offers ba_draw_mockup, whose board waited in the
+// mockup queue for a person to accept it
+describe('the BA door draws no requirement mockup into the accept queue', () => {
+  it('offers no ba_draw_mockup', async () => {
+    const tools = await turn(await newRequirement('A board nobody queues'));
+    expect(tools.tools.map((t) => t.function.name)).not.toContain('ba_draw_mockup');
   });
 });

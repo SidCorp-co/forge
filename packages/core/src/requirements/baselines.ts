@@ -1,7 +1,6 @@
-import { and, asc, desc, eq, inArray, lte } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { mockups } from '../db/schema-mockups.js';
 import {
   requirementBaselinePins,
   requirementBaselines,
@@ -39,32 +38,14 @@ export async function latestBaselineIn(tx: Tx, requirementId: string, revision: 
   return { seq: b.seq, readiness: b.readiness, pins };
 }
 
-// A baseline pins every accepted mockup proposed against its revision or an earlier one,
-// beside the designs (ISS-78): a mockup's bytes never change, so the pin is the row
-export async function acceptedMockupIds(
-  tx: Tx,
-  requirementId: string,
-  revision: number,
-): Promise<string[]> {
-  const rows = await tx
-    .select({ id: mockups.id })
-    .from(mockups)
-    .where(
-      and(
-        eq(mockups.requirementId, requirementId),
-        eq(mockups.status, 'accepted'),
-        lte(mockups.revision, revision),
-      ),
-    )
-    .orderBy(asc(mockups.mockupSeq));
-  return rows.map((r) => r.id);
-}
-
 /**
  * The one pin writer: an agree, an accept that re-baselines and a re-pin all pin each linked
  * design's approved revision, each linked contract's current version (none while no version is
- * approved) and each accepted mockup, into the baseline `(revision, seq)` already written. A pinned
- * design that binds a contract no element index reads is refused REQUIREMENT_BINDING_NOT_INDEXED.
+ * approved), into the baseline `(revision, seq)` already written. A pinned design that binds a
+ * contract no element index reads is refused REQUIREMENT_BINDING_NOT_INDEXED. No baseline pins the
+ * requirement's picture or a mockup (Requirement lifecycle r14 `agreed`, Requirement to delivery
+ * r15 `pins`): the picture is replaced in place, so pinning it would move nothing a plan reads. Mockup
+ * pins written before REQ-35 stay as the record of what those baselines agreed.
  */
 export async function writePinsIn(
   tx: Tx,
@@ -99,10 +80,6 @@ export async function writePinsIn(
             },
           ],
     ),
-    ...(await acceptedMockupIds(tx, at.requirementId, at.revision)).map((mockupId) => ({
-      ...base,
-      mockupId,
-    })),
   ];
   if (pins.length) await tx.insert(requirementBaselinePins).values(pins);
   return pins.length;

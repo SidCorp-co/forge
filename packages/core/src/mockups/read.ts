@@ -177,7 +177,8 @@ export async function mockupViews(
       pinned: pin?.mockupIds.has(m.id) ? { revision: pin.revision, seq: pin.seq } : null,
       url: `/api/projects/${projectId}/mockups/${key}/content`,
       can: {
-        accept: open && approver,
+        // a requirement's picture is its revision's own (REQ-35): one waiting on it is returned or withdrawn, never accepted
+        accept: open && approver && type !== 'requirement',
         return: open && approver,
         withdraw: open && m.proposedBy === viewer.userId,
       },

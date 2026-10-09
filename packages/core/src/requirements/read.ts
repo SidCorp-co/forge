@@ -46,6 +46,7 @@ import { deferralOf } from './deferral-read.js';
 import { requirementDependents } from './dependents.js';
 import { historyOf } from './history-read.js';
 import { dedupCheckOf } from './near-duplicate.js';
+import { pictureRowsOf } from './picture-read.js';
 import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { criterionView, revisionView } from './revision-view.js';
@@ -356,6 +357,7 @@ export async function detailOf(
     feedback,
     traces,
     contracts,
+    pictures,
   ] = await Promise.all([
     detailRowsOf(row.id),
     activeIssuePrefix(row.projectId),
@@ -368,6 +370,7 @@ export async function detailOf(
     requirementDependents().feedbackOf(viewer ?? NO_PERSON, row.projectId, row.id, door),
     tracesOf(db, row.id),
     linkedContracts(db, row.id),
+    pictureRowsOf(row.id),
   ]);
   const [bindings, request, questions] = await Promise.all([
     latestBaselineBindingsOf(db, baselines, pins).then((b) =>
@@ -391,6 +394,7 @@ export async function detailOf(
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
+      ...pictures.map((p) => p.writtenBy),
     ]),
     standingsOf(row.projectId, [row], viewerFacts, {
       revisions,
@@ -418,7 +422,7 @@ export async function detailOf(
       latest ? { revision: latest.revision, state: latest.state as RevisionState } : null,
       standing.delivery,
     ),
-    revisions: revisions.map((r) => revisionView(r, criteria, people)),
+    revisions: revisions.map((r) => revisionView(r, criteria, people, pictures)),
     criteria:
       row.currentRevision === null ? [] : liveAt(criteria, row.currentRevision).map(criterionView),
     workflows: designs.map((d) => ({ ...d, title: d.title ?? d.flow })),

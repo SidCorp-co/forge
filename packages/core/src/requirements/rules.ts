@@ -417,7 +417,6 @@ export function repinRefusals(input: {
   pins: readonly BaselinePin[] | null;
   contracts: readonly LinkedContract[];
   contractPins: readonly ContractPin[];
-  mockupsMoved?: boolean;
 }): RequirementRefusal[] {
   const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
   if (deferred) return [deferred];
@@ -448,12 +447,12 @@ export function repinRefusals(input: {
     approved: d.approvedRevision,
   }));
   const contractsMoved = staleContractPinsOf(input.contracts, input.contractPins).length > 0;
-  if (stalePinsOf(positions).length === 0 && !contractsMoved && !input.mockupsMoved) {
+  if (stalePinsOf(positions).length === 0 && !contractsMoved) {
     return [
       {
         code: 'REQUIREMENT_PINS_CURRENT',
         path: '/revision',
-        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision, every linked contract at its current version and every accepted mockup; there is nothing to re-pin.`,
+        detail: `the latest baseline of revision ${input.named} already pins every linked design at its approved revision and every linked contract at its current version; there is nothing to re-pin.`,
       },
     ];
   }

@@ -4,7 +4,6 @@
 import { z } from "zod";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import type { RefusalStatuses } from "./refusal.js";
 
 export const MOCKUP_KINDS = [
 	"wireframe",
@@ -68,8 +67,7 @@ export const MOCKUP_STATUS_GLYPHS: Record<MockupStatus, string> = {
 
 export const MOCKUP_STATUS_HINTS: Record<MockupStatus, string> = {
 	proposed: "proposed: waits on a person to accept or return it",
-	accepted:
-		"accepted: pinned beside the designs at the next agree or re-pin of its requirement",
+	accepted: "accepted: a person accepted it",
 	returned: "returned: a person sent it back with a reason",
 	withdrawn: "withdrawn: its author took it back",
 };
@@ -104,7 +102,6 @@ export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_SOURCE_OTHER_PROJECT",
 	"MOCKUP_SOURCE_NOT_FOUND",
 	"MOCKUP_TARGET_INVALID",
-	"MOCKUP_REVISION_SUPERSEDED",
 	"MOCKUP_QUEUE_FULL",
 	"MOCKUP_DECIDED",
 	...PERMISSION_REFUSAL_CODES,
@@ -112,11 +109,12 @@ export const MOCKUP_REFUSAL_CODES = [
 	"MOCKUP_REASON_REQUIRED",
 ] as const;
 export type MockupRefusalCode = (typeof MOCKUP_REFUSAL_CODES)[number];
-export const MOCKUP_REFUSAL_STATUSES = {
-	MOCKUP_REVISION_SUPERSEDED: 409,
-} as const satisfies RefusalStatuses<MockupRefusalCode>;
 
-/** Exactly one target, as feedback names exactly one: a requirement at one revision, a feedback item, or an issue. */
+/**
+ * Exactly one target, as feedback names exactly one: a feedback item or an issue. A requirement is
+ * still parsed so its proposal is refused by name (MOCKUP_TARGET_INVALID): its picture is its
+ * revision's own (REQ-35), and a mockup is no longer proposed about it.
+ */
 export const mockupTargetSchema = z.union([
 	z.strictObject({
 		requirement: z.string().trim().min(1).max(64),
@@ -145,7 +143,7 @@ export const proposeMockupRequestSchema = z.strictObject({
 });
 export type ProposeMockupRequest = z.infer<typeof proposeMockupRequestSchema>;
 export const PROPOSE_MOCKUP_SHAPE =
-	"{ target: { requirement, revision } | { feedback } | { issue }, kind: wireframe | sketch | image | html | api_example, caption?, and exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? } }";
+	"{ target: { feedback } | { issue }, kind: wireframe | sketch | image | html | api_example, caption?, and exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? } }";
 
 /** `POST …/mockups/:mk/accept | return`: return says why; accept may. */
 export const decideMockupRequestSchema = z.strictObject({

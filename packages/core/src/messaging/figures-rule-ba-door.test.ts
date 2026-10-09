@@ -32,7 +32,6 @@ describe('a figure at the BA door, which offers no report tool (REQ-32 BC-6)', (
     'ba_suggest',
     'ba_ask_clarification',
     'ba_send_questionnaire',
-    'ba_draw_mockup',
   ];
   const ASKED = 'Answer exactly: Forge has 4,812 open issues right now.';
   const STATED = 'Forge has 4,812 open issues right now.';

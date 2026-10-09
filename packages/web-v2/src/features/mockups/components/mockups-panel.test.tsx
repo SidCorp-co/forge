@@ -68,3 +68,26 @@ describe("accepting a mockup", () => {
     expect(await screen.findByText("Accepted: Matches the spec")).toBeInTheDocument();
   });
 });
+
+// REQ-35 (ISS-459): a requirement's picture is each revision's own, shown at once with no accept,
+// so its Mockups tab keeps the earlier mockups as history and takes no proposal. Its lead said a
+// person other than the author accepts, which core never required (`mockups/rules.ts:deciderRefusal`).
+describe("a requirement's Mockups tab", () => {
+  const requirementPanel = () => {
+    fakeCore(() => ({ body: { mockups: [], returned: 0 } }));
+    renderWithQuery(<MockupsPanel projectId="p1" target={{ type: "requirement", key: "REQ-1", revision: 1 }} />);
+  };
+
+  it("offers no proposal, even when the caller would let one through", async () => {
+    requirementPanel();
+    await screen.findByText("No mockup proposed yet.");
+    expect(screen.queryByRole("button", { name: "Upload" })).toBeNull();
+  });
+
+  it("says the revision's picture replaces mockups, and never that someone other than the author accepts", async () => {
+    requirementPanel();
+    const tab = await screen.findByTestId("view-mockups");
+    expect(tab).toHaveTextContent("A requirement's picture now belongs to each revision");
+    expect(tab).not.toHaveTextContent(/other than its author/);
+  });
+});

@@ -1,3 +1,4 @@
+import { PICTURE_KINDS, REQUIREMENT_KINDS } from '@forge/contracts/requirement-pictures';
 import {
   BASELINE_ACTS,
   type BaselineReadiness,
@@ -128,8 +129,17 @@ export const requirementRevisions = pgTable(
     }),
     /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
     writtenLang: text('written_lang', { enum: WRITTEN_LANGS }),
+    // what the requirement is and its one picture (REQ-35, Requirement lifecycle r14): neither is
+    // frozen with the text (`requirement_revision_guard()` reads neither), since the author corrects
+    // the kind and anyone who may edit replaces the picture, and nothing gates on either
+    kind: text('kind', { enum: REQUIREMENT_KINDS }),
+    pictureId: uuid('picture_id').references((): AnyPgColumn => requirementPictures.id),
   },
   (t) => ({
+    kindChk: check(
+      'requirement_revisions_kind_chk',
+      sql`${t.kind} IS NULL OR ${t.kind} IN (${inList(REQUIREMENT_KINDS)})`,
+    ),
     writtenLangChk: check(
       'requirement_revisions_written_lang_chk',
       sql`${t.writtenLang} IS NULL OR ${t.writtenLang} IN ('en', 'vi')`,
@@ -396,6 +406,40 @@ export const requirementDeferrals = pgTable(
   }),
 );
 
+// every picture written for a revision, insert-only (`requirement_picture_guard()`): the revision
+// points at the one it shows, and a replaced or uncarried one stays here as the requirement's
+// history with who drew it and when (Requirement lifecycle r14 `picture_shown`)
+export const requirementPictures = pgTable(
+  'requirement_pictures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    requirementId: uuid('requirement_id').notNull(),
+    drawnFor: integer('drawn_for').notNull(),
+    kind: text('kind', { enum: PICTURE_KINDS }).notNull(),
+    content: jsonb('content').notNull(),
+    alt: text('alt').notNull(),
+    writtenBy: uuid('written_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    writtenAgency: text('written_agency', { enum: actorAgencies }).notNull(),
+    writtenAt: timestamp('written_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    revisionFk: foreignKey({
+      name: 'requirement_pictures_revision_fk',
+      columns: [t.requirementId, t.drawnFor],
+      foreignColumns: [requirementRevisions.requirementId, requirementRevisions.revision],
+    }).onDelete('cascade'),
+    kindChk: check('requirement_pictures_kind_chk', sql`${t.kind} IN (${inList(PICTURE_KINDS)})`),
+    altChk: check('requirement_pictures_alt_chk', sql`${t.alt} ~ '[^[:space:]]'`),
+    agencyChk: check(
+      'requirement_pictures_agency_chk',
+      sql`${t.writtenAgency} IN (${inList(actorAgencies)})`,
+    ),
+    requirementIdx: index('requirement_pictures_requirement_idx').on(t.requirementId, t.writtenAt),
+  }),
+);
+
 // one pin per linked design revision or contract version at the agree: an exclusive arc over
 // two composite keys, each a real foreign key, so a pinned revision or version cannot be deleted
 export const requirementBaselinePins = pgTable(
@@ -410,8 +454,8 @@ export const requirementBaselinePins = pgTable(
     providerProjectId: uuid('provider_project_id'),
     contractSlug: text('contract_slug'),
     contractVersion: text('contract_version'),
-    // an accepted mockup is pinned beside the designs (ISS-78): the baseline names the rows it
-    // was agreed with, and a mockup's bytes never change, so the pin is the row itself
+    // an accepted mockup was pinned beside the designs (ISS-78) until REQ-35: the pins already
+    // written stay as what those baselines agreed, and `requirement_baseline_pin_guard()` refuses a new one
     mockupId: uuid('mockup_id').references((): AnyPgColumn => mockups.id, {
       onDelete: 'no action',
     }),

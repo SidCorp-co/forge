@@ -1,6 +1,7 @@
 /**
- * The history a requirement's page reads: its revisions, agrees and suggestions, its own moves to
- * accepted and dropped, and the decisions, questions and status moves recorded on its linked issues.
+ * The history a requirement's page reads: its revisions, agrees, suggestions and pictures, its
+ * own moves to accepted and dropped, and the decisions, questions and status moves recorded on its
+ * linked issues.
  */
 
 import { issueUpdatedAsChanges } from '@forge/contracts/field-changes';
@@ -19,6 +20,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { type PictureRow, pictureRowsOf } from './picture-read.js';
 
 const SUGGESTION_LABEL: Record<string, SaidPlainKey> = {
   requirement_draft: 'requirements.history.what.requirement_draft',
@@ -161,6 +163,30 @@ function revisionEntries(r: RevisionRow, n: Namer): RequirementHistoryEntry[] {
     );
   }
   return out;
+}
+
+// Each picture written is its own row (requirement_pictures), so a replaced one stays here with who
+// drew it and when (Requirement lifecycle r14 `picture_shown`); a picture is a replace where one was
+// already drawn for the same revision
+function pictureEntries(pictures: readonly PictureRow[], n: Namer): RequirementHistoryEntry[] {
+  const drawn = new Set<number>();
+  return pictures.map((p) => {
+    const replaced = drawn.has(p.drawnFor);
+    drawn.add(p.drawnFor);
+    return entry({
+      id: `picture-${p.id}`,
+      at: p.writtenAt.toISOString(),
+      source: p.writtenAgency === 'agent' ? 'agent' : 'person',
+      who: n.who(p.writtenBy, SOMEONE),
+      kind: say('requirements.history.kind.Picture'),
+      text: say(
+        replaced
+          ? 'requirements.history.text.pictureReplaced'
+          : 'requirements.history.text.pictureDrawn',
+        { r: p.drawnFor, rest: p.alt },
+      ),
+    });
+  });
 }
 
 // Each return is its own row (requirement_returns), stamped by whoever returned it when they
@@ -432,9 +458,12 @@ export async function historyOf(
   requirementId: string,
   projectId: string,
 ): Promise<RequirementHistoryEntry[]> {
-  const { revisions, baselines, returns, deferrals, moves, suggested, activity, keyOf } =
-    await historyRows(requirementId, projectId);
+  const [
+    { revisions, baselines, returns, deferrals, moves, suggested, activity, keyOf },
+    pictures,
+  ] = await Promise.all([historyRows(requirementId, projectId), pictureRowsOf(requirementId)]);
   const people = await peopleOf([
+    ...pictures.map((p) => p.writtenBy),
     ...revisions.flatMap((r) => [r.authorId, r.proposedBy, r.decidedBy]),
     ...baselines.map((b) => b.agreedBy),
     ...returns.map((r) => r.returnedBy),
@@ -455,6 +484,7 @@ export async function historyOf(
     ...baselines.map((b) => baselineEntry(b, n)),
     ...returns.map((r) => returnEntry(r, n)),
     ...deferrals.map((d) => deferralEntry(d, n)),
+    ...pictureEntries(pictures, n),
     ...moves.map((m) => moveEntry(m, n)),
     ...suggested.flatMap((s) => suggestionEntries(s, n)),
     ...activity.flatMap((a) => activityEntry(a, keyOf.get(a.issueId) ?? null, n) ?? []),

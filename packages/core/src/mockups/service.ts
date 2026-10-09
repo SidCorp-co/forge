@@ -1,6 +1,6 @@
 /**
- * The writes of mockups (MK-n, ISS-78): a person or an agent proposes one about exactly one target,
- * a holder of mockups.approve accepts it or returns it with a reason, and its author
+ * The writes of mockups (MK-n, ISS-78): a person or an agent proposes one about a feedback item or
+ * an issue, a holder of mockups.approve accepts it or returns it with a reason, and its author
  * may withdraw it while it waits. Each write runs in one transaction under the project's mockup
  * lock and returns its refusals; the bytes reach the one store before the row is written.
  */
@@ -8,11 +8,11 @@
 import { randomUUID } from 'node:crypto';
 import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
 import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
-import type { RevisionState } from '@forge/contracts/requirements';
+import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { mockups } from '../db/schema-mockups.js';
-import { requirementRevisions, requirements } from '../db/schema-requirements.js';
+import { requirements } from '../db/schema-requirements.js';
 import { feedbackRefIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
 import { getStorage } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -27,8 +27,8 @@ import {
   deciderRefusal,
   type MockupRefusal,
   queueRefusal,
+  requirementTargetRefusal,
   returnReasonRefusal,
-  revisionRefusal,
   withdrawRefusal,
 } from './rules.js';
 
@@ -41,8 +41,6 @@ async function lockMockups(tx: Tx, projectId: string): Promise<void> {
 }
 
 interface Target {
-  requirementId: string | null;
-  revision: number | null;
   feedbackId: string | null;
   issueId: string | null;
   label: string;
@@ -60,7 +58,7 @@ async function resolveMockupTarget(
   target: MockupTargetInput,
   userId: string,
 ): Promise<Target | MockupRefusal> {
-  const none = { requirementId: null, revision: null, feedbackId: null, issueId: null };
+  const none = { feedbackId: null, issueId: null };
   if ('issue' in target) {
     const issue = await issueRefIn(projectId, target.issue, userId, '/target/issue');
     if ('code' in issue) return invalidTarget(issue.path, issue.detail);
@@ -73,34 +71,7 @@ async function resolveMockupTarget(
   }
   const req = await requirementRefIn(projectId, target.requirement, '/target/requirement');
   if ('code' in req) return invalidTarget(req.path, req.detail);
-  const [[rev], [head]] = await Promise.all([
-    db
-      .select({ state: requirementRevisions.state })
-      .from(requirementRevisions)
-      .where(
-        and(
-          eq(requirementRevisions.requirementId, req.id),
-          eq(requirementRevisions.revision, target.revision),
-        ),
-      ),
-    db
-      .select({ current: requirements.currentRevision })
-      .from(requirements)
-      .where(eq(requirements.id, req.id)),
-  ]);
-  const refused = revisionRefusal(
-    req.key,
-    target.revision,
-    (rev?.state as RevisionState | undefined) ?? null,
-    head?.current ?? null,
-  );
-  if (refused) return refused;
-  return {
-    ...none,
-    requirementId: req.id,
-    revision: target.revision,
-    label: `${req.key} r${target.revision}`,
-  };
+  return requirementTargetRefusal(req.key, 'propose', target.revision);
 }
 
 async function answer(
@@ -118,11 +89,7 @@ async function answer(
 const openOn = (t: Target) =>
   and(
     eq(mockups.status, 'proposed'),
-    t.requirementId
-      ? eq(mockups.requirementId, t.requirementId)
-      : t.feedbackId
-        ? eq(mockups.feedbackId, t.feedbackId)
-        : eq(mockups.issueId, t.issueId ?? ''),
+    t.feedbackId ? eq(mockups.feedbackId, t.feedbackId) : eq(mockups.issueId, t.issueId ?? ''),
   );
 
 /** A person or an agent proposes a mockup about one target. */
@@ -161,8 +128,6 @@ export async function proposeMockup(input: {
       .values({
         projectId,
         mockupSeq: next,
-        requirementId: target.requirementId,
-        revision: target.revision,
         feedbackId: target.feedbackId,
         issueId: target.issueId,
         kind: content.kind,
@@ -230,7 +195,15 @@ async function deciderFor(
   return deciderRefusal(await permissionFactsOf(actor.userId, projectId), key, act);
 }
 
-/** A holder of mockups.approve accepts a proposed mockup, its author included. */
+async function requirementKeyOf(requirementId: string): Promise<string> {
+  const [req] = await db
+    .select({ seq: requirements.reqSeq })
+    .from(requirements)
+    .where(eq(requirements.id, requirementId));
+  return req ? requirementKey(req.seq) : requirementId;
+}
+
+/** A holder of mockups.approve accepts a proposed mockup about a feedback item or an issue, its author included. */
 export function acceptMockup(input: {
   projectId: string;
   ref: string;
@@ -241,7 +214,14 @@ export function acceptMockup(input: {
     input.projectId,
     input.ref,
     input.actor,
-    (_row, key) => deciderFor(input.actor, input.projectId, key, 'accept'),
+    async (row, key) =>
+      row.requirementId !== null && row.revision !== null
+        ? requirementTargetRefusal(
+            await requirementKeyOf(row.requirementId),
+            'accept',
+            row.revision,
+          )
+        : deciderFor(input.actor, input.projectId, key, 'accept'),
     { status: 'accepted', reason: input.reason?.trim() || null },
   );
 }

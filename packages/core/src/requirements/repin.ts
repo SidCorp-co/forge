@@ -7,7 +7,7 @@ import {
   requirementRevisions,
   requirements,
 } from '../db/schema-requirements.js';
-import { acceptedMockupIds, latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
+import { latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { repinRefusals } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
@@ -17,8 +17,8 @@ import { answer, inTx, lockRequirements, type RequirementOutcome } from './write
 // revision pinning each linked design's approved revision and each linked contract's current
 // version, with no text revision; the earlier baseline stays, and an issue whose plan read it
 // reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
-// the agree recorded carries over (ISS-86, ISS-98); a mockup accepted after the agree is pinned the
-// same way, beside the designs (ISS-78)
+// the agree recorded carries over (ISS-86, ISS-98); no picture or mockup is pinned, so neither makes
+// a re-pin due (Requirement lifecycle r14 `agreed`)
 export async function repinRequirement(input: {
   projectId: string;
   ref: string;
@@ -50,8 +50,6 @@ export async function repinRequirement(input: {
     const designs = await linkedDesigns(tx, row.id);
     const contracts = await linkedContracts(tx, row.id);
     const latest = head === null ? null : await latestBaselineIn(tx, row.id, head);
-    const accepted = head === null ? [] : await acceptedMockupIds(tx, row.id, head);
-    const pinnedMockups = new Set(latest?.pins.flatMap((p) => (p.mockupId ? [p.mockupId] : [])));
     const refused = repinRefusals({
       status: current.status as RequirementStatus,
       named: input.revision,
@@ -77,8 +75,6 @@ export async function repinRequirement(input: {
               ]
             : [],
         ) ?? [],
-      mockupsMoved:
-        accepted.length !== pinnedMockups.size || accepted.some((id) => !pinnedMockups.has(id)),
     });
     if (refused.length || head === null || !latest) return refused;
     const seq = latest.seq + 1;

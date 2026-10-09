@@ -33,7 +33,6 @@ const OFFERED = [
   'ba_suggest',
   'ba_ask_clarification',
   'ba_send_questionnaire',
-  'ba_draw_mockup',
 ];
 const READ = '{"key":"REQ-32","currentRevision":1}';
 const SIMILAR = '{"status":"ok","similar":[{"key":"REQ-32","similarity":0.842}]}';

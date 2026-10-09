@@ -956,6 +956,7 @@
         "requirementCriteria",
         "requirementCriterionSteps",
         "requirementDeferrals",
+        "requirementPictures",
         "requirementReturns",
         "requirementRevisions",
         "requirementWorkflows",
@@ -964,6 +965,7 @@
       "serves": [
         "REQ-4",
         "REQ-1",
+        "REQ-35",
         "requirement-lifecycle#agreed",
         "requirement-lifecycle#accepted",
         "requirement-lifecycle#deferred",

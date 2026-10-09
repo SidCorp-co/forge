@@ -15,6 +15,7 @@ import type {
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import type { RequirementKind, RequirementPictureView } from "./requirement-pictures.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type {
 	Standing,
@@ -629,6 +630,9 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"CRITERION_CODE_DUPLICATE",
 	"CRITERION_SCENARIO_UNPARSEABLE",
 	"CRITERIA_DOCUMENT_REFUSED",
+	"REQUIREMENT_PICTURE_KIND_MISMATCH",
+	"REQUIREMENT_PICTURE_ROW_INCOMPLETE",
+	"REQUIREMENT_PICTURE_ALT_REQUIRED",
 	"REQUIREMENT_REFUSED",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
@@ -782,6 +786,10 @@ export interface RequirementRevision {
 	fromSuggestionId: string | null;
 	/** The language its reason, summary and spec were written in; null when written before it was kept. */
 	writtenLang: WrittenLang | null;
+	/** What it is (REQ-35): named by the draft, corrected by its author; null while none is named. */
+	kind: RequirementKind | null;
+	/** Its one picture, a rough sketch fitting its kind, shown with no accept; null while none is drawn. */
+	picture: RequirementPictureView | null;
 	criteria: RequirementCriterion[];
 }
 
