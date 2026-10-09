@@ -1,1 +1,0 @@
-**The project home opens on chat.** The conversation leads the page, with flat Needs you, Running and At risk tables beside it (below on a phone); Needs you is the decisions list the chat answers from, with its buttons.

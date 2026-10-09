@@ -1,1 +1,0 @@
-**Live preview has a design and shared contracts.** The record, its lifecycle, failure reasons, tunnel frames, project setting with detection from package.json, and the fast-lane rule that keeps kernel, migrations, permissions and security on full gates.
