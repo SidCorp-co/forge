@@ -2,7 +2,7 @@
 
 import { builtinReportTemplate } from "@forge/contracts/report-template-builtins";
 import type { ReportDocument, TemplateNarrativeSlot } from "@forge/contracts/report-templates";
-import type { ShareSnapshot } from "@forge/contracts/shares";
+import { isReleaseShare, type ShareSnapshot } from "@forge/contracts/shares";
 import type { BlockSource } from "@forge/contracts/visual-blocks";
 import { useQuery } from "@tanstack/react-query";
 import { Markdown, Skeleton } from "@/design";
@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api/client";
 import { type SourceFacts, VisualBlockProvider, VisualBlockView } from "@/features/visual-blocks";
 import { useBlockInstants } from "@/features/visual-blocks/instants";
 import { readProseInstants } from "@/lib/i18n/instants";
+import { SharedReleaseView } from "@/features/releases/components/shared-release";
 import { openShare } from "../api";
 
 const NARRATIVE: readonly { slot: TemplateNarrativeSlot; label: string }[] = [
@@ -107,7 +108,7 @@ export function SharedAnswerView({ snapshot }: { snapshot: ShareSnapshot }) {
   );
 }
 
-/** The page body of `/s/<token>`: waits for the session to be known, then opens the share once. */
+/** The page body of `/s/<token>`: waits for the session to be known, then opens the share once; a frozen release page reads as the release reader does. */
 export function SharedAnswer({ token, signedIn }: { token: string; signedIn: boolean | null }) {
   const opened = useQuery({
     queryKey: ["share", token, signedIn],
@@ -126,5 +127,5 @@ export function SharedAnswer({ token, signedIn }: { token: string; signedIn: boo
     );
   }
   if (!opened.data) return <Skeleton className="h-40 w-full" />;
-  return <SharedAnswerView snapshot={opened.data} />;
+  return isReleaseShare(opened.data) ? <SharedReleaseView snapshot={opened.data} /> : <SharedAnswerView snapshot={opened.data} />;
 }

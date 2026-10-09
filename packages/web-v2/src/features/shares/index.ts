@@ -7,3 +7,4 @@ export { SaveTemplateReport } from "./components/save-template-report";
 export { ShareList } from "./components/share-list";
 export { STATUS_REPORTS_ROOT, useSaveTemplateReport } from "./hooks";
 export { shareSubjectOf, type TemplateSave, templateSaveOf } from "./subject";
+export { ShareDialog } from "./components/share-dialog";

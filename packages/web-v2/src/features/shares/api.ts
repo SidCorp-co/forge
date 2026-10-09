@@ -3,16 +3,17 @@ import type {
   ShareCreate,
   ShareCreated,
   ShareLinkView,
-  ShareSnapshot,
+  ShareOpened,
 } from "@forge/contracts/shares";
 import { apiClient } from "@/lib/api/client";
 
 /**
  * Opens a share by its token, which travels in the body and never in a path. A signed-in reader
  * goes through the member door, which also serves a link share; anyone else through the open one.
+ * A frozen report answers `{ document }`, a frozen release page `{ release }` (`isReleaseShare`).
  */
-export function openShare(token: string, signedIn: boolean): Promise<ShareSnapshot> {
-  return apiClient<ShareSnapshot>(signedIn ? "/shares/open/member" : "/shares/open", {
+export function openShare(token: string, signedIn: boolean): Promise<ShareOpened> {
+  return apiClient<ShareOpened>(signedIn ? "/shares/open/member" : "/shares/open", {
     method: "POST",
     body: JSON.stringify({ token }),
   });

@@ -3,8 +3,8 @@
 // brackets; a note whose sentence itself carries an engineer's handle is held back, named, for its
 // writer to rewrite, never cut into a broken sentence. An issue whose title names another issue of
 // the same release ships that issue's change (a publish or a carrier), so its line folds into the
-// change it ships; two notes that say the same thing keep one line. Read by the release page, which
-// copies or exports what this returns.
+// change it ships; two notes that say the same thing keep one line. Read by the release page
+// (`packages/core/src/release-page/sections.ts`), which gathers its improvements and fixes from it.
 
 import { releaseNoteReferences } from "./content-language.js";
 import type { ReleaseNoteSection } from "./releases.js";
@@ -92,17 +92,6 @@ export function customerNotes(
 		if (lines.length > 0) out.push({ section: s.section, lines });
 	}
 	return { sections: out, folded, held };
-}
-
-/** The view as Markdown to copy or save: the version as its heading, then each section's lines. */
-export function customerNotesText(
-	version: string,
-	view: CustomerNotesView,
-): string {
-	const parts = [`# ${version}`, ""];
-	for (const s of view.sections)
-		parts.push(`## ${s.section}`, ...s.lines.map((l) => `- ${l}`), "");
-	return parts.join("\n");
 }
 
 // words a user-facing line uses when the build it describes is a demo, a dev build or runs on test
