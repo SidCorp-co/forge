@@ -14,6 +14,8 @@
  *                                                                               CONTRACT_WAIT_UNSETTLED
  *   approved           plan and criteria written; the actor holds `plans.approve`  PLAN_REQUIRED
  *                      where the project document sets `plan.approval.required`
+ *                      the design passes the design check (`design-record.ts`)  DESIGN_RECORD_MISSING,
+ *                                                                               DESIGN_RECORD_INCOMPLETE
  *   awaiting_release   the run holding it makes the move, or a holder of          NOT_THE_HOLDER
  *                      `releases.approve` or `project.admin` does
  *                      the merge is recorded (a landing moves no status)          MERGE_NOT_RECORDED
@@ -59,9 +61,11 @@ import {
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
+import { designCheckOf } from './design-record.js';
 import { mergeNotRecorded } from './merged-at.js';
 import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pattern-entry.js';
-import { patternReleaseRefusal } from './patterns.js';
+import type { CatalogReading } from './pattern-rules.js';
+import { catalogOf, patternReleaseRefusal } from './patterns.js';
 import { readProjectDocument } from './ports.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
@@ -110,6 +114,8 @@ interface IssueMoveFacts {
   holdOverride: HoldOverride | null;
   /** The move to awaiting_release: the issue's approved new patterns and the change its mark names. */
   patternEntry: MoveEntryFacts | null;
+  /** The move to approved: the pattern catalog the project reads, which the design check asks. */
+  catalog: CatalogReading | null;
 }
 
 const HOLD_OVERRIDES = ['releases.approve', 'project.admin'] as const;
@@ -160,6 +166,7 @@ export async function readIssueMoveFacts(args: {
     planApprovalRequired: document?.plan?.approval.required === true,
     permissions: await permissionFactsOf(args.actorUserId, issue.projectId),
     patternEntry: args.to === 'awaiting_release' ? await readMoveEntryFacts(issue) : null,
+    catalog: args.to === 'approved' ? await catalogOf(issue.projectId) : null,
   };
 }
 
@@ -292,6 +299,21 @@ async function planGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
+ * approved, after the design step (Issue lifecycle r15): what the checkpoint approves is a design
+ * that passed the design check, and a claim from approved resumes at build. A recovery edge back to
+ * approved does not name this guard: a run ending hands the issue back whatever it recorded.
+ */
+async function designGuard(ctx: GuardContext): Promise<GuardFault | null> {
+  const check = await designCheckOf(ctx.executor, ctx.issue, ctx.facts.catalog ?? undefined);
+  if (check.passed) return null;
+  return {
+    code: check.code,
+    detail: check.detail,
+    details: { from: ctx.from, to: ctx.to, missing: check.missing },
+  };
+}
+
+/**
  * closed from awaiting_release: a release closes what it claimed (`issues.release_batch_run_id`); a
  * design-only issue needs none, its approved revisions being what shipped (REQ-45 BC-4).
  */
@@ -301,7 +323,8 @@ async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
   )) as unknown as Array<{ release_batch_run_id: string | null }>;
   if (rows[0]?.release_batch_run_id) return null;
   const design = await readDesignDelivery(ctx);
-  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0) return null;
+  if (design.designOnly && design.unapproved.length === 0 && design.approved.length > 0)
+    return null;
   return {
     code: 'CLOSE_ONLY_BY_RELEASE',
     detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
@@ -331,15 +354,25 @@ async function readDesignDelivery(ctx: GuardContext): Promise<DesignDelivery> {
                       WHERE d.design_issue_id = i.id AND d.decision = 'approve'), '{}') AS approved,
            ${designHeldSql(sql`i.id`)} AS held
       FROM issues i WHERE i.id = ${ctx.issue.id}
-  `)) as unknown as Array<{ design_only: boolean; marked: string[]; approved: string[]; held: boolean }>;
+  `)) as unknown as Array<{
+    design_only: boolean;
+    marked: string[];
+    approved: string[];
+    held: boolean;
+  }>;
   const row = rows[0];
   if (!row) return { designOnly: false, marked: [], approved: [], unapproved: [] };
   const unapproved = row.held
-    ? (((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
+    ? ((await designHoldsOf(ctx.executor, [ctx.issue.id])).get(ctx.issue.id) ?? []).map(
         (h) => `${h.flow} rev ${h.revision}`,
-      ))
+      )
     : [];
-  return { designOnly: row.design_only === true, marked: row.marked, approved: row.approved, unapproved };
+  return {
+    designOnly: row.design_only === true,
+    marked: row.marked,
+    approved: row.approved,
+    unapproved,
+  };
 }
 
 function designShortfall(d: DesignDelivery): string {
@@ -357,7 +390,14 @@ async function designDeliveredGuard(ctx: GuardContext): Promise<GuardFault | nul
   return {
     code: 'DESIGN_NOT_DELIVERED',
     detail: `${quote(ctx.from)} → \`closed\` is the close of an issue whose only deliverable is a design, once its design revisions are approved, and ${why}. An issue that ships code moves to \`awaiting_release\` and closes through its release.`,
-    details: { from: ctx.from, to: ctx.to, designOnly: d.designOnly, marked: d.marked, approved: d.approved, unapproved: d.unapproved },
+    details: {
+      from: ctx.from,
+      to: ctx.to,
+      designOnly: d.designOnly,
+      marked: d.marked,
+      approved: d.approved,
+      unapproved: d.unapproved,
+    },
   };
 }
 
@@ -408,6 +448,7 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
       return refusalOf((await heldTakeGuard(ctx)) ?? (await holderGuard(ctx)));
     },
     plan_checkpoint: async (input) => refusalOf(await planGuard(ctxOf(input))),
+    design: async (input) => refusalOf(await designGuard(ctxOf(input))),
     run_holder: async (input) => refusalOf(await runHolderGuard(ctxOf(input))),
     merged: async (input) => {
       const missing = await mergeNotRecorded(input.tx, { issueId: input.row.id, to: input.to });

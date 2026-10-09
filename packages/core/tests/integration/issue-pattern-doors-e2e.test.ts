@@ -6,9 +6,10 @@
  *   case here goes red when its door stops asking.
  * - A pattern a run named is refused only to that run. Another run on the same box account, or a
  *   person, decides it.
- * - An issue that names no pattern walks open → run session → in_progress → build →
+ * - An issue that names no pattern walks open → run session → in_progress → design → build →
  *   awaiting_release through the routes with no PATTERN_* refusal. This holds on a project declaring
- *   this repository, on one declaring another, and on one with no project document.
+ *   this repository (its design cites a catalogued entry, which names no pattern row), on one
+ *   declaring another, and on one with no project document (their designs cite none).
  * - The read says whether a project reads a catalog, and the served guide tells a run to read it.
  */
 
@@ -24,6 +25,7 @@ import {
   bindTestRunner,
   createTestDevice,
   createTestIssue,
+  createTestModule,
   createTestProject,
   createTestUser,
   rows,
@@ -72,6 +74,7 @@ beforeAll(async () => {
   const repositories = { forge: THIS_REPOSITORY, other: 'github.com/acme/shop', nodoc: null };
   for (const name of ['forge', 'other', 'nodoc'] as const) {
     const id = await projectBuiltFrom(admin.id, repositories[name]);
+    await createTestModule(id, 'issues');
     await addProjectMember(id, admin.id, 'admin');
     await addProjectMember(id, author.id, 'member');
     const box = await createTestDevice(admin.id);
@@ -96,7 +99,12 @@ afterAll(async () => {
   await closeWorld();
 });
 
-async function call(token: string, method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown) {
+async function call(
+  token: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT',
+  path: string,
+  body?: unknown,
+) {
   const res = await api(token, method, path, body, { 'X-Forge-Lifecycle': '10' });
   return { status: res.status, body: res.body as Doc } as Res;
 }
@@ -295,7 +303,7 @@ describe('a pattern a run named is decided by anyone holding patterns.approve bu
 
 describe('an issue that names no pattern', () => {
   for (const name of ['forge', 'other', 'nodoc'] as const) {
-    it(`moves open → run session → in_progress → build → awaiting_release on the ${name} project with no PATTERN_* refusal`, async () => {
+    it(`moves open → run session → in_progress → design → build → awaiting_release on the ${name} project with no PATTERN_* refusal`, async () => {
       const w = worlds[name];
       const { id, key } = await issueAt(w, 'open');
       const seen: Res[] = [];
@@ -307,16 +315,30 @@ describe('an issue that names no pattern', () => {
         seen.push(toProgress);
         expect(toProgress.status).toBe(200);
       }
-      const build = await call(adminToken, 'PATCH', `/api/issues/${id}`, {
-        workState: { step: 'build' },
-      });
-      seen.push(build);
-      expect(build.status).toBe(200);
       seen.push(
         await call(adminToken, 'PATCH', `/api/issues/${id}`, {
           acceptanceCriteria: '1. It holds.',
         }),
       );
+      const design = await call(adminToken, 'PUT', `/api/issues/${id}/design`, {
+        criteria: [
+          {
+            criterion: 1,
+            class: 'observable',
+            pattern: name === 'forge' ? 'api-route' : null,
+            proof: 'call the route',
+          },
+        ],
+        modules: ['issues'],
+        contracts: [],
+      });
+      seen.push(design);
+      expect(design.status).toBe(200);
+      const build = await call(adminToken, 'PATCH', `/api/issues/${id}`, {
+        workState: { step: 'build' },
+      });
+      seen.push(build);
+      expect(build.status).toBe(200);
       await db.execute(
         sql`UPDATE issues SET merged_at = now(), merged_commit_sha = ${SHA} WHERE id = ${id}`,
       );

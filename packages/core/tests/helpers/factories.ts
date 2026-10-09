@@ -137,6 +137,14 @@ export async function bindTestRunner(
   return id;
 }
 
+/** A module label of the project, which an issue's design names among the modules it touches. */
+export async function createTestModule(projectId: string, name: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO labels (project_id, name, color, kind, slug)
+    VALUES (${projectId}, ${name}, '#888888', 'module', ${name})
+  `);
+}
+
 /**
  * Seeds a status under the kernel's transaction flag (`db/kernel-marker.ts`): for a case whose
  * subject is what a reader does with a row at that status, not how the row got there.

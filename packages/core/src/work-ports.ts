@@ -251,6 +251,7 @@ export function provideWorkPorts(): void {
     policyGapsOf,
     contractDrift: async (issue, landed) =>
       landingDriftRefusal(landed, await landingWorld(issue, landed)),
+    contractAboutRefusal,
     guideRef,
     deleteMemory,
     getStorage,

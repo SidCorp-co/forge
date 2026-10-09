@@ -100,6 +100,7 @@ issueCriteriaRoutes.post(
         reason: body.reason ?? null,
         identity: body.identity ?? null,
         evidence: body.evidence ?? [],
+        judge: body.judge,
       },
       author: {
         userId: c.get('userId'),

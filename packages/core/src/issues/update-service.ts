@@ -10,14 +10,20 @@ import { emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import { refuseHeldTake } from './blocked-by.js';
 import { syncCriteriaFromText } from './criteria/store.js';
+import { assertDesignPasses } from './design-record.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import { scrubIssueText } from './patch-fields.js';
-import { assertNoUnansweredReturn, assertPatternReviewsSettledForIssue } from './patterns.js';
+import {
+  assertNoUnansweredReturn,
+  assertPatternReviewsSettledForIssue,
+  catalogOf,
+} from './patterns.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
 import { leaseWriteTakes } from './session-claim.js';
 import type { SessionContextExpect } from './session-context.js';
 import {
+  readWorkState,
   splitSessionContext,
   type WorkStateWrite,
   writeSplitSessionContext,
@@ -26,7 +32,7 @@ import {
 
 const refuse = refuser<IssueUpdateRefusalCode>('ISSUE_UPDATE_REFUSED');
 
-/** The steps a new pattern awaiting its reviewer, or an unanswered return, holds the work out of. */
+/** The steps the design check, a new pattern awaiting its reviewer or an unanswered return holds the work out of. */
 const BUILD_STEPS: readonly string[] = ['build', 'test', 'release'];
 
 type IssueUpdateInput = {
@@ -78,6 +84,12 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     after: scrubIssueText(level, input.changes.after),
   };
 
+  // the design check reads the project's catalog off the project document: read before the row lock
+  const catalog =
+    scope && workState?.step && BUILD_STEPS.includes(workState.step)
+      ? await catalogOf(scope.projectId)
+      : undefined;
+
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);
     if (!current) throw notFound('issue not found');
@@ -108,11 +120,16 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       await writeSplitSessionContext(tx, issueId, split);
     }
     if (workState) {
-      // a new pattern awaiting its reviewer, or a return the issue has not answered, holds the work
-      // at design (Issue lifecycle r14 design-check)
+      // a new pattern awaiting its reviewer, a return the issue has not answered, or a design that
+      // is missing or incomplete holds the work at design (Issue lifecycle r15 design-check)
       if (scope && workState.step && BUILD_STEPS.includes(workState.step)) {
         await assertPatternReviewsSettledForIssue(scope.projectId, issueId, tx);
         await assertNoUnansweredReturn(issueId, tx);
+        // a write naming the step the work is already at moves nothing, so it asks no design check
+        // (a run at build recording its head is not a move into build)
+        if ((await readWorkState(tx, issueId))?.step !== workState.step) {
+          await assertDesignPasses(tx, { id: issueId, projectId: scope.projectId }, catalog);
+        }
       }
       await writeWorkStateFields(tx, issueId, workState);
     }

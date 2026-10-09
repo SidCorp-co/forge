@@ -74,6 +74,7 @@ import {
   issueCheckRunRoutes,
   issueCriteriaRoutes,
   issueDependencyRoutes,
+  issueDesignRoutes,
   issueExtrasRoutes,
   issueGraphRoutes,
   issueMergeRoutes,
@@ -120,9 +121,10 @@ import {
   issuePreviewRoutes,
   previewRoutes,
   projectPreviewRoutes,
+  projectRoomRoutes,
   recordingRoutes,
+  roomRoutes,
 } from './previews/routes.js';
-import { projectRoomRoutes, roomRoutes } from './previews/room-routes.js';
 import {
   contentLanguageRoutes,
   environmentStateRoutes,
@@ -236,6 +238,7 @@ function mountEcosystemRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', contractStandingRoutes);
   app.route('/api/issues', contractWaitRoutes);
   app.route('/api/issues', issuePatternRoutes);
+  app.route('/api/issues', issueDesignRoutes);
   app.route('/api/ecosystems', ecosystemRoutes);
   app.route('/api/ecosystems', busRoutes);
   app.route('/api/memberships', membershipRoutes);

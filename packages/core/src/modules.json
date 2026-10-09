@@ -521,6 +521,8 @@
         "issueAttachments",
         "issueCheckRuns",
         "issueContractWaits",
+        "issueDesignCriteria",
+        "issueDesigns",
         "issuePatterns",
         "issueCriteria",
         "issueDependencies",

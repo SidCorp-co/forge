@@ -284,6 +284,8 @@ interface IssuePorts {
     },
     landed: readonly string[],
   ) => Promise<{ code: 'CONTRACT_DRIFT' | 'CONTRACT_LANDING_UNNAMED'; detail: string } | null>;
+  /** Why `contract` (`<project>/<contract>`) is no contract the project publishes or consumes, or null. */
+  contractAboutRefusal: (projectId: string, contract: string) => Promise<string | null>;
 
   guideRef: (slug: 'pipeline-and-issue-lifecycle') => string;
   deleteMemory: (projectId: string, source: 'issue', sourceRef: string) => Promise<number>;
@@ -385,6 +387,7 @@ export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');
 export const policyGapsOf = port('policyGapsOf');
 export const contractDrift = port('contractDrift');
+export const contractAboutRefusal = port('contractAboutRefusal');
 
 export const guideRef = port('guideRef');
 export const deleteMemory = port('deleteMemory');

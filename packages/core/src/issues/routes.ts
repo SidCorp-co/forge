@@ -232,6 +232,7 @@ export { attachmentRoutes, issueAttachmentRoutes } from './attachment-routes.js'
 export { issueCheckRunRoutes } from './check-run-routes.js';
 export { issueCriteriaRoutes } from './criteria/routes.js';
 export { issueDependencyRoutes } from './dependency-routes.js';
+export { issueDesignRoutes } from './design-routes.js';
 export { issueExtrasRoutes } from './extras-routes.js';
 export { issueGraphRoutes } from './graph-routes.js';
 export { issueMergeRoutes } from './merge-routes.js';

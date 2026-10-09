@@ -3116,6 +3116,13 @@
       "when": 1824854400000,
       "tag": "0485_a_poc_room_builds_live_and_settles_into_dev",
       "breakpoints": true
+    },
+    {
+      "idx": 487,
+      "version": "7",
+      "when": 1825027200000,
+      "tag": "0487_an_issue_records_its_design_before_build",
+      "breakpoints": true
     }
   ]
 }

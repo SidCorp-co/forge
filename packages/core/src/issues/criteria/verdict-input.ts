@@ -14,6 +14,7 @@
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
+import type { CriterionJudge } from '@forge/contracts/issue-design';
 import type { VerdictRefusalCode } from '@forge/contracts/issues';
 import {
   STOREFRONT_DRAFT_SHAPE,
@@ -47,6 +48,8 @@ export interface VerdictDraft {
   readonly reason: string | null;
   readonly identity: VerdictIdentity | null;
   readonly evidence: readonly string[];
+  /** QA's judgement of the running build, or the review's; omitted, it is QA's. */
+  readonly judge?: CriterionJudge | undefined;
 }
 
 export interface VerdictRefusal {

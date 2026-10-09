@@ -6,7 +6,15 @@ import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm
 import { issues } from './schema-issues.js';
 
 /** A run's steps inside `in_progress` (and `release` inside `awaiting_release`), in order. */
-export const workSteps = ['triage', 'clarify', 'plan', 'build', 'test', 'release'] as const;
+export const workSteps = [
+  'triage',
+  'clarify',
+  'plan',
+  'design',
+  'build',
+  'test',
+  'release',
+] as const;
 export type WorkStep = (typeof workSteps)[number];
 
 export interface WorkStepEntry {
@@ -43,7 +51,7 @@ export const issueWorkState = pgTable(
     ),
     stepChk: check(
       'issue_work_state_step_chk',
-      sql`${t.step} IS NULL OR ${t.step} IN ('triage', 'clarify', 'plan', 'build', 'test', 'release')`,
+      sql`${t.step} IS NULL OR ${t.step} IN ('triage', 'clarify', 'plan', 'design', 'build', 'test', 'release')`,
     ),
     stepsChk: check('issue_work_state_steps_chk', sql`jsonb_typeof(${t.steps}) = 'array'`),
     headShaChk: check(

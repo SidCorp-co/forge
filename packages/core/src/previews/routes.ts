@@ -296,3 +296,5 @@ recordingRoutes.post('/:id/stop', zValidator('param', previewParam, RECORDING_PA
     }),
   ),
 );
+
+export { projectRoomRoutes, roomRoutes } from './room-routes.js';

@@ -197,6 +197,7 @@ const STEP_WORD: Record<string, string> = {
 	triage: "Triage",
 	clarify: "Clarify",
 	plan: "Plan",
+	design: "Design",
 	build: "Build",
 	test: "Test",
 	release: "Release",

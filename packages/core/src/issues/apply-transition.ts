@@ -17,6 +17,7 @@ import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { issueChecklistRecord } from './checklist-record.js';
+import { designCheckOf } from './design-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { mintParkQuestion, needsNotApplicable } from './park-question.js';
@@ -126,14 +127,21 @@ const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id :
 
 /**
  * The step a move leaves the run at. A claim from the backlog starts
- * at triage, from the plan checkpoint or a reopen at build; a park keeps the step it paused, and
- * its return finds it there; every other status holds no step.
+ * at triage, from the plan checkpoint or a reopen at build where the issue's design passes the
+ * design check, else at design (Issue lifecycle r15 design-check: nothing else reaches build); a
+ * park keeps the step it paused, and its return finds it there; every other status holds no step.
  */
-function stepAfter(from: IssueStatus, to: IssueStatus, held: WorkStep | null): WorkStep | null {
+async function stepAfter(
+  issue: TransitionIssueRow,
+  from: IssueStatus,
+  to: IssueStatus,
+  held: WorkStep | null,
+): Promise<WorkStep | null> {
   if (PARK_STATUSES.includes(to)) return held;
   if (to === 'in_progress') {
     if (PARK_STATUSES.includes(from)) return held;
-    return from === 'open' ? 'triage' : 'build';
+    if (from === 'open') return 'triage';
+    return (await designCheckOf(db, issue)).passed ? 'build' : 'design';
   }
   return null;
 }
@@ -198,7 +206,7 @@ export async function transitionIssueStatus(
     throw transitionRefused(reasonMissing.code, reasonMissing.detail, reasonMissing.details);
   }
 
-  const step = stepAfter(fromStatus, toStatus, work?.step ?? null);
+  const step = await stepAfter(issue, fromStatus, toStatus, work?.step ?? null);
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
