@@ -1,6 +1,13 @@
 import { PREVIEW_LIMITS } from '@forge/contracts/preview';
 import { describe, expect, it } from 'vitest';
-import { previewPlan, type SweepFacts, stateRefusal, sweepMove } from './rules.js';
+import {
+  previewPlan,
+  type RunFacts,
+  runEndedWhy,
+  type SweepFacts,
+  stateRefusal,
+  sweepMove,
+} from './rules.js';
 
 const external = { mode: 'external' as const };
 
@@ -176,5 +183,38 @@ describe('sweepMove: what the sweep owes a preview (BC-9, BC-10)', () => {
         NOW - (PREVIEW_LIMITS.readyTimeoutSeconds + PREVIEW_LIMITS.tunnelGraceSeconds) * 1000 - 1,
     };
     expect(sweepMove(silent, NOW)).toMatchObject({ reason: 'DEV_SERVER_NOT_LISTENING' });
+  });
+});
+
+describe('runEndedWhy: what ends a preview with its run (REQ-41 BC-14, REQ-39 BC-9)', () => {
+  const none: RunFacts = {
+    sessionStatus: 'running',
+    checkoutReleased: false,
+    sessionClosedOnBox: false,
+  };
+
+  it("ends an issue's preview with its run's session, naming the status", () => {
+    expect(runEndedWhy('issue', { ...none, sessionStatus: 'completed' })).toBe(
+      'the run holding the worktree ended: its session is completed',
+    );
+    expect(runEndedWhy('issue', { ...none, sessionClosedOnBox: true })).toMatch(/box reports/);
+    expect(runEndedWhy('issue', none)).toBeNull();
+  });
+
+  it("does not end an idea's or a reproduce's preview with a completed turn", () => {
+    for (const kind of ['idea', 'reproduce'] as const) {
+      for (const status of ['completed', 'failed', 'cancelled', 'completed_via_recovery']) {
+        expect(runEndedWhy(kind, { ...none, sessionStatus: status })).toBeNull();
+      }
+      expect(runEndedWhy(kind, { ...none, sessionClosedOnBox: true })).toBeNull();
+    }
+  });
+
+  it('ends any preview whose box reports the checkout released', () => {
+    for (const kind of ['issue', 'idea', 'reproduce'] as const) {
+      expect(runEndedWhy(kind, { ...none, checkoutReleased: true })).toMatch(
+        /box reports the checkout released/,
+      );
+    }
   });
 });

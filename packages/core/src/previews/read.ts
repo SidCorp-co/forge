@@ -1,13 +1,17 @@
 // The previews module's reads: its own rows, the record REST answers, and the run whose worktree
 // an issue's preview serves.
 
-import type { PreviewRecord, PreviewState, PreviewSubject } from '@forge/contracts/preview';
-import { TERMINAL_AGENT_SESSION_STATUSES } from '@forge/contracts/session-machine';
+import type {
+  PreviewRecord,
+  PreviewState,
+  PreviewSubject,
+  PreviewSubjectKind,
+} from '@forge/contracts/preview';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type PreviewRow, previews } from '../db/schema-previews.js';
 import { type PreviewSite, previewOrigin } from './domain.js';
-import { OPEN_STATES } from './rules.js';
+import { OPEN_STATES, runEndedWhy } from './rules.js';
 
 export async function previewById(id: string): Promise<PreviewRow | null> {
   const [row] = await db.select().from(previews).where(eq(previews.id, id)).limit(1);
@@ -136,29 +140,35 @@ export async function liveRunOfIssue(issueId: string): Promise<LiveRun | null> {
   return row ? { sessionId: row.session_id, deviceId: row.device_id } : null;
 }
 
-/** Open previews whose run ended or whose box reports the worktree gone: each is abandoned. */
+/**
+ * Open previews whose run ended: each is abandoned. What ends a run is `runEndedWhy`'s, by subject:
+ * an issue's preview ends with its run, an idea's or a reproduce's only with its checkout.
+ */
 export async function previewsWhoseRunEnded(): Promise<{ id: string; why: string }[]> {
   const rows = (await db.execute(sql`
-    SELECT p.id, s.status,
-           (SELECT bool_or(l.worktree_gone_at IS NOT NULL OR l.session_terminal_at IS NOT NULL)
-              FROM device_run_ledger l WHERE l.session_id = p.session_id) AS gone
+    SELECT p.id, p.subject_kind, s.status,
+           COALESCE((SELECT bool_or(l.worktree_gone_at IS NOT NULL)
+                       FROM device_run_ledger l WHERE l.session_id = p.session_id), false) AS released,
+           COALESCE((SELECT bool_or(l.session_terminal_at IS NOT NULL)
+                       FROM device_run_ledger l WHERE l.session_id = p.session_id), false) AS closed
       FROM previews p
       JOIN agent_sessions s ON s.id = p.session_id
      WHERE p.state IN ('starting', 'live', 'idle_closed')
-  `)) as unknown as { id: string; status: string; gone: boolean | null }[];
-  return rows
-    .filter(
-      (r) =>
-        (TERMINAL_AGENT_SESSION_STATUSES as readonly string[]).includes(r.status) ||
-        r.gone === true,
-    )
-    .map((r) => ({
-      id: r.id,
-      why:
-        r.gone === true
-          ? 'the run holding the worktree ended: its box reports the checkout released'
-          : `the run holding the worktree ended: its session is ${r.status}`,
-    }));
+  `)) as unknown as {
+    id: string;
+    subject_kind: PreviewSubjectKind;
+    status: string;
+    released: boolean;
+    closed: boolean;
+  }[];
+  return rows.flatMap((r) => {
+    const why = runEndedWhy(r.subject_kind, {
+      sessionStatus: r.status,
+      checkoutReleased: r.released,
+      sessionClosedOnBox: r.closed,
+    });
+    return why === null ? [] : [{ id: r.id, why }];
+  });
 }
 
 /** Previews in one of `states`, for the sweep. */
